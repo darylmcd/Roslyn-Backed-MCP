@@ -97,6 +97,28 @@ public sealed class DiagnosticService : IDiagnosticService
                 + workspaceDiagnostics.Count(d => d.Severity == "Info"));
     }
 
+    public async Task<DiagnosticDetailsDto?> GetDiagnosticDetailsAsync(
+        string workspaceId,
+        string diagnosticId,
+        string filePath,
+        int line,
+        int column,
+        CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var diagnostic = await FindDiagnosticAsync(solution, diagnosticId, filePath, line, column, ct);
+        if (diagnostic is null)
+        {
+            return null;
+        }
+
+        return new DiagnosticDetailsDto(
+            Diagnostic: SymbolMapper.ToDiagnosticDto(diagnostic),
+            Description: diagnostic.Descriptor.Description.ToString(),
+            HelpLinkUri: BuildHelpLink(diagnostic.Id),
+            SupportedFixes: GetSupportedFixes(diagnostic.Id));
+    }
+
     private static DiagnosticSeverity? ParseSeverity(string? severityFilter) =>
         severityFilter?.ToLowerInvariant() switch
         {
@@ -152,5 +174,58 @@ public sealed class DiagnosticService : IDiagnosticService
                 return true;
             })
             .ToList();
+    }
+
+    private static string BuildHelpLink(string diagnosticId) =>
+        $"https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-messages/{diagnosticId.ToLowerInvariant()}";
+
+    private static IReadOnlyList<CodeFixOptionDto> GetSupportedFixes(string diagnosticId) =>
+        diagnosticId switch
+        {
+            "CS8019" =>
+            [
+                new CodeFixOptionDto(
+                    FixId: "remove_unused_using",
+                    Title: "Remove unused using",
+                    Description: "Deletes the using directive flagged as unnecessary.")
+            ],
+            _ => []
+        };
+
+    private static async Task<Diagnostic?> FindDiagnosticAsync(
+        Solution solution,
+        string diagnosticId,
+        string filePath,
+        int line,
+        int column,
+        CancellationToken ct)
+    {
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync(ct);
+            if (compilation is null)
+            {
+                continue;
+            }
+
+            foreach (var diagnostic in compilation.GetDiagnostics(ct))
+            {
+                if (!string.Equals(diagnostic.Id, diagnosticId, StringComparison.OrdinalIgnoreCase) ||
+                    !diagnostic.Location.IsInSource)
+                {
+                    continue;
+                }
+
+                var lineSpan = diagnostic.Location.GetLineSpan();
+                if (string.Equals(Path.GetFullPath(lineSpan.Path), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase) &&
+                    lineSpan.StartLinePosition.Line + 1 == line &&
+                    lineSpan.StartLinePosition.Character + 1 == column)
+                {
+                    return diagnostic;
+                }
+            }
+        }
+
+        return null;
     }
 }

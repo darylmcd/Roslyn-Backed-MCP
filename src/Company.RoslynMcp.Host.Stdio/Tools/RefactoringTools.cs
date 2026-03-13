@@ -82,6 +82,31 @@ public static class RefactoringTools
         return JsonSerializer.Serialize(result, JsonOptions);
     }
 
+    [McpServerTool(Name = "code_fix_preview"), Description("Preview a curated code fix for a specific diagnostic occurrence")]
+    public static async Task<string> PreviewCodeFix(
+        IRefactoringService refactoringService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Diagnostic identifier, e.g. CS8019")] string diagnosticId,
+        [Description("Absolute path to the source file")] string filePath,
+        [Description("1-based line number")] int line,
+        [Description("1-based column number")] int column,
+        [Description("Optional: curated fix identifier from diagnostic_details")] string? fixId = null,
+        CancellationToken ct = default)
+    {
+        var result = await refactoringService.PreviewCodeFixAsync(workspaceId, diagnosticId, filePath, line, column, fixId, ct);
+        return JsonSerializer.Serialize(result, JsonOptions);
+    }
+
+    [McpServerTool(Name = "code_fix_apply"), Description("Apply a previously previewed code fix using its preview token")]
+    public static async Task<string> ApplyCodeFix(
+        IRefactoringService refactoringService,
+        [Description("The preview token returned by code_fix_preview")] string previewToken,
+        CancellationToken ct = default)
+    {
+        var result = await refactoringService.ApplyRefactoringAsync(previewToken, ct);
+        return JsonSerializer.Serialize(result, JsonOptions);
+    }
+
     private static SymbolLocator CreateLocator(string? filePath, int? line, int? column, string? symbolHandle)
     {
         if (!string.IsNullOrWhiteSpace(symbolHandle))

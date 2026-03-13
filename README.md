@@ -78,7 +78,7 @@ Then use the published executable:
 }
 ```
 
-## Tool Surface (v1)
+## Tool Surface (v2)
 
 ### Workspace Tools
 
@@ -87,6 +87,18 @@ Then use the published executable:
 | `workspace_load` | Load a `.sln`, `.slnx`, or `.csproj` file and return a `workspaceId` session handle |
 | `workspace_reload` | Reload a specific workspace session by `workspaceId` |
 | `workspace_status` | Get loaded path, project/document counts, snapshot metadata, and workspace/load diagnostics for a `workspaceId` |
+| `project_graph` | Get project dependency edges plus test/output/framework metadata for every loaded project |
+| `source_generated_documents` | List generated `.g.cs` artifacts for a workspace or a single project |
+
+### Validation Tools
+
+| Tool | Description |
+|------|-------------|
+| `build_workspace` | Run `dotnet build` for the loaded workspace and return structured diagnostics plus stdout/stderr |
+| `build_project` | Run `dotnet build` for a single project in the loaded workspace |
+| `test_discover` | Discover test methods in test projects using the loaded Roslyn workspace |
+| `test_run` | Run `dotnet test` for the workspace or a specific test project and return structured results |
+| `test_related` | Find likely related tests for a symbol by matching names/types against discovered tests |
 
 ### Semantic Read Tools
 
@@ -97,7 +109,12 @@ Then use the published executable:
 | `go_to_definition` | Find definition locations by source position or stable symbol handle |
 | `find_references` | Find all references across the solution by source position or stable symbol handle |
 | `find_implementations` | Find implementations of interfaces/abstract members by source position or stable symbol handle |
+| `find_overrides` | Find overriding members for a virtual, abstract, or interface member |
+| `find_base_members` | Find base or implemented members for an override or implementation |
+| `member_hierarchy` | Summarize a member's base chain and known overrides |
 | `document_symbols` | Get hierarchical symbol tree for a file in a specific workspace session |
+| `symbol_signature_help` | Get a symbol's display signature, parameters, return type, and documentation |
+| `symbol_relationships` | Get a combined view of definitions, references, implementations, base members, and overrides |
 | `project_diagnostics` | Get workspace/load, compiler, and analyzer diagnostics with severity filtering |
 | `type_hierarchy` | Get base types, derived types, and interfaces by source position or stable symbol handle |
 | `callers_callees` | Find direct callers and callees of a method by source position or stable symbol handle |
@@ -113,6 +130,9 @@ Then use the published executable:
 | `organize_usings_apply` | Apply organize usings |
 | `format_document_preview` | Preview formatting changes |
 | `format_document_apply` | Apply formatting |
+| `diagnostic_details` | Get detailed metadata plus curated fix options for a specific diagnostic occurrence |
+| `code_fix_preview` | Preview a curated code fix for a supported diagnostic occurrence |
+| `code_fix_apply` | Apply a previewed code fix (rejects stale tokens) |
 
 ## Architecture
 
@@ -134,6 +154,8 @@ samples/
 - **Session-aware workspaces**: `workspace_load` returns a dedicated `workspaceId`. Every semantic and refactoring tool is scoped to an explicit session instead of relying on a singleton loaded solution.
 - **Preview/apply with version gating**: Refactoring operations use a two-step preview/apply pattern. Preview tokens are tied to a specific workspace session and version and are rejected if that workspace changes between preview and apply.
 - **Flexible symbol targeting**: Tools can resolve symbols from file path + 1-based line/column, stable symbol handles emitted in symbol DTOs, or fully qualified metadata names where appropriate.
+- **Validation loop built in**: Agents can stay inside the MCP surface for build/test discovery and execution instead of shelling out ad hoc for every edit cycle.
+- **Curated fixes over generic mutation**: Diagnostic fixes are intentionally opt-in and preview-first. The server exposes a small, deterministic curated set instead of arbitrary code actions.
 - **stderr-only logging**: stdout is reserved exclusively for MCP protocol messages.
 - **MSBuildWorkspace**: Uses real MSBuild project loading for accurate analysis of `.sln`/`.csproj` files, not ad-hoc workspace hacks.
 
@@ -159,7 +181,9 @@ samples/
 The integration suite covers:
 
 - workspace load/reload/status with explicit `workspaceId` sessions
+- workspace-scoped build/test discovery and execution with passing and failing fixtures
 - symbol search, symbol info, definition lookup, references, implementations, type hierarchy, callers/callees, and impact analysis
+- override/base-member lookup, member hierarchy, project graph, signature help, relationship summaries, and generated-document listing
 - separated workspace/load, compiler, and analyzer diagnostics
-- preview/apply behavior for rename, organize-usings, and formatting on isolated sample-solution copies
+- preview/apply behavior for rename, organize-usings, formatting, and curated code fixes on isolated sample-solution copies
 - stale preview rejection when a workspace session changes after preview creation

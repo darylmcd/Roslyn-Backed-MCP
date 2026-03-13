@@ -17,4 +17,7 @@ public sealed record ProjectStatusDto(
     string FilePath,
     int DocumentCount,
     IReadOnlyList<string> ProjectReferences,
-    IReadOnlyList<string> TargetFrameworks);
+    IReadOnlyList<string> TargetFrameworks,
+    bool IsTestProject,
+    string AssemblyName,
+    string OutputType);

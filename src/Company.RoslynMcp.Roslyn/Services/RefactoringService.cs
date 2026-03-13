@@ -142,6 +142,68 @@ public sealed class RefactoringService : IRefactoringService
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
+    public async Task<RefactoringPreviewDto> PreviewCodeFixAsync(
+        string workspaceId,
+        string diagnosticId,
+        string filePath,
+        int line,
+        int column,
+        string? fixId,
+        CancellationToken ct)
+    {
+        var normalizedFixId = string.IsNullOrWhiteSpace(fixId) ? GetDefaultFixId(diagnosticId) : fixId;
+        if (!string.Equals(diagnosticId, "CS8019", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(normalizedFixId, "remove_unused_using", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Diagnostic '{diagnosticId}' does not have a supported curated code fix.");
+        }
+
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var document = SymbolResolver.FindDocument(solution, filePath);
+        if (document is null)
+        {
+            throw new InvalidOperationException($"Document not found: {filePath}");
+        }
+
+        var syntaxTree = await document.GetSyntaxTreeAsync(ct)
+            ?? throw new InvalidOperationException($"Could not get syntax tree for '{filePath}'.");
+        var root = await document.GetSyntaxRootAsync(ct)
+            ?? throw new InvalidOperationException($"Could not get syntax root for '{filePath}'.");
+        var compilation = await document.Project.GetCompilationAsync(ct)
+            ?? throw new InvalidOperationException($"Could not compile project for '{filePath}'.");
+
+        var diagnostic = compilation.GetDiagnostics(ct)
+            .FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, diagnosticId, StringComparison.OrdinalIgnoreCase) &&
+                candidate.Location.IsInSource &&
+                candidate.Location.SourceTree == syntaxTree &&
+                candidate.Location.GetLineSpan().StartLinePosition.Line + 1 == line &&
+                candidate.Location.GetLineSpan().StartLinePosition.Character + 1 == column);
+
+        if (diagnostic is null)
+        {
+            throw new InvalidOperationException(
+                $"Diagnostic '{diagnosticId}' was not found at {filePath}:{line}:{column}.");
+        }
+
+        var usingDirective = root.FindNode(diagnostic.Location.SourceSpan).FirstAncestorOrSelf<UsingDirectiveSyntax>()
+            ?? root.FindNode(diagnostic.Location.SourceSpan) as UsingDirectiveSyntax;
+        if (usingDirective is null)
+        {
+            throw new InvalidOperationException("The unused using directive could not be resolved.");
+        }
+
+        var newRoot = root.RemoveNode(usingDirective, SyntaxRemoveOptions.KeepExteriorTrivia)
+            ?? throw new InvalidOperationException("Failed to remove the unused using directive.");
+        var newSolution = document.WithSyntaxRoot(newRoot).Project.Solution;
+        var changes = await ComputeChangesAsync(solution, newSolution, ct);
+        var description = $"Apply code fix '{normalizedFixId}' for {diagnosticId} in '{Path.GetFileName(filePath)}'";
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+
+        return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
     private static async Task<IReadOnlyList<FileChangeDto>> ComputeChangesAsync(
         Solution oldSolution, Solution newSolution, CancellationToken ct)
     {
@@ -169,4 +231,11 @@ public sealed class RefactoringService : IRefactoringService
 
         return changes;
     }
+
+    private static string GetDefaultFixId(string diagnosticId) =>
+        diagnosticId switch
+        {
+            "CS8019" => "remove_unused_using",
+            _ => string.Empty
+        };
 }

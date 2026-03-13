@@ -38,4 +38,24 @@ public static class WorkspaceTools
         var status = workspace.GetStatus(workspaceId);
         return JsonSerializer.Serialize(status, JsonOptions);
     }
+
+    [McpServerTool(Name = "project_graph"), Description("Get the project dependency graph and project metadata for a loaded workspace")]
+    public static string GetProjectGraph(
+        IWorkspaceManager workspace,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId)
+    {
+        var graph = workspace.GetProjectGraph(workspaceId);
+        return JsonSerializer.Serialize(graph, JsonOptions);
+    }
+
+    [McpServerTool(Name = "source_generated_documents"), Description("List source-generated documents for a workspace or specific project")]
+    public static async Task<string> GetSourceGeneratedDocuments(
+        IWorkspaceManager workspace,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: filter by project name")] string? projectName = null,
+        CancellationToken ct = default)
+    {
+        var documents = await workspace.GetSourceGeneratedDocumentsAsync(workspaceId, projectName, ct);
+        return JsonSerializer.Serialize(documents, JsonOptions);
+    }
 }

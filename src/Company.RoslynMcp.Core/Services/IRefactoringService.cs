@@ -8,4 +8,12 @@ public interface IRefactoringService
     Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct);
     Task<RefactoringPreviewDto> PreviewOrganizeUsingsAsync(string workspaceId, string filePath, CancellationToken ct);
     Task<RefactoringPreviewDto> PreviewFormatDocumentAsync(string workspaceId, string filePath, CancellationToken ct);
+    Task<RefactoringPreviewDto> PreviewCodeFixAsync(
+        string workspaceId,
+        string diagnosticId,
+        string filePath,
+        int line,
+        int column,
+        string? fixId,
+        CancellationToken ct);
 }

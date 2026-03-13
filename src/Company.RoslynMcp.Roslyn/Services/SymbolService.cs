@@ -25,6 +25,22 @@ public sealed class SymbolService : ISymbolService
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<SymbolDto>();
+        HashSet<string>? allowedProjectPaths = null;
+
+        if (projectFilter is not null)
+        {
+            allowedProjectPaths = solution.Projects
+                .Where(project => string.Equals(project.Name, projectFilter, StringComparison.OrdinalIgnoreCase))
+                .SelectMany(project => project.Documents)
+                .Where(document => !string.IsNullOrWhiteSpace(document.FilePath))
+                .Select(document => Path.GetFullPath(document.FilePath!))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (allowedProjectPaths.Count == 0)
+            {
+                return [];
+            }
+        }
 
         var symbols = await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
             solution, query, SymbolFilter.All, ct);
@@ -40,14 +56,15 @@ public sealed class SymbolService : ISymbolService
             if (namespaceFilter is not null && symbol.ContainingNamespace?.ToDisplayString() != namespaceFilter)
                 continue;
 
-            if (projectFilter is not null)
+            if (allowedProjectPaths is not null)
             {
-                var symbolProject = solution.Projects.FirstOrDefault(p =>
-                    p.Documents.Any(d => symbol.Locations.Any(l =>
-                        l.IsInSource && d.FilePath is not null &&
-                        string.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(l.GetLineSpan().Path), StringComparison.OrdinalIgnoreCase))));
-                if (symbolProject is null || !string.Equals(symbolProject.Name, projectFilter, StringComparison.OrdinalIgnoreCase))
+                var inAllowedProject = symbol.Locations.Any(location =>
+                    location.IsInSource &&
+                    allowedProjectPaths.Contains(Path.GetFullPath(location.GetLineSpan().Path)));
+                if (!inAllowedProject)
+                {
                     continue;
+                }
             }
 
             var dto = SymbolMapper.ToDto(symbol, solution);
@@ -292,6 +309,103 @@ public sealed class SymbolService : ISymbolService
             summary);
     }
 
+    public async Task<IReadOnlyList<LocationDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        if (symbol is null)
+        {
+            return [];
+        }
+
+        var overrides = await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct);
+        return await SymbolsToLocationsAsync(overrides, solution, ct);
+    }
+
+    public async Task<IReadOnlyList<LocationDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        if (symbol is null)
+        {
+            return [];
+        }
+
+        return await SymbolsToLocationsAsync(GetBaseMembers(symbol), solution, ct);
+    }
+
+    public async Task<MemberHierarchyDto?> GetMemberHierarchyAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        if (symbol is null)
+        {
+            return null;
+        }
+
+        var baseMembers = GetBaseMembers(symbol).Select(baseMember => SymbolMapper.ToDto(baseMember, solution)).ToList();
+        var overrides = (await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct))
+            .Select(overrideSymbol => SymbolMapper.ToDto(overrideSymbol, solution))
+            .ToList();
+
+        return new MemberHierarchyDto(SymbolMapper.ToDto(symbol, solution), baseMembers, overrides);
+    }
+
+    public async Task<SignatureHelpDto?> GetSignatureHelpAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        if (symbol is null)
+        {
+            return null;
+        }
+
+        var dto = SymbolMapper.ToDto(symbol, solution);
+        var parameters = symbol is IMethodSymbol method
+            ? method.Parameters
+                .Select(parameter => $"{parameter.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)} {parameter.Name}")
+                .ToList()
+            : dto.Parameters ?? [];
+
+        return new SignatureHelpDto(
+            DisplaySignature: symbol.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat),
+            ReturnType: dto.ReturnType,
+            Parameters: parameters,
+            Documentation: dto.Documentation);
+    }
+
+    public async Task<SymbolRelationshipsDto?> GetSymbolRelationshipsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        if (symbol is null)
+        {
+            return null;
+        }
+
+        var definitions = new List<LocationDto>();
+        foreach (var location in symbol.Locations.Where(location => location.IsInSource))
+        {
+            var document = solution.GetDocument(location.SourceTree!);
+            var preview = document is not null ? await SymbolResolver.GetPreviewTextAsync(document, location, ct) : null;
+            definitions.Add(SymbolMapper.ToLocationDto(location, symbol, preview));
+        }
+
+        var referencesTask = FindReferencesAsync(workspaceId, locator, ct);
+        var implementationsTask = FindImplementationsAsync(workspaceId, locator, ct);
+        var baseMembersTask = FindBaseMembersAsync(workspaceId, locator, ct);
+        var overridesTask = FindOverridesAsync(workspaceId, locator, ct);
+        await Task.WhenAll(referencesTask, implementationsTask, baseMembersTask, overridesTask);
+
+        return new SymbolRelationshipsDto(
+            Symbol: SymbolMapper.ToDto(symbol, solution),
+            Definitions: definitions,
+            References: await referencesTask,
+            Implementations: await implementationsTask,
+            BaseMembers: await baseMembersTask,
+            Overrides: await overridesTask);
+    }
+
     private static bool MatchesKind(ISymbol symbol, string kindFilter)
     {
         var kinds = new[]
@@ -321,6 +435,97 @@ public sealed class SymbolService : ISymbolService
             node = node.Parent;
         }
         return null;
+    }
+
+    private static IEnumerable<ISymbol> GetBaseMembers(ISymbol symbol)
+    {
+        return symbol switch
+        {
+            IMethodSymbol method => EnumerateMethodBases(method),
+            IPropertySymbol property => EnumeratePropertyBases(property),
+            IEventSymbol eventSymbol => EnumerateEventBases(eventSymbol),
+            INamedTypeSymbol namedType => EnumerateTypeBases(namedType),
+            _ => []
+        };
+    }
+
+    private static IEnumerable<ISymbol> EnumerateMethodBases(IMethodSymbol method)
+    {
+        var current = method.OverriddenMethod;
+        while (current is not null)
+        {
+            yield return current;
+            current = current.OverriddenMethod;
+        }
+
+        foreach (var explicitImplementation in method.ExplicitInterfaceImplementations)
+        {
+            yield return explicitImplementation;
+        }
+    }
+
+    private static IEnumerable<ISymbol> EnumeratePropertyBases(IPropertySymbol property)
+    {
+        var current = property.OverriddenProperty;
+        while (current is not null)
+        {
+            yield return current;
+            current = current.OverriddenProperty;
+        }
+
+        foreach (var explicitImplementation in property.ExplicitInterfaceImplementations)
+        {
+            yield return explicitImplementation;
+        }
+    }
+
+    private static IEnumerable<ISymbol> EnumerateEventBases(IEventSymbol eventSymbol)
+    {
+        var current = eventSymbol.OverriddenEvent;
+        while (current is not null)
+        {
+            yield return current;
+            current = current.OverriddenEvent;
+        }
+
+        foreach (var explicitImplementation in eventSymbol.ExplicitInterfaceImplementations)
+        {
+            yield return explicitImplementation;
+        }
+    }
+
+    private static IEnumerable<ISymbol> EnumerateTypeBases(INamedTypeSymbol namedType)
+    {
+        var current = namedType.BaseType;
+        while (current is not null && current.SpecialType != SpecialType.System_Object)
+        {
+            yield return current;
+            current = current.BaseType;
+        }
+
+        foreach (var interfaceSymbol in namedType.Interfaces)
+        {
+            yield return interfaceSymbol;
+        }
+    }
+
+    private static async Task<IReadOnlyList<LocationDto>> SymbolsToLocationsAsync(
+        IEnumerable<ISymbol> symbols,
+        Solution solution,
+        CancellationToken ct)
+    {
+        var results = new List<LocationDto>();
+        foreach (var symbol in symbols.Distinct(SymbolEqualityComparer.Default))
+        {
+            foreach (var location in symbol.Locations.Where(location => location.IsInSource))
+            {
+                var document = solution.GetDocument(location.SourceTree!);
+                var preview = document is not null ? await SymbolResolver.GetPreviewTextAsync(document, location, ct) : null;
+                results.Add(SymbolMapper.ToLocationDto(location, symbol, preview));
+            }
+        }
+
+        return results;
     }
 
     private static IReadOnlyList<DocumentSymbolDto> CollectSymbols(SyntaxNode node)

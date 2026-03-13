@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.Xml.Linq;
 
 namespace Company.RoslynMcp.Roslyn.Services;
@@ -41,6 +42,61 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public WorkspaceStatusDto GetStatus(string workspaceId)
     {
         return BuildStatus(GetRequiredSession(workspaceId));
+    }
+
+    public ProjectGraphDto GetProjectGraph(string workspaceId)
+    {
+        var session = GetRequiredSession(workspaceId);
+        var projects = session.ProjectStatuses.Select(project => new ProjectGraphNodeDto(
+            ProjectName: project.Name,
+            FilePath: project.FilePath,
+            AssemblyName: project.AssemblyName,
+            IsTestProject: project.IsTestProject,
+            OutputType: project.OutputType,
+            TargetFrameworks: project.TargetFrameworks,
+            ProjectReferences: project.ProjectReferences)).ToList();
+
+        return new ProjectGraphDto(workspaceId, projects);
+    }
+
+    public async Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(
+        string workspaceId,
+        string? projectName,
+        CancellationToken ct)
+    {
+        var solution = GetCurrentSolution(workspaceId);
+        var results = new List<GeneratedDocumentDto>();
+
+        foreach (var project in solution.Projects.Where(project =>
+                     projectName is null || string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase)))
+        {
+            var generatedDocuments = await project.GetSourceGeneratedDocumentsAsync(ct);
+            var projectResults = generatedDocuments.Select(document => new GeneratedDocumentDto(
+                ProjectName: project.Name,
+                HintName: document.Name,
+                FilePath: document.FilePath ?? document.Name)).ToList();
+
+            if (projectResults.Count == 0 && !string.IsNullOrWhiteSpace(project.FilePath))
+            {
+                var projectDirectory = Path.GetDirectoryName(project.FilePath);
+                if (!string.IsNullOrWhiteSpace(projectDirectory))
+                {
+                    var objDirectory = Path.Combine(projectDirectory, "obj");
+                    if (Directory.Exists(objDirectory))
+                    {
+                        projectResults.AddRange(Directory.EnumerateFiles(objDirectory, "*.g.cs", SearchOption.AllDirectories)
+                            .Select(filePath => new GeneratedDocumentDto(
+                                ProjectName: project.Name,
+                                HintName: Path.GetFileName(filePath),
+                                FilePath: filePath)));
+                    }
+                }
+            }
+
+            results.AddRange(projectResults);
+        }
+
+        return results;
     }
 
     public int GetCurrentVersion(string workspaceId)
@@ -96,7 +152,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         {
             session.Workspace?.Dispose();
             session.Workspace = MSBuildWorkspace.Create();
-            session.WorkspaceDiagnostics.Clear();
+            session.WorkspaceDiagnostics = new ConcurrentQueue<DiagnosticDto>();
+            session.ProjectStatuses = ImmutableArray<ProjectStatusDto>.Empty;
 
             session.Workspace.RegisterWorkspaceFailedHandler(args =>
             {
@@ -111,7 +168,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     StartColumn: null,
                     EndLine: null,
                     EndColumn: null);
-                session.WorkspaceDiagnostics.Add(dto);
+                session.WorkspaceDiagnostics.Enqueue(dto);
                 _logger.LogWarning(
                     "Workspace {WorkspaceId} diagnostic: {Message}",
                     session.WorkspaceId,
@@ -134,6 +191,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 throw new ArgumentException($"Path must end with .sln, .slnx, or .csproj: {path}");
             }
 
+            session.ProjectStatuses = BuildProjectStatuses(session.Workspace.CurrentSolution);
             session.LoadedPath = fullPath;
             session.LoadedAtUtc = DateTimeOffset.UtcNow;
             session.Version++;
@@ -165,19 +223,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 DocumentCount: 0,
                 Projects: [],
                 IsLoaded: false,
-                WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToList());
+                WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray());
         }
 
-        var solution = session.Workspace.CurrentSolution;
-        var projects = solution.Projects.Select(project => new ProjectStatusDto(
-            Name: project.Name,
-            FilePath: project.FilePath ?? "unknown",
-            DocumentCount: project.Documents.Count(),
-            ProjectReferences: project.ProjectReferences
-                .Select(reference => solution.GetProject(reference.ProjectId)?.Name ?? "unknown")
-                .ToList(),
-            TargetFrameworks: GetTargetFrameworks(project.FilePath)
-        )).ToList();
+        var projects = session.ProjectStatuses;
 
         return new WorkspaceStatusDto(
             WorkspaceId: session.WorkspaceId,
@@ -185,11 +234,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             WorkspaceVersion: session.Version,
             SnapshotToken: $"{session.WorkspaceId}:{session.Version}",
             LoadedAtUtc: session.LoadedAtUtc,
-            ProjectCount: projects.Count,
+            ProjectCount: projects.Length,
             DocumentCount: projects.Sum(project => project.DocumentCount),
             Projects: projects,
             IsLoaded: true,
-            WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToList());
+            WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray());
     }
 
     private WorkspaceSession GetRequiredSession(string workspaceId)
@@ -204,32 +253,87 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     private static IReadOnlyList<string> GetTargetFrameworks(string? projectFilePath)
     {
-        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
+        var document = LoadProjectDocument(projectFilePath);
+        if (document is null)
         {
             return ["unknown"];
         }
 
+        var targetFramework = document.Descendants("TargetFramework").Select(element => element.Value.Trim());
+        var targetFrameworks = document.Descendants("TargetFrameworks")
+            .SelectMany(element => element.Value
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        var allFrameworks = targetFramework.Concat(targetFrameworks).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return allFrameworks.Count > 0 ? allFrameworks : ["unknown"];
+    }
+
+    private static bool IsTestProject(string? projectFilePath)
+    {
+        var document = LoadProjectDocument(projectFilePath);
+        if (document is null)
+        {
+            return false;
+        }
+
+        var isTestProject = document.Descendants("IsTestProject").FirstOrDefault()?.Value;
+        return bool.TryParse(isTestProject, out var parsed) && parsed;
+    }
+
+    private static string GetOutputType(string? projectFilePath)
+    {
+        var document = LoadProjectDocument(projectFilePath);
+        return document?.Descendants("OutputType").FirstOrDefault()?.Value.Trim() ?? "Library";
+    }
+
+    private static string GetAssemblyName(Project project)
+    {
+        if (project.CompilationOptions?.AssemblyIdentityComparer is not null && !string.IsNullOrWhiteSpace(project.AssemblyName))
+        {
+            return project.AssemblyName;
+        }
+
+        return project.Name;
+    }
+
+    private static XDocument? LoadProjectDocument(string? projectFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
+        {
+            return null;
+        }
+
         try
         {
-            var document = XDocument.Load(projectFilePath);
-            var targetFramework = document.Descendants("TargetFramework").Select(element => element.Value.Trim());
-            var targetFrameworks = document.Descendants("TargetFrameworks")
-                .SelectMany(element => element.Value
-                    .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-            var allFrameworks = targetFramework.Concat(targetFrameworks).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-            return allFrameworks.Count > 0 ? allFrameworks : ["unknown"];
+            return XDocument.Load(projectFilePath);
         }
         catch
         {
-            return ["unknown"];
+            return null;
         }
+    }
+
+    private static ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution)
+    {
+        return solution.Projects.Select(project => new ProjectStatusDto(
+                Name: project.Name,
+                FilePath: project.FilePath ?? "unknown",
+                DocumentCount: project.Documents.Count(),
+                ProjectReferences: project.ProjectReferences
+                    .Select(reference => solution.GetProject(reference.ProjectId)?.Name ?? "unknown")
+                    .ToList(),
+                TargetFrameworks: GetTargetFrameworks(project.FilePath),
+                IsTestProject: IsTestProject(project.FilePath),
+                AssemblyName: GetAssemblyName(project),
+                OutputType: GetOutputType(project.FilePath)))
+            .ToImmutableArray();
     }
 
     private sealed class WorkspaceSession(string workspaceId) : IDisposable
     {
         public string WorkspaceId { get; } = workspaceId;
         public SemaphoreSlim LoadLock { get; } = new(1, 1);
-        public List<DiagnosticDto> WorkspaceDiagnostics { get; } = [];
+        public ConcurrentQueue<DiagnosticDto> WorkspaceDiagnostics { get; set; } = new();
+        public ImmutableArray<ProjectStatusDto> ProjectStatuses { get; set; } = ImmutableArray<ProjectStatusDto>.Empty;
         public MSBuildWorkspace? Workspace { get; set; }
         public string? LoadedPath { get; set; }
         public DateTimeOffset LoadedAtUtc { get; set; } = DateTimeOffset.UtcNow;

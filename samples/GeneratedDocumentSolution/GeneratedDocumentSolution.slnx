@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ConsumerLib/ConsumerLib.csproj" />
+  <Project Path="ConsumerLib.Generators/ConsumerLib.Generators.csproj" />
+</Solution>

@@ -100,6 +100,83 @@ public static class SymbolTools
         return JsonSerializer.Serialize(results, JsonOptions);
     }
 
+    [McpServerTool(Name = "find_overrides"), Description("Find overriding members for a virtual, abstract, or interface member")]
+    public static async Task<string> FindOverrides(
+        ISymbolService symbolService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: absolute path to the source file")] string? filePath = null,
+        [Description("Optional: 1-based line number")] int? line = null,
+        [Description("Optional: 1-based column number")] int? column = null,
+        [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        CancellationToken ct = default)
+    {
+        var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+        var results = await symbolService.FindOverridesAsync(workspaceId, locator, ct);
+        return JsonSerializer.Serialize(results, JsonOptions);
+    }
+
+    [McpServerTool(Name = "find_base_members"), Description("Find base or implemented members for an override or implementation")]
+    public static async Task<string> FindBaseMembers(
+        ISymbolService symbolService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: absolute path to the source file")] string? filePath = null,
+        [Description("Optional: 1-based line number")] int? line = null,
+        [Description("Optional: 1-based column number")] int? column = null,
+        [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        CancellationToken ct = default)
+    {
+        var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+        var results = await symbolService.FindBaseMembersAsync(workspaceId, locator, ct);
+        return JsonSerializer.Serialize(results, JsonOptions);
+    }
+
+    [McpServerTool(Name = "member_hierarchy"), Description("Get a summary of base members and overrides for a symbol")]
+    public static async Task<string> GetMemberHierarchy(
+        ISymbolService symbolService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: absolute path to the source file")] string? filePath = null,
+        [Description("Optional: 1-based line number")] int? line = null,
+        [Description("Optional: 1-based column number")] int? column = null,
+        [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        CancellationToken ct = default)
+    {
+        var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+        var result = await symbolService.GetMemberHierarchyAsync(workspaceId, locator, ct);
+        return JsonSerializer.Serialize(result, JsonOptions);
+    }
+
+    [McpServerTool(Name = "symbol_signature_help"), Description("Get display signature, parameters, return type, and documentation for a symbol")]
+    public static async Task<string> GetSignatureHelp(
+        ISymbolService symbolService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: absolute path to the source file")] string? filePath = null,
+        [Description("Optional: 1-based line number")] int? line = null,
+        [Description("Optional: 1-based column number")] int? column = null,
+        [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
+        CancellationToken ct = default)
+    {
+        var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName);
+        var result = await symbolService.GetSignatureHelpAsync(workspaceId, locator, ct);
+        return JsonSerializer.Serialize(result, JsonOptions);
+    }
+
+    [McpServerTool(Name = "symbol_relationships"), Description("Get a combined summary of definitions, references, implementations, base members, and overrides")]
+    public static async Task<string> GetSymbolRelationships(
+        ISymbolService symbolService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: absolute path to the source file")] string? filePath = null,
+        [Description("Optional: 1-based line number")] int? line = null,
+        [Description("Optional: 1-based column number")] int? column = null,
+        [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
+        CancellationToken ct = default)
+    {
+        var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName);
+        var result = await symbolService.GetSymbolRelationshipsAsync(workspaceId, locator, ct);
+        return JsonSerializer.Serialize(result, JsonOptions);
+    }
+
     private static SymbolLocator CreateLocator(
         string? filePath,
         int? line,

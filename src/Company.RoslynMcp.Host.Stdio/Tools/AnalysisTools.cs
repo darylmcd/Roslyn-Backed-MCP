@@ -24,6 +24,20 @@ public static class AnalysisTools
         return JsonSerializer.Serialize(results, JsonOptions);
     }
 
+    [McpServerTool(Name = "diagnostic_details"), Description("Get detailed information and curated fix options for a specific diagnostic occurrence")]
+    public static async Task<string> GetDiagnosticDetails(
+        IDiagnosticService diagnosticService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Diagnostic identifier, e.g. CS8019")] string diagnosticId,
+        [Description("Absolute path to the source file")] string filePath,
+        [Description("1-based line number")] int line,
+        [Description("1-based column number")] int column,
+        CancellationToken ct = default)
+    {
+        var result = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, ct);
+        return JsonSerializer.Serialize(result, JsonOptions);
+    }
+
     [McpServerTool(Name = "type_hierarchy"), Description("Get the type hierarchy (base types, derived types, implemented interfaces) for a type at the given position")]
     public static async Task<string> GetTypeHierarchy(
         ISymbolService symbolService,

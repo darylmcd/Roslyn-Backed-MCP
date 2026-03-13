@@ -16,7 +16,11 @@ public abstract class TestBase
     protected static SymbolService SymbolService { get; private set; } = null!;
     protected static DiagnosticService DiagnosticService { get; private set; } = null!;
     protected static RefactoringService RefactoringService { get; private set; } = null!;
+    protected static ValidationService ValidationService { get; private set; } = null!;
+    protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
+    protected static string BuildFailureSolutionPath { get; private set; } = null!;
+    protected static string GeneratedDocumentSolutionPath { get; private set; } = null!;
 
     protected static void InitializeServices()
     {
@@ -43,28 +47,15 @@ public abstract class TestBase
             WorkspaceManager,
             PreviewStore,
             NullLogger<RefactoringService>.Instance);
+        ValidationService = new ValidationService(
+            WorkspaceManager,
+            new DotnetCommandRunner(),
+            NullLogger<ValidationService>.Instance);
 
-        // Find SampleSolution path relative to test execution directory
-        var dir = AppContext.BaseDirectory;
-        while (dir is not null)
-        {
-            var candidate = Path.Combine(dir, "samples", "SampleSolution", "SampleSolution.slnx");
-            if (File.Exists(candidate))
-            {
-                SampleSolutionPath = candidate;
-                return;
-            }
-            // Also check for .sln
-            candidate = Path.Combine(dir, "samples", "SampleSolution", "SampleSolution.sln");
-            if (File.Exists(candidate))
-            {
-                SampleSolutionPath = candidate;
-                return;
-            }
-            dir = Directory.GetParent(dir)?.FullName;
-        }
-
-        throw new InvalidOperationException("Could not find SampleSolution. Ensure the samples directory exists at the repo root.");
+        RepositoryRootPath = FindRepositoryRoot();
+        SampleSolutionPath = FindFixturePath("SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
+        BuildFailureSolutionPath = FindFixturePath("BuildFailureSolution", "BuildFailureSolution.slnx", "BuildFailureSolution.sln");
+        GeneratedDocumentSolutionPath = FindFixturePath("GeneratedDocumentSolution", "GeneratedDocumentSolution.slnx", "GeneratedDocumentSolution.sln");
     }
 
     protected static void DisposeServices()
@@ -78,6 +69,7 @@ public abstract class TestBase
             ?? throw new InvalidOperationException("Sample solution root could not be resolved.");
         var tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", Guid.NewGuid().ToString("N"));
         CopyDirectory(sampleRoot, tempRoot);
+        CopyRepositorySupportFiles(tempRoot);
 
         var slnxPath = Path.Combine(tempRoot, "SampleSolution.slnx");
         if (File.Exists(slnxPath))
@@ -92,6 +84,16 @@ public abstract class TestBase
         }
 
         throw new InvalidOperationException("Copied sample solution is missing a solution file.");
+    }
+
+    protected static string CreateFixtureCopy(string fixtureSolutionPath)
+    {
+        var fixtureRoot = Path.GetDirectoryName(fixtureSolutionPath)
+            ?? throw new InvalidOperationException("Fixture root could not be resolved.");
+        var tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", Guid.NewGuid().ToString("N"));
+        CopyDirectory(fixtureRoot, tempRoot);
+        CopyRepositorySupportFiles(tempRoot);
+        return Path.Combine(tempRoot, Path.GetFileName(fixtureSolutionPath));
     }
 
     protected static void DeleteDirectoryIfExists(string path)
@@ -116,6 +118,56 @@ public abstract class TestBase
         {
             var destinationSubdirectory = Path.Combine(destinationDir, Path.GetFileName(directory));
             CopyDirectory(directory, destinationSubdirectory);
+        }
+    }
+
+    private static string FindFixturePath(string fixtureDirectory, params string[] candidateFiles)
+    {
+        var dir = RepositoryRootPath;
+        while (dir is not null)
+        {
+            foreach (var candidateFile in candidateFiles)
+            {
+                var candidate = Path.Combine(dir, "samples", fixtureDirectory, candidateFile);
+                if (File.Exists(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            dir = Directory.GetParent(dir)?.FullName;
+        }
+
+        throw new InvalidOperationException(
+            $"Could not find fixture '{fixtureDirectory}'. Ensure the samples directory exists at the repo root.");
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null)
+        {
+            if (File.Exists(Path.Combine(dir, "RoslynMcp.slnx")) &&
+                File.Exists(Path.Combine(dir, "Directory.Build.props")))
+            {
+                return dir;
+            }
+
+            dir = Directory.GetParent(dir)?.FullName;
+        }
+
+        throw new InvalidOperationException("Could not find the repository root.");
+    }
+
+    private static void CopyRepositorySupportFiles(string destinationRoot)
+    {
+        foreach (var fileName in new[] { "Directory.Build.props", "Directory.Packages.props", "global.json" })
+        {
+            var sourcePath = Path.Combine(RepositoryRootPath, fileName);
+            if (File.Exists(sourcePath))
+            {
+                File.Copy(sourcePath, Path.Combine(destinationRoot, fileName), overwrite: true);
+            }
         }
     }
 }
