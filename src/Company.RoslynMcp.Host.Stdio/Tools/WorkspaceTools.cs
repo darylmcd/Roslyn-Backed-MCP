@@ -23,16 +23,19 @@ public static class WorkspaceTools
     [McpServerTool(Name = "workspace_reload"), Description("Reload the currently loaded workspace to pick up file changes")]
     public static async Task<string> ReloadWorkspace(
         IWorkspaceManager workspace,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct)
     {
-        var status = await workspace.ReloadAsync(ct);
+        var status = await workspace.ReloadAsync(workspaceId, ct);
         return JsonSerializer.Serialize(status, JsonOptions);
     }
 
     [McpServerTool(Name = "workspace_status"), Description("Get the current status of the loaded workspace including projects and diagnostics")]
-    public static string GetWorkspaceStatus(IWorkspaceManager workspace)
+    public static string GetWorkspaceStatus(
+        IWorkspaceManager workspace,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId)
     {
-        var status = workspace.GetStatus();
+        var status = workspace.GetStatus(workspaceId);
         return JsonSerializer.Serialize(status, JsonOptions);
     }
 }

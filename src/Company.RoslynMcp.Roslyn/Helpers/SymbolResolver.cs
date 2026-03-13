@@ -1,3 +1,4 @@
+using Company.RoslynMcp.Core.Models;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -7,6 +8,23 @@ namespace Company.RoslynMcp.Roslyn.Helpers;
 
 public static class SymbolResolver
 {
+    public static async Task<ISymbol?> ResolveAsync(Solution solution, SymbolLocator locator, CancellationToken ct)
+    {
+        locator.Validate();
+
+        if (locator.HasHandle)
+        {
+            return await SymbolHandleSerializer.ResolveHandleAsync(solution, locator.SymbolHandle!, ct);
+        }
+
+        if (locator.HasMetadataName)
+        {
+            return await ResolveByMetadataNameAsync(solution, locator.MetadataName!, ct);
+        }
+
+        return await ResolveAtPositionAsync(solution, locator.FilePath!, locator.Line!.Value, locator.Column!.Value, ct);
+    }
+
     public static async Task<ISymbol?> ResolveAtPositionAsync(Solution solution, string filePath, int line, int column, CancellationToken ct)
     {
         var document = FindDocument(solution, filePath);
@@ -33,6 +51,26 @@ public static class SymbolResolver
                 return declaredSymbol;
 
             node = node.Parent;
+        }
+
+        return null;
+    }
+
+    public static async Task<ISymbol?> ResolveByMetadataNameAsync(Solution solution, string metadataName, CancellationToken ct)
+    {
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync(ct);
+            if (compilation is null)
+            {
+                continue;
+            }
+
+            var symbol = compilation.GetTypeByMetadataName(metadataName);
+            if (symbol is not null)
+            {
+                return symbol;
+            }
         }
 
         return null;

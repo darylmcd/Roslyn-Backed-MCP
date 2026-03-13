@@ -8,15 +8,15 @@ public sealed class PreviewStore : IPreviewStore
     private readonly ConcurrentDictionary<string, PreviewEntry> _entries = new();
     private readonly TimeSpan _ttl = TimeSpan.FromMinutes(5);
 
-    public string Store(Solution modifiedSolution, int workspaceVersion, string description)
+    public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
     {
         CleanExpired();
         var token = Guid.NewGuid().ToString("N");
-        _entries[token] = new PreviewEntry(modifiedSolution, workspaceVersion, description, DateTime.UtcNow);
+        _entries[token] = new PreviewEntry(workspaceId, modifiedSolution, workspaceVersion, description, DateTime.UtcNow);
         return token;
     }
 
-    public (Solution ModifiedSolution, string Description)? Retrieve(string token, int currentWorkspaceVersion)
+    public (string WorkspaceId, Solution ModifiedSolution, int WorkspaceVersion, string Description)? Retrieve(string token)
     {
         if (!_entries.TryGetValue(token, out var entry))
             return null;
@@ -27,10 +27,7 @@ public sealed class PreviewStore : IPreviewStore
             return null;
         }
 
-        if (entry.WorkspaceVersion != currentWorkspaceVersion)
-            return null;
-
-        return (entry.ModifiedSolution, entry.Description);
+        return (entry.WorkspaceId, entry.ModifiedSolution, entry.WorkspaceVersion, entry.Description);
     }
 
     public void Invalidate(string token)
@@ -38,9 +35,21 @@ public sealed class PreviewStore : IPreviewStore
         _entries.TryRemove(token, out _);
     }
 
-    public void InvalidateAll()
+    public void InvalidateAll(string? workspaceId = null)
     {
-        _entries.Clear();
+        if (workspaceId is null)
+        {
+            _entries.Clear();
+            return;
+        }
+
+        foreach (var kvp in _entries)
+        {
+            if (string.Equals(kvp.Value.WorkspaceId, workspaceId, StringComparison.Ordinal))
+            {
+                _entries.TryRemove(kvp.Key, out _);
+            }
+        }
     }
 
     private void CleanExpired()
@@ -54,6 +63,7 @@ public sealed class PreviewStore : IPreviewStore
     }
 
     private sealed record PreviewEntry(
+        string WorkspaceId,
         Solution ModifiedSolution,
         int WorkspaceVersion,
         string Description,

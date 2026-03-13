@@ -4,8 +4,8 @@ namespace Company.RoslynMcp.Core.Services;
 
 public interface IPreviewStore
 {
-    string Store(Solution modifiedSolution, int workspaceVersion, string description);
-    (Solution ModifiedSolution, string Description)? Retrieve(string token, int currentWorkspaceVersion);
+    string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description);
+    (string WorkspaceId, Solution ModifiedSolution, int WorkspaceVersion, string Description)? Retrieve(string token);
     void Invalidate(string token);
-    void InvalidateAll();
+    void InvalidateAll(string? workspaceId = null);
 }

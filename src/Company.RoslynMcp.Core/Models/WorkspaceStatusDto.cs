@@ -1,15 +1,20 @@
 namespace Company.RoslynMcp.Core.Models;
 
 public sealed record WorkspaceStatusDto(
-    string? SolutionPath,
+    string WorkspaceId,
+    string? LoadedPath,
     int WorkspaceVersion,
+    string SnapshotToken,
+    DateTimeOffset LoadedAtUtc,
+    int ProjectCount,
+    int DocumentCount,
     IReadOnlyList<ProjectStatusDto> Projects,
     bool IsLoaded,
-    IReadOnlyList<string>? LoadWarnings);
+    IReadOnlyList<DiagnosticDto> WorkspaceDiagnostics);
 
 public sealed record ProjectStatusDto(
     string Name,
     string FilePath,
     int DocumentCount,
     IReadOnlyList<string> ProjectReferences,
-    string? TargetFramework);
+    IReadOnlyList<string> TargetFrameworks);

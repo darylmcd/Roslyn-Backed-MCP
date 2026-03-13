@@ -3,6 +3,7 @@ namespace Company.RoslynMcp.Core.Models;
 public sealed record SymbolDto(
     string Name,
     string FullyQualifiedName,
+    string? SymbolHandle,
     string Kind,
     string? ContainingType,
     string? Namespace,

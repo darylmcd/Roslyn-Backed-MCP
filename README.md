@@ -84,30 +84,30 @@ Then use the published executable:
 
 | Tool | Description |
 |------|-------------|
-| `workspace_load` | Load a `.sln`, `.slnx`, or `.csproj` file |
-| `workspace_reload` | Reload the current workspace to pick up changes |
-| `workspace_status` | Get loaded projects, document counts, warnings |
+| `workspace_load` | Load a `.sln`, `.slnx`, or `.csproj` file and return a `workspaceId` session handle |
+| `workspace_reload` | Reload a specific workspace session by `workspaceId` |
+| `workspace_status` | Get loaded path, project/document counts, snapshot metadata, and workspace/load diagnostics for a `workspaceId` |
 
 ### Semantic Read Tools
 
 | Tool | Description |
 |------|-------------|
 | `symbol_search` | Search symbols by name with optional kind/project/namespace filters |
-| `symbol_info` | Get detailed info about a symbol at file:line:column |
-| `go_to_definition` | Find definition locations for a symbol |
-| `find_references` | Find all references across the solution |
-| `find_implementations` | Find implementations of interfaces/abstract members |
-| `document_symbols` | Get hierarchical symbol tree for a file |
-| `project_diagnostics` | Get compiler errors/warnings with severity filtering |
-| `type_hierarchy` | Get base types, derived types, and interfaces |
-| `callers_callees` | Find direct callers and callees of a method |
-| `impact_analysis` | Analyze impact of changing a symbol |
+| `symbol_info` | Get detailed info for a symbol by file:line:column or fully qualified metadata name |
+| `go_to_definition` | Find definition locations by source position or stable symbol handle |
+| `find_references` | Find all references across the solution by source position or stable symbol handle |
+| `find_implementations` | Find implementations of interfaces/abstract members by source position or stable symbol handle |
+| `document_symbols` | Get hierarchical symbol tree for a file in a specific workspace session |
+| `project_diagnostics` | Get workspace/load, compiler, and analyzer diagnostics with severity filtering |
+| `type_hierarchy` | Get base types, derived types, and interfaces by source position or stable symbol handle |
+| `callers_callees` | Find direct callers and callees of a method by source position or stable symbol handle |
+| `impact_analysis` | Analyze impact of changing a symbol by source position or stable symbol handle |
 
 ### Preview-First Refactoring Tools
 
 | Tool | Description |
 |------|-------------|
-| `rename_preview` | Preview a rename with unified diffs |
+| `rename_preview` | Preview a rename by source position or stable symbol handle with unified diffs |
 | `rename_apply` | Apply a previewed rename (rejects stale tokens) |
 | `organize_usings_preview` | Preview removing/sorting usings |
 | `organize_usings_apply` | Apply organize usings |
@@ -131,8 +131,9 @@ samples/
 
 - **Transport-agnostic core**: Only `Host.Stdio` references the MCP SDK. An HTTP/SSE host can be added later by referencing the same Core and Roslyn libraries.
 - **DTOs at the boundary**: Roslyn types (`ISymbol`, `Document`, `Compilation`) never cross the service boundary. All public APIs return serializable DTOs.
-- **Preview/apply with version gating**: Refactoring operations use a two-step preview/apply pattern. Preview tokens are tied to a workspace version and rejected if the workspace changes between preview and apply.
-- **File:line:column addressing**: All tools identify symbols by file path + 1-based line/column position, which matches how AI agents naturally reference code locations.
+- **Session-aware workspaces**: `workspace_load` returns a dedicated `workspaceId`. Every semantic and refactoring tool is scoped to an explicit session instead of relying on a singleton loaded solution.
+- **Preview/apply with version gating**: Refactoring operations use a two-step preview/apply pattern. Preview tokens are tied to a specific workspace session and version and are rejected if that workspace changes between preview and apply.
+- **Flexible symbol targeting**: Tools can resolve symbols from file path + 1-based line/column, stable symbol handles emitted in symbol DTOs, or fully qualified metadata names where appropriate.
 - **stderr-only logging**: stdout is reserved exclusively for MCP protocol messages.
 - **MSBuildWorkspace**: Uses real MSBuild project loading for accurate analysis of `.sln`/`.csproj` files, not ad-hoc workspace hacks.
 
@@ -152,3 +153,13 @@ samples/
 - .NET 10 SDK
 - No Visual Studio installation required (MSBuild is included in the SDK)
 - Windows (primary target for v1)
+
+## Validation
+
+The integration suite covers:
+
+- workspace load/reload/status with explicit `workspaceId` sessions
+- symbol search, symbol info, definition lookup, references, implementations, type hierarchy, callers/callees, and impact analysis
+- separated workspace/load, compiler, and analyzer diagnostics
+- preview/apply behavior for rename, organize-usings, and formatting on isolated sample-solution copies
+- stale preview rejection when a workspace session changes after preview creation

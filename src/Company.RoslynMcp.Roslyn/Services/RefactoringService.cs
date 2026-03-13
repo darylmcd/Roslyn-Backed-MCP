@@ -2,6 +2,7 @@ using Company.RoslynMcp.Core.Models;
 using Company.RoslynMcp.Core.Services;
 using Company.RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Simplification;
@@ -23,42 +24,50 @@ public sealed class RefactoringService : IRefactoringService
     }
 
     public async Task<RefactoringPreviewDto> PreviewRenameAsync(
-        string filePath, int line, int column, string newName, CancellationToken ct)
+        string workspaceId, SymbolLocator locator, string newName, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
-        var symbol = await SymbolResolver.ResolveAtPositionAsync(solution, filePath, line, column, ct);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
         if (symbol is null)
-            throw new InvalidOperationException($"No symbol found at {filePath}:{line}:{column}");
+            throw new InvalidOperationException("No symbol found for the provided rename target.");
 
         var newSolution = await Renamer.RenameSymbolAsync(
             solution, symbol, new SymbolRenameOptions(), newName, ct);
 
         var changes = await ComputeChangesAsync(solution, newSolution, ct);
         var description = $"Rename '{symbol.Name}' to '{newName}'";
-        var token = _previewStore.Store(newSolution, _workspace.CurrentVersion, description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
     public async Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct)
     {
-        var entry = _previewStore.Retrieve(previewToken, _workspace.CurrentVersion);
+        var entry = _previewStore.Retrieve(previewToken);
         if (entry is null)
         {
             return new ApplyResultDto(
                 false, [],
-                "Preview token is invalid or expired. The workspace may have changed since the preview was generated. Please create a new preview.");
+                "Preview token is invalid, expired, or stale because the workspace changed since the preview was generated. Please create a new preview.");
         }
 
-        var (modifiedSolution, description) = entry.Value;
+        var (workspaceId, modifiedSolution, workspaceVersion, description) = entry.Value;
+        if (_workspace.GetCurrentVersion(workspaceId) != workspaceVersion)
+        {
+            _previewStore.Invalidate(previewToken);
+            return new ApplyResultDto(
+                false,
+                [],
+                "Preview token is stale because the target workspace changed. Please create a new preview.");
+        }
 
-        var currentSolution = _workspace.GetCurrentSolution();
+        var currentSolution = _workspace.GetCurrentSolution(workspaceId);
         var changedDocs = modifiedSolution.GetChanges(currentSolution)
             .GetProjectChanges()
             .SelectMany(pc => pc.GetChangedDocuments())
             .ToList();
 
-        var success = _workspace.TryApplyChanges(modifiedSolution);
+        var success = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
         _previewStore.Invalidate(previewToken);
 
         if (!success)
@@ -78,26 +87,47 @@ public sealed class RefactoringService : IRefactoringService
         return new ApplyResultDto(true, appliedFiles, null);
     }
 
-    public async Task<RefactoringPreviewDto> PreviewOrganizeUsingsAsync(string filePath, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewOrganizeUsingsAsync(string workspaceId, string filePath, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
+        var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null)
             throw new InvalidOperationException($"Document not found: {filePath}");
+
+        var root = await document.GetSyntaxRootAsync(ct)
+            ?? throw new InvalidOperationException($"Could not get syntax root for '{filePath}'.");
+        var syntaxTree = await document.GetSyntaxTreeAsync(ct)
+            ?? throw new InvalidOperationException($"Could not get syntax tree for '{filePath}'.");
+        var compilation = await document.Project.GetCompilationAsync(ct)
+            ?? throw new InvalidOperationException($"Could not compile project for '{filePath}'.");
+
+        var unnecessaryUsings = compilation.GetDiagnostics(ct)
+            .Where(diagnostic => diagnostic.Id == "CS8019" && diagnostic.Location.SourceTree == syntaxTree)
+            .Select(diagnostic => root.FindNode(diagnostic.Location.SourceSpan))
+            .OfType<UsingDirectiveSyntax>()
+            .Distinct()
+            .ToList();
+
+        if (unnecessaryUsings.Count > 0)
+        {
+            root = root.RemoveNodes(unnecessaryUsings, SyntaxRemoveOptions.KeepExteriorTrivia)
+                ?? root;
+            document = document.WithSyntaxRoot(root);
+        }
 
         var organizedDoc = await Formatter.OrganizeImportsAsync(document, ct);
         var newSolution = organizedDoc.Project.Solution;
 
         var changes = await ComputeChangesAsync(solution, newSolution, ct);
         var description = $"Organize usings in '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(newSolution, _workspace.CurrentVersion, description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
-    public async Task<RefactoringPreviewDto> PreviewFormatDocumentAsync(string filePath, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewFormatDocumentAsync(string workspaceId, string filePath, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
+        var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null)
             throw new InvalidOperationException($"Document not found: {filePath}");
@@ -107,7 +137,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await ComputeChangesAsync(solution, newSolution, ct);
         var description = $"Format document '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(newSolution, _workspace.CurrentVersion, description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }

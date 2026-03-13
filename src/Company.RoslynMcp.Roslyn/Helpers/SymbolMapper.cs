@@ -5,10 +5,17 @@ namespace Company.RoslynMcp.Roslyn.Helpers;
 
 public static class SymbolMapper
 {
-    public static SymbolDto ToDto(ISymbol symbol, Location? primaryLocation = null)
+    public static SymbolDto ToDto(ISymbol symbol, Solution? solution = null, Location? primaryLocation = null)
     {
         var location = primaryLocation ?? symbol.Locations.FirstOrDefault(l => l.IsInSource);
         var lineSpan = location?.GetLineSpan();
+        var kind = GetKind(symbol);
+        var projectName = location?.SourceTree is not null && solution is not null
+            ? solution.GetDocument(location.SourceTree)?.Project.Name
+            : null;
+        var symbolHandle = symbol.Locations.Any(static location => location.IsInSource) || symbol is INamedTypeSymbol
+            ? SymbolHandleSerializer.CreateHandle(symbol)
+            : null;
 
         string? returnType = symbol switch
         {
@@ -40,12 +47,13 @@ public static class SymbolMapper
         return new SymbolDto(
             Name: symbol.Name,
             FullyQualifiedName: symbol.ToDisplayString(),
-            Kind: symbol.Kind.ToString(),
+            SymbolHandle: symbolHandle,
+            Kind: kind,
             ContainingType: symbol.ContainingType?.ToDisplayString(),
             Namespace: symbol.ContainingNamespace?.IsGlobalNamespace == false
                 ? symbol.ContainingNamespace.ToDisplayString()
                 : null,
-            Project: null,
+            Project: projectName,
             FilePath: lineSpan?.Path,
             StartLine: lineSpan?.StartLinePosition.Line + 1,
             StartColumn: lineSpan?.StartLinePosition.Character + 1,
@@ -110,4 +118,11 @@ public static class SymbolMapper
 
         return modifiers;
     }
+
+    private static string GetKind(ISymbol symbol) =>
+        symbol switch
+        {
+            INamedTypeSymbol namedType => namedType.TypeKind.ToString(),
+            _ => symbol.Kind.ToString()
+        };
 }

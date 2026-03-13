@@ -21,9 +21,9 @@ public sealed class SymbolService : ISymbolService
     }
 
     public async Task<IReadOnlyList<SymbolDto>> SearchSymbolsAsync(
-        string query, string? projectFilter, string? kindFilter, string? namespaceFilter, int limit, CancellationToken ct)
+        string workspaceId, string query, string? projectFilter, string? kindFilter, string? namespaceFilter, int limit, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
+        var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<SymbolDto>();
 
         var symbols = await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
@@ -34,7 +34,7 @@ public sealed class SymbolService : ISymbolService
             if (ct.IsCancellationRequested) break;
             if (results.Count >= limit) break;
 
-            if (kindFilter is not null && !string.Equals(symbol.Kind.ToString(), kindFilter, StringComparison.OrdinalIgnoreCase))
+            if (kindFilter is not null && !MatchesKind(symbol, kindFilter))
                 continue;
 
             if (namespaceFilter is not null && symbol.ContainingNamespace?.ToDisplayString() != namespaceFilter)
@@ -50,38 +50,24 @@ public sealed class SymbolService : ISymbolService
                     continue;
             }
 
-            var dto = SymbolMapper.ToDto(symbol);
+            var dto = SymbolMapper.ToDto(symbol, solution);
             results.Add(dto);
         }
 
         return results;
     }
 
-    public async Task<SymbolDto?> GetSymbolInfoAsync(string filePath, int line, int column, CancellationToken ct)
+    public async Task<SymbolDto?> GetSymbolInfoAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
-        var symbol = await SymbolResolver.ResolveAtPositionAsync(solution, filePath, line, column, ct);
-        return symbol is not null ? SymbolMapper.ToDto(symbol) : null;
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        return symbol is not null ? SymbolMapper.ToDto(symbol, solution) : null;
     }
 
-    public async Task<SymbolDto?> GetSymbolInfoByNameAsync(string fullyQualifiedName, CancellationToken ct)
+    public async Task<IReadOnlyList<LocationDto>> GoToDefinitionAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
-        foreach (var project in solution.Projects)
-        {
-            var compilation = await project.GetCompilationAsync(ct);
-            if (compilation is null) continue;
-
-            var type = compilation.GetTypeByMetadataName(fullyQualifiedName);
-            if (type is not null) return SymbolMapper.ToDto(type);
-        }
-        return null;
-    }
-
-    public async Task<IReadOnlyList<LocationDto>> GoToDefinitionAsync(string filePath, int line, int column, CancellationToken ct)
-    {
-        var solution = _workspace.GetCurrentSolution();
-        var symbol = await SymbolResolver.ResolveAtPositionAsync(solution, filePath, line, column, ct);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
         if (symbol is null) return [];
 
         symbol = symbol.OriginalDefinition;
@@ -97,10 +83,10 @@ public sealed class SymbolService : ISymbolService
         return results;
     }
 
-    public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string filePath, int line, int column, CancellationToken ct)
+    public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
-        var symbol = await SymbolResolver.ResolveAtPositionAsync(solution, filePath, line, column, ct);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
         if (symbol is null) return [];
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct);
@@ -121,10 +107,10 @@ public sealed class SymbolService : ISymbolService
         return results;
     }
 
-    public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(string filePath, int line, int column, CancellationToken ct)
+    public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
-        var symbol = await SymbolResolver.ResolveAtPositionAsync(solution, filePath, line, column, ct);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
         if (symbol is null) return [];
 
         var implementations = await SymbolFinder.FindImplementationsAsync(symbol, solution, cancellationToken: ct);
@@ -143,9 +129,9 @@ public sealed class SymbolService : ISymbolService
         return results;
     }
 
-    public async Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(string filePath, CancellationToken ct)
+    public async Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(string workspaceId, string filePath, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
+        var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null) return [];
 
@@ -155,10 +141,10 @@ public sealed class SymbolService : ISymbolService
         return CollectSymbols(root);
     }
 
-    public async Task<TypeHierarchyDto?> GetTypeHierarchyAsync(string filePath, int line, int column, CancellationToken ct)
+    public async Task<TypeHierarchyDto?> GetTypeHierarchyAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
-        var symbol = await SymbolResolver.ResolveAtPositionAsync(solution, filePath, line, column, ct);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
         if (symbol is not INamedTypeSymbol namedType) return null;
 
         var baseTypes = new List<TypeHierarchyDto>();
@@ -201,10 +187,10 @@ public sealed class SymbolService : ISymbolService
             interfacesList.Count > 0 ? interfacesList : null);
     }
 
-    public async Task<CallerCalleeDto?> GetCallersCalleesAsync(string filePath, int line, int column, CancellationToken ct)
+    public async Task<CallerCalleeDto?> GetCallersCalleesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
-        var symbol = await SymbolResolver.ResolveAtPositionAsync(solution, filePath, line, column, ct);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
         if (symbol is null) return null;
 
         var callers = new List<LocationDto>();
@@ -253,15 +239,15 @@ public sealed class SymbolService : ISymbolService
         }
 
         return new CallerCalleeDto(
-            SymbolMapper.ToDto(symbol),
+            SymbolMapper.ToDto(symbol, solution),
             callers,
             callees);
     }
 
-    public async Task<ImpactAnalysisDto?> AnalyzeImpactAsync(string filePath, int line, int column, CancellationToken ct)
+    public async Task<ImpactAnalysisDto?> AnalyzeImpactAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution();
-        var symbol = await SymbolResolver.ResolveAtPositionAsync(solution, filePath, line, column, ct);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
         if (symbol is null) return null;
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct);
@@ -299,11 +285,22 @@ public sealed class SymbolService : ISymbolService
                        $"affecting {affectedDeclarations.Count} declaration(s).";
 
         return new ImpactAnalysisDto(
-            SymbolMapper.ToDto(symbol),
+            SymbolMapper.ToDto(symbol, solution),
             directRefs,
-            affectedDeclarations.Select(s => SymbolMapper.ToDto(s)).ToList(),
+            affectedDeclarations.Select(s => SymbolMapper.ToDto(s, solution)).ToList(),
             affectedProjects.ToList(),
             summary);
+    }
+
+    private static bool MatchesKind(ISymbol symbol, string kindFilter)
+    {
+        var kinds = new[]
+        {
+            symbol.Kind.ToString(),
+            symbol is INamedTypeSymbol namedType ? namedType.TypeKind.ToString() : null
+        };
+
+        return kinds.Any(kind => string.Equals(kind, kindFilter, StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<ISymbol?> GetContainingSymbolAsync(Document document, Location location, CancellationToken ct)

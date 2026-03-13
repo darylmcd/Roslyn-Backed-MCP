@@ -6,11 +6,9 @@ namespace Company.RoslynMcp.Core.Services;
 public interface IWorkspaceManager
 {
     Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct);
-    Task<WorkspaceStatusDto> ReloadAsync(CancellationToken ct);
-    WorkspaceStatusDto GetStatus();
-    int CurrentVersion { get; }
-    bool IsLoaded { get; }
-    Solution GetCurrentSolution();
-    bool TryApplyChanges(Solution newSolution);
-    void IncrementVersion();
+    Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct);
+    WorkspaceStatusDto GetStatus(string workspaceId);
+    int GetCurrentVersion(string workspaceId);
+    Solution GetCurrentSolution(string workspaceId);
+    bool TryApplyChanges(string workspaceId, Solution newSolution);
 }

@@ -71,4 +71,51 @@ public abstract class TestBase
     {
         WorkspaceManager?.Dispose();
     }
+
+    protected static string CreateSampleSolutionCopy()
+    {
+        var sampleRoot = Path.GetDirectoryName(SampleSolutionPath)
+            ?? throw new InvalidOperationException("Sample solution root could not be resolved.");
+        var tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", Guid.NewGuid().ToString("N"));
+        CopyDirectory(sampleRoot, tempRoot);
+
+        var slnxPath = Path.Combine(tempRoot, "SampleSolution.slnx");
+        if (File.Exists(slnxPath))
+        {
+            return slnxPath;
+        }
+
+        var slnPath = Path.Combine(tempRoot, "SampleSolution.sln");
+        if (File.Exists(slnPath))
+        {
+            return slnPath;
+        }
+
+        throw new InvalidOperationException("Copied sample solution is missing a solution file.");
+    }
+
+    protected static void DeleteDirectoryIfExists(string path)
+    {
+        if (Directory.Exists(path))
+        {
+            Directory.Delete(path, recursive: true);
+        }
+    }
+
+    private static void CopyDirectory(string sourceDir, string destinationDir)
+    {
+        Directory.CreateDirectory(destinationDir);
+
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            var destinationFile = Path.Combine(destinationDir, Path.GetFileName(file));
+            File.Copy(file, destinationFile, overwrite: true);
+        }
+
+        foreach (var directory in Directory.GetDirectories(sourceDir))
+        {
+            var destinationSubdirectory = Path.Combine(destinationDir, Path.GetFileName(directory));
+            CopyDirectory(directory, destinationSubdirectory);
+        }
+    }
 }
