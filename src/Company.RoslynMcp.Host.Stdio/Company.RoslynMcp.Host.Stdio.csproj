@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Company.RoslynMcp.Host.Stdio</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Company.RoslynMcp.Core\Company.RoslynMcp.Core.csproj" />
+    <ProjectReference Include="..\Company.RoslynMcp.Roslyn\Company.RoslynMcp.Roslyn.csproj" />
+  </ItemGroup>
+
+</Project>

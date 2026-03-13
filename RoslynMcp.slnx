@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Company.RoslynMcp.Core/Company.RoslynMcp.Core.csproj" />
+    <Project Path="src/Company.RoslynMcp.Host.Stdio/Company.RoslynMcp.Host.Stdio.csproj" />
+    <Project Path="src/Company.RoslynMcp.Roslyn/Company.RoslynMcp.Roslyn.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Company.RoslynMcp.Tests/Company.RoslynMcp.Tests.csproj" />
+  </Folder>
+</Solution>
