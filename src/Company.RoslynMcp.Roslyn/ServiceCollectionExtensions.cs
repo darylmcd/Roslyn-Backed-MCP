@@ -18,6 +18,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IRefactoringService, RefactoringService>();
         services.AddSingleton<ICompletionService, CompletionService>();
         services.AddSingleton<ICodeActionService, CodeActionService>();
+        services.AddSingleton<IAdvancedAnalysisService, AdvancedAnalysisService>();
+        services.AddSingleton<IEditService, EditService>();
         return services;
     }
 }
