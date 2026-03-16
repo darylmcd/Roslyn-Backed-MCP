@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Text.Json;
-using Company.RoslynMcp.Core.Models;
 using Company.RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
@@ -95,7 +94,7 @@ public static class ValidationTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
                 var result = await validationService.FindRelatedTestsAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
@@ -116,20 +115,5 @@ public static class ValidationTools
                 var result = await validationService.FindRelatedTestsForFilesAsync(workspaceId, filePaths, maxResults, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
-    }
-
-    private static SymbolLocator CreateLocator(string? filePath, int? line, int? column, string? symbolHandle)
-    {
-        if (!string.IsNullOrWhiteSpace(symbolHandle))
-        {
-            return SymbolLocator.ByHandle(symbolHandle);
-        }
-
-        if (!string.IsNullOrWhiteSpace(filePath) && line.HasValue && column.HasValue)
-        {
-            return SymbolLocator.BySource(filePath, line.Value, column.Value);
-        }
-
-        throw new ArgumentException("Provide either filePath/line/column or symbolHandle.");
     }
 }

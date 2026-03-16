@@ -113,6 +113,7 @@ public class PerformanceBehaviorTests : TestBase
                         OutputType: "Library")
                 ],
                 IsLoaded: true,
+                IsStale: false,
                 WorkspaceDiagnostics: []);
 
         public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();

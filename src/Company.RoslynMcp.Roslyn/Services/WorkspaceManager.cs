@@ -13,12 +13,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 {
     private readonly ILogger<WorkspaceManager> _logger;
     private readonly IPreviewStore _previewStore;
+    private readonly IFileWatcherService _fileWatcher;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
 
-    public WorkspaceManager(ILogger<WorkspaceManager> logger, IPreviewStore previewStore)
+    public WorkspaceManager(ILogger<WorkspaceManager> logger, IPreviewStore previewStore, IFileWatcherService fileWatcher)
     {
         _logger = logger;
         _previewStore = previewStore;
+        _fileWatcher = fileWatcher;
     }
 
     public async Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct)
@@ -27,6 +29,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var session = new WorkspaceSession(workspaceId);
         _sessions[workspaceId] = session;
         await LoadIntoSessionAsync(session, path, ct).ConfigureAwait(false);
+        _fileWatcher.Watch(workspaceId, session.LoadedPath!);
         return BuildStatus(session);
     }
 
@@ -36,6 +39,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         await LoadIntoSessionAsync(session, session.LoadedPath ?? throw new InvalidOperationException(
             $"Workspace '{workspaceId}' is not loaded."),
             ct).ConfigureAwait(false);
+        _fileWatcher.ClearStale(workspaceId);
         return BuildStatus(session);
     }
 
@@ -46,6 +50,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             return false;
         }
 
+        _fileWatcher.Unwatch(workspaceId);
         _previewStore.InvalidateAll(workspaceId);
         session.Dispose();
         _logger.LogInformation("Closed workspace {WorkspaceId}", workspaceId);
@@ -167,6 +172,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     public void Dispose()
     {
+        _fileWatcher.Dispose();
         foreach (var session in _sessions.Values)
         {
             session.Dispose();
@@ -239,6 +245,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     private WorkspaceStatusDto BuildStatus(WorkspaceSession session)
     {
+        var isStale = _fileWatcher.IsStale(session.WorkspaceId);
+
         if (session.Workspace is null || session.LoadedPath is null)
         {
             return new WorkspaceStatusDto(
@@ -251,6 +259,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 DocumentCount: 0,
                 Projects: [],
                 IsLoaded: false,
+                IsStale: isStale,
                 WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray());
         }
 
@@ -266,6 +275,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             DocumentCount: projects.Sum(project => project.DocumentCount),
             Projects: projects,
             IsLoaded: true,
+            IsStale: isStale,
             WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray());
     }
 

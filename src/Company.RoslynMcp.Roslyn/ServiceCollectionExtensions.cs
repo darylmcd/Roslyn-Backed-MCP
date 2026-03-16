@@ -20,6 +20,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICodeActionService, CodeActionService>();
         services.AddSingleton<IAdvancedAnalysisService, AdvancedAnalysisService>();
         services.AddSingleton<IEditService, EditService>();
+        services.AddSingleton<ISyntaxService, SyntaxService>();
+        services.AddSingleton<IFileWatcherService, FileWatcherService>();
         return services;
     }
 }

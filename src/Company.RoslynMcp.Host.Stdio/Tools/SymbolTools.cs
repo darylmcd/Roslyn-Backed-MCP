@@ -46,9 +46,9 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await symbolService.GetSymbolInfoAsync(workspaceId, locator, c);
-                if (result is null) return """{"error": "No symbol found at the specified location"}""";
+                if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
     }
@@ -67,9 +67,9 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await symbolService.GoToDefinitionAsync(workspaceId, locator, c);
-                if (results.Count == 0) return """{"error": "No definition found for the symbol at the specified location"}""";
+                if (results.Count == 0) throw new KeyNotFoundException("No definition found for the symbol at the specified location");
                 return JsonSerializer.Serialize(results, JsonOptions);
             }, ct));
     }
@@ -88,7 +88,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await symbolService.FindReferencesAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(new { count = results.Count, references = results }, JsonOptions);
             }, ct));
@@ -108,7 +108,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await symbolService.FindImplementationsAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(new { count = results.Count, implementations = results }, JsonOptions);
             }, ct));
@@ -144,7 +144,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await symbolService.FindOverridesAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(results, JsonOptions);
             }, ct));
@@ -164,7 +164,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await symbolService.FindBaseMembersAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(results, JsonOptions);
             }, ct));
@@ -184,7 +184,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var result = await symbolService.GetMemberHierarchyAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
@@ -205,7 +205,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await symbolService.GetSignatureHelpAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
@@ -226,7 +226,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await symbolService.GetSymbolRelationshipsAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
@@ -263,7 +263,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await symbolService.FindPropertyWritesAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(new { count = results.Count, writes = results }, JsonOptions);
             }, ct));
@@ -283,7 +283,7 @@ public static class SymbolTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await symbolService.GetEnclosingSymbolAsync(workspaceId, filePath, line, column, c);
-                if (result is null) return """{"error": "No enclosing symbol found at the specified location"}""";
+                if (result is null) throw new KeyNotFoundException("No enclosing symbol found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
     }
@@ -302,9 +302,9 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await symbolService.GoToTypeDefinitionAsync(workspaceId, locator, c);
-                if (results.Count == 0) return """{"error": "No type definition found for the symbol at the specified location"}""";
+                if (results.Count == 0) throw new KeyNotFoundException("No type definition found for the symbol at the specified location");
                 return JsonSerializer.Serialize(results, JsonOptions);
             }, ct));
     }
@@ -327,29 +327,4 @@ public static class SymbolTools
             }, ct));
     }
 
-    private static SymbolLocator CreateLocator(
-        string? filePath,
-        int? line,
-        int? column,
-        string? symbolHandle,
-        string? metadataName)
-    {
-        if (!string.IsNullOrWhiteSpace(symbolHandle))
-        {
-            return SymbolLocator.ByHandle(symbolHandle);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadataName))
-        {
-            return SymbolLocator.ByMetadataName(metadataName);
-        }
-
-        if (!string.IsNullOrWhiteSpace(filePath) && line.HasValue && column.HasValue)
-        {
-            return SymbolLocator.BySource(filePath, line.Value, column.Value);
-        }
-
-        throw new ArgumentException(
-            "Provide either filePath/line/column, symbolHandle, or metadataName.");
-    }
 }

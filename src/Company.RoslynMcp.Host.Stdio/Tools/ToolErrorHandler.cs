@@ -1,14 +1,10 @@
-using System.Text.Json;
-
 namespace Company.RoslynMcp.Host.Stdio.Tools;
 
 internal static class ToolErrorHandler
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
-
     /// <summary>
-    /// Wraps a tool action with structured error handling. Returns JSON error responses
-    /// instead of propagating raw exceptions through the MCP transport.
+    /// Wraps a tool action with structured error handling. Rethrows exceptions with clean messages
+    /// so the MCP SDK sets isError=true on the tool result.
     /// </summary>
     public static async Task<string> ExecuteAsync(Func<Task<string>> action)
     {
@@ -18,23 +14,32 @@ internal static class ToolErrorHandler
         }
         catch (OperationCanceledException)
         {
-            return JsonSerializer.Serialize(new { error = "Operation was cancelled." }, JsonOptions);
+            throw; // Let MCP SDK handle cancellation
         }
         catch (KeyNotFoundException ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message, errorType = "NotFound" }, JsonOptions);
+            throw new McpToolException($"Not found: {ex.Message}", ex);
         }
         catch (ArgumentException ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message, errorType = "InvalidArgument" }, JsonOptions);
+            throw new McpToolException($"Invalid argument: {ex.Message}", ex);
         }
         catch (InvalidOperationException ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message, errorType = "InvalidOperation" }, JsonOptions);
+            throw new McpToolException($"Invalid operation: {ex.Message}", ex);
+        }
+        catch (McpToolException)
+        {
+            throw; // Already wrapped
         }
         catch (Exception ex)
         {
-            return JsonSerializer.Serialize(new { error = ex.Message, errorType = "InternalError" }, JsonOptions);
+            throw new McpToolException($"Internal error: {ex.Message}", ex);
         }
     }
 }
+
+/// <summary>
+/// Exception type for tool errors. The MCP SDK will catch this and set isError=true on the result.
+/// </summary>
+public sealed class McpToolException(string message, Exception? inner = null) : Exception(message, inner);

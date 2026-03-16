@@ -208,4 +208,108 @@ public static class RoslynPrompts
             }
         ];
     }
+
+    [McpServerPrompt(Name = "analyze_dependencies")]
+    [Description("Generate a prompt to analyze architecture and dependency structure of a workspace")]
+    public static async Task<IEnumerable<PromptMessage>> AnalyzeDependencies(
+        IWorkspaceManager workspace,
+        IAdvancedAnalysisService analysisService,
+        [Description("The workspace session identifier")] string workspaceId,
+        CancellationToken ct = default)
+    {
+        var graph = workspace.GetProjectGraph(workspaceId);
+        var graphJson = JsonSerializer.Serialize(graph, new JsonSerializerOptions { WriteIndented = true });
+
+        var namespaceDeps = await analysisService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
+        var namespaceDepsJson = JsonSerializer.Serialize(namespaceDeps, new JsonSerializerOptions { WriteIndented = true });
+
+        var nugetDeps = await analysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
+        var nugetDepsJson = JsonSerializer.Serialize(nugetDeps, new JsonSerializerOptions { WriteIndented = true });
+
+        return
+        [
+            new PromptMessage
+            {
+                Role = Role.User,
+                Content = new TextContentBlock
+                {
+                    Text = $"""
+                        Analyze the architecture and dependency structure of this .NET solution.
+
+                        **Project Dependency Graph:**
+                        ```json
+                        {graphJson}
+                        ```
+
+                        **Namespace Dependencies:**
+                        ```json
+                        {namespaceDepsJson}
+                        ```
+
+                        **NuGet Dependencies:**
+                        ```json
+                        {nugetDepsJson}
+                        ```
+
+                        Please analyze:
+                        1. **Architecture**: Identify the layering strategy and assess if it follows clean architecture / onion architecture principles
+                        2. **Circular Dependencies**: Flag any circular namespace or project dependencies and suggest how to break them
+                        3. **Coupling**: Identify tightly coupled components and suggest decoupling strategies
+                        4. **NuGet Health**: Flag outdated, redundant, or conflicting package versions
+                        5. **Dependency Direction**: Verify that dependencies flow in the correct direction (e.g., UI → Domain, not Domain → UI)
+                        6. **Modularity**: Suggest opportunities to extract shared libraries or consolidate projects
+                        """
+                }
+            }
+        ];
+    }
+
+    [McpServerPrompt(Name = "debug_test_failure")]
+    [Description("Generate a prompt to diagnose test failures by running tests and analyzing the output")]
+    public static async Task<IEnumerable<PromptMessage>> DebugTestFailure(
+        IValidationService validationService,
+        [Description("The workspace session identifier")] string workspaceId,
+        [Description("Optional: specific test project name")] string? projectName = null,
+        [Description("Optional: test filter expression to narrow which tests to run")] string? filter = null,
+        CancellationToken ct = default)
+    {
+        var testResult = await validationService.RunTestsAsync(workspaceId, projectName, filter, ct).ConfigureAwait(false);
+        var testResultJson = JsonSerializer.Serialize(testResult, new JsonSerializerOptions { WriteIndented = true });
+
+        var failureSummary = testResult.Failures.Count > 0
+            ? string.Join("\n", testResult.Failures.Select((f, i) =>
+                $"  {i + 1}. **{f.DisplayName}**\n     Message: {f.Message}\n     Stack: {f.StackTrace ?? "N/A"}"))
+            : "No failures detected.";
+
+        return
+        [
+            new PromptMessage
+            {
+                Role = Role.User,
+                Content = new TextContentBlock
+                {
+                    Text = $"""
+                        Diagnose the following test failure(s) and suggest fixes.
+
+                        **Test Summary:** {testResult.Total} total, {testResult.Passed} passed, {testResult.Failed} failed, {testResult.Skipped} skipped
+
+                        **Test Results (full):**
+                        ```json
+                        {testResultJson}
+                        ```
+
+                        **Failure Details:**
+                        {failureSummary}
+
+                        Please:
+                        1. Identify the root cause of each failing test
+                        2. Determine if the failure is in the test itself or the code under test
+                        3. Suggest specific code changes to fix the failure
+                        4. If the test expectation is wrong, explain why and suggest the correct assertion
+                        5. Note any test isolation issues (shared state, timing, external dependencies)
+                        """
+                }
+            }
+        ];
+    }
 }
