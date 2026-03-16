@@ -14,23 +14,49 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private readonly ILogger<WorkspaceManager> _logger;
     private readonly IPreviewStore _previewStore;
     private readonly IFileWatcherService _fileWatcher;
+    private readonly WorkspaceManagerOptions _options;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
 
-    public WorkspaceManager(ILogger<WorkspaceManager> logger, IPreviewStore previewStore, IFileWatcherService fileWatcher)
+    public WorkspaceManager(
+        ILogger<WorkspaceManager> logger,
+        IPreviewStore previewStore,
+        IFileWatcherService fileWatcher,
+        WorkspaceManagerOptions? options = null)
     {
         _logger = logger;
         _previewStore = previewStore;
         _fileWatcher = fileWatcher;
+        _options = options ?? new WorkspaceManagerOptions();
     }
 
     public async Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct)
     {
+        var fullPath = ValidateWorkspacePath(path);
+        if (_sessions.Count >= _options.MaxConcurrentWorkspaces)
+        {
+            throw new InvalidOperationException(
+                $"The server is already tracking {_sessions.Count} workspaces. Close an existing workspace before loading another.");
+        }
+
         var workspaceId = Guid.NewGuid().ToString("N");
         var session = new WorkspaceSession(workspaceId);
-        _sessions[workspaceId] = session;
-        await LoadIntoSessionAsync(session, path, ct).ConfigureAwait(false);
-        _fileWatcher.Watch(workspaceId, session.LoadedPath!);
-        return BuildStatus(session);
+
+        try
+        {
+            await LoadIntoSessionAsync(session, fullPath, ct).ConfigureAwait(false);
+            if (!_sessions.TryAdd(workspaceId, session))
+            {
+                throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
+            }
+
+            _fileWatcher.Watch(workspaceId, session.LoadedPath!);
+            return BuildStatus(session);
+        }
+        catch
+        {
+            session.Dispose();
+            throw;
+        }
     }
 
     public async Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
@@ -93,13 +119,22 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         foreach (var project in solution.Projects.Where(project =>
                      projectName is null || string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase)))
         {
+            if (results.Count >= _options.MaxSourceGeneratedDocuments)
+            {
+                break;
+            }
+
             var generatedDocuments = await project.GetSourceGeneratedDocumentsAsync(ct).ConfigureAwait(false);
             var projectResults = generatedDocuments.Select(document => new GeneratedDocumentDto(
                 ProjectName: project.Name,
                 HintName: document.Name,
-                FilePath: document.FilePath ?? document.Name)).ToList();
+                FilePath: document.FilePath ?? document.Name))
+                .Take(_options.MaxSourceGeneratedDocuments - results.Count)
+                .ToList();
 
-            if (projectResults.Count == 0 && !string.IsNullOrWhiteSpace(project.FilePath))
+            if (projectResults.Count == 0 &&
+                results.Count < _options.MaxSourceGeneratedDocuments &&
+                !string.IsNullOrWhiteSpace(project.FilePath))
             {
                 var projectDirectory = Path.GetDirectoryName(project.FilePath);
                 if (!string.IsNullOrWhiteSpace(projectDirectory))
@@ -108,6 +143,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     if (Directory.Exists(objDirectory))
                     {
                         projectResults.AddRange(Directory.EnumerateFiles(objDirectory, "*.g.cs", SearchOption.AllDirectories)
+                            .Take(_options.MaxSourceGeneratedDocuments - results.Count)
                             .Select(filePath => new GeneratedDocumentDto(
                                 ProjectName: project.Name,
                                 HintName: Path.GetFileName(filePath),
@@ -177,6 +213,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         {
             session.Dispose();
         }
+        _sessions.Clear();
     }
 
     private async Task LoadIntoSessionAsync(WorkspaceSession session, string path, CancellationToken ct)
@@ -188,6 +225,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             session.Workspace = MSBuildWorkspace.Create();
             session.WorkspaceDiagnostics = new ConcurrentQueue<DiagnosticDto>();
             session.ProjectStatuses = ImmutableArray<ProjectStatusDto>.Empty;
+            var fullPath = path;
 
             session.Workspace.RegisterWorkspaceFailedHandler(args =>
             {
@@ -208,8 +246,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     session.WorkspaceId,
                     args.Diagnostic.Message);
             });
-
-            var fullPath = Path.GetFullPath(path);
 
             if (fullPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
                 fullPath.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
@@ -287,6 +323,29 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         }
 
         throw new KeyNotFoundException($"Workspace '{workspaceId}' was not found.");
+    }
+
+    private static string ValidateWorkspacePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new ArgumentException("A workspace path is required.", nameof(path));
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException($"Workspace path was not found: {fullPath}", fullPath);
+        }
+
+        if (!fullPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) &&
+            !fullPath.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) &&
+            !fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Path must end with .sln, .slnx, or .csproj: {path}");
+        }
+
+        return fullPath;
     }
 
     private static IReadOnlyList<string> GetTargetFrameworks(string? projectFilePath)
