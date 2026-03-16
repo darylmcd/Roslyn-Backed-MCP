@@ -16,6 +16,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDiagnosticService, DiagnosticService>();
         services.AddSingleton<IValidationService, ValidationService>();
         services.AddSingleton<IRefactoringService, RefactoringService>();
+        services.AddSingleton<ICompletionService, CompletionService>();
+        services.AddSingleton<ICodeActionService, CodeActionService>();
         return services;
     }
 }

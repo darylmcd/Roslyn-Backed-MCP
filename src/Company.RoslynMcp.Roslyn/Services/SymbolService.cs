@@ -43,7 +43,7 @@ public sealed class SymbolService : ISymbolService
         }
 
         var symbols = await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
-            solution, query, SymbolFilter.All, ct);
+            solution, query, SymbolFilter.All, ct).ConfigureAwait(false);
 
         foreach (var symbol in symbols)
         {
@@ -77,14 +77,14 @@ public sealed class SymbolService : ISymbolService
     public async Task<SymbolDto?> GetSymbolInfoAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         return symbol is not null ? SymbolMapper.ToDto(symbol, solution) : null;
     }
 
     public async Task<IReadOnlyList<LocationDto>> GoToDefinitionAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return [];
 
         symbol = symbol.OriginalDefinition;
@@ -93,7 +93,7 @@ public sealed class SymbolService : ISymbolService
         foreach (var location in symbol.Locations.Where(l => l.IsInSource))
         {
             var doc = solution.GetDocument(location.SourceTree!);
-            var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct) : null;
+            var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct).ConfigureAwait(false) : null;
             results.Add(SymbolMapper.ToLocationDto(location, symbol, preview));
         }
 
@@ -103,10 +103,10 @@ public sealed class SymbolService : ISymbolService
     public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return [];
 
-        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct);
+        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var results = new List<LocationDto>();
 
         foreach (var refSymbol in references)
@@ -114,9 +114,9 @@ public sealed class SymbolService : ISymbolService
             foreach (var refLocation in refSymbol.Locations)
             {
                 var doc = refLocation.Document;
-                var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct);
+                var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
 
-                var containingSymbol = await GetContainingSymbolAsync(doc, refLocation.Location, ct);
+                var containingSymbol = await GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
                 var classification = SymbolMapper.ClassifyReferenceLocation(refLocation);
                 results.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview, classification));
             }
@@ -128,10 +128,10 @@ public sealed class SymbolService : ISymbolService
     public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return [];
 
-        var implementations = await SymbolFinder.FindImplementationsAsync(symbol, solution, cancellationToken: ct);
+        var implementations = await SymbolFinder.FindImplementationsAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
         var results = new List<LocationDto>();
 
         foreach (var impl in implementations)
@@ -139,7 +139,7 @@ public sealed class SymbolService : ISymbolService
             foreach (var location in impl.Locations.Where(l => l.IsInSource))
             {
                 var doc = solution.GetDocument(location.SourceTree!);
-                var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct) : null;
+                var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct).ConfigureAwait(false) : null;
                 results.Add(SymbolMapper.ToLocationDto(location, impl, preview));
             }
         }
@@ -153,7 +153,7 @@ public sealed class SymbolService : ISymbolService
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null) return [];
 
-        var root = await document.GetSyntaxRootAsync(ct);
+        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
         if (root is null) return [];
 
         return CollectSymbols(root);
@@ -162,7 +162,7 @@ public sealed class SymbolService : ISymbolService
     public async Task<TypeHierarchyDto?> GetTypeHierarchyAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not INamedTypeSymbol namedType) return null;
 
         var baseTypes = new List<TypeHierarchyDto>();
@@ -177,7 +177,7 @@ public sealed class SymbolService : ISymbolService
             current = current.BaseType;
         }
 
-        var derivedClasses = await SymbolFinder.FindDerivedClassesAsync(namedType, solution, cancellationToken: ct);
+        var derivedClasses = await SymbolFinder.FindDerivedClassesAsync(namedType, solution, cancellationToken: ct).ConfigureAwait(false);
         var derivedTypes = derivedClasses.Select(d =>
         {
             var loc = d.Locations.FirstOrDefault(l => l.IsInSource);
@@ -208,19 +208,19 @@ public sealed class SymbolService : ISymbolService
     public async Task<CallerCalleeDto?> GetCallersCalleesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return null;
 
         var callers = new List<LocationDto>();
-        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct);
+        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         foreach (var refSymbol in references)
         {
             foreach (var refLocation in refSymbol.Locations)
             {
-                var containingSymbol = await GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct);
+                var containingSymbol = await GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
                 if (containingSymbol is not null && !SymbolEqualityComparer.Default.Equals(containingSymbol, symbol))
                 {
-                    var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct);
+                    var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
                     callers.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview));
                 }
             }
@@ -237,10 +237,10 @@ public sealed class SymbolService : ISymbolService
                 var doc = solution.GetDocument(tree);
                 if (doc is null) continue;
 
-                var semanticModel = await doc.GetSemanticModelAsync(ct);
+                var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
                 if (semanticModel is null) continue;
 
-                var root = await tree.GetRootAsync(ct);
+                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
                 var methodNode = root.FindNode(location.SourceSpan);
 
                 var invocations = methodNode.DescendantNodes().OfType<InvocationExpressionSyntax>();
@@ -265,10 +265,10 @@ public sealed class SymbolService : ISymbolService
     public async Task<ImpactAnalysisDto?> AnalyzeImpactAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return null;
 
-        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct);
+        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var directRefs = new List<LocationDto>();
         var affectedDeclarations = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
         var affectedProjects = new HashSet<string>();
@@ -277,8 +277,8 @@ public sealed class SymbolService : ISymbolService
         {
             foreach (var refLocation in refSymbol.Locations)
             {
-                var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct);
-                var containingSymbol = await GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct);
+                var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
+                var containingSymbol = await GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
                 directRefs.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview));
 
                 if (containingSymbol is not null)
@@ -290,11 +290,11 @@ public sealed class SymbolService : ISymbolService
 
         if (symbol is INamedTypeSymbol namedType)
         {
-            var implementations = await SymbolFinder.FindImplementationsAsync(namedType, solution, cancellationToken: ct);
+            var implementations = await SymbolFinder.FindImplementationsAsync(namedType, solution, cancellationToken: ct).ConfigureAwait(false);
             foreach (var impl in implementations)
                 affectedDeclarations.Add(impl);
 
-            var derived = await SymbolFinder.FindDerivedClassesAsync(namedType, solution, cancellationToken: ct);
+            var derived = await SymbolFinder.FindDerivedClassesAsync(namedType, solution, cancellationToken: ct).ConfigureAwait(false);
             foreach (var d in derived)
                 affectedDeclarations.Add(d);
         }
@@ -313,39 +313,39 @@ public sealed class SymbolService : ISymbolService
     public async Task<IReadOnlyList<LocationDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
         {
             return [];
         }
 
-        var overrides = await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct);
-        return await SymbolsToLocationsAsync(overrides, solution, ct);
+        var overrides = await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
+        return await SymbolsToLocationsAsync(overrides, solution, ct).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<LocationDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
         {
             return [];
         }
 
-        return await SymbolsToLocationsAsync(GetBaseMembers(symbol), solution, ct);
+        return await SymbolsToLocationsAsync(GetBaseMembers(symbol), solution, ct).ConfigureAwait(false);
     }
 
     public async Task<MemberHierarchyDto?> GetMemberHierarchyAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
         {
             return null;
         }
 
         var baseMembers = GetBaseMembers(symbol).Select(baseMember => SymbolMapper.ToDto(baseMember, solution)).ToList();
-        var overrides = (await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct))
+        var overrides = (await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false))
             .Select(overrideSymbol => SymbolMapper.ToDto(overrideSymbol, solution))
             .ToList();
 
@@ -355,7 +355,7 @@ public sealed class SymbolService : ISymbolService
     public async Task<SignatureHelpDto?> GetSignatureHelpAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
         {
             return null;
@@ -378,7 +378,7 @@ public sealed class SymbolService : ISymbolService
     public async Task<SymbolRelationshipsDto?> GetSymbolRelationshipsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
         {
             return null;
@@ -388,7 +388,7 @@ public sealed class SymbolService : ISymbolService
         foreach (var location in symbol.Locations.Where(location => location.IsInSource))
         {
             var document = solution.GetDocument(location.SourceTree!);
-            var preview = document is not null ? await SymbolResolver.GetPreviewTextAsync(document, location, ct) : null;
+            var preview = document is not null ? await SymbolResolver.GetPreviewTextAsync(document, location, ct).ConfigureAwait(false) : null;
             definitions.Add(SymbolMapper.ToLocationDto(location, symbol, preview));
         }
 
@@ -396,24 +396,24 @@ public sealed class SymbolService : ISymbolService
         var implementationsTask = FindImplementationsAsync(workspaceId, locator, ct);
         var baseMembersTask = FindBaseMembersAsync(workspaceId, locator, ct);
         var overridesTask = FindOverridesAsync(workspaceId, locator, ct);
-        await Task.WhenAll(referencesTask, implementationsTask, baseMembersTask, overridesTask);
+        await Task.WhenAll(referencesTask, implementationsTask, baseMembersTask, overridesTask).ConfigureAwait(false);
 
         return new SymbolRelationshipsDto(
             Symbol: SymbolMapper.ToDto(symbol, solution),
             Definitions: definitions,
-            References: await referencesTask,
-            Implementations: await implementationsTask,
-            BaseMembers: await baseMembersTask,
-            Overrides: await overridesTask);
+            References: await referencesTask.ConfigureAwait(false),
+            Implementations: await implementationsTask.ConfigureAwait(false),
+            BaseMembers: await baseMembersTask.ConfigureAwait(false),
+            Overrides: await overridesTask.ConfigureAwait(false));
     }
 
     public async Task<IReadOnlyList<PropertyWriteDto>> FindPropertyWritesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not IPropertySymbol property) return [];
 
-        var references = await SymbolFinder.FindReferencesAsync(property, solution, ct);
+        var references = await SymbolFinder.FindReferencesAsync(property, solution, ct).ConfigureAwait(false);
         var results = new List<PropertyWriteDto>();
 
         foreach (var refSymbol in references)
@@ -421,7 +421,7 @@ public sealed class SymbolService : ISymbolService
             foreach (var refLocation in refSymbol.Locations)
             {
                 var doc = refLocation.Document;
-                var root = await doc.GetSyntaxRootAsync(ct);
+                var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (root is null) continue;
 
                 var refNode = root.FindNode(refLocation.Location.SourceSpan);
@@ -434,8 +434,8 @@ public sealed class SymbolService : ISymbolService
                     .Any(static a => a is InitializerExpressionSyntax init &&
                         init.Kind() == SyntaxKind.ObjectInitializerExpression);
 
-                var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct);
-                var containingSymbol = await GetContainingSymbolAsync(doc, refLocation.Location, ct);
+                var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
+                var containingSymbol = await GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
                 var lineSpan = refLocation.Location.GetLineSpan();
 
                 results.Add(new PropertyWriteDto(
@@ -456,10 +456,10 @@ public sealed class SymbolService : ISymbolService
     public async Task<IReadOnlyList<TypeUsageDto>> FindTypeUsagesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return [];
 
-        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct);
+        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var results = new List<TypeUsageDto>();
 
         foreach (var refSymbol in references)
@@ -467,14 +467,14 @@ public sealed class SymbolService : ISymbolService
             foreach (var refLocation in refSymbol.Locations)
             {
                 var doc = refLocation.Document;
-                var root = await doc.GetSyntaxRootAsync(ct);
+                var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (root is null) continue;
 
                 var refNode = root.FindNode(refLocation.Location.SourceSpan);
                 var classification = ClassifyTypeUsage(refNode);
 
-                var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct);
-                var containingSymbol = await GetContainingSymbolAsync(doc, refLocation.Location, ct);
+                var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
+                var containingSymbol = await GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
                 var lineSpan = refLocation.Location.GetLineSpan();
 
                 results.Add(new TypeUsageDto(
@@ -584,15 +584,15 @@ public sealed class SymbolService : ISymbolService
                     ? $"{bulk.FilePath}:{bulk.Line}:{bulk.Column}"
                     : $"symbol[{index}]");
 
-            await semaphore.WaitAsync(ct);
+            await semaphore.WaitAsync(ct).ConfigureAwait(false);
             try
             {
                 var locator = ToSymbolLocator(bulk);
-                var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+                var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
                 if (symbol is null)
                     return new BulkReferenceResultDto(key, null, 0, [], "Symbol could not be resolved.");
 
-                var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct);
+                var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
                 var locations = new List<LocationDto>();
 
                 if (includeDefinition)
@@ -600,7 +600,7 @@ public sealed class SymbolService : ISymbolService
                     foreach (var loc in symbol.Locations.Where(l => l.IsInSource))
                     {
                         var doc = solution.GetDocument(loc.SourceTree!);
-                        var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, loc, ct) : null;
+                        var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, loc, ct).ConfigureAwait(false) : null;
                         locations.Add(SymbolMapper.ToLocationDto(loc, symbol, preview, "Definition"));
                     }
                 }
@@ -610,8 +610,8 @@ public sealed class SymbolService : ISymbolService
                     foreach (var refLocation in refSymbol.Locations)
                     {
                         var doc = refLocation.Document;
-                        var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct);
-                        var containingSymbol = await GetContainingSymbolAsync(doc, refLocation.Location, ct);
+                        var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
+                        var containingSymbol = await GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
                         var classification = SymbolMapper.ClassifyReferenceLocation(refLocation);
                         locations.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview, classification));
                     }
@@ -630,14 +630,14 @@ public sealed class SymbolService : ISymbolService
         }
 
         var tasks = symbols.Select((s, i) => ProcessOneAsync(s, i)).ToList();
-        var results = await Task.WhenAll(tasks);
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
         return results;
     }
 
     public async Task<TypeMutationDto?> FindTypeMutationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not INamedTypeSymbol namedType) return null;
 
         var mutatingMembers = new List<MutatingMemberDto>();
@@ -647,21 +647,21 @@ public sealed class SymbolService : ISymbolService
             if (!IsMutatingMember(member, namedType)) continue;
 
             var callers = new List<MutationCallerDto>();
-            var references = await SymbolFinder.FindReferencesAsync(member, solution, ct);
+            var references = await SymbolFinder.FindReferencesAsync(member, solution, ct).ConfigureAwait(false);
 
             foreach (var refSymbol in references)
             {
                 foreach (var refLocation in refSymbol.Locations)
                 {
-                    var containingSymbol = await GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct);
+                    var containingSymbol = await GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
 
                     // Skip calls from within the type itself (internal mutators calling each other)
                     if (containingSymbol is not null &&
                         SymbolEqualityComparer.Default.Equals(containingSymbol.ContainingType, namedType))
                         continue;
 
-                    var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct);
-                    var phase = await ClassifyCallerPhaseAsync(refLocation, namedType, ct);
+                    var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
+                    var phase = await ClassifyCallerPhaseAsync(refLocation, namedType, ct).ConfigureAwait(false);
                     var lineSpan = refLocation.Location.GetLineSpan();
 
                     callers.Add(new MutationCallerDto(
@@ -758,7 +758,7 @@ public sealed class SymbolService : ISymbolService
 
     private static async Task<string> ClassifyCallerPhaseAsync(ReferenceLocation refLocation, INamedTypeSymbol targetType, CancellationToken ct)
     {
-        var root = await refLocation.Document.GetSyntaxRootAsync(ct);
+        var root = await refLocation.Document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
         if (root is null) return "Unknown";
 
         var node = root.FindNode(refLocation.Location.SourceSpan);
@@ -779,7 +779,7 @@ public sealed class SymbolService : ISymbolService
             var returnType = enclosingMethod.ReturnType.ToString();
             if (returnType is "void" or "Void")
             {
-                var semanticModel = await refLocation.Document.GetSemanticModelAsync(ct);
+                var semanticModel = await refLocation.Document.GetSemanticModelAsync(ct).ConfigureAwait(false);
                 if (semanticModel is not null)
                 {
                     var methodSymbol = semanticModel.GetDeclaredSymbol(enclosingMethod, ct);
@@ -791,6 +791,68 @@ public sealed class SymbolService : ISymbolService
         }
 
         return "PostConstruction";
+    }
+
+    public async Task<SymbolDto?> GetEnclosingSymbolAsync(string workspaceId, string filePath, int line, int column, CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var document = SymbolResolver.FindDocument(solution, filePath);
+        if (document is null) return null;
+
+        var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+        if (semanticModel is null) return null;
+
+        var syntaxTree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
+        if (syntaxTree is null) return null;
+
+        var text = await syntaxTree.GetTextAsync(ct).ConfigureAwait(false);
+        var position = text.Lines[line - 1].Start + (column - 1);
+        var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
+        var node = root.FindToken(position).Parent;
+
+        while (node is not null)
+        {
+            if (node is MemberDeclarationSyntax or LocalFunctionStatementSyntax or BaseTypeDeclarationSyntax)
+            {
+                var declaredSymbol = semanticModel.GetDeclaredSymbol(node, ct);
+                if (declaredSymbol is not null)
+                    return SymbolMapper.ToDto(declaredSymbol, solution);
+            }
+            node = node.Parent;
+        }
+
+        return null;
+    }
+
+    public async Task<IReadOnlyList<LocationDto>> GoToTypeDefinitionAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
+        if (symbol is null) return [];
+
+        INamedTypeSymbol? typeSymbol = symbol switch
+        {
+            ILocalSymbol local => local.Type as INamedTypeSymbol,
+            IParameterSymbol param => param.Type as INamedTypeSymbol,
+            IFieldSymbol field => field.Type as INamedTypeSymbol,
+            IPropertySymbol prop => prop.Type as INamedTypeSymbol,
+            IEventSymbol evt => evt.Type as INamedTypeSymbol,
+            IMethodSymbol method => method.ReturnType as INamedTypeSymbol,
+            INamedTypeSymbol namedType => namedType,
+            _ => null
+        };
+
+        if (typeSymbol is null) return [];
+
+        var results = new List<LocationDto>();
+        foreach (var location in typeSymbol.Locations.Where(l => l.IsInSource))
+        {
+            var doc = solution.GetDocument(location.SourceTree!);
+            var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct).ConfigureAwait(false) : null;
+            results.Add(SymbolMapper.ToLocationDto(location, typeSymbol, preview));
+        }
+
+        return results;
     }
 
     private static SymbolLocator ToSymbolLocator(BulkSymbolLocator bulk)
@@ -843,10 +905,10 @@ public sealed class SymbolService : ISymbolService
 
     private static async Task<ISymbol?> GetContainingSymbolAsync(Document document, Location location, CancellationToken ct)
     {
-        var semanticModel = await document.GetSemanticModelAsync(ct);
+        var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
         if (semanticModel is null) return null;
 
-        var root = await document.GetSyntaxRootAsync(ct);
+        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
         if (root is null) return null;
 
         var node = root.FindNode(location.SourceSpan);
@@ -944,7 +1006,7 @@ public sealed class SymbolService : ISymbolService
             foreach (var location in symbol.Locations.Where(location => location.IsInSource))
             {
                 var document = solution.GetDocument(location.SourceTree!);
-                var preview = document is not null ? await SymbolResolver.GetPreviewTextAsync(document, location, ct) : null;
+                var preview = document is not null ? await SymbolResolver.GetPreviewTextAsync(document, location, ct).ConfigureAwait(false) : null;
                 results.Add(SymbolMapper.ToLocationDto(location, symbol, preview));
             }
         }

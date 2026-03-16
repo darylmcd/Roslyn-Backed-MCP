@@ -50,9 +50,9 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         var stdOutTask = ReadBoundedAsync(process.StandardOutput, ct);
         var stdErrTask = ReadBoundedAsync(process.StandardError, ct);
 
-        await process.WaitForExitAsync(ct);
-        var stdOut = await stdOutTask;
-        var stdErr = await stdErrTask;
+        await process.WaitForExitAsync(ct).ConfigureAwait(false);
+        var stdOut = await stdOutTask.ConfigureAwait(false);
+        var stdErr = await stdErrTask.ConfigureAwait(false);
         stopwatch.Stop();
 
         return new CommandExecutionDto(
@@ -76,7 +76,7 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
         {
             while (true)
             {
-                var count = await reader.ReadAsync(buffer.AsMemory(0, ReadBufferSize), ct);
+                var count = await reader.ReadAsync(buffer.AsMemory(0, ReadBufferSize), ct).ConfigureAwait(false);
                 if (count == 0)
                 {
                     break;

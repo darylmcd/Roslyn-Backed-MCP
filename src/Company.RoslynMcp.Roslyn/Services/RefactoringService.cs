@@ -27,14 +27,14 @@ public sealed class RefactoringService : IRefactoringService
         string workspaceId, SymbolLocator locator, string newName, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
             throw new InvalidOperationException("No symbol found for the provided rename target.");
 
         var newSolution = await Renamer.RenameSymbolAsync(
-            solution, symbol, new SymbolRenameOptions(), newName, ct);
+            solution, symbol, new SymbolRenameOptions(), newName, ct).ConfigureAwait(false);
 
-        var changes = await ComputeChangesAsync(solution, newSolution, ct);
+        var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Rename '{symbol.Name}' to '{newName}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
@@ -94,11 +94,11 @@ public sealed class RefactoringService : IRefactoringService
         if (document is null)
             throw new InvalidOperationException($"Document not found: {filePath}");
 
-        var root = await document.GetSyntaxRootAsync(ct)
+        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not get syntax root for '{filePath}'.");
-        var syntaxTree = await document.GetSyntaxTreeAsync(ct)
+        var syntaxTree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not get syntax tree for '{filePath}'.");
-        var compilation = await document.Project.GetCompilationAsync(ct)
+        var compilation = await document.Project.GetCompilationAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not compile project for '{filePath}'.");
 
         var unnecessaryUsings = compilation.GetDiagnostics(ct)
@@ -115,10 +115,10 @@ public sealed class RefactoringService : IRefactoringService
             document = document.WithSyntaxRoot(root);
         }
 
-        var organizedDoc = await Formatter.OrganizeImportsAsync(document, ct);
+        var organizedDoc = await Formatter.OrganizeImportsAsync(document, ct).ConfigureAwait(false);
         var newSolution = organizedDoc.Project.Solution;
 
-        var changes = await ComputeChangesAsync(solution, newSolution, ct);
+        var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Organize usings in '{Path.GetFileName(filePath)}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
@@ -132,10 +132,10 @@ public sealed class RefactoringService : IRefactoringService
         if (document is null)
             throw new InvalidOperationException($"Document not found: {filePath}");
 
-        var formattedDoc = await Formatter.FormatAsync(document, cancellationToken: ct);
+        var formattedDoc = await Formatter.FormatAsync(document, cancellationToken: ct).ConfigureAwait(false);
         var newSolution = formattedDoc.Project.Solution;
 
-        var changes = await ComputeChangesAsync(solution, newSolution, ct);
+        var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Format document '{Path.GetFileName(filePath)}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
@@ -166,11 +166,11 @@ public sealed class RefactoringService : IRefactoringService
             throw new InvalidOperationException($"Document not found: {filePath}");
         }
 
-        var syntaxTree = await document.GetSyntaxTreeAsync(ct)
+        var syntaxTree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not get syntax tree for '{filePath}'.");
-        var root = await document.GetSyntaxRootAsync(ct)
+        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not get syntax root for '{filePath}'.");
-        var compilation = await document.Project.GetCompilationAsync(ct)
+        var compilation = await document.Project.GetCompilationAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not compile project for '{filePath}'.");
 
         var diagnostic = compilation.GetDiagnostics(ct)
@@ -197,7 +197,7 @@ public sealed class RefactoringService : IRefactoringService
         var newRoot = root.RemoveNode(usingDirective, SyntaxRemoveOptions.KeepExteriorTrivia)
             ?? throw new InvalidOperationException("Failed to remove the unused using directive.");
         var newSolution = document.WithSyntaxRoot(newRoot).Project.Solution;
-        var changes = await ComputeChangesAsync(solution, newSolution, ct);
+        var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Apply code fix '{normalizedFixId}' for {diagnosticId} in '{Path.GetFileName(filePath)}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
@@ -218,8 +218,8 @@ public sealed class RefactoringService : IRefactoringService
                 var newDoc = newSolution.GetDocument(docId);
                 if (oldDoc is null || newDoc is null) continue;
 
-                var oldText = (await oldDoc.GetTextAsync(ct)).ToString();
-                var newText = (await newDoc.GetTextAsync(ct)).ToString();
+                var oldText = (await oldDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
 
                 if (oldText == newText) continue;
 
