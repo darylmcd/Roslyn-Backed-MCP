@@ -28,6 +28,10 @@ internal static class ToolErrorHandler
         {
             throw new McpToolException($"Invalid operation: {ex.Message}", ex);
         }
+        catch (TimeoutException ex)
+        {
+            throw new McpToolException($"Timed out: {ex.Message}", ex);
+        }
         catch (McpToolException)
         {
             throw; // Already wrapped

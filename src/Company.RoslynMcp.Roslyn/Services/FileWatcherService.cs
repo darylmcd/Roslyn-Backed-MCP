@@ -27,10 +27,10 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         var entry = new WatcherEntry(watcher);
         _watchers[workspaceId] = entry;
 
-        watcher.Changed += (_, _) => entry.MarkStale();
-        watcher.Created += (_, _) => entry.MarkStale();
-        watcher.Deleted += (_, _) => entry.MarkStale();
-        watcher.Renamed += (_, _) => entry.MarkStale();
+        watcher.Changed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath);
+        watcher.Created += (_, args) => MarkStaleIfRelevant(entry, args.FullPath);
+        watcher.Deleted += (_, args) => MarkStaleIfRelevant(entry, args.FullPath);
+        watcher.Renamed += (_, args) => MarkStaleIfRelevant(entry, args.FullPath);
 
         logger.LogInformation("Started file watcher for workspace {WorkspaceId} at {Directory}", workspaceId, directory);
     }
@@ -64,6 +64,23 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             kvp.Value.Dispose();
         }
         _watchers.Clear();
+    }
+
+    private static void MarkStaleIfRelevant(WatcherEntry entry, string fullPath)
+    {
+        if (ShouldIgnorePath(fullPath))
+        {
+            return;
+        }
+
+        entry.MarkStale();
+    }
+
+    private static bool ShouldIgnorePath(string fullPath)
+    {
+        return fullPath.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+               fullPath.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+               fullPath.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class WatcherEntry(FileSystemWatcher watcher) : IDisposable

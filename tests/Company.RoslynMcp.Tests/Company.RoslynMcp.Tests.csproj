@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Company.RoslynMcp.Core\Company.RoslynMcp.Core.csproj" />
+    <ProjectReference Include="..\..\src\Company.RoslynMcp.Host.Stdio\Company.RoslynMcp.Host.Stdio.csproj" />
     <ProjectReference Include="..\..\src\Company.RoslynMcp.Roslyn\Company.RoslynMcp.Roslyn.csproj" />
   </ItemGroup>
 

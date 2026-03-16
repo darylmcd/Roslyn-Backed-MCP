@@ -17,15 +17,18 @@ public sealed class ValidationService : IValidationService, IDisposable
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IDotnetCommandRunner _commandRunner;
     private readonly ILogger<ValidationService> _logger;
+    private readonly ValidationServiceOptions _options;
 
     public ValidationService(
         IWorkspaceManager workspaceManager,
         IDotnetCommandRunner commandRunner,
-        ILogger<ValidationService> logger)
+        ILogger<ValidationService> logger,
+        ValidationServiceOptions? options = null)
     {
         _workspaceManager = workspaceManager;
         _commandRunner = commandRunner;
         _logger = logger;
+        _options = options ?? new ValidationServiceOptions();
         var globalLimit = Math.Clamp(Environment.ProcessorCount / 4, 1, 4);
         _globalCommandGate = new SemaphoreSlim(globalLimit, globalLimit);
     }
@@ -34,7 +37,12 @@ public sealed class ValidationService : IValidationService, IDisposable
     {
         var status = _workspaceManager.GetStatus(workspaceId);
         var targetPath = status.LoadedPath ?? throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
-        var execution = await RunDotnetCommandAsync(workspaceId, targetPath, ["build", targetPath, "--nologo"], ct).ConfigureAwait(false);
+        var execution = await RunDotnetCommandAsync(
+            workspaceId,
+            targetPath,
+            ["build", targetPath, "--nologo"],
+            _options.BuildTimeout,
+            ct).ConfigureAwait(false);
         var diagnostics = DotnetOutputParser.ParseBuildDiagnostics($"{execution.StdOut}{Environment.NewLine}{execution.StdErr}");
 
         return new BuildResultDto(
@@ -47,7 +55,12 @@ public sealed class ValidationService : IValidationService, IDisposable
     public async Task<BuildResultDto> BuildProjectAsync(string workspaceId, string projectName, CancellationToken ct)
     {
         var project = ResolveProject(workspaceId, projectName);
-        var execution = await RunDotnetCommandAsync(workspaceId, project.FilePath, ["build", project.FilePath, "--nologo"], ct).ConfigureAwait(false);
+        var execution = await RunDotnetCommandAsync(
+            workspaceId,
+            project.FilePath,
+            ["build", project.FilePath, "--nologo"],
+            _options.BuildTimeout,
+            ct).ConfigureAwait(false);
         var diagnostics = DotnetOutputParser.ParseBuildDiagnostics($"{execution.StdOut}{Environment.NewLine}{execution.StdErr}");
 
         return new BuildResultDto(
@@ -170,7 +183,12 @@ public sealed class ValidationService : IValidationService, IDisposable
                 arguments.Add(filter);
             }
 
-            var execution = await RunDotnetCommandAsync(workspaceId, targetPath, arguments, ct).ConfigureAwait(false);
+            var execution = await RunDotnetCommandAsync(
+                workspaceId,
+                targetPath,
+                arguments,
+                _options.TestTimeout,
+                ct).ConfigureAwait(false);
             return DotnetOutputParser.ParseTestRun(execution, trxPath);
         }
         finally
@@ -185,6 +203,13 @@ public sealed class ValidationService : IValidationService, IDisposable
     public async Task<RelatedTestsForFilesDto> FindRelatedTestsForFilesAsync(
         string workspaceId, IReadOnlyList<string> filePaths, int maxResults, CancellationToken ct)
     {
+        if (filePaths.Count > _options.MaxRelatedFiles)
+        {
+            throw new ArgumentException(
+                $"A maximum of {_options.MaxRelatedFiles} files may be analyzed at once for related tests.",
+                nameof(filePaths));
+        }
+
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
         var discovery = await DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
         var allTests = discovery.TestProjects
@@ -274,6 +299,7 @@ public sealed class ValidationService : IValidationService, IDisposable
         string workspaceId,
         string targetPath,
         IReadOnlyList<string> arguments,
+        TimeSpan timeout,
         CancellationToken ct)
     {
         var workspaceGate = _workspaceCommandGates.GetOrAdd(workspaceId, static _ => new SemaphoreSlim(1, 1));
@@ -286,7 +312,19 @@ public sealed class ValidationService : IValidationService, IDisposable
             try
             {
                 var workingDirectory = GetWorkingDirectory(targetPath);
-                var execution = await _commandRunner.RunAsync(workingDirectory, targetPath, arguments, ct).ConfigureAwait(false);
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(timeout);
+
+                CommandExecutionDto execution;
+                try
+                {
+                    execution = await _commandRunner.RunAsync(workingDirectory, targetPath, arguments, timeoutCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+                {
+                    throw new TimeoutException(
+                        $"The command 'dotnet {string.Join(" ", arguments)}' exceeded the timeout of {timeout.TotalMinutes:F1} minute(s).");
+                }
 
                 _logger.LogInformation(
                     "Executed dotnet command for {TargetPath}: {Arguments} (ExitCode={ExitCode})",

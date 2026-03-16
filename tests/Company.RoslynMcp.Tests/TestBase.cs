@@ -17,6 +17,13 @@ public abstract class TestBase
     protected static DiagnosticService DiagnosticService { get; private set; } = null!;
     protected static RefactoringService RefactoringService { get; private set; } = null!;
     protected static ValidationService ValidationService { get; private set; } = null!;
+    protected static CompletionService CompletionService { get; private set; } = null!;
+    protected static CodeActionService CodeActionService { get; private set; } = null!;
+    protected static AdvancedAnalysisService AdvancedAnalysisService { get; private set; } = null!;
+    protected static EditService EditService { get; private set; } = null!;
+    protected static SyntaxService SyntaxService { get; private set; } = null!;
+    protected static WorkspaceExecutionGate WorkspaceExecutionGate { get; private set; } = null!;
+    protected static DotnetCommandRunner DotnetCommandRunner { get; private set; } = null!;
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -34,6 +41,8 @@ public abstract class TestBase
         }
 
         PreviewStore = new PreviewStore();
+        WorkspaceExecutionGate = new WorkspaceExecutionGate();
+        DotnetCommandRunner = new DotnetCommandRunner();
         WorkspaceManager = new WorkspaceManager(
             NullLogger<WorkspaceManager>.Instance,
             PreviewStore,
@@ -50,8 +59,22 @@ public abstract class TestBase
             NullLogger<RefactoringService>.Instance);
         ValidationService = new ValidationService(
             WorkspaceManager,
-            new DotnetCommandRunner(),
+            DotnetCommandRunner,
             NullLogger<ValidationService>.Instance);
+        CompletionService = new CompletionService(
+            WorkspaceManager,
+            NullLogger<CompletionService>.Instance);
+        CodeActionService = new CodeActionService(
+            WorkspaceManager,
+            PreviewStore,
+            NullLogger<CodeActionService>.Instance);
+        AdvancedAnalysisService = new AdvancedAnalysisService(
+            WorkspaceManager,
+            NullLogger<AdvancedAnalysisService>.Instance);
+        EditService = new EditService(
+            WorkspaceManager,
+            NullLogger<EditService>.Instance);
+        SyntaxService = new SyntaxService(WorkspaceManager);
 
         RepositoryRootPath = FindRepositoryRoot();
         SampleSolutionPath = FindFixturePath("SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
