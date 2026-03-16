@@ -8,6 +8,7 @@ public static class ServiceCollectionExtensions
 {
     public static IServiceCollection AddRoslynServices(this IServiceCollection services)
     {
+        services.AddSingleton<IWorkspaceExecutionGate, WorkspaceExecutionGate>();
         services.AddSingleton<IDotnetCommandRunner, DotnetCommandRunner>();
         services.AddSingleton<IPreviewStore, PreviewStore>();
         services.AddSingleton<IWorkspaceManager, WorkspaceManager>();

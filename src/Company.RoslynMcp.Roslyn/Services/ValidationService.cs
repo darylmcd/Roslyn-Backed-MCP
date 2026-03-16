@@ -1,6 +1,8 @@
 using Company.RoslynMcp.Core.Models;
 using Company.RoslynMcp.Core.Services;
 using Company.RoslynMcp.Roslyn.Helpers;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
@@ -178,6 +180,94 @@ public sealed class ValidationService : IValidationService
                 Directory.Delete(resultsDirectory, recursive: true);
             }
         }
+    }
+
+    public async Task<RelatedTestsForFilesDto> FindRelatedTestsForFilesAsync(
+        string workspaceId, IReadOnlyList<string> filePaths, int maxResults, CancellationToken ct)
+    {
+        var solution = _workspaceManager.GetCurrentSolution(workspaceId);
+        var discovery = await DiscoverTestsAsync(workspaceId, ct);
+        var allTests = discovery.TestProjects
+            .SelectMany(p => p.Tests.Select(t => (Project: p.ProjectName, Test: t)))
+            .ToList();
+
+        var testToTriggers = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+        foreach (var filePath in filePaths)
+        {
+            var document = _workspaceManager.GetCurrentSolution(workspaceId)
+                .Projects
+                .SelectMany(p => p.Documents)
+                .FirstOrDefault(d => d.FilePath is not null &&
+                    string.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase));
+
+            if (document is null) continue;
+
+            var root = await document.GetSyntaxRootAsync(ct);
+            if (root is null) continue;
+
+            var searchTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // Collect type names declared in the file from syntax (no semantic model needed)
+            var typeDeclarations = root.DescendantNodes().OfType<TypeDeclarationSyntax>();
+            foreach (var typeDecl in typeDeclarations)
+            {
+                searchTerms.Add(typeDecl.Identifier.Text);
+            }
+
+            // Also use the file name as a search term
+            searchTerms.Add(Path.GetFileNameWithoutExtension(filePath));
+
+            foreach (var (projectName, test) in allTests)
+            {
+                if (!searchTerms.Any(term =>
+                    test.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    test.FullyQualifiedName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    (test.FilePath?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)))
+                    continue;
+
+                var key = test.FullyQualifiedName;
+                if (!testToTriggers.TryGetValue(key, out var triggers))
+                {
+                    triggers = new List<string>();
+                    testToTriggers[key] = triggers;
+                }
+                triggers.Add(filePath);
+            }
+        }
+
+        var projectLookup = discovery.TestProjects
+            .SelectMany(p => p.Tests.Select(t => (t.FullyQualifiedName, p.ProjectName)))
+            .ToDictionary(x => x.FullyQualifiedName, x => x.ProjectName, StringComparer.Ordinal);
+
+        var testCaseLookup = discovery.TestProjects
+            .SelectMany(p => p.Tests)
+            .ToDictionary(t => t.FullyQualifiedName, StringComparer.Ordinal);
+
+        var results = testToTriggers
+            .Take(maxResults)
+            .Select(kv =>
+            {
+                var test = testCaseLookup.TryGetValue(kv.Key, out var t) ? t : null;
+                var projectName = projectLookup.TryGetValue(kv.Key, out var pn) ? pn : string.Empty;
+                return new RelatedTestCaseDto(
+                    DisplayName: test?.DisplayName ?? kv.Key,
+                    FullyQualifiedName: kv.Key,
+                    ProjectName: projectName,
+                    FilePath: test?.FilePath,
+                    Line: test?.Line,
+                    TriggeredByFiles: kv.Value.Distinct().ToList());
+            })
+            .ToList();
+
+        var filterParts = results
+            .Select(t => t.FullyQualifiedName)
+            .Distinct()
+            .Select(fqn => $"FullyQualifiedName~{fqn}")
+            .ToList();
+        var dotnetFilter = filterParts.Count > 0 ? string.Join("|", filterParts) : string.Empty;
+
+        return new RelatedTestsForFilesDto(results, dotnetFilter);
     }
 
     private async Task<CommandExecutionDto> RunDotnetCommandAsync(

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using Company.RoslynMcp.Core.Models;
 using Company.RoslynMcp.Core.Services;
+using Company.RoslynMcp.Roslyn.Services;
 using ModelContextProtocol.Server;
 
 namespace Company.RoslynMcp.Host.Stdio.Tools;
@@ -13,6 +14,7 @@ public static class RefactoringTools
 
     [McpServerTool(Name = "rename_preview"), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol")]
     public static async Task<string> PreviewRename(
+        IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("The new name for the symbol")] string newName,
@@ -22,68 +24,88 @@ public static class RefactoringTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        var result = await refactoringService.PreviewRenameAsync(
-            workspaceId,
-            CreateLocator(filePath, line, column, symbolHandle),
-            newName,
-            ct);
-        return JsonSerializer.Serialize(result, JsonOptions);
+        return await gate.RunAsync(workspaceId, async c =>
+        {
+            var result = await refactoringService.PreviewRenameAsync(workspaceId, CreateLocator(filePath, line, column, symbolHandle), newName, c);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }, ct);
     }
 
     [McpServerTool(Name = "rename_apply"), Description("Apply a previously previewed rename refactoring using its preview token. Rejects stale tokens if the workspace has changed.")]
     public static async Task<string> ApplyRename(
+        IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         [Description("The preview token returned by rename_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var result = await refactoringService.ApplyRefactoringAsync(previewToken, ct);
-        return JsonSerializer.Serialize(result, JsonOptions);
+        return await gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+        {
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }, ct);
     }
 
     [McpServerTool(Name = "organize_usings_preview"), Description("Preview organizing using directives in a file: removes unused usings and sorts them")]
     public static async Task<string> PreviewOrganizeUsings(
+        IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
     {
-        var result = await refactoringService.PreviewOrganizeUsingsAsync(workspaceId, filePath, ct);
-        return JsonSerializer.Serialize(result, JsonOptions);
+        return await gate.RunAsync(workspaceId, async c =>
+        {
+            var result = await refactoringService.PreviewOrganizeUsingsAsync(workspaceId, filePath, c);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }, ct);
     }
 
     [McpServerTool(Name = "organize_usings_apply"), Description("Apply a previously previewed organize usings operation using its preview token")]
     public static async Task<string> ApplyOrganizeUsings(
+        IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         [Description("The preview token returned by organize_usings_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var result = await refactoringService.ApplyRefactoringAsync(previewToken, ct);
-        return JsonSerializer.Serialize(result, JsonOptions);
+        return await gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+        {
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }, ct);
     }
 
     [McpServerTool(Name = "format_document_preview"), Description("Preview formatting a document: applies standard C# formatting rules")]
     public static async Task<string> PreviewFormatDocument(
+        IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
     {
-        var result = await refactoringService.PreviewFormatDocumentAsync(workspaceId, filePath, ct);
-        return JsonSerializer.Serialize(result, JsonOptions);
+        return await gate.RunAsync(workspaceId, async c =>
+        {
+            var result = await refactoringService.PreviewFormatDocumentAsync(workspaceId, filePath, c);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }, ct);
     }
 
     [McpServerTool(Name = "format_document_apply"), Description("Apply a previously previewed format document operation using its preview token")]
     public static async Task<string> ApplyFormatDocument(
+        IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         [Description("The preview token returned by format_document_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var result = await refactoringService.ApplyRefactoringAsync(previewToken, ct);
-        return JsonSerializer.Serialize(result, JsonOptions);
+        return await gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+        {
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }, ct);
     }
 
     [McpServerTool(Name = "code_fix_preview"), Description("Preview a curated code fix for a specific diagnostic occurrence")]
     public static async Task<string> PreviewCodeFix(
+        IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Diagnostic identifier, e.g. CS8019")] string diagnosticId,
@@ -93,18 +115,25 @@ public static class RefactoringTools
         [Description("Optional: curated fix identifier from diagnostic_details")] string? fixId = null,
         CancellationToken ct = default)
     {
-        var result = await refactoringService.PreviewCodeFixAsync(workspaceId, diagnosticId, filePath, line, column, fixId, ct);
-        return JsonSerializer.Serialize(result, JsonOptions);
+        return await gate.RunAsync(workspaceId, async c =>
+        {
+            var result = await refactoringService.PreviewCodeFixAsync(workspaceId, diagnosticId, filePath, line, column, fixId, c);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }, ct);
     }
 
     [McpServerTool(Name = "code_fix_apply"), Description("Apply a previously previewed code fix using its preview token")]
     public static async Task<string> ApplyCodeFix(
+        IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
         [Description("The preview token returned by code_fix_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var result = await refactoringService.ApplyRefactoringAsync(previewToken, ct);
-        return JsonSerializer.Serialize(result, JsonOptions);
+        return await gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+        {
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
+            return JsonSerializer.Serialize(result, JsonOptions);
+        }, ct);
     }
 
     private static SymbolLocator CreateLocator(string? filePath, int? line, int? column, string? symbolHandle)
