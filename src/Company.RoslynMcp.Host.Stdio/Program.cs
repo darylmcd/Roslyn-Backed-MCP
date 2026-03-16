@@ -16,6 +16,8 @@ builder.Services.AddRoslynServices();
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
-    .WithToolsFromAssembly();
+    .WithToolsFromAssembly()
+    .WithResourcesFromAssembly()
+    .WithPromptsFromAssembly();
 
 await builder.Build().RunAsync();

@@ -11,7 +11,7 @@ public static class SymbolTools
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    [McpServerTool(Name = "symbol_search"), Description("Search for symbols (types, methods, properties, fields) by name pattern across the loaded workspace")]
+    [McpServerTool(Name = "symbol_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search for symbols (types, methods, properties, fields) by name pattern across the loaded workspace")]
     public static Task<string> SearchSymbols(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -31,7 +31,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "symbol_info"), Description("Get detailed information about a symbol at a specific file location")]
+    [McpServerTool(Name = "symbol_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information about a symbol at a specific file location")]
     public static Task<string> GetSymbolInfo(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -53,7 +53,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "go_to_definition"), Description("Find the definition location(s) of a symbol at the given position")]
+    [McpServerTool(Name = "go_to_definition", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the definition location(s) of a symbol at the given position")]
     public static Task<string> GoToDefinition(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -74,7 +74,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_references"), Description("Find all references to a symbol at the given position across the entire solution")]
+    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution")]
     public static Task<string> FindReferences(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -94,7 +94,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_implementations"), Description("Find all implementations of an interface or abstract member at the given position")]
+    [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all implementations of an interface or abstract member at the given position")]
     public static Task<string> FindImplementations(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -114,7 +114,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "document_symbols"), Description("Get all symbol declarations (types, methods, properties, fields) in a document as a hierarchical tree")]
+    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get all symbol declarations (types, methods, properties, fields) in a document as a hierarchical tree")]
     public static Task<string> GetDocumentSymbols(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -130,7 +130,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_overrides"), Description("Find overriding members for a virtual, abstract, or interface member")]
+    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member")]
     public static Task<string> FindOverrides(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -150,7 +150,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_base_members"), Description("Find base or implemented members for an override or implementation")]
+    [McpServerTool(Name = "find_base_members", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find base or implemented members for an override or implementation")]
     public static Task<string> FindBaseMembers(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -170,7 +170,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "member_hierarchy"), Description("Get a summary of base members and overrides for a symbol")]
+    [McpServerTool(Name = "member_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a summary of base members and overrides for a symbol")]
     public static Task<string> GetMemberHierarchy(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -190,7 +190,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "symbol_signature_help"), Description("Get display signature, parameters, return type, and documentation for a symbol")]
+    [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get display signature, parameters, return type, and documentation for a symbol")]
     public static Task<string> GetSignatureHelp(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -211,7 +211,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "symbol_relationships"), Description("Get a combined summary of definitions, references, implementations, base members, and overrides")]
+    [McpServerTool(Name = "symbol_relationships", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a combined summary of definitions, references, implementations, base members, and overrides")]
     public static Task<string> GetSymbolRelationships(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -232,7 +232,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_references_bulk"), Description("Find references for multiple symbols in a single call (max 50). Returns a list of results keyed by symbol handle, metadata name, or file:line:column")]
+    [McpServerTool(Name = "find_references_bulk", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find references for multiple symbols in a single call (max 50). Returns a list of results keyed by symbol handle, metadata name, or file:line:column")]
     public static Task<string> FindReferencesBulk(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -249,7 +249,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_property_writes"), Description("Find all locations where a property is assigned to (written), classified as object-initializer writes (safe for init) or post-construction assignments")]
+    [McpServerTool(Name = "find_property_writes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all locations where a property is assigned to (written), classified as object-initializer writes (safe for init) or post-construction assignments")]
     public static Task<string> FindPropertyWrites(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -269,7 +269,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "enclosing_symbol"), Description("Find the enclosing symbol (method, property, type) at a given file position — useful for understanding the context of a cursor position")]
+    [McpServerTool(Name = "enclosing_symbol", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the enclosing symbol (method, property, type) at a given file position — useful for understanding the context of a cursor position")]
     public static Task<string> GetEnclosingSymbol(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -288,7 +288,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "goto_type_definition"), Description("Navigate to the type definition of a symbol (e.g., for a variable, go to its type's declaration rather than the variable's declaration)")]
+    [McpServerTool(Name = "goto_type_definition", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Navigate to the type definition of a symbol (e.g., for a variable, go to its type's declaration rather than the variable's declaration)")]
     public static Task<string> GoToTypeDefinition(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -309,7 +309,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "get_completions"), Description("Get IntelliSense/code completion suggestions at a given position in a source file")]
+    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file")]
     public static Task<string> GetCompletions(
         IWorkspaceExecutionGate gate,
         ICompletionService completionService,

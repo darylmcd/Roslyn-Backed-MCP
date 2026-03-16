@@ -12,7 +12,7 @@ public static class RefactoringTools
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    [McpServerTool(Name = "rename_preview"), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol")]
+    [McpServerTool(Name = "rename_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol")]
     public static Task<string> PreviewRename(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -32,7 +32,7 @@ public static class RefactoringTools
             }, ct));
     }
 
-    [McpServerTool(Name = "rename_apply"), Description("Apply a previously previewed rename refactoring using its preview token. Rejects stale tokens if the workspace has changed.")]
+    [McpServerTool(Name = "rename_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed rename refactoring using its preview token. Rejects stale tokens if the workspace has changed.")]
     public static Task<string> ApplyRename(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -47,7 +47,7 @@ public static class RefactoringTools
             }, ct));
     }
 
-    [McpServerTool(Name = "organize_usings_preview"), Description("Preview organizing using directives in a file: removes unused usings and sorts them")]
+    [McpServerTool(Name = "organize_usings_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview organizing using directives in a file: removes unused usings and sorts them")]
     public static Task<string> PreviewOrganizeUsings(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -63,7 +63,7 @@ public static class RefactoringTools
             }, ct));
     }
 
-    [McpServerTool(Name = "organize_usings_apply"), Description("Apply a previously previewed organize usings operation using its preview token")]
+    [McpServerTool(Name = "organize_usings_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed organize usings operation using its preview token")]
     public static Task<string> ApplyOrganizeUsings(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -78,7 +78,7 @@ public static class RefactoringTools
             }, ct));
     }
 
-    [McpServerTool(Name = "format_document_preview"), Description("Preview formatting a document: applies standard C# formatting rules")]
+    [McpServerTool(Name = "format_document_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview formatting a document: applies standard C# formatting rules")]
     public static Task<string> PreviewFormatDocument(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -94,7 +94,7 @@ public static class RefactoringTools
             }, ct));
     }
 
-    [McpServerTool(Name = "format_document_apply"), Description("Apply a previously previewed format document operation using its preview token")]
+    [McpServerTool(Name = "format_document_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed format document operation using its preview token")]
     public static Task<string> ApplyFormatDocument(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -109,7 +109,7 @@ public static class RefactoringTools
             }, ct));
     }
 
-    [McpServerTool(Name = "code_fix_preview"), Description("Preview a curated code fix for a specific diagnostic occurrence")]
+    [McpServerTool(Name = "code_fix_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a curated code fix for a specific diagnostic occurrence")]
     public static Task<string> PreviewCodeFix(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -129,7 +129,7 @@ public static class RefactoringTools
             }, ct));
     }
 
-    [McpServerTool(Name = "code_fix_apply"), Description("Apply a previously previewed code fix using its preview token")]
+    [McpServerTool(Name = "code_fix_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed code fix using its preview token")]
     public static Task<string> ApplyCodeFix(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,

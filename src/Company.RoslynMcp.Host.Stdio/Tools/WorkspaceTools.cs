@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using Company.RoslynMcp.Core.Services;
 using Company.RoslynMcp.Roslyn.Services;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace Company.RoslynMcp.Host.Stdio.Tools;
@@ -11,22 +12,25 @@ public static class WorkspaceTools
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    [McpServerTool(Name = "workspace_load"), Description("Load a .sln or .csproj file into the workspace for semantic analysis")]
+    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Load a .sln or .csproj file into the workspace for semantic analysis")]
     public static Task<string> LoadWorkspace(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         [Description("Absolute path to a .sln or .csproj file")] string path,
-        CancellationToken ct)
+        IProgress<ProgressNotificationValue>? progress = null,
+        CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(WorkspaceExecutionGate.LoadGateKey, async c =>
             {
+                ProgressHelper.Report(progress, 0, 1);
                 var status = await workspace.LoadAsync(path, c);
+                ProgressHelper.Report(progress, 1, 1);
                 return JsonSerializer.Serialize(status, JsonOptions);
             }, ct));
     }
 
-    [McpServerTool(Name = "workspace_reload"), Description("Reload the currently loaded workspace to pick up file changes")]
+    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Reload the currently loaded workspace to pick up file changes")]
     public static Task<string> ReloadWorkspace(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -41,7 +45,7 @@ public static class WorkspaceTools
             }, ct));
     }
 
-    [McpServerTool(Name = "workspace_close"), Description("Close and dispose a loaded workspace session, freeing all resources")]
+    [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources")]
     public static Task<string> CloseWorkspace(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -60,7 +64,7 @@ public static class WorkspaceTools
             }, ct));
     }
 
-    [McpServerTool(Name = "workspace_list"), Description("List all currently loaded workspace sessions")]
+    [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions")]
     public static Task<string> ListWorkspaces(
         IWorkspaceManager workspace)
     {
@@ -71,7 +75,7 @@ public static class WorkspaceTools
         });
     }
 
-    [McpServerTool(Name = "workspace_status"), Description("Get the current status of the loaded workspace including projects and diagnostics")]
+    [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the current status of the loaded workspace including projects and diagnostics")]
     public static Task<string> GetWorkspaceStatus(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -86,7 +90,7 @@ public static class WorkspaceTools
             }, ct));
     }
 
-    [McpServerTool(Name = "project_graph"), Description("Get the project dependency graph and project metadata for a loaded workspace")]
+    [McpServerTool(Name = "project_graph", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the project dependency graph and project metadata for a loaded workspace")]
     public static Task<string> GetProjectGraph(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -101,7 +105,7 @@ public static class WorkspaceTools
             }, ct));
     }
 
-    [McpServerTool(Name = "source_generated_documents"), Description("List source-generated documents for a workspace or specific project")]
+    [McpServerTool(Name = "source_generated_documents", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List source-generated documents for a workspace or specific project")]
     public static Task<string> GetSourceGeneratedDocuments(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -117,7 +121,7 @@ public static class WorkspaceTools
             }, ct));
     }
 
-    [McpServerTool(Name = "get_source_text"), Description("Read the source text of a document in the loaded workspace. Returns the full text content of the file as known to the Roslyn workspace.")]
+    [McpServerTool(Name = "get_source_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Read the source text of a document in the loaded workspace. Returns the full text content of the file as known to the Roslyn workspace.")]
     public static Task<string> GetSourceText(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,

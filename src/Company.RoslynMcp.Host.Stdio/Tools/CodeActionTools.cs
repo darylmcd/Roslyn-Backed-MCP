@@ -11,7 +11,7 @@ public static class CodeActionTools
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    [McpServerTool(Name = "get_code_actions"), Description("Get available Roslyn code fixes and refactorings at a position or selection range in a source file")]
+    [McpServerTool(Name = "get_code_actions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get available Roslyn code fixes and refactorings at a position or selection range in a source file")]
     public static Task<string> GetCodeActions(
         IWorkspaceExecutionGate gate,
         ICodeActionService codeActionService,
@@ -31,7 +31,7 @@ public static class CodeActionTools
             }, ct));
     }
 
-    [McpServerTool(Name = "preview_code_action"), Description("Preview the changes that a specific code action would make. Use get_code_actions first to get the available actions and their indices.")]
+    [McpServerTool(Name = "preview_code_action", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview the changes that a specific code action would make. Use get_code_actions first to get the available actions and their indices.")]
     public static Task<string> PreviewCodeAction(
         IWorkspaceExecutionGate gate,
         ICodeActionService codeActionService,
@@ -52,7 +52,7 @@ public static class CodeActionTools
             }, ct));
     }
 
-    [McpServerTool(Name = "apply_code_action"), Description("Apply a previously previewed code action using its preview token")]
+    [McpServerTool(Name = "apply_code_action", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed code action using its preview token")]
     public static Task<string> ApplyCodeAction(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,

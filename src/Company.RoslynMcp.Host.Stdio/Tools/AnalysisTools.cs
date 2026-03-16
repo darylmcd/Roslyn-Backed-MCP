@@ -11,7 +11,7 @@ public static class AnalysisTools
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    [McpServerTool(Name = "project_diagnostics"), Description("Get compiler diagnostics (errors, warnings) for the workspace, optionally filtered by project, file, or severity")]
+    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get compiler diagnostics (errors, warnings) for the workspace, optionally filtered by project, file, or severity")]
     public static Task<string> GetProjectDiagnostics(
         IWorkspaceExecutionGate gate,
         IDiagnosticService diagnosticService,
@@ -29,7 +29,7 @@ public static class AnalysisTools
             }, ct));
     }
 
-    [McpServerTool(Name = "diagnostic_details"), Description("Get detailed information and curated fix options for a specific diagnostic occurrence")]
+    [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information and curated fix options for a specific diagnostic occurrence")]
     public static Task<string> GetDiagnosticDetails(
         IWorkspaceExecutionGate gate,
         IDiagnosticService diagnosticService,
@@ -48,7 +48,7 @@ public static class AnalysisTools
             }, ct));
     }
 
-    [McpServerTool(Name = "type_hierarchy"), Description("Get the type hierarchy (base types, derived types, implemented interfaces) for a type at the given position")]
+    [McpServerTool(Name = "type_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the type hierarchy (base types, derived types, implemented interfaces) for a type at the given position")]
     public static Task<string> GetTypeHierarchy(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -68,7 +68,7 @@ public static class AnalysisTools
             }, ct));
     }
 
-    [McpServerTool(Name = "callers_callees"), Description("Find direct callers and callees of a method at the given position")]
+    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of a method at the given position")]
     public static Task<string> GetCallersCallees(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -88,7 +88,7 @@ public static class AnalysisTools
             }, ct));
     }
 
-    [McpServerTool(Name = "impact_analysis"), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects")]
+    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects")]
     public static Task<string> AnalyzeImpact(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -108,7 +108,7 @@ public static class AnalysisTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_type_mutations"), Description("Heavy analysis: find all mutating members of a type (settable properties, methods that write instance state) and their external callers, classified as construction-phase vs post-construction callers")]
+    [McpServerTool(Name = "find_type_mutations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Heavy analysis: find all mutating members of a type (settable properties, methods that write instance state) and their external callers, classified as construction-phase vs post-construction callers")]
     public static Task<string> FindTypeMutations(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
@@ -129,7 +129,7 @@ public static class AnalysisTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_type_usages"), Description("Find all usages of a type across the solution, classified by role: MethodReturnType, MethodParameter, PropertyType, LocalVariable, FieldType, GenericArgument, BaseType, Cast, TypeCheck, ObjectCreation, or Other")]
+    [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all usages of a type across the solution, classified by role: MethodReturnType, MethodParameter, PropertyType, LocalVariable, FieldType, GenericArgument, BaseType, Cast, TypeCheck, ObjectCreation, or Other")]
     public static Task<string> FindTypeUsages(
         IWorkspaceExecutionGate gate,
         ISymbolService symbolService,
