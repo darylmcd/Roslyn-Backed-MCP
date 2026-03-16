@@ -1,6 +1,6 @@
 namespace Company.RoslynMcp.Core.Models;
 
-public sealed record LocationDto(
+public sealed record PropertyWriteDto(
     string FilePath,
     int StartLine,
     int StartColumn,
@@ -8,4 +8,4 @@ public sealed record LocationDto(
     int EndColumn,
     string? ContainingMember,
     string? PreviewText,
-    string? Classification = null);
+    bool IsObjectInitializer);

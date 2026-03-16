@@ -1,5 +1,8 @@
 using Company.RoslynMcp.Core.Models;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 
 namespace Company.RoslynMcp.Roslyn.Helpers;
 
@@ -44,6 +47,28 @@ public static class SymbolMapper
                 : null;
         }
 
+        bool? hasGetter = null;
+        bool? hasSetter = null;
+        string? setterAccessibility = null;
+        if (symbol is IPropertySymbol prop)
+        {
+            hasGetter = prop.GetMethod is not null;
+            hasSetter = prop.SetMethod is not null;
+            if (prop.SetMethod is not null)
+            {
+                setterAccessibility = prop.SetMethod.IsInitOnly ? "init" : prop.SetMethod.DeclaredAccessibility switch
+                {
+                    Accessibility.Public => "public",
+                    Accessibility.Private => "private",
+                    Accessibility.Protected => "protected",
+                    Accessibility.Internal => "internal",
+                    Accessibility.ProtectedOrInternal => "protected internal",
+                    Accessibility.ProtectedAndInternal => "private protected",
+                    _ => "unknown"
+                };
+            }
+        }
+
         return new SymbolDto(
             Name: symbol.Name,
             FullyQualifiedName: symbol.ToDisplayString(),
@@ -64,10 +89,13 @@ public static class SymbolMapper
             Modifiers: modifiers.Count > 0 ? modifiers : null,
             BaseTypes: baseTypes,
             Interfaces: interfaces,
-            Documentation: symbol.GetDocumentationCommentXml());
+            Documentation: symbol.GetDocumentationCommentXml(),
+            HasGetter: hasGetter,
+            HasSetter: hasSetter,
+            SetterAccessibility: setterAccessibility);
     }
 
-    public static LocationDto ToLocationDto(Location location, ISymbol? containingSymbol = null, string? previewText = null)
+    public static LocationDto ToLocationDto(Location location, ISymbol? containingSymbol = null, string? previewText = null, string? classification = null)
     {
         var lineSpan = location.GetLineSpan();
         return new LocationDto(
@@ -77,7 +105,65 @@ public static class SymbolMapper
             EndLine: lineSpan.EndLinePosition.Line + 1,
             EndColumn: lineSpan.EndLinePosition.Character + 1,
             ContainingMember: containingSymbol?.ToDisplayString(),
-            PreviewText: previewText);
+            PreviewText: previewText,
+            Classification: classification);
+    }
+
+    public static string ClassifyReferenceLocation(ReferenceLocation refLocation)
+    {
+        if (refLocation.IsImplicit)
+            return "Other";
+
+        var syntaxNode = refLocation.Location.SourceTree is not null
+            ? refLocation.Location.SourceTree
+                .GetRoot()
+                .FindNode(refLocation.Location.SourceSpan)
+            : null;
+
+        if (syntaxNode is null)
+            return "Read";
+
+        // Check for nameof — InvocationExpressionSyntax with "nameof" as the expression
+        if (syntaxNode.Ancestors().OfType<InvocationExpressionSyntax>()
+            .Any(inv => inv.Expression is IdentifierNameSyntax id && id.Identifier.Text == "nameof"))
+            return "NameOf";
+
+        if (syntaxNode.Ancestors().OfType<AttributeSyntax>().Any())
+            return "Attribute";
+
+        // Check if this node is the left-hand side of an assignment
+        if (syntaxNode.Parent is AssignmentExpressionSyntax assignment && assignment.Left == syntaxNode)
+            return "Write";
+
+        if (syntaxNode.Parent is MemberAccessExpressionSyntax memberAccess &&
+            memberAccess.Parent is AssignmentExpressionSyntax memberAssignment &&
+            memberAssignment.Left == memberAccess)
+            return "Write";
+
+        // Prefix/postfix increment or decrement counts as ReadWrite
+        if (syntaxNode.Parent is PrefixUnaryExpressionSyntax prefix &&
+            (prefix.IsKind(SyntaxKind.PreIncrementExpression) || prefix.IsKind(SyntaxKind.PreDecrementExpression)))
+            return "ReadWrite";
+
+        if (syntaxNode.Parent is PostfixUnaryExpressionSyntax postfix &&
+            (postfix.IsKind(SyntaxKind.PostIncrementExpression) || postfix.IsKind(SyntaxKind.PostDecrementExpression)))
+            return "ReadWrite";
+
+        // Compound assignment (+=, -=, etc.) is also ReadWrite
+        if (syntaxNode.Parent is AssignmentExpressionSyntax compoundAssignment &&
+            compoundAssignment.Left == syntaxNode &&
+            (compoundAssignment.IsKind(SyntaxKind.AddAssignmentExpression) ||
+             compoundAssignment.IsKind(SyntaxKind.SubtractAssignmentExpression) ||
+             compoundAssignment.IsKind(SyntaxKind.MultiplyAssignmentExpression) ||
+             compoundAssignment.IsKind(SyntaxKind.DivideAssignmentExpression)))
+            return "ReadWrite";
+
+        // ref or out argument
+        if (syntaxNode.Parent is ArgumentSyntax arg &&
+            (arg.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) || arg.RefKindKeyword.IsKind(SyntaxKind.OutKeyword)))
+            return "Write";
+
+        return "Read";
     }
 
     public static DiagnosticDto ToDiagnosticDto(Diagnostic diagnostic)

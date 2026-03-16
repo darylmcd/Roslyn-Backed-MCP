@@ -18,4 +18,7 @@ public sealed record SymbolDto(
     IReadOnlyList<string>? Modifiers,
     IReadOnlyList<string>? BaseTypes,
     IReadOnlyList<string>? Interfaces,
-    string? Documentation);
+    string? Documentation,
+    bool? HasGetter = null,
+    bool? HasSetter = null,
+    string? SetterAccessibility = null);
