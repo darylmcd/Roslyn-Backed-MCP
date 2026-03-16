@@ -36,7 +36,8 @@ public abstract class TestBase
         PreviewStore = new PreviewStore();
         WorkspaceManager = new WorkspaceManager(
             NullLogger<WorkspaceManager>.Instance,
-            PreviewStore);
+            PreviewStore,
+            new FileWatcherService(NullLogger<FileWatcherService>.Instance));
         SymbolService = new SymbolService(
             WorkspaceManager,
             NullLogger<SymbolService>.Instance);

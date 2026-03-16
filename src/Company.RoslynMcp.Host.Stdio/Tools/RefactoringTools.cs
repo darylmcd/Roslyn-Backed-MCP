@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Text.Json;
-using Company.RoslynMcp.Core.Models;
 using Company.RoslynMcp.Core.Services;
 using Company.RoslynMcp.Roslyn.Services;
 using ModelContextProtocol.Server;
@@ -27,7 +26,7 @@ public static class RefactoringTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var result = await refactoringService.PreviewRenameAsync(workspaceId, CreateLocator(filePath, line, column, symbolHandle), newName, c);
+                var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), newName, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
     }
@@ -142,20 +141,5 @@ public static class RefactoringTools
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
-    }
-
-    private static SymbolLocator CreateLocator(string? filePath, int? line, int? column, string? symbolHandle)
-    {
-        if (!string.IsNullOrWhiteSpace(symbolHandle))
-        {
-            return SymbolLocator.ByHandle(symbolHandle);
-        }
-
-        if (!string.IsNullOrWhiteSpace(filePath) && line.HasValue && column.HasValue)
-        {
-            return SymbolLocator.BySource(filePath, line.Value, column.Value);
-        }
-
-        throw new ArgumentException("Provide either filePath/line/column or symbolHandle.");
     }
 }

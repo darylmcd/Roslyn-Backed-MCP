@@ -37,4 +37,27 @@ public static class WorkspaceResources
         var graph = workspace.GetProjectGraph(workspaceId);
         return JsonSerializer.Serialize(graph, JsonOptions);
     }
+
+    [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/diagnostics", Name = "workspace_diagnostics", MimeType = "application/json")]
+    [Description("Get all compiler diagnostics for a loaded workspace")]
+    public static async Task<string> GetDiagnostics(
+        IDiagnosticService diagnosticService,
+        [Description("The workspace session identifier")] string workspaceId,
+        CancellationToken ct = default)
+    {
+        var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, null, null, ct).ConfigureAwait(false);
+        return JsonSerializer.Serialize(diagnostics, JsonOptions);
+    }
+
+    [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/file/{filePath}", Name = "source_file", MimeType = "text/x-csharp")]
+    [Description("Read the source text of a file in the loaded workspace")]
+    public static async Task<string> GetSourceFile(
+        IWorkspaceManager workspace,
+        [Description("The workspace session identifier")] string workspaceId,
+        [Description("Absolute path to the source file (URL-encoded)")] string filePath,
+        CancellationToken ct = default)
+    {
+        var text = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+        return text ?? $"Document not found: {filePath}";
+    }
 }

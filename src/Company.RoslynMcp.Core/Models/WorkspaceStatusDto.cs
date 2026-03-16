@@ -10,6 +10,7 @@ public sealed record WorkspaceStatusDto(
     int DocumentCount,
     IReadOnlyList<ProjectStatusDto> Projects,
     bool IsLoaded,
+    bool IsStale,
     IReadOnlyList<DiagnosticDto> WorkspaceDiagnostics);
 
 public sealed record ProjectStatusDto(

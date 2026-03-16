@@ -8,9 +8,12 @@ public sealed class PreviewStore : IPreviewStore
     private readonly ConcurrentDictionary<string, PreviewEntry> _entries = new();
     private readonly TimeSpan _ttl = TimeSpan.FromMinutes(5);
 
+    private const int MaxEntries = 50;
+
     public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
     {
         CleanExpired();
+        EvictIfOverLimit();
         var token = Guid.NewGuid().ToString("N");
         _entries[token] = new PreviewEntry(workspaceId, modifiedSolution, workspaceVersion, description, DateTime.UtcNow);
         return token;
@@ -59,6 +62,22 @@ public sealed class PreviewStore : IPreviewStore
         {
             if (now - kvp.Value.CreatedAt > _ttl)
                 _entries.TryRemove(kvp.Key, out _);
+        }
+    }
+
+    private void EvictIfOverLimit()
+    {
+        if (_entries.Count <= MaxEntries) return;
+
+        var toEvict = _entries
+            .OrderBy(kvp => kvp.Value.CreatedAt)
+            .Take(_entries.Count - MaxEntries + 1)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        foreach (var key in toEvict)
+        {
+            _entries.TryRemove(key, out _);
         }
     }
 

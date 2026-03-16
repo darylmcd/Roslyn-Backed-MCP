@@ -62,8 +62,8 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var result = await symbolService.GetTypeHierarchyAsync(workspaceId, CreateLocator(filePath, line, column, symbolHandle), c);
-                if (result is null) return """{"error": "No type found at the specified location"}""";
+                var result = await symbolService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
+                if (result is null) throw new KeyNotFoundException("No type found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
     }
@@ -82,8 +82,8 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var result = await symbolService.GetCallersCalleesAsync(workspaceId, CreateLocator(filePath, line, column, symbolHandle), c);
-                if (result is null) return """{"error": "No symbol found at the specified location"}""";
+                var result = await symbolService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
+                if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
     }
@@ -102,8 +102,8 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var result = await symbolService.AnalyzeImpactAsync(workspaceId, CreateLocator(filePath, line, column, symbolHandle), c);
-                if (result is null) return """{"error": "No symbol found at the specified location"}""";
+                var result = await symbolService.AnalyzeImpactAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
+                if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
     }
@@ -122,9 +122,9 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocator(filePath, line, column, symbolHandle);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
                 var result = await symbolService.FindTypeMutationsAsync(workspaceId, locator, c);
-                if (result is null) return """{"error": "No named type found at the specified location"}""";
+                if (result is null) throw new KeyNotFoundException("No named type found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
     }
@@ -144,35 +144,12 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var locator = CreateLocatorWithMetadata(filePath, line, column, symbolHandle, metadataName);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await symbolService.FindTypeUsagesAsync(workspaceId, locator, c);
                 var grouped = results
                     .GroupBy(u => u.Classification.ToString())
                     .ToDictionary(g => g.Key, g => g.ToList());
                 return JsonSerializer.Serialize(new { count = results.Count, usagesByClassification = grouped }, JsonOptions);
             }, ct));
-    }
-
-    private static SymbolLocator CreateLocator(string? filePath, int? line, int? column, string? symbolHandle)
-        => CreateLocatorWithMetadata(filePath, line, column, symbolHandle, null);
-
-    private static SymbolLocator CreateLocatorWithMetadata(string? filePath, int? line, int? column, string? symbolHandle, string? metadataName)
-    {
-        if (!string.IsNullOrWhiteSpace(symbolHandle))
-        {
-            return SymbolLocator.ByHandle(symbolHandle);
-        }
-
-        if (!string.IsNullOrWhiteSpace(metadataName))
-        {
-            return SymbolLocator.ByMetadataName(metadataName);
-        }
-
-        if (!string.IsNullOrWhiteSpace(filePath) && line.HasValue && column.HasValue)
-        {
-            return SymbolLocator.BySource(filePath, line.Value, column.Value);
-        }
-
-        throw new ArgumentException("Provide either filePath/line/column, symbolHandle, or metadataName.");
     }
 }
