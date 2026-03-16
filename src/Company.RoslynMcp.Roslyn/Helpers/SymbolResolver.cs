@@ -14,15 +14,15 @@ public static class SymbolResolver
 
         if (locator.HasHandle)
         {
-            return await SymbolHandleSerializer.ResolveHandleAsync(solution, locator.SymbolHandle!, ct);
+            return await SymbolHandleSerializer.ResolveHandleAsync(solution, locator.SymbolHandle!, ct).ConfigureAwait(false);
         }
 
         if (locator.HasMetadataName)
         {
-            return await ResolveByMetadataNameAsync(solution, locator.MetadataName!, ct);
+            return await ResolveByMetadataNameAsync(solution, locator.MetadataName!, ct).ConfigureAwait(false);
         }
 
-        return await ResolveAtPositionAsync(solution, locator.FilePath!, locator.Line!.Value, locator.Column!.Value, ct);
+        return await ResolveAtPositionAsync(solution, locator.FilePath!, locator.Line!.Value, locator.Column!.Value, ct).ConfigureAwait(false);
     }
 
     public static async Task<ISymbol?> ResolveAtPositionAsync(Solution solution, string filePath, int line, int column, CancellationToken ct)
@@ -30,14 +30,14 @@ public static class SymbolResolver
         var document = FindDocument(solution, filePath);
         if (document is null) return null;
 
-        var semanticModel = await document.GetSemanticModelAsync(ct);
+        var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
         if (semanticModel is null) return null;
 
-        var syntaxTree = await document.GetSyntaxTreeAsync(ct);
+        var syntaxTree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
         if (syntaxTree is null) return null;
 
         var position = syntaxTree.GetText(ct).Lines[line - 1].Start + (column - 1);
-        var root = await syntaxTree.GetRootAsync(ct);
+        var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
         var node = root.FindToken(position).Parent;
 
         while (node is not null)
@@ -60,7 +60,7 @@ public static class SymbolResolver
     {
         foreach (var project in solution.Projects)
         {
-            var compilation = await project.GetCompilationAsync(ct);
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null)
             {
                 continue;
@@ -95,7 +95,7 @@ public static class SymbolResolver
 
     public static async Task<string?> GetPreviewTextAsync(Document document, Location location, CancellationToken ct)
     {
-        var text = await document.GetTextAsync(ct);
+        var text = await document.GetTextAsync(ct).ConfigureAwait(false);
         var lineSpan = location.GetLineSpan();
         if (!lineSpan.IsValid) return null;
 

@@ -9,7 +9,7 @@ using System.Collections.Concurrent;
 
 namespace Company.RoslynMcp.Roslyn.Services;
 
-public sealed class ValidationService : IValidationService
+public sealed class ValidationService : IValidationService, IDisposable
 {
     private readonly SemaphoreSlim _globalCommandGate;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _workspaceCommandGates = new(StringComparer.Ordinal);
@@ -34,7 +34,7 @@ public sealed class ValidationService : IValidationService
     {
         var status = _workspaceManager.GetStatus(workspaceId);
         var targetPath = status.LoadedPath ?? throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
-        var execution = await RunDotnetCommandAsync(workspaceId, targetPath, ["build", targetPath, "--nologo"], ct);
+        var execution = await RunDotnetCommandAsync(workspaceId, targetPath, ["build", targetPath, "--nologo"], ct).ConfigureAwait(false);
         var diagnostics = DotnetOutputParser.ParseBuildDiagnostics($"{execution.StdOut}{Environment.NewLine}{execution.StdErr}");
 
         return new BuildResultDto(
@@ -47,7 +47,7 @@ public sealed class ValidationService : IValidationService
     public async Task<BuildResultDto> BuildProjectAsync(string workspaceId, string projectName, CancellationToken ct)
     {
         var project = ResolveProject(workspaceId, projectName);
-        var execution = await RunDotnetCommandAsync(workspaceId, project.FilePath, ["build", project.FilePath, "--nologo"], ct);
+        var execution = await RunDotnetCommandAsync(workspaceId, project.FilePath, ["build", project.FilePath, "--nologo"], ct).ConfigureAwait(false);
         var diagnostics = DotnetOutputParser.ParseBuildDiagnostics($"{execution.StdOut}{Environment.NewLine}{execution.StdErr}");
 
         return new BuildResultDto(
@@ -76,7 +76,7 @@ public sealed class ValidationService : IValidationService
             var tests = new List<TestCaseDto>();
             foreach (var document in project.Documents)
             {
-                var root = await document.GetSyntaxRootAsync(ct);
+                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (root is null)
                 {
                     continue;
@@ -111,9 +111,9 @@ public sealed class ValidationService : IValidationService
 
     public async Task<IReadOnlyList<TestCaseDto>> FindRelatedTestsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
-        var discovery = await DiscoverTestsAsync(workspaceId, ct);
+        var discovery = await DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
         {
             return [];
@@ -170,7 +170,7 @@ public sealed class ValidationService : IValidationService
                 arguments.Add(filter);
             }
 
-            var execution = await RunDotnetCommandAsync(workspaceId, targetPath, arguments, ct);
+            var execution = await RunDotnetCommandAsync(workspaceId, targetPath, arguments, ct).ConfigureAwait(false);
             return DotnetOutputParser.ParseTestRun(execution, trxPath);
         }
         finally
@@ -186,7 +186,7 @@ public sealed class ValidationService : IValidationService
         string workspaceId, IReadOnlyList<string> filePaths, int maxResults, CancellationToken ct)
     {
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
-        var discovery = await DiscoverTestsAsync(workspaceId, ct);
+        var discovery = await DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
         var allTests = discovery.TestProjects
             .SelectMany(p => p.Tests.Select(t => (Project: p.ProjectName, Test: t)))
             .ToList();
@@ -203,7 +203,7 @@ public sealed class ValidationService : IValidationService
 
             if (document is null) continue;
 
-            var root = await document.GetSyntaxRootAsync(ct);
+            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
             if (root is null) continue;
 
             var searchTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -277,16 +277,16 @@ public sealed class ValidationService : IValidationService
         CancellationToken ct)
     {
         var workspaceGate = _workspaceCommandGates.GetOrAdd(workspaceId, static _ => new SemaphoreSlim(1, 1));
-        await _globalCommandGate.WaitAsync(ct);
+        await _globalCommandGate.WaitAsync(ct).ConfigureAwait(false);
 
         try
         {
-            await workspaceGate.WaitAsync(ct);
+            await workspaceGate.WaitAsync(ct).ConfigureAwait(false);
 
             try
             {
                 var workingDirectory = GetWorkingDirectory(targetPath);
-                var execution = await _commandRunner.RunAsync(workingDirectory, targetPath, arguments, ct);
+                var execution = await _commandRunner.RunAsync(workingDirectory, targetPath, arguments, ct).ConfigureAwait(false);
 
                 _logger.LogInformation(
                     "Executed dotnet command for {TargetPath}: {Arguments} (ExitCode={ExitCode})",
@@ -346,4 +346,13 @@ public sealed class ValidationService : IValidationService
         return string.IsNullOrWhiteSpace(directory) ? Environment.CurrentDirectory : directory;
     }
 
+    public void Dispose()
+    {
+        _globalCommandGate.Dispose();
+        foreach (var kvp in _workspaceCommandGates)
+        {
+            kvp.Value.Dispose();
+        }
+        _workspaceCommandGates.Clear();
+    }
 }

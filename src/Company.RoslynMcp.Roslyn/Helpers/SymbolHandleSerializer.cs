@@ -41,7 +41,7 @@ internal static class SymbolHandleSerializer
 
         if (!string.IsNullOrWhiteSpace(payload.MetadataName))
         {
-            var symbolByMetadataName = await SymbolResolver.ResolveByMetadataNameAsync(solution, payload.MetadataName, ct);
+            var symbolByMetadataName = await SymbolResolver.ResolveByMetadataNameAsync(solution, payload.MetadataName, ct).ConfigureAwait(false);
             if (symbolByMetadataName is not null)
             {
                 return symbolByMetadataName;
@@ -55,7 +55,7 @@ internal static class SymbolHandleSerializer
                 payload.FilePath,
                 payload.Line.Value,
                 payload.Column.Value,
-                ct);
+                ct).ConfigureAwait(false);
 
             if (symbolBySource is not null)
             {

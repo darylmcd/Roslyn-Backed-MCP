@@ -26,7 +26,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var workspaceId = Guid.NewGuid().ToString("N");
         var session = new WorkspaceSession(workspaceId);
         _sessions[workspaceId] = session;
-        await LoadIntoSessionAsync(session, path, ct);
+        await LoadIntoSessionAsync(session, path, ct).ConfigureAwait(false);
         return BuildStatus(session);
     }
 
@@ -35,8 +35,26 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var session = GetRequiredSession(workspaceId);
         await LoadIntoSessionAsync(session, session.LoadedPath ?? throw new InvalidOperationException(
             $"Workspace '{workspaceId}' is not loaded."),
-            ct);
+            ct).ConfigureAwait(false);
         return BuildStatus(session);
+    }
+
+    public bool Close(string workspaceId)
+    {
+        if (!_sessions.TryRemove(workspaceId, out var session))
+        {
+            return false;
+        }
+
+        _previewStore.InvalidateAll(workspaceId);
+        session.Dispose();
+        _logger.LogInformation("Closed workspace {WorkspaceId}", workspaceId);
+        return true;
+    }
+
+    public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces()
+    {
+        return _sessions.Values.Select(BuildStatus).ToList();
     }
 
     public WorkspaceStatusDto GetStatus(string workspaceId)
@@ -70,7 +88,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         foreach (var project in solution.Projects.Where(project =>
                      projectName is null || string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase)))
         {
-            var generatedDocuments = await project.GetSourceGeneratedDocumentsAsync(ct);
+            var generatedDocuments = await project.GetSourceGeneratedDocumentsAsync(ct).ConfigureAwait(false);
             var projectResults = generatedDocuments.Select(document => new GeneratedDocumentDto(
                 ProjectName: project.Name,
                 HintName: document.Name,
@@ -99,6 +117,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return results;
     }
 
+    public async Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct)
+    {
+        var solution = GetCurrentSolution(workspaceId);
+        var document = Helpers.SymbolResolver.FindDocument(solution, filePath);
+        if (document is null) return null;
+
+        var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+        return text.ToString();
+    }
+
     public int GetCurrentVersion(string workspaceId)
     {
         return GetRequiredSession(workspaceId).Version;
@@ -122,7 +150,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var result = session.Workspace.TryApplyChanges(newSolution);
         if (result)
         {
-            session.Version++;
+            session.IncrementVersion();
             _previewStore.InvalidateAll(workspaceId);
             _logger.LogInformation(
                 "Applied workspace changes to {WorkspaceId}, new version {Version}",
@@ -147,7 +175,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     private async Task LoadIntoSessionAsync(WorkspaceSession session, string path, CancellationToken ct)
     {
-        await session.LoadLock.WaitAsync(ct);
+        await session.LoadLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             session.Workspace?.Dispose();
@@ -180,11 +208,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             if (fullPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
                 fullPath.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
             {
-                await session.Workspace.OpenSolutionAsync(fullPath, cancellationToken: ct);
+                await session.Workspace.OpenSolutionAsync(fullPath, cancellationToken: ct).ConfigureAwait(false);
             }
             else if (fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
             {
-                await session.Workspace.OpenProjectAsync(fullPath, cancellationToken: ct);
+                await session.Workspace.OpenProjectAsync(fullPath, cancellationToken: ct).ConfigureAwait(false);
             }
             else
             {
@@ -194,7 +222,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             session.ProjectStatuses = BuildProjectStatuses(session.Workspace.CurrentSolution);
             session.LoadedPath = fullPath;
             session.LoadedAtUtc = DateTimeOffset.UtcNow;
-            session.Version++;
+            session.IncrementVersion();
             _previewStore.InvalidateAll(session.WorkspaceId);
 
             _logger.LogInformation(
@@ -330,6 +358,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     private sealed class WorkspaceSession(string workspaceId) : IDisposable
     {
+        private int _version;
+
         public string WorkspaceId { get; } = workspaceId;
         public SemaphoreSlim LoadLock { get; } = new(1, 1);
         public ConcurrentQueue<DiagnosticDto> WorkspaceDiagnostics { get; set; } = new();
@@ -337,7 +367,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         public MSBuildWorkspace? Workspace { get; set; }
         public string? LoadedPath { get; set; }
         public DateTimeOffset LoadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
-        public int Version { get; set; }
+        public int Version => Volatile.Read(ref _version);
+        public int IncrementVersion() => Interlocked.Increment(ref _version);
 
         public void Dispose()
         {

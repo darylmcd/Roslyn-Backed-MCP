@@ -120,6 +120,13 @@ public class PerformanceBehaviorTests : TestBase
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) =>
             throw new NotSupportedException();
 
+        public bool Close(string workspaceId) => true;
+
+        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
+
+        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) =>
+            Task.FromResult<string?>(null);
+
         public int GetCurrentVersion(string workspaceId) => 1;
 
         public Microsoft.CodeAnalysis.Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
