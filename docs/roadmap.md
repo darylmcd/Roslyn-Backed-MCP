@@ -1,5 +1,7 @@
 # Strategic Roadmap Decisions
 
+This roadmap complements the operating contract in `docs/product-contract.md` and the day-to-day agent playbook in `AGENTS.md`.
+
 ## Release 1 Decision
 
 Optimize the product for local stdio deployment on developer workstations.
@@ -55,3 +57,17 @@ Post-release candidates:
 - incremental background indexing
 - opt-in warmup for enterprise solutions
 - separate performance profile for remote hosting
+
+## Execution Tracks And Primary Touchpoints
+
+Use these tracks to quickly identify where to implement follow-up work:
+
+- transport/hosting track:
+	- primary: `src/Company.RoslynMcp.Host.Stdio/`
+	- future: additional host project for HTTP/SSE
+- semantic/refactoring engine track:
+	- primary: `src/Company.RoslynMcp.Roslyn/`
+- contract/tiering track:
+	- primary: `src/Company.RoslynMcp.Core/`, `docs/product-contract.md`, `README.md`
+- hardening/release track:
+	- primary: `tests/Company.RoslynMcp.Tests/`, `eng/verify-release.ps1`, `docs/release-policy.md`
