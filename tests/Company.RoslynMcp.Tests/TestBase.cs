@@ -21,6 +21,12 @@ public abstract class TestBase
     protected static CodeActionService CodeActionService { get; private set; } = null!;
     protected static AdvancedAnalysisService AdvancedAnalysisService { get; private set; } = null!;
     protected static EditService EditService { get; private set; } = null!;
+    protected static FileOperationService FileOperationService { get; private set; } = null!;
+    protected static ProjectMutationService ProjectMutationService { get; private set; } = null!;
+    protected static CrossProjectRefactoringService CrossProjectRefactoringService { get; private set; } = null!;
+    protected static OrchestrationService OrchestrationService { get; private set; } = null!;
+    protected static ScaffoldingService ScaffoldingService { get; private set; } = null!;
+    protected static DeadCodeService DeadCodeService { get; private set; } = null!;
     protected static SyntaxService SyntaxService { get; private set; } = null!;
     protected static WorkspaceExecutionGate WorkspaceExecutionGate { get; private set; } = null!;
     protected static DotnetCommandRunner DotnetCommandRunner { get; private set; } = null!;
@@ -74,6 +80,29 @@ public abstract class TestBase
         EditService = new EditService(
             WorkspaceManager,
             NullLogger<EditService>.Instance);
+        FileOperationService = new FileOperationService(
+            WorkspaceManager,
+            PreviewStore,
+            NullLogger<FileOperationService>.Instance);
+        ProjectMutationService = new ProjectMutationService(
+            WorkspaceManager,
+            new ProjectMutationPreviewStore(),
+            NullLogger<ProjectMutationService>.Instance);
+        CrossProjectRefactoringService = new CrossProjectRefactoringService(
+            WorkspaceManager,
+            PreviewStore);
+        OrchestrationService = new OrchestrationService(
+            WorkspaceManager,
+            new CompositePreviewStore(),
+            PreviewStore,
+            CrossProjectRefactoringService,
+            AdvancedAnalysisService);
+        ScaffoldingService = new ScaffoldingService(
+            WorkspaceManager,
+            FileOperationService);
+        DeadCodeService = new DeadCodeService(
+            WorkspaceManager,
+            PreviewStore);
         SyntaxService = new SyntaxService(WorkspaceManager);
 
         RepositoryRootPath = FindRepositoryRoot();

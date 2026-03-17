@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Simplification;
 using Microsoft.Extensions.Logging;
+using System.Xml.Linq;
 
 namespace Company.RoslynMcp.Roslyn.Services;
 
@@ -34,7 +35,7 @@ public sealed class RefactoringService : IRefactoringService
         var newSolution = await Renamer.RenameSymbolAsync(
             solution, symbol, new SymbolRenameOptions(), newName, ct).ConfigureAwait(false);
 
-        var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Rename '{symbol.Name}' to '{newName}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
@@ -62,25 +63,38 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         var currentSolution = _workspace.GetCurrentSolution(workspaceId);
-        var changedDocs = modifiedSolution.GetChanges(currentSolution)
-            .GetProjectChanges()
-            .SelectMany(pc => pc.GetChangedDocuments())
-            .ToList();
+        var solutionChanges = modifiedSolution.GetChanges(currentSolution);
+        var hasDocumentSetChanges = solutionChanges.GetProjectChanges()
+            .Any(projectChange => projectChange.GetAddedDocuments().Any() || projectChange.GetRemovedDocuments().Any());
 
-        var success = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
+        bool success;
+        IReadOnlyList<string> appliedFiles;
+        if (hasDocumentSetChanges)
+        {
+            (success, appliedFiles) = await PersistDocumentSetChangesAsync(
+                workspaceId,
+                currentSolution,
+                modifiedSolution,
+                solutionChanges,
+                ct).ConfigureAwait(false);
+        }
+        else
+        {
+            success = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
+            appliedFiles = solutionChanges.GetProjectChanges()
+                .SelectMany(projectChange => projectChange.GetChangedDocuments())
+                .Select(documentId => modifiedSolution.GetDocument(documentId)?.FilePath)
+                .Where(filePath => !string.IsNullOrWhiteSpace(filePath))
+                .Cast<string>()
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         _previewStore.Invalidate(previewToken);
 
         if (!success)
         {
             return new ApplyResultDto(false, [], "Failed to apply changes to the workspace.");
-        }
-
-        var appliedFiles = new List<string>();
-        foreach (var docId in changedDocs)
-        {
-            var doc = modifiedSolution.GetDocument(docId);
-            if (doc?.FilePath is not null)
-                appliedFiles.Add(doc.FilePath);
         }
 
         _logger.LogInformation("Applied refactoring '{Description}' to {Count} file(s)", description, appliedFiles.Count);
@@ -118,7 +132,7 @@ public sealed class RefactoringService : IRefactoringService
         var organizedDoc = await Formatter.OrganizeImportsAsync(document, ct).ConfigureAwait(false);
         var newSolution = organizedDoc.Project.Solution;
 
-        var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Organize usings in '{Path.GetFileName(filePath)}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
@@ -135,7 +149,7 @@ public sealed class RefactoringService : IRefactoringService
         var formattedDoc = await Formatter.FormatAsync(document, cancellationToken: ct).ConfigureAwait(false);
         var newSolution = formattedDoc.Project.Solution;
 
-        var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Format document '{Path.GetFileName(filePath)}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
@@ -197,39 +211,184 @@ public sealed class RefactoringService : IRefactoringService
         var newRoot = root.RemoveNode(usingDirective, SyntaxRemoveOptions.KeepExteriorTrivia)
             ?? throw new InvalidOperationException("Failed to remove the unused using directive.");
         var newSolution = document.WithSyntaxRoot(newRoot).Project.Solution;
-        var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Apply code fix '{normalizedFixId}' for {diagnosticId} in '{Path.GetFileName(filePath)}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
-    private static async Task<IReadOnlyList<FileChangeDto>> ComputeChangesAsync(
-        Solution oldSolution, Solution newSolution, CancellationToken ct)
+    private async Task<(bool Success, IReadOnlyList<string> AppliedFiles)> PersistDocumentSetChangesAsync(
+        string workspaceId,
+        Solution currentSolution,
+        Solution modifiedSolution,
+        SolutionChanges solutionChanges,
+        CancellationToken ct)
     {
-        var changes = new List<FileChangeDto>();
-        var solutionChanges = newSolution.GetChanges(oldSolution);
+        var appliedFiles = new List<string>();
 
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        try
         {
-            foreach (var docId in projectChange.GetChangedDocuments())
+            foreach (var projectChange in solutionChanges.GetProjectChanges())
             {
-                var oldDoc = oldSolution.GetDocument(docId);
-                var newDoc = newSolution.GetDocument(docId);
-                if (oldDoc is null || newDoc is null) continue;
+                await PersistProjectReferenceChangesAsync(currentSolution, modifiedSolution, projectChange, appliedFiles, ct).ConfigureAwait(false);
 
-                var oldText = (await oldDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                foreach (var documentId in projectChange.GetAddedDocuments())
+                {
+                    var document = modifiedSolution.GetDocument(documentId);
+                    if (document?.FilePath is null)
+                    {
+                        continue;
+                    }
 
-                if (oldText == newText) continue;
+                    var directory = Path.GetDirectoryName(document.FilePath);
+                    if (!string.IsNullOrWhiteSpace(directory))
+                    {
+                        Directory.CreateDirectory(directory);
+                    }
 
-                var filePath = oldDoc.FilePath ?? oldDoc.Name;
-                var diff = DiffGenerator.GenerateUnifiedDiff(oldText, newText, filePath);
-                changes.Add(new FileChangeDto(filePath, diff));
+                    var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                    await File.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
+                    appliedFiles.Add(document.FilePath);
+                }
+
+                foreach (var documentId in projectChange.GetChangedDocuments())
+                {
+                    var document = modifiedSolution.GetDocument(documentId);
+                    if (document?.FilePath is null)
+                    {
+                        continue;
+                    }
+
+                    var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                    await File.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
+                    appliedFiles.Add(document.FilePath);
+                }
+
+                foreach (var documentId in projectChange.GetRemovedDocuments())
+                {
+                    var document = currentSolution.GetDocument(documentId);
+                    if (document?.FilePath is null)
+                    {
+                        continue;
+                    }
+
+                    if (File.Exists(document.FilePath))
+                    {
+                        File.Delete(document.FilePath);
+                    }
+
+                    appliedFiles.Add(document.FilePath);
+                }
             }
+
+            await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
+            return (true, appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Failed to persist document set changes for workspace {WorkspaceId}", workspaceId);
+            return (false, []);
+        }
+    }
+
+    private static async Task PersistProjectReferenceChangesAsync(
+        Solution currentSolution,
+        Solution modifiedSolution,
+        ProjectChanges projectChange,
+        List<string> appliedFiles,
+        CancellationToken ct)
+    {
+        var modifiedProject = modifiedSolution.GetProject(projectChange.ProjectId);
+        if (modifiedProject?.FilePath is null || !File.Exists(modifiedProject.FilePath))
+        {
+            return;
         }
 
-        return changes;
+        var addedProjectReferences = projectChange.GetAddedProjectReferences().ToArray();
+        var removedProjectReferences = projectChange.GetRemovedProjectReferences().ToArray();
+        if (addedProjectReferences.Length == 0 && removedProjectReferences.Length == 0)
+        {
+            return;
+        }
+
+        var originalContent = await File.ReadAllTextAsync(modifiedProject.FilePath, ct).ConfigureAwait(false);
+        var document = XDocument.Parse(originalContent, LoadOptions.PreserveWhitespace);
+        var projectDirectory = Path.GetDirectoryName(modifiedProject.FilePath)
+            ?? throw new InvalidOperationException("Project file path must have a parent directory.");
+        var changed = false;
+
+        foreach (var projectReference in addedProjectReferences)
+        {
+            var referencedProject = modifiedSolution.GetProject(projectReference.ProjectId);
+            if (referencedProject?.FilePath is null)
+            {
+                continue;
+            }
+
+            var relativePath = Path.GetRelativePath(projectDirectory, referencedProject.FilePath);
+            if (document.Descendants("ProjectReference").Any(element =>
+                    string.Equals(NormalizeInclude((string?)element.Attribute("Include")), NormalizeInclude(relativePath), StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            GetOrCreateItemGroup(document, "ProjectReference")
+                .Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
+            changed = true;
+        }
+
+        foreach (var projectReference in removedProjectReferences)
+        {
+            var referencedProject = currentSolution.GetProject(projectReference.ProjectId) ?? modifiedSolution.GetProject(projectReference.ProjectId);
+            var targetFileName = Path.GetFileName(referencedProject?.FilePath);
+            if (string.IsNullOrWhiteSpace(targetFileName))
+            {
+                continue;
+            }
+
+            var element = document.Descendants("ProjectReference").FirstOrDefault(candidate =>
+            {
+                var include = (string?)candidate.Attribute("Include");
+                return !string.IsNullOrWhiteSpace(include) &&
+                       string.Equals(Path.GetFileName(include), targetFileName, StringComparison.OrdinalIgnoreCase);
+            });
+
+            if (element is null)
+            {
+                continue;
+            }
+
+            element.Remove();
+            changed = true;
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        await File.WriteAllTextAsync(modifiedProject.FilePath, document.ToString(SaveOptions.DisableFormatting), ct).ConfigureAwait(false);
+        appliedFiles.Add(modifiedProject.FilePath);
+    }
+
+    private static XElement GetOrCreateItemGroup(XDocument document, string itemName)
+    {
+        var existingGroup = document.Root?.Elements("ItemGroup")
+            .FirstOrDefault(group => group.Elements(itemName).Any());
+        if (existingGroup is not null)
+        {
+            return existingGroup;
+        }
+
+        var itemGroup = new XElement("ItemGroup");
+        document.Root?.Add(itemGroup);
+        return itemGroup;
+    }
+
+    private static string NormalizeInclude(string? include)
+    {
+        return (include ?? string.Empty).Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
     }
 
     private static string GetDefaultFixId(string diagnosticId) =>

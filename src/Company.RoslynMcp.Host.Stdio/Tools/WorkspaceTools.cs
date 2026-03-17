@@ -26,7 +26,7 @@ public static class WorkspaceTools
             gate.RunAsync(WorkspaceExecutionGate.LoadGateKey, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
-                await ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
                 var status = await workspace.LoadAsync(path, c);
                 ProgressHelper.Report(progress, 1, 1);
                 _ = NotifyResourcesChangedAsync(server);
@@ -158,44 +158,6 @@ public static class WorkspaceTools
         catch
         {
             // Notification failure should not affect the tool result
-        }
-    }
-
-    /// <summary>
-    /// If the client advertises roots, validate that the requested path falls under an allowed root.
-    /// If the client doesn't support roots, this is a no-op.
-    /// </summary>
-    private static async Task ValidatePathAgainstRootsAsync(McpServer server, string path, CancellationToken ct)
-    {
-        try
-        {
-            if (server.ClientCapabilities?.Roots is null) return;
-
-            var rootsResult = await server.RequestRootsAsync(new ListRootsRequestParams(), ct).ConfigureAwait(false);
-            if (rootsResult.Roots.Count == 0) return;
-
-            var fullPath = Path.GetFullPath(path);
-            foreach (var root in rootsResult.Roots)
-            {
-                if (root.Uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-                {
-                    var rootPath = new Uri(root.Uri).LocalPath;
-                    if (fullPath.StartsWith(rootPath, StringComparison.OrdinalIgnoreCase))
-                        return;
-                }
-            }
-
-            throw new ArgumentException(
-                $"Path '{path}' is not under any client-sanctioned root. " +
-                $"Allowed roots: {string.Join(", ", rootsResult.Roots.Select(r => r.Uri))}");
-        }
-        catch (ArgumentException)
-        {
-            throw;
-        }
-        catch
-        {
-            // If roots request fails (e.g., client doesn't actually support it), allow the operation
         }
     }
 }
