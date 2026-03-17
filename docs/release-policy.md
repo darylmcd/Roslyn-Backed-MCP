@@ -1,5 +1,7 @@
 # Release Policy
 
+For day-to-day agent execution flow, start from `AGENTS.md`. This document defines release gates and compatibility rules.
+
 ## Production-Ready Definition
 
 A release is production-ready when all of the following are true:
@@ -32,6 +34,16 @@ A release is production-ready when all of the following are true:
 3. Review dependency audit output from CI.
 4. Confirm `server_info` and `server_catalog` reflect the intended support tiers.
 5. Publish the host executable built from `src/Company.RoslynMcp.Host.Stdio`.
+6. Confirm docs remain synchronized (`README.md`, `AGENTS.md`, and `docs/product-contract.md`) for any surface or tiering change.
+
+## Agent Session Release Gate
+
+Before declaring a session complete for release-impacting work:
+
+- build and tests pass
+- machine-readable catalog and written docs agree
+- stable vs experimental placement is intentional and documented
+- changed behavior is covered by tests or explicitly deferred with rationale
 
 ## CI Gate
 

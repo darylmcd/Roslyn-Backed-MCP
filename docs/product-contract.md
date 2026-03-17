@@ -2,6 +2,25 @@
 
 `roslyn-mcp` ships as a local-first MCP server for developer workstations. The canonical machine-readable contract is the `server_catalog` resource at `roslyn://server/catalog`.
 
+For AI-session operating flow and repository layout, use `AGENTS.md` as the first read.
+
+## Session Operating Contract
+
+The expected execution sequence for agent sessions is:
+
+1. load workspace and keep the returned `workspaceId`
+2. use stable tools/resources first
+3. use preview/apply for bounded mutation
+4. run build/test validation before completion
+
+## Contract Routing Matrix
+
+| Need | Default tier | Escalate when |
+|---|---|---|
+| workspace/session management, semantic navigation, diagnostics, build/test, bounded refactoring | stable | stable surface cannot express the required operation |
+| scaffolding, project mutation, cross-project orchestration, dead-code removal, direct edit helpers | experimental | no stable equivalent exists and preview-first constraints are acceptable |
+| prompts | experimental | never; prompts are not compatibility-stable API |
+
 ## Stable Surface
 
 Stable support is for the local stdio host only. Stable entries follow the compatibility and deprecation rules in `docs/release-policy.md`.
@@ -32,7 +51,14 @@ Experimental entries are intentionally discoverable but may evolve faster before
 Current experimental families:
 
 - advanced-analysis tools
+- guided orchestration prompts
 - direct text-edit tools
+- workspace file operation tools
+- project mutation tools, including central package management and multi-targeting mutations
+- cross-project semantic refactoring previews, including interface extraction and bounded dependency inversion
+- orchestration tools for package migration, class splitting, and extract-and-wire workflows
+- scaffolding tools
+- dead-code removal tools
 - syntax-tree inspection
 - generic Roslyn code actions
 - coverage collection
@@ -52,3 +78,10 @@ Current experimental families:
 - Prefer stable tools for navigation, diagnostics, validation, and preview-first refactoring flows.
 - Treat experimental tools as opt-in accelerators rather than required dependencies.
 - Read `server_info` and `server_catalog` at session start when you need to adapt automatically to support tiers.
+
+## Ownership Map By Change Type
+
+- host/tool wrapper and catalog wiring changes: `src/Company.RoslynMcp.Host.Stdio/`
+- DTO and boundary contract changes: `src/Company.RoslynMcp.Core/`
+- Roslyn semantic/refactoring implementation changes: `src/Company.RoslynMcp.Roslyn/`
+- behavior validation and regression checks: `tests/Company.RoslynMcp.Tests/`

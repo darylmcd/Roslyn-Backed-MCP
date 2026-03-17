@@ -1,5 +1,13 @@
 # Parity And Gap Matrix
 
+This matrix defines what agents should treat as hard boundaries vs roadmap opportunities.
+
+Use with:
+
+- `docs/product-contract.md` for compatibility expectations
+- `docs/roadmap.md` for deferred implementation direction
+- `AGENTS.md` for operational workflow in live sessions
+
 ## Comparison Summary
 
 | Comparison area | Current position | Release decision |
@@ -31,3 +39,10 @@
 - claiming parity with live IDE state while still using `MSBuildWorkspace`
 - treating prompts as part of the compatibility-guaranteed API surface
 - exposing remote deployment guidance before a dedicated remote host exists
+
+## Agent Implications
+
+- do not plan workflows that rely on unsaved editor state
+- do not assume experimental prompt/tool shapes are version-stable
+- keep mutation flows bounded and preview-first
+- keep release-facing statements aligned with local stdio production scope

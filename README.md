@@ -2,6 +2,23 @@
 
 A production-usable MCP (Model Context Protocol) server that provides semantic C# analysis capabilities powered by Roslyn, without requiring Visual Studio. Designed for AI coding agents to semantically navigate, analyze, and refactor real C# solutions.
 
+## AI Session Fast Start
+
+For the shortest safe path in new agent sessions:
+
+1. Read `AGENTS.md` first.
+2. Read `docs/product-contract.md` for stable vs experimental expectations.
+3. Use `server_info` and `roslyn://server/catalog` to verify runtime surface.
+4. Follow preview/apply and validation loops before finalizing edits.
+
+### 30-Second AI Quick Path
+
+1. Load workspace and keep `workspaceId`.
+2. Use stable tools/resources first.
+3. Use preview/apply for any mutation.
+4. Run build/test + diagnostics before completion.
+5. Use the one-screen matrix in `AGENTS.md` to route implementation quickly.
+
 ## Quick Start
 
 ### Prerequisites
@@ -86,11 +103,21 @@ For a reproducible release build and publish verification:
 
 ## Canonical Docs
 
+- `AGENTS.md` is the canonical AI operator playbook for repo map, flow, and command defaults.
 - `docs/product-contract.md` defines the supported product shape and support tiers.
 - `docs/parity-gap-matrix.md` records release-critical parity decisions and remaining gaps.
 - `docs/release-policy.md` defines the compatibility, deprecation, CI, and release gate policy.
 - `docs/roadmap.md` records the explicit strategic decisions for transport, live-workspace parity, and large-solution performance.
 - `roslyn://server/catalog` is the canonical machine-readable surface contract exposed by the running server.
+
+## Project Map
+
+- `src/Company.RoslynMcp.Host.Stdio/`: host startup, MCP wrappers, tool/resource/prompt registration, logging.
+- `src/Company.RoslynMcp.Core/`: shared contracts, DTOs, interfaces, and preview-store abstractions.
+- `src/Company.RoslynMcp.Roslyn/`: Roslyn workspace, semantic analysis, diagnostics, refactoring, and execution services.
+- `tests/Company.RoslynMcp.Tests/`: integration and behavior coverage across stable and experimental surfaces.
+- `samples/`: fixture solutions used by tests for realistic workflows.
+- `eng/verify-release.ps1`: release verification path for publish and hashes.
 
 ## Supported Surface
 
@@ -110,6 +137,10 @@ The server exposes a larger surface than earlier versions of the README document
 
 - advanced-analysis tools
 - direct text-edit tools
+- workspace file operation tools
+- project mutation tools
+- scaffolding tools
+- dead-code removal tools
 - syntax-tree inspection
 - generic Roslyn code actions
 - coverage collection
@@ -150,6 +181,15 @@ tests/
 samples/
   SampleSolution/                  Multi-project test solution
 ```
+
+## Agent Workflow (End-To-End)
+
+1. Load workspace and persist `workspaceId`.
+2. Run stable-first semantic navigation and diagnostics.
+3. Produce preview tokens for mutation/refactoring operations.
+4. Apply preview only if workspace version has not changed.
+5. Run build/test validation loops.
+6. Re-run diagnostics and update docs/tests for any surface change.
 
 ### Key Design Decisions
 
