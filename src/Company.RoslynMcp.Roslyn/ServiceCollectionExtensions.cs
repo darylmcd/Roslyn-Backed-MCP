@@ -11,6 +11,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWorkspaceExecutionGate, WorkspaceExecutionGate>();
         services.AddSingleton<IDotnetCommandRunner, DotnetCommandRunner>();
         services.AddSingleton<IPreviewStore, PreviewStore>();
+        services.AddSingleton<IProjectMutationPreviewStore, ProjectMutationPreviewStore>();
+        services.AddSingleton<ICompositePreviewStore, CompositePreviewStore>();
         services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
         services.AddSingleton<ISymbolService, SymbolService>();
         services.AddSingleton<IDiagnosticService, DiagnosticService>();
@@ -20,6 +22,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICodeActionService, CodeActionService>();
         services.AddSingleton<IAdvancedAnalysisService, AdvancedAnalysisService>();
         services.AddSingleton<IEditService, EditService>();
+        services.AddSingleton<IFileOperationService, FileOperationService>();
+        services.AddSingleton<IProjectMutationService, ProjectMutationService>();
+        services.AddSingleton<ICrossProjectRefactoringService, CrossProjectRefactoringService>();
+        services.AddSingleton<IOrchestrationService, OrchestrationService>();
+        services.AddSingleton<IScaffoldingService, ScaffoldingService>();
+        services.AddSingleton<IDeadCodeService, DeadCodeService>();
         services.AddSingleton<ISyntaxService, SyntaxService>();
         services.AddSingleton<IFileWatcherService, FileWatcherService>();
         return services;
