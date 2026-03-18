@@ -9,12 +9,8 @@ Compact reminder layer aligned with `ai_docs/workflow.md`.
 
 ## Merge-Ready Handoff
 
-- Sync with base branch when branch protection requires it.
-- Resolve conflicts and ensure required checks pass before merge request.
-
-## Validation
-
-- Follow `CI_POLICY.md` for required build/test/release validation.
+- Follow `CI_POLICY.md` before merge handoff.
+- Sync with base branch if repository settings require it.
 
 ## Ownership
 
