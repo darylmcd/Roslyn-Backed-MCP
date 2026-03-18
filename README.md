@@ -7,17 +7,16 @@ A production-usable MCP (Model Context Protocol) server that provides semantic C
 For the shortest safe path in new agent sessions:
 
 1. Read `AGENTS.md` first.
-2. Read `docs/product-contract.md` for stable vs experimental expectations.
-3. Use `server_info` and `roslyn://server/catalog` to verify runtime surface.
-4. Follow preview/apply and validation loops before finalizing edits.
+2. Read `CI_POLICY.md` for validation and merge-gating expectations.
+3. Read `ai_docs/README.md`, then `ai_docs/workflow.md` and `ai_docs/runtime.md`.
+4. Use `server_info` and `roslyn://server/catalog` to verify runtime surface.
 
 ### 30-Second AI Quick Path
 
 1. Load workspace and keep `workspaceId`.
-2. Use stable tools/resources first.
-3. Use preview/apply for any mutation.
-4. Run build/test + diagnostics before completion.
-5. Use the one-screen matrix in `AGENTS.md` to route implementation quickly.
+2. Follow `ai_docs/workflow.md` for branch/worktree/PR behavior.
+3. Follow `CI_POLICY.md` for validation and merge handoff.
+4. Use stable tools/resources first and preview/apply for mutations.
 
 ## Quick Start
 
@@ -103,11 +102,15 @@ For a reproducible release build and publish verification:
 
 ## Canonical Docs
 
-- `AGENTS.md` is the canonical AI operator playbook for repo map, flow, and command defaults.
-- `docs/product-contract.md` defines the supported product shape and support tiers.
-- `docs/parity-gap-matrix.md` records release-critical parity decisions and remaining gaps.
-- `docs/release-policy.md` defines the compatibility, deprecation, CI, and release gate policy.
-- `docs/roadmap.md` records the explicit strategic decisions for transport, live-workspace parity, and large-solution performance.
+- `AGENTS.md` is the canonical bootstrap entry point for AI agents.
+- `CLAUDE.md` is the Claude bootstrap mirror.
+- `.github/copilot-instructions.md` is a thin bootstrap file for Copilot.
+- `CI_POLICY.md` is the canonical validation and merge-gating policy.
+- `ai_docs/README.md` is the canonical AI-doc routing index.
+- `ai_docs/workflow.md` is the canonical git/branch/worktree/PR workflow policy.
+- `ai_docs/runtime.md` is the canonical runtime and execution-context reference.
+- `ai_docs/backlog.md` is the canonical unfinished-work list.
+- `.cursor/rules/operational-essentials.md` is a compact reminder layer aligned with `ai_docs/workflow.md`.
 - `roslyn://server/catalog` is the canonical machine-readable surface contract exposed by the running server.
 
 ## Project Map

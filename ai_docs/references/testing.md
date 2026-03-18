@@ -1,0 +1,20 @@
+# Testing Reference
+
+## Primary Command
+
+- `dotnet test RoslynMcp.slnx --nologo`
+
+## Build + Test Baseline
+
+1. `dotnet build RoslynMcp.slnx --nologo`
+2. `dotnet test RoslynMcp.slnx --nologo`
+
+## Test Project
+
+- `tests/Company.RoslynMcp.Tests/`
+
+## Guidance
+
+- Prefer integration coverage for end-to-end workspace and tool behavior.
+- For docs-only changes, run lightweight link/reference checks at minimum.
+- For contract/surface changes, include or update tests in the same branch.
