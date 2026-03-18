@@ -1,32 +1,27 @@
 # CI Policy
 
-This document is the single canonical source for validation and merge-gating expectations.
+This document is the single canonical source for validation requirements and merge-gating expectations.
 
-## Required Validation For Merge-Ready Handoff
+## Repository Evidence
 
-1. Build: `dotnet build RoslynMcp.slnx --nologo`
-2. Test: `dotnet test RoslynMcp.slnx --nologo`
-3. If release-impacting files changed, run: `./eng/verify-release.ps1`
+- `.github/workflows/ci.yml` runs on pull requests, pushes to `main`, and manual dispatch.
+- CI currently runs `./eng/verify-ai-docs.ps1`.
+- CI currently runs `./eng/verify-release.ps1 -Configuration Release`.
+- CI currently runs `dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive`.
 
-## Change-Class Expectations
+## Local Validation
 
-- Docs-only changes:
-  - Ensure markdown links/paths are valid.
-  - Ensure no stale references remain after renames/moves.
-- Product-code changes:
-  - Complete build and tests locally before handoff.
-  - Resolve new diagnostics introduced by the change.
-- Surface/contract changes:
-  - Update docs and tests in the same branch.
+- For AI-doc changes, run `./eng/verify-ai-docs.ps1`.
+- For release-impacting or code changes, run `./eng/verify-release.ps1`.
+- `eng/verify-release.ps1` performs restore, build, test, publish, and hash-manifest generation.
 
-## Merge Gating
+## Merge Gating Expectations
 
-- Respect repository branch protection and required checks.
-- Branch must be synchronized with base branch before merge-ready handoff when required by protection rules.
-- Do not bypass failing required checks.
+- Treat the documented CI workflow as the required merge gate.
+- Do not declare work merge-ready while required CI is failing.
+- If branch synchronization is required by repository protection settings, synchronize before merge.
 
-## Canonical Ownership
+## Ownership
 
-- Git and PR workflow details live in `ai_docs/workflow.md`.
-- Runtime/tool behavior details live in `ai_docs/runtime.md`.
-- This file remains the sole merge-gating and validation policy source.
+- Branch, worktree, and pull-request workflow belongs to `ai_docs/workflow.md`.
+- Runtime assumptions and execution constraints belong to `ai_docs/runtime.md`.

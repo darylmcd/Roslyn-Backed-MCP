@@ -12,7 +12,8 @@ This document is the canonical runtime and execution-context reference for AI ag
 
 - .NET SDK baseline: see `../README.md` and `global.json`.
 - Primary v1 operating system target: Windows.
-- Build/test entry points:
+- Main local validation entry point: `./eng/verify-release.ps1`
+- Fast manual commands also used in repo docs:
   - `dotnet build RoslynMcp.slnx --nologo`
   - `dotnet test RoslynMcp.slnx --nologo`
 
@@ -20,7 +21,6 @@ This document is the canonical runtime and execution-context reference for AI ag
 
 - `stdout` is reserved for MCP protocol traffic.
 - Operational logging should go to `stderr`.
-- Prefer stable MCP surface first; use experimental surface intentionally and explicitly.
 
 ## Session And Mutation Safety
 

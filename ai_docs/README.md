@@ -17,6 +17,7 @@ This directory is the canonical AI-facing documentation tree.
 - `runtime.md`: canonical runtime assumptions and execution context.
 - `backlog.md`: only place for unfinished work items.
 - `architecture.md`: compact system architecture and boundaries.
+- `../CI_POLICY.md`: canonical validation and merge-gating policy.
 
 ## Domain Entry Points
 
