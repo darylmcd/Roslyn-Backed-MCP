@@ -3,6 +3,11 @@ using Microsoft.CodeAnalysis;
 
 namespace Company.RoslynMcp.Core.Services;
 
+/// <summary>
+/// Thread-safe, TTL-bounded in-memory store for pending Roslyn solution previews.
+/// Entries expire after 5 minutes. The store is capped at 50 entries; oldest entries are
+/// evicted when the limit is reached.
+/// </summary>
 public sealed class PreviewStore : IPreviewStore
 {
     private readonly ConcurrentDictionary<string, PreviewEntry> _entries = new();

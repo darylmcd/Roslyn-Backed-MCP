@@ -1,5 +1,8 @@
 namespace Company.RoslynMcp.Core.Models;
 
+/// <summary>
+/// Represents the current status of a loaded workspace.
+/// </summary>
 public sealed record WorkspaceStatusDto(
     string WorkspaceId,
     string? LoadedPath,
@@ -13,6 +16,9 @@ public sealed record WorkspaceStatusDto(
     bool IsStale,
     IReadOnlyList<DiagnosticDto> WorkspaceDiagnostics);
 
+/// <summary>
+/// Represents the status of a project within a loaded workspace.
+/// </summary>
 public sealed record ProjectStatusDto(
     string Name,
     string FilePath,

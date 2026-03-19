@@ -9,6 +9,11 @@ using System.Xml.Linq;
 
 namespace Company.RoslynMcp.Roslyn.Services;
 
+/// <summary>
+/// Manages named <c>MSBuildWorkspace</c> sessions, providing load, reload, query, and
+/// solution-mutation operations. Each session is independently versioned and monitored
+/// for file-system staleness via <see cref="Company.RoslynMcp.Core.Services.IFileWatcherService"/>.
+/// </summary>
 public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 {
     private readonly ILogger<WorkspaceManager> _logger;

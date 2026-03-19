@@ -1,5 +1,8 @@
 namespace Company.RoslynMcp.Core.Models;
 
+/// <summary>
+/// Represents the base, derived, and implemented type relationships for a type.
+/// </summary>
 public sealed record TypeHierarchyDto(
     string TypeName,
     string FullyQualifiedName,

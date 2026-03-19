@@ -1,5 +1,9 @@
 namespace Company.RoslynMcp.Host.Stdio.Catalog;
 
+/// <summary>
+/// Static inventory of all MCP tools, resources, and prompts exposed by the server,
+/// together with their support tiers, categories, and read/destructive flags.
+/// </summary>
 public static class ServerSurfaceCatalog
 {
     public const string CatalogVersion = "2026.03";
@@ -172,6 +176,17 @@ public static class ServerSurfaceCatalog
         new("prompt", name, category, supportTier, readOnly, destructive, summary, null);
 }
 
+/// <summary>
+/// Describes a single tool, resource, or prompt entry in the server surface catalog.
+/// </summary>
+/// <param name="Kind">The entry kind: <c>tool</c>, <c>resource</c>, or <c>prompt</c>.</param>
+/// <param name="Name">The tool/resource/prompt name as used by MCP clients.</param>
+/// <param name="Category">The logical grouping category (e.g., <c>symbols</c>, <c>refactoring</c>).</param>
+/// <param name="SupportTier">Either <c>stable</c> or <c>experimental</c>.</param>
+/// <param name="ReadOnly">When <see langword="true"/>, the entry does not modify workspace state.</param>
+/// <param name="Destructive">When <see langword="true"/>, the entry performs an irreversible or high-impact change.</param>
+/// <param name="Summary">A short human-readable description of what the entry does.</param>
+/// <param name="UriTemplate">The URI template for resource entries, or <see langword="null"/> for tools and prompts.</param>
 public sealed record SurfaceEntry(
     string Kind,
     string Name,
@@ -182,6 +197,9 @@ public sealed record SurfaceEntry(
     string Summary,
     string? UriTemplate);
 
+/// <summary>
+/// Provides a count summary of stable and experimental entries for each surface kind.
+/// </summary>
 public sealed record SurfaceSummary(
     string CatalogVersion,
     int StableTools,
@@ -191,6 +209,9 @@ public sealed record SurfaceSummary(
     int StablePrompts,
     int ExperimentalPrompts);
 
+/// <summary>
+/// The machine-readable server catalog document returned by the <c>server_catalog</c> resource.
+/// </summary>
 public sealed record ServerCatalogDto(
     string CatalogVersion,
     string ProductShape,

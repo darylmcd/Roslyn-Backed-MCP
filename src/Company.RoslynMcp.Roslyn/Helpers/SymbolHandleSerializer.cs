@@ -4,8 +4,23 @@ using Microsoft.CodeAnalysis;
 
 namespace Company.RoslynMcp.Roslyn.Helpers;
 
+/// <summary>
+/// Serializes Roslyn <see cref="ISymbol"/> instances to opaque base-64 handles and resolves
+/// them back to symbols in a given <see cref="Solution"/>.
+/// </summary>
+/// <remarks>
+/// A handle encodes the symbol's metadata name, display name, and source location as a
+/// base-64-encoded JSON payload. Resolution first attempts lookup by metadata name, then
+/// falls back to source position.
+/// </remarks>
 internal static class SymbolHandleSerializer
 {
+    /// <summary>
+    /// Creates a portable, opaque handle for the given symbol that can be passed back to
+    /// <see cref="ResolveHandleAsync"/> to recover the symbol.
+    /// </summary>
+    /// <param name="symbol">The symbol to serialize.</param>
+    /// <returns>A base-64-encoded handle string.</returns>
     public static string CreateHandle(ISymbol symbol)
     {
         var sourceLocation = symbol.Locations.FirstOrDefault(location => location.IsInSource);
@@ -21,6 +36,14 @@ internal static class SymbolHandleSerializer
         return Convert.ToBase64String(Encoding.UTF8.GetBytes(json));
     }
 
+    /// <summary>
+    /// Attempts to resolve a symbol handle previously created by <see cref="CreateHandle"/> within
+    /// the given solution.
+    /// </summary>
+    /// <param name="solution">The solution to search.</param>
+    /// <param name="symbolHandle">The base-64-encoded handle string.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The resolved symbol, or <see langword="null"/> if the handle is malformed or the symbol cannot be found.</returns>
     public static async Task<ISymbol?> ResolveHandleAsync(Solution solution, string symbolHandle, CancellationToken ct)
     {
         SymbolHandlePayload? payload;

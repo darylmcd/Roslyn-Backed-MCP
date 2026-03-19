@@ -1,5 +1,8 @@
 namespace Company.RoslynMcp.Core.Models;
 
+/// <summary>
+/// Classifies how a type is used at a given source location.
+/// </summary>
 public enum TypeUsageClassification
 {
     MethodReturnType,
@@ -15,6 +18,9 @@ public enum TypeUsageClassification
     Other
 }
 
+/// <summary>
+/// Represents a source usage of a type.
+/// </summary>
 public sealed record TypeUsageDto(
     string FilePath,
     int StartLine,

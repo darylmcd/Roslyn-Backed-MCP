@@ -13,10 +13,15 @@ public sealed class McpLoggingProvider : ILoggerProvider
 {
     private McpServer? _server;
 
+    /// <summary>
+    /// Attaches the active MCP server session so that log messages can be forwarded to the client.
+    /// </summary>
     public void SetServer(McpServer server) => _server = server;
 
+    /// <inheritdoc/>
     public ILogger CreateLogger(string categoryName) => new McpLogger(this, categoryName);
 
+    /// <inheritdoc/>
     public void Dispose() => _server = null;
 
     private sealed class McpLogger(McpLoggingProvider provider, string categoryName) : ILogger
