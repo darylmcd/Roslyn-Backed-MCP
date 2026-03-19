@@ -3,6 +3,18 @@ using Company.RoslynMcp.Core.Services;
 
 namespace Company.RoslynMcp.Roslyn.Services;
 
+/// <summary>
+/// Serializes workspace operations using per-workspace semaphores so that concurrent callers
+/// (e.g., multiple MCP sub-agents) cannot corrupt shared Roslyn state.
+/// </summary>
+/// <remarks>
+/// A dedicated load gate (<see cref="LoadGateKey"/>) is used for <c>workspace_load</c> and
+/// <c>workspace_reload</c> operations because those operations replace the entire session state.
+/// All other operations run under a per-workspace gate keyed by the workspace session identifier.
+/// A global concurrency throttle bounds the total number of simultaneous operations across all
+/// workspaces to <c>max(2, Environment.ProcessorCount)</c>.
+/// Each operation is also subject to a 2-minute per-request timeout.
+/// </remarks>
 public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposable
 {
     public const string LoadGateKey = "__load__";

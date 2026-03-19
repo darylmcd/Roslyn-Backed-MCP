@@ -1,5 +1,8 @@
 namespace Company.RoslynMcp.Core.Models;
 
+/// <summary>
+/// Represents a reflection-based usage discovered in source code.
+/// </summary>
 public sealed record ReflectionUsageDto(
     string UsageKind,
     string CalledMethod,

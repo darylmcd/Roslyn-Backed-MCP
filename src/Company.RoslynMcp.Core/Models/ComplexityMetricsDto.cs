@@ -1,5 +1,8 @@
 namespace Company.RoslynMcp.Core.Models;
 
+/// <summary>
+/// Represents code complexity metrics calculated for a symbol.
+/// </summary>
 public sealed record ComplexityMetricsDto(
     string SymbolName,
     string SymbolKind,

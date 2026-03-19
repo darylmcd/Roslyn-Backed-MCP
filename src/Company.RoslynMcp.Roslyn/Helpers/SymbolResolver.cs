@@ -6,8 +6,21 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace Company.RoslynMcp.Roslyn.Helpers;
 
+/// <summary>
+/// Resolves Roslyn <see cref="ISymbol"/> instances from a <see cref="SymbolLocator"/> within a
+/// loaded <see cref="Solution"/>.
+/// </summary>
 public static class SymbolResolver
 {
+    /// <summary>
+    /// Resolves a symbol from the given <paramref name="locator"/> using whichever identification
+    /// strategy is set (handle, metadata name, or source position).
+    /// </summary>
+    /// <param name="solution">The solution to search.</param>
+    /// <param name="locator">The symbol locator describing how to find the symbol.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>The resolved symbol, or <see langword="null"/> if it could not be found.</returns>
+    /// <exception cref="System.ArgumentException">Thrown when <paramref name="locator"/> does not contain a valid identification strategy.</exception>
     public static async Task<ISymbol?> ResolveAsync(Solution solution, SymbolLocator locator, CancellationToken ct)
     {
         locator.Validate();
@@ -25,6 +38,11 @@ public static class SymbolResolver
         return await ResolveAtPositionAsync(solution, locator.FilePath!, locator.Line!.Value, locator.Column!.Value, ct).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Resolves the symbol at the given 1-based <paramref name="line"/> and <paramref name="column"/> position
+    /// in the specified source file.
+    /// </summary>
+    /// <returns>The resolved symbol, or <see langword="null"/> if no symbol exists at that position.</returns>
     public static async Task<ISymbol?> ResolveAtPositionAsync(Solution solution, string filePath, int line, int column, CancellationToken ct)
     {
         var document = FindDocument(solution, filePath);
@@ -56,6 +74,10 @@ public static class SymbolResolver
         return null;
     }
 
+    /// <summary>
+    /// Searches all projects in <paramref name="solution"/> for a named type with the given metadata name.
+    /// </summary>
+    /// <returns>The first matching symbol, or <see langword="null"/> if not found.</returns>
     public static async Task<ISymbol?> ResolveByMetadataNameAsync(Solution solution, string metadataName, CancellationToken ct)
     {
         foreach (var project in solution.Projects)
@@ -76,6 +98,11 @@ public static class SymbolResolver
         return null;
     }
 
+    /// <summary>
+    /// Finds the first document in <paramref name="solution"/> whose file path matches <paramref name="filePath"/>
+    /// (case-insensitive on all platforms).
+    /// </summary>
+    /// <returns>The matching document, or <see langword="null"/> if not found.</returns>
     public static Document? FindDocument(Solution solution, string filePath)
     {
         var normalizedPath = Path.GetFullPath(filePath);

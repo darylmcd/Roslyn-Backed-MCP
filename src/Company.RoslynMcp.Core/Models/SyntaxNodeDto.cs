@@ -1,5 +1,8 @@
 namespace Company.RoslynMcp.Core.Models;
 
+/// <summary>
+/// Represents a syntax node and its child nodes.
+/// </summary>
 public sealed record SyntaxNodeDto(
     string Kind,
     string? Text,

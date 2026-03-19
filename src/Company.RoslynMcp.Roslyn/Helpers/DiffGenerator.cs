@@ -4,8 +4,19 @@ using DiffPlex.DiffBuilder.Model;
 
 namespace Company.RoslynMcp.Roslyn.Helpers;
 
+/// <summary>
+/// Generates unified diff output for a pair of text strings using DiffPlex.
+/// </summary>
 public static class DiffGenerator
 {
+    /// <summary>
+    /// Produces a unified-diff string comparing <paramref name="oldText"/> with <paramref name="newText"/>.
+    /// The output follows the standard <c>--- a/…</c> / <c>+++ b/…</c> unified format with 3-line context.
+    /// </summary>
+    /// <param name="oldText">The original text.</param>
+    /// <param name="newText">The modified text.</param>
+    /// <param name="filePath">The file path used in the diff header lines.</param>
+    /// <returns>A string containing the unified diff, or an empty string if there are no differences.</returns>
     public static string GenerateUnifiedDiff(string oldText, string newText, string filePath)
     {
         var diffBuilder = new InlineDiffBuilder(new Differ());

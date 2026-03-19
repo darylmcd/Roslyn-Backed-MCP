@@ -4,8 +4,17 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Company.RoslynMcp.Roslyn;
 
+/// <summary>
+/// Extension methods for registering Roslyn-backed services with the <see cref="IServiceCollection"/>.
+/// </summary>
 public static class ServiceCollectionExtensions
 {
+    /// <summary>
+    /// Registers all Roslyn workspace, symbol, analysis, refactoring, and mutation services
+    /// as singletons.
+    /// </summary>
+    /// <param name="services">The service collection to add registrations to.</param>
+    /// <returns>The same <paramref name="services"/> for chaining.</returns>
     public static IServiceCollection AddRoslynServices(this IServiceCollection services)
     {
         services.AddSingleton<IWorkspaceExecutionGate, WorkspaceExecutionGate>();

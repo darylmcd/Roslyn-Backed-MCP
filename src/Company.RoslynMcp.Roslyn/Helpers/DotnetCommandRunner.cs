@@ -6,6 +6,15 @@ using Company.RoslynMcp.Core.Services;
 
 namespace Company.RoslynMcp.Roslyn.Services;
 
+/// <summary>
+/// Executes <c>dotnet</c> CLI commands as child processes and captures their standard output
+/// and error streams, bounded to prevent excessive memory consumption.
+/// </summary>
+/// <remarks>
+/// Output streams are bounded to <c>12000</c> characters: if the output exceeds this limit,
+/// only the final 12000 characters are retained.
+/// Cancellation kills the entire process tree.
+/// </remarks>
 public sealed class DotnetCommandRunner : IDotnetCommandRunner
 {
     private const int OutputLimit = 12000;

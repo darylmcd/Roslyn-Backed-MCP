@@ -4,11 +4,19 @@ using Company.RoslynMcp.Core.Models;
 
 namespace Company.RoslynMcp.Roslyn.Helpers;
 
+/// <summary>
+/// Parses <c>dotnet build</c> and <c>dotnet test</c> output into structured DTOs.
+/// </summary>
 internal static partial class DotnetOutputParser
 {
     [GeneratedRegex(@"^(?<file>.+?)\((?<line>\d+),(?<column>\d+)(,(?<endLine>\d+),(?<endColumn>\d+))?\): (?<severity>error|warning) (?<id>[A-Z]{2,}\d+): (?<message>.+?)( \[(?<project>.+)\])?$", RegexOptions.Compiled)]
     private static partial Regex DiagnosticRegex();
 
+    /// <summary>
+    /// Parses MSBuild-style diagnostic lines from <c>dotnet build</c> standard output.
+    /// </summary>
+    /// <param name="output">The raw standard output captured from the build process.</param>
+    /// <returns>A list of parsed diagnostics. Lines that do not match the expected format are silently skipped.</returns>
     public static IReadOnlyList<DiagnosticDto> ParseBuildDiagnostics(string output)
     {
         var diagnostics = new List<DiagnosticDto>();
@@ -36,6 +44,13 @@ internal static partial class DotnetOutputParser
         return diagnostics;
     }
 
+    /// <summary>
+    /// Parses a TRX (Visual Studio Test Results) file produced by <c>dotnet test</c> into a
+    /// <see cref="TestRunResultDto"/>.
+    /// </summary>
+    /// <param name="execution">The command execution details to embed in the result.</param>
+    /// <param name="trxPath">The absolute path to the <c>.trx</c> file.</param>
+    /// <returns>A <see cref="TestRunResultDto"/> with counters and failure details. If the file does not exist, returns an empty result.</returns>
     public static TestRunResultDto ParseTestRun(
         CommandExecutionDto execution,
         string trxPath)

@@ -3,8 +3,19 @@ using Microsoft.CodeAnalysis;
 
 namespace Company.RoslynMcp.Roslyn.Helpers;
 
+/// <summary>
+/// Computes unified diffs between two Roslyn <see cref="Solution"/> snapshots.
+/// </summary>
 internal static class SolutionDiffHelper
 {
+    /// <summary>
+    /// Returns a <see cref="FileChangeDto"/> for each document that differs between
+    /// <paramref name="oldSolution"/> and <paramref name="newSolution"/>,
+    /// including added and removed documents.
+    /// </summary>
+    /// <param name="oldSolution">The baseline solution snapshot.</param>
+    /// <param name="newSolution">The modified solution snapshot to compare against.</param>
+    /// <param name="ct">Cancellation token.</param>
     public static async Task<IReadOnlyList<FileChangeDto>> ComputeChangesAsync(
         Solution oldSolution,
         Solution newSolution,

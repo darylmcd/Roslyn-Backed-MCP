@@ -1,5 +1,8 @@
 namespace Company.RoslynMcp.Core.Models;
 
+/// <summary>
+/// Represents a code symbol and its metadata, source location, and signature details.
+/// </summary>
 public sealed record SymbolDto(
     string Name,
     string FullyQualifiedName,

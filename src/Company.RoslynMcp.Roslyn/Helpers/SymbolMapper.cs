@@ -6,8 +6,18 @@ using Microsoft.CodeAnalysis.FindSymbols;
 
 namespace Company.RoslynMcp.Roslyn.Helpers;
 
+/// <summary>
+/// Maps Roslyn <see cref="ISymbol"/> instances and related types to their DTO representations.
+/// </summary>
 public static class SymbolMapper
 {
+    /// <summary>
+    /// Maps a Roslyn symbol to a <see cref="SymbolDto"/>, optionally resolving the project name
+    /// from the given solution and overriding the primary source location.
+    /// </summary>
+    /// <param name="symbol">The symbol to map.</param>
+    /// <param name="solution">The solution used to resolve the owning project, or <see langword="null"/> to skip project resolution.</param>
+    /// <param name="primaryLocation">An explicit source location to use, or <see langword="null"/> to pick the first source location from <paramref name="symbol"/>.</param>
     public static SymbolDto ToDto(ISymbol symbol, Solution? solution = null, Location? primaryLocation = null)
     {
         var location = primaryLocation ?? symbol.Locations.FirstOrDefault(l => l.IsInSource);
@@ -95,6 +105,13 @@ public static class SymbolMapper
             SetterAccessibility: setterAccessibility);
     }
 
+    /// <summary>
+    /// Maps a Roslyn <see cref="Location"/> to a <see cref="LocationDto"/>.
+    /// </summary>
+    /// <param name="location">The source location to map.</param>
+    /// <param name="containingSymbol">The symbol that contains this location, used to populate <see cref="LocationDto.ContainingMember"/>.</param>
+    /// <param name="previewText">A short preview of the source text at the location, or <see langword="null"/>.</param>
+    /// <param name="classification">An optional classification string (e.g., <c>Read</c>, <c>Write</c>).</param>
     public static LocationDto ToLocationDto(Location location, ISymbol? containingSymbol = null, string? previewText = null, string? classification = null)
     {
         var lineSpan = location.GetLineSpan();
@@ -109,6 +126,10 @@ public static class SymbolMapper
             Classification: classification);
     }
 
+    /// <summary>
+    /// Classifies a reference location as <c>Read</c>, <c>Write</c>, <c>ReadWrite</c>, <c>NameOf</c>,
+    /// <c>Attribute</c>, or <c>Other</c> based on the surrounding syntax context.
+    /// </summary>
     public static string ClassifyReferenceLocation(ReferenceLocation refLocation)
     {
         if (refLocation.IsImplicit)
@@ -166,6 +187,9 @@ public static class SymbolMapper
         return "Read";
     }
 
+    /// <summary>
+    /// Maps a Roslyn <see cref="Diagnostic"/> to a <see cref="DiagnosticDto"/>.
+    /// </summary>
     public static DiagnosticDto ToDiagnosticDto(Diagnostic diagnostic)
     {
         var lineSpan = diagnostic.Location.GetLineSpan();
