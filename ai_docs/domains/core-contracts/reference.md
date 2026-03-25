@@ -6,7 +6,7 @@ This domain covers DTOs, shared abstractions, and cross-layer contract boundarie
 
 ## Primary Location
 
-- `src/Company.RoslynMcp.Core/`
+- `src/RoslynMcp.Core/`
 
 ## Typical Changes
 

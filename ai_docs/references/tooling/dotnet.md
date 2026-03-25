@@ -4,7 +4,7 @@
 
 - Build: `dotnet build RoslynMcp.slnx --nologo`
 - Test: `dotnet test RoslynMcp.slnx --nologo`
-- Run host: `dotnet run --project src/Company.RoslynMcp.Host.Stdio`
+- Run host: `dotnet run --project src/RoslynMcp.Host.Stdio`
 - Verify release: `./eng/verify-release.ps1`
 
 ## Notes

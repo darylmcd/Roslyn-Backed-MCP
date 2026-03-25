@@ -33,7 +33,7 @@ A release is production-ready when all of the following are true:
 2. Review the generated publish hash manifest under `artifacts/manifests/`.
 3. Review dependency audit output from CI.
 4. Confirm `server_info` and `server_catalog` reflect the intended support tiers.
-5. Publish the host executable built from `src/Company.RoslynMcp.Host.Stdio`.
+5. Publish the host executable built from `src/RoslynMcp.Host.Stdio`.
 6. Confirm docs remain synchronized (`README.md`, `AGENTS.md`, and `docs/product-contract.md`) for any surface or tiering change.
 
 ## Agent Session Release Gate

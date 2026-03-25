@@ -6,7 +6,7 @@ This domain covers MCP host startup, tool/resource/prompt wiring, and protocol-s
 
 ## Primary Location
 
-- `src/Company.RoslynMcp.Host.Stdio/`
+- `src/RoslynMcp.Host.Stdio/`
 
 ## Typical Changes
 
