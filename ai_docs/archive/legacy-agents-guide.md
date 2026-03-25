@@ -22,11 +22,11 @@ This file is the fast-start operating guide for AI coding agents working in this
 |---|---|---|
 | understand support tiers and boundaries | `docs/product-contract.md` | `docs/` |
 | confirm release and compatibility gates | `docs/release-policy.md` | `docs/`, `eng/verify-release.ps1` |
-| navigate or analyze C# code semantically | stable symbol/diagnostic tools | `src/Company.RoslynMcp.Roslyn/` |
-| change host wrapper/catalog/prompt wiring | MCP tool/resource/prompt wrappers | `src/Company.RoslynMcp.Host.Stdio/` |
-| change DTOs or cross-layer contracts | boundary models/interfaces | `src/Company.RoslynMcp.Core/` |
-| perform multi-file/project mutation safely | preview-first experimental tools | `src/Company.RoslynMcp.Roslyn/`, `tests/Company.RoslynMcp.Tests/` |
-| validate behavior/regressions | integration and hardening tests | `tests/Company.RoslynMcp.Tests/` |
+| navigate or analyze C# code semantically | stable symbol/diagnostic tools | `src/RoslynMcp.Roslyn/` |
+| change host wrapper/catalog/prompt wiring | MCP tool/resource/prompt wrappers | `src/RoslynMcp.Host.Stdio/` |
+| change DTOs or cross-layer contracts | boundary models/interfaces | `src/RoslynMcp.Core/` |
+| perform multi-file/project mutation safely | preview-first experimental tools | `src/RoslynMcp.Roslyn/`, `tests/RoslynMcp.Tests/` |
+| validate behavior/regressions | integration and hardening tests | `tests/RoslynMcp.Tests/` |
 
 ## 1) Start Here In Every Session
 
@@ -38,10 +38,10 @@ This file is the fast-start operating guide for AI coding agents working in this
 
 ## 2) Repository Map
 
-- `src/Company.RoslynMcp.Host.Stdio/`: MCP host process, tool wrappers, catalog/resource/prompt wiring, startup and logging.
-- `src/Company.RoslynMcp.Core/`: contract DTOs, shared abstractions, preview-store contracts, cross-layer models.
-- `src/Company.RoslynMcp.Roslyn/`: Roslyn-backed workspace, diagnostics, symbols, refactorings, analysis, and execution services.
-- `tests/Company.RoslynMcp.Tests/`: integration and behavior tests for stable and experimental surfaces.
+- `src/RoslynMcp.Host.Stdio/`: MCP host process, tool wrappers, catalog/resource/prompt wiring, startup and logging.
+- `src/RoslynMcp.Core/`: contract DTOs, shared abstractions, preview-store contracts, cross-layer models.
+- `src/RoslynMcp.Roslyn/`: Roslyn-backed workspace, diagnostics, symbols, refactorings, analysis, and execution services.
+- `tests/RoslynMcp.Tests/`: integration and behavior tests for stable and experimental surfaces.
 - `samples/`: sample solutions used by integration tests and behavior validation.
 - `eng/verify-release.ps1`: release verification and publish/hash checks.
 - `publish/`: publish output and BuildHost runtime assets.
@@ -74,19 +74,19 @@ This file is the fast-start operating guide for AI coding agents working in this
 
 - Build: `dotnet build RoslynMcp.slnx --nologo`
 - Test: `dotnet test RoslynMcp.slnx --nologo`
-- Run host: `dotnet run --project src/Company.RoslynMcp.Host.Stdio`
+- Run host: `dotnet run --project src/RoslynMcp.Host.Stdio`
 - Verify release: `./eng/verify-release.ps1`
 
 ## 6) Where To Change What
 
 - Add or update MCP tool wrappers/catalog entries:
-  - `src/Company.RoslynMcp.Host.Stdio/`
+  - `src/RoslynMcp.Host.Stdio/`
 - Change DTO contract or cross-layer model behavior:
-  - `src/Company.RoslynMcp.Core/`
+  - `src/RoslynMcp.Core/`
 - Implement Roslyn semantic/refactoring logic:
-  - `src/Company.RoslynMcp.Roslyn/`
+  - `src/RoslynMcp.Roslyn/`
 - Validate behavior and guard regressions:
-  - `tests/Company.RoslynMcp.Tests/`
+  - `tests/RoslynMcp.Tests/`
 
 ## 7) Common Pitfalls
 

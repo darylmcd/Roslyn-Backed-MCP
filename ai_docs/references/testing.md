@@ -11,7 +11,7 @@
 
 ## Test Project
 
-- `tests/Company.RoslynMcp.Tests/`
+- `tests/RoslynMcp.Tests/`
 
 ## Guidance
 

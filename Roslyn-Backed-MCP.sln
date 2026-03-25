@@ -8,13 +8,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{5D20AA90-6969-D8BD-9DCD-8634F4692FDA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Company.RoslynMcp.Core", "src\Company.RoslynMcp.Core\Company.RoslynMcp.Core.csproj", "{00172063-E9E8-2869-EEF5-AF024669FB4D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynMcp.Core", "src\RoslynMcp.Core\RoslynMcp.Core.csproj", "{00172063-E9E8-2869-EEF5-AF024669FB4D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Company.RoslynMcp.Host.Stdio", "src\Company.RoslynMcp.Host.Stdio\Company.RoslynMcp.Host.Stdio.csproj", "{EF2A80F7-3DC2-D038-584A-BE130565D4E5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynMcp.Host.Stdio", "src\RoslynMcp.Host.Stdio\RoslynMcp.Host.Stdio.csproj", "{EF2A80F7-3DC2-D038-584A-BE130565D4E5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Company.RoslynMcp.Roslyn", "src\Company.RoslynMcp.Roslyn\Company.RoslynMcp.Roslyn.csproj", "{4D174A0C-069F-B610-3C30-9E655A648312}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynMcp.Roslyn", "src\RoslynMcp.Roslyn\RoslynMcp.Roslyn.csproj", "{4D174A0C-069F-B610-3C30-9E655A648312}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Company.RoslynMcp.Tests", "tests\Company.RoslynMcp.Tests\Company.RoslynMcp.Tests.csproj", "{0C0671EE-7019-A6EF-6376-E60DE40CD21E}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "RoslynMcp.Tests", "tests\RoslynMcp.Tests\RoslynMcp.Tests.csproj", "{0C0671EE-7019-A6EF-6376-E60DE40CD21E}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "SampleSolution", "SampleSolution", "{C517831E-AC2F-347A-3275-482B447AA3F0}"
 EndProject

@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $solutionPath = Join-Path $repoRoot "RoslynMcp.slnx"
-$hostProject = Join-Path $repoRoot "src\Company.RoslynMcp.Host.Stdio\Company.RoslynMcp.Host.Stdio.csproj"
+$hostProject = Join-Path $repoRoot "src\RoslynMcp.Host.Stdio\RoslynMcp.Host.Stdio.csproj"
 $publishDir = Join-Path $repoRoot "$OutputRoot\publish\host-stdio"
 $manifestDir = Join-Path $repoRoot "$OutputRoot\manifests"
 $hashManifestPath = Join-Path $manifestDir "host-stdio-sha256.txt"

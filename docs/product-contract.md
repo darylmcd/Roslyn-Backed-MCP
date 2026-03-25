@@ -81,7 +81,7 @@ Current experimental families:
 
 ## Ownership Map By Change Type
 
-- host/tool wrapper and catalog wiring changes: `src/Company.RoslynMcp.Host.Stdio/`
-- DTO and boundary contract changes: `src/Company.RoslynMcp.Core/`
-- Roslyn semantic/refactoring implementation changes: `src/Company.RoslynMcp.Roslyn/`
-- behavior validation and regression checks: `tests/Company.RoslynMcp.Tests/`
+- host/tool wrapper and catalog wiring changes: `src/RoslynMcp.Host.Stdio/`
+- DTO and boundary contract changes: `src/RoslynMcp.Core/`
+- Roslyn semantic/refactoring implementation changes: `src/RoslynMcp.Roslyn/`
+- behavior validation and regression checks: `tests/RoslynMcp.Tests/`

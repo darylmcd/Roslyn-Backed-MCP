@@ -63,11 +63,11 @@ Post-release candidates:
 Use these tracks to quickly identify where to implement follow-up work:
 
 - transport/hosting track:
-	- primary: `src/Company.RoslynMcp.Host.Stdio/`
+	- primary: `src/RoslynMcp.Host.Stdio/`
 	- future: additional host project for HTTP/SSE
 - semantic/refactoring engine track:
-	- primary: `src/Company.RoslynMcp.Roslyn/`
+	- primary: `src/RoslynMcp.Roslyn/`
 - contract/tiering track:
-	- primary: `src/Company.RoslynMcp.Core/`, `docs/product-contract.md`, `README.md`
+	- primary: `src/RoslynMcp.Core/`, `docs/product-contract.md`, `README.md`
 - hardening/release track:
-	- primary: `tests/Company.RoslynMcp.Tests/`, `eng/verify-release.ps1`, `docs/release-policy.md`
+	- primary: `tests/RoslynMcp.Tests/`, `eng/verify-release.ps1`, `docs/release-policy.md`

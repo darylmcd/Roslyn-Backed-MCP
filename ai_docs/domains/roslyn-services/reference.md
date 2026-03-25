@@ -6,7 +6,7 @@ This domain covers workspace loading, diagnostics, semantic navigation, and refa
 
 ## Primary Location
 
-- `src/Company.RoslynMcp.Roslyn/`
+- `src/RoslynMcp.Roslyn/`
 
 ## Typical Changes
 

@@ -2,10 +2,10 @@
 
 ## Layering
 
-- `src/Company.RoslynMcp.Host.Stdio/`: MCP host wrapper and registration surface.
-- `src/Company.RoslynMcp.Core/`: DTO contracts and cross-layer abstractions.
-- `src/Company.RoslynMcp.Roslyn/`: Roslyn-backed workspace and semantic/refactoring services.
-- `tests/Company.RoslynMcp.Tests/`: integration and behavior validation.
+- `src/RoslynMcp.Host.Stdio/`: MCP host wrapper and registration surface.
+- `src/RoslynMcp.Core/`: DTO contracts and cross-layer abstractions.
+- `src/RoslynMcp.Roslyn/`: Roslyn-backed workspace and semantic/refactoring services.
+- `tests/RoslynMcp.Tests/`: integration and behavior validation.
 
 ## Key Boundaries
 

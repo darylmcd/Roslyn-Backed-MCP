@@ -33,7 +33,7 @@ dotnet build RoslynMcp.slnx
 ### Run
 
 ```bash
-dotnet run --project src/Company.RoslynMcp.Host.Stdio
+dotnet run --project src/RoslynMcp.Host.Stdio
 ```
 
 ### Test
@@ -53,7 +53,7 @@ Add to `.cursor/mcp.json`:
   "mcpServers": {
     "roslyn-mcp": {
       "command": "dotnet",
-      "args": ["run", "--project", "C:\\path\\to\\src\\Company.RoslynMcp.Host.Stdio"]
+      "args": ["run", "--project", "C:\\path\\to\\src\\RoslynMcp.Host.Stdio"]
     }
   }
 }
@@ -68,7 +68,7 @@ Add to Claude Code MCP settings:
   "mcpServers": {
     "roslyn-mcp": {
       "command": "dotnet",
-      "args": ["run", "--project", "C:\\path\\to\\src\\Company.RoslynMcp.Host.Stdio"]
+      "args": ["run", "--project", "C:\\path\\to\\src\\RoslynMcp.Host.Stdio"]
     }
   }
 }
@@ -79,7 +79,7 @@ Add to Claude Code MCP settings:
 For better startup performance, publish first:
 
 ```bash
-dotnet publish src/Company.RoslynMcp.Host.Stdio -c Release -o ./publish
+dotnet publish src/RoslynMcp.Host.Stdio -c Release -o ./publish
 ```
 
 Then use the published executable:
@@ -88,7 +88,7 @@ Then use the published executable:
 {
   "mcpServers": {
     "roslyn-mcp": {
-      "command": "C:\\path\\to\\publish\\Company.RoslynMcp.Host.Stdio.exe"
+      "command": "C:\\path\\to\\publish\\RoslynMcp.Host.Stdio.exe"
     }
   }
 }
@@ -115,10 +115,10 @@ For a reproducible release build and publish verification:
 
 ## Project Map
 
-- `src/Company.RoslynMcp.Host.Stdio/`: host startup, MCP wrappers, tool/resource/prompt registration, logging.
-- `src/Company.RoslynMcp.Core/`: shared contracts, DTOs, interfaces, and preview-store abstractions.
-- `src/Company.RoslynMcp.Roslyn/`: Roslyn workspace, semantic analysis, diagnostics, refactoring, and execution services.
-- `tests/Company.RoslynMcp.Tests/`: integration and behavior coverage across stable and experimental surfaces.
+- `src/RoslynMcp.Host.Stdio/`: host startup, MCP wrappers, tool/resource/prompt registration, logging.
+- `src/RoslynMcp.Core/`: shared contracts, DTOs, interfaces, and preview-store abstractions.
+- `src/RoslynMcp.Roslyn/`: Roslyn workspace, semantic analysis, diagnostics, refactoring, and execution services.
+- `tests/RoslynMcp.Tests/`: integration and behavior coverage across stable and experimental surfaces.
 - `samples/`: fixture solutions used by tests for realistic workflows.
 - `eng/verify-release.ps1`: release verification path for publish and hashes.
 
@@ -176,11 +176,11 @@ The server exposes a larger surface than earlier versions of the README document
 
 ```
 src/
-  Company.RoslynMcp.Host.Stdio/    MCP stdio host (thin tool wrappers)
-  Company.RoslynMcp.Core/          DTOs, service interfaces, PreviewStore
-  Company.RoslynMcp.Roslyn/        Roslyn workspace/symbol/refactoring services
+  RoslynMcp.Host.Stdio/    MCP stdio host (thin tool wrappers)
+  RoslynMcp.Core/          DTOs, service interfaces, PreviewStore
+  RoslynMcp.Roslyn/        Roslyn workspace/symbol/refactoring services
 tests/
-  Company.RoslynMcp.Tests/         Unit + integration tests
+  RoslynMcp.Tests/         Unit + integration tests
 samples/
   SampleSolution/                  Multi-project test solution
 ```
