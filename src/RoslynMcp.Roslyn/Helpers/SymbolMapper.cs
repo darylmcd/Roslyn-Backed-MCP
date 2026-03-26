@@ -30,54 +30,11 @@ public static class SymbolMapper
             ? SymbolHandleSerializer.CreateHandle(symbol)
             : null;
 
-        string? returnType = symbol switch
-        {
-            IMethodSymbol m => m.ReturnType.ToDisplayString(),
-            IPropertySymbol p => p.Type.ToDisplayString(),
-            IFieldSymbol f => f.Type.ToDisplayString(),
-            IEventSymbol e => e.Type.ToDisplayString(),
-            _ => null
-        };
-
-        var parameters = symbol is IMethodSymbol method
-            ? method.Parameters.Select(p => $"{p.Type.ToDisplayString()} {p.Name}").ToList()
-            : null;
-
+        var returnType = GetReturnType(symbol);
+        var parameters = GetParameters(symbol);
         var modifiers = GetModifiers(symbol);
-
-        IReadOnlyList<string>? baseTypes = null;
-        IReadOnlyList<string>? interfaces = null;
-        if (symbol is INamedTypeSymbol namedType)
-        {
-            baseTypes = namedType.BaseType is not null && namedType.BaseType.SpecialType != SpecialType.System_Object
-                ? [namedType.BaseType.ToDisplayString()]
-                : null;
-            interfaces = namedType.Interfaces.Length > 0
-                ? namedType.Interfaces.Select(i => i.ToDisplayString()).ToList()
-                : null;
-        }
-
-        bool? hasGetter = null;
-        bool? hasSetter = null;
-        string? setterAccessibility = null;
-        if (symbol is IPropertySymbol prop)
-        {
-            hasGetter = prop.GetMethod is not null;
-            hasSetter = prop.SetMethod is not null;
-            if (prop.SetMethod is not null)
-            {
-                setterAccessibility = prop.SetMethod.IsInitOnly ? "init" : prop.SetMethod.DeclaredAccessibility switch
-                {
-                    Accessibility.Public => "public",
-                    Accessibility.Private => "private",
-                    Accessibility.Protected => "protected",
-                    Accessibility.Internal => "internal",
-                    Accessibility.ProtectedOrInternal => "protected internal",
-                    Accessibility.ProtectedAndInternal => "private protected",
-                    _ => "unknown"
-                };
-            }
-        }
+        var (baseTypes, interfaces) = GetTypeHierarchy(symbol);
+        var (hasGetter, hasSetter, setterAccessibility) = GetPropertyAccessors(symbol);
 
         return new SymbolDto(
             Name: symbol.Name,
@@ -105,6 +62,57 @@ public static class SymbolMapper
             SetterAccessibility: setterAccessibility);
     }
 
+    private static string? GetReturnType(ISymbol symbol) => symbol switch
+    {
+        IMethodSymbol m => m.ReturnType.ToDisplayString(),
+        IPropertySymbol p => p.Type.ToDisplayString(),
+        IFieldSymbol f => f.Type.ToDisplayString(),
+        IEventSymbol e => e.Type.ToDisplayString(),
+        _ => null
+    };
+
+    private static List<string>? GetParameters(ISymbol symbol) =>
+        symbol is IMethodSymbol method
+            ? method.Parameters.Select(p => $"{p.Type.ToDisplayString()} {p.Name}").ToList()
+            : null;
+
+    private static (IReadOnlyList<string>? BaseTypes, IReadOnlyList<string>? Interfaces) GetTypeHierarchy(ISymbol symbol)
+    {
+        if (symbol is not INamedTypeSymbol namedType)
+            return (null, null);
+
+        var baseTypes = namedType.BaseType is not null && namedType.BaseType.SpecialType != SpecialType.System_Object
+            ? [namedType.BaseType.ToDisplayString()]
+            : (IReadOnlyList<string>?)null;
+        var interfaces = namedType.Interfaces.Length > 0
+            ? namedType.Interfaces.Select(i => i.ToDisplayString()).ToList()
+            : (IReadOnlyList<string>?)null;
+        return (baseTypes, interfaces);
+    }
+
+    private static (bool? HasGetter, bool? HasSetter, string? SetterAccessibility) GetPropertyAccessors(ISymbol symbol)
+    {
+        if (symbol is not IPropertySymbol prop)
+            return (null, null, null);
+
+        string? setterAccessibility = null;
+        if (prop.SetMethod is not null)
+        {
+            setterAccessibility = prop.SetMethod.IsInitOnly ? "init" : prop.SetMethod.DeclaredAccessibility switch
+            {
+                Accessibility.Public => "public",
+                Accessibility.Private => "private",
+                Accessibility.Protected => "protected",
+                Accessibility.Internal => "internal",
+                Accessibility.ProtectedOrInternal => "protected internal",
+                Accessibility.ProtectedAndInternal => "private protected",
+                _ => "unknown"
+            };
+        }
+
+        return (prop.GetMethod is not null, prop.SetMethod is not null, setterAccessibility);
+    }
+
     /// <summary>
     /// Maps a Roslyn <see cref="Location"/> to a <see cref="LocationDto"/>.
     /// </summary>
@@ -130,61 +138,66 @@ public static class SymbolMapper
     /// Classifies a reference location as <c>Read</c>, <c>Write</c>, <c>ReadWrite</c>, <c>NameOf</c>,
     /// <c>Attribute</c>, or <c>Other</c> based on the surrounding syntax context.
     /// </summary>
+    private static readonly HashSet<SyntaxKind> CompoundAssignmentKinds =
+    [
+        SyntaxKind.AddAssignmentExpression,
+        SyntaxKind.SubtractAssignmentExpression,
+        SyntaxKind.MultiplyAssignmentExpression,
+        SyntaxKind.DivideAssignmentExpression,
+    ];
+
     public static string ClassifyReferenceLocation(ReferenceLocation refLocation)
     {
         if (refLocation.IsImplicit)
             return "Other";
 
-        var syntaxNode = refLocation.Location.SourceTree is not null
-            ? refLocation.Location.SourceTree
-                .GetRoot()
-                .FindNode(refLocation.Location.SourceSpan)
-            : null;
+        var syntaxNode = refLocation.Location.SourceTree?
+            .GetRoot()
+            .FindNode(refLocation.Location.SourceSpan);
 
         if (syntaxNode is null)
             return "Read";
 
-        // Check for nameof — InvocationExpressionSyntax with "nameof" as the expression
-        if (syntaxNode.Ancestors().OfType<InvocationExpressionSyntax>()
-            .Any(inv => inv.Expression is IdentifierNameSyntax id && id.Identifier.Text == "nameof"))
+        if (IsNameOfContext(syntaxNode))
             return "NameOf";
 
         if (syntaxNode.Ancestors().OfType<AttributeSyntax>().Any())
             return "Attribute";
 
-        // Check if this node is the left-hand side of an assignment
-        if (syntaxNode.Parent is AssignmentExpressionSyntax assignment && assignment.Left == syntaxNode)
-            return "Write";
+        return ClassifyByParentSyntax(syntaxNode);
+    }
 
-        if (syntaxNode.Parent is MemberAccessExpressionSyntax memberAccess &&
-            memberAccess.Parent is AssignmentExpressionSyntax memberAssignment &&
-            memberAssignment.Left == memberAccess)
-            return "Write";
+    private static bool IsNameOfContext(SyntaxNode node) =>
+        node.Ancestors().OfType<InvocationExpressionSyntax>()
+            .Any(inv => inv.Expression is IdentifierNameSyntax id && id.Identifier.Text == "nameof");
 
-        // Prefix/postfix increment or decrement counts as ReadWrite
-        if (syntaxNode.Parent is PrefixUnaryExpressionSyntax prefix &&
-            (prefix.IsKind(SyntaxKind.PreIncrementExpression) || prefix.IsKind(SyntaxKind.PreDecrementExpression)))
-            return "ReadWrite";
+    private static string ClassifyByParentSyntax(SyntaxNode node)
+    {
+        switch (node.Parent)
+        {
+            case AssignmentExpressionSyntax assignment when assignment.Left == node:
+                return CompoundAssignmentKinds.Contains(assignment.Kind()) ? "ReadWrite" : "Write";
 
-        if (syntaxNode.Parent is PostfixUnaryExpressionSyntax postfix &&
-            (postfix.IsKind(SyntaxKind.PostIncrementExpression) || postfix.IsKind(SyntaxKind.PostDecrementExpression)))
-            return "ReadWrite";
+            case MemberAccessExpressionSyntax memberAccess
+                when memberAccess.Parent is AssignmentExpressionSyntax memberAssignment
+                     && memberAssignment.Left == memberAccess:
+                return "Write";
 
-        // Compound assignment (+=, -=, etc.) is also ReadWrite
-        if (syntaxNode.Parent is AssignmentExpressionSyntax compoundAssignment &&
-            compoundAssignment.Left == syntaxNode &&
-            (compoundAssignment.IsKind(SyntaxKind.AddAssignmentExpression) ||
-             compoundAssignment.IsKind(SyntaxKind.SubtractAssignmentExpression) ||
-             compoundAssignment.IsKind(SyntaxKind.MultiplyAssignmentExpression) ||
-             compoundAssignment.IsKind(SyntaxKind.DivideAssignmentExpression)))
-            return "ReadWrite";
+            case PrefixUnaryExpressionSyntax prefix
+                when prefix.IsKind(SyntaxKind.PreIncrementExpression) || prefix.IsKind(SyntaxKind.PreDecrementExpression):
+                return "ReadWrite";
 
-        // ref or out argument
-        if (syntaxNode.Parent is ArgumentSyntax arg &&
-            (arg.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) || arg.RefKindKeyword.IsKind(SyntaxKind.OutKeyword)))
-            return "Write";
+            case PostfixUnaryExpressionSyntax postfix
+                when postfix.IsKind(SyntaxKind.PostIncrementExpression) || postfix.IsKind(SyntaxKind.PostDecrementExpression):
+                return "ReadWrite";
 
-        return "Read";
+            case ArgumentSyntax arg
+                when arg.RefKindKeyword.IsKind(SyntaxKind.RefKeyword) || arg.RefKindKeyword.IsKind(SyntaxKind.OutKeyword):
+                return "Write";
+
+            default:
+                return "Read";
+        }
     }
 
     /// <summary>

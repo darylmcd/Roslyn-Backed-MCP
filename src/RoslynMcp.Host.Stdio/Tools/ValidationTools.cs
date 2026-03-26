@@ -80,7 +80,7 @@ public static class ValidationTools
             }, ct));
     }
 
-    [McpServerTool(Name = "test_related", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find likely related tests for a symbol by source location or symbol handle")]
+    [McpServerTool(Name = "test_related", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find likely related tests for a symbol by source location or symbol handle. Results use heuristic name matching and may not be exhaustive.")]
     public static Task<string> FindRelatedTests(
         IWorkspaceExecutionGate gate,
         ITestDiscoveryService testDiscoveryService,
@@ -100,7 +100,7 @@ public static class ValidationTools
             }, ct));
     }
 
-    [McpServerTool(Name = "test_related_files", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Given a list of changed source file paths, find all related tests across the solution and return a combined dotnet test filter expression")]
+    [McpServerTool(Name = "test_related_files", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Given a list of changed source file paths, find all related tests across the solution and return a combined dotnet test filter expression. Results use heuristic name matching and may not be exhaustive.")]
     public static Task<string> FindRelatedTestsForFiles(
         IWorkspaceExecutionGate gate,
         ITestDiscoveryService testDiscoveryService,

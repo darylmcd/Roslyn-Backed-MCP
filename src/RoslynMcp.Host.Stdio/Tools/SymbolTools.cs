@@ -20,7 +20,7 @@ public static class SymbolTools
         [Description("Optional: filter by project name")] string? project = null,
         [Description("Optional: filter by symbol kind (Class, Method, Property, Field, Interface, etc.)")] string? kind = null,
         [Description("Optional: filter by namespace")] string? @namespace = null,
-        [Description("Maximum number of results to return (default: 20)")] int limit = 20,
+        [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
