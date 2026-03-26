@@ -34,7 +34,7 @@ public class ValidationIntegrationTests : TestBase
     [TestMethod]
     public async Task Test_Discover_Returns_Test_Methods_For_Test_Project()
     {
-        var discovery = await ValidationService.DiscoverTestsAsync(WorkspaceId, CancellationToken.None);
+        var discovery = await TestDiscoveryService.DiscoverTestsAsync(WorkspaceId, CancellationToken.None);
 
         Assert.IsTrue(discovery.TestProjects.Count > 0, "Expected at least one discovered test project.");
         var testProject = discovery.TestProjects.FirstOrDefault(project => project.ProjectName == "SampleLib.Tests");
@@ -46,7 +46,7 @@ public class ValidationIntegrationTests : TestBase
     [TestMethod]
     public async Task Build_Workspace_Returns_Structured_Success()
     {
-        var result = await ValidationService.BuildWorkspaceAsync(WorkspaceId, CancellationToken.None);
+        var result = await BuildService.BuildWorkspaceAsync(WorkspaceId, CancellationToken.None);
 
         Assert.IsTrue(result.Execution.Succeeded, result.Execution.StdErr);
         Assert.AreEqual(0, result.Execution.ExitCode);
@@ -56,7 +56,7 @@ public class ValidationIntegrationTests : TestBase
     [TestMethod]
     public async Task Test_Run_Returns_Structured_Success()
     {
-        var result = await ValidationService.RunTestsAsync(
+        var result = await TestRunnerService.RunTestsAsync(
             WorkspaceId,
             projectName: "SampleLib.Tests",
             filter: null,
@@ -73,7 +73,7 @@ public class ValidationIntegrationTests : TestBase
     {
         var buildFailureWorkspace = await WorkspaceManager.LoadAsync(BuildFailureSolutionPath, CancellationToken.None);
 
-        var result = await ValidationService.BuildWorkspaceAsync(buildFailureWorkspace.WorkspaceId, CancellationToken.None);
+        var result = await BuildService.BuildWorkspaceAsync(buildFailureWorkspace.WorkspaceId, CancellationToken.None);
 
         Assert.IsFalse(result.Execution.Succeeded, "Build should fail for the broken fixture.");
         Assert.IsTrue(result.Diagnostics.Any(diagnostic => diagnostic.Id == "CS0103"));
@@ -93,7 +93,7 @@ public class ValidationIntegrationTests : TestBase
             await File.WriteAllTextAsync(testFilePath, failingContents, CancellationToken.None);
 
             var copiedWorkspace = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            var result = await ValidationService.RunTestsAsync(
+            var result = await TestRunnerService.RunTestsAsync(
                 copiedWorkspace.WorkspaceId,
                 projectName: "SampleLib.Tests",
                 filter: null,

@@ -37,8 +37,8 @@ public static class CrossProjectRefactoringTools
             }, ct));
     }
 
-    [McpServerTool(Name = "extract_interface_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
-     Description("Preview extracting an interface from a type, optionally into another project in the loaded workspace.")]
+    [McpServerTool(Name = "extract_interface_cross_project_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     Description("Preview extracting an interface from a type into a different project in the loaded workspace. For same-project extraction, use extract_interface_preview instead.")]
     public static Task<string> PreviewExtractInterface(
         IWorkspaceExecutionGate gate,
         ICrossProjectRefactoringService crossProjectRefactoringService,

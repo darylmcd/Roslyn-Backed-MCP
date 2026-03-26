@@ -51,7 +51,7 @@ public static class AnalysisTools
     [McpServerTool(Name = "type_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the type hierarchy (base types, derived types, implemented interfaces) for a type at the given position")]
     public static Task<string> GetTypeHierarchy(
         IWorkspaceExecutionGate gate,
-        ISymbolService symbolService,
+        ISymbolRelationshipService symbolRelationshipService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
         [Description("Optional: 1-based line number")] int? line = null,
@@ -62,7 +62,7 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var result = await symbolService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
+                var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
                 if (result is null) throw new KeyNotFoundException("No type found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
@@ -71,7 +71,7 @@ public static class AnalysisTools
     [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of a method at the given position")]
     public static Task<string> GetCallersCallees(
         IWorkspaceExecutionGate gate,
-        ISymbolService symbolService,
+        ISymbolRelationshipService symbolRelationshipService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
         [Description("Optional: 1-based line number")] int? line = null,
@@ -82,7 +82,7 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var result = await symbolService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
+                var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
@@ -91,7 +91,7 @@ public static class AnalysisTools
     [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects")]
     public static Task<string> AnalyzeImpact(
         IWorkspaceExecutionGate gate,
-        ISymbolService symbolService,
+        IMutationAnalysisService mutationAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
         [Description("Optional: 1-based line number")] int? line = null,
@@ -102,7 +102,7 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var result = await symbolService.AnalyzeImpactAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
+                var result = await mutationAnalysisService.AnalyzeImpactAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
@@ -111,7 +111,7 @@ public static class AnalysisTools
     [McpServerTool(Name = "find_type_mutations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Heavy analysis: find all mutating members of a type (settable properties, methods that write instance state) and their external callers, classified as construction-phase vs post-construction callers")]
     public static Task<string> FindTypeMutations(
         IWorkspaceExecutionGate gate,
-        ISymbolService symbolService,
+        IMutationAnalysisService mutationAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: absolute path to the source file containing the type")] string? filePath = null,
         [Description("Optional: 1-based line number")] int? line = null,
@@ -123,7 +123,7 @@ public static class AnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
-                var result = await symbolService.FindTypeMutationsAsync(workspaceId, locator, c);
+                var result = await mutationAnalysisService.FindTypeMutationsAsync(workspaceId, locator, c);
                 if (result is null) throw new KeyNotFoundException("No named type found at the specified location");
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
@@ -132,7 +132,7 @@ public static class AnalysisTools
     [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all usages of a type across the solution, classified by role: MethodReturnType, MethodParameter, PropertyType, LocalVariable, FieldType, GenericArgument, BaseType, Cast, TypeCheck, ObjectCreation, or Other")]
     public static Task<string> FindTypeUsages(
         IWorkspaceExecutionGate gate,
-        ISymbolService symbolService,
+        IMutationAnalysisService mutationAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: absolute path to the source file containing the type")] string? filePath = null,
         [Description("Optional: 1-based line number")] int? line = null,
@@ -145,7 +145,7 @@ public static class AnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-                var results = await symbolService.FindTypeUsagesAsync(workspaceId, locator, c);
+                var results = await mutationAnalysisService.FindTypeUsagesAsync(workspaceId, locator, c);
                 var grouped = results
                     .GroupBy(u => u.Classification.ToString())
                     .ToDictionary(g => g.Key, g => g.ToList());

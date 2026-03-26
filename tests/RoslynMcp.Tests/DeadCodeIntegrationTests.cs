@@ -36,7 +36,7 @@ public sealed class DeadCodeIntegrationTests : TestBase
 
             var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
             var workspaceId = status.WorkspaceId;
-            var unusedSymbols = await AdvancedAnalysisService.FindUnusedSymbolsAsync(workspaceId, "SampleLib", includePublic: false, limit: 50, CancellationToken.None);
+            var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(workspaceId, "SampleLib", includePublic: false, limit: 50, CancellationToken.None);
             var unusedField = unusedSymbols.First(symbol => symbol.SymbolName == "UnusedTestOnlyMethod");
 
             var preview = await DeadCodeService.PreviewRemoveDeadCodeAsync(

@@ -27,7 +27,7 @@ public class SemanticExpansionTests : TestBase
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
         var shapeFile = solution.Projects.SelectMany(project => project.Documents).First(document => document.Name == "Shape.cs");
 
-        var overrides = await SymbolService.FindOverridesAsync(
+        var overrides = await ReferenceService.FindOverridesAsync(
             WorkspaceId,
             SymbolLocator.BySource(shapeFile.FilePath!, 7, 27),
             CancellationToken.None);
@@ -41,7 +41,7 @@ public class SemanticExpansionTests : TestBase
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
         var rectangleFile = solution.Projects.SelectMany(project => project.Documents).First(document => document.Name == "Rectangle.cs");
 
-        var baseMembers = await SymbolService.FindBaseMembersAsync(
+        var baseMembers = await ReferenceService.FindBaseMembersAsync(
             WorkspaceId,
             SymbolLocator.BySource(rectangleFile.FilePath!, 16, 28),
             CancellationToken.None);
@@ -55,7 +55,7 @@ public class SemanticExpansionTests : TestBase
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
         var shapeFile = solution.Projects.SelectMany(project => project.Documents).First(document => document.Name == "Shape.cs");
 
-        var hierarchy = await SymbolService.GetMemberHierarchyAsync(
+        var hierarchy = await SymbolRelationshipService.GetMemberHierarchyAsync(
             WorkspaceId,
             SymbolLocator.BySource(shapeFile.FilePath!, 7, 27),
             CancellationToken.None);
@@ -80,7 +80,7 @@ public class SemanticExpansionTests : TestBase
     public async Task Source_Generated_Documents_Are_Listed_For_Project()
     {
         var generatedWorkspace = await WorkspaceManager.LoadAsync(GeneratedDocumentSolutionPath, CancellationToken.None);
-        var buildResult = await ValidationService.BuildWorkspaceAsync(generatedWorkspace.WorkspaceId, CancellationToken.None);
+        var buildResult = await BuildService.BuildWorkspaceAsync(generatedWorkspace.WorkspaceId, CancellationToken.None);
         Assert.IsTrue(buildResult.Execution.Succeeded, buildResult.Execution.StdErr);
         var generatedDocuments = await WorkspaceManager.GetSourceGeneratedDocumentsAsync(
             generatedWorkspace.WorkspaceId,
@@ -97,7 +97,7 @@ public class SemanticExpansionTests : TestBase
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
         var animalServiceFile = solution.Projects.SelectMany(project => project.Documents).First(document => document.Name == "AnimalService.cs");
 
-        var signature = await SymbolService.GetSignatureHelpAsync(
+        var signature = await SymbolRelationshipService.GetSignatureHelpAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalServiceFile.FilePath!, 16, 17),
             CancellationToken.None);
@@ -113,7 +113,7 @@ public class SemanticExpansionTests : TestBase
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
         var animalFile = solution.Projects.SelectMany(project => project.Documents).First(document => document.Name == "IAnimal.cs");
 
-        var relationships = await SymbolService.GetSymbolRelationshipsAsync(
+        var relationships = await SymbolRelationshipService.GetSymbolRelationshipsAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalFile.FilePath!, 6, 12),
             CancellationToken.None);

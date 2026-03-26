@@ -14,7 +14,7 @@ public static class AdvancedAnalysisTools
      Description("Find symbols (types, methods, properties, fields) with zero references across the solution — helps identify dead code")]
     public static Task<string> FindUnusedSymbols(
         IWorkspaceExecutionGate gate,
-        IAdvancedAnalysisService analysisService,
+        IUnusedCodeAnalyzer unusedCodeAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? project = null,
         [Description("Include public symbols in the search (default: false, since public APIs may be consumed externally)")] bool includePublic = false,
@@ -24,7 +24,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var results = await analysisService.FindUnusedSymbolsAsync(workspaceId, project, includePublic, limit, c);
+                var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(workspaceId, project, includePublic, limit, c);
                 return JsonSerializer.Serialize(new { count = results.Count, unusedSymbols = results }, JsonOptions);
             }, ct));
     }
@@ -33,7 +33,7 @@ public static class AdvancedAnalysisTools
      Description("Scan the solution for dependency injection registrations (AddSingleton, AddScoped, AddTransient) and return the service-to-implementation mappings")]
     public static Task<string> GetDiRegistrations(
         IWorkspaceExecutionGate gate,
-        IAdvancedAnalysisService analysisService,
+        IDependencyAnalysisService dependencyAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? project = null,
         CancellationToken ct = default)
@@ -41,7 +41,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var results = await analysisService.GetDiRegistrationsAsync(workspaceId, project, c);
+                var results = await dependencyAnalysisService.GetDiRegistrationsAsync(workspaceId, project, c);
                 return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonOptions);
             }, ct));
     }
@@ -50,7 +50,7 @@ public static class AdvancedAnalysisTools
      Description("Calculate cyclomatic complexity, lines of code, nesting depth, and parameter count for methods in the workspace")]
     public static Task<string> GetComplexityMetrics(
         IWorkspaceExecutionGate gate,
-        IAdvancedAnalysisService analysisService,
+        ICodeMetricsService codeMetricsService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by source file path")] string? filePath = null,
         [Description("Optional: filter by project name")] string? project = null,
@@ -61,7 +61,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var results = await analysisService.GetComplexityMetricsAsync(workspaceId, filePath, project, minComplexity, limit, c);
+                var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, project, minComplexity, limit, c);
                 return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonOptions);
             }, ct));
     }
@@ -70,7 +70,7 @@ public static class AdvancedAnalysisTools
      Description("Find all reflection API usage in the solution (typeof, Type.GetMethod, Activator.CreateInstance, Assembly.Load, etc.)")]
     public static Task<string> FindReflectionUsages(
         IWorkspaceExecutionGate gate,
-        IAdvancedAnalysisService analysisService,
+        ICodePatternAnalyzer codePatternAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? project = null,
         CancellationToken ct = default)
@@ -78,7 +78,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var results = await analysisService.FindReflectionUsagesAsync(workspaceId, project, c);
+                var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, project, c);
                 var grouped = results.GroupBy(r => r.UsageKind)
                     .ToDictionary(g => g.Key, g => g.ToList());
                 return JsonSerializer.Serialize(new { count = results.Count, usagesByKind = grouped }, JsonOptions);
@@ -89,7 +89,7 @@ public static class AdvancedAnalysisTools
      Description("Get the namespace dependency graph and detect circular namespace dependencies in the solution")]
     public static Task<string> GetNamespaceDependencies(
         IWorkspaceExecutionGate gate,
-        IAdvancedAnalysisService analysisService,
+        IDependencyAnalysisService dependencyAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? project = null,
         CancellationToken ct = default)
@@ -97,7 +97,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var result = await analysisService.GetNamespaceDependenciesAsync(workspaceId, project, c);
+                var result = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, project, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
     }
@@ -106,14 +106,14 @@ public static class AdvancedAnalysisTools
      Description("List all NuGet package references across projects in the workspace, including which projects use each package")]
     public static Task<string> GetNuGetDependencies(
         IWorkspaceExecutionGate gate,
-        IAdvancedAnalysisService analysisService,
+        IDependencyAnalysisService dependencyAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var result = await analysisService.GetNuGetDependenciesAsync(workspaceId, c);
+                var result = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
     }
@@ -122,7 +122,7 @@ public static class AdvancedAnalysisTools
      Description("Search for symbols by semantic criteria. Supports natural language queries like 'async methods returning Task<bool>', 'classes implementing IDisposable', 'methods with more than 5 parameters', 'static methods', 'virtual properties', 'generic classes', etc.")]
     public static Task<string> SemanticSearch(
         IWorkspaceExecutionGate gate,
-        IAdvancedAnalysisService analysisService,
+        ICodePatternAnalyzer codePatternAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Semantic search query, e.g. 'async methods returning Task<bool>', 'classes implementing IDisposable', 'public static methods'")] string query,
         [Description("Optional: filter by project name")] string? project = null,
@@ -132,7 +132,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var results = await analysisService.SemanticSearchAsync(workspaceId, query, project, limit, c);
+                var results = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, project, limit, c);
                 return JsonSerializer.Serialize(new { count = results.Count, results }, JsonOptions);
             }, ct));
     }

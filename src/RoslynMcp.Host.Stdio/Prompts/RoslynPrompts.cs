@@ -89,7 +89,7 @@ public static class RoslynPrompts
     [Description("Generate a prompt to analyze code and suggest refactorings")]
     public static async Task<IEnumerable<PromptMessage>> SuggestRefactoring(
         IWorkspaceManager workspace,
-        ISymbolService symbolService,
+        ISymbolSearchService symbolSearchService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Absolute path to the source file")] string filePath,
         [Description("Optional: start line to focus on")] int? startLine = null,
@@ -102,7 +102,7 @@ public static class RoslynPrompts
             if (sourceText is null)
                 return [CreatePromptMessage($"File not found in workspace: {filePath}")];
 
-            var symbols = await symbolService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+            var symbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
             var symbolsSummary = JsonSerializer.Serialize(symbols, JsonOptions);
 
             string codeSection;
@@ -158,7 +158,7 @@ public static class RoslynPrompts
     [Description("Generate a prompt to perform a code review on a file")]
     public static async Task<IEnumerable<PromptMessage>> ReviewFile(
         IWorkspaceManager workspace,
-        ISymbolService symbolService,
+        ISymbolSearchService symbolSearchService,
         IDiagnosticService diagnosticService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Absolute path to the source file")] string filePath,
@@ -170,7 +170,7 @@ public static class RoslynPrompts
             if (sourceText is null)
                 return [CreatePromptMessage($"File not found in workspace: {filePath}")];
 
-            var symbols = await symbolService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+            var symbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
             var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, null, ct).ConfigureAwait(false);
 
             var symbolsSummary = JsonSerializer.Serialize(symbols, JsonOptions);
@@ -222,7 +222,7 @@ public static class RoslynPrompts
     [Description("Generate a prompt to analyze architecture and dependency structure of a workspace")]
     public static async Task<IEnumerable<PromptMessage>> AnalyzeDependencies(
         IWorkspaceManager workspace,
-        IAdvancedAnalysisService analysisService,
+        IDependencyAnalysisService dependencyAnalysisService,
         [Description("The workspace session identifier")] string workspaceId,
         CancellationToken ct = default)
     {
@@ -231,10 +231,10 @@ public static class RoslynPrompts
             var graph = workspace.GetProjectGraph(workspaceId);
             var graphJson = JsonSerializer.Serialize(graph, JsonOptions);
 
-            var namespaceDeps = await analysisService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
+            var namespaceDeps = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
             var namespaceDepsJson = JsonSerializer.Serialize(namespaceDeps, JsonOptions);
 
-            var nugetDeps = await analysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
+            var nugetDeps = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
             var nugetDepsJson = JsonSerializer.Serialize(nugetDeps, JsonOptions);
 
             return
@@ -276,7 +276,7 @@ public static class RoslynPrompts
     [McpServerPrompt(Name = "debug_test_failure")]
     [Description("Generate a prompt to diagnose test failures by running tests and analyzing the output")]
     public static async Task<IEnumerable<PromptMessage>> DebugTestFailure(
-        IValidationService validationService,
+        ITestRunnerService testRunnerService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Optional: specific test project name")] string? projectName = null,
         [Description("Optional: test filter expression to narrow which tests to run")] string? filter = null,
@@ -284,7 +284,7 @@ public static class RoslynPrompts
     {
         try
         {
-            var testResult = await validationService.RunTestsAsync(workspaceId, projectName, filter, ct).ConfigureAwait(false);
+            var testResult = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, ct).ConfigureAwait(false);
             var testResultJson = JsonSerializer.Serialize(testResult, JsonOptions);
 
             var failureSummary = testResult.Failures.Count > 0
@@ -438,7 +438,7 @@ public static class RoslynPrompts
     [McpServerPrompt(Name = "guided_package_migration")]
     [Description("Generate a prompt that walks a package migration across all affected projects.")]
     public static async Task<IEnumerable<PromptMessage>> GuidedPackageMigration(
-        IAdvancedAnalysisService analysisService,
+        IDependencyAnalysisService dependencyAnalysisService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Existing package id to replace")] string oldPackageId,
         [Description("Replacement package id")] string newPackageId,
@@ -447,7 +447,7 @@ public static class RoslynPrompts
     {
         try
         {
-            var dependencyResult = await analysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
+            var dependencyResult = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
             var matchingProjects = dependencyResult.Projects
                 .Where(project => project.PackageReferences.Any(reference => string.Equals(reference.PackageId, oldPackageId, StringComparison.OrdinalIgnoreCase)))
                 .Select(project => $"- {project.ProjectName}: {string.Join(", ", project.PackageReferences.Where(reference => string.Equals(reference.PackageId, oldPackageId, StringComparison.OrdinalIgnoreCase)).Select(reference => reference.Version))}")
@@ -483,7 +483,7 @@ public static class RoslynPrompts
     [Description("Generate a prompt that guides interface extraction and consumer updates across a solution.")]
     public static async Task<IEnumerable<PromptMessage>> GuidedExtractInterface(
         IWorkspaceManager workspace,
-        ISymbolService symbolService,
+        ISymbolSearchService symbolSearchService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Absolute path to the source file containing the target type")] string filePath,
         [Description("Name of the concrete type to extract an interface from")] string typeName,
@@ -498,7 +498,7 @@ public static class RoslynPrompts
                 return [CreatePromptMessage($"File not found in workspace: {filePath}")];
             }
 
-            var documentSymbols = await symbolService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+            var documentSymbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
             var projectGraph = workspace.GetProjectGraph(workspaceId);
 
             return
@@ -660,14 +660,14 @@ public static class RoslynPrompts
     [McpServerPrompt(Name = "dead_code_audit")]
     [Description("Generate a prompt that guides a dead code audit using unused symbol detection and removal tools.")]
     public static async Task<IEnumerable<PromptMessage>> DeadCodeAudit(
-        IAdvancedAnalysisService analysisService,
+        IUnusedCodeAnalyzer unusedCodeAnalyzer,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
         try
         {
-            var unused = await analysisService.FindUnusedSymbolsAsync(workspaceId, projectName, includePublic: false, limit: 50, ct).ConfigureAwait(false);
+            var unused = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(workspaceId, projectName, includePublic: false, limit: 50, ct).ConfigureAwait(false);
             var unusedSummary = unused.Take(20).Select(u =>
                 $"- `{u.SymbolName}` ({u.SymbolKind}) in {u.FilePath}:{u.Line} — {u.ContainingType ?? "top-level"}").ToArray();
 
@@ -708,14 +708,14 @@ public static class RoslynPrompts
     [McpServerPrompt(Name = "review_test_coverage")]
     [Description("Generate a prompt that guides a test coverage review using test discovery, execution, and coverage tools.")]
     public static async Task<IEnumerable<PromptMessage>> ReviewTestCoverage(
-        IValidationService validationService,
+        ITestDiscoveryService testDiscoveryService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Optional: specific test project name")] string? projectName = null,
         CancellationToken ct = default)
     {
         try
         {
-            var discovered = await validationService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
+            var discovered = await testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
             var discoveredJson = JsonSerializer.Serialize(discovered, JsonOptions);
 
             return
@@ -757,14 +757,14 @@ public static class RoslynPrompts
     [McpServerPrompt(Name = "review_complexity")]
     [Description("Generate a prompt that guides a complexity review to identify and address high-complexity code.")]
     public static async Task<IEnumerable<PromptMessage>> ReviewComplexity(
-        IAdvancedAnalysisService analysisService,
+        ICodeMetricsService codeMetricsService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
         try
         {
-            var metrics = await analysisService.GetComplexityMetricsAsync(workspaceId, filePath: null, projectFilter: projectName, minComplexity: 5, limit: 50, ct).ConfigureAwait(false);
+            var metrics = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath: null, projectFilter: projectName, minComplexity: 5, limit: 50, ct).ConfigureAwait(false);
             var metricsJson = JsonSerializer.Serialize(metrics, JsonOptions);
 
             return
@@ -799,6 +799,110 @@ public static class RoslynPrompts
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return [CreateErrorMessage("review_complexity", ex)];
+        }
+    }
+
+    [McpServerPrompt(Name = "cohesion_analysis")]
+    [Description("Generate a prompt that guides SRP analysis using cohesion metrics, identifies extraction candidates, and plans type splits")]
+    public static async Task<IEnumerable<PromptMessage>> CohesionAnalysis(
+        ICohesionAnalysisService cohesionAnalysisService,
+        [Description("The workspace session identifier")] string workspaceId,
+        [Description("Optional: filter by project name")] string? projectName = null,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var metrics = await cohesionAnalysisService.GetCohesionMetricsAsync(
+                workspaceId, filePath: null, projectFilter: projectName, minMethods: 3, limit: 20, ct).ConfigureAwait(false);
+            var metricsJson = JsonSerializer.Serialize(metrics, JsonOptions);
+
+            return
+            [
+                CreatePromptMessage($"""
+                    Perform an SRP (Single Responsibility Principle) analysis using cohesion metrics.
+
+                    **Project Filter:** {projectName ?? "(entire workspace)"}
+
+                    **LCOM4 Cohesion Metrics (types with 3+ instance methods):**
+                    ```json
+                    {metricsJson}
+                    ```
+
+                    **How to interpret LCOM4:**
+                    - **Score = 1**: Perfectly cohesive — all methods share state. No SRP issue.
+                    - **Score = 2**: Two independent clusters — the type likely has two responsibilities.
+                    - **Score >= 3**: Multiple independent clusters — strong SRP violation, prime extraction candidate.
+
+                    **Recommended workflow for types with LCOM4 > 1:**
+                    1. Call `find_shared_members` on the type to identify private members used by multiple public methods.
+                       Shared members complicate extraction — they may need to be duplicated or extracted into a helper.
+                    2. Call `find_consumers` on the type to understand who depends on it and how (constructor, field, parameter).
+                       This determines the blast radius of splitting the type.
+                    3. Use `extract_type_preview` to move one cluster's methods into a new focused type.
+                    4. Use `extract_type_apply` to commit the extraction.
+                    5. Optionally use `extract_interface_preview` to create an interface for the new type.
+                    6. Use `bulk_replace_type_preview` to update consumers from the concrete type to the interface.
+                    7. Call `build_workspace` to verify compilation after each step.
+                    8. Call `test_related_files` and `test_run` to verify behavior.
+
+                    Focus on types with the highest LCOM4 scores first — these have the most independent responsibilities.
+                    """)
+            ];
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return [CreateErrorMessage("cohesion_analysis", ex)];
+        }
+    }
+
+    [McpServerPrompt(Name = "consumer_impact")]
+    [Description("Generate a prompt that analyzes the consumer/dependency graph for a type to assess the impact of refactoring it")]
+    public static async Task<IEnumerable<PromptMessage>> ConsumerImpact(
+        IConsumerAnalysisService consumerAnalysisService,
+        [Description("The workspace session identifier")] string workspaceId,
+        [Description("Absolute path to the source file")] string filePath,
+        [Description("1-based line number")] int line,
+        [Description("1-based column number")] int column,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var locator = Core.Models.SymbolLocator.BySource(filePath, line, column);
+            var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, ct).ConfigureAwait(false);
+            if (result is null) return [CreatePromptMessage("No symbol found at the specified location.")];
+
+            var resultJson = JsonSerializer.Serialize(result, JsonOptions);
+
+            return
+            [
+                CreatePromptMessage($"""
+                    Analyze the consumer/dependency graph for this type and assess refactoring impact.
+
+                    **Consumer Analysis Results:**
+                    ```json
+                    {resultJson}
+                    ```
+
+                    **How to use this data:**
+                    - **Constructor dependencies** indicate strong coupling — these consumers instantiate or receive the type via DI.
+                    - **Field dependencies** indicate persistent coupling — the consumer stores and reuses the type.
+                    - **Parameter dependencies** indicate transient coupling — the consumer only uses the type temporarily.
+                    - **BaseType dependencies** indicate inheritance coupling — breaking changes are high-risk.
+
+                    **Recommended next steps:**
+                    1. If planning to extract an interface: call `extract_interface_preview` to create the interface.
+                    2. Then use `bulk_replace_type_preview` with scope='parameters' to update consumers to use the interface.
+                    3. For constructor-injected consumers, update their DI registrations.
+                    4. Call `build_workspace` after each step to verify.
+                    5. Use `impact_analysis` for additional reference-level detail on specific members.
+
+                    **Risk assessment:** Types with many Constructor + Field consumers are the hardest to refactor safely.
+                    """)
+            ];
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return [CreateErrorMessage("consumer_impact", ex)];
         }
     }
 
@@ -890,8 +994,8 @@ public static class RoslynPrompts
     private static bool MatchesPromptCategory(string promptName, string searchCategory) =>
         searchCategory switch
         {
-            "refactoring" => promptName is "suggest_refactoring" or "refactor_and_validate" or "guided_extract_interface",
-            "analysis" => promptName is "analyze_dependencies" or "review_complexity",
+            "refactoring" => promptName is "suggest_refactoring" or "refactor_and_validate" or "guided_extract_interface" or "cohesion_analysis" or "consumer_impact",
+            "analysis" => promptName is "analyze_dependencies" or "review_complexity" or "cohesion_analysis" or "consumer_impact",
             "security" => promptName is "security_review" or "review_file",
             "testing" => promptName is "debug_test_failure" or "review_test_coverage",
             "editing" => promptName is "fix_all_diagnostics",
@@ -908,13 +1012,17 @@ public static class RoslynPrompts
                 - **Code Action Flow**: `get_code_actions` → `preview_code_action` → `apply_code_action` → `build_workspace`
                 - **Rename Flow**: `rename_preview` → `rename_apply` → `build_workspace` → `test_run`
                 - **Curated Fix Flow**: `diagnostic_details` → `code_fix_preview` → `code_fix_apply` → `build_workspace`
-                - **Extract Interface**: `extract_and_wire_interface_preview` → `apply_composite_preview` → `build_workspace`
+                - **Extract Interface**: `extract_interface_preview` → `extract_interface_apply` → `bulk_replace_type_preview` → `bulk_replace_type_apply`
+                - **Extract Type (SRP)**: `get_cohesion_metrics` → `find_shared_members` → `extract_type_preview` → `extract_type_apply`
+                - **Move Type to File**: `move_type_to_file_preview` → `move_type_to_file_apply`
                 """,
             "analysis" => """
                 - **Diagnostic Analysis**: `project_diagnostics` → `diagnostic_details` → `code_fix_preview`
                 - **Architecture Review**: `project_graph` + `get_namespace_dependencies` + `get_nuget_dependencies`
                 - **Complexity Review**: `get_complexity_metrics` → identify hotspots → `get_code_actions`
                 - **Impact Assessment**: `impact_analysis` → `find_references` → `callers_callees`
+                - **SRP / Cohesion Analysis**: `get_cohesion_metrics` → `find_shared_members` → `extract_type_preview`
+                - **Consumer Analysis**: `find_consumers` → understand dependency kinds → plan interface extraction
                 """,
             "security" => """
                 - **Security Audit**: `security_analyzer_status` → `security_diagnostics` → `diagnostic_details` → `code_fix_preview` → `code_fix_apply`

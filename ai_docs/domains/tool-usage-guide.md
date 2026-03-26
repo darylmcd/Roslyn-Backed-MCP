@@ -1,0 +1,102 @@
+# Tool Usage Guide for AI Agents
+
+This document helps AI agents choose the right tools and workflows for common tasks.
+Call `discover_capabilities` with a category to get contextual guidance, or use `server_info` for a full capability overview.
+
+## Quick Decision Tree
+
+**"I need to understand code"** → Start with `symbol_search`, `symbol_info`, `go_to_definition`, `document_symbols`
+
+**"I need to find who uses X"** → `find_references` (single symbol), `find_references_bulk` (multiple), `find_consumers` (type-level dependency analysis)
+
+**"I need to assess change impact"** → `impact_analysis` (reference-level), `find_consumers` (type-level with dependency kinds)
+
+**"I need to check code quality"** → `get_complexity_metrics` (method complexity), `get_cohesion_metrics` (type cohesion/SRP), `find_unused_symbols` (dead code)
+
+**"I need to refactor a type"** → See [SRP Refactoring Workflow](#srp-refactoring-workflow) below
+
+**"I need to fix errors"** → `project_diagnostics` → `diagnostic_details` → `code_fix_preview` → `code_fix_apply`
+
+**"I need to build/test"** → `build_workspace` (compile), `test_run` (run tests), `test_related_files` (targeted tests after changes)
+
+## Tool Categories
+
+### Navigation & Search (read-only)
+| Tool | When to Use |
+|------|-------------|
+| `symbol_search` | Find symbols by name pattern across the workspace |
+| `symbol_info` | Get detailed metadata for a symbol at a location |
+| `go_to_definition` | Navigate to where a symbol is declared |
+| `goto_type_definition` | Navigate to the type of a variable/parameter/field |
+| `document_symbols` | Get all declarations in a file as a hierarchical tree |
+| `enclosing_symbol` | Find which method/type a cursor position is inside |
+| `get_completions` | Get IntelliSense completions at a position |
+
+### Reference Analysis (read-only)
+| Tool | When to Use |
+|------|-------------|
+| `find_references` | Find all usages of a single symbol |
+| `find_references_bulk` | Find usages for up to 50 symbols at once |
+| `find_implementations` | Find concrete implementations of an interface/abstract member |
+| `find_overrides` | Find overrides of a virtual/abstract member |
+| `find_base_members` | Find the base members a symbol overrides or implements |
+| `member_hierarchy` | Combined view of base + override chain for a member |
+| `symbol_relationships` | Combined view of definitions, references, implementations, and overrides |
+| `find_consumers` | Find all types depending on a type/interface, classified by dependency kind |
+| `find_property_writes` | Find all locations where a property is assigned |
+| `find_type_usages` | Find all usages of a type, classified by role (parameter, field, return type, etc.) |
+
+### Quality & Metrics (read-only)
+| Tool | When to Use |
+|------|-------------|
+| `get_complexity_metrics` | Cyclomatic complexity, nesting depth, LOC, parameter count |
+| `get_cohesion_metrics` | LCOM4 cohesion score with method cluster breakdown (SRP analysis) |
+| `find_shared_members` | Private members used by multiple public methods (extraction planning) |
+| `find_unused_symbols` | Symbols with zero references (dead code candidates) |
+| `impact_analysis` | References, affected declarations, affected projects for a symbol |
+| `find_type_mutations` | Mutating members and their external callers |
+
+### Structural Refactoring (preview/apply)
+| Tool | When to Use |
+|------|-------------|
+| `extract_type_preview/apply` | Move selected members into a new type (SRP refactoring) |
+| `extract_interface_preview/apply` | Create an interface from a type's public members |
+| `bulk_replace_type_preview/apply` | Replace all references to one type with another |
+| `move_type_to_file_preview/apply` | Move a type from a multi-type file to its own file |
+| `rename_preview/apply` | Rename a symbol across the solution |
+| `split_class_preview` | Split a class into a new partial file |
+
+## SRP Refactoring Workflow
+
+The recommended workflow for Single Responsibility Principle refactoring:
+
+```
+1. ANALYZE:  get_cohesion_metrics  → Find types with LCOM4 > 1
+2. PLAN:     find_shared_members   → Identify extraction dependencies
+3. ASSESS:   find_consumers        → Understand blast radius
+4. EXTRACT:  extract_type_preview  → Preview the member extraction
+5. APPLY:    extract_type_apply    → Execute the extraction
+6. ABSTRACT: extract_interface_preview → Create interface for the new type (optional)
+7. MIGRATE:  bulk_replace_type_preview → Update consumers to use interface (optional)
+8. VERIFY:   build_workspace       → Check compilation
+9. TEST:     test_related_files    → Run affected tests
+```
+
+Use the `cohesion_analysis` prompt for a guided version of this workflow.
+
+## Preview/Apply Pattern
+
+Most write operations follow a two-step pattern:
+
+1. **Preview** (`*_preview`) — Returns a diff and a `previewToken`. Inspect the changes.
+2. **Apply** (`*_apply`) — Pass the `previewToken` to commit changes. Tokens expire after ~15 minutes.
+
+If the workspace changes between preview and apply, the token becomes stale and the apply will fail.
+Always call `build_workspace` after applying changes.
+
+## Error Recovery
+
+- **"Preview token is stale"** — The workspace changed since the preview. Re-run the preview.
+- **"Workspace is not loaded"** — Call `workspace_load` first.
+- **"Symbol not found"** — Verify file path and line/column. Use `symbol_search` to find the correct location.
+- **Build failures after refactoring** — Check `project_diagnostics` for the specific errors, then use `code_fix_preview` for automated fixes.
