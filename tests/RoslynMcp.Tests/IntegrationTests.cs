@@ -70,21 +70,21 @@ public class IntegrationTests : TestBase
     [TestMethod]
     public async Task Symbol_Search_Finds_Dog()
     {
-        var results = await SymbolService.SearchSymbolsAsync(WorkspaceId, "Dog", null, null, null, 10, CancellationToken.None);
+        var results = await SymbolSearchService.SearchSymbolsAsync(WorkspaceId, "Dog", null, null, null, 10, CancellationToken.None);
         Assert.IsTrue(results.Any(s => s.Name == "Dog"), "Dog class not found");
     }
 
     [TestMethod]
     public async Task Symbol_Search_Finds_IAnimal()
     {
-        var results = await SymbolService.SearchSymbolsAsync(WorkspaceId, "IAnimal", null, null, null, 10, CancellationToken.None);
+        var results = await SymbolSearchService.SearchSymbolsAsync(WorkspaceId, "IAnimal", null, null, null, 10, CancellationToken.None);
         Assert.IsTrue(results.Any(s => s.Name == "IAnimal"), "IAnimal interface not found");
     }
 
     [TestMethod]
     public async Task Symbol_Search_With_Kind_Filter()
     {
-        var results = await SymbolService.SearchSymbolsAsync(WorkspaceId, "Dog", null, "Class", null, 10, CancellationToken.None);
+        var results = await SymbolSearchService.SearchSymbolsAsync(WorkspaceId, "Dog", null, "Class", null, 10, CancellationToken.None);
         Assert.IsTrue(results.All(s => s.Kind == "Class"));
         Assert.IsTrue(results.Any(s => s.Name == "Dog"));
     }
@@ -92,7 +92,7 @@ public class IntegrationTests : TestBase
     [TestMethod]
     public async Task Symbol_Info_Supports_Metadata_Name_Lookup()
     {
-        var result = await SymbolService.GetSymbolInfoAsync(
+        var result = await SymbolSearchService.GetSymbolInfoAsync(
             WorkspaceId,
             SymbolLocator.ByMetadataName("SampleLib.Dog"),
             CancellationToken.None);
@@ -111,7 +111,7 @@ public class IntegrationTests : TestBase
             .FirstOrDefault(d => d.Name == "IAnimal.cs");
         Assert.IsNotNull(animalFile, "IAnimal.cs not found");
 
-        var definitions = await SymbolService.GoToDefinitionAsync(
+        var definitions = await SymbolNavigationService.GoToDefinitionAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalFile.FilePath!, 5, 12),
             CancellationToken.None);
@@ -127,14 +127,14 @@ public class IntegrationTests : TestBase
             .FirstOrDefault(d => d.Name == "IAnimal.cs");
         Assert.IsNotNull(animalFile, "IAnimal.cs not found");
 
-        var symbol = await SymbolService.GetSymbolInfoAsync(
+        var symbol = await SymbolSearchService.GetSymbolInfoAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalFile.FilePath!, 6, 12),
             CancellationToken.None);
         Assert.IsNotNull(symbol);
         Assert.IsFalse(string.IsNullOrWhiteSpace(symbol.SymbolHandle));
 
-        var refs = await SymbolService.FindReferencesAsync(
+        var refs = await ReferenceService.FindReferencesAsync(
             WorkspaceId,
             SymbolLocator.ByHandle(symbol.SymbolHandle!),
             CancellationToken.None);
@@ -150,7 +150,7 @@ public class IntegrationTests : TestBase
             .FirstOrDefault(d => d.Name == "IAnimal.cs");
         Assert.IsNotNull(animalFile, "IAnimal.cs not found");
 
-        var implementations = await SymbolService.FindImplementationsAsync(
+        var implementations = await ReferenceService.FindImplementationsAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalFile.FilePath!, 3, 18),
             CancellationToken.None);
@@ -166,7 +166,7 @@ public class IntegrationTests : TestBase
             .FirstOrDefault(d => d.Name == "Dog.cs");
         Assert.IsNotNull(dogFile, "Dog.cs not found");
 
-        var symbols = await SymbolService.GetDocumentSymbolsAsync(WorkspaceId, dogFile.FilePath!, CancellationToken.None);
+        var symbols = await SymbolSearchService.GetDocumentSymbolsAsync(WorkspaceId, dogFile.FilePath!, CancellationToken.None);
         Assert.IsTrue(symbols.Count > 0, "No symbols found");
 
         var dogClass = symbols.FirstOrDefault(s => s.Name == "Dog");
@@ -184,7 +184,7 @@ public class IntegrationTests : TestBase
             .FirstOrDefault(d => d.Name == "Shape.cs");
         Assert.IsNotNull(shapeFile, "Shape.cs not found");
 
-        var hierarchy = await SymbolService.GetTypeHierarchyAsync(
+        var hierarchy = await SymbolRelationshipService.GetTypeHierarchyAsync(
             WorkspaceId,
             SymbolLocator.BySource(shapeFile.FilePath!, 3, 23),
             CancellationToken.None);
@@ -213,7 +213,7 @@ public class IntegrationTests : TestBase
             .FirstOrDefault(d => d.Name == "AnimalService.cs");
         Assert.IsNotNull(serviceFile, "AnimalService.cs not found");
 
-        var result = await SymbolService.GetCallersCalleesAsync(
+        var result = await SymbolRelationshipService.GetCallersCalleesAsync(
             WorkspaceId,
             SymbolLocator.BySource(serviceFile.FilePath!, 16, 17),
             CancellationToken.None);
@@ -230,7 +230,7 @@ public class IntegrationTests : TestBase
             .FirstOrDefault(d => d.Name == "IAnimal.cs");
         Assert.IsNotNull(animalFile, "IAnimal.cs not found");
 
-        var result = await SymbolService.AnalyzeImpactAsync(
+        var result = await MutationAnalysisService.AnalyzeImpactAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalFile.FilePath!, 6, 12),
             CancellationToken.None);

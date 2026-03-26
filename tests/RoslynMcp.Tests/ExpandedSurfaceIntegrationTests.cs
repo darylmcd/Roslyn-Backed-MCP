@@ -69,7 +69,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
     {
         var namespaceJson = await AdvancedAnalysisTools.GetNamespaceDependencies(
             WorkspaceExecutionGate,
-            AdvancedAnalysisService,
+            DependencyAnalysisService,
             WorkspaceId,
             project: "SampleLib",
             CancellationToken.None);
@@ -78,7 +78,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
 
         var complexityJson = await AdvancedAnalysisTools.GetComplexityMetrics(
             WorkspaceExecutionGate,
-            AdvancedAnalysisService,
+            CodeMetricsService,
             WorkspaceId,
             filePath: null,
             project: "SampleLib",
@@ -106,7 +106,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
         var filePath = FindDocumentPath("AnimalService.cs");
         var reviewMessages = (await RoslynPrompts.ReviewFile(
             WorkspaceManager,
-            SymbolService,
+            SymbolSearchService,
             DiagnosticService,
             WorkspaceId,
             filePath,
@@ -119,7 +119,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
 
         var dependencyMessages = (await RoslynPrompts.AnalyzeDependencies(
             WorkspaceManager,
-            AdvancedAnalysisService,
+            DependencyAnalysisService,
             WorkspaceId,
             CancellationToken.None)).ToList();
         Assert.AreEqual(1, dependencyMessages.Count);

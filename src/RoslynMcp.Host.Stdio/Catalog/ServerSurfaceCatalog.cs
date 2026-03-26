@@ -96,7 +96,7 @@ public static class ServerSurfaceCatalog
         Tool("remove_dead_code_preview", "dead-code", "experimental", true, false, "Preview removing unused symbols by handle."),
         Tool("remove_dead_code_apply", "dead-code", "experimental", false, true, "Apply a previously previewed dead-code removal operation."),
         Tool("move_type_to_project_preview", "cross-project-refactoring", "experimental", true, false, "Preview moving a type declaration into another project."),
-        Tool("extract_interface_preview", "cross-project-refactoring", "experimental", true, false, "Preview extracting an interface from a concrete type."),
+        Tool("extract_interface_cross_project_preview", "cross-project-refactoring", "experimental", true, false, "Preview extracting an interface from a concrete type into a different project."),
         Tool("dependency_inversion_preview", "cross-project-refactoring", "experimental", true, false, "Preview extracting an interface and updating constructor dependencies."),
         Tool("migrate_package_preview", "orchestration", "experimental", true, false, "Preview migrating a package across affected projects."),
         Tool("split_class_preview", "orchestration", "experimental", true, false, "Preview splitting a class into a new partial file."),
@@ -109,7 +109,20 @@ public static class ServerSurfaceCatalog
         Tool("apply_code_action", "code-actions", "experimental", false, true, "Apply a previously previewed Roslyn code action."),
 
         Tool("security_diagnostics", "security", "stable", true, false, "Return security-relevant diagnostics with OWASP categorization and fix hints."),
-        Tool("security_analyzer_status", "security", "stable", true, false, "Check which security analyzer packages are present and recommend missing ones.")
+        Tool("security_analyzer_status", "security", "stable", true, false, "Check which security analyzer packages are present and recommend missing ones."),
+
+        Tool("find_consumers", "analysis", "experimental", true, false, "Find all types that depend on a given type or interface, classified by dependency kind."),
+        Tool("get_cohesion_metrics", "analysis", "experimental", true, false, "Measure type cohesion via LCOM4 metrics, identifying independent method clusters."),
+        Tool("find_shared_members", "analysis", "experimental", true, false, "Find private members used by multiple public methods to inform type extractions."),
+
+        Tool("move_type_to_file_preview", "refactoring", "experimental", true, false, "Preview moving a type declaration into its own file."),
+        Tool("move_type_to_file_apply", "refactoring", "experimental", false, true, "Apply a previewed move-type-to-file refactoring. Removes the type from the source file and creates its own dedicated file."),
+        Tool("extract_interface_preview", "refactoring", "experimental", true, false, "Preview extracting an interface from a concrete type within the same project. Optionally replaces concrete type references with the interface."),
+        Tool("extract_interface_apply", "refactoring", "experimental", false, true, "Apply a previewed interface extraction. Creates the interface file, updates the type's base list, and applies usage replacements if requested."),
+        Tool("bulk_replace_type_preview", "refactoring", "experimental", true, false, "Preview replacing all references to one type with another across the solution. Scope can be 'parameters', 'fields', or 'all'. Useful after extracting an interface."),
+        Tool("bulk_replace_type_apply", "refactoring", "experimental", false, true, "Apply a previewed bulk type replacement. Updates all matching type references and adds using directives where needed."),
+        Tool("extract_type_preview", "refactoring", "experimental", true, false, "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
+        Tool("extract_type_apply", "refactoring", "experimental", false, true, "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type.")
     ];
 
     public static IReadOnlyList<SurfaceEntry> Resources { get; } =
@@ -137,7 +150,9 @@ public static class ServerSurfaceCatalog
         Prompt("discover_capabilities", "prompts", "experimental", true, false, "Generate a prompt to discover relevant server tools and workflows for a task category."),
         Prompt("dead_code_audit", "prompts", "experimental", true, false, "Generate a prompt for dead code audit using unused symbol detection and removal."),
         Prompt("review_test_coverage", "prompts", "experimental", true, false, "Generate a prompt for test coverage review and gap identification."),
-        Prompt("review_complexity", "prompts", "experimental", true, false, "Generate a prompt for complexity review and refactoring opportunities.")
+        Prompt("review_complexity", "prompts", "experimental", true, false, "Generate a prompt for complexity review and refactoring opportunities."),
+        Prompt("cohesion_analysis", "prompts", "experimental", true, false, "Generate a prompt for SRP analysis using LCOM4 cohesion metrics with guided type extraction workflow."),
+        Prompt("consumer_impact", "prompts", "experimental", true, false, "Generate a prompt analyzing the consumer/dependency graph for a type to assess refactoring impact.")
     ];
 
     public static SurfaceSummary GetSummary()
@@ -162,7 +177,11 @@ public static class ServerSurfaceCatalog
         new("Change Validation", ["test_related_files", "test_run"], "Find tests related to changed files, then run them."),
         new("Dead Code Cleanup", ["find_unused_symbols", "remove_dead_code_preview", "remove_dead_code_apply", "build_workspace"], "Find unused symbols, preview removal, apply, then verify build."),
         new("Package Migration", ["migrate_package_preview", "apply_composite_preview", "build_workspace"], "Preview migrating a package across projects, apply, then verify."),
-        new("Coverage Analysis", ["test_discover", "test_coverage", "scaffold_test_preview", "scaffold_test_apply"], "Discover tests, run coverage, scaffold new tests for gaps.")
+        new("Coverage Analysis", ["test_discover", "test_coverage", "scaffold_test_preview", "scaffold_test_apply"], "Discover tests, run coverage, scaffold new tests for gaps."),
+        new("SRP Analysis & Type Extraction", ["get_cohesion_metrics", "find_shared_members", "extract_type_preview", "extract_type_apply", "build_workspace"], "Identify types with multiple responsibilities via LCOM4 metrics, find shared private members that complicate extraction, preview and apply the extraction, then verify the build."),
+        new("Consumer Impact Analysis", ["find_consumers", "find_references_bulk", "impact_analysis"], "Find all types that depend on a type or interface, understand dependency kinds (constructor, field, parameter, base type), then assess change impact."),
+        new("Interface Extraction & Migration", ["extract_interface_preview", "extract_interface_apply", "bulk_replace_type_preview", "bulk_replace_type_apply", "build_workspace"], "Extract an interface from a concrete type, then bulk-replace all parameter/field references to use the interface instead. Verify with build."),
+        new("Type Organization", ["move_type_to_file_preview", "move_type_to_file_apply", "build_workspace"], "Move types from multi-type files into their own dedicated files for better code organization.")
     ];
 
     public static ServerCatalogDto CreateDocument()

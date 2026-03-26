@@ -14,20 +14,20 @@ public sealed class OrchestrationService : IOrchestrationService
     private readonly ICompositePreviewStore _compositePreviewStore;
     private readonly IPreviewStore _previewStore;
     private readonly ICrossProjectRefactoringService _crossProjectRefactoringService;
-    private readonly IAdvancedAnalysisService _advancedAnalysisService;
+    private readonly IDependencyAnalysisService _dependencyAnalysisService;
 
     public OrchestrationService(
         IWorkspaceManager workspace,
         ICompositePreviewStore compositePreviewStore,
         IPreviewStore previewStore,
         ICrossProjectRefactoringService crossProjectRefactoringService,
-        IAdvancedAnalysisService advancedAnalysisService)
+        IDependencyAnalysisService dependencyAnalysisService)
     {
         _workspace = workspace;
         _compositePreviewStore = compositePreviewStore;
         _previewStore = previewStore;
         _crossProjectRefactoringService = crossProjectRefactoringService;
-        _advancedAnalysisService = advancedAnalysisService;
+        _dependencyAnalysisService = dependencyAnalysisService;
     }
 
     public async Task<RefactoringPreviewDto> PreviewMigratePackageAsync(
@@ -225,7 +225,7 @@ public sealed class OrchestrationService : IOrchestrationService
 
         if (updateDiRegistrations)
         {
-            var registrations = await _advancedAnalysisService.GetDiRegistrationsAsync(workspaceId, null, ct).ConfigureAwait(false);
+            var registrations = await _dependencyAnalysisService.GetDiRegistrationsAsync(workspaceId, null, ct).ConfigureAwait(false);
             var candidateFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var registration in registrations.Where(registration =>
                          string.Equals(ShortTypeName(registration.ImplementationType), typeName, StringComparison.Ordinal) ||

@@ -64,7 +64,7 @@ public sealed class HardeningBehaviorTests : TestBase
         try
         {
             await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-                ValidationService.FindRelatedTestsForFilesAsync(status.WorkspaceId, excessivePaths, 100, CancellationToken.None));
+                TestDiscoveryService.FindRelatedTestsForFilesAsync(status.WorkspaceId, excessivePaths, 100, CancellationToken.None));
         }
         finally
         {
@@ -75,10 +75,10 @@ public sealed class HardeningBehaviorTests : TestBase
     [TestMethod]
     public async Task ValidationService_TimesOutLongRunningCommands()
     {
-        var service = new ValidationService(
+        var service = new BuildService(
             new FakeWorkspaceManager(),
             new HangingDotnetCommandRunner(),
-            NullLogger<ValidationService>.Instance,
+            NullLogger<BuildService>.Instance,
             new ValidationServiceOptions
             {
                 BuildTimeout = TimeSpan.FromMilliseconds(50),

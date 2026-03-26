@@ -23,13 +23,22 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IProjectMutationPreviewStore, ProjectMutationPreviewStore>();
         services.AddSingleton<ICompositePreviewStore, CompositePreviewStore>();
         services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
-        services.AddSingleton<ISymbolService, SymbolService>();
+        services.AddSingleton<ISymbolNavigationService, SymbolNavigationService>();
+        services.AddSingleton<ISymbolSearchService, SymbolSearchService>();
+        services.AddSingleton<IReferenceService, ReferenceService>();
+        services.AddSingleton<ISymbolRelationshipService, SymbolRelationshipService>();
+        services.AddSingleton<IMutationAnalysisService, MutationAnalysisService>();
         services.AddSingleton<IDiagnosticService, DiagnosticService>();
-        services.AddSingleton<IValidationService, ValidationService>();
+        services.AddSingleton<IBuildService, BuildService>();
+        services.AddSingleton<ITestRunnerService, TestRunnerService>();
+        services.AddSingleton<ITestDiscoveryService, TestDiscoveryService>();
         services.AddSingleton<IRefactoringService, RefactoringService>();
         services.AddSingleton<ICompletionService, CompletionService>();
         services.AddSingleton<ICodeActionService, CodeActionService>();
-        services.AddSingleton<IAdvancedAnalysisService, AdvancedAnalysisService>();
+        services.AddSingleton<IUnusedCodeAnalyzer, UnusedCodeAnalyzer>();
+        services.AddSingleton<ICodeMetricsService, CodeMetricsService>();
+        services.AddSingleton<IDependencyAnalysisService, DependencyAnalysisService>();
+        services.AddSingleton<ICodePatternAnalyzer, CodePatternAnalyzer>();
         services.AddSingleton<IEditService, EditService>();
         services.AddSingleton<IFileOperationService, FileOperationService>();
         services.AddSingleton<IProjectMutationService, ProjectMutationService>();
@@ -40,6 +49,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISyntaxService, SyntaxService>();
         services.AddSingleton<IFileWatcherService, FileWatcherService>();
         services.AddSingleton<ISecurityDiagnosticService, SecurityDiagnosticService>();
+        services.AddSingleton<IConsumerAnalysisService, ConsumerAnalysisService>();
+        services.AddSingleton<ICohesionAnalysisService, CohesionAnalysisService>();
+        services.AddSingleton<ITypeMoveService, TypeMoveService>();
+        services.AddSingleton<IInterfaceExtractionService, InterfaceExtractionService>();
+        services.AddSingleton<IBulkRefactoringService, BulkRefactoringService>();
+        services.AddSingleton<ITypeExtractionService, TypeExtractionService>();
         return services;
     }
 }

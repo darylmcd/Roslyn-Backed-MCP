@@ -3,7 +3,24 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <RootNamespace>RoslynMcp.Host.Stdio</RootNamespace>
+
+    <!-- dotnet tool packaging -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>roslynmcp</ToolCommandName>
+    <PackageId>RoslynMcp</PackageId>
+    <PackageDescription>Roslyn-backed MCP server providing semantic C# analysis for AI coding agents</PackageDescription>
+    <Authors>darylmcd</Authors>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/darylmcd/Roslyn-Backed-MCP</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/darylmcd/Roslyn-Backed-MCP</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>mcp;roslyn;csharp;code-analysis;ai</PackageTags>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="ModelContextProtocol" />

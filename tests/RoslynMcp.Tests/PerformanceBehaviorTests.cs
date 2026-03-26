@@ -66,17 +66,17 @@ public class PerformanceBehaviorTests : TestBase
     {
         var workspaceManager = new FakeWorkspaceManager();
         var commandRunner = new BlockingDotnetCommandRunner();
-        var validationService = new ValidationService(
+        var buildService = new BuildService(
             workspaceManager,
             commandRunner,
-            NullLogger<ValidationService>.Instance);
+            NullLogger<BuildService>.Instance);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
 
-        var firstTask = validationService.BuildWorkspaceAsync("workspace-a", cts.Token);
+        var firstTask = buildService.BuildWorkspaceAsync("workspace-a", cts.Token);
         await commandRunner.FirstInvocationStarted.Task;
 
-        var secondTask = validationService.BuildWorkspaceAsync("workspace-a", cts.Token);
+        var secondTask = buildService.BuildWorkspaceAsync("workspace-a", cts.Token);
         await Task.Delay(150, cts.Token);
 
         Assert.AreEqual(1, commandRunner.MaxConcurrentCalls);

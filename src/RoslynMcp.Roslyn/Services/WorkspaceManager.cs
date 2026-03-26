@@ -353,69 +353,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return fullPath;
     }
 
-    private static IReadOnlyList<string> GetTargetFrameworks(XDocument? document)
-    {
-        if (document is null)
-        {
-            return ["unknown"];
-        }
-
-        var targetFramework = document.Descendants("TargetFramework").Select(element => element.Value.Trim());
-        var targetFrameworks = document.Descendants("TargetFrameworks")
-            .SelectMany(element => element.Value
-                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        var allFrameworks = targetFramework.Concat(targetFrameworks).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        return allFrameworks.Count > 0 ? allFrameworks : ["unknown"];
-    }
-
-    private static bool IsTestProject(XDocument? document)
-    {
-        if (document is null)
-        {
-            return false;
-        }
-
-        var isTestProject = document.Descendants("IsTestProject").FirstOrDefault()?.Value;
-        return bool.TryParse(isTestProject, out var parsed) && parsed;
-    }
-
-    private static string GetOutputType(XDocument? document)
-    {
-        return document?.Descendants("OutputType").FirstOrDefault()?.Value.Trim() ?? "Library";
-    }
-
-    private static string GetAssemblyName(Project project)
-    {
-        if (project.CompilationOptions?.AssemblyIdentityComparer is not null && !string.IsNullOrWhiteSpace(project.AssemblyName))
-        {
-            return project.AssemblyName;
-        }
-
-        return project.Name;
-    }
-
-    private static XDocument? LoadProjectDocument(string? projectFilePath)
-    {
-        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
-        {
-            return null;
-        }
-
-        try
-        {
-            return XDocument.Load(projectFilePath);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
     private static ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution)
     {
         return solution.Projects.Select(project =>
         {
-            var projectDoc = LoadProjectDocument(project.FilePath);
+            var projectDoc = Helpers.ProjectMetadataParser.LoadProjectDocument(project.FilePath);
             return new ProjectStatusDto(
                 Name: project.Name,
                 FilePath: project.FilePath ?? "unknown",
@@ -423,10 +365,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 ProjectReferences: project.ProjectReferences
                     .Select(reference => solution.GetProject(reference.ProjectId)?.Name ?? "unknown")
                     .ToList(),
-                TargetFrameworks: GetTargetFrameworks(projectDoc),
-                IsTestProject: IsTestProject(projectDoc),
-                AssemblyName: GetAssemblyName(project),
-                OutputType: GetOutputType(projectDoc));
+                TargetFrameworks: Helpers.ProjectMetadataParser.GetTargetFrameworks(projectDoc),
+                IsTestProject: Helpers.ProjectMetadataParser.IsTestProject(projectDoc),
+                AssemblyName: Helpers.ProjectMetadataParser.GetAssemblyName(project),
+                OutputType: Helpers.ProjectMetadataParser.GetOutputType(projectDoc));
         }).ToImmutableArray();
     }
 

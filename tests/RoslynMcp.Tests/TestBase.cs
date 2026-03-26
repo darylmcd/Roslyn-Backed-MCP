@@ -13,13 +13,22 @@ public abstract class TestBase
 
     protected static IPreviewStore PreviewStore { get; private set; } = null!;
     protected static WorkspaceManager WorkspaceManager { get; private set; } = null!;
-    protected static SymbolService SymbolService { get; private set; } = null!;
+    protected static SymbolNavigationService SymbolNavigationService { get; private set; } = null!;
+    protected static SymbolSearchService SymbolSearchService { get; private set; } = null!;
+    protected static ReferenceService ReferenceService { get; private set; } = null!;
+    protected static SymbolRelationshipService SymbolRelationshipService { get; private set; } = null!;
+    protected static MutationAnalysisService MutationAnalysisService { get; private set; } = null!;
     protected static DiagnosticService DiagnosticService { get; private set; } = null!;
     protected static RefactoringService RefactoringService { get; private set; } = null!;
-    protected static ValidationService ValidationService { get; private set; } = null!;
+    protected static BuildService BuildService { get; private set; } = null!;
+    protected static TestRunnerService TestRunnerService { get; private set; } = null!;
+    protected static TestDiscoveryService TestDiscoveryService { get; private set; } = null!;
     protected static CompletionService CompletionService { get; private set; } = null!;
     protected static CodeActionService CodeActionService { get; private set; } = null!;
-    protected static AdvancedAnalysisService AdvancedAnalysisService { get; private set; } = null!;
+    protected static UnusedCodeAnalyzer UnusedCodeAnalyzer { get; private set; } = null!;
+    protected static CodeMetricsService CodeMetricsService { get; private set; } = null!;
+    protected static DependencyAnalysisService DependencyAnalysisService { get; private set; } = null!;
+    protected static CodePatternAnalyzer CodePatternAnalyzer { get; private set; } = null!;
     protected static EditService EditService { get; private set; } = null!;
     protected static FileOperationService FileOperationService { get; private set; } = null!;
     protected static ProjectMutationService ProjectMutationService { get; private set; } = null!;
@@ -53,9 +62,22 @@ public abstract class TestBase
             NullLogger<WorkspaceManager>.Instance,
             PreviewStore,
             new FileWatcherService(NullLogger<FileWatcherService>.Instance));
-        SymbolService = new SymbolService(
+        SymbolNavigationService = new SymbolNavigationService(
             WorkspaceManager,
-            NullLogger<SymbolService>.Instance);
+            NullLogger<SymbolNavigationService>.Instance);
+        SymbolSearchService = new SymbolSearchService(
+            WorkspaceManager,
+            NullLogger<SymbolSearchService>.Instance);
+        ReferenceService = new ReferenceService(
+            WorkspaceManager,
+            NullLogger<ReferenceService>.Instance);
+        MutationAnalysisService = new MutationAnalysisService(
+            WorkspaceManager,
+            NullLogger<MutationAnalysisService>.Instance);
+        SymbolRelationshipService = new SymbolRelationshipService(
+            WorkspaceManager,
+            ReferenceService,
+            NullLogger<SymbolRelationshipService>.Instance);
         DiagnosticService = new DiagnosticService(
             WorkspaceManager,
             NullLogger<DiagnosticService>.Instance);
@@ -63,10 +85,17 @@ public abstract class TestBase
             WorkspaceManager,
             PreviewStore,
             NullLogger<RefactoringService>.Instance);
-        ValidationService = new ValidationService(
+        BuildService = new BuildService(
             WorkspaceManager,
             DotnetCommandRunner,
-            NullLogger<ValidationService>.Instance);
+            NullLogger<BuildService>.Instance);
+        TestRunnerService = new TestRunnerService(
+            WorkspaceManager,
+            DotnetCommandRunner,
+            NullLogger<TestRunnerService>.Instance);
+        TestDiscoveryService = new TestDiscoveryService(
+            WorkspaceManager,
+            NullLogger<TestDiscoveryService>.Instance);
         CompletionService = new CompletionService(
             WorkspaceManager,
             NullLogger<CompletionService>.Instance);
@@ -74,9 +103,18 @@ public abstract class TestBase
             WorkspaceManager,
             PreviewStore,
             NullLogger<CodeActionService>.Instance);
-        AdvancedAnalysisService = new AdvancedAnalysisService(
+        UnusedCodeAnalyzer = new UnusedCodeAnalyzer(
             WorkspaceManager,
-            NullLogger<AdvancedAnalysisService>.Instance);
+            NullLogger<UnusedCodeAnalyzer>.Instance);
+        CodeMetricsService = new CodeMetricsService(
+            WorkspaceManager,
+            NullLogger<CodeMetricsService>.Instance);
+        DependencyAnalysisService = new DependencyAnalysisService(
+            WorkspaceManager,
+            NullLogger<DependencyAnalysisService>.Instance);
+        CodePatternAnalyzer = new CodePatternAnalyzer(
+            WorkspaceManager,
+            NullLogger<CodePatternAnalyzer>.Instance);
         EditService = new EditService(
             WorkspaceManager,
             NullLogger<EditService>.Instance);
@@ -96,7 +134,7 @@ public abstract class TestBase
             new CompositePreviewStore(),
             PreviewStore,
             CrossProjectRefactoringService,
-            AdvancedAnalysisService);
+            DependencyAnalysisService);
         ScaffoldingService = new ScaffoldingService(
             WorkspaceManager,
             FileOperationService);
