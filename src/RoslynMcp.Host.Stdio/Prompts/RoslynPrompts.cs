@@ -195,7 +195,7 @@ public static class RoslynPrompts
 
                     **Source Code:**
                     ```csharp
-                    {sourceText}
+                    {TruncateSourceLines(sourceText, 500)}
                     ```
 
                     Review the code for:
@@ -229,13 +229,13 @@ public static class RoslynPrompts
         try
         {
             var graph = workspace.GetProjectGraph(workspaceId);
-            var graphJson = JsonSerializer.Serialize(graph, JsonOptions);
+            var graphJson = SerializeTruncatedList(graph.Projects, 50, JsonOptions);
 
             var namespaceDeps = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
-            var namespaceDepsJson = JsonSerializer.Serialize(namespaceDeps, JsonOptions);
+            var namespaceDepsJson = SerializeTruncatedList(namespaceDeps.Edges, 100, JsonOptions);
 
             var nugetDeps = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
-            var nugetDepsJson = JsonSerializer.Serialize(nugetDeps, JsonOptions);
+            var nugetDepsJson = SerializeTruncatedList(nugetDeps.Packages, 50, JsonOptions);
 
             return
             [
@@ -716,7 +716,12 @@ public static class RoslynPrompts
         try
         {
             var discovered = await testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
-            var discoveredJson = JsonSerializer.Serialize(discovered, JsonOptions);
+            var totalTests = discovered.TestProjects.Sum(p => p.Tests.Count);
+            var truncatedProjects = discovered.TestProjects.Select(p =>
+                new Core.Models.TestProjectDto(p.ProjectName, p.ProjectFilePath, p.Tests.Take(200 / Math.Max(1, discovered.TestProjects.Count)).ToList())).ToList();
+            var discoveredJson = JsonSerializer.Serialize(new Core.Models.TestDiscoveryDto(truncatedProjects), JsonOptions);
+            if (totalTests > 200)
+                discoveredJson += $"\n[Showing ~200 of {totalTests} test cases]";
 
             return
             [
@@ -871,7 +876,7 @@ public static class RoslynPrompts
             var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, ct).ConfigureAwait(false);
             if (result is null) return [CreatePromptMessage("No symbol found at the specified location.")];
 
-            var resultJson = JsonSerializer.Serialize(result, JsonOptions);
+            var resultJson = SerializeTruncatedList(result.Consumers, 50, JsonOptions);
 
             return
             [
@@ -904,6 +909,24 @@ public static class RoslynPrompts
         {
             return [CreateErrorMessage("consumer_impact", ex)];
         }
+    }
+
+    // ── Truncation Helpers ──
+
+    private static string TruncateSourceLines(string source, int maxLines)
+    {
+        var lines = source.Split('\n');
+        if (lines.Length <= maxLines) return source;
+        return string.Join('\n', lines.Take(maxLines)) + $"\n// ... [{lines.Length - maxLines} more lines truncated]";
+    }
+
+    private static string SerializeTruncatedList<T>(IReadOnlyList<T> items, int max, JsonSerializerOptions options)
+    {
+        if (items.Count <= max)
+            return JsonSerializer.Serialize(items, options);
+
+        var json = JsonSerializer.Serialize(items.Take(max).ToList(), options);
+        return json + $"\n[Showing {max} of {items.Count} items]";
     }
 
     // ── Helpers ──

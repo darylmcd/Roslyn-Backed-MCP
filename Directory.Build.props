@@ -7,4 +7,7 @@
     <LangVersion>latest</LangVersion>
     <Version>0.10.0</Version>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SecurityCodeScan.VS2019" PrivateAssets="all" />
+  </ItemGroup>
 </Project>
