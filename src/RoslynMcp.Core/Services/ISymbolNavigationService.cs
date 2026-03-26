@@ -2,6 +2,10 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Core.Services;
 
+/// <summary>
+/// Navigates to symbol definitions and type definitions, and resolves the enclosing symbol
+/// at a given source position.
+/// </summary>
 public interface ISymbolNavigationService
 {
     Task<IReadOnlyList<LocationDto>> GoToDefinitionAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);

@@ -2,6 +2,10 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Core.Services;
 
+/// <summary>
+/// Provides combined summaries of type hierarchy, member hierarchy, symbol relationships,
+/// signature help, and caller/callee analysis for a symbol.
+/// </summary>
 public interface ISymbolRelationshipService
 {
     Task<TypeHierarchyDto?> GetTypeHierarchyAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
