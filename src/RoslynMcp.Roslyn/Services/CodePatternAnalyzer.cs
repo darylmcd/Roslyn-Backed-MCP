@@ -171,98 +171,107 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         return symbol?.ToDisplayString();
     }
 
+    private static readonly Dictionary<string, Func<ISymbol, bool>> KeywordPredicates = new(StringComparer.Ordinal)
+    {
+        ["async"]     = s => s is IMethodSymbol m && m.IsAsync,
+        ["abstract"]  = s => s.IsAbstract,
+        ["virtual"]   = s => s.IsVirtual,
+        ["sealed"]    = s => s.IsSealed,
+        ["method"]    = s => s is IMethodSymbol { MethodKind: MethodKind.Ordinary },
+        ["interface"] = s => s is INamedTypeSymbol { TypeKind: TypeKind.Interface },
+        ["propert"]   = s => s is IPropertySymbol,
+        ["field"]     = s => s is IFieldSymbol,
+        ["generic"]   = s => s is INamedTypeSymbol { IsGenericType: true } or IMethodSymbol { IsGenericMethod: true },
+    };
+
+    private static readonly Dictionary<string, Accessibility> AccessibilityKeywords = new(StringComparer.Ordinal)
+    {
+        ["public"]    = Accessibility.Public,
+        ["private"]   = Accessibility.Private,
+        ["internal"]  = Accessibility.Internal,
+        ["protected"] = Accessibility.Protected,
+    };
+
     private static List<Func<ISymbol, bool>> ParseSemanticQuery(string query)
     {
         var predicates = new List<Func<ISymbol, bool>>();
         var q = query.ToLowerInvariant().Trim();
 
-        // Pattern: "async methods" or "async"
-        if (q.Contains("async"))
-            predicates.Add(s => s is IMethodSymbol m && m.IsAsync);
-
-        // Pattern: "returning Task<bool>" or "returns Task<"
-        if (q.Contains("returning ") || q.Contains("returns "))
+        // Simple keyword predicates from the lookup table
+        foreach (var (keyword, predicate) in KeywordPredicates)
         {
-            var returnTypeStart = q.IndexOf("returning ", StringComparison.Ordinal);
-            if (returnTypeStart < 0) returnTypeStart = q.IndexOf("returns ", StringComparison.Ordinal);
-            if (returnTypeStart >= 0)
+            if (q.Contains(keyword))
             {
-                var afterKeyword = q[(q.IndexOf(' ', returnTypeStart) + 1)..].Trim();
-                // Take until next space or end
-                var returnType = afterKeyword.Split(' ', ',')[0].Trim();
-                predicates.Add(s => s is IMethodSymbol m &&
-                    m.ReturnType.ToDisplayString().Contains(returnType, StringComparison.OrdinalIgnoreCase));
+                // "static" needs a guard against "non-static"
+                if (keyword == "async" || keyword == "abstract" || keyword == "virtual" || keyword == "sealed" ||
+                    keyword == "method" || keyword == "interface" || keyword == "propert" || keyword == "field" ||
+                    keyword == "generic")
+                {
+                    // "class" handled separately due to "classes implementing" guard
+                    predicates.Add(predicate);
+                }
             }
         }
 
-        // Pattern: "implementing IDisposable"
-        if (q.Contains("implementing "))
-        {
-            var ifaceName = q[(q.IndexOf("implementing ", StringComparison.Ordinal) + 13)..].Trim().Split(' ', ',')[0];
-            predicates.Add(s => s is INamedTypeSymbol t &&
-                t.AllInterfaces.Any(i => i.Name.Equals(ifaceName, StringComparison.OrdinalIgnoreCase) ||
-                    i.ToDisplayString().Contains(ifaceName, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        // Pattern: "abstract methods" or "abstract classes"
-        if (q.Contains("abstract"))
-            predicates.Add(s => s.IsAbstract);
-
-        // Pattern: "static methods" or "static"
+        // "static" with guard against "non-static"
         if (q.Contains("static") && !q.Contains("non-static"))
             predicates.Add(s => s.IsStatic);
 
-        // Pattern: "virtual"
-        if (q.Contains("virtual"))
-            predicates.Add(s => s.IsVirtual);
-
-        // Pattern: "methods" (filter to methods only)
-        if (q.Contains("method"))
-            predicates.Add(s => s is IMethodSymbol { MethodKind: MethodKind.Ordinary });
-
-        // Pattern: "classes"
+        // "classes" with guard against "classes implementing"
         if (q.Contains("class") && !q.Contains("classes implementing"))
             predicates.Add(s => s is INamedTypeSymbol { TypeKind: TypeKind.Class });
 
-        // Pattern: "interfaces"
-        if (q.Contains("interface"))
-            predicates.Add(s => s is INamedTypeSymbol { TypeKind: TypeKind.Interface });
+        // Accessibility keywords (mutually exclusive)
+        foreach (var (keyword, accessibility) in AccessibilityKeywords)
+        {
+            if (keyword == "public" ? q.Contains("public") && !q.Contains("non-public") : q.Contains(keyword))
+            {
+                predicates.Add(s => s.DeclaredAccessibility == accessibility);
+                break;
+            }
+        }
 
-        // Pattern: "properties"
-        if (q.Contains("propert"))
-            predicates.Add(s => s is IPropertySymbol);
+        // "returning/returns <type>"
+        AddReturnTypePredicate(predicates, q);
 
-        // Pattern: "fields"
-        if (q.Contains("field"))
-            predicates.Add(s => s is IFieldSymbol);
+        // "implementing <interface>"
+        AddImplementingPredicate(predicates, q);
 
-        // Pattern: "more than N parameters" or "> N parameters"
+        // "more than N parameters"
         var paramMatch = System.Text.RegularExpressions.Regex.Match(q, @"(?:more than|>)\s*(\d+)\s*param");
         if (paramMatch.Success && int.TryParse(paramMatch.Groups[1].Value, out var minParams))
             predicates.Add(s => s is IMethodSymbol m && m.Parameters.Length > minParams);
 
-        // Pattern: "public" / "private" / "internal" / "protected"
-        if (q.Contains("public") && !q.Contains("non-public"))
-            predicates.Add(s => s.DeclaredAccessibility == Accessibility.Public);
-        else if (q.Contains("private"))
-            predicates.Add(s => s.DeclaredAccessibility == Accessibility.Private);
-        else if (q.Contains("internal"))
-            predicates.Add(s => s.DeclaredAccessibility == Accessibility.Internal);
-        else if (q.Contains("protected"))
-            predicates.Add(s => s.DeclaredAccessibility == Accessibility.Protected);
-
-        // Pattern: "sealed"
-        if (q.Contains("sealed"))
-            predicates.Add(s => s.IsSealed);
-
-        // Pattern: "generic"
-        if (q.Contains("generic"))
-            predicates.Add(s => s is INamedTypeSymbol { IsGenericType: true } or IMethodSymbol { IsGenericMethod: true });
-
-        // If no predicates matched, do a name-based search as fallback
+        // Fallback: name-based search
         if (predicates.Count == 0)
             predicates.Add(s => s.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
 
         return predicates;
+    }
+
+    private static void AddReturnTypePredicate(List<Func<ISymbol, bool>> predicates, string q)
+    {
+        if (!q.Contains("returning ") && !q.Contains("returns "))
+            return;
+
+        var returnTypeStart = q.IndexOf("returning ", StringComparison.Ordinal);
+        if (returnTypeStart < 0) returnTypeStart = q.IndexOf("returns ", StringComparison.Ordinal);
+        if (returnTypeStart < 0) return;
+
+        var afterKeyword = q[(q.IndexOf(' ', returnTypeStart) + 1)..].Trim();
+        var returnType = afterKeyword.Split(' ', ',')[0].Trim();
+        predicates.Add(s => s is IMethodSymbol m &&
+            m.ReturnType.ToDisplayString().Contains(returnType, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void AddImplementingPredicate(List<Func<ISymbol, bool>> predicates, string q)
+    {
+        if (!q.Contains("implementing "))
+            return;
+
+        var ifaceName = q[(q.IndexOf("implementing ", StringComparison.Ordinal) + 13)..].Trim().Split(' ', ',')[0];
+        predicates.Add(s => s is INamedTypeSymbol t &&
+            t.AllInterfaces.Any(i => i.Name.Equals(ifaceName, StringComparison.OrdinalIgnoreCase) ||
+                i.ToDisplayString().Contains(ifaceName, StringComparison.OrdinalIgnoreCase)));
     }
 }
