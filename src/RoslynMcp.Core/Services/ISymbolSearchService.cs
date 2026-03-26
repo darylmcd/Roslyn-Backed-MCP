@@ -2,6 +2,10 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Core.Services;
 
+/// <summary>
+/// Searches for symbols by name pattern across a loaded workspace, retrieves detailed symbol
+/// information, and lists document-level symbol declarations.
+/// </summary>
 public interface ISymbolSearchService
 {
     Task<IReadOnlyList<SymbolDto>> SearchSymbolsAsync(

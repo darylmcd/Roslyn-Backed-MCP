@@ -2,6 +2,10 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Core.Services;
 
+/// <summary>
+/// Finds mutable members of a type, classifies property writes, analyzes type usages by role,
+/// and performs impact analysis for a symbol.
+/// </summary>
 public interface IMutationAnalysisService
 {
     Task<ImpactAnalysisDto?> AnalyzeImpactAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);

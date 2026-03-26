@@ -2,6 +2,10 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Core.Services;
 
+/// <summary>
+/// Finds all references, implementations, overrides, and base members for a symbol across
+/// a solution, with classified usage locations and bulk lookup support.
+/// </summary>
 public interface IReferenceService
 {
     Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
