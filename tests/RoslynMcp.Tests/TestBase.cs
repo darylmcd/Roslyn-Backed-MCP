@@ -39,6 +39,11 @@ public abstract class TestBase
     protected static SyntaxService SyntaxService { get; private set; } = null!;
     protected static WorkspaceExecutionGate WorkspaceExecutionGate { get; private set; } = null!;
     protected static DotnetCommandRunner DotnetCommandRunner { get; private set; } = null!;
+    protected static BulkRefactoringService BulkRefactoringService { get; private set; } = null!;
+    protected static CohesionAnalysisService CohesionAnalysisService { get; private set; } = null!;
+    protected static ConsumerAnalysisService ConsumerAnalysisService { get; private set; } = null!;
+    protected static TypeExtractionService TypeExtractionService { get; private set; } = null!;
+    protected static TypeMoveService TypeMoveService { get; private set; } = null!;
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -142,6 +147,24 @@ public abstract class TestBase
             WorkspaceManager,
             PreviewStore);
         SyntaxService = new SyntaxService(WorkspaceManager);
+        BulkRefactoringService = new BulkRefactoringService(
+            WorkspaceManager,
+            PreviewStore,
+            NullLogger<BulkRefactoringService>.Instance);
+        CohesionAnalysisService = new CohesionAnalysisService(
+            WorkspaceManager,
+            NullLogger<CohesionAnalysisService>.Instance);
+        ConsumerAnalysisService = new ConsumerAnalysisService(
+            WorkspaceManager,
+            NullLogger<ConsumerAnalysisService>.Instance);
+        TypeExtractionService = new TypeExtractionService(
+            WorkspaceManager,
+            PreviewStore,
+            NullLogger<TypeExtractionService>.Instance);
+        TypeMoveService = new TypeMoveService(
+            WorkspaceManager,
+            PreviewStore,
+            NullLogger<TypeMoveService>.Instance);
 
         RepositoryRootPath = FindRepositoryRoot();
         SampleSolutionPath = FindFixturePath("SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
