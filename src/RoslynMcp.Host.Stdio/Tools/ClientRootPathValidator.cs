@@ -11,8 +11,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// </summary>
 /// <remarks>
 /// If the client does not advertise roots capability, or if the roots list is empty,
-/// the path is allowed unconditionally. If the roots request itself fails, validation
-/// is denied (fail-closed) to prevent accidental security bypass.
+/// the path is allowed unconditionally. If the roots request itself fails (e.g. the
+/// client advertises the capability but doesn't fully support it), the path is allowed
+/// (fail-open) to avoid blocking legitimate workspace loads.
 /// Symlinks and junctions are resolved before comparison to prevent traversal attacks.
 /// </remarks>
 internal static class ClientRootPathValidator
@@ -26,7 +27,6 @@ internal static class ClientRootPathValidator
     /// <param name="ct">Cancellation token.</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
     /// <exception cref="System.ArgumentException">Thrown when the path falls outside all client-sanctioned roots.</exception>
-    /// <exception cref="System.InvalidOperationException">Thrown when the roots lookup fails (fail-closed).</exception>
     public static async Task ValidatePathAgainstRootsAsync(
         McpServer server, string path, CancellationToken ct, ILogger? logger = null)
     {
@@ -74,10 +74,10 @@ internal static class ClientRootPathValidator
         }
         catch (Exception ex)
         {
-            logger?.LogWarning(ex, "Roots lookup failed for path '{Path}' — denying access (fail-closed)", path);
-            throw new InvalidOperationException(
-                "Unable to validate path against client roots — roots lookup failed. " +
-                "Denying access as a precaution.", ex);
+            // Roots lookup can fail when the client advertises the capability but
+            // doesn't fully support it (common with Claude Code and other clients).
+            // Fail-open here so workspace loads aren't blocked by infrastructure errors.
+            logger?.LogWarning(ex, "Roots lookup failed for path '{Path}' — allowing access (fail-open)", path);
         }
     }
 
