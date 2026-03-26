@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using System.Xml.Linq;
 
 namespace RoslynMcp.Roslyn.Helpers;
@@ -46,7 +47,7 @@ internal static class ProjectMetadataParser
         return project.Name;
     }
 
-    public static XDocument? LoadProjectDocument(string? projectFilePath)
+    public static XDocument? LoadProjectDocument(string? projectFilePath, ILogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
         {
@@ -57,8 +58,9 @@ internal static class ProjectMetadataParser
         {
             return XDocument.Load(projectFilePath);
         }
-        catch
+        catch (Exception ex)
         {
+            logger?.LogWarning(ex, "Failed to parse project file {Path}", projectFilePath);
             return null;
         }
     }

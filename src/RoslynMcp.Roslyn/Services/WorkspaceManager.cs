@@ -16,6 +16,8 @@ namespace RoslynMcp.Roslyn.Services;
 /// </summary>
 public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 {
+    private const int MaxDiagnosticsPerWorkspace = 200;
+
     private readonly ILogger<WorkspaceManager> _logger;
     private readonly IPreviewStore _previewStore;
     private readonly IFileWatcherService _fileWatcher;
@@ -57,6 +59,26 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             _fileWatcher.Watch(workspaceId, session.LoadedPath!);
             return BuildStatus(session);
         }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Capture any workspace diagnostics collected before the failure
+            var diagnostics = session.WorkspaceDiagnostics.ToArray();
+            if (diagnostics.Length > 0)
+            {
+                _logger.LogError(
+                    ex,
+                    "Workspace load failed for {Path} with {DiagnosticCount} diagnostics captured",
+                    fullPath,
+                    diagnostics.Length);
+                foreach (var diag in diagnostics.Take(10))
+                {
+                    _logger.LogError("  [{Severity}] {Message}", diag.Severity, diag.Message);
+                }
+            }
+
+            session.Dispose();
+            throw;
+        }
         catch
         {
             session.Dispose();
@@ -95,7 +117,25 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     public WorkspaceStatusDto GetStatus(string workspaceId)
     {
-        return BuildStatus(GetRequiredSession(workspaceId));
+        var session = GetRequiredSession(workspaceId);
+
+        // Acquire LoadLock to avoid reading partially-updated session state
+        // during a concurrent LoadIntoSessionAsync.
+        if (!session.LoadLock.Wait(TimeSpan.FromSeconds(5)))
+        {
+            _logger.LogWarning("GetStatus timed out waiting for LoadLock on {WorkspaceId}", workspaceId);
+            throw new TimeoutException(
+                $"Workspace '{workspaceId}' is currently loading. Try again shortly.");
+        }
+
+        try
+        {
+            return BuildStatus(session);
+        }
+        finally
+        {
+            session.LoadLock.Release();
+        }
     }
 
     public ProjectGraphDto GetProjectGraph(string workspaceId)
@@ -246,6 +286,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     EndLine: null,
                     EndColumn: null);
                 session.WorkspaceDiagnostics.Enqueue(dto);
+                while (session.WorkspaceDiagnostics.Count > MaxDiagnosticsPerWorkspace)
+                {
+                    session.WorkspaceDiagnostics.TryDequeue(out _);
+                }
+
                 _logger.LogWarning(
                     "Workspace {WorkspaceId} diagnostic: {Message}",
                     session.WorkspaceId,
@@ -353,11 +398,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return fullPath;
     }
 
-    private static ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution)
+    private ImmutableArray<ProjectStatusDto> BuildProjectStatuses(Solution solution)
     {
         return solution.Projects.Select(project =>
         {
-            var projectDoc = Helpers.ProjectMetadataParser.LoadProjectDocument(project.FilePath);
+            var projectDoc = Helpers.ProjectMetadataParser.LoadProjectDocument(project.FilePath, _logger);
             return new ProjectStatusDto(
                 Name: project.Name,
                 FilePath: project.FilePath ?? "unknown",

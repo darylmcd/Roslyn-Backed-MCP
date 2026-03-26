@@ -42,6 +42,16 @@ dotnet run --project src/RoslynMcp.Host.Stdio
 dotnet test RoslynMcp.slnx
 ```
 
+## Security Considerations
+
+**This server executes MSBuild evaluation when loading `.sln` and `.csproj` files.** MSBuild project files can contain arbitrary build targets, tasks, and imports that run native code during evaluation. This means:
+
+- **Only load solutions you trust.** A malicious `.csproj` can execute arbitrary code with the permissions of the server process.
+- **Run in a sandbox for untrusted code.** If you need to analyze untrusted repositories, run the server inside a container, VM, or other isolation boundary.
+- **Path validation is enforced** against MCP client roots when available, including symlink/junction resolution, but this is a defense-in-depth measure — not a substitute for trusting the workspace content.
+
+See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy.
+
 ## MCP Client Configuration
 
 ### Cursor
@@ -74,15 +84,37 @@ Add to Claude Code MCP settings:
 }
 ```
 
-### Published Executable
+### Install as Global Tool (Recommended)
 
-For better startup performance, publish first:
+Pack and install as a dotnet global tool for the best startup performance and MCP client configuration:
+
+```bash
+dotnet publish src/RoslynMcp.Host.Stdio -c Release /p:ReinstallTool=true
+```
+
+This single command builds, packs the NuGet package, kills any running `roslynmcp` processes, and installs (or updates) the global tool. After installation, configure your MCP client to use the tool command:
+
+```json
+{
+  "mcpServers": {
+    "roslyn-mcp": {
+      "command": "roslynmcp"
+    }
+  }
+}
+```
+
+To update after code changes, run the same publish command again. The `/p:ReinstallTool=true` flag handles the full cycle automatically.
+
+### Published Executable (Alternative)
+
+If you prefer a standalone publish without global tool installation:
 
 ```bash
 dotnet publish src/RoslynMcp.Host.Stdio -c Release -o ./publish
 ```
 
-Then use the published executable:
+Then point your MCP client at the published executable:
 
 ```json
 {

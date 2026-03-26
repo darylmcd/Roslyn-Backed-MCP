@@ -33,4 +33,21 @@
     <ProjectReference Include="..\RoslynMcp.Roslyn\RoslynMcp.Roslyn.csproj" />
   </ItemGroup>
 
+  <!--
+    Local dev workflow: dotnet publish -c Release automatically packs the nupkg
+    and reinstalls the global tool. Run with /p:ReinstallTool=true to enable:
+      dotnet publish -c Release /p:ReinstallTool=true
+  -->
+  <PropertyGroup>
+    <ReinstallTool>false</ReinstallTool>
+    <LocalNupkgDir>$(MSBuildThisFileDirectory)..\..\nupkg</LocalNupkgDir>
+  </PropertyGroup>
+
+  <Target Name="PackAndReinstallGlobalTool" AfterTargets="Publish" Condition="'$(ReinstallTool)' == 'true'">
+    <Exec Command="taskkill /F /IM roslynmcp.exe" IgnoreExitCode="true" />
+    <Exec Command="dotnet pack &quot;$(MSBuildProjectFullPath)&quot; -c $(Configuration) -o &quot;$(LocalNupkgDir)&quot; --no-build" />
+    <Exec Command="dotnet tool uninstall -g RoslynMcp" IgnoreExitCode="true" />
+    <Exec Command="dotnet tool install -g RoslynMcp --add-source &quot;$(LocalNupkgDir)&quot; --version $(Version)" />
+  </Target>
+
 </Project>
