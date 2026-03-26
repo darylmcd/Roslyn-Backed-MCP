@@ -55,6 +55,7 @@ public sealed class CohesionAnalysisTests : TestBase
             WorkspaceId, doc.FilePath, null, 1, 50, CancellationToken.None);
 
         Assert.IsNotNull(result);
+        Assert.IsTrue(result.Count > 0, "Expected at least one metric from filtered file");
         Assert.IsTrue(result.All(m =>
             m.FilePath?.Contains("AnimalService.cs") == true),
             "All results should be from the filtered file");
