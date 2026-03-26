@@ -39,6 +39,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDeadCodeService, DeadCodeService>();
         services.AddSingleton<ISyntaxService, SyntaxService>();
         services.AddSingleton<IFileWatcherService, FileWatcherService>();
+        services.AddSingleton<ISecurityDiagnosticService, SecurityDiagnosticService>();
         return services;
     }
 }

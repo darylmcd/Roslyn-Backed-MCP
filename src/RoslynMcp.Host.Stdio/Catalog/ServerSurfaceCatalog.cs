@@ -19,7 +19,7 @@ public static class ServerSurfaceCatalog
         Tool("workspace_status", "workspace", "stable", true, false, "Inspect status, diagnostics, and stale-state information for a workspace."),
         Tool("project_graph", "workspace", "stable", true, false, "Inspect project and dependency structure."),
         Tool("source_generated_documents", "workspace", "stable", true, false, "List source-generated documents for a workspace or project."),
-        Tool("get_source_text", "workspace", "stable", true, false, "Read source text as Roslyn currently sees it in the loaded workspace."),
+        Tool("get_source_text", "workspace", "stable", true, false, "Read source text as the Roslyn workspace currently sees it (may differ from disk if workspace hasn't been reloaded)."),
 
         Tool("symbol_search", "symbols", "stable", true, false, "Search symbols by name across the workspace."),
         Tool("symbol_info", "symbols", "stable", true, false, "Inspect the symbol at a source location."),
@@ -106,7 +106,10 @@ public static class ServerSurfaceCatalog
         Tool("get_syntax_tree", "syntax", "experimental", true, false, "Return a structured syntax tree for a document or range."),
         Tool("get_code_actions", "code-actions", "experimental", true, false, "List Roslyn code fixes and refactorings at a location."),
         Tool("preview_code_action", "code-actions", "experimental", true, false, "Preview a Roslyn code action before applying it."),
-        Tool("apply_code_action", "code-actions", "experimental", false, true, "Apply a previously previewed Roslyn code action.")
+        Tool("apply_code_action", "code-actions", "experimental", false, true, "Apply a previously previewed Roslyn code action."),
+
+        Tool("security_diagnostics", "security", "stable", true, false, "Return security-relevant diagnostics with OWASP categorization and fix hints."),
+        Tool("security_analyzer_status", "security", "stable", true, false, "Check which security analyzer packages are present and recommend missing ones.")
     ];
 
     public static IReadOnlyList<SurfaceEntry> Resources { get; } =
@@ -129,7 +132,12 @@ public static class ServerSurfaceCatalog
         Prompt("refactor_and_validate", "prompts", "experimental", true, false, "Generate a prompt for preview-first refactoring and validation."),
         Prompt("fix_all_diagnostics", "prompts", "experimental", true, false, "Generate a prompt for batched diagnostic cleanup."),
         Prompt("guided_package_migration", "prompts", "experimental", true, false, "Generate a prompt for package migration across affected projects."),
-        Prompt("guided_extract_interface", "prompts", "experimental", true, false, "Generate a prompt for interface extraction and consumer updates.")
+        Prompt("guided_extract_interface", "prompts", "experimental", true, false, "Generate a prompt for interface extraction and consumer updates."),
+        Prompt("security_review", "prompts", "experimental", true, false, "Generate a prompt for comprehensive security review using security diagnostic tools."),
+        Prompt("discover_capabilities", "prompts", "experimental", true, false, "Generate a prompt to discover relevant server tools and workflows for a task category."),
+        Prompt("dead_code_audit", "prompts", "experimental", true, false, "Generate a prompt for dead code audit using unused symbol detection and removal."),
+        Prompt("review_test_coverage", "prompts", "experimental", true, false, "Generate a prompt for test coverage review and gap identification."),
+        Prompt("review_complexity", "prompts", "experimental", true, false, "Generate a prompt for complexity review and refactoring opportunities.")
     ];
 
     public static SurfaceSummary GetSummary()
@@ -143,6 +151,19 @@ public static class ServerSurfaceCatalog
             CountByTier(Prompts, "stable"),
             CountByTier(Prompts, "experimental"));
     }
+
+    public static IReadOnlyList<WorkflowHint> WorkflowHints { get; } =
+    [
+        new("Preview/Apply", ["rename_preview", "rename_apply"], "Most write operations use a two-step pattern: call *_preview to inspect the diff, then *_apply with the preview token."),
+        new("Diagnostic Fix", ["project_diagnostics", "diagnostic_details", "code_fix_preview", "code_fix_apply"], "Identify diagnostics, inspect details, preview a fix, then apply it."),
+        new("Code Action", ["get_code_actions", "preview_code_action", "apply_code_action"], "List available Roslyn refactorings/fixes at a location, preview, then apply."),
+        new("Security Audit", ["security_analyzer_status", "security_diagnostics", "diagnostic_details", "code_fix_preview", "code_fix_apply"], "Check analyzer coverage, get security findings, then fix them."),
+        new("Build and Test", ["build_workspace", "test_run"], "Validate compilation then run tests after any code change."),
+        new("Change Validation", ["test_related_files", "test_run"], "Find tests related to changed files, then run them."),
+        new("Dead Code Cleanup", ["find_unused_symbols", "remove_dead_code_preview", "remove_dead_code_apply", "build_workspace"], "Find unused symbols, preview removal, apply, then verify build."),
+        new("Package Migration", ["migrate_package_preview", "apply_composite_preview", "build_workspace"], "Preview migrating a package across projects, apply, then verify."),
+        new("Coverage Analysis", ["test_discover", "test_coverage", "scaffold_test_preview", "scaffold_test_apply"], "Discover tests, run coverage, scaffold new tests for gaps.")
+    ];
 
     public static ServerCatalogDto CreateDocument()
     {
@@ -160,6 +181,7 @@ public static class ServerSurfaceCatalog
             Tools,
             Resources,
             Prompts,
+            WorkflowHints,
             Summary: GetSummary());
     }
 
@@ -220,4 +242,16 @@ public sealed record ServerCatalogDto(
     IReadOnlyList<SurfaceEntry> Tools,
     IReadOnlyList<SurfaceEntry> Resources,
     IReadOnlyList<SurfaceEntry> Prompts,
+    IReadOnlyList<WorkflowHint> WorkflowHints,
     SurfaceSummary Summary);
+
+/// <summary>
+/// Describes a common tool workflow — a sequence of tools that work together.
+/// </summary>
+/// <param name="Name">Human-readable workflow name (e.g., "Diagnostic Fix").</param>
+/// <param name="ToolSequence">Ordered list of tool names in the typical execution flow.</param>
+/// <param name="Description">Short description of when and how to use this workflow.</param>
+public sealed record WorkflowHint(
+    string Name,
+    IReadOnlyList<string> ToolSequence,
+    string Description);
