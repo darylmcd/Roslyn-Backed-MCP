@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Services;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;

@@ -8,7 +8,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// (e.g., multiple MCP sub-agents) cannot corrupt shared Roslyn state.
 /// </summary>
 /// <remarks>
-/// A dedicated load gate (<see cref="LoadGateKey"/>) is used for <c>workspace_load</c> and
+/// A dedicated load gate (<see cref="IWorkspaceExecutionGate.LoadGateKey"/>) is used for <c>workspace_load</c> and
 /// <c>workspace_reload</c> operations because those operations replace the entire session state.
 /// All other operations run under a per-workspace gate keyed by the workspace session identifier.
 /// A global concurrency throttle bounds the total number of simultaneous operations across all
@@ -17,8 +17,6 @@ namespace RoslynMcp.Roslyn.Services;
 /// </remarks>
 public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposable
 {
-    public const string LoadGateKey = "__load__";
-
     /// <summary>Default per-request timeout (2 minutes).</summary>
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(2);
 
@@ -31,8 +29,8 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 
     public async Task<T> RunAsync<T>(string? gateKey, Func<CancellationToken, Task<T>> action, CancellationToken ct)
     {
-        var key = string.IsNullOrWhiteSpace(gateKey) ? LoadGateKey : gateKey;
-        var gate = key == LoadGateKey ? _loadGate : _workspaceGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        var key = string.IsNullOrWhiteSpace(gateKey) ? IWorkspaceExecutionGate.LoadGateKey : gateKey;
+        var gate = key == IWorkspaceExecutionGate.LoadGateKey ? _loadGate : _workspaceGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
 
         // Apply per-request timeout and global concurrency throttle
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);

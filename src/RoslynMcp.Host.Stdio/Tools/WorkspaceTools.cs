@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
-using RoslynMcp.Roslyn.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -23,7 +22,7 @@ public static class WorkspaceTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.LoadGateKey, async c =>
+            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
@@ -43,7 +42,7 @@ public static class WorkspaceTools
         CancellationToken ct)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.LoadGateKey, async c =>
+            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, async c =>
             {
                 var status = await workspace.ReloadAsync(workspaceId, c);
                 _ = NotifyResourcesChangedAsync(server);
@@ -60,13 +59,10 @@ public static class WorkspaceTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.LoadGateKey, c =>
+            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, c =>
             {
                 var closed = workspace.Close(workspaceId);
-                if (gate is WorkspaceExecutionGate concreteGate)
-                {
-                    concreteGate.RemoveGate(workspaceId);
-                }
+                gate.RemoveGate(workspaceId);
                 _ = NotifyResourcesChangedAsync(server);
                 return Task.FromResult(JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonOptions));
             }, ct));
