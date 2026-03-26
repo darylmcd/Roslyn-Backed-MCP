@@ -17,53 +17,24 @@ All P0 items resolved in audit sprint 2026-03-26. See Completed Archive.
 
 Quality, reliability, and usability issues that should be addressed before a stable 1.0 release.
 
-### Configuration
-
-- [ ] **CFG-01**: Wire options classes to configuration — `ValidationServiceOptions` (build/test timeouts), `WorkspaceManagerOptions` (max workspaces), `WorkspaceExecutionGate` timeout are all hardcoded defaults with no way for users to override via env vars or config. (`Program.cs`, options classes)
-
-### Performance
-
-- [ ] **PERF-03**: Reduce `PreviewStore` memory pressure — stores full `Solution` snapshots (immutable but large). 50 entries x large solutions = significant memory. Consider size-aware eviction or lower cap. (`PreviewStore.cs:8-9`)
-
-### Code Quality
-
-- [ ] **CQ-01**: Reduce complexity in hot-path methods — `ParseSemanticQuery` (CC=32, 94 LOC), `SymbolMapper.ToDto` (CC=28, 86 LOC), `ClassifyReferenceLocation` (CC=27, 56 LOC). These are brittle and hard to test. Consider extracting sub-methods or lookup tables. (`CodePatternAnalyzer.cs:174`, `SymbolMapper.cs:21`, `SymbolMapper.cs:133`)
-- [ ] **CQ-02**: Audit 50+ unused public symbols — `find_unused_symbols` reports 50+ hits (tools, prompts, resources). Most are likely wired via reflection/attributes, but should be verified. Any truly dead code should be removed.
-
-### API Consistency
-
-- [ ] **API-03**: Standardize default `limit` values — `symbol_search` defaults to 20, `find_unused_symbols`/`semantic_search`/`get_complexity_metrics`/`get_cohesion_metrics` default to 50. Pick one default and apply consistently.
-
-### Documentation
-
-- [ ] **DOC-01**: Add XML doc comments to 15 undocumented service interfaces — `IBuildService`, `ICodeMetricsService`, `ICodePatternAnalyzer`, `IDependencyAnalysisService`, `IMutationAnalysisService`, `IReferenceService`, `ISymbolNavigationService`, `ISymbolRelationshipService`, `ISymbolSearchService`, `ITestDiscoveryService`, `ITestRunnerService`, `IUnusedCodeAnalyzer`, `IWorkspaceManager`, `ICompletionService`, `IEditService`. DTOs are fully documented. (`src/RoslynMcp.Core/Services/`)
+All P1 items resolved in sprint 2026-03-26. See Completed Archive.
 
 ## P2 — Important Improvements
 
 Meaningful quality and capability improvements.
 
-### Concurrency
-
-- [ ] **CON-02**: Apply gate per-workspace instead of global `__apply__` — `ApplyGateKey` shares a single semaphore for ALL apply operations across ALL workspaces, serializing unrelated operations. (`WorkspaceExecutionGate.cs:22,37`)
-
 ### API Surface
 
-- [ ] **API-02**: Add caveat to `test_related` / `test_related_files` descriptions — these use heuristic name matching, not semantic analysis. AI agents may incorrectly trust results as exhaustive. (`ValidationTools.cs:83-117`)
 - [ ] **API-04**: Add truncation/pagination to prompt templates for large workspaces — `analyze_dependencies` embeds full project graph + namespace deps + NuGet deps. (`RoslynPrompts.cs:220-265`)
 
 ### Performance
 
 - [ ] **PERF-02**: Cache test discovery results per workspace version — `DiscoverTestsAsync` iterates ALL documents in ALL test projects on every call. (`ValidationService.cs:73-148`)
 
-### File Watching
-
-- [ ] **REL-06**: Expand file watcher to include `.csproj`, `.props`, `.targets` — currently only watches `*.cs` files. Changes to project files won't mark workspace stale. (`FileWatcherService.cs:22`)
-
 ### Testing
 
 - [ ] **TEST-01**: Add negative/edge-case tests — malformed symbol handles, null/empty parameters, concurrent tool calls, malformed XML project files.
 - [ ] **TEST-02**: Add dedicated tests for untested services — `BulkRefactoringService`, `CohesionAnalysisService`, `ConsumerAnalysisService`, `TypeExtractionService`, `TypeMoveService`. (5 services with no direct test coverage)
-- [ ] **TEST-05**: Install `coverlet.collector` and establish baseline coverage metrics — currently no line/branch coverage data available.
 
 ### Release
 
@@ -113,6 +84,16 @@ Items completed in previous sprints. Kept for audit trail; remove periodically.
 - [x] **REL-10**: Add `SECURITY.md` — Done.
 - [x] **REL-11**: Add `CODE_OF_CONDUCT.md` — Done.
 - [x] **REL-12**: Add `.github/ISSUE_TEMPLATE/` — Done. Bug report and feature request templates.
+- [x] **CFG-01**: Wire options classes to env var overrides — Done. `ROSLYNMCP_MAX_WORKSPACES`, `ROSLYNMCP_BUILD_TIMEOUT_SECONDS`, `ROSLYNMCP_TEST_TIMEOUT_SECONDS`, `ROSLYNMCP_PREVIEW_MAX_ENTRIES`.
+- [x] **PERF-03**: Reduce PreviewStore memory pressure — Done. Cap lowered from 50 to 20, configurable via env var.
+- [x] **CON-02**: Per-workspace apply gate — Done. Replaced global `ApplyGateKey` with `__apply__:{workspaceId}`.
+- [x] **REL-06**: Expand file watcher to project files — Done. Watches `*.csproj`, `*.props`, `*.targets`, `*.sln`, `*.slnx`.
+- [x] **CQ-01**: Reduce complexity in 3 high-CC methods — Done. `ParseSemanticQuery` 32→~12, `ToDto` 28→~10, `ClassifyReferenceLocation` 27→~8.
+- [x] **CQ-02**: Audit unused public symbols — Done. All 50 results are reflection-wired false positives.
+- [x] **API-03**: Standardize default limit values — Done. `symbol_search` default changed from 20 to 50.
+- [x] **API-02**: Add heuristic caveat to test_related descriptions — Done.
+- [x] **DOC-01**: XML doc comments for 12 service interfaces — Done.
+- [x] **TEST-05**: Install coverlet and establish baseline coverage — Done. 50.3% line, 34.0% branch.
 
 ## Backlog Rules
 
