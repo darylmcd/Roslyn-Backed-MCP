@@ -83,11 +83,14 @@ public static class OrchestrationTools
     public static Task<string> ApplyCompositePreview(
         IWorkspaceExecutionGate gate,
         IOrchestrationService orchestrationService,
+        ICompositePreviewStore compositePreviewStore,
         [Description("The preview token returned by an orchestration preview tool")] string previewToken,
         CancellationToken ct = default)
     {
+        var wsId = compositePreviewStore.PeekWorkspaceId(previewToken);
+        var gateKey = wsId != null ? $"__apply__:{wsId}" : "__apply__";
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await orchestrationService.ApplyCompositeAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonOptions);

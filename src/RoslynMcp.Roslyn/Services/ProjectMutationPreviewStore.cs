@@ -7,8 +7,12 @@ public sealed class ProjectMutationPreviewStore : IProjectMutationPreviewStore
 {
     private readonly ConcurrentDictionary<string, PreviewEntry> _entries = new();
     private readonly TimeSpan _ttl = TimeSpan.FromMinutes(5);
+    private readonly int _maxEntries;
 
-    private const int MaxEntries = 50;
+    public ProjectMutationPreviewStore(int maxEntries = 20)
+    {
+        _maxEntries = maxEntries > 0 ? maxEntries : 20;
+    }
 
     public string Store(string workspaceId, string projectFilePath, string updatedContent, int workspaceVersion, string description)
     {
@@ -57,6 +61,20 @@ public sealed class ProjectMutationPreviewStore : IProjectMutationPreviewStore
         }
     }
 
+    public string? PeekWorkspaceId(string token)
+    {
+        if (!_entries.TryGetValue(token, out var entry))
+            return null;
+
+        if (DateTime.UtcNow - entry.CreatedAt > _ttl)
+        {
+            _entries.TryRemove(token, out _);
+            return null;
+        }
+
+        return entry.WorkspaceId;
+    }
+
     private void CleanExpired()
     {
         var now = DateTime.UtcNow;
@@ -71,13 +89,13 @@ public sealed class ProjectMutationPreviewStore : IProjectMutationPreviewStore
 
     private void EvictIfOverLimit()
     {
-        if (_entries.Count <= MaxEntries)
+        if (_entries.Count <= _maxEntries)
         {
             return;
         }
 
         var toEvict = _entries.OrderBy(kvp => kvp.Value.CreatedAt)
-            .Take(_entries.Count - MaxEntries + 1)
+            .Take(_entries.Count - _maxEntries + 1)
             .Select(kvp => kvp.Key)
             .ToList();
 

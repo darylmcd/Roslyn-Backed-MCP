@@ -19,9 +19,21 @@ public static class ServiceCollectionExtensions
     {
         services.AddSingleton<IWorkspaceExecutionGate, WorkspaceExecutionGate>();
         services.AddSingleton<IDotnetCommandRunner, DotnetCommandRunner>();
-        services.AddSingleton<IPreviewStore, PreviewStore>();
-        services.AddSingleton<IProjectMutationPreviewStore, ProjectMutationPreviewStore>();
-        services.AddSingleton<ICompositePreviewStore, CompositePreviewStore>();
+        services.AddSingleton<IPreviewStore>(sp =>
+        {
+            var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
+            return new PreviewStore(opts.MaxEntries);
+        });
+        services.AddSingleton<IProjectMutationPreviewStore>(sp =>
+        {
+            var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
+            return new ProjectMutationPreviewStore(opts.MaxEntries);
+        });
+        services.AddSingleton<ICompositePreviewStore>(sp =>
+        {
+            var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
+            return new CompositePreviewStore(opts.MaxEntries);
+        });
         services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
         services.AddSingleton<ISymbolNavigationService, SymbolNavigationService>();
         services.AddSingleton<ISymbolSearchService, SymbolSearchService>();

@@ -41,11 +41,13 @@ public static class ScaffoldingTools
     public static Task<string> ApplyScaffoldType(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by scaffold_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonOptions);
@@ -79,11 +81,13 @@ public static class ScaffoldingTools
     public static Task<string> ApplyScaffoldTest(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by scaffold_test_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonOptions);

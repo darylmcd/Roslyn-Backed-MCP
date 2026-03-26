@@ -38,11 +38,13 @@ public static class InterfaceExtractionTools
     public static Task<string> ApplyExtractInterface(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by extract_interface_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonOptions);

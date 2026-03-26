@@ -38,11 +38,13 @@ public static class FileOperationTools
     public static Task<string> ApplyCreateFile(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by create_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonOptions);
@@ -73,11 +75,13 @@ public static class FileOperationTools
     public static Task<string> ApplyDeleteFile(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by delete_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonOptions);
@@ -115,11 +119,13 @@ public static class FileOperationTools
     public static Task<string> ApplyMoveFile(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by move_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonOptions);

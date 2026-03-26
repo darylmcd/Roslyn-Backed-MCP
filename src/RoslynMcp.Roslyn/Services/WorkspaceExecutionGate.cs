@@ -18,8 +18,6 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposable
 {
     public const string LoadGateKey = "__load__";
-    /// <summary>Gate for refactoring apply operations (no workspaceId in parameters).</summary>
-    public const string ApplyGateKey = "__apply__";
 
     /// <summary>Default per-request timeout (2 minutes).</summary>
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(2);

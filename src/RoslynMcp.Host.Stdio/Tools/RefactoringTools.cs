@@ -35,11 +35,13 @@ public static class RefactoringTools
     public static Task<string> ApplyRename(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by rename_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
@@ -66,11 +68,13 @@ public static class RefactoringTools
     public static Task<string> ApplyOrganizeUsings(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by organize_usings_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
@@ -97,11 +101,13 @@ public static class RefactoringTools
     public static Task<string> ApplyFormatDocument(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by format_document_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
@@ -132,14 +138,22 @@ public static class RefactoringTools
     public static Task<string> ApplyCodeFix(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by code_fix_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonOptions);
             }, ct));
+    }
+
+    internal static string ApplyGateKeyFor(IPreviewStore store, string token)
+    {
+        var wsId = store.PeekWorkspaceId(token);
+        return wsId != null ? $"__apply__:{wsId}" : "__apply__";
     }
 }

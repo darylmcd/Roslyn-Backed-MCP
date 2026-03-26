@@ -230,11 +230,14 @@ public static class ProjectMutationTools
     public static Task<string> ApplyProjectMutation(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
+        IProjectMutationPreviewStore projectMutationPreviewStore,
         [Description("The preview token returned by one of the project mutation preview tools")] string previewToken,
         CancellationToken ct = default)
     {
+        var wsId = projectMutationPreviewStore.PeekWorkspaceId(previewToken);
+        var gateKey = wsId != null ? $"__apply__:{wsId}" : "__apply__";
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await projectMutationService.ApplyProjectMutationAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonOptions);
