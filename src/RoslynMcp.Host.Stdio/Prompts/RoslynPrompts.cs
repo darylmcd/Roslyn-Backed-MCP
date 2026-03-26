@@ -232,7 +232,13 @@ public static class RoslynPrompts
             var graphJson = SerializeTruncatedList(graph.Projects, 50, JsonOptions);
 
             var namespaceDeps = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
-            var namespaceDepsJson = SerializeTruncatedList(namespaceDeps.Edges, 100, JsonOptions);
+            var truncatedNamespaceDeps = new Core.Models.NamespaceDependencyGraphDto(
+                namespaceDeps.Nodes.Take(100).ToList(),
+                namespaceDeps.Edges.Take(100).ToList(),
+                namespaceDeps.CircularDependencies);
+            var namespaceDepsJson = JsonSerializer.Serialize(truncatedNamespaceDeps, JsonOptions);
+            if (namespaceDeps.Edges.Count > 100)
+                namespaceDepsJson += $"\n[Showing 100 of {namespaceDeps.Edges.Count} edges]";
 
             var nugetDeps = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
             var nugetDepsJson = SerializeTruncatedList(nugetDeps.Packages, 50, JsonOptions);
@@ -717,8 +723,9 @@ public static class RoslynPrompts
         {
             var discovered = await testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
             var totalTests = discovered.TestProjects.Sum(p => p.Tests.Count);
+            var perProject = Math.Max(1, 200 / Math.Max(1, discovered.TestProjects.Count));
             var truncatedProjects = discovered.TestProjects.Select(p =>
-                new Core.Models.TestProjectDto(p.ProjectName, p.ProjectFilePath, p.Tests.Take(200 / Math.Max(1, discovered.TestProjects.Count)).ToList())).ToList();
+                new Core.Models.TestProjectDto(p.ProjectName, p.ProjectFilePath, p.Tests.Take(perProject).ToList())).ToList();
             var discoveredJson = JsonSerializer.Serialize(new Core.Models.TestDiscoveryDto(truncatedProjects), JsonOptions);
             if (totalTests > 200)
                 discoveredJson += $"\n[Showing ~200 of {totalTests} test cases]";
