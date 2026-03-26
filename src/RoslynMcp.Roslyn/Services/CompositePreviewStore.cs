@@ -44,23 +44,6 @@ public sealed class CompositePreviewStore : ICompositePreviewStore
         _entries.TryRemove(token, out _);
     }
 
-    public void InvalidateAll(string? workspaceId = null)
-    {
-        if (workspaceId is null)
-        {
-            _entries.Clear();
-            return;
-        }
-
-        foreach (var kvp in _entries)
-        {
-            if (string.Equals(kvp.Value.WorkspaceId, workspaceId, StringComparison.Ordinal))
-            {
-                _entries.TryRemove(kvp.Key, out _);
-            }
-        }
-    }
-
     public string? PeekWorkspaceId(string token)
     {
         if (!_entries.TryGetValue(token, out var entry))

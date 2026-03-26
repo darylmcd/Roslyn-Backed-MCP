@@ -40,71 +40,83 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
                 var semanticModel = compilation.GetSemanticModel(tree);
                 var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
 
-                var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
-                foreach (var invocation in invocations)
-                {
-                    var symbolInfo = semanticModel.GetSymbolInfo(invocation, ct);
-                    if (symbolInfo.Symbol is not IMethodSymbol method) continue;
-
-                    var containingNs = method.ContainingType?.ContainingNamespace?.ToDisplayString() ?? "";
-                    var containingTypeName = method.ContainingType?.Name ?? "";
-
-                    var usageKind = (containingNs, containingTypeName, method.Name) switch
-                    {
-                        ("System", "Type", "GetType") => "Type.GetType",
-                        ("System", "Activator", "CreateInstance") => "Activator.CreateInstance",
-                        ("System.Reflection", "Assembly", "GetType") => "Assembly.GetType",
-                        ("System.Reflection", "Assembly", "Load") => "Assembly.Load",
-                        ("System.Reflection", "Assembly", "LoadFrom") => "Assembly.LoadFrom",
-                        ("System.Reflection", _, "Invoke") => "Reflection.Invoke",
-                        ("System.Reflection", "PropertyInfo", "GetValue") => "PropertyInfo.GetValue",
-                        ("System.Reflection", "PropertyInfo", "SetValue") => "PropertyInfo.SetValue",
-                        ("System.Reflection", "FieldInfo", "GetValue") => "FieldInfo.GetValue",
-                        ("System.Reflection", "FieldInfo", "SetValue") => "FieldInfo.SetValue",
-                        (_, "Type", "GetMethod" or "GetProperty" or "GetField" or "GetMember" or "GetMethods"
-                            or "GetProperties" or "GetFields" or "GetMembers") => $"Type.{method.Name}",
-                        _ => null
-                    };
-
-                    if (usageKind is null) continue;
-
-                    var lineSpan = invocation.GetLocation().GetLineSpan();
-                    var containingMethod = GetContainingMethodName(invocation, semanticModel, ct);
-                    var typeArg = method.TypeArguments.Length > 0
-                        ? method.TypeArguments[0].ToDisplayString()
-                        : null;
-
-                    results.Add(new ReflectionUsageDto(
-                        usageKind,
-                        method.ToDisplayString(),
-                        lineSpan.Path,
-                        lineSpan.StartLinePosition.Line + 1,
-                        lineSpan.StartLinePosition.Character + 1,
-                        containingMethod,
-                        typeArg));
-                }
-
-                // Also check for typeof() expressions
-                var typeofExprs = root.DescendantNodes().OfType<TypeOfExpressionSyntax>();
-                foreach (var typeofExpr in typeofExprs)
-                {
-                    var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type, ct);
-                    var lineSpan = typeofExpr.GetLocation().GetLineSpan();
-                    var containingMethod = GetContainingMethodName(typeofExpr, semanticModel, ct);
-
-                    results.Add(new ReflectionUsageDto(
-                        "typeof",
-                        "typeof()",
-                        lineSpan.Path,
-                        lineSpan.StartLinePosition.Line + 1,
-                        lineSpan.StartLinePosition.Character + 1,
-                        containingMethod,
-                        typeInfo.Type?.ToDisplayString()));
-                }
+                CollectReflectionInvocations(root, semanticModel, results, ct);
+                CollectTypeofUsages(root, semanticModel, results, ct);
             }
         }
 
         return results;
+    }
+
+    private static void CollectReflectionInvocations(
+        SyntaxNode root, SemanticModel semanticModel, List<ReflectionUsageDto> results, CancellationToken ct)
+    {
+        foreach (var invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            var symbolInfo = semanticModel.GetSymbolInfo(invocation, ct);
+            if (symbolInfo.Symbol is not IMethodSymbol method) continue;
+
+            var usageKind = ClassifyReflectionUsage(method);
+            if (usageKind is null) continue;
+
+            var lineSpan = invocation.GetLocation().GetLineSpan();
+            var containingMethod = GetContainingMethodName(invocation, semanticModel, ct);
+            var typeArg = method.TypeArguments.Length > 0
+                ? method.TypeArguments[0].ToDisplayString()
+                : null;
+
+            results.Add(new ReflectionUsageDto(
+                usageKind,
+                method.ToDisplayString(),
+                lineSpan.Path,
+                lineSpan.StartLinePosition.Line + 1,
+                lineSpan.StartLinePosition.Character + 1,
+                containingMethod,
+                typeArg));
+        }
+    }
+
+    private static string? ClassifyReflectionUsage(IMethodSymbol method)
+    {
+        var containingNs = method.ContainingType?.ContainingNamespace?.ToDisplayString() ?? "";
+        var containingTypeName = method.ContainingType?.Name ?? "";
+
+        return (containingNs, containingTypeName, method.Name) switch
+        {
+            ("System", "Type", "GetType") => "Type.GetType",
+            ("System", "Activator", "CreateInstance") => "Activator.CreateInstance",
+            ("System.Reflection", "Assembly", "GetType") => "Assembly.GetType",
+            ("System.Reflection", "Assembly", "Load") => "Assembly.Load",
+            ("System.Reflection", "Assembly", "LoadFrom") => "Assembly.LoadFrom",
+            ("System.Reflection", _, "Invoke") => "Reflection.Invoke",
+            ("System.Reflection", "PropertyInfo", "GetValue") => "PropertyInfo.GetValue",
+            ("System.Reflection", "PropertyInfo", "SetValue") => "PropertyInfo.SetValue",
+            ("System.Reflection", "FieldInfo", "GetValue") => "FieldInfo.GetValue",
+            ("System.Reflection", "FieldInfo", "SetValue") => "FieldInfo.SetValue",
+            (_, "Type", "GetMethod" or "GetProperty" or "GetField" or "GetMember" or "GetMethods"
+                or "GetProperties" or "GetFields" or "GetMembers") => $"Type.{method.Name}",
+            _ => null
+        };
+    }
+
+    private static void CollectTypeofUsages(
+        SyntaxNode root, SemanticModel semanticModel, List<ReflectionUsageDto> results, CancellationToken ct)
+    {
+        foreach (var typeofExpr in root.DescendantNodes().OfType<TypeOfExpressionSyntax>())
+        {
+            var typeInfo = semanticModel.GetTypeInfo(typeofExpr.Type, ct);
+            var lineSpan = typeofExpr.GetLocation().GetLineSpan();
+            var containingMethod = GetContainingMethodName(typeofExpr, semanticModel, ct);
+
+            results.Add(new ReflectionUsageDto(
+                "typeof",
+                "typeof()",
+                lineSpan.Path,
+                lineSpan.StartLinePosition.Line + 1,
+                lineSpan.StartLinePosition.Character + 1,
+                containingMethod,
+                typeInfo.Type?.ToDisplayString()));
+        }
     }
 
     public async Task<IReadOnlyList<SemanticSearchResultDto>> SemanticSearchAsync(

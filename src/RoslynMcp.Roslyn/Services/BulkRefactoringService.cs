@@ -53,49 +53,11 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         {
             if (ct.IsCancellationRequested) break;
 
-            var doc = newSolution.GetDocument(docGroup.Key);
-            if (doc is null) continue;
-
-            var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            if (root is null) continue;
-
-            var nodesToReplace = new Dictionary<SyntaxNode, SyntaxNode>();
-
-            foreach (var refLocation in docGroup)
-            {
-                var node = root.FindNode(refLocation.Location.SourceSpan);
-                if (node is not (IdentifierNameSyntax or GenericNameSyntax or QualifiedNameSyntax)) continue;
-
-                if (!ShouldReplace(node, normalizedScope)) continue;
-
-                // Create replacement node
-                var newNode = SyntaxFactory.IdentifierName(GetSimpleName(newTypeName))
-                    .WithTriviaFrom(node);
-                nodesToReplace[node] = newNode;
-            }
-
-            if (nodesToReplace.Count > 0)
-            {
-                root = root.ReplaceNodes(nodesToReplace.Keys, (original, _) =>
-                    nodesToReplace.TryGetValue(original, out var replacement) ? replacement : original);
-
-                // Add using directive for new type's namespace if needed
-                if (root is CompilationUnitSyntax compilationUnit)
-                {
-                    var newTypeNs = newTypeSymbol.ContainingNamespace?.ToDisplayString();
-                    if (!string.IsNullOrWhiteSpace(newTypeNs) &&
-                        !compilationUnit.Usings.Any(u => u.Name?.ToString() == newTypeNs))
-                    {
-                        var newUsing = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(newTypeNs))
-                            .NormalizeWhitespace()
-                            .WithTrailingTrivia(SyntaxFactory.ElasticLineFeed);
-                        root = compilationUnit.AddUsings(newUsing);
-                    }
-                }
-
-                newSolution = newSolution.WithDocumentSyntaxRoot(doc.Id, root);
-                replacementCount += nodesToReplace.Count;
-            }
+            var (updatedSolution, count) = await ReplaceReferencesInDocumentAsync(
+                newSolution, docGroup.Key, docGroup, newTypeName, newTypeSymbol, normalizedScope, ct)
+                .ConfigureAwait(false);
+            newSolution = updatedSolution;
+            replacementCount += count;
         }
 
         if (replacementCount == 0)
@@ -109,6 +71,53 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    private static async Task<(Solution Solution, int Count)> ReplaceReferencesInDocumentAsync(
+        Solution solution, DocumentId docId, IEnumerable<ReferenceLocation> locations,
+        string newTypeName, INamedTypeSymbol newTypeSymbol, string scope, CancellationToken ct)
+    {
+        var doc = solution.GetDocument(docId);
+        if (doc is null) return (solution, 0);
+
+        var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+        if (root is null) return (solution, 0);
+
+        var nodesToReplace = new Dictionary<SyntaxNode, SyntaxNode>();
+
+        foreach (var refLocation in locations)
+        {
+            var node = root.FindNode(refLocation.Location.SourceSpan);
+            if (node is not (IdentifierNameSyntax or GenericNameSyntax or QualifiedNameSyntax)) continue;
+            if (!ShouldReplace(node, scope)) continue;
+
+            var newNode = SyntaxFactory.IdentifierName(GetSimpleName(newTypeName))
+                .WithTriviaFrom(node);
+            nodesToReplace[node] = newNode;
+        }
+
+        if (nodesToReplace.Count == 0) return (solution, 0);
+
+        root = root.ReplaceNodes(nodesToReplace.Keys, (original, _) =>
+            nodesToReplace.TryGetValue(original, out var replacement) ? replacement : original);
+
+        root = EnsureUsingDirective(root, newTypeSymbol.ContainingNamespace?.ToDisplayString());
+
+        return (solution.WithDocumentSyntaxRoot(docId, root), nodesToReplace.Count);
+    }
+
+    private static SyntaxNode EnsureUsingDirective(SyntaxNode root, string? namespaceName)
+    {
+        if (string.IsNullOrWhiteSpace(namespaceName) || root is not CompilationUnitSyntax compilationUnit)
+            return root;
+
+        if (compilationUnit.Usings.Any(u => u.Name?.ToString() == namespaceName))
+            return root;
+
+        var newUsing = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(namespaceName))
+            .NormalizeWhitespace()
+            .WithTrailingTrivia(SyntaxFactory.ElasticLineFeed);
+        return compilationUnit.AddUsings(newUsing);
     }
 
     private static bool ShouldReplace(SyntaxNode node, string scope)
