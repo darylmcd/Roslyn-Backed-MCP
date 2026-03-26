@@ -38,11 +38,13 @@ public static class DeadCodeTools
     public static Task<string> ApplyRemoveDeadCode(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by remove_dead_code_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonOptions);

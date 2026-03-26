@@ -38,11 +38,13 @@ public static class TypeExtractionTools
     public static Task<string> ApplyExtractType(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
+        IPreviewStore previewStore,
         [Description("The preview token returned by extract_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
+        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(WorkspaceExecutionGate.ApplyGateKey, async c =>
+            gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonOptions);

@@ -34,6 +34,12 @@ public interface ICompositePreviewStore
     /// </summary>
     /// <param name="workspaceId">The workspace to clear, or <see langword="null"/> to clear all workspaces.</param>
     void InvalidateAll(string? workspaceId = null);
+
+    /// <summary>
+    /// Returns the workspace identifier associated with a preview token without consuming the entry,
+    /// or <see langword="null"/> if the token is expired or not found.
+    /// </summary>
+    string? PeekWorkspaceId(string token);
 }
 
 /// <summary>

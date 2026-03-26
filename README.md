@@ -132,6 +132,33 @@ For a reproducible release build and publish verification:
 ./eng/verify-release.ps1
 ```
 
+## Configuration
+
+The server reads optional environment variables at startup. When set, these override the built-in defaults.
+
+| Environment Variable | Default | Description |
+|---|---|---|
+| `ROSLYNMCP_MAX_WORKSPACES` | `8` | Maximum concurrent workspace sessions |
+| `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build operation timeout (seconds) |
+| `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `600` | Test run timeout (seconds) |
+| `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `20` | Maximum preview store entries per store |
+
+Example:
+
+```json
+{
+  "mcpServers": {
+    "roslyn-mcp": {
+      "command": "roslynmcp",
+      "env": {
+        "ROSLYNMCP_MAX_WORKSPACES": "4",
+        "ROSLYNMCP_BUILD_TIMEOUT_SECONDS": "120"
+      }
+    }
+  }
+}
+```
+
 ## Canonical Docs
 
 - `AGENTS.md` is the canonical bootstrap entry point for AI agents.
