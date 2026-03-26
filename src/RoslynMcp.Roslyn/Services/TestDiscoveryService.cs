@@ -14,6 +14,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     private readonly IWorkspaceManager _workspaceManager;
     private readonly ILogger<TestDiscoveryService> _logger;
     private readonly ValidationServiceOptions _options;
+    private readonly ConcurrentDictionary<string, (int Version, TestDiscoveryDto Result)> _cache = new();
 
     public TestDiscoveryService(
         IWorkspaceManager workspaceManager,
@@ -27,6 +28,10 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
     public async Task<TestDiscoveryDto> DiscoverTestsAsync(string workspaceId, CancellationToken ct)
     {
+        var currentVersion = _workspaceManager.GetCurrentVersion(workspaceId);
+        if (_cache.TryGetValue(workspaceId, out var cached) && cached.Version == currentVersion)
+            return cached.Result;
+
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
         var testProjectNames = _workspaceManager.GetStatus(workspaceId).Projects
             .Where(project => project.IsTestProject)
@@ -74,7 +79,9 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             discoveredProjects.Add(new TestProjectDto(project.Name, project.FilePath ?? project.Name, tests));
         }
 
-        return new TestDiscoveryDto(discoveredProjects);
+        var result = new TestDiscoveryDto(discoveredProjects);
+        _cache[workspaceId] = (currentVersion, result);
+        return result;
     }
 
     public async Task<IReadOnlyList<TestCaseDto>> FindRelatedTestsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)

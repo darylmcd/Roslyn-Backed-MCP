@@ -137,15 +137,15 @@ public class SecurityDiagnosticIntegrationTests : TestBase
     }
 
     [TestMethod]
-    public async Task AnalyzerStatus_Reports_Missing_SecurityCodeScan()
+    public async Task AnalyzerStatus_Reports_SecurityCodeScan_Present()
     {
         var status = await SecurityService.GetAnalyzerStatusAsync(
             WorkspaceId, CancellationToken.None);
 
-        // SampleSolution doesn't reference SecurityCodeScan, so it should be missing
-        Assert.IsFalse(status.SecurityCodeScanPresent);
-        Assert.IsTrue(status.MissingRecommendedPackages.Count > 0,
-            "Should recommend SecurityCodeScan when not present");
+        // SecurityCodeScan.VS2019 is installed via Directory.Build.props
+        Assert.IsTrue(status.SecurityCodeScanPresent);
+        Assert.AreEqual(0, status.MissingRecommendedPackages.Count,
+            "No recommended packages should be missing");
     }
 
     // ── Catalog Tests ──
