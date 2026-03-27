@@ -102,7 +102,7 @@ public static class ServerSurfaceCatalog
         Tool("split_class_preview", "orchestration", "experimental", true, false, "Preview splitting a class into a new partial file."),
         Tool("extract_and_wire_interface_preview", "orchestration", "experimental", true, false, "Preview extracting an interface and updating DI registrations."),
         Tool("apply_composite_preview", "orchestration", "experimental", false, true, "Apply a previously previewed orchestration operation."),
-        Tool("test_coverage", "validation", "experimental", false, false, "Run coverage collection for test execution."),
+        Tool("test_coverage", "validation", "stable", false, false, "Run coverage collection for test execution."),
         Tool("get_syntax_tree", "syntax", "experimental", true, false, "Return a structured syntax tree for a document or range."),
         Tool("get_code_actions", "code-actions", "experimental", true, false, "List Roslyn code fixes and refactorings at a location."),
         Tool("preview_code_action", "code-actions", "experimental", true, false, "Preview a Roslyn code action before applying it."),
@@ -122,7 +122,9 @@ public static class ServerSurfaceCatalog
         Tool("bulk_replace_type_preview", "refactoring", "experimental", true, false, "Preview replacing all references to one type with another across the solution. Scope can be 'parameters', 'fields', or 'all'. Useful after extracting an interface."),
         Tool("bulk_replace_type_apply", "refactoring", "experimental", false, true, "Apply a previewed bulk type replacement. Updates all matching type references and adds using directives where needed."),
         Tool("extract_type_preview", "refactoring", "experimental", true, false, "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
-        Tool("extract_type_apply", "refactoring", "experimental", false, true, "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type.")
+        Tool("extract_type_apply", "refactoring", "experimental", false, true, "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type."),
+
+        Tool("revert_last_apply", "undo", "experimental", false, true, "Revert the most recent Roslyn solution-level apply operation for a workspace.")
     ];
 
     public static IReadOnlyList<SurfaceEntry> Resources { get; } =

@@ -44,6 +44,7 @@ public abstract class TestBase
     protected static ConsumerAnalysisService ConsumerAnalysisService { get; private set; } = null!;
     protected static TypeExtractionService TypeExtractionService { get; private set; } = null!;
     protected static TypeMoveService TypeMoveService { get; private set; } = null!;
+    protected static UndoService UndoService { get; private set; } = null!;
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -86,10 +87,12 @@ public abstract class TestBase
         DiagnosticService = new DiagnosticService(
             WorkspaceManager,
             NullLogger<DiagnosticService>.Instance);
+        UndoService = new UndoService();
         RefactoringService = new RefactoringService(
             WorkspaceManager,
             PreviewStore,
-            NullLogger<RefactoringService>.Instance);
+            NullLogger<RefactoringService>.Instance,
+            UndoService);
         BuildService = new BuildService(
             WorkspaceManager,
             DotnetCommandRunner,
