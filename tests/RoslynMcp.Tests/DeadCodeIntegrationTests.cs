@@ -55,4 +55,38 @@ public sealed class DeadCodeIntegrationTests : TestBase
             DeleteDirectoryIfExists(copiedRoot);
         }
     }
+
+    [TestMethod]
+    public async Task Extension_Method_With_Callers_Not_Reported_As_Unused()
+    {
+        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
+        var workspaceId = status.WorkspaceId;
+
+        var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
+            workspaceId, "SampleLib", includePublic: true, limit: 200, CancellationToken.None);
+
+        var unusedNames = unusedSymbols.Select(s => s.SymbolName).ToHashSet();
+
+        Assert.IsFalse(unusedNames.Contains("Describe"),
+            "Extension method 'Describe' should not be reported as unused — it is called from SampleApp via obj.Describe() syntax.");
+        Assert.IsFalse(unusedNames.Contains("AnimalExtensions"),
+            "Static class 'AnimalExtensions' should not be reported as unused — its extension method is called from SampleApp.");
+    }
+
+    [TestMethod]
+    public async Task Implicit_Conversion_Overload_With_Callers_Not_Reported_As_Unused()
+    {
+        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
+        var workspaceId = status.WorkspaceId;
+
+        var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
+            workspaceId, "SampleLib", includePublic: true, limit: 200, CancellationToken.None);
+
+        // The IEnumerable<IAnimal> overload of CountAnimals is called from SampleApp
+        // with an IAnimal[] argument (implicit conversion). It should not be reported as unused.
+        var unusedCountAnimals = unusedSymbols.Where(s => s.SymbolName == "CountAnimals").ToList();
+
+        Assert.AreEqual(0, unusedCountAnimals.Count,
+            $"CountAnimals overload(s) should not be reported as unused. Found: {string.Join(", ", unusedCountAnimals.Select(s => $"{s.ContainingType}.{s.SymbolName}"))}");
+    }
 }

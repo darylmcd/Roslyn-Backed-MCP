@@ -76,8 +76,25 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                     // Skip entry points
                     if (symbol is IMethodSymbol { Name: "Main" } && symbol.IsStatic) continue;
 
+                    // Skip static classes that contain extension methods — they are
+                    // accessed implicitly through their members, not by direct reference.
+                    if (symbol is INamedTypeSymbol { IsStatic: true } staticType &&
+                        staticType.GetMembers().OfType<IMethodSymbol>().Any(m => m.IsExtensionMethod))
+                        continue;
+
                     var refs = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
                     var refCount = refs.Sum(r => r.Locations.Count());
+
+                    // Fallback: cross-compilation re-resolution for symbols prone to
+                    // identity mismatches (extension methods, overloaded methods resolved
+                    // via implicit conversion). The project-local symbol from
+                    // GetDeclaredSymbol may not match the reduced/converted form that
+                    // callers bind to in other compilations.
+                    if (refCount == 0 && NeedsCrossCompilationCheck(symbol))
+                    {
+                        refCount = await CountCrossCompilationReferencesAsync(
+                            symbol, project, solution, ct).ConfigureAwait(false);
+                    }
 
                     if (refCount == 0)
                     {
@@ -99,5 +116,107 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Determines whether a symbol is susceptible to cross-compilation identity
+    /// mismatches that cause <see cref="SymbolFinder.FindReferencesAsync"/> to miss
+    /// references when the symbol comes from the declaring project's compilation.
+    /// </summary>
+    private static bool NeedsCrossCompilationCheck(ISymbol symbol)
+    {
+        if (symbol is IMethodSymbol method)
+        {
+            // Extension methods: call sites bind to ReducedExtensionMethod which
+            // may not map back to the original definition across compilations.
+            if (method.IsExtensionMethod)
+                return true;
+
+            // Overloaded methods: when callers resolve via implicit conversion
+            // (e.g. List<T> → IEnumerable<T>), the bound symbol in the caller's
+            // compilation may have a different identity than the declaring symbol.
+            if (method.ContainingType is not null &&
+                method.ContainingType.GetMembers(method.Name)
+                    .OfType<IMethodSymbol>()
+                    .Count(m => m.MethodKind == MethodKind.Ordinary) > 1)
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Re-resolves a symbol through dependent projects' compilations and checks for
+    /// references from each. Returns the total reference count found, or 0 if none.
+    /// </summary>
+    private static async Task<int> CountCrossCompilationReferencesAsync(
+        ISymbol symbol, Project declaringProject, Solution solution, CancellationToken ct)
+    {
+        var containingType = symbol.ContainingType;
+        if (containingType is null) return 0;
+
+        var metadataName = containingType.ToDisplayString();
+
+        foreach (var project in solution.Projects)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            // Skip the declaring project — we already checked it.
+            if (project.Id == declaringProject.Id) continue;
+
+            // Only check projects that could reference the declaring project.
+            if (!project.ProjectReferences.Any(r => r.ProjectId == declaringProject.Id))
+                continue;
+
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            var resolvedType = compilation.GetTypeByMetadataName(metadataName);
+            if (resolvedType is null) continue;
+
+            // Find the equivalent member in this compilation's type.
+            var resolvedMember = FindMatchingMember(resolvedType, symbol);
+            if (resolvedMember is null) continue;
+
+            var refs = await SymbolFinder.FindReferencesAsync(resolvedMember, solution, ct).ConfigureAwait(false);
+            var count = refs.Sum(r => r.Locations.Count());
+            if (count > 0) return count;
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Finds a member in <paramref name="type"/> that matches <paramref name="original"/>
+    /// by name, kind, and parameter signature.
+    /// </summary>
+    private static ISymbol? FindMatchingMember(INamedTypeSymbol type, ISymbol original)
+    {
+        var candidates = type.GetMembers(original.Name);
+
+        if (original is not IMethodSymbol originalMethod)
+            return candidates.FirstOrDefault(c => c.Kind == original.Kind);
+
+        foreach (var candidate in candidates.OfType<IMethodSymbol>())
+        {
+            if (candidate.Parameters.Length != originalMethod.Parameters.Length)
+                continue;
+
+            var match = true;
+            for (var i = 0; i < candidate.Parameters.Length; i++)
+            {
+                if (!SymbolEqualityComparer.Default.Equals(
+                        candidate.Parameters[i].Type.OriginalDefinition,
+                        originalMethod.Parameters[i].Type.OriginalDefinition))
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match) return candidate;
+        }
+
+        return null;
     }
 }
