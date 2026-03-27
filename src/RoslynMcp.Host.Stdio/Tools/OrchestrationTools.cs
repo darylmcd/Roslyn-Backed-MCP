@@ -8,7 +8,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class OrchestrationTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "migrate_package_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      Description("Preview migrating one package dependency to another across all affected projects in the loaded workspace.")]
@@ -25,7 +24,7 @@ public static class OrchestrationTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await orchestrationService.PreviewMigratePackageAsync(workspaceId, oldPackageId, newPackageId, newVersion, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -45,7 +44,7 @@ public static class OrchestrationTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await orchestrationService.PreviewSplitClassAsync(workspaceId, filePath, typeName, memberNames, newFileName, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -73,7 +72,7 @@ public static class OrchestrationTools
                     targetProjectName,
                     updateDiRegistrations,
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -92,7 +91,7 @@ public static class OrchestrationTools
             gate.RunAsync(gateKey, async c =>
             {
                 var result = await orchestrationService.ApplyCompositeAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

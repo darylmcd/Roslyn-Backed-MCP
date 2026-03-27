@@ -17,8 +17,15 @@ namespace RoslynMcp.Roslyn.Services;
 /// </remarks>
 public sealed class DotnetCommandRunner : IDotnetCommandRunner
 {
-    private const int OutputLimit = 12000;
+    private const int DefaultOutputLimit = 12_000;
     private const int ReadBufferSize = 4096;
+
+    private readonly int _outputLimit;
+
+    public DotnetCommandRunner(int outputLimit = DefaultOutputLimit)
+    {
+        _outputLimit = outputLimit > 0 ? outputLimit : DefaultOutputLimit;
+    }
 
     public async Task<CommandExecutionDto> RunAsync(
         string workingDirectory,
@@ -56,8 +63,8 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
             }
         }, process);
 
-        var stdOutTask = ReadBoundedAsync(process.StandardOutput, ct);
-        var stdErrTask = ReadBoundedAsync(process.StandardError, ct);
+        var stdOutTask = ReadBoundedAsync(process.StandardOutput, _outputLimit, ct);
+        var stdErrTask = ReadBoundedAsync(process.StandardError, _outputLimit, ct);
 
         await process.WaitForExitAsync(ct).ConfigureAwait(false);
         var stdOut = await stdOutTask.ConfigureAwait(false);
@@ -76,10 +83,10 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
             StdErr: stdErr);
     }
 
-    private static async Task<string> ReadBoundedAsync(StreamReader reader, CancellationToken ct)
+    private static async Task<string> ReadBoundedAsync(StreamReader reader, int outputLimit, CancellationToken ct)
     {
         var buffer = ArrayPool<char>.Shared.Rent(ReadBufferSize);
-        var bounded = new BoundedTextBuffer(OutputLimit);
+        var bounded = new BoundedTextBuffer(outputLimit);
 
         try
         {

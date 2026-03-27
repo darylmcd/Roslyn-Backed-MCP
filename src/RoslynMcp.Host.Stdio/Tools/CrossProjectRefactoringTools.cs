@@ -8,7 +8,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class CrossProjectRefactoringTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "move_type_to_project_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      Description("Preview moving a C# type declaration into another project in the loaded workspace.")]
@@ -32,7 +31,7 @@ public static class CrossProjectRefactoringTools
                     targetProjectName,
                     targetNamespace,
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -58,7 +57,7 @@ public static class CrossProjectRefactoringTools
                     interfaceName,
                     targetProjectName,
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -84,7 +83,7 @@ public static class CrossProjectRefactoringTools
                     interfaceName,
                     interfaceProjectName,
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

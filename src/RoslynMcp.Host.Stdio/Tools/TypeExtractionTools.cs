@@ -8,7 +8,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class TypeExtractionTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "extract_type_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("Preview extracting selected members from a type into a new type. The source type gets a private field for the new type and the extracted members are moved. Use this for SRP refactoring.")]
@@ -28,7 +27,7 @@ public static class TypeExtractionTools
             {
                 var result = await typeExtractionService.PreviewExtractTypeAsync(
                     workspaceId, filePath, typeName, memberNames, newTypeName, newFilePath, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -46,7 +45,7 @@ public static class TypeExtractionTools
             gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

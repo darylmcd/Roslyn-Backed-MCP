@@ -161,6 +161,11 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
 
         var mutatingMembers = new List<MutatingMemberDto>();
 
+        // Cache document roots and semantic models to avoid redundant async lookups
+        // across multiple members referencing the same documents.
+        var rootCache = new Dictionary<DocumentId, SyntaxNode?>();
+        var modelCache = new Dictionary<DocumentId, SemanticModel?>();
+
         foreach (var member in namedType.GetMembers())
         {
             if (!IsMutatingMember(member, namedType)) continue;
@@ -172,15 +177,29 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             {
                 foreach (var refLocation in refSymbol.Locations)
                 {
-                    var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
+                    var doc = refLocation.Document;
+                    if (!rootCache.TryGetValue(doc.Id, out var root))
+                    {
+                        root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                        rootCache[doc.Id] = root;
+                    }
+                    if (!modelCache.TryGetValue(doc.Id, out var model))
+                    {
+                        model = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
+                        modelCache[doc.Id] = model;
+                    }
+
+                    var containingSymbol = root is not null && model is not null
+                        ? SymbolServiceHelpers.GetContainingSymbolFromRoot(root, model, refLocation.Location, ct)
+                        : null;
 
                     // Skip calls from within the type itself (internal mutators calling each other)
                     if (containingSymbol is not null &&
                         SymbolEqualityComparer.Default.Equals(containingSymbol.ContainingType, namedType))
                         continue;
 
-                    var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
-                    var phase = await ClassifyCallerPhaseAsync(refLocation, namedType, ct).ConfigureAwait(false);
+                    var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
+                    var phase = ClassifyCallerPhase(root, model, refLocation.Location, namedType);
                     var lineSpan = refLocation.Location.GetLineSpan();
 
                     callers.Add(new MutationCallerDto(
@@ -377,12 +396,11 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         return type.GetMembers(name).Any(m => !m.IsStatic);
     }
 
-    private static async Task<string> ClassifyCallerPhaseAsync(ReferenceLocation refLocation, INamedTypeSymbol targetType, CancellationToken ct)
+    private static string ClassifyCallerPhase(SyntaxNode? root, SemanticModel? model, Location location, INamedTypeSymbol targetType)
     {
-        var root = await refLocation.Document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
         if (root is null) return "Unknown";
 
-        var node = root.FindNode(refLocation.Location.SourceSpan);
+        var node = root.FindNode(location.SourceSpan);
 
         // Check if inside an object initializer
         if (node.Ancestors().OfType<InitializerExpressionSyntax>()
@@ -395,19 +413,15 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
 
         // Check if inside a method of the same type that returns void (builder-pattern heuristic)
         var enclosingMethod = node.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault();
-        if (enclosingMethod is not null)
+        if (enclosingMethod is not null && model is not null)
         {
             var returnType = enclosingMethod.ReturnType.ToString();
             if (returnType is "void" or "Void")
             {
-                var semanticModel = await refLocation.Document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                if (semanticModel is not null)
-                {
-                    var methodSymbol = semanticModel.GetDeclaredSymbol(enclosingMethod, ct);
-                    if (methodSymbol?.ContainingType is not null &&
-                        SymbolEqualityComparer.Default.Equals(methodSymbol.ContainingType, targetType))
-                        return "Construction";
-                }
+                var methodSymbol = model.GetDeclaredSymbol(enclosingMethod);
+                if (methodSymbol?.ContainingType is not null &&
+                    SymbolEqualityComparer.Default.Equals(methodSymbol.ContainingType, targetType))
+                    return "Construction";
             }
         }
 

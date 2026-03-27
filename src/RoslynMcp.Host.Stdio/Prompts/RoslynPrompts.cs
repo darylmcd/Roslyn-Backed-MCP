@@ -10,7 +10,6 @@ namespace RoslynMcp.Host.Stdio.Prompts;
 [McpServerPromptType]
 public static class RoslynPrompts
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerPrompt(Name = "explain_error")]
     [Description("Generate a prompt to explain a compiler diagnostic error and suggest fixes")]
@@ -43,7 +42,7 @@ public static class RoslynPrompts
                 }));
             }
 
-            var detailsJson = JsonSerializer.Serialize(details, JsonOptions);
+            var detailsJson = JsonSerializer.Serialize(details, JsonDefaults.Indented);
 
             return
             [
@@ -103,7 +102,7 @@ public static class RoslynPrompts
                 return [CreatePromptMessage($"File not found in workspace: {filePath}")];
 
             var symbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
-            var symbolsSummary = JsonSerializer.Serialize(symbols, JsonOptions);
+            var symbolsSummary = JsonSerializer.Serialize(symbols, JsonDefaults.Indented);
 
             string codeSection;
             if (startLine.HasValue && endLine.HasValue)
@@ -173,8 +172,8 @@ public static class RoslynPrompts
             var symbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
             var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, null, ct).ConfigureAwait(false);
 
-            var symbolsSummary = JsonSerializer.Serialize(symbols, JsonOptions);
-            var diagnosticsSummary = JsonSerializer.Serialize(diagnostics, JsonOptions);
+            var symbolsSummary = JsonSerializer.Serialize(symbols, JsonDefaults.Indented);
+            var diagnosticsSummary = JsonSerializer.Serialize(diagnostics, JsonDefaults.Indented);
 
             return
             [
@@ -229,19 +228,19 @@ public static class RoslynPrompts
         try
         {
             var graph = workspace.GetProjectGraph(workspaceId);
-            var graphJson = SerializeTruncatedList(graph.Projects, 50, JsonOptions);
+            var graphJson = SerializeTruncatedList(graph.Projects, 50, JsonDefaults.Indented);
 
             var namespaceDeps = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
             var truncatedNamespaceDeps = new Core.Models.NamespaceDependencyGraphDto(
                 namespaceDeps.Nodes.Take(100).ToList(),
                 namespaceDeps.Edges.Take(100).ToList(),
                 namespaceDeps.CircularDependencies);
-            var namespaceDepsJson = JsonSerializer.Serialize(truncatedNamespaceDeps, JsonOptions);
+            var namespaceDepsJson = JsonSerializer.Serialize(truncatedNamespaceDeps, JsonDefaults.Indented);
             if (namespaceDeps.Edges.Count > 100)
                 namespaceDepsJson += $"\n[Showing 100 of {namespaceDeps.Edges.Count} edges]";
 
             var nugetDeps = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
-            var nugetDepsJson = SerializeTruncatedList(nugetDeps.Packages, 50, JsonOptions);
+            var nugetDepsJson = SerializeTruncatedList(nugetDeps.Packages, 50, JsonDefaults.Indented);
 
             return
             [
@@ -291,7 +290,7 @@ public static class RoslynPrompts
         try
         {
             var testResult = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, ct).ConfigureAwait(false);
-            var testResultJson = JsonSerializer.Serialize(testResult, JsonOptions);
+            var testResultJson = JsonSerializer.Serialize(testResult, JsonDefaults.Indented);
 
             var failureSummary = testResult.Failures.Count > 0
                 ? string.Join("\n", testResult.Failures.Select((f, i) =>
@@ -517,12 +516,12 @@ public static class RoslynPrompts
 
                     **Document Symbols:**
                     ```json
-                    {JsonSerializer.Serialize(documentSymbols, JsonOptions)}
+                    {JsonSerializer.Serialize(documentSymbols, JsonDefaults.Indented)}
                     ```
 
                     **Project Graph:**
                     ```json
-                    {JsonSerializer.Serialize(projectGraph, JsonOptions)}
+                    {JsonSerializer.Serialize(projectGraph, JsonDefaults.Indented)}
                     ```
 
                     Use this workflow:
@@ -726,7 +725,7 @@ public static class RoslynPrompts
             var perProject = Math.Max(1, 200 / Math.Max(1, discovered.TestProjects.Count));
             var truncatedProjects = discovered.TestProjects.Select(p =>
                 new Core.Models.TestProjectDto(p.ProjectName, p.ProjectFilePath, p.Tests.Take(perProject).ToList())).ToList();
-            var discoveredJson = JsonSerializer.Serialize(new Core.Models.TestDiscoveryDto(truncatedProjects), JsonOptions);
+            var discoveredJson = JsonSerializer.Serialize(new Core.Models.TestDiscoveryDto(truncatedProjects), JsonDefaults.Indented);
             if (totalTests > 200)
                 discoveredJson += $"\n[Showing ~200 of {totalTests} test cases]";
 
@@ -777,7 +776,7 @@ public static class RoslynPrompts
         try
         {
             var metrics = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath: null, projectFilter: projectName, minComplexity: 5, limit: 50, ct).ConfigureAwait(false);
-            var metricsJson = JsonSerializer.Serialize(metrics, JsonOptions);
+            var metricsJson = JsonSerializer.Serialize(metrics, JsonDefaults.Indented);
 
             return
             [
@@ -826,7 +825,7 @@ public static class RoslynPrompts
         {
             var metrics = await cohesionAnalysisService.GetCohesionMetricsAsync(
                 workspaceId, filePath: null, projectFilter: projectName, minMethods: 3, limit: 20, ct).ConfigureAwait(false);
-            var metricsJson = JsonSerializer.Serialize(metrics, JsonOptions);
+            var metricsJson = JsonSerializer.Serialize(metrics, JsonDefaults.Indented);
 
             return
             [
@@ -883,7 +882,7 @@ public static class RoslynPrompts
             var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, ct).ConfigureAwait(false);
             if (result is null) return [CreatePromptMessage("No symbol found at the specified location.")];
 
-            var resultJson = SerializeTruncatedList(result.Consumers, 50, JsonOptions);
+            var resultJson = SerializeTruncatedList(result.Consumers, 50, JsonDefaults.Indented);
 
             return
             [

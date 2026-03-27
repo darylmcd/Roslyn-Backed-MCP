@@ -11,7 +11,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class TestCoverageTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "test_coverage", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      Description("Run tests with code coverage collection and return coverage metrics per module and class. Requires coverlet.collector NuGet package in test projects.")]
@@ -62,13 +61,13 @@ public static class TestCoverageTools
                         Error: !execution.Succeeded ? $"Tests failed (exit code {execution.ExitCode}). Coverage file not found." : "Coverage file not generated. Ensure coverlet.collector NuGet package is referenced in test projects.",
                         LineCoveragePercent: null,
                         BranchCoveragePercent: null,
-                        Modules: []), JsonOptions);
+                        Modules: []), JsonDefaults.Indented);
                 }
 
                 var latestCoverage = coverageFiles.OrderByDescending(File.GetLastWriteTimeUtc).First();
                 var result = ParseCoberturaXml(latestCoverage);
                 ProgressHelper.Report(progress, 1, 1);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 

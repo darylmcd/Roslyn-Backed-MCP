@@ -9,7 +9,6 @@ namespace RoslynMcp.Host.Stdio.Resources;
 [McpServerResourceType]
 public static class WorkspaceResources
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerResource(UriTemplate = "roslyn://workspaces", Name = "workspaces", MimeType = "application/json")]
     [Description("List all currently loaded workspace sessions with their status")]
@@ -18,7 +17,7 @@ public static class WorkspaceResources
         try
         {
             var workspaces = workspace.ListWorkspaces();
-            return JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonOptions);
+            return JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented);
         }
         catch (KeyNotFoundException ex) { throw new McpToolException($"Not found: {ex.Message}", ex); }
         catch (InvalidOperationException ex) { throw new McpToolException($"Invalid operation: {ex.Message}", ex); }
@@ -33,7 +32,7 @@ public static class WorkspaceResources
         try
         {
             var status = workspace.GetStatus(workspaceId);
-            return JsonSerializer.Serialize(status, JsonOptions);
+            return JsonSerializer.Serialize(status, JsonDefaults.Indented);
         }
         catch (KeyNotFoundException ex) { throw new McpToolException($"Not found: {ex.Message}", ex); }
         catch (InvalidOperationException ex) { throw new McpToolException($"Invalid operation: {ex.Message}", ex); }
@@ -48,7 +47,7 @@ public static class WorkspaceResources
         try
         {
             var graph = workspace.GetProjectGraph(workspaceId);
-            return JsonSerializer.Serialize(graph, JsonOptions);
+            return JsonSerializer.Serialize(graph, JsonDefaults.Indented);
         }
         catch (KeyNotFoundException ex) { throw new McpToolException($"Not found: {ex.Message}", ex); }
         catch (InvalidOperationException ex) { throw new McpToolException($"Invalid operation: {ex.Message}", ex); }
@@ -64,7 +63,7 @@ public static class WorkspaceResources
         try
         {
             var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, null, null, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(diagnostics, JsonOptions);
+            return JsonSerializer.Serialize(diagnostics, JsonDefaults.Indented);
         }
         catch (KeyNotFoundException ex) { throw new McpToolException($"Not found: {ex.Message}", ex); }
         catch (InvalidOperationException ex) { throw new McpToolException($"Invalid operation: {ex.Message}", ex); }

@@ -10,7 +10,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ServerTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "server_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("Get server version, capabilities, runtime information, and loaded workspace count")]
@@ -23,6 +22,7 @@ public static class ServerTools
             var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                           ?? assembly.GetName().Version?.ToString() ?? "unknown";
 
+            var catalogSummary = ServerSurfaceCatalog.GetSummary();
             var info = new
             {
                 server = "roslyn-mcp",
@@ -37,18 +37,18 @@ public static class ServerTools
                 {
                     tools = new
                     {
-                        stable = ServerSurfaceCatalog.GetSummary().StableTools,
-                        experimental = ServerSurfaceCatalog.GetSummary().ExperimentalTools
+                        stable = catalogSummary.StableTools,
+                        experimental = catalogSummary.ExperimentalTools
                     },
                     resources = new
                     {
-                        stable = ServerSurfaceCatalog.GetSummary().StableResources,
-                        experimental = ServerSurfaceCatalog.GetSummary().ExperimentalResources
+                        stable = catalogSummary.StableResources,
+                        experimental = catalogSummary.ExperimentalResources
                     },
                     prompts = new
                     {
-                        stable = ServerSurfaceCatalog.GetSummary().StablePrompts,
-                        experimental = ServerSurfaceCatalog.GetSummary().ExperimentalPrompts
+                        stable = catalogSummary.StablePrompts,
+                        experimental = catalogSummary.ExperimentalPrompts
                     }
                 },
                 productBoundaries = new[]
@@ -67,7 +67,7 @@ public static class ServerTools
                 }
             };
 
-            return Task.FromResult(JsonSerializer.Serialize(info, JsonOptions));
+            return Task.FromResult(JsonSerializer.Serialize(info, JsonDefaults.Indented));
         });
     }
 }

@@ -9,7 +9,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ValidationTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "build_workspace", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet build for the loaded workspace and return structured diagnostics and execution output")]
     public static Task<string> BuildWorkspace(
@@ -25,7 +24,7 @@ public static class ValidationTools
                 ProgressHelper.Report(progress, 0, 1);
                 var result = await buildService.BuildWorkspaceAsync(workspaceId, c);
                 ProgressHelper.Report(progress, 1, 1);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -41,7 +40,7 @@ public static class ValidationTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await buildService.BuildProjectAsync(workspaceId, projectName, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -56,7 +55,7 @@ public static class ValidationTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await testDiscoveryService.DiscoverTestsAsync(workspaceId, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -76,7 +75,7 @@ public static class ValidationTools
                 ProgressHelper.Report(progress, 0, 1);
                 var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
                 ProgressHelper.Report(progress, 1, 1);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -96,7 +95,7 @@ public static class ValidationTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
                 var result = await testDiscoveryService.FindRelatedTestsAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -113,7 +112,7 @@ public static class ValidationTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await testDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, filePaths, maxResults, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

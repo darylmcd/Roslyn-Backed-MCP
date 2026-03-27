@@ -9,7 +9,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class MultiFileEditTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "apply_multi_file_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      Description("Apply text edits to multiple files in the workspace sequentially. Each file's edits are applied independently.")]
@@ -33,7 +32,7 @@ public static class MultiFileEditTools
                     results.Add(new FileEditSummaryDto(fileEdit.FilePath, result.EditsApplied, diff));
                 }
                 var dto = new MultiFileEditResultDto(true, results.Count, results);
-                return JsonSerializer.Serialize(dto, JsonOptions);
+                return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
             }, ct));
     }
 }
