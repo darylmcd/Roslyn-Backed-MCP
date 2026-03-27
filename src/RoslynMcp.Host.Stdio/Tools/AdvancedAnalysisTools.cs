@@ -8,7 +8,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class AdvancedAnalysisTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "find_unused_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("Find symbols (types, methods, properties, fields) with zero references across the solution — helps identify dead code")]
@@ -25,7 +24,7 @@ public static class AdvancedAnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(workspaceId, project, includePublic, limit, c);
-                return JsonSerializer.Serialize(new { count = results.Count, unusedSymbols = results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, unusedSymbols = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -42,7 +41,7 @@ public static class AdvancedAnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await dependencyAnalysisService.GetDiRegistrationsAsync(workspaceId, project, c);
-                return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -62,7 +61,7 @@ public static class AdvancedAnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, project, minComplexity, limit, c);
-                return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -81,7 +80,7 @@ public static class AdvancedAnalysisTools
                 var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, project, c);
                 var grouped = results.GroupBy(r => r.UsageKind)
                     .ToDictionary(g => g.Key, g => g.ToList());
-                return JsonSerializer.Serialize(new { count = results.Count, usagesByKind = grouped }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, usagesByKind = grouped }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -98,7 +97,7 @@ public static class AdvancedAnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, project, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -114,7 +113,7 @@ public static class AdvancedAnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -133,7 +132,7 @@ public static class AdvancedAnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, project, limit, c);
-                return JsonSerializer.Serialize(new { count = results.Count, results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, results }, JsonDefaults.Indented);
             }, ct));
     }
 }

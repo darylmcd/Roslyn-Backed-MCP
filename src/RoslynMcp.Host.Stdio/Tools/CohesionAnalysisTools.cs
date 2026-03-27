@@ -8,7 +8,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class CohesionAnalysisTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "get_cohesion_metrics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("Measure type cohesion via LCOM4 metrics. Identifies independent method clusters that share no state — a score > 1 suggests the type has multiple responsibilities and should be split.")]
@@ -26,7 +25,7 @@ public static class CohesionAnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await cohesionAnalysisService.GetCohesionMetricsAsync(workspaceId, filePath, project, minMethods, limit, c);
-                return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -47,7 +46,7 @@ public static class CohesionAnalysisTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
                 var results = await cohesionAnalysisService.FindSharedMembersAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(new { count = results.Count, sharedMembers = results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, sharedMembers = results }, JsonDefaults.Indented);
             }, ct));
     }
 }

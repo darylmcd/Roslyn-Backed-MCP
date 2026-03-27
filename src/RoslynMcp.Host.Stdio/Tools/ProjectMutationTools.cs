@@ -9,7 +9,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ProjectMutationTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "add_package_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      Description("Preview adding a PackageReference to a project file in the loaded workspace.")]
@@ -29,7 +28,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new AddPackageReferenceDto(projectName, packageId, version),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -50,7 +49,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new RemovePackageReferenceDto(projectName, packageId),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -71,7 +70,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new AddProjectReferenceDto(projectName, referencedProjectName),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -92,7 +91,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new RemoveProjectReferenceDto(projectName, referencedProjectName),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -114,7 +113,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new SetProjectPropertyDto(projectName, propertyName, value),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -135,7 +134,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new AddTargetFrameworkDto(projectName, targetFramework),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -156,7 +155,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new RemoveTargetFrameworkDto(projectName, targetFramework),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -179,7 +178,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new SetConditionalPropertyDto(projectName, propertyName, value, condition),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -200,7 +199,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new AddCentralPackageVersionDto(packageId, version),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -220,7 +219,7 @@ public static class ProjectMutationTools
                     workspaceId,
                     new RemoveCentralPackageVersionDto(packageId),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -239,7 +238,7 @@ public static class ProjectMutationTools
             gate.RunAsync(gateKey, async c =>
             {
                 var result = await projectMutationService.ApplyProjectMutationAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

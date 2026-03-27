@@ -14,12 +14,17 @@ internal static class SymbolServiceHelpers
         var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
         if (root is null) return null;
 
+        return GetContainingSymbolFromRoot(root, semanticModel, location, ct);
+    }
+
+    public static ISymbol? GetContainingSymbolFromRoot(SyntaxNode root, SemanticModel model, Location location, CancellationToken ct)
+    {
         var node = root.FindNode(location.SourceSpan);
         while (node is not null)
         {
             if (node is MemberDeclarationSyntax or LocalFunctionStatementSyntax)
             {
-                return semanticModel.GetDeclaredSymbol(node, ct);
+                return model.GetDeclaredSymbol(node, ct);
             }
             node = node.Parent;
         }

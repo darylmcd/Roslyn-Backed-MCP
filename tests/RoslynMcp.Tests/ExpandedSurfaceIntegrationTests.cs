@@ -31,6 +31,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
     {
         var programFile = FindDocumentPath("Program.cs");
         var json = await SymbolTools.GetCompletions(
+            null!,
             WorkspaceExecutionGate,
             CompletionService,
             WorkspaceId,
@@ -50,6 +51,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var json = await SyntaxTools.GetSyntaxTree(
+            null!,
             WorkspaceExecutionGate,
             SyntaxService,
             WorkspaceId,

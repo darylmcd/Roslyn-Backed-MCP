@@ -3,13 +3,13 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using McpServer = ModelContextProtocol.Server.McpServer;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
 [McpServerToolType]
 public static class SymbolTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "symbol_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search for symbols (types, methods, properties, fields) by name pattern across the loaded workspace")]
     public static Task<string> SearchSymbols(
@@ -27,7 +27,7 @@ public static class SymbolTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await symbolSearchService.SearchSymbolsAsync(workspaceId, query, project, kind, @namespace, limit, c);
-                return JsonSerializer.Serialize(results, JsonOptions);
+                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -49,7 +49,7 @@ public static class SymbolTools
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await symbolSearchService.GetSymbolInfoAsync(workspaceId, locator, c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -70,7 +70,7 @@ public static class SymbolTools
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await symbolNavigationService.GoToDefinitionAsync(workspaceId, locator, c);
                 if (results.Count == 0) throw new KeyNotFoundException("No definition found for the symbol at the specified location");
-                return JsonSerializer.Serialize(results, JsonOptions);
+                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -90,7 +90,7 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await referenceService.FindReferencesAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(new { count = results.Count, references = results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, references = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -110,12 +110,13 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await referenceService.FindImplementationsAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(new { count = results.Count, implementations = results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, implementations = results }, JsonDefaults.Indented);
             }, ct));
     }
 
     [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get all symbol declarations (types, methods, properties, fields) in a document as a hierarchical tree")]
     public static Task<string> GetDocumentSymbols(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -125,8 +126,9 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var results = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, c);
-                return JsonSerializer.Serialize(results, JsonOptions);
+                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -146,7 +148,7 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await referenceService.FindOverridesAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(results, JsonOptions);
+                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -166,7 +168,7 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await referenceService.FindBaseMembersAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(results, JsonOptions);
+                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -186,7 +188,7 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var result = await symbolRelationshipService.GetMemberHierarchyAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -207,7 +209,7 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await symbolRelationshipService.GetSignatureHelpAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -228,7 +230,7 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await symbolRelationshipService.GetSymbolRelationshipsAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -245,7 +247,7 @@ public static class SymbolTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await referenceService.FindReferencesBulkAsync(workspaceId, symbols, includeDefinition, c);
-                return JsonSerializer.Serialize(new { count = results.Count, results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -265,12 +267,13 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await mutationAnalysisService.FindPropertyWritesAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(new { count = results.Count, writes = results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, writes = results }, JsonDefaults.Indented);
             }, ct));
     }
 
     [McpServerTool(Name = "enclosing_symbol", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the enclosing symbol (method, property, type) at a given file position — useful for understanding the context of a cursor position")]
     public static Task<string> GetEnclosingSymbol(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         ISymbolNavigationService symbolNavigationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -282,9 +285,10 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var result = await symbolNavigationService.GetEnclosingSymbolAsync(workspaceId, filePath, line, column, c);
                 if (result is null) throw new KeyNotFoundException("No enclosing symbol found at the specified location");
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -305,12 +309,13 @@ public static class SymbolTools
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await symbolNavigationService.GoToTypeDefinitionAsync(workspaceId, locator, c);
                 if (results.Count == 0) throw new KeyNotFoundException("No type definition found for the symbol at the specified location");
-                return JsonSerializer.Serialize(results, JsonOptions);
+                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
 
     [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file")]
     public static Task<string> GetCompletions(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         ICompletionService completionService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -322,8 +327,9 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var result = await completionService.GetCompletionsAsync(workspaceId, filePath, line, column, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 

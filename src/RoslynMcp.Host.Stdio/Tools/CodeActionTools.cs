@@ -8,7 +8,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class CodeActionTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "get_code_actions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get available Roslyn code fixes and refactorings at a position or selection range in a source file")]
     public static Task<string> GetCodeActions(
@@ -26,7 +25,7 @@ public static class CodeActionTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await codeActionService.GetCodeActionsAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c);
-                return JsonSerializer.Serialize(new { count = results.Count, actions = results }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, actions = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -47,7 +46,7 @@ public static class CodeActionTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await codeActionService.PreviewCodeActionAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, actionIndex, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -64,7 +63,7 @@ public static class CodeActionTools
             gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

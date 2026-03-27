@@ -9,7 +9,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ScaffoldingTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "scaffold_type_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      Description("Preview scaffolding a new type file in a project.")]
@@ -31,7 +30,7 @@ public static class ScaffoldingTools
                     workspaceId,
                     new ScaffoldTypeDto(projectName, typeName, typeKind, @namespace, baseType),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -49,7 +48,7 @@ public static class ScaffoldingTools
             gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -71,7 +70,7 @@ public static class ScaffoldingTools
                     workspaceId,
                     new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -89,7 +88,7 @@ public static class ScaffoldingTools
             gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

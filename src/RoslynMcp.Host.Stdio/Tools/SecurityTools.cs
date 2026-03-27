@@ -8,7 +8,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class SecurityTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "security_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get security-relevant diagnostics with OWASP categorization, severity classification, and fix hints. Filters the existing diagnostic pipeline to return only security findings.")]
     public static Task<string> GetSecurityDiagnostics(
@@ -23,7 +22,7 @@ public static class SecurityTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await securityService.GetSecurityDiagnosticsAsync(workspaceId, project, file, c);
-                return JsonSerializer.Serialize(results, JsonOptions);
+                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -38,7 +37,7 @@ public static class SecurityTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await securityService.GetAnalyzerStatusAsync(workspaceId, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

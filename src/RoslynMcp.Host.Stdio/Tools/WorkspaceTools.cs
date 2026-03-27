@@ -10,7 +10,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class WorkspaceTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Load a .sln or .csproj file into the workspace for semantic analysis")]
     public static Task<string> LoadWorkspace(
@@ -29,7 +28,7 @@ public static class WorkspaceTools
                 var status = await workspace.LoadAsync(path, c);
                 ProgressHelper.Report(progress, 1, 1);
                 _ = NotifyResourcesChangedAsync(server);
-                return JsonSerializer.Serialize(status, JsonOptions);
+                return JsonSerializer.Serialize(status, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -46,7 +45,7 @@ public static class WorkspaceTools
             {
                 var status = await workspace.ReloadAsync(workspaceId, c);
                 _ = NotifyResourcesChangedAsync(server);
-                return JsonSerializer.Serialize(status, JsonOptions);
+                return JsonSerializer.Serialize(status, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -64,7 +63,7 @@ public static class WorkspaceTools
                 var closed = workspace.Close(workspaceId);
                 gate.RemoveGate(workspaceId);
                 _ = NotifyResourcesChangedAsync(server);
-                return Task.FromResult(JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonOptions));
+                return Task.FromResult(JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented));
             }, ct));
     }
 
@@ -75,7 +74,7 @@ public static class WorkspaceTools
         return ToolErrorHandler.ExecuteAsync(() =>
         {
             var workspaces = workspace.ListWorkspaces();
-            return Task.FromResult(JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonOptions));
+            return Task.FromResult(JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented));
         });
     }
 
@@ -90,7 +89,7 @@ public static class WorkspaceTools
             gate.RunAsync(workspaceId, _ =>
             {
                 var status = workspace.GetStatus(workspaceId);
-                return Task.FromResult(JsonSerializer.Serialize(status, JsonOptions));
+                return Task.FromResult(JsonSerializer.Serialize(status, JsonDefaults.Indented));
             }, ct));
     }
 
@@ -105,7 +104,7 @@ public static class WorkspaceTools
             gate.RunAsync(workspaceId, _ =>
             {
                 var graph = workspace.GetProjectGraph(workspaceId);
-                return Task.FromResult(JsonSerializer.Serialize(graph, JsonOptions));
+                return Task.FromResult(JsonSerializer.Serialize(graph, JsonDefaults.Indented));
             }, ct));
     }
 
@@ -121,7 +120,7 @@ public static class WorkspaceTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var documents = await workspace.GetSourceGeneratedDocumentsAsync(workspaceId, projectName, c);
-                return JsonSerializer.Serialize(documents, JsonOptions);
+                return JsonSerializer.Serialize(documents, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -138,7 +137,7 @@ public static class WorkspaceTools
             {
                 var text = await workspace.GetSourceTextAsync(workspaceId, filePath, c);
                 if (text is null) throw new KeyNotFoundException($"Document not found: {filePath}");
-                return JsonSerializer.Serialize(new { filePath, lineCount = text.Count(ch => ch == '\n') + 1, text }, JsonOptions);
+                return JsonSerializer.Serialize(new { filePath, lineCount = text.Count(ch => ch == '\n') + 1, text }, JsonDefaults.Indented);
             }, ct));
     }
 

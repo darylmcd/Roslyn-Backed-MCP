@@ -9,7 +9,6 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class DeadCodeTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "remove_dead_code_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      Description("Preview removing unused symbols by symbol handle, optionally deleting files left empty by the removal.")]
@@ -28,7 +27,7 @@ public static class DeadCodeTools
                     workspaceId,
                     new DeadCodeRemovalDto(symbolHandles, removeEmptyFiles),
                     c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -46,7 +45,7 @@ public static class DeadCodeTools
             gate.RunAsync(gateKey, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

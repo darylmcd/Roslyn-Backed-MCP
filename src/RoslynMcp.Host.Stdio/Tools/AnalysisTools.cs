@@ -3,13 +3,13 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using McpServer = ModelContextProtocol.Server.McpServer;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
 [McpServerToolType]
 public static class AnalysisTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get compiler diagnostics (errors, warnings) for the workspace, optionally filtered by project, file, or severity")]
     public static Task<string> GetProjectDiagnostics(
@@ -25,12 +25,13 @@ public static class AnalysisTools
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, project, file, severity, c);
-                return JsonSerializer.Serialize(results, JsonOptions);
+                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
 
     [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information and curated fix options for a specific diagnostic occurrence")]
     public static Task<string> GetDiagnosticDetails(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         IDiagnosticService diagnosticService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -43,8 +44,9 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var result = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, c);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -64,7 +66,7 @@ public static class AnalysisTools
             {
                 var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
                 if (result is null) throw new KeyNotFoundException("No type found at the specified location");
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -84,7 +86,7 @@ public static class AnalysisTools
             {
                 var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -104,7 +106,7 @@ public static class AnalysisTools
             {
                 var result = await mutationAnalysisService.AnalyzeImpactAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -125,7 +127,7 @@ public static class AnalysisTools
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
                 var result = await mutationAnalysisService.FindTypeMutationsAsync(workspaceId, locator, c);
                 if (result is null) throw new KeyNotFoundException("No named type found at the specified location");
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -149,7 +151,7 @@ public static class AnalysisTools
                 var grouped = results
                     .GroupBy(u => u.Classification.ToString())
                     .ToDictionary(g => g.Key, g => g.ToList());
-                return JsonSerializer.Serialize(new { count = results.Count, usagesByClassification = grouped }, JsonOptions);
+                return JsonSerializer.Serialize(new { count = results.Count, usagesByClassification = grouped }, JsonDefaults.Indented);
             }, ct));
     }
 }

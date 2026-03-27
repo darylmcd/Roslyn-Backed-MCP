@@ -2,17 +2,18 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using McpServer = ModelContextProtocol.Server.McpServer;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
 [McpServerToolType]
 public static class SyntaxTools
 {
-    private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     [McpServerTool(Name = "get_syntax_tree", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("Get the syntax tree (AST) for a source file or a specific line range. Returns a hierarchical tree of syntax nodes with their kinds and positions.")]
     public static Task<string> GetSyntaxTree(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         ISyntaxService syntaxService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -25,9 +26,10 @@ public static class SyntaxTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var result = await syntaxService.GetSyntaxTreeAsync(workspaceId, filePath, startLine, endLine, maxDepth, c);
                 if (result is null) throw new KeyNotFoundException($"Document not found: {filePath}");
-                return JsonSerializer.Serialize(result, JsonOptions);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }
