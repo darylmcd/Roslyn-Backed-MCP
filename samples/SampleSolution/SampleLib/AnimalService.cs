@@ -26,4 +26,14 @@ public class AnimalService
     {
         return animals.Count;
     }
+
+    public int CountAnimals(IEnumerable<IAnimal> animals)
+    {
+        var count = 0;
+        foreach (var _ in animals)
+        {
+            count++;
+        }
+        return count;
+    }
 }
