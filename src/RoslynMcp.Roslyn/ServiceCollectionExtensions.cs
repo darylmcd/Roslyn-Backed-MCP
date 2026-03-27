@@ -67,6 +67,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IInterfaceExtractionService, InterfaceExtractionService>();
         services.AddSingleton<IBulkRefactoringService, BulkRefactoringService>();
         services.AddSingleton<ITypeExtractionService, TypeExtractionService>();
+        services.AddSingleton<IUndoService, UndoService>();
         return services;
     }
 }

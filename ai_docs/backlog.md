@@ -2,17 +2,13 @@
 
 Canonical location for unfinished work items. Prioritized for 1.0 release.
 
-Last audit: 2026-03-26. All pre-1.0 items resolved.
+Last audit: 2026-03-27. All post-1.0 items resolved.
 
 ---
 
 ## Post-1.0
 
-- [ ] **REL-07**: Add CI badge to README.
-- [ ] **REL-09**: Document cross-platform limitations.
-- [ ] **API-05**: Consider promoting `test_coverage` to stable — functionally complete, uses standard `coverlet.collector`.
-- [ ] **API-06**: Consider adding `undo`/`revert_last_apply` capability.
-- [ ] **TEST-03**: Add performance baseline tests for large solutions.
+- [ ] **REL-10**: Create 512x512 PNG icon for MCP directory listing and manifest. Required by the [Anthropic MCP submission guide](https://support.claude.com/en/articles/12922832-local-mcp-server-submission-guide).
 
 ---
 

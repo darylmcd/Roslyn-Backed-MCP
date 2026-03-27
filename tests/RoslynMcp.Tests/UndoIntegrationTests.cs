@@ -1,0 +1,87 @@
+using RoslynMcp.Core.Models;
+
+namespace RoslynMcp.Tests;
+
+[TestClass]
+public sealed class UndoIntegrationTests : TestBase
+{
+    [ClassInitialize]
+    public static void ClassInit(TestContext _)
+    {
+        InitializeServices();
+    }
+
+    [ClassCleanup]
+    public static void ClassCleanup()
+    {
+        DisposeServices();
+    }
+
+    [TestMethod]
+    public async Task Revert_Last_Apply_Restores_Previous_State()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+
+        try
+        {
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var workspaceId = status.WorkspaceId;
+
+            // Find the Dog.Speak method and preview a rename
+            var locator = SymbolLocator.ByMetadataName("SampleLib.IAnimal");
+            var original = await SymbolSearchService.GetSymbolInfoAsync(workspaceId, locator, CancellationToken.None);
+            Assert.IsNotNull(original);
+
+            // Preview rename of IAnimal → ICreature
+            var preview = await RefactoringService.PreviewRenameAsync(
+                workspaceId,
+                locator,
+                "ICreature",
+                CancellationToken.None);
+            Assert.IsNotNull(preview.PreviewToken);
+
+            // Apply the rename
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(
+                preview.PreviewToken, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+            // Verify the rename took effect
+            var renamedSymbol = await SymbolSearchService.GetSymbolInfoAsync(
+                workspaceId, SymbolLocator.ByMetadataName("SampleLib.ICreature"), CancellationToken.None);
+            Assert.IsNotNull(renamedSymbol, "ICreature should exist after rename");
+
+            // Verify undo entry exists
+            var undoEntry = UndoService.GetLastOperation(workspaceId);
+            Assert.IsNotNull(undoEntry, "Undo entry should exist after apply");
+            StringAssert.Contains(undoEntry.Description, "Rename");
+
+            // Revert
+            var reverted = UndoService.Revert(workspaceId, WorkspaceManager);
+            Assert.IsTrue(reverted, "Revert should succeed");
+
+            // Verify original name is back
+            var restored = await SymbolSearchService.GetSymbolInfoAsync(
+                workspaceId, SymbolLocator.ByMetadataName("SampleLib.IAnimal"), CancellationToken.None);
+            Assert.IsNotNull(restored, "IAnimal should exist after revert");
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public void Revert_Without_Prior_Apply_Returns_False()
+    {
+        var result = UndoService.Revert("nonexistent-workspace", WorkspaceManager);
+        Assert.IsFalse(result);
+    }
+
+    [TestMethod]
+    public void GetLastOperation_Returns_Null_Without_Apply()
+    {
+        var entry = UndoService.GetLastOperation("nonexistent-workspace");
+        Assert.IsNull(entry);
+    }
+}

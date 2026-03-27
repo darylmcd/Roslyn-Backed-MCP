@@ -36,45 +36,9 @@ public static class DiffGenerator
                 continue;
             }
 
-            int contextStart = Math.Max(0, i - 3);
-            int chunkEnd = i;
-
-            while (chunkEnd < lines.Count)
-            {
-                if (lines[chunkEnd].Type != ChangeType.Unchanged)
-                {
-                    chunkEnd++;
-                    continue;
-                }
-
-                int nextChange = chunkEnd;
-                while (nextChange < lines.Count && lines[nextChange].Type == ChangeType.Unchanged)
-                    nextChange++;
-
-                if (nextChange < lines.Count && nextChange - chunkEnd <= 6)
-                {
-                    chunkEnd = nextChange + 1;
-                    continue;
-                }
-
-                break;
-            }
-
-            int contextEnd = Math.Min(lines.Count, chunkEnd + 3);
-
-            int oldLine = 1, newLine = 1;
-            for (int j = 0; j < contextStart; j++)
-            {
-                if (lines[j].Type != ChangeType.Inserted) oldLine++;
-                if (lines[j].Type != ChangeType.Deleted) newLine++;
-            }
-
-            int oldCount = 0, newCount = 0;
-            for (int j = contextStart; j < contextEnd; j++)
-            {
-                if (lines[j].Type != ChangeType.Inserted) oldCount++;
-                if (lines[j].Type != ChangeType.Deleted) newCount++;
-            }
+            var (contextStart, contextEnd) = FindHunkBounds(lines, i);
+            var (oldLine, newLine) = ComputeLineNumbers(lines, contextStart);
+            var (oldCount, newCount) = CountHunkLines(lines, contextStart, contextEnd);
 
             sb.AppendLine($"@@ -{oldLine},{oldCount} +{newLine},{newCount} @@");
 
@@ -93,5 +57,68 @@ public static class DiffGenerator
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Finds the context-padded start and end indices for a diff hunk beginning at
+    /// <paramref name="changeStart"/>, merging adjacent hunks within 6-line proximity.
+    /// </summary>
+    private static (int ContextStart, int ContextEnd) FindHunkBounds(IList<DiffPiece> lines, int changeStart)
+    {
+        int contextStart = Math.Max(0, changeStart - 3);
+        int chunkEnd = changeStart;
+
+        while (chunkEnd < lines.Count)
+        {
+            if (lines[chunkEnd].Type != ChangeType.Unchanged)
+            {
+                chunkEnd++;
+                continue;
+            }
+
+            int nextChange = chunkEnd;
+            while (nextChange < lines.Count && lines[nextChange].Type == ChangeType.Unchanged)
+                nextChange++;
+
+            if (nextChange < lines.Count && nextChange - chunkEnd <= 6)
+            {
+                chunkEnd = nextChange + 1;
+                continue;
+            }
+
+            break;
+        }
+
+        int contextEnd = Math.Min(lines.Count, chunkEnd + 3);
+        return (contextStart, contextEnd);
+    }
+
+    /// <summary>
+    /// Computes the 1-based old/new line numbers at <paramref name="contextStart"/> by
+    /// counting non-inserted (old) and non-deleted (new) lines before it.
+    /// </summary>
+    private static (int OldLine, int NewLine) ComputeLineNumbers(IList<DiffPiece> lines, int contextStart)
+    {
+        int oldLine = 1, newLine = 1;
+        for (int j = 0; j < contextStart; j++)
+        {
+            if (lines[j].Type != ChangeType.Inserted) oldLine++;
+            if (lines[j].Type != ChangeType.Deleted) newLine++;
+        }
+        return (oldLine, newLine);
+    }
+
+    /// <summary>
+    /// Counts old-side and new-side lines within the hunk range.
+    /// </summary>
+    private static (int OldCount, int NewCount) CountHunkLines(IList<DiffPiece> lines, int start, int end)
+    {
+        int oldCount = 0, newCount = 0;
+        for (int j = start; j < end; j++)
+        {
+            if (lines[j].Type != ChangeType.Inserted) oldCount++;
+            if (lines[j].Type != ChangeType.Deleted) newCount++;
+        }
+        return (oldCount, newCount);
     }
 }

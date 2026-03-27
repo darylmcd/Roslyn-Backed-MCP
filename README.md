@@ -1,5 +1,7 @@
 # Roslyn-Backed MCP Server
 
+[![CI](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/workflows/ci.yml)
+
 A production-usable MCP (Model Context Protocol) server that provides semantic C# analysis capabilities powered by Roslyn, without requiring Visual Studio. Designed for AI coding agents to semantically navigate, analyze, and refactor real C# solutions.
 
 ## AI Session Fast Start
@@ -41,6 +43,16 @@ dotnet run --project src/RoslynMcp.Host.Stdio
 ```bash
 dotnet test RoslynMcp.slnx
 ```
+
+## Cross-Platform Notes
+
+The server runs on Windows, macOS, and Linux wherever the .NET 10 SDK is available. Known platform-specific behavior:
+
+- **Path separators**: The server normalizes paths internally but MCP clients should send OS-native paths (backslashes on Windows, forward slashes elsewhere).
+- **MSBuild locator**: Uses `Microsoft.Build.Locator` to find the SDK. On Linux/macOS, ensure the SDK is on `PATH` or set `DOTNET_ROOT`.
+- **Symlink resolution**: `ClientRootPathValidator` resolves symlinks and junctions before path comparison. Behavior varies by filesystem — NTFS junctions on Windows, symlinks on Unix.
+- **Process management**: `dotnet build` and `dotnet test` child processes use `Process.Kill(entireProcessTree: true)` on cancellation, which requires `SIGKILL` support on Unix (available on all modern distributions).
+- **File watchers**: `FileSystemWatcher` reliability varies by OS and filesystem. NFS and some container-mounted volumes may not emit change events.
 
 ## Security Considerations
 
@@ -158,6 +170,24 @@ Example:
   }
 }
 ```
+
+## Privacy Policy
+
+This MCP server runs entirely on your local machine and does not collect, transmit, or store any telemetry, analytics, or personal data.
+
+- **Data processed**: The server reads `.sln`, `.csproj`, and `.cs` files from workspaces you explicitly load. All analysis happens in-process using Roslyn.
+- **Network access**: The server makes no outbound network requests. `dotnet build` and `dotnet test` child processes may download NuGet packages as part of normal .NET SDK behavior.
+- **Data retention**: Workspace state exists only in memory for the duration of the server process. Preview stores expire entries after 5 minutes. No data is persisted to disk beyond what `dotnet build`/`dotnet test` produce.
+- **Logging**: Diagnostic logs are emitted via MCP's logging notification channel to the connected client. No logs are written to disk or sent to external services.
+- **Third-party sharing**: No data is shared with Anthropic, any third party, or any external service.
+
+For privacy questions, open an issue at [github.com/darylmcd/Roslyn-Backed-MCP/issues](https://github.com/darylmcd/Roslyn-Backed-MCP/issues).
+
+## Support
+
+- **Bug reports and feature requests**: [GitHub Issues](https://github.com/darylmcd/Roslyn-Backed-MCP/issues)
+- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+- **Security vulnerabilities**: See [SECURITY.md](SECURITY.md) for the disclosure policy.
 
 ## Canonical Docs
 

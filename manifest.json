@@ -1,0 +1,49 @@
+{
+  "manifest_version": "0.3",
+  "name": "roslyn-mcp",
+  "version": "1.0.0",
+  "description": "A production-usable MCP server providing semantic C# analysis powered by Roslyn. Enables AI coding agents to navigate, analyze, and refactor real C# solutions without requiring Visual Studio.",
+  "author": {
+    "name": "darylmcd",
+    "url": "https://github.com/darylmcd/Roslyn-Backed-MCP"
+  },
+  "server": {
+    "type": "binary",
+    "entry_point": "RoslynMcp.Host.Stdio",
+    "mcp_config": {
+      "command": "roslynmcp",
+      "args": [],
+      "env": {}
+    }
+  },
+  "compatibility": {
+    "platforms": ["win32", "darwin", "linux"]
+  },
+  "tools": [
+    { "name": "workspace_load", "description": "Load a .sln or .csproj file into the workspace for semantic analysis" },
+    { "name": "symbol_search", "description": "Search for symbols by name pattern across the loaded workspace" },
+    { "name": "find_references", "description": "Find all references to a symbol across the entire solution" },
+    { "name": "go_to_definition", "description": "Find the definition location of a symbol" },
+    { "name": "project_diagnostics", "description": "Get compiler diagnostics for the workspace" },
+    { "name": "rename_preview", "description": "Preview a rename refactoring" },
+    { "name": "build_workspace", "description": "Run dotnet build for the loaded workspace" },
+    { "name": "test_run", "description": "Run dotnet test for the workspace or a selected project" }
+  ],
+  "user_config": {
+    "ROSLYNMCP_MAX_WORKSPACES": {
+      "type": "number",
+      "description": "Maximum concurrent workspace sessions",
+      "default": 8
+    },
+    "ROSLYNMCP_BUILD_TIMEOUT_SECONDS": {
+      "type": "number",
+      "description": "Build operation timeout in seconds",
+      "default": 300
+    },
+    "ROSLYNMCP_TEST_TIMEOUT_SECONDS": {
+      "type": "number",
+      "description": "Test run timeout in seconds",
+      "default": 600
+    }
+  }
+}

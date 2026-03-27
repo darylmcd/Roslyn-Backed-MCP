@@ -15,12 +15,14 @@ public sealed class RefactoringService : IRefactoringService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
+    private readonly IUndoService? _undoService;
     private readonly ILogger<RefactoringService> _logger;
 
-    public RefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<RefactoringService> logger)
+    public RefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<RefactoringService> logger, IUndoService? undoService = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
+        _undoService = undoService;
         _logger = logger;
     }
 
@@ -63,6 +65,7 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         var currentSolution = _workspace.GetCurrentSolution(workspaceId);
+        _undoService?.CaptureBeforeApply(workspaceId, description, currentSolution);
         var solutionChanges = modifiedSolution.GetChanges(currentSolution);
         var hasDocumentSetChanges = solutionChanges.GetProjectChanges()
             .Any(projectChange => projectChange.GetAddedDocuments().Any() || projectChange.GetRemovedDocuments().Any());
