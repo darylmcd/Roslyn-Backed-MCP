@@ -149,6 +149,45 @@ public static class RefactoringTools
             }, ct));
     }
 
+    [McpServerTool(Name = "format_range_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     Description("Preview formatting a specific range within a document — more efficient than full-document formatting and produces smaller diffs")]
+    public static Task<string> PreviewFormatRange(
+        IWorkspaceExecutionGate gate,
+        IRefactoringService refactoringService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Absolute path to the source file")] string filePath,
+        [Description("1-based start line of the range to format")] int startLine,
+        [Description("1-based start column of the range to format")] int startColumn,
+        [Description("1-based end line of the range to format")] int endLine,
+        [Description("1-based end column of the range to format")] int endColumn,
+        CancellationToken ct = default)
+    {
+        return ToolErrorHandler.ExecuteAsync(() =>
+            gate.RunAsync(workspaceId, async c =>
+            {
+                var result = await refactoringService.PreviewFormatRangeAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }, ct));
+    }
+
+    [McpServerTool(Name = "format_range_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     Description("Apply a previously previewed range format operation using its preview token")]
+    public static Task<string> ApplyFormatRange(
+        IWorkspaceExecutionGate gate,
+        IRefactoringService refactoringService,
+        IPreviewStore previewStore,
+        [Description("The preview token returned by format_range_preview")] string previewToken,
+        CancellationToken ct = default)
+    {
+        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
+        return ToolErrorHandler.ExecuteAsync(() =>
+            gate.RunAsync(gateKey, async c =>
+            {
+                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }, ct));
+    }
+
     internal static string ApplyGateKeyFor(IPreviewStore store, string token)
     {
         var wsId = store.PeekWorkspaceId(token);

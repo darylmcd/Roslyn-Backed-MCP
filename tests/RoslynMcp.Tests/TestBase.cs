@@ -45,6 +45,14 @@ public abstract class TestBase
     protected static TypeExtractionService TypeExtractionService { get; private set; } = null!;
     protected static TypeMoveService TypeMoveService { get; private set; } = null!;
     protected static UndoService UndoService { get; private set; } = null!;
+    protected static FlowAnalysisService FlowAnalysisService { get; private set; } = null!;
+    protected static CompileCheckService CompileCheckService { get; private set; } = null!;
+    protected static AnalyzerInfoService AnalyzerInfoService { get; private set; } = null!;
+    protected static FixAllService FixAllService { get; private set; } = null!;
+    protected static OperationService OperationService { get; private set; } = null!;
+    protected static SnippetAnalysisService SnippetAnalysisService { get; private set; } = null!;
+    protected static ScriptingService ScriptingService { get; private set; } = null!;
+    protected static EditorConfigService EditorConfigService { get; private set; } = null!;
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -168,6 +176,29 @@ public abstract class TestBase
             WorkspaceManager,
             PreviewStore,
             NullLogger<TypeMoveService>.Instance);
+        FlowAnalysisService = new FlowAnalysisService(
+            WorkspaceManager,
+            NullLogger<FlowAnalysisService>.Instance);
+        CompileCheckService = new CompileCheckService(
+            WorkspaceManager,
+            NullLogger<CompileCheckService>.Instance);
+        AnalyzerInfoService = new AnalyzerInfoService(
+            WorkspaceManager,
+            NullLogger<AnalyzerInfoService>.Instance);
+        FixAllService = new FixAllService(
+            WorkspaceManager,
+            PreviewStore,
+            NullLogger<FixAllService>.Instance);
+        OperationService = new OperationService(
+            WorkspaceManager,
+            NullLogger<OperationService>.Instance);
+        SnippetAnalysisService = new SnippetAnalysisService(
+            NullLogger<SnippetAnalysisService>.Instance);
+        ScriptingService = new ScriptingService(
+            NullLogger<ScriptingService>.Instance);
+        EditorConfigService = new EditorConfigService(
+            WorkspaceManager,
+            NullLogger<EditorConfigService>.Instance);
 
         RepositoryRootPath = FindRepositoryRoot();
         SampleSolutionPath = FindFixturePath("SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");

@@ -12,6 +12,7 @@
     <PackageReference Include="Microsoft.Build.Locator" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="DiffPlex" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" />
   </ItemGroup>
 
   <!-- MSBuildLocator requires MSBuild packages to exclude runtime assets -->

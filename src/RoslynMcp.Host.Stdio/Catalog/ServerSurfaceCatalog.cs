@@ -124,7 +124,20 @@ public static class ServerSurfaceCatalog
         Tool("extract_type_preview", "refactoring", "experimental", true, false, "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
         Tool("extract_type_apply", "refactoring", "experimental", false, true, "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type."),
 
-        Tool("revert_last_apply", "undo", "experimental", false, true, "Revert the most recent Roslyn solution-level apply operation for a workspace.")
+        Tool("revert_last_apply", "undo", "experimental", false, true, "Revert the most recent Roslyn solution-level apply operation for a workspace."),
+
+        Tool("analyze_data_flow", "advanced-analysis", "experimental", true, false, "Analyze variable flow through a code region: reads, writes, captures, always-assigned."),
+        Tool("analyze_control_flow", "advanced-analysis", "experimental", true, false, "Analyze control flow: entry/exit points, reachability, return statements."),
+        Tool("compile_check", "validation", "experimental", true, false, "Fast in-memory compilation check without invoking dotnet build."),
+        Tool("list_analyzers", "analysis", "experimental", true, false, "List all loaded analyzers and their diagnostic rules."),
+        Tool("fix_all_preview", "refactoring", "experimental", true, false, "Preview fixing ALL instances of a diagnostic across a scope."),
+        Tool("fix_all_apply", "refactoring", "experimental", false, true, "Apply a previously previewed fix-all operation."),
+        Tool("get_operations", "advanced-analysis", "experimental", true, false, "Get the IOperation tree for behavioral analysis at a source position."),
+        Tool("format_range_preview", "refactoring", "experimental", true, false, "Preview formatting a specific range within a document."),
+        Tool("format_range_apply", "refactoring", "experimental", false, true, "Apply a previously previewed range format operation."),
+        Tool("analyze_snippet", "analysis", "experimental", true, false, "Analyze a C# code snippet in an ephemeral workspace without loading a solution."),
+        Tool("evaluate_csharp", "scripting", "experimental", true, false, "Evaluate a C# expression or script interactively via the Roslyn Scripting API."),
+        Tool("get_editorconfig_options", "configuration", "experimental", true, false, "Get effective .editorconfig options for a source file.")
     ];
 
     public static IReadOnlyList<SurfaceEntry> Resources { get; } =
@@ -183,7 +196,10 @@ public static class ServerSurfaceCatalog
         new("SRP Analysis & Type Extraction", ["get_cohesion_metrics", "find_shared_members", "extract_type_preview", "extract_type_apply", "build_workspace"], "Identify types with multiple responsibilities via LCOM4 metrics, find shared private members that complicate extraction, preview and apply the extraction, then verify the build."),
         new("Consumer Impact Analysis", ["find_consumers", "find_references_bulk", "impact_analysis"], "Find all types that depend on a type or interface, understand dependency kinds (constructor, field, parameter, base type), then assess change impact."),
         new("Interface Extraction & Migration", ["extract_interface_preview", "extract_interface_apply", "bulk_replace_type_preview", "bulk_replace_type_apply", "build_workspace"], "Extract an interface from a concrete type, then bulk-replace all parameter/field references to use the interface instead. Verify with build."),
-        new("Type Organization", ["move_type_to_file_preview", "move_type_to_file_apply", "build_workspace"], "Move types from multi-type files into their own dedicated files for better code organization.")
+        new("Type Organization", ["move_type_to_file_preview", "move_type_to_file_apply", "build_workspace"], "Move types from multi-type files into their own dedicated files for better code organization."),
+        new("Batch Diagnostic Fix", ["list_analyzers", "project_diagnostics", "fix_all_preview", "fix_all_apply", "build_workspace"], "List available analyzers and rules, identify diagnostics, batch-fix all occurrences across the solution, then verify the build."),
+        new("Flow Analysis for Refactoring", ["analyze_data_flow", "analyze_control_flow", "extract_type_preview", "extract_type_apply"], "Analyze data and control flow to understand variable dependencies and reachability before extracting code into new types or methods."),
+        new("Quick Validation", ["compile_check", "analyze_snippet", "evaluate_csharp"], "Use in-memory compilation, snippet analysis, or script evaluation for rapid feedback without full builds.")
     ];
 
     public static ServerCatalogDto CreateDocument()
