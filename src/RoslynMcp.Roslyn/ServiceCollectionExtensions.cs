@@ -17,7 +17,11 @@ public static class ServiceCollectionExtensions
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
     public static IServiceCollection AddRoslynServices(this IServiceCollection services)
     {
-        services.AddSingleton<IWorkspaceExecutionGate, WorkspaceExecutionGate>();
+        services.AddSingleton<IWorkspaceExecutionGate>(sp =>
+        {
+            var opts = sp.GetService<ExecutionGateOptions>() ?? new ExecutionGateOptions();
+            return new WorkspaceExecutionGate(opts);
+        });
         services.AddSingleton<IDotnetCommandRunner, DotnetCommandRunner>();
         services.AddSingleton<IPreviewStore>(sp =>
         {

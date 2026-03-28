@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -12,8 +13,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <remarks>
 /// If the client does not advertise roots capability, or if the roots list is empty,
 /// the path is allowed unconditionally. If the roots request itself fails (e.g. the
-/// client advertises the capability but doesn't fully support it), the path is allowed
-/// (fail-open) to avoid blocking legitimate workspace loads.
+/// client advertises the capability but doesn't fully support it), behavior depends on
+/// <see cref="SecurityOptions.PathValidationFailOpen"/>: when true (default) the path is
+/// allowed; when false the request is rejected.
 /// Symlinks and junctions are resolved before comparison to prevent traversal attacks.
 /// </remarks>
 internal static class ClientRootPathValidator
@@ -26,10 +28,13 @@ internal static class ClientRootPathValidator
     /// <param name="path">The file-system path to validate.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
+    /// <param name="securityOptions">Security options controlling fail-open/fail-closed behavior.</param>
     /// <exception cref="System.ArgumentException">Thrown when the path falls outside all client-sanctioned roots.</exception>
     public static async Task ValidatePathAgainstRootsAsync(
-        McpServer server, string path, CancellationToken ct, ILogger? logger = null)
+        McpServer server, string path, CancellationToken ct, ILogger? logger = null, SecurityOptions? securityOptions = null)
     {
+        var failOpen = securityOptions?.PathValidationFailOpen ?? true;
+
         try
         {
             if (server is null || server.ClientCapabilities?.Roots is null)
@@ -76,8 +81,17 @@ internal static class ClientRootPathValidator
         {
             // Roots lookup can fail when the client advertises the capability but
             // doesn't fully support it (common with Claude Code and other clients).
-            // Fail-open here so workspace loads aren't blocked by infrastructure errors.
-            logger?.LogWarning(ex, "Roots lookup failed for path '{Path}' — allowing access (fail-open)", path);
+            if (failOpen)
+            {
+                logger?.LogWarning(ex, "Roots lookup failed for path '{Path}' — allowing access (fail-open)", path);
+            }
+            else
+            {
+                logger?.LogWarning(ex, "Roots lookup failed for path '{Path}' — rejecting access (fail-closed)", path);
+                throw new ArgumentException(
+                    $"Path validation failed for '{path}': roots lookup error and fail-closed mode is enabled. " +
+                    $"Set ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true to allow access when roots lookup fails.");
+            }
         }
     }
 

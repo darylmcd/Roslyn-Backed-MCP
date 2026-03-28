@@ -23,6 +23,8 @@ builder.Logging.AddProvider(mcpLoggingProvider);
 builder.Services.AddSingleton(BindWorkspaceManagerOptions());
 builder.Services.AddSingleton(BindValidationServiceOptions());
 builder.Services.AddSingleton(BindPreviewStoreOptions());
+builder.Services.AddSingleton(BindExecutionGateOptions());
+builder.Services.AddSingleton(BindSecurityOptions());
 
 builder.Services.AddRoslynServices();
 builder.Services
@@ -89,4 +91,31 @@ static PreviewStoreOptions BindPreviewStoreOptions()
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_MAX_ENTRIES"), out var max) && max > 0)
         opts = new PreviewStoreOptions { MaxEntries = max };
     return opts;
+}
+
+static ExecutionGateOptions BindExecutionGateOptions()
+{
+    var maxReqVal = 120;
+    var winSecVal = 60;
+    var reqSecVal = 120;
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS"), out var maxReq) && maxReq > 0)
+        maxReqVal = maxReq;
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS"), out var winSec) && winSec > 0)
+        winSecVal = winSec;
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_REQUEST_TIMEOUT_SECONDS"), out var reqSec) && reqSec > 0)
+        reqSecVal = reqSec;
+    return new ExecutionGateOptions
+    {
+        RateLimitMaxRequests = maxReqVal,
+        RateLimitWindow = TimeSpan.FromSeconds(winSecVal),
+        RequestTimeout = TimeSpan.FromSeconds(reqSecVal)
+    };
+}
+
+static SecurityOptions BindSecurityOptions()
+{
+    var raw = Environment.GetEnvironmentVariable("ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN");
+    if (bool.TryParse(raw, out var failOpen))
+        return new SecurityOptions { PathValidationFailOpen = failOpen };
+    return new SecurityOptions();
 }

@@ -8,6 +8,7 @@ namespace RoslynMcp.Host.Stdio;
 /// <summary>
 /// An ILoggerProvider that forwards .NET log messages to the MCP client via notifications/message.
 /// Only active when an McpServer session is established.
+/// Messages are sent as structured JSON objects with correlation IDs for observability.
 /// </summary>
 public sealed class McpLoggingProvider : ILoggerProvider
 {
@@ -49,14 +50,25 @@ public sealed class McpLoggingProvider : ILoggerProvider
             };
 
             var message = formatter(state, exception);
-            if (exception is not null)
-                message += $"\n{exception}";
+
+            // Build structured log entry with correlation ID for observability
+            var structuredEntry = new
+            {
+                timestamp = DateTime.UtcNow.ToString("o"),
+                level = mcpLevel.ToString(),
+                logger = categoryName,
+                message,
+                correlationId = CorrelationContext.Current,
+                eventId = eventId.Id != 0 ? eventId.Id : (int?)null,
+                eventName = eventId.Name,
+                exception = exception?.ToString()
+            };
 
             // Fire-and-forget: logging should not block the caller
-            _ = SendLogAsync(server, mcpLevel, categoryName, message);
+            _ = SendLogAsync(server, mcpLevel, categoryName, structuredEntry);
         }
 
-        private static async Task SendLogAsync(McpServer server, LoggingLevel level, string logger, string message)
+        private static async Task SendLogAsync(McpServer server, LoggingLevel level, string logger, object structuredData)
         {
             try
             {
@@ -66,7 +78,7 @@ public sealed class McpLoggingProvider : ILoggerProvider
                     {
                         Level = level,
                         Logger = logger,
-                        Data = JsonSerializer.SerializeToElement(message)
+                        Data = JsonSerializer.SerializeToElement(structuredData)
                     }).ConfigureAwait(false);
             }
             catch
@@ -74,5 +86,32 @@ public sealed class McpLoggingProvider : ILoggerProvider
                 // Swallow: logging should never throw
             }
         }
+    }
+}
+
+/// <summary>
+/// Ambient correlation ID context for structured logging. Each tool invocation gets a unique ID
+/// to correlate log entries across the request lifecycle.
+/// </summary>
+public static class CorrelationContext
+{
+    private static readonly AsyncLocal<string?> _correlationId = new();
+
+    /// <summary>Gets the current correlation ID, or generates one if none is set.</summary>
+    public static string Current => _correlationId.Value ??= GenerateId();
+
+    /// <summary>Sets a new correlation ID for the current async context.</summary>
+    public static IDisposable BeginScope()
+    {
+        var previous = _correlationId.Value;
+        _correlationId.Value = GenerateId();
+        return new CorrelationScope(previous);
+    }
+
+    private static string GenerateId() => Guid.NewGuid().ToString("N")[..12];
+
+    private sealed class CorrelationScope(string? previous) : IDisposable
+    {
+        public void Dispose() => _correlationId.Value = previous;
     }
 }

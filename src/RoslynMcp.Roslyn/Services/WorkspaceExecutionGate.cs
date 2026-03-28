@@ -13,28 +13,45 @@ namespace RoslynMcp.Roslyn.Services;
 /// All other operations run under a per-workspace gate keyed by the workspace session identifier.
 /// A global concurrency throttle bounds the total number of simultaneous operations across all
 /// workspaces to <c>max(2, Environment.ProcessorCount)</c>.
-/// Each operation is also subject to a 2-minute per-request timeout.
+/// Each operation is subject to a configurable per-request timeout (default 2 minutes) and
+/// a sliding-window rate limiter (default 120 requests per 60 seconds).
 /// </remarks>
 public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposable
 {
-    /// <summary>Default per-request timeout (2 minutes).</summary>
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(2);
-
     /// <summary>Global concurrency limit across all workspaces.</summary>
     private static readonly int MaxGlobalConcurrency = Math.Max(2, Environment.ProcessorCount);
+
+    private readonly TimeSpan _requestTimeout;
+    private readonly int _rateLimitMax;
+    private readonly TimeSpan _rateLimitWindow;
 
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly SemaphoreSlim _globalThrottle = new(MaxGlobalConcurrency, MaxGlobalConcurrency);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _workspaceGates = new(StringComparer.Ordinal);
 
+    /// <summary>Sliding window rate limiter — stores timestamps of recent requests.</summary>
+    private readonly ConcurrentQueue<long> _requestTimestamps = new();
+
+    public WorkspaceExecutionGate() : this(new ExecutionGateOptions()) { }
+
+    public WorkspaceExecutionGate(ExecutionGateOptions options)
+    {
+        _requestTimeout = options.RequestTimeout;
+        _rateLimitMax = options.RateLimitMaxRequests;
+        _rateLimitWindow = options.RateLimitWindow;
+    }
+
     public async Task<T> RunAsync<T>(string? gateKey, Func<CancellationToken, Task<T>> action, CancellationToken ct)
     {
+        // Rate limiting: enforce sliding-window request cap
+        EnforceRateLimit();
+
         var key = string.IsNullOrWhiteSpace(gateKey) ? IWorkspaceExecutionGate.LoadGateKey : gateKey;
         var gate = key == IWorkspaceExecutionGate.LoadGateKey ? _loadGate : _workspaceGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
 
         // Apply per-request timeout and global concurrency throttle
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(DefaultTimeout);
+        timeoutCts.CancelAfter(_requestTimeout);
         var linked = timeoutCts.Token;
 
         await _globalThrottle.WaitAsync(linked).ConfigureAwait(false);
@@ -76,5 +93,30 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             kvp.Value.Dispose();
         }
         _workspaceGates.Clear();
+    }
+
+    /// <summary>
+    /// Sliding-window rate limiter. Prunes expired timestamps and rejects when the window
+    /// contains more than <see cref="_rateLimitMax"/> requests.
+    /// </summary>
+    private void EnforceRateLimit()
+    {
+        var now = Environment.TickCount64;
+        var windowMs = (long)_rateLimitWindow.TotalMilliseconds;
+
+        // Prune timestamps outside the window
+        while (_requestTimestamps.TryPeek(out var oldest) && (now - oldest) > windowMs)
+        {
+            _requestTimestamps.TryDequeue(out _);
+        }
+
+        if (_requestTimestamps.Count >= _rateLimitMax)
+        {
+            throw new InvalidOperationException(
+                $"Rate limit exceeded: {_rateLimitMax} requests per {_rateLimitWindow.TotalSeconds:F0}s window. " +
+                $"Retry after a brief pause or increase ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS.");
+        }
+
+        _requestTimestamps.Enqueue(now);
     }
 }
