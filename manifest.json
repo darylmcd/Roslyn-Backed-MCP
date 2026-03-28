@@ -44,6 +44,26 @@
       "type": "number",
       "description": "Test run timeout in seconds",
       "default": 600
+    },
+    "ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS": {
+      "type": "number",
+      "description": "Maximum tool invocations per sliding window",
+      "default": 120
+    },
+    "ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS": {
+      "type": "number",
+      "description": "Sliding window duration for rate limiting in seconds",
+      "default": 60
+    },
+    "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS": {
+      "type": "number",
+      "description": "Per-request timeout for tool invocations in seconds",
+      "default": 120
+    },
+    "ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN": {
+      "type": "boolean",
+      "description": "When true, allow access if MCP roots lookup fails. When false, reject.",
+      "default": true
     }
   }
 }

@@ -24,14 +24,17 @@ public static class ScaffoldingTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+        {
+            ParameterValidation.ValidateTypeKind(typeKind);
+            return gate.RunAsync(workspaceId, async c =>
             {
                 var result = await scaffoldingService.PreviewScaffoldTypeAsync(
                     workspaceId,
                     new ScaffoldTypeDto(projectName, typeName, typeKind, @namespace, baseType),
                     c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
     [McpServerTool(Name = "scaffold_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),

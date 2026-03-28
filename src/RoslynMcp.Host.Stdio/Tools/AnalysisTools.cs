@@ -22,11 +22,14 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+        {
+            ParameterValidation.ValidateSeverity(severity);
+            return gate.RunAsync(workspaceId, async c =>
             {
                 var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, project, file, severity, c);
                 return JsonSerializer.Serialize(results, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
     [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information and curated fix options for a specific diagnostic occurrence")]
