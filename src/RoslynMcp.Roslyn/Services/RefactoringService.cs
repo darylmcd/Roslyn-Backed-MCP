@@ -159,6 +159,29 @@ public sealed class RefactoringService : IRefactoringService
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
+    public async Task<RefactoringPreviewDto> PreviewFormatRangeAsync(
+        string workspaceId, string filePath, int startLine, int startColumn, int endLine, int endColumn, CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var document = SymbolResolver.FindDocument(solution, filePath);
+        if (document is null)
+            throw new InvalidOperationException($"Document not found: {filePath}");
+
+        var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+        var startPosition = text.Lines[startLine - 1].Start + (startColumn - 1);
+        var endPosition = text.Lines[endLine - 1].Start + (endColumn - 1);
+        var span = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(startPosition, endPosition);
+
+        var formattedDoc = await Formatter.FormatAsync(document, span, cancellationToken: ct).ConfigureAwait(false);
+        var newSolution = formattedDoc.Project.Solution;
+
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var description = $"Format range in '{Path.GetFileName(filePath)}' (lines {startLine}-{endLine})";
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+
+        return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
     public async Task<RefactoringPreviewDto> PreviewCodeFixAsync(
         string workspaceId,
         string diagnosticId,

@@ -1,0 +1,28 @@
+using System.ComponentModel;
+using System.Text.Json;
+using RoslynMcp.Core.Services;
+using ModelContextProtocol.Server;
+
+namespace RoslynMcp.Host.Stdio.Tools;
+
+[McpServerToolType]
+public static class CompileCheckTools
+{
+    [McpServerTool(Name = "compile_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     Description("Fast in-memory compilation check using the Roslyn Compilation API — validates compilability without invoking dotnet build. Much faster for quick feedback loops during code generation.")]
+    public static Task<string> CompileCheck(
+        IWorkspaceExecutionGate gate,
+        ICompileCheckService compileCheckService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: filter by project name")] string? project = null,
+        [Description("When true, performs full emit validation (catches more issues like missing references at emit time). Default: false (faster, uses GetDiagnostics only).")] bool emitValidation = false,
+        CancellationToken ct = default)
+    {
+        return ToolErrorHandler.ExecuteAsync(() =>
+            gate.RunAsync(workspaceId, async c =>
+            {
+                var result = await compileCheckService.CheckAsync(workspaceId, project, emitValidation, c);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }, ct));
+    }
+}

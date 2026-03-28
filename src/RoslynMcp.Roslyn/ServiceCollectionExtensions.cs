@@ -72,6 +72,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBulkRefactoringService, BulkRefactoringService>();
         services.AddSingleton<ITypeExtractionService, TypeExtractionService>();
         services.AddSingleton<IUndoService, UndoService>();
+        services.AddSingleton<IFlowAnalysisService, FlowAnalysisService>();
+        services.AddSingleton<ICompileCheckService, CompileCheckService>();
+        services.AddSingleton<IAnalyzerInfoService, AnalyzerInfoService>();
+        services.AddSingleton<IFixAllService, FixAllService>();
+        services.AddSingleton<IOperationService, OperationService>();
+        services.AddSingleton<ISnippetAnalysisService, SnippetAnalysisService>();
+        services.AddSingleton<IScriptingService, ScriptingService>();
+        services.AddSingleton<IEditorConfigService, EditorConfigService>();
         return services;
     }
 }

@@ -41,6 +41,19 @@ public interface IRefactoringService
     Task<RefactoringPreviewDto> PreviewFormatDocumentAsync(string workspaceId, string filePath, CancellationToken ct);
 
     /// <summary>
+    /// Previews applying the default Roslyn formatting rules to a specific range within a file.
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="filePath">The absolute path to the source file.</param>
+    /// <param name="startLine">The 1-based start line of the range to format.</param>
+    /// <param name="startColumn">The 1-based start column of the range to format.</param>
+    /// <param name="endLine">The 1-based end line of the range to format.</param>
+    /// <param name="endColumn">The 1-based end column of the range to format.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<RefactoringPreviewDto> PreviewFormatRangeAsync(
+        string workspaceId, string filePath, int startLine, int startColumn, int endLine, int endColumn, CancellationToken ct);
+
+    /// <summary>
     /// Previews applying a curated code fix for the specified diagnostic.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier.</param>
