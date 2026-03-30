@@ -23,12 +23,13 @@ public sealed class DiagnosticService : IDiagnosticService
         string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
+        // Default to Warning severity when no filter specified to avoid multi-MB Hidden output
+        DiagnosticSeverity? minSeverity = ParseSeverity(severityFilter) ?? DiagnosticSeverity.Warning;
+
         var workspaceDiagnostics = FilterDiagnostics(
             _workspace.GetStatus(workspaceId).WorkspaceDiagnostics,
             fileFilter,
-            minSeverity: ParseSeverity(severityFilter));
-
-        DiagnosticSeverity? minSeverity = ParseSeverity(severityFilter);
+            minSeverity: minSeverity);
 
         var projects = solution.Projects
             .Where(p => projectFilter is null || string.Equals(p.Name, projectFilter, StringComparison.OrdinalIgnoreCase))

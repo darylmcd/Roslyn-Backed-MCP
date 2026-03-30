@@ -41,7 +41,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
 
         foreach (var doc in documents)
         {
-            if (ct.IsCancellationRequested || results.Count >= limit) break;
+            if (ct.IsCancellationRequested) break;
 
             var tree = await doc.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
             var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
@@ -53,7 +53,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
 
             foreach (var decl in methodDeclarations)
             {
-                if (ct.IsCancellationRequested || results.Count >= limit) break;
+                if (ct.IsCancellationRequested) break;
 
                 var symbol = semanticModel.GetDeclaredSymbol(decl, ct);
                 if (symbol is null) continue;
