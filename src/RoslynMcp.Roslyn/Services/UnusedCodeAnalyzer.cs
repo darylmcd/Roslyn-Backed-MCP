@@ -25,6 +25,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<UnusedSymbolDto>();
+        var processedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
@@ -38,6 +39,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             foreach (var tree in compilation.SyntaxTrees)
             {
                 if (ct.IsCancellationRequested || results.Count >= limit) break;
+                if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
 
                 var semanticModel = compilation.GetSemanticModel(tree);
                 var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
@@ -51,6 +53,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                     if (symbol is null) continue;
                     if (symbol is INamespaceSymbol) continue;
                     if (symbol.IsImplicitlyDeclared) continue;
+                    if (!processedSymbols.Add(symbol)) continue;
 
                     // Skip public symbols unless explicitly requested
                     if (!includePublic && symbol.DeclaredAccessibility == Accessibility.Public) continue;

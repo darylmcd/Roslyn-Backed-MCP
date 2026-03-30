@@ -75,6 +75,20 @@ internal static class SymbolServiceHelpers
         {
             yield return explicitImplementation;
         }
+
+        // Implicit interface implementations: check if this method implements any interface member
+        if (method.ContainingType is not null)
+        {
+            foreach (var iface in method.ContainingType.AllInterfaces)
+            {
+                foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
+                {
+                    var impl = method.ContainingType.FindImplementationForInterfaceMember(member);
+                    if (SymbolEqualityComparer.Default.Equals(impl, method))
+                        yield return member;
+                }
+            }
+        }
     }
 
     private static IEnumerable<ISymbol> EnumeratePropertyBases(IPropertySymbol property)
@@ -90,6 +104,20 @@ internal static class SymbolServiceHelpers
         {
             yield return explicitImplementation;
         }
+
+        // Implicit interface implementations
+        if (property.ContainingType is not null)
+        {
+            foreach (var iface in property.ContainingType.AllInterfaces)
+            {
+                foreach (var member in iface.GetMembers().OfType<IPropertySymbol>())
+                {
+                    var impl = property.ContainingType.FindImplementationForInterfaceMember(member);
+                    if (SymbolEqualityComparer.Default.Equals(impl, property))
+                        yield return member;
+                }
+            }
+        }
     }
 
     private static IEnumerable<ISymbol> EnumerateEventBases(IEventSymbol eventSymbol)
@@ -104,6 +132,20 @@ internal static class SymbolServiceHelpers
         foreach (var explicitImplementation in eventSymbol.ExplicitInterfaceImplementations)
         {
             yield return explicitImplementation;
+        }
+
+        // Implicit interface implementations
+        if (eventSymbol.ContainingType is not null)
+        {
+            foreach (var iface in eventSymbol.ContainingType.AllInterfaces)
+            {
+                foreach (var member in iface.GetMembers().OfType<IEventSymbol>())
+                {
+                    var impl = eventSymbol.ContainingType.FindImplementationForInterfaceMember(member);
+                    if (SymbolEqualityComparer.Default.Equals(impl, eventSymbol))
+                        yield return member;
+                }
+            }
         }
     }
 

@@ -36,6 +36,24 @@ public sealed class TestRunnerService : ITestRunnerService, IDisposable
     public async Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
     {
         var status = _workspaceManager.GetStatus(workspaceId);
+
+        if (projectName is not null)
+        {
+            var resolved = ResolveProject(workspaceId, projectName);
+            if (!resolved.IsTestProject)
+            {
+                throw new InvalidOperationException(
+                    $"Project '{projectName}' is not a test project. " +
+                    $"Available test projects: {string.Join(", ", status.Projects.Where(p => p.IsTestProject).Select(p => p.Name))}");
+            }
+        }
+        else if (!status.Projects.Any(p => p.IsTestProject))
+        {
+            throw new InvalidOperationException(
+                $"No test projects found in workspace '{workspaceId}'. " +
+                "Ensure the workspace contains projects with a test SDK reference (e.g., MSTest, xUnit, NUnit).");
+        }
+
         var targetPath = projectName is null
             ? status.LoadedPath
             : ResolveProject(workspaceId, projectName).FilePath;
