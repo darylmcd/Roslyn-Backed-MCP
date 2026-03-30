@@ -1,13 +1,29 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
 internal static class ToolErrorHandler
 {
+    private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> ErrorHandlers = new()
+    {
+        [typeof(FileNotFoundException)] = (ex, _) => new("FileNotFound",
+            $"File not found: {ex.Message}. Verify the file path is absolute and the file exists on disk. " +
+            "If the workspace was recently reloaded, the file may have been removed."),
+        [typeof(DirectoryNotFoundException)] = (ex, _) => new("DirectoryNotFound",
+            $"Directory not found: {ex.Message}. Verify the directory path is absolute and exists on disk."),
+        [typeof(KeyNotFoundException)] = (ex, _) => new("NotFound",
+            $"Not found: {ex.Message}. Ensure the workspace is loaded (workspace_load) and the identifier is correct."),
+        [typeof(ArgumentException)] = (ex, _) => new("InvalidArgument",
+            $"Invalid argument: {ex.Message}. Check parameter types and values match the tool schema."),
+        [typeof(TimeoutException)] = (ex, _) => new("Timeout",
+            $"Timed out: {ex.Message}. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or " +
+            "ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS."),
+    };
+
     /// <summary>
-    /// Wraps a tool action with structured error handling. Rethrows exceptions with clean,
-    /// actionable messages so the MCP SDK sets isError=true on the tool result.
-    /// Error messages include retry guidance to help agents self-correct.
+    /// Wraps a tool action with structured error handling. Returns errors as structured JSON content
+    /// so MCP clients always receive actionable error details, regardless of SDK exception handling.
     /// </summary>
     public static async Task<string> ExecuteAsync(Func<Task<string>> action, ILogger? auditLogger = null, string? toolName = null)
     {
@@ -20,66 +36,61 @@ internal static class ToolErrorHandler
         catch (OperationCanceledException)
         {
             auditLogger?.LogWarning("Tool {ToolName} was cancelled", toolName ?? "unknown");
-            throw; // Let MCP SDK handle cancellation
-        }
-        catch (FileNotFoundException ex)
-        {
-            auditLogger?.LogWarning(ex, "Tool {ToolName} failed: file not found", toolName ?? "unknown");
-            throw new McpToolException(
-                $"File not found: {ex.Message}. Verify the file path is absolute and the file exists on disk. " +
-                $"If the workspace was recently reloaded, the file may have been removed.", ex);
-        }
-        catch (DirectoryNotFoundException ex)
-        {
-            auditLogger?.LogWarning(ex, "Tool {ToolName} failed: directory not found", toolName ?? "unknown");
-            throw new McpToolException(
-                $"Directory not found: {ex.Message}. Verify the directory path is absolute and exists on disk.", ex);
-        }
-        catch (KeyNotFoundException ex)
-        {
-            auditLogger?.LogWarning(ex, "Tool {ToolName} failed: not found", toolName ?? "unknown");
-            throw new McpToolException(
-                $"Not found: {ex.Message}. Ensure the workspace is loaded (workspace_load) and the identifier is correct.", ex);
-        }
-        catch (ArgumentException ex)
-        {
-            auditLogger?.LogWarning(ex, "Tool {ToolName} failed: invalid argument", toolName ?? "unknown");
-            throw new McpToolException(
-                $"Invalid argument: {ex.Message}. Check parameter types and values match the tool schema.", ex);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Rate limit"))
-        {
-            auditLogger?.LogWarning(ex, "Tool {ToolName} rate-limited", toolName ?? "unknown");
-            throw new McpToolException(
-                $"{ex.Message}", ex);
-        }
-        catch (InvalidOperationException ex)
-        {
-            auditLogger?.LogWarning(ex, "Tool {ToolName} failed: invalid operation", toolName ?? "unknown");
-            throw new McpToolException(
-                $"Invalid operation: {ex.Message}. The workspace may need to be reloaded (workspace_reload) if the state is stale.", ex);
-        }
-        catch (TimeoutException ex)
-        {
-            auditLogger?.LogWarning(ex, "Tool {ToolName} timed out", toolName ?? "unknown");
-            throw new McpToolException(
-                $"Timed out: {ex.Message}. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or " +
-                $"ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS.", ex);
-        }
-        catch (McpToolException)
-        {
-            throw; // Already wrapped
+            throw; // Let MCP SDK handle cancellation natively
         }
         catch (Exception ex)
         {
-            auditLogger?.LogError(ex, "Tool {ToolName} failed with unexpected error", toolName ?? "unknown");
-            throw new McpToolException(
-                $"Internal error: {ex.Message}. If this persists, try reloading the workspace (workspace_reload).", ex);
+            var info = ClassifyError(ex, toolName ?? "unknown");
+            auditLogger?.Log(
+                info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
+                ex, "Tool {ToolName} failed: {ErrorCategory}", toolName ?? "unknown", info.Category);
+
+            return FormatErrorResponse(info, toolName ?? "unknown", ex);
         }
     }
+
+    private static ErrorInfo ClassifyError(Exception ex, string toolName)
+    {
+        // Check for rate limiting (special case of InvalidOperationException)
+        if (ex is InvalidOperationException && ex.Message.Contains("Rate limit"))
+            return new("RateLimited", ex.Message);
+
+        // Check for InvalidOperationException (must be after rate limit check)
+        if (ex is InvalidOperationException)
+            return new("InvalidOperation",
+                $"Invalid operation: {ex.Message}. The workspace may need to be reloaded (workspace_reload) if the state is stale.");
+
+        // Walk the handler dictionary for exact or assignable type match
+        foreach (var (type, handler) in ErrorHandlers)
+        {
+            if (type.IsAssignableFrom(ex.GetType()))
+                return handler(ex, toolName);
+        }
+
+        // Fallback: unexpected error
+        return new("InternalError",
+            $"Internal error in {toolName}: {ex.GetType().Name}: {ex.Message}. " +
+            "If this persists, try reloading the workspace (workspace_reload).");
+    }
+
+    private static string FormatErrorResponse(ErrorInfo info, string toolName, Exception ex)
+    {
+        var error = new
+        {
+            error = true,
+            category = info.Category,
+            tool = toolName,
+            message = info.Message,
+            exceptionType = ex.GetType().Name,
+        };
+        return JsonSerializer.Serialize(error, JsonDefaults.Indented);
+    }
+
+    private readonly record struct ErrorInfo(string Category, string Message);
 }
 
 /// <summary>
-/// Exception type for tool errors. The MCP SDK will catch this and set isError=true on the result.
+/// Exception type for tool errors. Can be used by resource handlers and other non-tool contexts
+/// where structured JSON error responses are not applicable.
 /// </summary>
 public sealed class McpToolException(string message, Exception? inner = null) : Exception(message, inner);
