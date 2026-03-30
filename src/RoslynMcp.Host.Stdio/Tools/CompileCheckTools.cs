@@ -9,7 +9,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class CompileCheckTools
 {
     [McpServerTool(Name = "compile_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Fast in-memory compilation check using the Roslyn Compilation API — validates compilability without invoking dotnet build. Much faster for quick feedback loops during code generation.")]
+     Description("Fast in-memory compilation check using the Roslyn Compilation API — validates compilability without invoking dotnet build. Much faster for quick feedback loops during code generation. Note: only reports compiler diagnostics (CS*); analyzer diagnostics (CA*, IDE*) are excluded — use project_diagnostics for those. The emitValidation option is 10-18x slower but catches emit-time issues.")]
     public static Task<string> CompileCheck(
         IWorkspaceExecutionGate gate,
         ICompileCheckService compileCheckService,
