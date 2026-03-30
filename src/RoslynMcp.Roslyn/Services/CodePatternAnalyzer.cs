@@ -221,16 +221,7 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         foreach (var (keyword, predicate) in KeywordPredicates)
         {
             if (q.Contains(keyword))
-            {
-                // "static" needs a guard against "non-static"
-                if (keyword == "async" || keyword == "abstract" || keyword == "virtual" || keyword == "sealed" ||
-                    keyword == "method" || keyword == "interface" || keyword == "propert" || keyword == "field" ||
-                    keyword == "generic")
-                {
-                    // "class" handled separately due to "classes implementing" guard
-                    predicates.Add(predicate);
-                }
-            }
+                predicates.Add(predicate);
         }
 
         // "static" with guard against "non-static"
@@ -241,12 +232,13 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         if (q.Contains("class") && !q.Contains("classes implementing"))
             predicates.Add(s => s is INamedTypeSymbol { TypeKind: TypeKind.Class });
 
-        // Accessibility keywords (mutually exclusive)
+        // Accessibility keywords (mutually exclusive) — capture to local to avoid closure issue
         foreach (var (keyword, accessibility) in AccessibilityKeywords)
         {
+            var capturedAccessibility = accessibility;
             if (keyword == "public" ? q.Contains("public") && !q.Contains("non-public") : q.Contains(keyword))
             {
-                predicates.Add(s => s.DeclaredAccessibility == accessibility);
+                predicates.Add(s => s.DeclaredAccessibility == capturedAccessibility);
                 break;
             }
         }

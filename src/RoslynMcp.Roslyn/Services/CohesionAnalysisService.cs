@@ -54,48 +54,9 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
                 try
                 {
-                    var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
-                    if (typeSymbol is null) continue;
-
-                    // Skip interfaces — LCOM4 is trivially equal to method count and not meaningful
-                    if (typeSymbol.TypeKind == TypeKind.Interface) continue;
-
-                    var instanceMethods = typeSymbol.GetMembers()
-                        .OfType<IMethodSymbol>()
-                        .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic && !m.IsImplicitlyDeclared)
-                        .ToList();
-
-                    if (minMethods.HasValue && instanceMethods.Count < minMethods.Value) continue;
-                    if (instanceMethods.Count < 2) continue; // LCOM only meaningful with 2+ methods
-
-                    var instanceFields = typeSymbol.GetMembers()
-                        .Where(m => (m is IFieldSymbol f && !f.IsStatic && !f.IsImplicitlyDeclared) ||
-                                    (m is IPropertySymbol p && !p.IsStatic && !p.IsImplicitlyDeclared))
-                        .ToList();
-
-                    // Build method → fields accessed map
-                    var methodFieldMap = new Dictionary<string, HashSet<string>>();
-                    foreach (var method in instanceMethods)
-                    {
-                        var accessed = FindAccessedFields(method, typeSymbol, typeDecl, semanticModel, ct);
-                        methodFieldMap[method.Name] = accessed;
-                    }
-
-                    // Compute connected components (LCOM4)
-                    var clusters = ComputeClusters(methodFieldMap);
-
-                    var loc = typeSymbol.Locations.FirstOrDefault(l => l.IsInSource);
-                    var lineSpan = loc?.GetLineSpan();
-
-                    results.Add(new CohesionMetricsDto(
-                        TypeName: typeSymbol.Name,
-                        FullyQualifiedName: typeSymbol.ToDisplayString(),
-                        FilePath: lineSpan?.Path,
-                        Line: (lineSpan?.StartLinePosition.Line ?? 0) + 1,
-                        MethodCount: instanceMethods.Count,
-                        FieldCount: instanceFields.Count,
-                        Lcom4Score: clusters.Count,
-                        Clusters: clusters));
+                    var metrics = AnalyzeTypeCohesion(typeDecl, semanticModel, minMethods, ct);
+                    if (metrics is not null)
+                        results.Add(metrics);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -106,6 +67,57 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         }
 
         return results.OrderByDescending(r => r.Lcom4Score).Take(limit).ToList();
+    }
+
+    private static CohesionMetricsDto? AnalyzeTypeCohesion(
+        TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, int? minMethods, CancellationToken ct)
+    {
+        var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
+        if (typeSymbol is null) return null;
+
+        // Skip interfaces — LCOM4 is trivially equal to method count
+        if (typeSymbol.TypeKind == TypeKind.Interface) return null;
+
+        var instanceMethods = typeSymbol.GetMembers()
+            .OfType<IMethodSymbol>()
+            .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic && !m.IsImplicitlyDeclared)
+            .ToList();
+
+        if (minMethods.HasValue && instanceMethods.Count < minMethods.Value) return null;
+        if (instanceMethods.Count < 2) return null;
+
+        var instanceFields = typeSymbol.GetMembers()
+            .Where(m => (m is IFieldSymbol f && !f.IsStatic && !f.IsImplicitlyDeclared) ||
+                        (m is IPropertySymbol p && !p.IsStatic && !p.IsImplicitlyDeclared))
+            .ToList();
+
+        var methodFieldMap = BuildMethodFieldMap(instanceMethods, typeSymbol, typeDecl, semanticModel, ct);
+        var clusters = ComputeClusters(methodFieldMap);
+
+        var loc = typeSymbol.Locations.FirstOrDefault(l => l.IsInSource);
+        var lineSpan = loc?.GetLineSpan();
+
+        return new CohesionMetricsDto(
+            TypeName: typeSymbol.Name,
+            FullyQualifiedName: typeSymbol.ToDisplayString(),
+            FilePath: lineSpan?.Path,
+            Line: (lineSpan?.StartLinePosition.Line ?? 0) + 1,
+            MethodCount: instanceMethods.Count,
+            FieldCount: instanceFields.Count,
+            Lcom4Score: clusters.Count,
+            Clusters: clusters);
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildMethodFieldMap(
+        List<IMethodSymbol> methods, INamedTypeSymbol containingType,
+        TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, CancellationToken ct)
+    {
+        var map = new Dictionary<string, HashSet<string>>();
+        foreach (var method in methods)
+        {
+            map[method.Name] = FindAccessedFields(method, containingType, typeDecl, semanticModel, ct);
+        }
+        return map;
     }
 
     public async Task<IReadOnlyList<SharedMemberDto>> FindSharedMembersAsync(
