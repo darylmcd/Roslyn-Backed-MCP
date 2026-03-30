@@ -122,8 +122,14 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var targetProjectDirectory = Path.GetDirectoryName(targetProject.FilePath)
             ?? throw new InvalidOperationException("Target project must have a file path on disk.");
 
-        var namespaceName = GetContainingNamespace(typeSymbol);
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName);
+        var isCrossProject = targetProject.Id != sourceDocument.Project.Id;
+        var namespaceName = isCrossProject
+            ? DeriveTargetNamespace(targetProject)
+            : GetContainingNamespace(typeSymbol);
+
+        await DetectExistingTypeConflictAsync(solution, namespaceName, resolvedInterfaceName, ct).ConfigureAwait(false);
+
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject);
         var interfaceFilePath = Path.Combine(targetProjectDirectory, resolvedInterfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
@@ -140,7 +146,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 SourceText.From(interfaceRoot.ToFullString()),
                 filePath: interfaceFilePath);
 
-        if (targetProject.Id != sourceDocument.Project.Id)
+        if (isCrossProject)
         {
             updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
         }
@@ -246,13 +252,45 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             : typeSymbol.ContainingNamespace.ToDisplayString();
     }
 
+    private static string DeriveTargetNamespace(Project targetProject)
+    {
+        // Use the project's default namespace if available, otherwise fall back to the project name
+        return targetProject.DefaultNamespace
+            ?? targetProject.AssemblyName
+            ?? targetProject.Name;
+    }
+
+    private static async Task DetectExistingTypeConflictAsync(
+        Solution solution, string namespaceName, string typeName, CancellationToken ct)
+    {
+        var fullyQualifiedName = string.IsNullOrWhiteSpace(namespaceName)
+            ? typeName
+            : $"{namespaceName}.{typeName}";
+
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation?.GetTypeByMetadataName(fullyQualifiedName) is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Type '{typeName}' already exists in project '{project.Name}' " +
+                    $"(namespace '{namespaceName}'). Choose a different interface name to avoid conflicts.");
+            }
+        }
+    }
+
     private static CompilationUnitSyntax CreateCompilationUnitForMember(
         CompilationUnitSyntax sourceRoot,
         MemberDeclarationSyntax member,
-        string namespaceName)
+        string namespaceName,
+        bool filterUsings = false)
     {
+        var usings = filterUsings
+            ? FilterUsingsForMember(sourceRoot.Usings, member)
+            : sourceRoot.Usings;
+
         var compilationUnit = SyntaxFactory.CompilationUnit()
-            .WithUsings(sourceRoot.Usings)
+            .WithUsings(usings)
             .WithLeadingTrivia(sourceRoot.GetLeadingTrivia())
             .WithTrailingTrivia(sourceRoot.GetTrailingTrivia());
 
@@ -264,11 +302,47 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return compilationUnit.WithMembers(SyntaxFactory.SingletonList(namespacedMember)).NormalizeWhitespace();
     }
 
+    private static SyntaxList<UsingDirectiveSyntax> FilterUsingsForMember(
+        SyntaxList<UsingDirectiveSyntax> sourceUsings,
+        MemberDeclarationSyntax member)
+    {
+        // Collect all type names referenced in the interface member signatures
+        var referencedNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var node in member.DescendantNodes())
+        {
+            if (node is IdentifierNameSyntax id)
+                referencedNames.Add(id.Identifier.Text);
+            else if (node is GenericNameSyntax generic)
+                referencedNames.Add(generic.Identifier.Text);
+            else if (node is QualifiedNameSyntax qualified)
+                referencedNames.Add(qualified.Right.Identifier.Text);
+        }
+
+        // Always include System if any types are referenced
+        var filtered = sourceUsings.Where(u =>
+        {
+            var name = u.Name?.ToString();
+            if (name is null) return false;
+            if (name is "System") return true;
+            // Keep the using if its last segment matches any referenced name
+            var lastSegment = name.Contains('.') ? name[(name.LastIndexOf('.') + 1)..] : name;
+            return referencedNames.Contains(lastSegment) ||
+                   referencedNames.Any(r => name.EndsWith($".{r}", StringComparison.Ordinal));
+        }).ToArray();
+
+        // If filtering removed all usings but there are referenced names, keep all (safer fallback)
+        if (filtered.Length == 0 && referencedNames.Count > 0)
+            return sourceUsings;
+
+        return new SyntaxList<UsingDirectiveSyntax>(filtered);
+    }
+
     private static CompilationUnitSyntax CreateInterfaceCompilationUnit(
         CompilationUnitSyntax sourceRoot,
         INamedTypeSymbol typeSymbol,
         string interfaceName,
-        string namespaceName)
+        string namespaceName,
+        bool filterUsings = false)
     {
         var interfaceMembers = typeSymbol.GetMembers()
             .Where(member => member.DeclaredAccessibility == Accessibility.Public && !member.IsStatic && !member.IsImplicitlyDeclared)
@@ -286,7 +360,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword))
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
-        return CreateCompilationUnitForMember(sourceRoot, interfaceDeclaration, namespaceName);
+        return CreateCompilationUnitForMember(sourceRoot, interfaceDeclaration, namespaceName, filterUsings);
     }
 
     private static MemberDeclarationSyntax? CreateInterfaceMember(ISymbol member)
@@ -384,8 +458,14 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var targetProject = ResolveProject(solution, targetProjectName);
         var targetProjectDirectory = Path.GetDirectoryName(targetProject.FilePath)
             ?? throw new InvalidOperationException("Target project must have a file path on disk.");
-        var namespaceName = GetContainingNamespace(typeSymbol);
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName);
+        var isCrossProject = targetProject.Id != sourceDocument.Project.Id;
+        var namespaceName = isCrossProject
+            ? DeriveTargetNamespace(targetProject)
+            : GetContainingNamespace(typeSymbol);
+
+        await DetectExistingTypeConflictAsync(solution, namespaceName, interfaceName, ct).ConfigureAwait(false);
+
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject);
         var interfaceFilePath = Path.Combine(targetProjectDirectory, interfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
@@ -402,7 +482,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 SourceText.From(interfaceRoot.ToFullString()),
                 filePath: interfaceFilePath);
 
-        if (targetProject.Id != sourceDocument.Project.Id)
+        if (isCrossProject)
         {
             updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
         }

@@ -36,6 +36,7 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
             foreach (var tree in compilation.SyntaxTrees)
             {
                 if (ct.IsCancellationRequested) break;
+                if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
 
                 try
                 {
