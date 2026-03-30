@@ -56,8 +56,31 @@ public static class SymbolResolver
 
         var position = syntaxTree.GetText(ct).Lines[line - 1].Start + (column - 1);
         var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
-        var node = root.FindToken(position).Parent;
 
+        // Try the token at the exact position first, then also try FindToken with
+        // findInsideTrivia to handle mid-identifier cursor positions (AUDIT-05).
+        var token = root.FindToken(position);
+        var result = ResolveFromToken(token, semanticModel, ct);
+        if (result is not null) return result;
+
+        // If the position falls within the token's full span but didn't resolve,
+        // try the preceding token (handles cases like cursor on '(' after a method name).
+        if (position > 0)
+        {
+            var precedingToken = root.FindToken(position - 1);
+            if (precedingToken != token)
+            {
+                result = ResolveFromToken(precedingToken, semanticModel, ct);
+                if (result is not null) return result;
+            }
+        }
+
+        return null;
+    }
+
+    private static ISymbol? ResolveFromToken(SyntaxToken token, SemanticModel semanticModel, CancellationToken ct)
+    {
+        var node = token.Parent;
         while (node is not null)
         {
             var symbolInfo = semanticModel.GetSymbolInfo(node, ct);
