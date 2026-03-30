@@ -19,6 +19,7 @@ internal static partial class DotnetOutputParser
     /// <returns>A list of parsed diagnostics. Lines that do not match the expected format are silently skipped.</returns>
     public static IReadOnlyList<DiagnosticDto> ParseBuildDiagnostics(string output)
     {
+        var seen = new HashSet<(string Id, string File, int? Line, int? Col)>();
         var diagnostics = new List<DiagnosticDto>();
 
         foreach (var line in output.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
@@ -29,14 +30,23 @@ internal static partial class DotnetOutputParser
                 continue;
             }
 
+            var id = match.Groups["id"].Value;
+            var file = match.Groups["file"].Value;
+            var startLine = ParseNullableInt(match.Groups["line"].Value);
+            var startColumn = ParseNullableInt(match.Groups["column"].Value);
+
+            // Deduplicate by (Id, FilePath, Line, Column) to avoid MSBuild retry duplicates
+            if (!seen.Add((id, file, startLine, startColumn)))
+                continue;
+
             diagnostics.Add(new DiagnosticDto(
-                Id: match.Groups["id"].Value,
+                Id: id,
                 Message: match.Groups["message"].Value,
                 Severity: Capitalize(match.Groups["severity"].Value),
                 Category: "Build",
-                FilePath: match.Groups["file"].Value,
-                StartLine: ParseNullableInt(match.Groups["line"].Value),
-                StartColumn: ParseNullableInt(match.Groups["column"].Value),
+                FilePath: file,
+                StartLine: startLine,
+                StartColumn: startColumn,
                 EndLine: ParseNullableInt(match.Groups["endLine"].Value),
                 EndColumn: ParseNullableInt(match.Groups["endColumn"].Value)));
         }
