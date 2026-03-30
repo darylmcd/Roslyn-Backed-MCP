@@ -75,6 +75,19 @@ internal static partial class DotnetOutputParser
         var failed = ParseCounter(counters, "failed");
         var skipped = ParseCounter(counters, "notExecuted");
 
+        // Fallback: if notExecuted counter is 0 but UnitTestResult elements show skipped tests,
+        // count them directly (some test frameworks don't populate the Counters element)
+        if (skipped == 0)
+        {
+            skipped = document.Descendants(ns + "UnitTestResult")
+                .Count(r =>
+                {
+                    var outcome = (string?)r.Attribute("outcome");
+                    return string.Equals(outcome, "NotExecuted", StringComparison.OrdinalIgnoreCase) ||
+                           string.Equals(outcome, "Inconclusive", StringComparison.OrdinalIgnoreCase);
+                });
+        }
+
         var failures = document.Descendants(ns + "UnitTestResult")
             .Where(result => string.Equals((string?)result.Attribute("outcome"), "Failed", StringComparison.OrdinalIgnoreCase))
             .Select(result =>
