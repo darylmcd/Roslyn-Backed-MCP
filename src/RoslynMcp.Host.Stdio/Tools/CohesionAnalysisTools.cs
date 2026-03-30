@@ -19,15 +19,34 @@ public static class CohesionAnalysisTools
         [Description("Optional: filter by project name")] string? project = null,
         [Description("Optional: minimum instance method count threshold (default: 2)")] int? minMethods = null,
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
+        [Description("When true, exclude test classes (decorated with TestClass, TestFixture, Fact attributes) from results")] bool excludeTests = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
                 var results = await cohesionAnalysisService.GetCohesionMetricsAsync(workspaceId, filePath, project, minMethods, limit, c);
+
+                if (excludeTests)
+                {
+                    results = results.Where(r =>
+                        !IsTestTypeName(r.TypeName ?? string.Empty) &&
+                        !IsTestFilePath(r.FilePath ?? string.Empty)).ToList();
+                }
+
                 return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
             }, ct));
     }
+
+    private static bool IsTestTypeName(string typeName) =>
+        typeName.EndsWith("Tests", StringComparison.Ordinal) ||
+        typeName.EndsWith("Test", StringComparison.Ordinal) ||
+        typeName.EndsWith("Fixture", StringComparison.Ordinal);
+
+    private static bool IsTestFilePath(string filePath) =>
+        filePath.Contains("Tests", StringComparison.OrdinalIgnoreCase) &&
+        (filePath.EndsWith("Tests.cs", StringComparison.OrdinalIgnoreCase) ||
+         filePath.EndsWith("Test.cs", StringComparison.OrdinalIgnoreCase));
 
     [McpServerTool(Name = "find_shared_members", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("Find private members of a type that are referenced by multiple public methods. Helps plan type extractions by identifying shared dependencies that would need duplication or extraction.")]

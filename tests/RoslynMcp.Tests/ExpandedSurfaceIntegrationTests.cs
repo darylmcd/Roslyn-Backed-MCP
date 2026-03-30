@@ -74,6 +74,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
             DependencyAnalysisService,
             WorkspaceId,
             project: "SampleLib",
+            circularOnly: false,
             CancellationToken.None);
         using var namespaceDoc = JsonDocument.Parse(namespaceJson);
         Assert.IsTrue(namespaceDoc.RootElement.GetProperty("Nodes").GetArrayLength() > 0);

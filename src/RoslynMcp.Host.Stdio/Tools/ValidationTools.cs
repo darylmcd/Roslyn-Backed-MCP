@@ -49,12 +49,43 @@ public static class ValidationTools
         IWorkspaceExecutionGate gate,
         ITestDiscoveryService testDiscoveryService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: filter by project name")] string? projectName = null,
+        [Description("Maximum number of test cases to return (default: all)")] int? limit = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await testDiscoveryService.DiscoverTestsAsync(workspaceId, c);
+
+                // Apply optional project filter and limit
+                if (!string.IsNullOrWhiteSpace(projectName) || limit.HasValue)
+                {
+                    var filteredProjects = result.TestProjects.AsEnumerable();
+                    if (!string.IsNullOrWhiteSpace(projectName))
+                        filteredProjects = filteredProjects.Where(p =>
+                            string.Equals(p.ProjectName, projectName, StringComparison.OrdinalIgnoreCase));
+
+                    var projects = filteredProjects.ToList();
+                    if (limit.HasValue)
+                    {
+                        var remaining = limit.Value;
+                        var limitedProjects = new List<RoslynMcp.Core.Models.TestProjectDto>();
+                        foreach (var proj in projects)
+                        {
+                            if (remaining <= 0) break;
+                            var tests = proj.Tests.Count > remaining
+                                ? proj.Tests.Take(remaining).ToList()
+                                : (IReadOnlyList<RoslynMcp.Core.Models.TestCaseDto>)proj.Tests;
+                            remaining -= tests.Count;
+                            limitedProjects.Add(new RoslynMcp.Core.Models.TestProjectDto(proj.ProjectName, proj.ProjectFilePath, tests));
+                        }
+                        projects = limitedProjects;
+                    }
+
+                    result = new RoslynMcp.Core.Models.TestDiscoveryDto(projects);
+                }
+
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

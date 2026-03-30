@@ -91,12 +91,31 @@ public static class AdvancedAnalysisTools
         IDependencyAnalysisService dependencyAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? project = null,
+        [Description("When true, return only namespaces and edges involved in circular dependencies")] bool circularOnly = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
                 var result = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, project, c);
+
+                if (circularOnly && result.CircularDependencies.Count > 0)
+                {
+                    var cyclicNamespaces = new HashSet<string>(
+                        result.CircularDependencies.SelectMany(cd => cd.Cycle),
+                        StringComparer.Ordinal);
+
+                    result = new RoslynMcp.Core.Models.NamespaceDependencyGraphDto(
+                        result.Nodes.Where(n => cyclicNamespaces.Contains(n.Namespace)).ToList(),
+                        result.Edges.Where(e => cyclicNamespaces.Contains(e.FromNamespace) &&
+                                                cyclicNamespaces.Contains(e.ToNamespace)).ToList(),
+                        result.CircularDependencies);
+                }
+                else if (circularOnly)
+                {
+                    result = new RoslynMcp.Core.Models.NamespaceDependencyGraphDto([], [], []);
+                }
+
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
