@@ -189,6 +189,11 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                         modelCache[doc.Id] = model;
                     }
 
+                    // For interface-implemented members (e.g. Dispose), filter to only calls
+                    // where the receiver type matches the target type
+                    if (root is not null && model is not null && !IsReceiverOfTargetType(root, model, refLocation.Location, namedType, ct))
+                        continue;
+
                     var containingSymbol = root is not null && model is not null
                         ? SymbolServiceHelpers.GetContainingSymbolFromRoot(root, model, refLocation.Location, ct)
                         : null;
@@ -389,6 +394,46 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Checks if the reference location's invocation receiver is of the target type.
+    /// Prevents over-matching for interface-implemented members like Dispose().
+    /// </summary>
+    private static bool IsReceiverOfTargetType(
+        SyntaxNode root, SemanticModel model, Location location, INamedTypeSymbol targetType, CancellationToken ct)
+    {
+        var node = root.FindNode(location.SourceSpan);
+
+        // Walk up to find the invocation or member access
+        var memberAccess = node.FirstAncestorOrSelf<MemberAccessExpressionSyntax>();
+        if (memberAccess is not null)
+        {
+            var receiverTypeInfo = model.GetTypeInfo(memberAccess.Expression, ct);
+            var receiverType = receiverTypeInfo.Type ?? receiverTypeInfo.ConvertedType;
+            if (receiverType is INamedTypeSymbol receiverNamed)
+            {
+                // Accept if receiver IS the target type or derives from it
+                return SymbolEqualityComparer.Default.Equals(receiverNamed, targetType) ||
+                       receiverNamed.AllInterfaces.Concat<INamedTypeSymbol>(GetBaseTypes(receiverNamed))
+                           .Any(b => SymbolEqualityComparer.Default.Equals(b, targetType)) ||
+                       targetType.AllInterfaces.Concat<INamedTypeSymbol>(GetBaseTypes(targetType))
+                           .Any(b => SymbolEqualityComparer.Default.Equals(b, receiverNamed));
+            }
+        }
+
+        // If no receiver found (implicit this or other pattern), accept it
+        return true;
+    }
+
+    private static IEnumerable<INamedTypeSymbol> GetBaseTypes(INamedTypeSymbol type)
+    {
+        var current = type.BaseType;
+        while (current is not null)
+        {
+            yield return current;
+            current = current.BaseType;
+        }
     }
 
     private static bool IsInstanceMember(string name, INamedTypeSymbol type)

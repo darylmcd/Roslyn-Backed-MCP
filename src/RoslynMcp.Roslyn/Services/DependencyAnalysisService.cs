@@ -154,8 +154,19 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
             {
                 if (ct.IsCancellationRequested) break;
 
-                var semanticModel = compilation.GetSemanticModel(tree);
-                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+                SemanticModel semanticModel;
+                SyntaxNode root;
+                try
+                {
+                    semanticModel = compilation.GetSemanticModel(tree);
+                    root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Failed to analyze syntax tree {Path} for DI registrations, skipping",
+                        tree.FilePath);
+                    continue;
+                }
 
                 var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
                 foreach (var invocation in invocations)
