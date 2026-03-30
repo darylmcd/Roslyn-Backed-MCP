@@ -1,5 +1,12 @@
 # Deep Code Review & Refactor Agent Prompt
 
+<!-- DO NOT DELETE THIS FILE.
+     This is a living document that must be maintained and kept in sync
+     with the project's actual tool, resource, and prompt surface at all times.
+     When tools, resources, or prompts are added, removed, or renamed,
+     update the Tools Reference appendix accordingly.
+     Last surface audit: 2026-03-30 (117 tools, 7 resources, 17 prompts). -->
+
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > It exercises every major tool category and surfaces both codebase issues AND MCP server bugs.
 
@@ -201,8 +208,74 @@ For each method with high complexity:
 2. Call `move_file_preview` to move a file to a different directory with namespace update.
 3. Call `extract_interface_cross_project_preview` to extract an interface into a different project.
 4. Call `dependency_inversion_preview` to extract interface + update constructor dependencies.
+5. Call `move_type_to_project_preview` to move a type declaration into another project.
+6. Call `extract_and_wire_interface_preview` to extract an interface and rewrite DI registrations.
+7. Call `split_class_preview` to split a type into partial class files.
+8. Call `migrate_package_preview` to replace one NuGet package with another across projects.
 
-**MCP audit checkpoint:** Do cross-project operations correctly add project references? Do namespace updates apply? Are all references updated?
+**MCP audit checkpoint:** Do cross-project operations correctly add project references? Do namespace updates apply? Are all references updated? Does `extract_and_wire_interface_preview` correctly identify DI registrations? Does `split_class_preview` produce valid partial classes?
+
+---
+
+### Phase 11: Semantic Search & Discovery
+
+1. Call `semantic_search` with a natural-language query like `"async methods returning Task<bool>"`. Verify results match the query semantics.
+2. Call `semantic_search` with `"classes implementing IDisposable"`. Cross-check against `find_implementations`.
+3. Call `find_reflection_usages` to locate reflection-heavy code that may resist refactoring.
+4. Call `get_di_registrations` to audit the DI container wiring.
+5. Call `source_generated_documents` to list any source-generator output files.
+
+**MCP audit checkpoint:** Does `semantic_search` return relevant results? Does `find_reflection_usages` find all reflection patterns (typeof, GetMethod, Activator, etc.)? Does `get_di_registrations` parse all registration styles?
+
+---
+
+### Phase 12: Scaffolding
+
+1. Call `scaffold_type_preview` to scaffold a new class in a project. Verify the generated file content and namespace.
+2. Call `scaffold_test_preview` to scaffold a test file for an existing type. Verify it targets the correct type and uses the right test framework.
+3. Apply both if the scaffolded content is correct.
+
+**MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace from the project structure? Does `scaffold_test_preview` generate valid test stubs? Do the apply operations write files correctly?
+
+---
+
+### Phase 13: Project Mutation
+
+1. Call `add_package_reference_preview` to add a NuGet package to a project.
+2. Call `remove_package_reference_preview` to remove a NuGet package.
+3. Call `add_project_reference_preview` to add a project-to-project reference.
+4. Call `remove_project_reference_preview` to remove a project reference.
+5. Call `set_project_property_preview` to set a project property (e.g., Nullable, LangVersion).
+6. If the solution uses Central Package Management, call `add_central_package_version_preview` and `remove_central_package_version_preview`.
+
+**MCP audit checkpoint:** Do project mutation previews produce correct XML diffs? Does `apply_project_mutation` write valid project files? Do subsequent `compile_check` calls reflect the mutations?
+
+---
+
+### Phase 14: Navigation & Completions
+
+1. Call `go_to_definition` on a symbol usage. Verify it navigates to the correct declaration.
+2. Call `goto_type_definition` on a variable. Verify it goes to the type, not the variable declaration.
+3. Call `enclosing_symbol` at a position inside a method. Verify it returns the method.
+4. Call `get_completions` at a position after a dot. Verify IntelliSense-style results.
+5. Call `find_references_bulk` with multiple symbol handles. Verify batch results match individual `find_references` calls.
+6. Call `find_overrides` on a virtual method. Verify all overriding members are found.
+7. Call `find_base_members` on an override. Verify it navigates back to the base declaration.
+
+**MCP audit checkpoint:** Are navigation results accurate? Does `get_completions` return relevant members? Does `find_references_bulk` produce consistent results vs individual calls?
+
+---
+
+### Phase 15: Resource Verification
+
+1. Read `roslyn://server/catalog` to get the machine-readable surface inventory.
+2. Read `roslyn://workspaces` to list active workspace sessions.
+3. Read `roslyn://workspace/{workspaceId}/status` and compare with `workspace_status` tool output.
+4. Read `roslyn://workspace/{workspaceId}/projects` and compare with `project_graph` tool output.
+5. Read `roslyn://workspace/{workspaceId}/diagnostics` and compare with `project_diagnostics` tool output.
+6. Read `roslyn://workspace/{workspaceId}/file/{filePath}` for a source file and compare with `get_source_text`.
+
+**MCP audit checkpoint:** Do resources return data consistent with their tool counterparts? Are URI templates resolved correctly? Is the server catalog accurate and up to date?
 
 ---
 
@@ -236,23 +309,167 @@ Categories:
 
 ---
 
-## Tools Reference (all available)
+## Tools Reference — Complete Surface Inventory
 
-**Workspace:** workspace_load, workspace_close, workspace_list, workspace_reload, workspace_status, project_graph, source_generated_documents, get_source_text
-**Symbols:** symbol_search, symbol_info, go_to_definition, goto_type_definition, find_references, find_references_bulk, find_implementations, find_overrides, find_base_members, member_hierarchy, document_symbols, enclosing_symbol, symbol_signature_help, symbol_relationships, get_completions, find_property_writes
-**Analysis:** project_diagnostics, diagnostic_details, type_hierarchy, callers_callees, impact_analysis, find_type_mutations, find_type_usages, find_consumers, get_cohesion_metrics, find_shared_members, compile_check, analyze_data_flow, analyze_control_flow, get_operations, list_analyzers
-**Advanced Analysis:** find_unused_symbols, get_di_registrations, get_complexity_metrics, find_reflection_usages, get_namespace_dependencies, get_nuget_dependencies, semantic_search
-**Security:** security_diagnostics, security_analyzer_status
-**Refactoring:** rename_preview/apply, organize_usings_preview/apply, format_document_preview/apply, format_range_preview/apply, code_fix_preview/apply, fix_all_preview/apply, get_code_actions, preview_code_action, apply_code_action
-**Type Operations:** extract_interface_preview/apply, extract_interface_cross_project_preview, extract_and_wire_interface_preview, dependency_inversion_preview, extract_type_preview/apply, split_class_preview, move_type_to_file_preview/apply, move_type_to_project_preview, bulk_replace_type_preview/apply
-**File & Edit:** apply_text_edit, apply_multi_file_edit, create_file_preview/apply, delete_file_preview/apply, move_file_preview/apply
-**Project Mutation:** add/remove_package_reference_preview, add/remove_project_reference_preview, add/remove_target_framework_preview, set_project_property_preview, set_conditional_property_preview, add/remove_central_package_version_preview, migrate_package_preview, apply_project_mutation
-**Validation:** build_workspace, build_project, test_discover, test_run, test_related, test_related_files, test_coverage
-**Scaffolding:** scaffold_type_preview/apply, scaffold_test_preview/apply
-**Dead Code:** remove_dead_code_preview/apply
-**Configuration:** get_editorconfig_options
-**Scripting:** evaluate_csharp, analyze_snippet
-**Syntax:** get_syntax_tree
-**Orchestration:** apply_composite_preview
-**Undo:** revert_last_apply
-**Server:** server_info
+> **Maintenance note:** This appendix must be kept in sync with the actual server surface.
+> When tools, resources, or prompts change, update this section.
+> Last verified: 2026-03-30 — **117 tools | 7 resources | 17 prompts**
+
+### Tools by Category (117 total)
+
+#### Server (1 tool)
+`server_info`
+
+#### Workspace (8 tools)
+`workspace_load` `workspace_reload` `workspace_close` `workspace_list` `workspace_status` `project_graph` `source_generated_documents` `get_source_text`
+
+#### Symbols (16 tools)
+`symbol_search` `symbol_info` `go_to_definition` `goto_type_definition` `find_references` `find_references_bulk` `find_implementations` `find_overrides` `find_base_members` `member_hierarchy` `document_symbols` `enclosing_symbol` `symbol_signature_help` `symbol_relationships` `find_property_writes` `get_completions`
+
+#### Analysis (7 tools)
+`project_diagnostics` `diagnostic_details` `type_hierarchy` `callers_callees` `impact_analysis` `find_type_mutations` `find_type_usages`
+
+#### Advanced Analysis (7 tools)
+`find_unused_symbols` `get_di_registrations` `get_complexity_metrics` `find_reflection_usages` `get_namespace_dependencies` `get_nuget_dependencies` `semantic_search`
+
+#### Consumer & Cohesion Analysis (3 tools)
+`find_consumers` `get_cohesion_metrics` `find_shared_members`
+
+#### Security (2 tools)
+`security_diagnostics` `security_analyzer_status`
+
+#### Flow Analysis (2 tools)
+`analyze_data_flow` `analyze_control_flow`
+
+#### Syntax & Operations (2 tools)
+`get_syntax_tree` `get_operations`
+
+#### Compilation (1 tool)
+`compile_check`
+
+#### Analyzer Info (1 tool)
+`list_analyzers`
+
+#### Snippet & Scripting (2 tools)
+`analyze_snippet` `evaluate_csharp`
+
+#### Refactoring — Rename, Format, Organize (8 tools)
+`rename_preview` `rename_apply` `organize_usings_preview` `organize_usings_apply` `format_document_preview` `format_document_apply` `format_range_preview` `format_range_apply`
+
+#### Code Actions & Fixes (5 tools)
+`code_fix_preview` `code_fix_apply` `get_code_actions` `preview_code_action` `apply_code_action`
+
+#### Fix All (2 tools)
+`fix_all_preview` `fix_all_apply`
+
+#### Interface Extraction (2 tools)
+`extract_interface_preview` `extract_interface_apply`
+
+#### Type Extraction (2 tools)
+`extract_type_preview` `extract_type_apply`
+
+#### Type Movement (2 tools)
+`move_type_to_file_preview` `move_type_to_file_apply`
+
+#### Bulk Refactoring (2 tools)
+`bulk_replace_type_preview` `bulk_replace_type_apply`
+
+#### Cross-Project Refactoring (3 tools)
+`move_type_to_project_preview` `extract_interface_cross_project_preview` `dependency_inversion_preview`
+
+#### Orchestration (4 tools)
+`migrate_package_preview` `split_class_preview` `extract_and_wire_interface_preview` `apply_composite_preview`
+
+#### Dead Code Removal (2 tools)
+`remove_dead_code_preview` `remove_dead_code_apply`
+
+#### Text Editing (2 tools)
+`apply_text_edit` `apply_multi_file_edit`
+
+#### File Operations (6 tools)
+`create_file_preview` `create_file_apply` `delete_file_preview` `delete_file_apply` `move_file_preview` `move_file_apply`
+
+#### Project Mutation (11 tools)
+`add_package_reference_preview` `remove_package_reference_preview` `add_project_reference_preview` `remove_project_reference_preview` `set_project_property_preview` `set_conditional_property_preview` `add_target_framework_preview` `remove_target_framework_preview` `add_central_package_version_preview` `remove_central_package_version_preview` `apply_project_mutation`
+
+#### Scaffolding (4 tools)
+`scaffold_type_preview` `scaffold_type_apply` `scaffold_test_preview` `scaffold_test_apply`
+
+#### Validation — Build & Test (7 tools)
+`build_workspace` `build_project` `test_discover` `test_run` `test_related` `test_related_files` `test_coverage`
+
+#### EditorConfig (1 tool)
+`get_editorconfig_options`
+
+#### Undo (1 tool)
+`revert_last_apply`
+
+### Resources (7 total)
+
+| URI Template | Description | MIME Type |
+|---|---|---|
+| `roslyn://server/catalog` | Machine-readable surface inventory and support policy | `application/json` |
+| `roslyn://workspaces` | List active workspace sessions | `application/json` |
+| `roslyn://workspace/{workspaceId}/status` | Workspace status and diagnostics | `application/json` |
+| `roslyn://workspace/{workspaceId}/projects` | Project graph metadata | `application/json` |
+| `roslyn://workspace/{workspaceId}/diagnostics` | Compiler diagnostics | `application/json` |
+| `roslyn://workspace/{workspaceId}/file/{filePath}` | Source file content | `text/x-csharp` |
+
+### Prompts (17 total)
+
+| Prompt | Description |
+|---|---|
+| `explain_error` | Explain a compiler diagnostic |
+| `suggest_refactoring` | Suggest refactorings for a symbol or region |
+| `review_file` | Review a source file |
+| `analyze_dependencies` | Architecture and dependency analysis |
+| `debug_test_failure` | Debug a failing test |
+| `refactor_and_validate` | Preview-first refactoring with validation |
+| `fix_all_diagnostics` | Batched diagnostic cleanup |
+| `guided_package_migration` | Package migration across projects |
+| `guided_extract_interface` | Interface extraction and consumer updates |
+| `security_review` | Comprehensive security review |
+| `discover_capabilities` | Discover relevant tools for a task category |
+| `dead_code_audit` | Dead code detection and removal |
+| `review_test_coverage` | Test coverage review and gap identification |
+| `review_complexity` | Complexity review and refactoring opportunities |
+| `cohesion_analysis` | SRP analysis via LCOM4 with guided type extraction |
+| `consumer_impact` | Consumer/dependency graph analysis for refactoring impact |
+
+### Tool Source Files
+
+| File | Count | Categories |
+|---|---|---|
+| `ServerTools.cs` | 1 | Server |
+| `WorkspaceTools.cs` | 8 | Workspace |
+| `SymbolTools.cs` | 16 | Symbols |
+| `AnalysisTools.cs` | 7 | Analysis |
+| `AdvancedAnalysisTools.cs` | 7 | Advanced Analysis |
+| `ConsumerAnalysisTools.cs` | 1 | Consumer Analysis |
+| `CohesionAnalysisTools.cs` | 2 | Cohesion Analysis |
+| `SecurityTools.cs` | 2 | Security |
+| `FlowAnalysisTools.cs` | 2 | Flow Analysis |
+| `SyntaxTools.cs` | 1 | Syntax |
+| `OperationTools.cs` | 1 | Operations |
+| `CompileCheckTools.cs` | 1 | Compilation |
+| `AnalyzerInfoTools.cs` | 1 | Analyzer Info |
+| `SnippetAnalysisTools.cs` | 1 | Snippet Analysis |
+| `ScriptingTools.cs` | 1 | Scripting |
+| `RefactoringTools.cs` | 8 | Rename, Format, Organize |
+| `CodeActionTools.cs` | 5 | Code Actions & Fixes |
+| `FixAllTools.cs` | 2 | Fix All |
+| `InterfaceExtractionTools.cs` | 2 | Interface Extraction |
+| `TypeExtractionTools.cs` | 2 | Type Extraction |
+| `TypeMoveTools.cs` | 2 | Type Movement |
+| `BulkRefactoringTools.cs` | 2 | Bulk Refactoring |
+| `CrossProjectRefactoringTools.cs` | 3 | Cross-Project Refactoring |
+| `OrchestrationTools.cs` | 4 | Orchestration |
+| `DeadCodeTools.cs` | 2 | Dead Code Removal |
+| `EditTools.cs` | 1 | Text Editing |
+| `MultiFileEditTools.cs` | 1 | Text Editing |
+| `FileOperationTools.cs` | 6 | File Operations |
+| `ProjectMutationTools.cs` | 11 | Project Mutation |
+| `ScaffoldingTools.cs` | 4 | Scaffolding |
+| `ValidationTools.cs` | 7 | Build, Test, Coverage |
+| `EditorConfigTools.cs` | 1 | EditorConfig |
+| `UndoTools.cs` | 1 | Undo |

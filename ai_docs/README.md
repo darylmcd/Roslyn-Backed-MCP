@@ -27,7 +27,8 @@ This directory is the canonical AI-facing documentation tree.
 
 ## Active Reports
 
-- `mcp-server-audit-report.md`: living bug reference for MCP server issues (29 issues across 3 solutions). Action items tracked in `backlog.md`.
+- `deep-review-report.md`: code review and refactoring report (2026-03-30). Produced by running `prompts/deep-review-and-refactor.md` through all 16 phases.
+- `mcp-server-audit-report.md`: living bug reference for MCP server issues (35 issues across 4 solutions, 2026-03-30). Action items tracked in `backlog.md`.
 
 ## Stable Deep References
 
@@ -39,7 +40,7 @@ This directory is the canonical AI-facing documentation tree.
 ## Repeatable Procedures & Prompts
 
 - `procedures/doc-migration-checklist.md`
-- `prompts/deep-review-and-refactor.md`: reusable agent prompt for comprehensive code review
+- `prompts/deep-review-and-refactor.md`: **living document** — reusable agent prompt for comprehensive code review. Contains the complete tool/resource/prompt surface inventory. **Do not delete; keep in sync with project surface at all times.**
 - `prompts/add-security-diagnostic-surface.prompt.md`: feature specification (tracked as FEAT-01 in backlog)
 
 ## Archive
