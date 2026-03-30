@@ -140,8 +140,22 @@ public sealed class ProjectMutationService : IProjectMutationService
         {
             ValidateAllowedProperty(request.PropertyName);
 
-            var propertyGroup = document.Root?.Elements("PropertyGroup").FirstOrDefault()
-                ?? throw new InvalidOperationException("Project file is missing a PropertyGroup element.");
+            var propertyGroup = document.Root?.Elements("PropertyGroup").FirstOrDefault();
+            if (propertyGroup is null)
+            {
+                // Create a new PropertyGroup if none exists (e.g., Directory.Build.props-based projects)
+                propertyGroup = new System.Xml.Linq.XElement("PropertyGroup");
+                document.Root!.AddFirst(propertyGroup);
+            }
+
+            // Detect no-op: check if property already has the target value
+            var existingValue = propertyGroup.Element(request.PropertyName)?.Value;
+            if (string.Equals(existingValue, request.Value, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"No changes needed — property '{request.PropertyName}' is already set to '{request.Value}'.");
+            }
+
             propertyGroup.SetElementValue(request.PropertyName, request.Value);
         }, $"Set project property '{request.PropertyName}'", ct);
     }

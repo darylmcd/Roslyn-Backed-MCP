@@ -59,6 +59,14 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
 
         if (typeSymbol is null) return [];
 
+        // Provide descriptive message for built-in/primitive types that have no source locations
+        if (!typeSymbol.Locations.Any(l => l.IsInSource) && typeSymbol.SpecialType != SpecialType.None)
+        {
+            throw new InvalidOperationException(
+                $"Cannot navigate to type definition for built-in type '{typeSymbol.ToDisplayString()}' — " +
+                "it is defined in the .NET runtime, not in source code.");
+        }
+
         var results = new List<LocationDto>();
         foreach (var location in typeSymbol.Locations.Where(l => l.IsInSource))
         {
