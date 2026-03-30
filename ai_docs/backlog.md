@@ -8,37 +8,19 @@ Last audit: 2026-03-30. Consolidated from deep-review-report.md, mcp-server-audi
 
 ## P0 — Critical Server Bugs (blocking core workflows)
 
-These block common agent and user workflows. See `mcp-server-audit-report.md` for full reproduction details.
-
-- [ ] **BUG-01**: `fix_all_preview` crashes at all scopes on some solutions tested (audit 2026-03-28). Partially works on SampleSolution (returns clear error for compiler warnings lacking fix providers). Needs wider retest.
-- [ ] **BUG-04**: Workspace sessions drop silently after inactivity with no error context. All state is lost.
-- [ ] **BUG-05**: Many tool crashes return identical `"An error occurred invoking '<tool>'."` with no exception type, message, or stack trace.
+_All P0 items resolved._
 
 ---
 
 ## P1 — High-Priority Server Bugs (crashes or wrong output on some solutions)
 
-- [ ] **BUG-06**: `extract_interface_preview` — crash on some solutions. Cross-project namespace issue fixed (AUDIT-22); conflict detection added (AUDIT-28).
-- [ ] **BUG-07**: `get_source_text` crashes on some solutions (works on others). Fundamental tool.
 - [ ] **BUG-08**: `find_reflection_usages` / `get_di_registrations` previously crashed on ITChatBot.sln (2026-03-28 audit). Now functional in v1.2.0 and NuGet content pollution fixed (AUDIT-29). May need retest for crash regression.
-- [ ] **BUG-09**: `get_cohesion_metrics` crashes on NetworkDocumentation.sln but works on others.
-- [ ] **BUG-10**: `test_discover` crashes on ITChatBot.sln, returns empty on NetworkDocumentation.sln.
-- [ ] **BUG-11**: `analyze_data_flow` / `analyze_control_flow` crash on try-catch / large method bodies. Works on smaller ranges.
-- [ ] **BUG-12**: `move_type_to_file_preview` keeps invalid `private` modifier on top-level types; copies unnecessary usings.
-- [ ] **BUG-14**: `find_type_mutations` Dispose() over-matches all `IDisposable.Dispose()` calls solution-wide instead of scoping to the target type.
-- [ ] **BUG-15**: `analyze_snippet` `usings` parameter adds using directives but not assembly references — `System.Text.Json` etc. fail to resolve.
+
 ---
 
 ## P2 — Code Quality Improvements
 
-Source: deep-review-report.md (2026-03-30). Codebase is healthy (0 errors, 143 tests pass, 49.8% line coverage).
-
-- [ ] **CODE-04**: Decompose `ExecuteAsync` in ToolErrorHandler (CC=21) — consider dictionary-based exception handler mapping for 9 catch clauses.
-- [ ] **CODE-07**: Adopt `LoggerMessage.Define` pattern (CA1848) for performance-critical logging paths in hot service methods.
-- [ ] **CODE-08**: Extract shared `DotnetCommandRunner` from `BuildService` and `TestRunnerService` (both have LCOM4=2 with identical infrastructure cluster).
-- [ ] **CODE-09**: Decompose `PreviewExtractInterfaceAsync` (CC=35, 199 LOC, 57 locals, nesting=6). Strongest refactoring candidate. Extract type-finding, member-filtering, interface-generation, and diff-computation sub-methods.
-- [ ] **CODE-10**: Add XML documentation to `InterfaceExtractionService` and `RefactoringService` (currently missing, `WorkspaceManager` has good docs).
-- [ ] **CODE-11**: Increase test coverage from 49.8% line / 37.6% branch. Focus on high-complexity methods in Roslyn.Services layer.
+- [ ] **CODE-11**: Increase test coverage from 49.8% line / 37.6% branch. Focus on high-complexity methods in Roslyn.Services layer. (11 new tests added in this pass — 143→154 total.)
 
 ---
 

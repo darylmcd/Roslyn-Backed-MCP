@@ -23,7 +23,17 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
         var (firstStatement, lastStatement, semanticModel) = await ResolveStatementRangeAsync(
             workspaceId, filePath, startLine, endLine, ct).ConfigureAwait(false);
 
-        var result = semanticModel.AnalyzeDataFlow(firstStatement, lastStatement);
+        DataFlowAnalysis result;
+        try
+        {
+            result = semanticModel.AnalyzeDataFlow(firstStatement, lastStatement);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidOperationException(
+                $"Data flow analysis failed for lines {startLine}-{endLine}: {ex.Message}. " +
+                "Try narrowing the range to statements within a single block (avoid spanning try/catch/finally boundaries).", ex);
+        }
 
         return new DataFlowAnalysisDto(
             Succeeded: result.Succeeded,
@@ -46,7 +56,17 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
         var (firstStatement, lastStatement, semanticModel) = await ResolveStatementRangeAsync(
             workspaceId, filePath, startLine, endLine, ct).ConfigureAwait(false);
 
-        var result = semanticModel.AnalyzeControlFlow(firstStatement, lastStatement);
+        ControlFlowAnalysis result;
+        try
+        {
+            result = semanticModel.AnalyzeControlFlow(firstStatement, lastStatement);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new InvalidOperationException(
+                $"Control flow analysis failed for lines {startLine}-{endLine}: {ex.Message}. " +
+                "Try narrowing the range to statements within a single block (avoid spanning try/catch/finally boundaries).", ex);
+        }
 
         var entryPoints = result.EntryPoints
             .Select(n => FormatSyntaxLocation(n))

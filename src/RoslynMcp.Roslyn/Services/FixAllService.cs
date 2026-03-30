@@ -80,7 +80,24 @@ public sealed class FixAllService : IFixAllService
             fixAllDiagnosticProvider: new DiagnosticMapProvider(diagnosticsMap),
             cancellationToken: ct);
 
-        var fixAllAction = await fixAllProvider.GetFixAsync(fixAllContext).ConfigureAwait(false);
+        CodeAction? fixAllAction;
+        try
+        {
+            fixAllAction = await fixAllProvider.GetFixAsync(fixAllContext).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "FixAllProvider threw for diagnostic '{DiagnosticId}' at scope '{Scope}': {Message}",
+                diagnosticId, scope, ex.Message);
+            return new FixAllPreviewDto(
+                PreviewToken: "",
+                DiagnosticId: diagnosticId,
+                Scope: scope,
+                FixedCount: 0,
+                Changes: []);
+        }
+
         if (fixAllAction is null)
         {
             return new FixAllPreviewDto(
@@ -91,9 +108,34 @@ public sealed class FixAllService : IFixAllService
                 Changes: []);
         }
 
-        var operations = await fixAllAction.GetOperationsAsync(ct).ConfigureAwait(false);
-        var applyOp = operations.OfType<ApplyChangesOperation>().FirstOrDefault()
-            ?? throw new InvalidOperationException("FixAll action did not produce workspace changes.");
+        ImmutableArray<CodeActionOperation> operations;
+        try
+        {
+            operations = await fixAllAction.GetOperationsAsync(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex,
+                "FixAll action GetOperationsAsync threw for '{DiagnosticId}': {Message}",
+                diagnosticId, ex.Message);
+            return new FixAllPreviewDto(
+                PreviewToken: "",
+                DiagnosticId: diagnosticId,
+                Scope: scope,
+                FixedCount: 0,
+                Changes: []);
+        }
+
+        var applyOp = operations.OfType<ApplyChangesOperation>().FirstOrDefault();
+        if (applyOp is null)
+        {
+            return new FixAllPreviewDto(
+                PreviewToken: "",
+                DiagnosticId: diagnosticId,
+                Scope: scope,
+                FixedCount: 0,
+                Changes: []);
+        }
 
         var newSolution = applyOp.ChangedSolution;
         var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);

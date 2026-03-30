@@ -1,36 +1,27 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
-using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.Logging;
-using System.Collections.Concurrent;
 
 namespace RoslynMcp.Roslyn.Services;
 
-public sealed class TestRunnerService : ITestRunnerService, IDisposable
+public sealed class TestRunnerService : ITestRunnerService
 {
-    private readonly SemaphoreSlim _globalCommandGate;
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _workspaceCommandGates = new(StringComparer.Ordinal);
-
     private readonly IWorkspaceManager _workspaceManager;
-    private readonly IDotnetCommandRunner _commandRunner;
+    private readonly IGatedCommandExecutor _executor;
     private readonly ILogger<TestRunnerService> _logger;
     private readonly ValidationServiceOptions _options;
 
     public TestRunnerService(
         IWorkspaceManager workspaceManager,
-        IDotnetCommandRunner commandRunner,
+        IGatedCommandExecutor executor,
         ILogger<TestRunnerService> logger,
         ValidationServiceOptions? options = null)
     {
         _workspaceManager = workspaceManager;
-        _commandRunner = commandRunner;
+        _executor = executor;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
-        var globalLimit = Math.Clamp(Environment.ProcessorCount / 4, 1, 4);
-        _globalCommandGate = new SemaphoreSlim(globalLimit, globalLimit);
     }
 
     public async Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
@@ -39,7 +30,7 @@ public sealed class TestRunnerService : ITestRunnerService, IDisposable
 
         if (projectName is not null)
         {
-            var resolved = ResolveProject(workspaceId, projectName);
+            var resolved = _executor.ResolveProject(workspaceId, projectName);
             if (!resolved.IsTestProject)
             {
                 throw new InvalidOperationException(
@@ -56,7 +47,7 @@ public sealed class TestRunnerService : ITestRunnerService, IDisposable
 
         var targetPath = projectName is null
             ? status.LoadedPath
-            : ResolveProject(workspaceId, projectName).FilePath;
+            : _executor.ResolveProject(workspaceId, projectName).FilePath;
 
         if (string.IsNullOrWhiteSpace(targetPath))
         {
@@ -86,7 +77,7 @@ public sealed class TestRunnerService : ITestRunnerService, IDisposable
                 arguments.Add(filter);
             }
 
-            var execution = await RunDotnetCommandAsync(
+            var execution = await _executor.ExecuteAsync(
                 workspaceId,
                 targetPath,
                 arguments,
@@ -101,87 +92,5 @@ public sealed class TestRunnerService : ITestRunnerService, IDisposable
                 Directory.Delete(resultsDirectory, recursive: true);
             }
         }
-    }
-
-    private async Task<CommandExecutionDto> RunDotnetCommandAsync(
-        string workspaceId,
-        string targetPath,
-        IReadOnlyList<string> arguments,
-        TimeSpan timeout,
-        CancellationToken ct)
-    {
-        var workspaceGate = _workspaceCommandGates.GetOrAdd(workspaceId, static _ => new SemaphoreSlim(1, 1));
-        await _globalCommandGate.WaitAsync(ct).ConfigureAwait(false);
-
-        try
-        {
-            await workspaceGate.WaitAsync(ct).ConfigureAwait(false);
-
-            try
-            {
-                var workingDirectory = GetWorkingDirectory(targetPath);
-                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeoutCts.CancelAfter(timeout);
-
-                CommandExecutionDto execution;
-                try
-                {
-                    execution = await _commandRunner.RunAsync(workingDirectory, targetPath, arguments, timeoutCts.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
-                {
-                    throw new TimeoutException(
-                        $"The command 'dotnet {string.Join(" ", arguments)}' exceeded the timeout of {timeout.TotalMinutes:F1} minute(s).");
-                }
-
-                _logger.LogInformation(
-                    "Executed dotnet command for {TargetPath}: {Arguments} (ExitCode={ExitCode})",
-                    targetPath,
-                    string.Join(" ", arguments),
-                    execution.ExitCode);
-
-                return execution;
-            }
-            finally
-            {
-                workspaceGate.Release();
-            }
-        }
-        finally
-        {
-            _globalCommandGate.Release();
-        }
-    }
-
-    private ProjectStatusDto ResolveProject(string workspaceId, string projectName)
-    {
-        var project = _workspaceManager.GetStatus(workspaceId).Projects
-            .FirstOrDefault(candidate =>
-                string.Equals(candidate.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(candidate.FilePath, projectName, StringComparison.OrdinalIgnoreCase));
-
-        return project ?? throw new InvalidOperationException(
-            $"Project '{projectName}' was not found in workspace '{workspaceId}'.");
-    }
-
-    private static string GetWorkingDirectory(string targetPath)
-    {
-        if (Directory.Exists(targetPath))
-        {
-            return targetPath;
-        }
-
-        var directory = Path.GetDirectoryName(targetPath);
-        return string.IsNullOrWhiteSpace(directory) ? Environment.CurrentDirectory : directory;
-    }
-
-    public void Dispose()
-    {
-        _globalCommandGate.Dispose();
-        foreach (var kvp in _workspaceCommandGates)
-        {
-            kvp.Value.Dispose();
-        }
-        _workspaceCommandGates.Clear();
     }
 }

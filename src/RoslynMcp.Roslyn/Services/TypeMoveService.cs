@@ -111,12 +111,50 @@ public sealed class TypeMoveService : ITypeMoveService
             .AddDocument(targetFileName, newFileRoot.ToFullString(), filePath: resolvedTargetPath);
         newSolution = newDocument.Project.Solution;
 
+        // Remove unnecessary usings from the new file by checking for CS8019 diagnostics
+        newSolution = await RemoveUnusedUsingsAsync(newSolution, newDocument.Id, ct).ConfigureAwait(false);
+
         // Compute diff
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Move type '{typeName}' to {targetFileName}";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    private static async Task<Solution> RemoveUnusedUsingsAsync(Solution solution, DocumentId documentId, CancellationToken ct)
+    {
+        var document = solution.GetDocument(documentId);
+        if (document is null) return solution;
+
+        try
+        {
+            var compilation = await document.Project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null) return solution;
+
+            var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
+            var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            if (tree is null || root is null) return solution;
+
+            var unusedUsings = compilation.GetDiagnostics(ct)
+                .Where(d => d.Id == "CS8019" && d.Location.SourceTree == tree)
+                .Select(d => root.FindNode(d.Location.SourceSpan))
+                .OfType<UsingDirectiveSyntax>()
+                .Distinct()
+                .ToList();
+
+            if (unusedUsings.Count > 0)
+            {
+                root = root.RemoveNodes(unusedUsings, SyntaxRemoveOptions.KeepExteriorTrivia) ?? root;
+                solution = solution.WithDocumentSyntaxRoot(documentId, root);
+            }
+        }
+        catch
+        {
+            // If unused-using detection fails, keep all usings — safe fallback
+        }
+
+        return solution;
     }
 
     private static TypeDeclarationSyntax StripInvalidTopLevelModifiers(TypeDeclarationSyntax typeDecl)

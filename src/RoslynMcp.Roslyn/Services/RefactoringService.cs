@@ -11,6 +11,11 @@ using System.Xml.Linq;
 
 namespace RoslynMcp.Roslyn.Services;
 
+/// <summary>
+/// Coordinates Roslyn-based refactoring operations with preview/apply semantics,
+/// workspace versioning, and undo support. Handles rename, organize usings, format,
+/// and code fix operations.
+/// </summary>
 public sealed class RefactoringService : IRefactoringService
 {
     private readonly IWorkspaceManager _workspace;
@@ -26,6 +31,9 @@ public sealed class RefactoringService : IRefactoringService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Previews renaming a symbol and all its references across the solution.
+    /// </summary>
     public async Task<RefactoringPreviewDto> PreviewRenameAsync(
         string workspaceId, SymbolLocator locator, string newName, CancellationToken ct)
     {
@@ -44,6 +52,10 @@ public sealed class RefactoringService : IRefactoringService
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
+    /// <summary>
+    /// Applies a previously previewed refactoring. Validates the preview token against the current
+    /// workspace version to reject stale changes.
+    /// </summary>
     public async Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct)
     {
         var entry = _previewStore.Retrieve(previewToken);
@@ -104,6 +116,9 @@ public sealed class RefactoringService : IRefactoringService
         return new ApplyResultDto(true, appliedFiles, null);
     }
 
+    /// <summary>
+    /// Previews removing unnecessary usings and organizing import directives.
+    /// </summary>
     public async Task<RefactoringPreviewDto> PreviewOrganizeUsingsAsync(string workspaceId, string filePath, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -142,6 +157,9 @@ public sealed class RefactoringService : IRefactoringService
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
+    /// <summary>
+    /// Previews formatting an entire document using Roslyn formatting rules.
+    /// </summary>
     public async Task<RefactoringPreviewDto> PreviewFormatDocumentAsync(string workspaceId, string filePath, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);

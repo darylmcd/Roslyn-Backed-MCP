@@ -66,9 +66,13 @@ public class PerformanceBehaviorTests : TestBase
     {
         var workspaceManager = new FakeWorkspaceManager();
         var commandRunner = new BlockingDotnetCommandRunner();
-        var buildService = new BuildService(
+        var executor = new GatedCommandExecutor(
             workspaceManager,
             commandRunner,
+            NullLogger<GatedCommandExecutor>.Instance);
+        var buildService = new BuildService(
+            workspaceManager,
+            executor,
             NullLogger<BuildService>.Instance);
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));

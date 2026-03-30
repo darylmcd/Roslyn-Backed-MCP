@@ -39,6 +39,7 @@ public abstract class TestBase
     protected static SyntaxService SyntaxService { get; private set; } = null!;
     protected static WorkspaceExecutionGate WorkspaceExecutionGate { get; private set; } = null!;
     protected static DotnetCommandRunner DotnetCommandRunner { get; private set; } = null!;
+    protected static GatedCommandExecutor GatedCommandExecutor { get; private set; } = null!;
     protected static BulkRefactoringService BulkRefactoringService { get; private set; } = null!;
     protected static CohesionAnalysisService CohesionAnalysisService { get; private set; } = null!;
     protected static ConsumerAnalysisService ConsumerAnalysisService { get; private set; } = null!;
@@ -76,6 +77,10 @@ public abstract class TestBase
             NullLogger<WorkspaceManager>.Instance,
             PreviewStore,
             new FileWatcherService(NullLogger<FileWatcherService>.Instance));
+        GatedCommandExecutor = new GatedCommandExecutor(
+            WorkspaceManager,
+            DotnetCommandRunner,
+            NullLogger<GatedCommandExecutor>.Instance);
         SymbolNavigationService = new SymbolNavigationService(
             WorkspaceManager,
             NullLogger<SymbolNavigationService>.Instance);
@@ -103,11 +108,11 @@ public abstract class TestBase
             UndoService);
         BuildService = new BuildService(
             WorkspaceManager,
-            DotnetCommandRunner,
+            GatedCommandExecutor,
             NullLogger<BuildService>.Instance);
         TestRunnerService = new TestRunnerService(
             WorkspaceManager,
-            DotnetCommandRunner,
+            GatedCommandExecutor,
             NullLogger<TestRunnerService>.Instance);
         TestDiscoveryService = new TestDiscoveryService(
             WorkspaceManager,

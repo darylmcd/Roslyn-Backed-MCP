@@ -23,6 +23,7 @@ public static class ServiceCollectionExtensions
             return new WorkspaceExecutionGate(opts);
         });
         services.AddSingleton<IDotnetCommandRunner, DotnetCommandRunner>();
+        services.AddSingleton<IGatedCommandExecutor, GatedCommandExecutor>();
         services.AddSingleton<IPreviewStore>(sp =>
         {
             var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();

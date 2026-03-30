@@ -111,7 +111,9 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
                 return name.StartsWith("System.", StringComparison.OrdinalIgnoreCase) ||
                        name.Equals("System", StringComparison.OrdinalIgnoreCase) ||
                        name.Equals("netstandard", StringComparison.OrdinalIgnoreCase) ||
-                       name.StartsWith("Microsoft.CSharp", StringComparison.OrdinalIgnoreCase);
+                       name.StartsWith("Microsoft.CSharp", StringComparison.OrdinalIgnoreCase) ||
+                       name.StartsWith("Microsoft.Extensions.", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("mscorlib", StringComparison.OrdinalIgnoreCase);
             })
             .Select(path => (MetadataReference)MetadataReference.CreateFromFile(path))
             .ToImmutableArray();

@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <InternalsVisibleTo Include="RoslynMcp.Tests" />
   </ItemGroup>
 
   <ItemGroup>
