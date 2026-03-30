@@ -234,16 +234,6 @@ public abstract class TestBase
         throw new InvalidOperationException("Copied sample solution is missing a solution file.");
     }
 
-    protected static string CreateFixtureCopy(string fixtureSolutionPath)
-    {
-        var fixtureRoot = Path.GetDirectoryName(fixtureSolutionPath)
-            ?? throw new InvalidOperationException("Fixture root could not be resolved.");
-        var tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", Guid.NewGuid().ToString("N"));
-        CopyDirectory(fixtureRoot, tempRoot);
-        CopyRepositorySupportFiles(tempRoot);
-        return Path.Combine(tempRoot, Path.GetFileName(fixtureSolutionPath));
-    }
-
     protected static void DeleteDirectoryIfExists(string path)
     {
         if (Directory.Exists(path))
