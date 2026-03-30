@@ -340,9 +340,22 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         }
 
         var interfaceType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName));
-        return declaration.BaseList is null
-            ? declaration.WithBaseList(SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceType)))
-            : declaration.WithBaseList(declaration.BaseList.AddTypes(interfaceType));
+        if (declaration.BaseList is null)
+        {
+            // Create new base list with proper spacing: " : IFoo"
+            var colonToken = SyntaxFactory.Token(SyntaxKind.ColonToken)
+                .WithLeadingTrivia(SyntaxFactory.Space)
+                .WithTrailingTrivia(SyntaxFactory.Space);
+            var baseList = SyntaxFactory.BaseList(colonToken, SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceType));
+            return declaration.WithBaseList(baseList);
+        }
+
+        // Add to existing base list with proper comma spacing: ", IFoo"
+        var existingTypes = declaration.BaseList.Types.ToList();
+        existingTypes.Add(interfaceType);
+        var separatedList = SyntaxFactory.SeparatedList<BaseTypeSyntax>(existingTypes,
+            Enumerable.Repeat(SyntaxFactory.Token(SyntaxKind.CommaToken).WithTrailingTrivia(SyntaxFactory.Space), existingTypes.Count - 1));
+        return declaration.WithBaseList(declaration.BaseList.WithTypes(separatedList));
     }
 
     private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectId targetProjectId)
