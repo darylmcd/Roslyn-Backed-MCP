@@ -101,7 +101,7 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
 
         // Find all statements that overlap the requested line range
         var statements = root.DescendantNodes()
-            .Where(n => n is StatementSyntax && !(n is BlockSyntax))
+            .Where(n => n is StatementSyntax && n is not BlockSyntax)
             .Where(n =>
             {
                 var lineSpan = n.GetLocation().GetLineSpan();
@@ -118,7 +118,41 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
                 "Ensure the range contains executable statements (not just declarations or braces).");
         }
 
-        return (statements.First(), statements.Last(), semanticModel);
+        // AnalyzeDataFlow/ControlFlow requires first and last to share the same BlockSyntax parent.
+        // When the range spans try-catch or multiple blocks, find the largest contiguous group
+        // within a single block.
+        var first = statements.First();
+        var last = statements.Last();
+
+        if (!ShareCommonBlock(first, last))
+        {
+            // Group statements by their immediate block parent and pick the largest group
+            var groups = statements
+                .GroupBy(s => s.Parent)
+                .Where(g => g.Key is BlockSyntax)
+                .OrderByDescending(g => g.Count())
+                .FirstOrDefault();
+
+            if (groups is null)
+            {
+                throw new InvalidOperationException(
+                    $"Statements in the line range {startLine}-{endLine} span multiple blocks " +
+                    "(e.g., try and catch). Narrow the range to statements within a single block.");
+            }
+
+            var blockStatements = groups.OrderBy(s => s.SpanStart).ToList();
+            first = blockStatements.First();
+            last = blockStatements.Last();
+        }
+
+        return (first, last, semanticModel);
+    }
+
+    private static bool ShareCommonBlock(SyntaxNode a, SyntaxNode b)
+    {
+        var blockA = a.Parent as BlockSyntax;
+        var blockB = b.Parent as BlockSyntax;
+        return blockA is not null && ReferenceEquals(blockA, blockB);
     }
 
     private static IReadOnlyList<string> SymbolNames(

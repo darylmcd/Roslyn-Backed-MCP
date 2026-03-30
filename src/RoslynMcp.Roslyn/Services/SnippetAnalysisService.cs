@@ -102,27 +102,16 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
     {
         var trustedAssemblies = ((string?)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES"))?.Split(Path.PathSeparator) ?? [];
 
-        var coreAssemblies = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "System.Runtime",
-            "System.Console",
-            "System.Collections",
-            "System.Collections.Generic",
-            "System.Linq",
-            "System.Threading.Tasks",
-            "System.Text",
-            "System.Private.CoreLib",
-            "netstandard",
-            "System.ObjectModel",
-            "System.Runtime.Extensions"
-        };
-
+        // Include all System.* and Microsoft.* platform assemblies so that user-supplied
+        // usings (e.g. System.Text.Json, System.Net.Http) resolve correctly.
         return trustedAssemblies
             .Where(path =>
             {
                 var name = Path.GetFileNameWithoutExtension(path);
-                return coreAssemblies.Contains(name) ||
-                       name.StartsWith("System.Runtime", StringComparison.OrdinalIgnoreCase);
+                return name.StartsWith("System.", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("System", StringComparison.OrdinalIgnoreCase) ||
+                       name.Equals("netstandard", StringComparison.OrdinalIgnoreCase) ||
+                       name.StartsWith("Microsoft.CSharp", StringComparison.OrdinalIgnoreCase);
             })
             .Select(path => (MetadataReference)MetadataReference.CreateFromFile(path))
             .ToImmutableArray();

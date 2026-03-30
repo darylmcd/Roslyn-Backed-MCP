@@ -22,15 +22,32 @@ public static class UndoTools
             {
                 var entry = undoService.GetLastOperation(workspaceId);
                 if (entry is null)
-                    throw new InvalidOperationException("No undoable operation found for this workspace.");
+                {
+                    var nothingResult = new
+                    {
+                        reverted = false,
+                        message = "No operation to revert. Nothing has been applied in this session, " +
+                                  "or the last operation was a disk-direct change (file create/delete/move, " +
+                                  "project mutation) which is not revertible."
+                    };
+                    return Task.FromResult(JsonSerializer.Serialize(nothingResult, JsonDefaults.Indented));
+                }
 
                 var success = undoService.Revert(workspaceId, workspace);
                 if (!success)
-                    throw new InvalidOperationException("Failed to revert — the workspace state may have changed since the operation was applied.");
+                {
+                    var failResult = new
+                    {
+                        reverted = false,
+                        message = "Failed to revert — the workspace state may have changed since the operation was applied.",
+                        operation = entry.Description
+                    };
+                    return Task.FromResult(JsonSerializer.Serialize(failResult, JsonDefaults.Indented));
+                }
 
                 var result = new
                 {
-                    success = true,
+                    reverted = true,
                     revertedOperation = entry.Description,
                     appliedAtUtc = entry.AppliedAtUtc
                 };
