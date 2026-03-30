@@ -146,6 +146,15 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return null;
 
+        // If the resolved symbol is a type (e.g. Task<T> from an async method's return type),
+        // try to find the enclosing method declaration instead
+        if (symbol is INamedTypeSymbol && locator.HasSourceLocation)
+        {
+            var enclosingMethod = await TryResolveEnclosingMethodAsync(solution, locator, ct).ConfigureAwait(false);
+            if (enclosingMethod is not null)
+                symbol = enclosingMethod;
+        }
+
         var callers = new List<LocationDto>();
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         foreach (var refSymbol in references)
@@ -195,5 +204,36 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             SymbolMapper.ToDto(symbol, solution),
             callers,
             callees);
+    }
+
+    private static async Task<IMethodSymbol?> TryResolveEnclosingMethodAsync(
+        Solution solution, SymbolLocator locator, CancellationToken ct)
+    {
+        if (locator.FilePath is null || locator.Line is null || locator.Column is null) return null;
+
+        var document = SymbolResolver.FindDocument(solution, locator.FilePath);
+        if (document is null) return null;
+
+        var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+        var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
+        if (semanticModel is null || tree is null) return null;
+
+        var text = tree.GetText(ct);
+        var position = text.Lines[locator.Line.Value - 1].Start + (locator.Column.Value - 1);
+        var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+
+        var node = root.FindToken(position).Parent;
+        while (node is not null)
+        {
+            if (node is MethodDeclarationSyntax or LocalFunctionStatementSyntax)
+            {
+                var declared = semanticModel.GetDeclaredSymbol(node, ct);
+                if (declared is IMethodSymbol method)
+                    return method;
+            }
+            node = node.Parent;
+        }
+
+        return null;
     }
 }
