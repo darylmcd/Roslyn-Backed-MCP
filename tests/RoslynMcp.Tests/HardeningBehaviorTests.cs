@@ -75,9 +75,14 @@ public sealed class HardeningBehaviorTests : TestBase
     [TestMethod]
     public async Task ValidationService_TimesOutLongRunningCommands()
     {
-        var service = new BuildService(
-            new FakeWorkspaceManager(),
+        var fakeWorkspaceManager = new FakeWorkspaceManager();
+        var executor = new GatedCommandExecutor(
+            fakeWorkspaceManager,
             new HangingDotnetCommandRunner(),
+            NullLogger<GatedCommandExecutor>.Instance);
+        var service = new BuildService(
+            fakeWorkspaceManager,
+            executor,
             NullLogger<BuildService>.Instance,
             new ValidationServiceOptions
             {

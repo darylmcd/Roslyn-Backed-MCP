@@ -9,6 +9,10 @@ using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
+/// <summary>
+/// Extracts interfaces from concrete types, generating a new interface file with selected member
+/// signatures and optionally replacing concrete type references with the interface across the solution.
+/// </summary>
 public sealed class InterfaceExtractionService : IInterfaceExtractionService
 {
     private readonly IWorkspaceManager _workspace;
@@ -22,11 +26,69 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Previews extracting an interface from the specified type, optionally replacing usages of
+    /// the concrete type with the new interface in parameter and field declarations.
+    /// </summary>
     public async Task<RefactoringPreviewDto> PreviewExtractInterfaceAsync(
         string workspaceId, string filePath, string typeName, string interfaceName,
         IReadOnlyList<string>? memberNames, bool replaceUsages, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
+        var (sourceDocument, sourceRoot, typeDecl, typeSymbol) =
+            await ResolveTypeAsync(solution, filePath, typeName, ct).ConfigureAwait(false);
+
+        var candidateMembers = SelectCandidateMembers(typeSymbol, memberNames, typeName);
+        var interfaceMembers = BuildInterfaceMembers(candidateMembers);
+
+        await ValidateNoConflictsAsync(solution, typeSymbol, interfaceName, ct).ConfigureAwait(false);
+
+        var interfaceDecl = SyntaxFactory.InterfaceDeclaration(interfaceName)
+            .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
+            .WithMembers(SyntaxFactory.List(interfaceMembers));
+
+        var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot);
+
+        // Add interface to type's base list
+        var interfaceTypeSyntax = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName));
+        TypeDeclarationSyntax updatedTypeDecl;
+        if (typeDecl.BaseList is not null)
+        {
+            var newBaseList = typeDecl.BaseList.AddTypes(interfaceTypeSyntax);
+            updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
+        }
+        else
+        {
+            updatedTypeDecl = typeDecl.WithBaseList(
+                SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceTypeSyntax)));
+        }
+
+        var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
+        var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
+
+        // Add interface document
+        var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
+        var interfaceFilePath = Path.Combine(sourceDir, $"{interfaceName}.cs");
+        var interfaceDoc = newSolution.GetProject(sourceDocument.Project.Id)!
+            .AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), filePath: interfaceFilePath);
+        newSolution = interfaceDoc.Project.Solution;
+
+        if (replaceUsages)
+        {
+            newSolution = await ReplaceConcreteUsagesAsync(
+                newSolution, sourceDocument.Project.Id, typeSymbol, interfaceName, ct).ConfigureAwait(false);
+        }
+
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var description = $"Extract interface '{interfaceName}' from '{typeName}' with {candidateMembers.Count} member(s)";
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+
+        return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    private static async Task<(Document SourceDocument, CompilationUnitSyntax SourceRoot, TypeDeclarationSyntax TypeDecl, INamedTypeSymbol TypeSymbol)>
+        ResolveTypeAsync(Solution solution, string filePath, string typeName, CancellationToken ct)
+    {
         var sourceDocument = SymbolResolver.FindDocument(solution, filePath)
             ?? throw new InvalidOperationException($"Document not found: {filePath}");
 
@@ -43,7 +105,12 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol
             ?? throw new InvalidOperationException($"Could not resolve type '{typeName}'.");
 
-        // Determine which members to include
+        return (sourceDocument, sourceRoot, typeDecl, typeSymbol);
+    }
+
+    private static List<ISymbol> SelectCandidateMembers(
+        INamedTypeSymbol typeSymbol, IReadOnlyList<string>? memberNames, string typeName)
+    {
         var candidateMembers = typeSymbol.GetMembers()
             .Where(m => !m.IsStatic && !m.IsImplicitlyDeclared &&
                         m.DeclaredAccessibility == Accessibility.Public &&
@@ -61,7 +128,11 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         if (candidateMembers.Count == 0)
             throw new InvalidOperationException($"Type '{typeName}' has no public instance members to extract.");
 
-        // Build interface member declarations
+        return candidateMembers;
+    }
+
+    private static List<MemberDeclarationSyntax> BuildInterfaceMembers(List<ISymbol> candidateMembers)
+    {
         var interfaceMembers = new List<MemberDeclarationSyntax>();
         foreach (var member in candidateMembers)
         {
@@ -115,129 +186,107 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                     break;
             }
         }
+        return interfaceMembers;
+    }
 
-        // Check for existing type with the same name to prevent conflicts
+    private static CompilationUnitSyntax BuildInterfaceFile(
+        InterfaceDeclarationSyntax interfaceDecl, TypeDeclarationSyntax typeDecl, CompilationUnitSyntax sourceRoot)
+    {
+        var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
+
+        if (namespaceDecl is FileScopedNamespaceDeclarationSyntax fileScopedNs)
+        {
+            var newNs = SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
+            return SyntaxFactory.CompilationUnit()
+                .WithUsings(sourceRoot.Usings)
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
+                .NormalizeWhitespace();
+        }
+
+        if (namespaceDecl is NamespaceDeclarationSyntax blockNs)
+        {
+            var newNs = SyntaxFactory.NamespaceDeclaration(blockNs.Name)
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
+            return SyntaxFactory.CompilationUnit()
+                .WithUsings(sourceRoot.Usings)
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
+                .NormalizeWhitespace();
+        }
+
+        return SyntaxFactory.CompilationUnit()
+            .WithUsings(sourceRoot.Usings)
+            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl))
+            .NormalizeWhitespace();
+    }
+
+    private async Task ValidateNoConflictsAsync(
+        Solution solution, INamedTypeSymbol typeSymbol, string interfaceName, CancellationToken ct)
+    {
         var namespaceName = typeSymbol.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : typeSymbol.ContainingNamespace.ToDisplayString();
         var fullyQualifiedInterfaceName = string.IsNullOrWhiteSpace(namespaceName)
             ? interfaceName
             : $"{namespaceName}.{interfaceName}";
+
         foreach (var project in solution.Projects)
         {
-            var comp = await project.GetCompilationAsync(ct).ConfigureAwait(false);
-            if (comp?.GetTypeByMetadataName(fullyQualifiedInterfaceName) is not null)
+            try
             {
-                throw new InvalidOperationException(
-                    $"Type '{interfaceName}' already exists in project '{project.Name}' " +
-                    $"(namespace '{namespaceName}'). Choose a different interface name to avoid conflicts.");
+                var comp = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+                if (comp?.GetTypeByMetadataName(fullyQualifiedInterfaceName) is not null)
+                {
+                    throw new InvalidOperationException(
+                        $"Type '{interfaceName}' already exists in project '{project.Name}' " +
+                        $"(namespace '{namespaceName}'). Choose a different interface name to avoid conflicts.");
+                }
+            }
+            catch (InvalidOperationException) { throw; }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogDebug(ex, "Skipping conflict check in project '{ProjectName}'", project.Name);
             }
         }
+    }
 
-        // Create interface declaration
-        var interfaceDecl = SyntaxFactory.InterfaceDeclaration(interfaceName)
-            .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
-            .WithMembers(SyntaxFactory.List(interfaceMembers));
+    private static async Task<Solution> ReplaceConcreteUsagesAsync(
+        Solution solution, ProjectId projectId, INamedTypeSymbol typeSymbol,
+        string interfaceName, CancellationToken ct)
+    {
+        var compilation = await solution.GetProject(projectId)!
+            .GetCompilationAsync(ct).ConfigureAwait(false);
+        if (compilation is null) return solution;
 
-        // Build new file for the interface
-        var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
-        CompilationUnitSyntax interfaceFileRoot;
+        var updatedTypeSymbol = compilation.GetTypeByMetadataName(typeSymbol.ToDisplayString());
+        if (updatedTypeSymbol is null) return solution;
 
-        if (namespaceDecl is FileScopedNamespaceDeclarationSyntax fileScopedNs)
+        var refs = await SymbolFinder.FindReferencesAsync(updatedTypeSymbol, solution, ct).ConfigureAwait(false);
+        foreach (var refSymbol in refs)
         {
-            var newNs = SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
-            interfaceFileRoot = SyntaxFactory.CompilationUnit()
-                .WithUsings(sourceRoot.Usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
-                .NormalizeWhitespace();
-        }
-        else if (namespaceDecl is NamespaceDeclarationSyntax blockNs)
-        {
-            var newNs = SyntaxFactory.NamespaceDeclaration(blockNs.Name)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
-            interfaceFileRoot = SyntaxFactory.CompilationUnit()
-                .WithUsings(sourceRoot.Usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
-                .NormalizeWhitespace();
-        }
-        else
-        {
-            interfaceFileRoot = SyntaxFactory.CompilationUnit()
-                .WithUsings(sourceRoot.Usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl))
-                .NormalizeWhitespace();
-        }
-
-        // Add interface to type's base list
-        var interfaceTypeSyntax = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName));
-        TypeDeclarationSyntax updatedTypeDecl;
-        if (typeDecl.BaseList is not null)
-        {
-            var newBaseList = typeDecl.BaseList.AddTypes(interfaceTypeSyntax);
-            updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
-        }
-        else
-        {
-            updatedTypeDecl = typeDecl.WithBaseList(
-                SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceTypeSyntax)));
-        }
-
-        var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
-        var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
-
-        // Add interface document
-        var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
-        var interfaceFilePath = Path.Combine(sourceDir, $"{interfaceName}.cs");
-        var interfaceDoc = newSolution.GetProject(sourceDocument.Project.Id)!
-            .AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), filePath: interfaceFilePath);
-        newSolution = interfaceDoc.Project.Solution;
-
-        // Optionally replace usages of concrete type with interface
-        if (replaceUsages)
-        {
-            // Find all parameter and field references to the concrete type and replace with interface
-            var compilation = await newSolution.GetProject(sourceDocument.Project.Id)!
-                .GetCompilationAsync(ct).ConfigureAwait(false);
-            if (compilation is not null)
+            foreach (var refLocation in refSymbol.Locations)
             {
-                var updatedTypeSymbol = compilation.GetTypeByMetadataName(typeSymbol.ToDisplayString());
-                if (updatedTypeSymbol is not null)
+                var refDoc = refLocation.Document;
+                var refRoot = await refDoc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                if (refRoot is null) continue;
+
+                var refNode = refRoot.FindNode(refLocation.Location.SourceSpan);
+                var parent = refNode.Parent;
+
+                bool shouldReplace = parent is ParameterSyntax ||
+                    (parent is VariableDeclarationSyntax vd && vd.Parent is FieldDeclarationSyntax);
+
+                if (shouldReplace && refNode is IdentifierNameSyntax identNode)
                 {
-                    var refs = await SymbolFinder.FindReferencesAsync(updatedTypeSymbol, newSolution, ct).ConfigureAwait(false);
-                    foreach (var refSymbol in refs)
-                    {
-                        foreach (var refLocation in refSymbol.Locations)
-                        {
-                            var refDoc = refLocation.Document;
-                            var refRoot = await refDoc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                            if (refRoot is null) continue;
-
-                            var refNode = refRoot.FindNode(refLocation.Location.SourceSpan);
-                            var parent = refNode.Parent;
-
-                            // Only replace in parameter and field declarations
-                            bool shouldReplace = parent is ParameterSyntax ||
-                                (parent is VariableDeclarationSyntax vd && vd.Parent is FieldDeclarationSyntax);
-
-                            if (shouldReplace && refNode is IdentifierNameSyntax identNode)
-                            {
-                                var newIdentNode = SyntaxFactory.IdentifierName(interfaceName)
-                                    .WithTriviaFrom(identNode);
-                                refRoot = refRoot.ReplaceNode(identNode, newIdentNode);
-                                newSolution = newSolution.WithDocumentSyntaxRoot(refDoc.Id, refRoot);
-                            }
-                        }
-                    }
+                    var newIdentNode = SyntaxFactory.IdentifierName(interfaceName)
+                        .WithTriviaFrom(identNode);
+                    refRoot = refRoot.ReplaceNode(identNode, newIdentNode);
+                    solution = solution.WithDocumentSyntaxRoot(refDoc.Id, refRoot);
                 }
             }
         }
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
-        var description = $"Extract interface '{interfaceName}' from '{typeName}' with {candidateMembers.Count} member(s)";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
-
-        return new RefactoringPreviewDto(token, description, changes, null);
+        return solution;
     }
 
     private static string GetDefaultValueText(IParameterSymbol parameter)

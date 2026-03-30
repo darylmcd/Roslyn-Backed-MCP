@@ -18,6 +18,31 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 {
     private const int MaxDiagnosticsPerWorkspace = 200;
 
+    private static readonly Action<ILogger, string, string, int, Exception?> LogWorkspaceLoaded =
+        LoggerMessage.Define<string, string, int>(
+            LogLevel.Information, new EventId(1, nameof(LogWorkspaceLoaded)),
+            "Loaded workspace {WorkspaceId} from {Path}, version {Version}");
+
+    private static readonly Action<ILogger, string, int, Exception?> LogChangesApplied =
+        LoggerMessage.Define<string, int>(
+            LogLevel.Information, new EventId(2, nameof(LogChangesApplied)),
+            "Applied workspace changes to {WorkspaceId}, new version {Version}");
+
+    private static readonly Action<ILogger, string, Exception?> LogChangesApplyFailed =
+        LoggerMessage.Define<string>(
+            LogLevel.Warning, new EventId(3, nameof(LogChangesApplyFailed)),
+            "Failed to apply workspace changes for {WorkspaceId}");
+
+    private static readonly Action<ILogger, string, Exception?> LogWorkspaceClosed =
+        LoggerMessage.Define<string>(
+            LogLevel.Information, new EventId(4, nameof(LogWorkspaceClosed)),
+            "Closed workspace {WorkspaceId}");
+
+    private static readonly Action<ILogger, string, int, string, Exception?> LogSessionNotFound =
+        LoggerMessage.Define<string, int, string>(
+            LogLevel.Warning, new EventId(5, nameof(LogSessionNotFound)),
+            "Workspace '{WorkspaceId}' not found. Active sessions ({Count}): [{ActiveIds}]");
+
     private readonly ILogger<WorkspaceManager> _logger;
     private readonly IPreviewStore _previewStore;
     private readonly IFileWatcherService _fileWatcher;
@@ -106,7 +131,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _fileWatcher.Unwatch(workspaceId);
         _previewStore.InvalidateAll(workspaceId);
         session.Dispose();
-        _logger.LogInformation("Closed workspace {WorkspaceId}", workspaceId);
+        LogWorkspaceClosed(_logger, workspaceId, null);
         return true;
     }
 
@@ -213,11 +238,18 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         {
             foreach (var project in solution.Projects)
             {
-                var sourceGenDocs = await project.GetSourceGeneratedDocumentsAsync(ct).ConfigureAwait(false);
-                document = sourceGenDocs.FirstOrDefault(d =>
-                    d.FilePath is not null &&
-                    string.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase));
-                if (document is not null) break;
+                try
+                {
+                    var sourceGenDocs = await project.GetSourceGeneratedDocumentsAsync(ct).ConfigureAwait(false);
+                    document = sourceGenDocs.FirstOrDefault(d =>
+                        d.FilePath is not null &&
+                        string.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase));
+                    if (document is not null) break;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogDebug(ex, "Skipping source-generated doc search in project {ProjectName}", project.Name);
+                }
             }
         }
 
@@ -266,14 +298,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         {
             session.IncrementVersion();
             _previewStore.InvalidateAll(workspaceId);
-            _logger.LogInformation(
-                "Applied workspace changes to {WorkspaceId}, new version {Version}",
-                workspaceId,
-                session.Version);
+            LogChangesApplied(_logger, workspaceId, session.Version, null);
         }
         else
         {
-            _logger.LogWarning("Failed to apply workspace changes for {WorkspaceId}", workspaceId);
+            LogChangesApplyFailed(_logger, workspaceId, null);
         }
 
         return result;
@@ -345,11 +374,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             session.IncrementVersion();
             _previewStore.InvalidateAll(session.WorkspaceId);
 
-            _logger.LogInformation(
-                "Loaded workspace {WorkspaceId} from {Path}, version {Version}",
-                session.WorkspaceId,
-                fullPath,
-                session.Version);
+            LogWorkspaceLoaded(_logger, session.WorkspaceId, fullPath, session.Version, null);
         }
         finally
         {
@@ -397,24 +422,35 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     {
         if (!_sessions.TryGetValue(workspaceId, out var session))
         {
+            var activeCount = _sessions.Count;
+            var activeIds = string.Join(", ", _sessions.Keys.Take(5));
+            LogSessionNotFound(_logger, workspaceId, activeCount, activeIds, null);
+
             throw new KeyNotFoundException(
-                $"Workspace '{workspaceId}' was not found. The session may have been disposed after inactivity. " +
+                $"Workspace '{workspaceId}' was not found. " +
+                $"There are {activeCount} active session(s). " +
+                "The session may have been lost due to a server restart or process exit. " +
                 "Use workspace_load to create a new session.");
         }
 
         session.TouchAccess();
 
         // Log if session has been idle for a long time (informational)
-        var idleMinutes = (DateTimeOffset.UtcNow - session.LoadedAtUtc).TotalMinutes;
+        var idleMinutes = (DateTimeOffset.UtcNow - session.LastAccessedUtc).TotalMinutes;
         if (idleMinutes > 60 && session.Workspace is not null)
         {
             _logger.LogDebug(
-                "Workspace '{WorkspaceId}' has been loaded for {Minutes:F0} minutes (loaded: {Path})",
+                "Workspace '{WorkspaceId}' has been idle for {Minutes:F0} minutes (loaded: {Path})",
                 workspaceId, idleMinutes, session.LoadedPath);
         }
 
         return session;
     }
+
+    /// <summary>
+    /// Checks whether a workspace session exists without throwing.
+    /// </summary>
+    public bool HasSession(string workspaceId) => _sessions.ContainsKey(workspaceId);
 
     private static string ValidateWorkspacePath(string path)
     {

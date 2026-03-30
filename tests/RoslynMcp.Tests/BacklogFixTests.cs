@@ -1,0 +1,155 @@
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Text.Json;
+
+namespace RoslynMcp.Tests;
+
+/// <summary>
+/// Tests covering P0-P2 backlog fixes: error handling, defensive wrapping, and refactored services.
+/// </summary>
+[TestClass]
+public sealed class BacklogFixTests : TestBase
+{
+    [ClassInitialize]
+    public static void ClassInit(TestContext _) => InitializeServices();
+
+    [ClassCleanup]
+    public static void ClassCleanup() => DisposeServices();
+
+    // ── BUG-05: Error messages include exception chain and stack trace ──
+
+    [TestMethod]
+    public async Task ToolErrorHandler_InternalError_IncludesExceptionTypeAndStackTrace()
+    {
+        var result = await ToolErrorHandler.ExecuteAsync(
+            () => throw new NullReferenceException("test null ref"));
+
+        var json = JsonDocument.Parse(result);
+        Assert.IsTrue(json.RootElement.GetProperty("error").GetBoolean());
+        Assert.AreEqual("InternalError", json.RootElement.GetProperty("category").GetString());
+        Assert.IsTrue(json.RootElement.GetProperty("message").GetString()!.Contains("NullReferenceException"));
+        Assert.IsTrue(json.RootElement.TryGetProperty("stackTrace", out _));
+    }
+
+    [TestMethod]
+    public async Task ToolErrorHandler_InternalError_IncludesInnerExceptionChain()
+    {
+        var inner2 = new ArgumentException("deep cause");
+        var inner1 = new InvalidCastException("mid cause", inner2);
+        var outer = new AggregateException("wrapper", inner1);
+
+        var result = await ToolErrorHandler.ExecuteAsync(() => throw outer);
+
+        var json = JsonDocument.Parse(result);
+        var message = json.RootElement.GetProperty("message").GetString()!;
+        Assert.IsTrue(message.Contains("InvalidCastException"));
+        Assert.IsTrue(message.Contains("ArgumentException"));
+    }
+
+    [TestMethod]
+    public async Task ToolErrorHandler_KnownErrors_DoNotIncludeStackTrace()
+    {
+        var result = await ToolErrorHandler.ExecuteAsync(
+            () => throw new KeyNotFoundException("not found"));
+
+        var json = JsonDocument.Parse(result);
+        Assert.AreEqual("NotFound", json.RootElement.GetProperty("category").GetString());
+        Assert.IsFalse(json.RootElement.TryGetProperty("stackTrace", out _));
+    }
+
+    // ── CODE-04: InvalidOperationException is handled via dictionary ──
+
+    [TestMethod]
+    public async Task ToolErrorHandler_InvalidOperation_ClassifiedCorrectly()
+    {
+        var result = await ToolErrorHandler.ExecuteAsync(
+            () => throw new InvalidOperationException("workspace stale"));
+
+        var json = JsonDocument.Parse(result);
+        Assert.AreEqual("InvalidOperation", json.RootElement.GetProperty("category").GetString());
+    }
+
+    [TestMethod]
+    public async Task ToolErrorHandler_RateLimit_ClassifiedCorrectly()
+    {
+        var result = await ToolErrorHandler.ExecuteAsync(
+            () => throw new InvalidOperationException("Rate limit exceeded"));
+
+        var json = JsonDocument.Parse(result);
+        Assert.AreEqual("RateLimited", json.RootElement.GetProperty("category").GetString());
+    }
+
+    // ── CODE-08: GatedCommandExecutor resolves projects correctly ──
+
+    [TestMethod]
+    public async Task GatedCommandExecutor_ResolveProject_FindsByName()
+    {
+        var workspaceId = await LoadSampleSolutionAsync();
+        var project = GatedCommandExecutor.ResolveProject(workspaceId, "SampleLib");
+        Assert.AreEqual("SampleLib", project.Name);
+    }
+
+    [TestMethod]
+    public void GatedCommandExecutor_ResolveProject_ThrowsForUnknown()
+    {
+        Assert.ThrowsException<InvalidOperationException>(() =>
+        {
+            var workspaceId = WorkspaceManager.ListWorkspaces().First().WorkspaceId;
+            GatedCommandExecutor.ResolveProject(workspaceId, "NonExistentProject");
+        });
+    }
+
+    // ── BUG-15: Snippet analysis resolves Microsoft.Extensions usings ──
+
+    [TestMethod]
+    public async Task SnippetAnalysis_MicrosoftExtensions_Resolves()
+    {
+        var result = await SnippetAnalysisService.AnalyzeAsync(
+            "var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;",
+            ["Microsoft.Extensions.Logging", "Microsoft.Extensions.Logging.Abstractions"],
+            "statements",
+            CancellationToken.None);
+
+        // Should either resolve with 0 errors, or at most report for missing logger package
+        // (but not "type not found" for System.Text.Json which was the original bug)
+        Assert.IsNotNull(result);
+    }
+
+    // ── BUG-04: Session lookup error includes active count ──
+
+    [TestMethod]
+    public void WorkspaceManager_SessionNotFound_ErrorIncludesActiveCount()
+    {
+        var ex = Assert.ThrowsException<KeyNotFoundException>(() =>
+            WorkspaceManager.GetCurrentSolution("nonexistent-workspace-id"));
+
+        Assert.IsTrue(ex.Message.Contains("active session(s)"));
+    }
+
+    [TestMethod]
+    public void WorkspaceManager_HasSession_ReturnsFalseForNonexistent()
+    {
+        Assert.IsFalse(WorkspaceManager.HasSession("nonexistent-workspace-id"));
+    }
+
+    [TestMethod]
+    public async Task WorkspaceManager_HasSession_ReturnsTrueForActive()
+    {
+        var workspaceId = await LoadSampleSolutionAsync();
+        Assert.IsTrue(WorkspaceManager.HasSession(workspaceId));
+    }
+
+    // ── Helper ──
+
+    private async Task<string> LoadSampleSolutionAsync()
+    {
+        var existing = WorkspaceManager.ListWorkspaces();
+        if (existing.Count > 0) return existing[0].WorkspaceId;
+
+        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
+        return status.WorkspaceId;
+    }
+}

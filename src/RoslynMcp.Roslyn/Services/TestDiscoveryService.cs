@@ -46,37 +46,44 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                 continue;
             }
 
-            var tests = new List<TestCaseDto>();
-            foreach (var document in project.Documents)
+            try
             {
-                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                if (root is null)
+                var tests = new List<TestCaseDto>();
+                foreach (var document in project.Documents)
                 {
-                    continue;
-                }
-
-                foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
-                {
-                    if (!HasTestAttribute(method))
+                    var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                    if (root is null)
                     {
                         continue;
                     }
 
-                    var lineSpan = method.Identifier.GetLocation().GetLineSpan();
-                    var containingType = method.Parent switch
+                    foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
                     {
-                        ClassDeclarationSyntax cls => cls.Identifier.Text,
-                        _ => "Unknown"
-                    };
-                    tests.Add(new TestCaseDto(
-                        DisplayName: method.Identifier.Text,
-                        FullyQualifiedName: $"{project.Name}.{containingType}.{method.Identifier.Text}",
-                        FilePath: document.FilePath,
-                        Line: lineSpan.StartLinePosition.Line + 1));
-                }
-            }
+                        if (!HasTestAttribute(method))
+                        {
+                            continue;
+                        }
 
-            discoveredProjects.Add(new TestProjectDto(project.Name, project.FilePath ?? project.Name, tests));
+                        var lineSpan = method.Identifier.GetLocation().GetLineSpan();
+                        var containingType = method.Parent switch
+                        {
+                            ClassDeclarationSyntax cls => cls.Identifier.Text,
+                            _ => "Unknown"
+                        };
+                        tests.Add(new TestCaseDto(
+                            DisplayName: method.Identifier.Text,
+                            FullyQualifiedName: $"{project.Name}.{containingType}.{method.Identifier.Text}",
+                            FilePath: document.FilePath,
+                            Line: lineSpan.StartLinePosition.Line + 1));
+                    }
+                }
+
+                discoveredProjects.Add(new TestProjectDto(project.Name, project.FilePath ?? project.Name, tests));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Failed to discover tests in project '{ProjectName}', skipping", project.Name);
+            }
         }
 
         var result = new TestDiscoveryDto(discoveredProjects);

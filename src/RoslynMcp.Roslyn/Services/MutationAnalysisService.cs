@@ -422,7 +422,20 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             }
         }
 
-        // If no receiver found (implicit this or other pattern), accept it
+        // For well-known interface methods (Dispose, GetHashCode, Equals, ToString),
+        // require an explicit receiver match to prevent over-matching across all IDisposable etc.
+        var invocation = node.FirstAncestorOrSelf<InvocationExpressionSyntax>();
+        if (invocation?.Expression is IdentifierNameSyntax identName)
+        {
+            var methodName = identName.Identifier.Text;
+            if (methodName is "Dispose" or "GetHashCode" or "Equals" or "ToString" or "CompareTo")
+            {
+                // No explicit receiver — could be any type. Reject to avoid over-matching.
+                return false;
+            }
+        }
+
+        // For other methods with no receiver (implicit this or other pattern), accept it
         return true;
     }
 

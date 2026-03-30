@@ -19,6 +19,10 @@ internal static class ToolErrorHandler
         [typeof(TimeoutException)] = (ex, _) => new("Timeout",
             $"Timed out: {ex.Message}. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or " +
             "ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS."),
+        [typeof(InvalidOperationException)] = (ex, _) => ex.Message.Contains("Rate limit")
+            ? new("RateLimited", ex.Message)
+            : new("InvalidOperation",
+                $"Invalid operation: {ex.Message}. The workspace may need to be reloaded (workspace_reload) if the state is stale."),
     };
 
     /// <summary>
@@ -51,15 +55,6 @@ internal static class ToolErrorHandler
 
     private static ErrorInfo ClassifyError(Exception ex, string toolName)
     {
-        // Check for rate limiting (special case of InvalidOperationException)
-        if (ex is InvalidOperationException && ex.Message.Contains("Rate limit"))
-            return new("RateLimited", ex.Message);
-
-        // Check for InvalidOperationException (must be after rate limit check)
-        if (ex is InvalidOperationException)
-            return new("InvalidOperation",
-                $"Invalid operation: {ex.Message}. The workspace may need to be reloaded (workspace_reload) if the state is stale.");
-
         // Walk the handler dictionary for exact or assignable type match
         foreach (var (type, handler) in ErrorHandlers)
         {
@@ -67,23 +62,66 @@ internal static class ToolErrorHandler
                 return handler(ex, toolName);
         }
 
-        // Fallback: unexpected error
+        // Fallback: unexpected error — include inner exception chain for diagnosis
+        var innerMessages = GetInnerExceptionChain(ex);
+        var detail = string.IsNullOrEmpty(innerMessages)
+            ? $"{ex.GetType().Name}: {ex.Message}"
+            : $"{ex.GetType().Name}: {ex.Message} --> {innerMessages}";
+
         return new("InternalError",
-            $"Internal error in {toolName}: {ex.GetType().Name}: {ex.Message}. " +
+            $"Internal error in {toolName}: {detail}. " +
             "If this persists, try reloading the workspace (workspace_reload).");
+    }
+
+    private static string GetInnerExceptionChain(Exception ex)
+    {
+        var parts = new List<string>();
+        var inner = ex.InnerException;
+        while (inner is not null && parts.Count < 3)
+        {
+            parts.Add($"{inner.GetType().Name}: {inner.Message}");
+            inner = inner.InnerException;
+        }
+        return string.Join(" --> ", parts);
+    }
+
+    private static string GetAbbreviatedStackTrace(Exception ex)
+    {
+        if (ex.StackTrace is null) return string.Empty;
+        var frames = ex.StackTrace
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(5)
+            .ToArray();
+        return string.Join("\n", frames);
     }
 
     private static string FormatErrorResponse(ErrorInfo info, string toolName, Exception ex)
     {
-        var error = new
+        if (info.Category == "InternalError")
         {
-            error = true,
-            category = info.Category,
-            tool = toolName,
-            message = info.Message,
-            exceptionType = ex.GetType().Name,
-        };
-        return JsonSerializer.Serialize(error, JsonDefaults.Indented);
+            var error = new
+            {
+                error = true,
+                category = info.Category,
+                tool = toolName,
+                message = info.Message,
+                exceptionType = ex.GetType().Name,
+                stackTrace = GetAbbreviatedStackTrace(ex),
+            };
+            return JsonSerializer.Serialize(error, JsonDefaults.Indented);
+        }
+        else
+        {
+            var error = new
+            {
+                error = true,
+                category = info.Category,
+                tool = toolName,
+                message = info.Message,
+                exceptionType = ex.GetType().Name,
+            };
+            return JsonSerializer.Serialize(error, JsonDefaults.Indented);
+        }
     }
 
     private readonly record struct ErrorInfo(string Category, string Message);
