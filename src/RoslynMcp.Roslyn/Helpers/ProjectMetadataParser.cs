@@ -21,6 +21,13 @@ internal static class ProjectMetadataParser
         return allFrameworks.Count > 0 ? allFrameworks : ["unknown"];
     }
 
+    private static readonly HashSet<string> TestPackageNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "xunit", "xunit.core", "xunit.v3", "xunit.v3.core",
+        "NUnit", "nunit", "NUnit3TestAdapter",
+        "MSTest.TestFramework", "Microsoft.NET.Test.Sdk",
+    };
+
     public static bool IsTestProject(XDocument? document)
     {
         if (document is null)
@@ -28,8 +35,25 @@ internal static class ProjectMetadataParser
             return false;
         }
 
+        // Explicit <IsTestProject>true</IsTestProject> (MSTest SDK sets this automatically)
         var isTestProject = document.Descendants("IsTestProject").FirstOrDefault()?.Value;
-        return bool.TryParse(isTestProject, out var parsed) && parsed;
+        if (bool.TryParse(isTestProject, out var parsed) && parsed)
+        {
+            return true;
+        }
+
+        // Heuristic: check for test framework package references (xUnit, NUnit, MSTest)
+        var packageReferences = document.Descendants("PackageReference");
+        foreach (var pkgRef in packageReferences)
+        {
+            var include = pkgRef.Attribute("Include")?.Value;
+            if (include is not null && TestPackageNames.Contains(include))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public static string GetOutputType(XDocument? document)
