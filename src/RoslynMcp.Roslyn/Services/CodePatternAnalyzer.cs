@@ -37,11 +37,19 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
             {
                 if (ct.IsCancellationRequested) break;
 
-                var semanticModel = compilation.GetSemanticModel(tree);
-                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    var semanticModel = compilation.GetSemanticModel(tree);
+                    var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
 
-                CollectReflectionInvocations(root, semanticModel, results, ct);
-                CollectTypeofUsages(root, semanticModel, results, ct);
+                    CollectReflectionInvocations(root, semanticModel, results, ct);
+                    CollectTypeofUsages(root, semanticModel, results, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(ex, "Failed to analyze syntax tree {Path} for reflection usages, skipping",
+                        tree.FilePath);
+                }
             }
         }
 
