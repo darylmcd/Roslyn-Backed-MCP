@@ -116,6 +116,24 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             }
         }
 
+        // Check for existing type with the same name to prevent conflicts
+        var namespaceName = typeSymbol.ContainingNamespace.IsGlobalNamespace
+            ? string.Empty
+            : typeSymbol.ContainingNamespace.ToDisplayString();
+        var fullyQualifiedInterfaceName = string.IsNullOrWhiteSpace(namespaceName)
+            ? interfaceName
+            : $"{namespaceName}.{interfaceName}";
+        foreach (var project in solution.Projects)
+        {
+            var comp = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (comp?.GetTypeByMetadataName(fullyQualifiedInterfaceName) is not null)
+            {
+                throw new InvalidOperationException(
+                    $"Type '{interfaceName}' already exists in project '{project.Name}' " +
+                    $"(namespace '{namespaceName}'). Choose a different interface name to avoid conflicts.");
+            }
+        }
+
         // Create interface declaration
         var interfaceDecl = SyntaxFactory.InterfaceDeclaration(interfaceName)
             .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
