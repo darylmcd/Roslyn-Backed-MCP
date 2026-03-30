@@ -58,6 +58,9 @@ public sealed class TypeMoveService : ITypeMoveService
             throw new InvalidOperationException($"Target file already exists: {resolvedTargetPath}");
         }
 
+        // Strip private/protected modifiers from top-level types (invalid at namespace level)
+        var movedTypeDecl = StripInvalidTopLevelModifiers(typeDecl);
+
         // Build the new file content
         var usings = sourceRoot.Usings;
         var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
@@ -69,7 +72,7 @@ public sealed class TypeMoveService : ITypeMoveService
             var newNs = SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
                 .WithNamespaceKeyword(fileScopedNs.NamespaceKeyword)
                 .WithSemicolonToken(fileScopedNs.SemicolonToken)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(typeDecl.WithLeadingTrivia(SyntaxFactory.ElasticLineFeed)));
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedTypeDecl.WithLeadingTrivia(SyntaxFactory.ElasticLineFeed)));
 
             newFileRoot = SyntaxFactory.CompilationUnit()
                 .WithUsings(usings)
@@ -79,7 +82,7 @@ public sealed class TypeMoveService : ITypeMoveService
         else if (namespaceDecl is NamespaceDeclarationSyntax blockNs)
         {
             var newNs = SyntaxFactory.NamespaceDeclaration(blockNs.Name)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(typeDecl));
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedTypeDecl));
 
             newFileRoot = SyntaxFactory.CompilationUnit()
                 .WithUsings(usings)
@@ -91,7 +94,7 @@ public sealed class TypeMoveService : ITypeMoveService
             // Top-level type (no namespace)
             newFileRoot = SyntaxFactory.CompilationUnit()
                 .WithUsings(usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(typeDecl))
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedTypeDecl))
                 .NormalizeWhitespace();
         }
 
@@ -113,5 +116,20 @@ public sealed class TypeMoveService : ITypeMoveService
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    private static TypeDeclarationSyntax StripInvalidTopLevelModifiers(TypeDeclarationSyntax typeDecl)
+    {
+        var invalidModifiers = new[] { SyntaxKind.PrivateKeyword, SyntaxKind.ProtectedKeyword };
+        var newModifiers = typeDecl.Modifiers.Where(m => !invalidModifiers.Contains(m.Kind()));
+        var modifierList = SyntaxFactory.TokenList(newModifiers);
+
+        // If stripping removed all access modifiers and type had none originally visible, add internal
+        if (!modifierList.Any(m => m.IsKind(SyntaxKind.PublicKeyword) || m.IsKind(SyntaxKind.InternalKeyword)))
+        {
+            modifierList = modifierList.Insert(0, SyntaxFactory.Token(SyntaxKind.InternalKeyword).WithTrailingTrivia(SyntaxFactory.Space));
+        }
+
+        return typeDecl.WithModifiers(modifierList);
     }
 }
