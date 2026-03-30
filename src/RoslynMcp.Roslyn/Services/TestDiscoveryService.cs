@@ -205,6 +205,16 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         return new RelatedTestsForFilesDto(results, dotnetFilter);
     }
 
+    private static readonly HashSet<string> TestAttributeNames = new(StringComparer.Ordinal)
+    {
+        // MSTest
+        "TestMethod", "TestMethodAttribute", "DataTestMethod", "DataTestMethodAttribute",
+        // xUnit
+        "Fact", "FactAttribute", "Theory", "TheoryAttribute",
+        // NUnit
+        "Test", "TestAttribute", "TestCase", "TestCaseAttribute", "TestCaseSource", "TestCaseSourceAttribute",
+    };
+
     private static bool HasTestAttribute(MethodDeclarationSyntax method)
     {
         foreach (var attributeList in method.AttributeLists)
@@ -212,7 +222,9 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             foreach (var attribute in attributeList.Attributes)
             {
                 var attributeName = attribute.Name.ToString();
-                if (attributeName is "TestMethod" or "Fact" or "Theory" or "Test" or "TestCase")
+                // Handle both short (Fact) and qualified (Xunit.FactAttribute) forms
+                var simpleName = attributeName.Contains('.') ? attributeName[(attributeName.LastIndexOf('.') + 1)..] : attributeName;
+                if (TestAttributeNames.Contains(simpleName))
                 {
                     return true;
                 }
