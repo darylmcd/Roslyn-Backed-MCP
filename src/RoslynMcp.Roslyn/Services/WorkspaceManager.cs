@@ -207,10 +207,38 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     {
         var solution = GetCurrentSolution(workspaceId);
         var document = Helpers.SymbolResolver.FindDocument(solution, filePath);
+
+        // Also search source-generated documents if not found in regular documents
+        if (document is null)
+        {
+            foreach (var project in solution.Projects)
+            {
+                var sourceGenDocs = await project.GetSourceGeneratedDocumentsAsync(ct).ConfigureAwait(false);
+                document = sourceGenDocs.FirstOrDefault(d =>
+                    d.FilePath is not null &&
+                    string.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase));
+                if (document is not null) break;
+            }
+        }
+
         if (document is null) return null;
 
-        var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-        return text.ToString();
+        try
+        {
+            var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+            return text.ToString();
+        }
+        catch (Exception ex)
+        {
+            // Fall back to reading from disk if workspace text retrieval fails
+            _logger.LogWarning(ex, "Failed to get text from workspace for {FilePath}, falling back to disk read", filePath);
+            var resolvedPath = document.FilePath ?? filePath;
+            if (File.Exists(resolvedPath))
+            {
+                return await File.ReadAllTextAsync(resolvedPath, ct).ConfigureAwait(false);
+            }
+            return null;
+        }
     }
 
     public int GetCurrentVersion(string workspaceId)
@@ -367,12 +395,25 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     private WorkspaceSession GetRequiredSession(string workspaceId)
     {
-        if (_sessions.TryGetValue(workspaceId, out var session))
+        if (!_sessions.TryGetValue(workspaceId, out var session))
         {
-            return session;
+            throw new KeyNotFoundException(
+                $"Workspace '{workspaceId}' was not found. The session may have been disposed after inactivity. " +
+                "Use workspace_load to create a new session.");
         }
 
-        throw new KeyNotFoundException($"Workspace '{workspaceId}' was not found.");
+        session.TouchAccess();
+
+        // Log if session has been idle for a long time (informational)
+        var idleMinutes = (DateTimeOffset.UtcNow - session.LoadedAtUtc).TotalMinutes;
+        if (idleMinutes > 60 && session.Workspace is not null)
+        {
+            _logger.LogDebug(
+                "Workspace '{WorkspaceId}' has been loaded for {Minutes:F0} minutes (loaded: {Path})",
+                workspaceId, idleMinutes, session.LoadedPath);
+        }
+
+        return session;
     }
 
     private static string ValidateWorkspacePath(string path)
@@ -428,8 +469,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         public MSBuildWorkspace? Workspace { get; set; }
         public string? LoadedPath { get; set; }
         public DateTimeOffset LoadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset LastAccessedUtc { get; set; } = DateTimeOffset.UtcNow;
         public int Version => Volatile.Read(ref _version);
         public int IncrementVersion() => Interlocked.Increment(ref _version);
+
+        public void TouchAccess() => LastAccessedUtc = DateTimeOffset.UtcNow;
 
         public void Dispose()
         {
