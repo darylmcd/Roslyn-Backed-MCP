@@ -111,10 +111,10 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         return new SymbolRelationshipsDto(
             Symbol: SymbolMapper.ToDto(symbol, solution),
             Definitions: definitions,
-            References: await referencesTask.ConfigureAwait(false),
-            Implementations: await implementationsTask.ConfigureAwait(false),
-            BaseMembers: await baseMembersTask.ConfigureAwait(false),
-            Overrides: await overridesTask.ConfigureAwait(false));
+            References: await referencesTask.ConfigureAwait(false) ?? [],
+            Implementations: await implementationsTask.ConfigureAwait(false) ?? [],
+            BaseMembers: await baseMembersTask.ConfigureAwait(false) ?? [],
+            Overrides: await overridesTask.ConfigureAwait(false) ?? []);
     }
 
     public async Task<SignatureHelpDto?> GetSignatureHelpAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
