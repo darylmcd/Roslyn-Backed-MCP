@@ -25,18 +25,25 @@ This directory is the canonical AI-facing documentation tree.
 - `domains/core-contracts/reference.md`
 - `domains/roslyn-services/reference.md`
 
+## Active Reports
+
+- `mcp-server-audit-report.md`: living bug reference for MCP server issues (29 issues across 3 solutions). Action items tracked in `backlog.md`.
+
 ## Stable Deep References
 
 - `references/testing.md`
 - `references/tooling/dotnet.md`
 - `references/tooling/mcp-clients.md`
+- `domains/tool-usage-guide.md`: help agents choose right tools and workflows
 
-## Repeatable Procedures
+## Repeatable Procedures & Prompts
 
 - `procedures/doc-migration-checklist.md`
+- `prompts/deep-review-and-refactor.md`: reusable agent prompt for comprehensive code review
+- `prompts/add-security-diagnostic-surface.prompt.md`: feature specification (tracked as FEAT-01 in backlog)
 
 ## Archive
 
 - `archive/README.md`
 
-Archive contains deep audits, historical investigations, and point-in-time analysis that should not stay in the active reading path.
+Archive contains deep audits, historical investigations, point-in-time analyses, and superseded documents.
