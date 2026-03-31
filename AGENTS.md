@@ -20,6 +20,3 @@ Policy ownership:
 - Runtime assumptions and execution context: `ai_docs/runtime.md`
 - Unfinished work tracking: `ai_docs/backlog.md`
 
-Deep historical context from prior versions of this file is preserved in:
-
-- `ai_docs/archive/legacy-agents-guide.md`

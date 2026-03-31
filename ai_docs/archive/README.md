@@ -10,4 +10,7 @@ Archive content is intentionally outside the active bootstrap reading path.
 
 ## Contents
 
-(Empty — stale documents cleaned up 2026-03-30. Action items were previously extracted to `../backlog.md`.)
+| File | Description |
+|------|-------------|
+| `deep-review-report.md` | Point-in-time code review & refactoring report (2026-03-30, v1.2.0, all 16 phases of deep-review-and-refactor.md). Action items in `../backlog.md`. |
+| `mcp-server-audit-report.md` | Point-in-time MCP server audit (2026-03-30, 35 issues across 4 solutions). Action items in `../backlog.md`. |
