@@ -10,12 +10,13 @@ This document is the canonical runtime and execution-context reference for AI ag
 
 ## Platform And Tooling
 
-- .NET SDK baseline: see `../README.md` and `global.json`.
-- Primary v1 operating system target: Windows.
+- .NET SDK: 10.0.100 (rollForward: latestFeature) — see `global.json`
+- Primary v1 operating system target: Windows. Cross-platform (macOS, Linux) supported wherever .NET 10 SDK is available.
 - Main local validation entry point: `./eng/verify-release.ps1`
-- Fast manual commands also used in repo docs:
+- Fast manual commands:
   - `dotnet build RoslynMcp.slnx --nologo`
   - `dotnet test RoslynMcp.slnx --nologo`
+  - `dotnet run --project src/RoslynMcp.Host.Stdio`
 
 ## MCP Runtime Notes
 

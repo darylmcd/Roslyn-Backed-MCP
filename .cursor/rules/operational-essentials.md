@@ -2,14 +2,30 @@
 
 Compact reminder layer aligned with `ai_docs/workflow.md`.
 
+## Build / Test / Lint Commands
+
+| Action | Command |
+|--------|---------|
+| Build | `dotnet build RoslynMcp.slnx --nologo` |
+| Test | `dotnet test RoslynMcp.slnx --nologo` |
+| Full validation | `./eng/verify-release.ps1` |
+| AI-doc validation | `./eng/verify-ai-docs.ps1` |
+| Run host | `dotnet run --project src/RoslynMcp.Host.Stdio` |
+
 ## Branching And Isolation
 
 - Use a task branch before production-code edits.
 - Use a dedicated worktree when concurrent write-capable sessions are active or likely.
 
+## Commit Format
+
+- Imperative subject line, ≤72 chars
+- Reference backlog item IDs in body when applicable (e.g., `BUG-08`, `FEAT-01`)
+
 ## Merge-Ready Handoff
 
 - Follow `CI_POLICY.md` before merge handoff.
+- Run `./eng/verify-release.ps1` for code changes; `./eng/verify-ai-docs.ps1` for doc-only changes.
 - Sync with base branch if repository settings require it.
 
 ## Ownership
@@ -17,3 +33,4 @@ Compact reminder layer aligned with `ai_docs/workflow.md`.
 - Canonical git/worktree/PR policy: `ai_docs/workflow.md`
 - Canonical validation and merge gating: `CI_POLICY.md`
 - Canonical runtime context: `ai_docs/runtime.md`
+- Implementation quality and safety rules: `.github/copilot-instructions.md`

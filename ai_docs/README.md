@@ -1,50 +1,61 @@
 # AI Docs Index
 
-This directory is the canonical AI-facing documentation tree.
+This directory is the canonical AI-facing documentation tree. Read this file to find what to load for your task.
 
-## Bootstrap Read Order
+## Core References (read on every session)
 
-1. `../AGENTS.md`
-2. `../CI_POLICY.md`
-3. `workflow.md`
-4. `runtime.md`
-5. `backlog.md`
-6. `../.cursor/rules/operational-essentials.md`
+| File | Purpose |
+|------|---------|
+| `../CI_POLICY.md` | Validation and merge-gating policy |
+| `workflow.md` | Git/branch/worktree/PR workflow |
+| `runtime.md` | Build, test, run commands; execution context |
+| `backlog.md` | Open work items only |
+| `architecture.md` | System layers, data flow, key abstractions |
 
-## Active Current-State Docs
+## Domain Entry Points (read when touching that layer)
 
-- `workflow.md`: canonical git/branch/worktree/PR workflow guidance.
-- `runtime.md`: canonical runtime assumptions and execution context.
-- `backlog.md`: only place for unfinished work items.
-- `architecture.md`: compact system architecture and boundaries.
-- `../CI_POLICY.md`: canonical validation and merge-gating policy.
+| File | Covers |
+|------|--------|
+| `domains/host-stdio/reference.md` | MCP host, tool wiring, protocol logging |
+| `domains/core-contracts/reference.md` | DTOs, request/response contracts |
+| `domains/roslyn-services/reference.md` | Workspace, semantic navigation, analysis, refactoring |
+| `domains/tool-usage-guide.md` | How to choose the right tools and workflows |
 
-## Domain Entry Points
+## Reference Material (read on demand)
 
-- `domains/host-stdio/reference.md`
-- `domains/core-contracts/reference.md`
-- `domains/roslyn-services/reference.md`
-
-## Active Reports
-
-- `deep-review-report.md`: code review and refactoring report (2026-03-30). Produced by running `prompts/deep-review-and-refactor.md` through all 16 phases.
-- `mcp-server-audit-report.md`: living bug reference for MCP server issues (35 issues across 4 solutions, 2026-03-30). Action items tracked in `backlog.md`.
-
-## Stable Deep References
-
-- `references/testing.md`
-- `references/tooling/dotnet.md`
-- `references/tooling/mcp-clients.md`
-- `domains/tool-usage-guide.md`: help agents choose right tools and workflows
+| File | Purpose |
+|------|---------|
+| `references/testing.md` | Test patterns, test command, coverage guidance |
+| `references/tooling/dotnet.md` | dotnet CLI commands used in this repo |
+| `references/tooling/mcp-clients.md` | MCP client integration notes |
 
 ## Repeatable Procedures & Prompts
 
-- `procedures/doc-migration-checklist.md`
-- `prompts/deep-review-and-refactor.md`: **living document** — reusable agent prompt for comprehensive code review. Contains the complete tool/resource/prompt surface inventory. **Do not delete; keep in sync with project surface at all times.**
-- `prompts/add-security-diagnostic-surface.prompt.md`: feature specification (tracked as FEAT-01 in backlog)
+| File | Purpose |
+|------|---------|
+| `procedures/doc-migration-checklist.md` | Checklist for documentation migrations |
+| `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive code review (all 16 phases). Keep in sync with project surface. Do not delete. |
+| `prompts/add-security-diagnostic-surface.prompt.md` | Feature specification for FEAT-01 |
 
 ## Archive
 
-- `archive/README.md`
+| File | Purpose |
+|------|---------|
+| `archive/README.md` | Index of archived material |
+| `archive/deep-review-report.md` | Point-in-time code review report (2026-03-30, v1.2.0) |
+| `archive/mcp-server-audit-report.md` | Point-in-time MCP server audit (2026-03-30, 35 issues across 4 solutions) |
 
-Archive contains deep audits, historical investigations, point-in-time analyses, and superseded documents.
+---
+
+## Task-Scoped Reading Guide
+
+| Task | Files to read |
+|------|--------------|
+| First session / orientation | `AGENTS.md` → `CI_POLICY.md` → `workflow.md` → `runtime.md` → `architecture.md` |
+| Fix a bug in Roslyn services | `architecture.md` → `domains/roslyn-services/reference.md` → `backlog.md` |
+| Add or change a tool | `domains/host-stdio/reference.md` → `domains/roslyn-services/reference.md` → `references/testing.md` |
+| Evolve a DTO or contract | `domains/core-contracts/reference.md` → `architecture.md` |
+| Write or update tests | `references/testing.md` → `runtime.md` |
+| Merge-ready handoff | `CI_POLICY.md` → `workflow.md` |
+| Doc-only change | `CI_POLICY.md` (run `verify-ai-docs.ps1`) |
+| Planning new features | `backlog.md` → `architecture.md` → `docs/roadmap.md` |

@@ -1,19 +1,24 @@
-# Claude Bootstrap
+**Sync rule:** This file mirrors AGENTS.md. At the start of every session, check if AGENTS.md has changed. If it has, update this file to match, preserving this sync rule block.
 
-This file is a bootstrap index for Claude-family agents in this repository.
+---
+
+# AGENTS Bootstrap
+
+Use this file as the stable AI bootstrap entry point for this repository.
 
 Read these canonical files in order:
 
-1. `AGENTS.md`
-2. `CI_POLICY.md`
-3. `ai_docs/README.md`
-4. `ai_docs/workflow.md`
-5. `ai_docs/runtime.md`
-6. `ai_docs/backlog.md`
-7. `.github/copilot-instructions.md`
-8. `.cursor/rules/operational-essentials.md`
+1. `CI_POLICY.md`
+2. `ai_docs/README.md`
+3. `ai_docs/workflow.md`
+4. `ai_docs/runtime.md`
+5. `ai_docs/backlog.md`
+6. `.github/copilot-instructions.md`
+7. `.cursor/rules/operational-essentials.md`
 
-Notes:
-- `ai_docs/workflow.md` is the canonical git/branch/worktree/PR policy.
-- `CI_POLICY.md` is the canonical validation and merge-gating policy.
-- `ai_docs/runtime.md` is the canonical runtime and execution-context guidance.
+Policy ownership:
+
+- Git, branch, worktree, and PR behavior: `ai_docs/workflow.md`
+- Validation and merge gating: `CI_POLICY.md`
+- Runtime assumptions and execution context: `ai_docs/runtime.md`
+- Unfinished work tracking: `ai_docs/backlog.md`
