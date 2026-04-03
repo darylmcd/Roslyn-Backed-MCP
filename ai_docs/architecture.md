@@ -65,8 +65,6 @@ Operational logs → `stderr` only (stdout reserved for MCP protocol traffic).
 
 ## Known Gaps
 
-- `TargetFrameworks` resolution shows "unknown" for most projects — MSBuildWorkspace TFM resolution not fully wired (DATA-03).
-- `get_code_actions` returns empty at most positions — additional code fix providers needed (DATA-06).
 - IDE and CA analyzers not loaded in MSBuildWorkspace — only SDK-implicit diagnostics active at runtime (AUDIT-21).
 
 ## Deep Material

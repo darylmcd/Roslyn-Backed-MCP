@@ -15,6 +15,7 @@ Read these canonical files in order:
 5. `ai_docs/backlog.md`
 6. `.github/copilot-instructions.md`
 7. `.cursor/rules/operational-essentials.md`
+8. `CLAUDE.md`
 
 Policy ownership:
 
