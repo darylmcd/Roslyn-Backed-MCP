@@ -1,6 +1,16 @@
+# Next work and backlog
+
 # Backlog
 
-Canonical location for all unfinished work items. Prioritized by impact.
+## Instructions
+
+This file is the current-state repository for unfinished work only.
+
+- Add open, deferred, or follow-up work here when it remains actionable after the current task.
+- Do not leave open work scattered across audit docs, plans, or inline comments.
+- Remove items when they are completed and verified.
+- Keep entries scoped, current, and linkable to the relevant audit or reference doc.
+- Do not use this file as a changelog; completed-history narrative belongs in commit history or the archived deep-audit docs.
 
 Last audit: 2026-04-03. Consolidated from deep-review-report.md, mcp-server-audit-report.md (35 issues across 4 solutions), and prior backlog.
 
