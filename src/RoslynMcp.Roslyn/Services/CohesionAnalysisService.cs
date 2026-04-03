@@ -93,7 +93,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
                 MethodCount: methodCount,
                 FieldCount: 0,
                 Lcom4Score: methodCount,
-                Clusters: []) { TypeKind = "Interface" };
+                Clusters: [])
+            { TypeKind = "Interface" };
         }
 
         var instanceMethods = typeSymbol.GetMembers()
@@ -120,7 +121,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             MethodCount: instanceMethods.Count,
             FieldCount: instanceFields.Count,
             Lcom4Score: clusters.Count,
-            Clusters: clusters) { TypeKind = typeSymbol.TypeKind.ToString() };
+            Clusters: clusters)
+        { TypeKind = typeSymbol.TypeKind.ToString() };
     }
 
     private static Dictionary<string, HashSet<string>> BuildMethodFieldMap(
