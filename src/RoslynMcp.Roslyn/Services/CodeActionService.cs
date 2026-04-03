@@ -160,7 +160,9 @@ public sealed class CodeActionService : ICodeActionService
             var endPosition = text.Lines[endLine.Value - 1].Start + (endColumn.Value - 1);
             return TextSpan.FromBounds(startPosition, endPosition);
         }
-        return new TextSpan(startPosition, 0);
+
+        var lineEnd = text.Lines[startLine - 1].End;
+        return TextSpan.FromBounds(startPosition, lineEnd);
     }
 
     private ImmutableArray<CodeFixProvider> LoadCodeFixProviders()

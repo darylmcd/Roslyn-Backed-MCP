@@ -125,14 +125,35 @@ public static class AnalysisTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Maximum number of callers to return (default: 100)")] int callersLimit = 100,
+        [Description("Maximum number of callees to return (default: 100)")] int calleesLimit = 100,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                ParameterValidation.ValidatePagination(0, callersLimit);
+                ParameterValidation.ValidatePagination(0, calleesLimit);
                 var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+
+                var callers = result.Callers.Take(callersLimit).ToList();
+                var callees = result.Callees.Take(calleesLimit).ToList();
+                var hasMoreCallers = result.Callers.Count > callers.Count;
+                var hasMoreCallees = result.Callees.Count > callees.Count;
+
+                return JsonSerializer.Serialize(new
+                {
+                    symbol = result.Symbol,
+                    callers,
+                    callees,
+                    callersLimit,
+                    calleesLimit,
+                    hasMoreCallers,
+                    hasMoreCallees,
+                    totalCallers = result.Callers.Count,
+                    totalCallees = result.Callees.Count
+                }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -165,15 +186,28 @@ public static class AnalysisTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Maximum number of mutating members to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                ParameterValidation.ValidatePagination(0, limit);
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
                 var result = await mutationAnalysisService.FindTypeMutationsAsync(workspaceId, locator, c);
                 if (result is null) throw new KeyNotFoundException("No named type found at the specified location");
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+
+                var mutatingMembers = result.MutatingMembers.Take(limit).ToList();
+                var hasMore = result.MutatingMembers.Count > mutatingMembers.Count;
+                return JsonSerializer.Serialize(new
+                {
+                    type = result.Type,
+                    mutatingMembers,
+                    summary = result.Summary,
+                    limit,
+                    hasMore,
+                    totalMutatingMembers = result.MutatingMembers.Count
+                }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -187,17 +221,30 @@ public static class AnalysisTools
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. System.Collections.Generic.Dictionary`2")] string? metadataName = null,
+        [Description("Maximum number of usages to return (default: 100)")] int limit = 100,
+        [Description("Number of usages to skip before returning results (default: 0)")] int offset = 0,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                ParameterValidation.ValidatePagination(offset, limit);
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await mutationAnalysisService.FindTypeUsagesAsync(workspaceId, locator, c);
-                var grouped = results
+                var paged = results.Skip(offset).Take(limit).ToList();
+                var grouped = paged
                     .GroupBy(u => u.Classification.ToString())
                     .ToDictionary(g => g.Key, g => g.ToList());
-                return JsonSerializer.Serialize(new { count = results.Count, usagesByClassification = grouped }, JsonDefaults.Indented);
+                var hasMore = offset + paged.Count < results.Count;
+                return JsonSerializer.Serialize(new
+                {
+                    count = paged.Count,
+                    totalCount = results.Count,
+                    hasMore,
+                    offset,
+                    limit,
+                    usagesByClassification = grouped
+                }, JsonDefaults.Indented);
             }, ct));
     }
 }

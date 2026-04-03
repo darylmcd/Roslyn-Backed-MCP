@@ -22,7 +22,7 @@ public sealed class CohesionAnalysisTests : TestBase
     public async Task GetCohesionMetrics_ReturnsMetrics()
     {
         var result = await CohesionAnalysisService.GetCohesionMetricsAsync(
-            WorkspaceId, null, null, 2, 50, CancellationToken.None);
+            WorkspaceId, null, null, 2, 50, includeInterfaces: false, CancellationToken.None);
 
         Assert.IsNotNull(result);
         Assert.IsTrue(result.Count > 0, "Expected at least one type with cohesion metrics");
@@ -52,12 +52,75 @@ public sealed class CohesionAnalysisTests : TestBase
         Assert.IsNotNull(doc?.FilePath, "AnimalService.cs not found in workspace");
 
         var result = await CohesionAnalysisService.GetCohesionMetricsAsync(
-            WorkspaceId, doc.FilePath, null, 1, 50, CancellationToken.None);
+            WorkspaceId, doc.FilePath, null, 1, 50, includeInterfaces: false, CancellationToken.None);
 
         Assert.IsNotNull(result);
         Assert.IsTrue(result.Count > 0, "Expected at least one metric from filtered file");
         Assert.IsTrue(result.All(m =>
             m.FilePath?.Contains("AnimalService.cs") == true),
             "All results should be from the filtered file");
+    }
+
+    [TestMethod]
+    public async Task GetCohesionMetrics_WhenIncludingInterfaces_Returns_InterfaceTypeKind()
+    {
+        var result = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            WorkspaceId, null, "SampleLib", 1, 100, includeInterfaces: true, CancellationToken.None);
+
+        var interfaces = result.Where(m => m.TypeKind == "Interface").ToList();
+        Assert.IsTrue(interfaces.Count > 0, "Expected at least one interface when includeInterfaces=true.");
+        Assert.IsTrue(interfaces.All(i => i.Lcom4Score == i.MethodCount),
+            "Interface metrics should use trivial LCOM4 equal to method count.");
+    }
+
+    [TestMethod]
+    public async Task FindSharedMembers_Supports_StaticClasses()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        string? workspaceId = null;
+
+        try
+        {
+            var staticFilePath = Path.Combine(copiedRoot, "SampleLib", "StaticUtility.cs");
+            await File.WriteAllTextAsync(staticFilePath, """
+namespace SampleLib;
+
+public static class StaticUtility
+{
+    private static int _counter;
+
+    public static void Increment()
+    {
+        _counter++;
+    }
+
+    public static int Read()
+    {
+        return _counter;
+    }
+}
+""", CancellationToken.None);
+
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            workspaceId = status.WorkspaceId;
+
+            var shared = await CohesionAnalysisService.FindSharedMembersAsync(
+                workspaceId,
+                SymbolLocator.ByMetadataName("SampleLib.StaticUtility"),
+                CancellationToken.None);
+
+            Assert.IsTrue(shared.Any(m => m.MemberName == "_counter"),
+                "Expected static private field '_counter' to be reported as shared by multiple public static methods.");
+        }
+        finally
+        {
+            if (workspaceId is not null)
+            {
+                WorkspaceManager.Close(workspaceId);
+            }
+
+            DeleteDirectoryIfExists(copiedRoot);
+        }
     }
 }

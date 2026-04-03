@@ -83,14 +83,27 @@ public static class SymbolTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Maximum number of references to return (default: 100)")] int limit = 100,
+        [Description("Number of references to skip before returning results (default: 0)")] int offset = 0,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                ParameterValidation.ValidatePagination(offset, limit);
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
                 var results = await referenceService.FindReferencesAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(new { count = results.Count, references = results }, JsonDefaults.Indented);
+                var paged = results.Skip(offset).Take(limit).ToList();
+                var hasMore = offset + paged.Count < results.Count;
+                return JsonSerializer.Serialize(new
+                {
+                    count = paged.Count,
+                    totalCount = results.Count,
+                    hasMore,
+                    offset,
+                    limit,
+                    references = paged
+                }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -223,14 +236,43 @@ public static class SymbolTools
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
+        [Description("Maximum number of items to return per relationship bucket (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                ParameterValidation.ValidatePagination(0, limit);
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await symbolRelationshipService.GetSymbolRelationshipsAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+                if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+                var references = result.References.Take(limit).ToList();
+                var implementations = result.Implementations.Take(limit).ToList();
+                var baseMembers = result.BaseMembers.Take(limit).ToList();
+                var overrides = result.Overrides.Take(limit).ToList();
+                var hasMore = result.References.Count > references.Count ||
+                              result.Implementations.Count > implementations.Count ||
+                              result.BaseMembers.Count > baseMembers.Count ||
+                              result.Overrides.Count > overrides.Count;
+
+                return JsonSerializer.Serialize(new
+                {
+                    symbol = result.Symbol,
+                    definitions = result.Definitions,
+                    references,
+                    implementations,
+                    baseMembers,
+                    overrides,
+                    limit,
+                    hasMore,
+                    totals = new
+                    {
+                        references = result.References.Count,
+                        implementations = result.Implementations.Count,
+                        baseMembers = result.BaseMembers.Count,
+                        overrides = result.Overrides.Count
+                    }
+                }, JsonDefaults.Indented);
             }, ct));
     }
 

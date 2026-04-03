@@ -20,7 +20,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     }
 
     public async Task<IReadOnlyList<CohesionMetricsDto>> GetCohesionMetricsAsync(
-        string workspaceId, string? filePath, string? projectFilter, int? minMethods, int limit, CancellationToken ct)
+        string workspaceId, string? filePath, string? projectFilter, int? minMethods, int limit, bool includeInterfaces, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<CohesionMetricsDto>();
@@ -54,7 +54,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
                 try
                 {
-                    var metrics = AnalyzeTypeCohesion(typeDecl, semanticModel, minMethods, ct);
+                    var metrics = AnalyzeTypeCohesion(typeDecl, semanticModel, minMethods, includeInterfaces, ct);
                     if (metrics is not null)
                         results.Add(metrics);
                 }
@@ -70,13 +70,31 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     }
 
     private static CohesionMetricsDto? AnalyzeTypeCohesion(
-        TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, int? minMethods, CancellationToken ct)
+        TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, int? minMethods, bool includeInterfaces, CancellationToken ct)
     {
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
         if (typeSymbol is null) return null;
 
-        // Skip interfaces — LCOM4 is trivially equal to method count
-        if (typeSymbol.TypeKind == TypeKind.Interface) return null;
+        var sourceLoc = typeSymbol.Locations.FirstOrDefault(l => l.IsInSource);
+        var lineSpan = sourceLoc?.GetLineSpan();
+
+        // Handle interfaces — LCOM4 is trivially equal to method count
+        if (typeSymbol.TypeKind == TypeKind.Interface)
+        {
+            if (!includeInterfaces) return null;
+            var methodCount = typeSymbol.GetMembers().OfType<IMethodSymbol>()
+                .Count(m => m.MethodKind == MethodKind.Ordinary && !m.IsImplicitlyDeclared);
+            if (minMethods.HasValue && methodCount < minMethods.Value) return null;
+            return new CohesionMetricsDto(
+                TypeName: typeSymbol.Name,
+                FullyQualifiedName: typeSymbol.ToDisplayString(),
+                FilePath: lineSpan?.Path,
+                Line: (lineSpan?.StartLinePosition.Line ?? 0) + 1,
+                MethodCount: methodCount,
+                FieldCount: 0,
+                Lcom4Score: methodCount,
+                Clusters: []) { TypeKind = "Interface" };
+        }
 
         var instanceMethods = typeSymbol.GetMembers()
             .OfType<IMethodSymbol>()
@@ -94,9 +112,6 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         var methodFieldMap = BuildMethodFieldMap(instanceMethods, typeSymbol, typeDecl, semanticModel, ct);
         var clusters = ComputeClusters(methodFieldMap);
 
-        var loc = typeSymbol.Locations.FirstOrDefault(l => l.IsInSource);
-        var lineSpan = loc?.GetLineSpan();
-
         return new CohesionMetricsDto(
             TypeName: typeSymbol.Name,
             FullyQualifiedName: typeSymbol.ToDisplayString(),
@@ -105,7 +120,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             MethodCount: instanceMethods.Count,
             FieldCount: instanceFields.Count,
             Lcom4Score: clusters.Count,
-            Clusters: clusters);
+            Clusters: clusters) { TypeKind = typeSymbol.TypeKind.ToString() };
     }
 
     private static Dictionary<string, HashSet<string>> BuildMethodFieldMap(
@@ -137,12 +152,12 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
         var publicMethods = typeSymbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic &&
+            .Where(m => m.MethodKind == MethodKind.Ordinary && (typeSymbol.IsStatic || !m.IsStatic) &&
                         m.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
             .ToList();
 
         var privateMembers = typeSymbol.GetMembers()
-            .Where(m => !m.IsImplicitlyDeclared && !m.IsStatic &&
+            .Where(m => !m.IsImplicitlyDeclared && (typeSymbol.IsStatic || !m.IsStatic) &&
                         m.DeclaredAccessibility == Accessibility.Private &&
                         m is IMethodSymbol { MethodKind: MethodKind.Ordinary } or IFieldSymbol or IPropertySymbol)
             .ToList();
@@ -195,19 +210,19 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
             if (referencedSymbol is IFieldSymbol field &&
                 SymbolEqualityComparer.Default.Equals(field.ContainingType, containingType) &&
-                !field.IsStatic)
+                (containingType.IsStatic || !field.IsStatic))
             {
                 accessed.Add(field.Name);
             }
             else if (referencedSymbol is IPropertySymbol prop &&
                      SymbolEqualityComparer.Default.Equals(prop.ContainingType, containingType) &&
-                     !prop.IsStatic)
+                     (containingType.IsStatic || !prop.IsStatic))
             {
                 accessed.Add(prop.Name);
             }
             else if (referencedSymbol is IMethodSymbol calledMethod &&
                      SymbolEqualityComparer.Default.Equals(calledMethod.ContainingType, containingType) &&
-                     !calledMethod.IsStatic &&
+                     (containingType.IsStatic || !calledMethod.IsStatic) &&
                      calledMethod.DeclaredAccessibility == Accessibility.Private &&
                      calledMethod.MethodKind == MethodKind.Ordinary)
             {

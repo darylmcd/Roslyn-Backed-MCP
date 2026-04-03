@@ -9,6 +9,7 @@ namespace RoslynMcp.Tests;
 public class SecurityDiagnosticIntegrationTests : TestBase
 {
     private static string WorkspaceId { get; set; } = null!;
+    private static string InsecureWorkspaceId { get; set; } = null!;
     private static SecurityDiagnosticService SecurityService { get; set; } = null!;
 
     [ClassInitialize]
@@ -17,6 +18,11 @@ public class SecurityDiagnosticIntegrationTests : TestBase
         InitializeServices();
         var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
         WorkspaceId = status.WorkspaceId;
+
+        var secTestPath = Path.Combine(RepositoryRootPath, "samples", "SecurityTestProject", "SecurityTestProject.slnx");
+        var insecureStatus = await WorkspaceManager.LoadAsync(secTestPath, CancellationToken.None);
+        InsecureWorkspaceId = insecureStatus.WorkspaceId;
+
         SecurityService = new SecurityDiagnosticService(
             DiagnosticService,
             WorkspaceManager,
@@ -212,5 +218,96 @@ public class SecurityDiagnosticIntegrationTests : TestBase
         var doc = ServerSurfaceCatalog.CreateDocument();
         Assert.IsNotNull(doc.WorkflowHints);
         Assert.IsTrue(doc.WorkflowHints.Count > 0);
+    }
+
+    // ── Positive-Detection Tests (SecurityTestProject fixture) ──
+
+    [TestMethod]
+    public async Task SecurityDiagnostics_Detects_Findings_In_Insecure_Project()
+    {
+        var result = await SecurityService.GetSecurityDiagnosticsAsync(
+            InsecureWorkspaceId, null, null, CancellationToken.None);
+
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.TotalFindings > 0,
+            "Expected security findings in InsecureLib but got none. " +
+            "Verify that SecurityCodeScan or .NET SDK analyzers are loaded.");
+
+        foreach (var finding in result.Findings)
+        {
+            Assert.IsFalse(string.IsNullOrWhiteSpace(finding.DiagnosticId),
+                "Finding should have a diagnostic ID.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(finding.SecurityCategory),
+                $"Finding {finding.DiagnosticId} should have a security category.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(finding.OwaspCategory),
+                $"Finding {finding.DiagnosticId} should have an OWASP category.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(finding.SecuritySeverity),
+                $"Finding {finding.DiagnosticId} should have a security severity.");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(finding.FixHint),
+                $"Finding {finding.DiagnosticId} should have a fix hint.");
+        }
+    }
+
+    [TestMethod]
+    public async Task SecurityDiagnostics_Findings_Include_Cryptographic_Failures()
+    {
+        var result = await SecurityService.GetSecurityDiagnosticsAsync(
+            InsecureWorkspaceId, null, null, CancellationToken.None);
+
+        Assert.IsTrue(result.TotalFindings > 0);
+
+        var cryptoFindings = result.Findings
+            .Where(f => f.OwaspCategory.Contains("Cryptographic", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        Assert.IsTrue(cryptoFindings.Count > 0,
+            "Expected at least one finding in OWASP A02:2021 Cryptographic Failures for SHA1/DES/MD5 usage.");
+    }
+
+    [TestMethod]
+    public async Task SecurityDiagnostics_Findings_Point_To_InsecureCode_File()
+    {
+        var result = await SecurityService.GetSecurityDiagnosticsAsync(
+            InsecureWorkspaceId, null, null, CancellationToken.None);
+
+        Assert.IsTrue(result.TotalFindings > 0);
+
+        var insecureCodeFindings = result.Findings
+            .Where(f => f.FilePath?.Contains("InsecureCode.cs", StringComparison.OrdinalIgnoreCase) == true)
+            .ToList();
+
+        Assert.IsTrue(insecureCodeFindings.Count > 0,
+            "Expected at least one finding located in InsecureCode.cs.");
+    }
+
+    [TestMethod]
+    public async Task SecurityDiagnostics_Severity_Counts_Match_Findings_On_Insecure_Project()
+    {
+        var result = await SecurityService.GetSecurityDiagnosticsAsync(
+            InsecureWorkspaceId, null, null, CancellationToken.None);
+
+        Assert.AreEqual(result.Findings.Count, result.TotalFindings);
+        Assert.AreEqual(
+            result.CriticalCount + result.HighCount + result.MediumCount + result.LowCount,
+            result.TotalFindings,
+            "Severity breakdown does not sum to TotalFindings.");
+    }
+
+    [TestMethod]
+    public async Task SecurityDiagnostics_Project_Filter_Works_On_Insecure_Workspace()
+    {
+        var result = await SecurityService.GetSecurityDiagnosticsAsync(
+            InsecureWorkspaceId, "InsecureLib", null, CancellationToken.None);
+
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.TotalFindings > 0,
+            "Expected findings when filtering to InsecureLib project.");
+
+        foreach (var finding in result.Findings)
+        {
+            Assert.IsTrue(
+                finding.FilePath?.Contains("InsecureLib", StringComparison.OrdinalIgnoreCase) == true,
+                $"Finding in unexpected path: {finding.FilePath}");
+        }
     }
 }
