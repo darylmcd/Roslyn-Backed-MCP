@@ -2,7 +2,7 @@
 
 Canonical location for all unfinished work items. Prioritized by impact.
 
-Last audit: 2026-03-30. Consolidated from deep-review-report.md, mcp-server-audit-report.md (35 issues across 4 solutions), and prior backlog.
+Last audit: 2026-03-30. Updated 2026-04-03 (pagination, TFM, BUG-08 regression). Consolidated from deep-review-report.md, mcp-server-audit-report.md (35 issues across 4 solutions), and prior backlog.
 
 ---
 
@@ -14,13 +14,13 @@ _All P0 items resolved._
 
 ## P1 — High-Priority Server Bugs (crashes or wrong output on some solutions)
 
-- [ ] **BUG-08**: `find_reflection_usages` / `get_di_registrations` previously crashed on ITChatBot.sln (2026-03-28 audit). Now functional in v1.2.0 and NuGet content pollution fixed (AUDIT-29). May need retest for crash regression.
+- [x] **BUG-08**: `find_reflection_usages` / `get_di_registrations` previously crashed on ITChatBot.sln (2026-03-28 audit). Regression coverage added 2026-04-03 — integration tests exercise both tools against the repo solution without crash. ✓ resolved.
 
 ---
 
 ## P2 — Code Quality Improvements
 
-- [ ] **CODE-11**: Increase test coverage from 49.8% line / 37.6% branch. Focus on high-complexity methods in Roslyn.Services layer. (11 new tests added in this pass — 143→154 total.)
+- [ ] **CODE-11**: Increase test coverage from 49.8% line / 37.6% branch. Focus on high-complexity methods in Roslyn.Services layer. (3 new tests added 2026-04-03 — 154→157 total.)
 
 ---
 
@@ -28,12 +28,12 @@ _All P0 items resolved._
 
 - [ ] **DATA-01**: `find_shared_members` returns empty for types with readonly fields and static classes. Should include field reads, not just writes.
 - [ ] **DATA-02**: `find_unused_symbols` false positives — deduplication and generated-file filtering fixed (AUDIT-19, AUDIT-20). Remaining: consider attribute-aware analysis for framework-invoked methods (e.g. `[Fact]`, `[DataMember]`).
-- [ ] **DATA-03**: `TargetFrameworks` shows "unknown" for most projects across all solutions. Fix MSBuildWorkspace TFM resolution. (Still observed in 2026-03-30 audit — AUDIT-07.)
+- [x] **DATA-03**: `TargetFrameworks` shows "unknown" for most projects across all solutions. Fixed 2026-04-03 — `ProjectMetadataParser` now evaluates TFM via MSBuild `ProjectCollection` before falling back to raw XML, resolving inherited values from `Directory.Build.props`. ✓ resolved.
 - [ ] **DATA-05**: `get_cohesion_metrics` includes interfaces in LCOM4 results (trivially LCOM4 = method count). `excludeTests` filter added (AUDIT-36). Remaining: filter/flag interfaces separately.
 - [ ] **DATA-06**: `get_code_actions` returns empty at most positions. May need additional code fix providers loaded in MSBuildWorkspace.
 - [ ] **DATA-07**: Add `limit`/`offset` to `find_references`, `find_type_mutations`, `find_type_usages`, `symbol_relationships`, `callers_callees` — prevent multi-hundred-KB output overflows.
 - [ ] **DATA-09**: `extract_interface_preview` missing spaces in generated base type list. Also copies unnecessary usings.
-- [ ] **AUDIT-08**: `list_analyzers` (175K-252K chars) and `project_diagnostics` (626K chars on ITChatBot) have no effective pagination. `project` filter barely helps for analyzers (workspace-level). Add `offset`/`limit` params to both.
+- [x] **AUDIT-08**: `list_analyzers` (175K-252K chars) and `project_diagnostics` (626K chars on ITChatBot) have no effective pagination. Fixed 2026-04-03 — both tools now accept `offset`/`limit` parameters with `hasMore`/`totalRules`/`totalDiagnostics` response metadata. ✓ resolved.
 - [ ] **AUDIT-10**: `split_class_preview` reformats unrelated code during partial class split.
 - [ ] **AUDIT-11**: `source_generated_documents` shows duplicate entries for Debug/Release/platform obj folders.
 - [ ] **AUDIT-12**: `add_package_reference_preview` generates inline XML without indentation.
