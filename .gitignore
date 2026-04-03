@@ -480,3 +480,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Local AI/MCP client configuration (developer machine specific)
+.claude/
+.mcp.json
