@@ -15,4 +15,27 @@ public static class ServerResources
     {
         return JsonSerializer.Serialize(ServerSurfaceCatalog.CreateDocument(), JsonDefaults.Indented);
     }
+
+    [McpServerResource(UriTemplate = "roslyn://server/resource-templates", Name = "resource_templates", MimeType = "application/json")]
+    [Description("Lists all supported MCP resource URI templates, including workspace-scoped templates.")]
+    public static string GetResourceTemplates()
+    {
+        var templates = ServerSurfaceCatalog.Resources
+            .Select(resource => new
+            {
+                resource.Name,
+                resource.UriTemplate,
+                resource.Category,
+                resource.Summary,
+                resource.SupportTier
+            })
+            .OrderBy(resource => resource.Name, StringComparer.Ordinal)
+            .ToList();
+
+        return JsonSerializer.Serialize(new
+        {
+            count = templates.Count,
+            resources = templates
+        }, JsonDefaults.Indented);
+    }
 }

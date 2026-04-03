@@ -66,7 +66,8 @@ public sealed class ProjectMutationService : IProjectMutationService
                 packageReference.Add(new XAttribute("Version", request.Version));
             }
 
-            GetOrCreateItemGroup(document, "PackageReference").Add(packageReference);
+            var itemGroup = GetOrCreateItemGroup(document, "PackageReference");
+            AddChildElementPreservingIndentation(itemGroup, packageReference);
         }, $"Add package reference '{request.PackageId}'", ct, warnings);
     }
 
@@ -390,6 +391,95 @@ public sealed class ProjectMutationService : IProjectMutationService
         var itemGroup = new XElement("ItemGroup");
         document.Root?.Add(itemGroup);
         return itemGroup;
+    }
+
+    private static void AddChildElementPreservingIndentation(XElement parent, XElement child)
+    {
+        var trailingWhitespace = parent.Nodes().OfType<XText>().LastOrDefault(node =>
+            node.NextNode is null && string.IsNullOrWhiteSpace(node.Value));
+
+        var childIndentation = DetectChildIndentation(parent);
+        var lineEnding = DetectLineEnding(parent.Document);
+
+        if (trailingWhitespace is not null)
+        {
+            trailingWhitespace.AddBeforeSelf(new XText(lineEnding + childIndentation));
+            trailingWhitespace.AddBeforeSelf(child);
+            return;
+        }
+
+        if (!parent.HasElements)
+        {
+            var parentIndentation = DetectParentIndentation(parent);
+            parent.Add(new XText(lineEnding + childIndentation));
+            parent.Add(child);
+            parent.Add(new XText(lineEnding + parentIndentation));
+            return;
+        }
+
+        parent.Add(child);
+    }
+
+    private static string DetectChildIndentation(XElement parent)
+    {
+        var firstChild = parent.Elements().FirstOrDefault();
+        if (firstChild?.PreviousNode is XText previousText)
+        {
+            var indentation = GetTrailingIndentation(previousText.Value);
+            if (indentation is not null)
+            {
+                return indentation;
+            }
+        }
+
+        return DetectParentIndentation(parent) + "  ";
+    }
+
+    private static string DetectParentIndentation(XElement element)
+    {
+        if (element.PreviousNode is XText previousText)
+        {
+            return GetTrailingIndentation(previousText.Value) ?? string.Empty;
+        }
+
+        return string.Empty;
+    }
+
+    private static string? GetTrailingIndentation(string whitespace)
+    {
+        if (string.IsNullOrWhiteSpace(whitespace))
+        {
+            var newlineIndex = whitespace.LastIndexOf('\n');
+            if (newlineIndex >= 0)
+            {
+                return whitespace[(newlineIndex + 1)..];
+            }
+        }
+
+        return null;
+    }
+
+    private static string DetectLineEnding(XDocument? document)
+    {
+        if (document is null)
+        {
+            return Environment.NewLine;
+        }
+
+        foreach (var textNode in document.DescendantNodes().OfType<XText>())
+        {
+            if (textNode.Value.Contains("\r\n", StringComparison.Ordinal))
+            {
+                return "\r\n";
+            }
+
+            if (textNode.Value.Contains("\n", StringComparison.Ordinal))
+            {
+                return "\n";
+            }
+        }
+
+        return Environment.NewLine;
     }
 
     private static string NormalizeInclude(string? include)

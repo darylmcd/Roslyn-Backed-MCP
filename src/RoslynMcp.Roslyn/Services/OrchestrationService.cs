@@ -168,7 +168,7 @@ public sealed class OrchestrationService : IOrchestrationService
         var partialOriginal = EnsurePartial(typeDeclaration.RemoveNodes(selectedMembers, SyntaxRemoveOptions.KeepExteriorTrivia)
             ?? throw new InvalidOperationException("Failed to remove the selected members from the original type."));
         var updatedRoot = root.ReplaceNode(typeDeclaration, partialOriginal);
-        var updatedOriginalContent = updatedRoot.NormalizeWhitespace().ToFullString();
+        var updatedOriginalContent = updatedRoot.ToFullString();
 
         var partialNewType = EnsurePartial(typeDeclaration.WithMembers(SyntaxFactory.List(selectedMembers)));
         var namespaceName = GetNamespaceName(typeDeclaration);

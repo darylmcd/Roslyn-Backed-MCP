@@ -243,6 +243,15 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
         Assert.AreEqual("local-first", catalogDoc.RootElement.GetProperty("ProductShape").GetString());
         Assert.IsTrue(catalogDoc.RootElement.GetProperty("Tools").GetArrayLength() > 0);
 
+        using var templatesDoc = JsonDocument.Parse(ServerResources.GetResourceTemplates());
+        Assert.IsTrue(templatesDoc.RootElement.GetProperty("count").GetInt32() >= 1);
+        Assert.IsTrue(templatesDoc.RootElement.GetProperty("resources")
+            .EnumerateArray()
+            .Any(resource => string.Equals(
+                resource.GetProperty("UriTemplate").GetString(),
+                "roslyn://workspace/{workspaceId}/status",
+                StringComparison.Ordinal)));
+
         using var workspacesDoc = JsonDocument.Parse(WorkspaceResources.GetWorkspaces(WorkspaceManager));
         Assert.IsTrue(workspacesDoc.RootElement.GetProperty("count").GetInt32() >= 1);
     }

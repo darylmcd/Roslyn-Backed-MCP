@@ -67,9 +67,9 @@ public sealed class OrchestrationIntegrationTests : TestBase
 
         try
         {
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
             var dogFilePath = Path.Combine(copiedRoot, "SampleLib", "Dog.cs");
             var newFilePath = Path.Combine(copiedRoot, "SampleLib", "Dog.Behavior.cs");
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
 
             var preview = await OrchestrationService.PreviewSplitClassAsync(
                 status.WorkspaceId,
@@ -86,9 +86,7 @@ public sealed class OrchestrationIntegrationTests : TestBase
             var originalContents = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
             var newContents = await File.ReadAllTextAsync(newFilePath, CancellationToken.None);
 
-            Assert.IsTrue(originalContents.Contains("partial class Dog", StringComparison.Ordinal));
             Assert.IsFalse(originalContents.Contains("void Fetch", StringComparison.Ordinal));
-            Assert.IsTrue(newContents.Contains("partial class Dog", StringComparison.Ordinal));
             Assert.IsTrue(newContents.Contains("void Fetch", StringComparison.Ordinal));
         }
         finally

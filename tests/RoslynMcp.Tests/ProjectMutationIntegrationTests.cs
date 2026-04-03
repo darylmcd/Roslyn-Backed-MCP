@@ -51,6 +51,42 @@ public sealed class ProjectMutationIntegrationTests : TestBase
     }
 
     [TestMethod]
+    public async Task Add_Package_Reference_Preview_Preserves_ItemGroup_Indentation()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+
+        try
+        {
+            var projectFilePath = Path.Combine(copiedRoot, "SampleLib", "SampleLib.csproj");
+            var originalProjectContent = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
+            var customizedProjectContent = originalProjectContent.Replace(
+                "</Project>",
+                "  <ItemGroup>\n    <PackageReference Include=\"Existing.Package\" Version=\"1.0.0\" />\n  </ItemGroup>\n</Project>",
+                StringComparison.Ordinal);
+            await File.WriteAllTextAsync(projectFilePath, customizedProjectContent, CancellationToken.None);
+
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var workspaceId = status.WorkspaceId;
+
+            var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+                workspaceId,
+                new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
+                CancellationToken.None);
+
+            var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+            var projectContents = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
+            StringAssert.Contains(projectContents, "\n    <PackageReference Include=\"Humanizer.Core\"");
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
     public async Task Add_Project_Reference_Preview_And_Apply_Updates_Isolated_Project_File()
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();

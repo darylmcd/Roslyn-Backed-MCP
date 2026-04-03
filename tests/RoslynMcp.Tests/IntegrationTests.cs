@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using System.Text.Json;
 
 namespace RoslynMcp.Tests;
 
@@ -39,6 +40,16 @@ public class IntegrationTests : TestBase
     {
         var status = WorkspaceManager.GetStatus(WorkspaceId);
         Assert.AreEqual(WorkspaceId, status.WorkspaceId);
+    }
+
+    [TestMethod]
+    public void Workspace_Status_Serializes_Project_Name_As_ProjectName()
+    {
+        var status = WorkspaceManager.GetStatus(WorkspaceId);
+        var json = JsonSerializer.Serialize(status);
+
+        StringAssert.Contains(json, "\"ProjectName\"");
+        Assert.IsFalse(json.Contains("\"Name\"", StringComparison.Ordinal));
     }
 
     [TestMethod]
