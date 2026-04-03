@@ -194,22 +194,22 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
 
     private static readonly Dictionary<string, Func<ISymbol, bool>> KeywordPredicates = new(StringComparer.Ordinal)
     {
-        ["async"]     = s => s is IMethodSymbol m && m.IsAsync,
-        ["abstract"]  = s => s.IsAbstract,
-        ["virtual"]   = s => s.IsVirtual,
-        ["sealed"]    = s => s.IsSealed,
-        ["method"]    = s => s is IMethodSymbol { MethodKind: MethodKind.Ordinary },
+        ["async"] = s => s is IMethodSymbol m && m.IsAsync,
+        ["abstract"] = s => s.IsAbstract,
+        ["virtual"] = s => s.IsVirtual,
+        ["sealed"] = s => s.IsSealed,
+        ["method"] = s => s is IMethodSymbol { MethodKind: MethodKind.Ordinary },
         ["interface"] = s => s is INamedTypeSymbol { TypeKind: TypeKind.Interface },
-        ["propert"]   = s => s is IPropertySymbol,
-        ["field"]     = s => s is IFieldSymbol,
-        ["generic"]   = s => s is INamedTypeSymbol { IsGenericType: true } or IMethodSymbol { IsGenericMethod: true },
+        ["propert"] = s => s is IPropertySymbol,
+        ["field"] = s => s is IFieldSymbol,
+        ["generic"] = s => s is INamedTypeSymbol { IsGenericType: true } or IMethodSymbol { IsGenericMethod: true },
     };
 
     private static readonly Dictionary<string, Accessibility> AccessibilityKeywords = new(StringComparer.Ordinal)
     {
-        ["public"]    = Accessibility.Public,
-        ["private"]   = Accessibility.Private,
-        ["internal"]  = Accessibility.Internal,
+        ["public"] = Accessibility.Public,
+        ["private"] = Accessibility.Private,
+        ["internal"] = Accessibility.Internal,
         ["protected"] = Accessibility.Protected,
     };
 
