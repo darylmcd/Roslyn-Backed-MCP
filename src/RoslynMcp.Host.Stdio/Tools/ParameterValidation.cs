@@ -33,4 +33,14 @@ internal static class ParameterValidation
             throw new ArgumentException(
                 $"Invalid scope '{scope}'. Must be one of: {string.Join(", ", BulkReplaceScopeValues)}");
     }
+
+    /// <summary>Validates pagination parameters.</summary>
+    public static void ValidatePagination(int offset, int limit)
+    {
+        if (offset < 0)
+            throw new ArgumentException($"Invalid offset '{offset}'. Offset must be greater than or equal to 0.");
+
+        if (limit <= 0)
+            throw new ArgumentException($"Invalid limit '{limit}'. Limit must be greater than 0.");
+    }
 }

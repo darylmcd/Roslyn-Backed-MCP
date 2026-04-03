@@ -68,6 +68,18 @@ public class IntegrationTests : TestBase
     }
 
     [TestMethod]
+    public void Workspace_Status_And_Project_Graph_Resolve_TargetFrameworks_From_DirectoryBuildProps()
+    {
+        var status = WorkspaceManager.GetStatus(WorkspaceId);
+        var sampleTestsStatus = status.Projects.First(project => project.Name == "SampleLib.Tests");
+        CollectionAssert.Contains(sampleTestsStatus.TargetFrameworks.ToList(), "net10.0");
+
+        var graph = WorkspaceManager.GetProjectGraph(WorkspaceId);
+        var sampleTestsGraph = graph.Projects.First(project => project.ProjectName == "SampleLib.Tests");
+        CollectionAssert.Contains(sampleTestsGraph.TargetFrameworks.ToList(), "net10.0");
+    }
+
+    [TestMethod]
     public async Task Symbol_Search_Finds_Dog()
     {
         var results = await SymbolSearchService.SearchSymbolsAsync(WorkspaceId, "Dog", null, null, null, 10, CancellationToken.None);

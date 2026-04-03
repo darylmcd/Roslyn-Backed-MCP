@@ -93,6 +93,70 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
     }
 
     [TestMethod]
+    public async Task AdvancedAnalysisTools_And_Diagnostics_Support_Pagination()
+    {
+        var analyzersJson = await AnalyzerInfoTools.ListAnalyzers(
+            WorkspaceExecutionGate,
+            AnalyzerInfoService,
+            WorkspaceId,
+            project: null,
+            offset: 0,
+            limit: 2,
+            CancellationToken.None);
+        using var analyzersDoc = JsonDocument.Parse(analyzersJson);
+        Assert.IsTrue(analyzersDoc.RootElement.GetProperty("totalRules").GetInt32() >= 1);
+        Assert.IsTrue(analyzersDoc.RootElement.GetProperty("returnedRules").GetInt32() <= 2);
+        Assert.IsTrue(analyzersDoc.RootElement.TryGetProperty("hasMore", out _));
+
+        var diagnosticsJson = await AnalysisTools.GetProjectDiagnostics(
+            WorkspaceExecutionGate,
+            DiagnosticService,
+            WorkspaceId,
+            project: "SampleLib",
+            file: null,
+            severity: null,
+            offset: 0,
+            limit: 1,
+            CancellationToken.None);
+        using var diagnosticsDoc = JsonDocument.Parse(diagnosticsJson);
+        var returnedDiagnostics = diagnosticsDoc.RootElement.GetProperty("returnedDiagnostics").GetInt32();
+        var pagedCount = diagnosticsDoc.RootElement.GetProperty("workspaceDiagnostics").GetArrayLength()
+            + diagnosticsDoc.RootElement.GetProperty("compilerDiagnostics").GetArrayLength()
+            + diagnosticsDoc.RootElement.GetProperty("analyzerDiagnostics").GetArrayLength();
+
+        Assert.AreEqual(returnedDiagnostics, pagedCount);
+        Assert.IsTrue(diagnosticsDoc.RootElement.GetProperty("totalDiagnostics").GetInt32() >= returnedDiagnostics);
+    }
+
+    [TestMethod]
+    public async Task Reflection_And_Di_Analysis_Run_On_Repo_Solution()
+    {
+        var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");
+        var status = await WorkspaceManager.LoadAsync(repositorySolutionPath, CancellationToken.None);
+
+        try
+        {
+            var reflectionUsages = await CodePatternAnalyzer.FindReflectionUsagesAsync(
+                status.WorkspaceId,
+                "RoslynMcp.Roslyn",
+                CancellationToken.None);
+            var diRegistrations = await DependencyAnalysisService.GetDiRegistrationsAsync(
+                status.WorkspaceId,
+                "RoslynMcp.Roslyn",
+                CancellationToken.None);
+
+            Assert.IsTrue(reflectionUsages.Count > 0, "Expected reflection analysis to complete with results on the repo solution.");
+            Assert.IsTrue(diRegistrations.Any(registration =>
+                registration.FilePath.EndsWith("ServiceCollectionExtensions.cs", StringComparison.OrdinalIgnoreCase)),
+                "Expected DI registrations from ServiceCollectionExtensions.cs.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(status.WorkspaceId);
+        }
+    }
+
+    [TestMethod]
     public void Resources_Return_Machine_Readable_Contracts()
     {
         using var catalogDoc = JsonDocument.Parse(ServerResources.GetServerCatalog());
