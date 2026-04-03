@@ -89,6 +89,12 @@ public class SemanticExpansionTests : TestBase
 
         Assert.IsTrue(generatedDocuments.Count > 0, "Expected generated documents for ConsumerLib.");
         Assert.IsTrue(generatedDocuments.Any(document => document.HintName.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase)));
+        var duplicateHintNames = generatedDocuments
+            .GroupBy(document => $"{document.ProjectName}\u001F{document.HintName}", StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+        Assert.AreEqual(0, duplicateHintNames.Count, "Expected no duplicate generated-document hint names per project.");
     }
 
     [TestMethod]

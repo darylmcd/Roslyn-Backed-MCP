@@ -143,6 +143,7 @@ public static class ServerSurfaceCatalog
     public static IReadOnlyList<SurfaceEntry> Resources { get; } =
     [
         Resource("server_catalog", "server", "stable", true, false, "Machine-readable support policy and surface inventory.", "roslyn://server/catalog"),
+        Resource("resource_templates", "server", "stable", true, false, "Lists all resource URI templates, including workspace-scoped templates.", "roslyn://server/resource-templates"),
         Resource("workspaces", "workspace", "stable", true, false, "List active workspace sessions.", "roslyn://workspaces"),
         Resource("workspace_status", "workspace", "stable", true, false, "Inspect workspace status and diagnostics.", "roslyn://workspace/{workspaceId}/status"),
         Resource("workspace_projects", "workspace", "stable", true, false, "Read project graph metadata for a workspace.", "roslyn://workspace/{workspaceId}/projects"),

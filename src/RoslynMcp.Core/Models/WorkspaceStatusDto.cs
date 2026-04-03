@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace RoslynMcp.Core.Models;
 
 /// <summary>
@@ -20,6 +22,7 @@ public sealed record WorkspaceStatusDto(
 /// Represents the status of a project within a loaded workspace.
 /// </summary>
 public sealed record ProjectStatusDto(
+    [property: JsonPropertyName("ProjectName")]
     string Name,
     string FilePath,
     int DocumentCount,

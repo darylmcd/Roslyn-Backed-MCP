@@ -185,6 +185,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     {
         var solution = GetCurrentSolution(workspaceId);
         var results = new List<GeneratedDocumentDto>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var project in solution.Projects.Where(project =>
                      projectName is null || string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase)))
@@ -199,7 +200,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 ProjectName: project.Name,
                 HintName: document.Name,
                 FilePath: document.FilePath ?? document.Name))
-                .Take(_options.MaxSourceGeneratedDocuments - results.Count)
                 .ToList();
 
             if (projectResults.Count == 0 &&
@@ -213,7 +213,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     if (Directory.Exists(objDirectory))
                     {
                         projectResults.AddRange(Directory.EnumerateFiles(objDirectory, "*.g.cs", SearchOption.AllDirectories)
-                            .Take(_options.MaxSourceGeneratedDocuments - results.Count)
                             .Select(filePath => new GeneratedDocumentDto(
                                 ProjectName: project.Name,
                                 HintName: Path.GetFileName(filePath),
@@ -222,7 +221,18 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 }
             }
 
-            results.AddRange(projectResults);
+            foreach (var generated in projectResults)
+            {
+                if (results.Count >= _options.MaxSourceGeneratedDocuments)
+                {
+                    break;
+                }
+
+                if (seen.Add($"{generated.ProjectName}\u001F{generated.HintName}"))
+                {
+                    results.Add(generated);
+                }
+            }
         }
 
         return results;

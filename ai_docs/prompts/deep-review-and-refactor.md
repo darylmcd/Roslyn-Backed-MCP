@@ -5,7 +5,7 @@
      with the project's actual tool, resource, and prompt surface at all times.
      When tools, resources, or prompts are added, removed, or renamed,
      update the Tools Reference appendix accordingly.
-     Last surface audit: 2026-03-30 (117 tools, 7 resources, 17 prompts). -->
+     Last surface audit: 2026-04-03 (116 tools, 6 resources, 16 prompts). -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > It exercises every major tool category and surfaces both codebase issues AND MCP server bugs.
@@ -26,11 +26,12 @@ Work through each phase below **in order**. After each tool call, evaluate wheth
 ### Phase 0: Setup
 
 1. Call `workspace_load` with the solution path.
-2. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
-3. Call `server_info` to record the server version, Roslyn version, and tool counts.
-4. Call `project_graph` to understand the project dependency structure.
+2. Call `workspace_list` to confirm the session appears.
+3. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
+4. Call `server_info` to record the server version, Roslyn version, and tool counts.
+5. Call `project_graph` to understand the project dependency structure.
 
-**MCP audit checkpoint:** Did `workspace_load` succeed? Did `workspace_status` report any stale documents or missing projects? Does `server_info` report the expected tool counts?
+**MCP audit checkpoint:** Did `workspace_load` succeed? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Does `server_info` report the expected tool counts?
 
 ---
 
@@ -41,8 +42,9 @@ Work through each phase below **in order**. After each tool call, evaluate wheth
 3. Call `security_diagnostics` to identify security-relevant findings with OWASP categorization.
 4. Call `security_analyzer_status` to check which analyzer packages are installed and what's missing.
 5. Call `list_analyzers` to enumerate all loaded analyzers and their rules. Note total rule count.
+6. Call `diagnostic_details` on a representative error and a representative warning to inspect full detail.
 
-**MCP audit checkpoint:** Do `project_diagnostics` and `compile_check` agree on error counts? Does `compile_check` with `emitValidation=true` find additional issues? Does `list_analyzers` return data for all projects? Are there any analyzers that fail to load (look for LOAD_ERROR entries)?
+**MCP audit checkpoint:** Do `project_diagnostics` and `compile_check` agree on error counts? Does `compile_check` with `emitValidation=true` find additional issues? Does `list_analyzers` return data for all projects? Are there any analyzers that fail to load (look for LOAD_ERROR entries)? Does `diagnostic_details` return accurate location and message information?
 
 ---
 
@@ -63,20 +65,23 @@ Work through each phase below **in order**. After each tool call, evaluate wheth
 
 For each key type in the solution:
 
-1. Call `symbol_info` to understand the type.
-2. Call `document_symbols` on its file to see its member structure.
-3. Call `type_hierarchy` to understand inheritance.
-4. Call `find_references` to see how widely it's used.
-5. Call `find_consumers` to classify dependency kinds (constructor, field, parameter, etc.).
-6. Call `find_shared_members` to identify private members shared across public methods.
-7. Call `find_type_mutations` to find all mutating members and their external callers.
-8. Call `find_type_usages` to see how the type is used (return types, parameters, fields, casts, etc.).
-9. Call `callers_callees` on 2-3 of its methods to map call chains.
-10. Call `find_property_writes` on any settable properties to classify init vs post-construction writes.
-11. Call `member_hierarchy` on overridden/implemented members.
-12. Call `symbol_relationships` for a combined view.
+1. Call `symbol_search` to locate the type by name.
+2. Call `symbol_info` to understand the type.
+3. Call `document_symbols` on its file to see its member structure.
+4. Call `type_hierarchy` to understand inheritance.
+5. Call `find_references` to see how widely it's used.
+6. Call `find_consumers` to classify dependency kinds (constructor, field, parameter, etc.).
+7. Call `find_shared_members` to identify private members shared across public methods.
+8. Call `find_type_mutations` to find all mutating members and their external callers.
+9. Call `find_type_usages` to see how the type is used (return types, parameters, fields, casts, etc.).
+10. Call `callers_callees` on 2-3 of its methods to map call chains.
+11. Call `find_property_writes` on any settable properties to classify init vs post-construction writes.
+12. Call `member_hierarchy` on overridden/implemented members.
+13. Call `symbol_relationships` for a combined view.
+14. Call `symbol_signature_help` on a key method to verify signature documentation.
+15. Call `impact_analysis` on a symbol you might refactor to estimate change blast radius.
 
-**MCP audit checkpoint:** Are `find_references` and `find_consumers` consistent? Does `find_type_usages` categorize correctly? Do `callers_callees` results match what you'd expect from reading the code? Does `symbol_relationships` combine data correctly from its sub-tools?
+**MCP audit checkpoint:** Are `find_references` and `find_consumers` consistent? Does `find_type_usages` categorize correctly? Do `callers_callees` results match what you'd expect from reading the code? Does `symbol_relationships` combine data correctly from its sub-tools? Does `impact_analysis` produce a reasonable blast radius estimate?
 
 ---
 
@@ -150,15 +155,28 @@ For each method with high complexity:
 #### 6e. Format & Organize
 1. Call `format_range_preview` on a recently-edited region.
 2. Call `format_range_apply`.
-3. Call `organize_usings_preview` on files that had code fix changes.
-4. Call `organize_usings_apply`.
+3. Call `format_document_preview` on an entire file that was heavily modified.
+4. Call `format_document_apply`.
+5. Call `organize_usings_preview` on files that had code fix changes.
+6. Call `organize_usings_apply`.
 
-#### 6f. Code Actions
+#### 6f. Curated Code Fixes
+1. Call `code_fix_preview` on a specific diagnostic occurrence (e.g., a nullable warning).
+2. Examine the preview diff.
+3. Call `code_fix_apply`.
+4. Call `compile_check`.
+
+#### 6g. Code Actions
 1. Call `get_code_actions` at a position with available refactorings.
 2. Call `preview_code_action` on an interesting action.
 3. Call `apply_code_action`.
 
-#### 6g. Dead Code Removal
+#### 6h. Direct Text Edits
+1. Call `apply_text_edit` to make a small targeted edit to a single file.
+2. Call `apply_multi_file_edit` to make coordinated edits across multiple files.
+3. Call `compile_check`.
+
+#### 6i. Dead Code Removal
 1. From Phase 2's `find_unused_symbols` results, pick symbols confirmed as dead.
 2. Call `remove_dead_code_preview` with their symbol handles.
 3. Call `remove_dead_code_apply`.
@@ -180,15 +198,17 @@ For each method with high complexity:
 
 ### Phase 8: Build & Test Validation
 
-1. Call `build_workspace` to do a full MSBuild build after all refactoring.
-2. Call `build_project` on individual projects that were modified.
+1. Call `workspace_reload` to refresh the workspace after all refactoring file changes.
+2. Call `build_workspace` to do a full MSBuild build after all refactoring.
+3. Call `build_project` on individual projects that were modified.
 3. Call `test_discover` to find all tests.
 4. Call `test_related_files` with the list of files you modified during refactoring.
-5. Call `test_run` with the filter from `test_related_files` to run affected tests.
-6. Call `test_run` with no filter to run the full suite.
-7. Call `test_coverage` to measure coverage.
+5. Call `test_related` on a symbol you refactored to find tests targeting it specifically.
+6. Call `test_run` with the filter from `test_related_files` to run affected tests.
+7. Call `test_run` with no filter to run the full suite.
+8. Call `test_coverage` to measure coverage.
 
-**MCP audit checkpoint:** Does `build_workspace` match `compile_check` results? Does `test_related_files` correctly identify related tests? Does `test_run` produce structured results with pass/fail counts? Does `test_coverage` produce coverage data?
+**MCP audit checkpoint:** Does `build_workspace` match `compile_check` results? Does `test_related_files` correctly identify related tests? Does `test_related` find the right tests for the symbol? Does `test_run` produce structured results with pass/fail counts? Does `test_coverage` produce coverage data?
 
 ---
 
@@ -200,20 +220,30 @@ For each method with high complexity:
 
 **MCP audit checkpoint:** Does `revert_last_apply` actually restore the previous state? Does it handle the case where there's nothing to revert? Does it report what was undone?
 
+When finished with all phases, call `workspace_close` to release the session.
+
 ---
 
 ### Phase 10: Cross-Project Operations (if multi-project solution)
 
 1. Call `move_type_to_file_preview` to move a type into its own file.
-2. Call `move_file_preview` to move a file to a different directory with namespace update.
-3. Call `extract_interface_cross_project_preview` to extract an interface into a different project.
-4. Call `dependency_inversion_preview` to extract interface + update constructor dependencies.
-5. Call `move_type_to_project_preview` to move a type declaration into another project.
-6. Call `extract_and_wire_interface_preview` to extract an interface and rewrite DI registrations.
-7. Call `split_class_preview` to split a type into partial class files.
-8. Call `migrate_package_preview` to replace one NuGet package with another across projects.
+2. Call `move_type_to_file_apply` to apply the move.
+3. Call `move_file_preview` to move a file to a different directory with namespace update.
+4. Call `move_file_apply` to apply the file move.
+5. Call `create_file_preview` to preview creating a new source file in a project.
+6. Call `create_file_apply` to apply the file creation.
+7. Call `delete_file_preview` to preview deleting an unused source file.
+8. Call `delete_file_apply` to apply the file deletion.
+9. Call `extract_interface_cross_project_preview` to extract an interface into a different project.
+10. Call `dependency_inversion_preview` to extract interface + update constructor dependencies.
+11. Call `move_type_to_project_preview` to move a type declaration into another project.
+12. Call `extract_and_wire_interface_preview` to extract an interface and rewrite DI registrations.
+13. Call `split_class_preview` to split a type into partial class files.
+14. Call `migrate_package_preview` to replace one NuGet package with another across projects.
+15. For orchestration previews (steps 9-14), call `apply_composite_preview` to apply.
+16. Call `compile_check` after each apply to verify correctness.
 
-**MCP audit checkpoint:** Do cross-project operations correctly add project references? Do namespace updates apply? Are all references updated? Does `extract_and_wire_interface_preview` correctly identify DI registrations? Does `split_class_preview` produce valid partial classes?
+**MCP audit checkpoint:** Do cross-project operations correctly add project references? Do namespace updates apply? Are all references updated? Does `extract_and_wire_interface_preview` correctly identify DI registrations? Does `split_class_preview` produce valid partial classes? Do file creation and deletion previews produce correct diffs?
 
 ---
 
@@ -232,8 +262,10 @@ For each method with high complexity:
 ### Phase 12: Scaffolding
 
 1. Call `scaffold_type_preview` to scaffold a new class in a project. Verify the generated file content and namespace.
-2. Call `scaffold_test_preview` to scaffold a test file for an existing type. Verify it targets the correct type and uses the right test framework.
-3. Apply both if the scaffolded content is correct.
+2. Call `scaffold_type_apply` to apply the scaffolded type.
+3. Call `scaffold_test_preview` to scaffold a test file for an existing type. Verify it targets the correct type and uses the right test framework.
+4. Call `scaffold_test_apply` to apply the scaffolded test.
+5. Call `compile_check`.
 
 **MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace from the project structure? Does `scaffold_test_preview` generate valid test stubs? Do the apply operations write files correctly?
 
@@ -246,9 +278,14 @@ For each method with high complexity:
 3. Call `add_project_reference_preview` to add a project-to-project reference.
 4. Call `remove_project_reference_preview` to remove a project reference.
 5. Call `set_project_property_preview` to set a project property (e.g., Nullable, LangVersion).
-6. If the solution uses Central Package Management, call `add_central_package_version_preview` and `remove_central_package_version_preview`.
+6. Call `set_conditional_property_preview` to set a conditional project property scoped to a configuration.
+7. Call `add_target_framework_preview` to add a target framework to a multi-targeting project.
+8. Call `remove_target_framework_preview` to remove a target framework.
+9. If the solution uses Central Package Management, call `add_central_package_version_preview` and `remove_central_package_version_preview`.
+10. Call `apply_project_mutation` to apply each previewed mutation.
+11. Call `compile_check` after each apply to verify the mutations.
 
-**MCP audit checkpoint:** Do project mutation previews produce correct XML diffs? Does `apply_project_mutation` write valid project files? Do subsequent `compile_check` calls reflect the mutations?
+**MCP audit checkpoint:** Do project mutation previews produce correct XML diffs? Does `apply_project_mutation` write valid project files? Do `set_conditional_property_preview` conditions evaluate correctly? Do framework additions/removals update the TargetFrameworks property correctly? Do subsequent `compile_check` calls reflect the mutations?
 
 ---
 
@@ -313,9 +350,9 @@ Categories:
 
 > **Maintenance note:** This appendix must be kept in sync with the actual server surface.
 > When tools, resources, or prompts change, update this section.
-> Last verified: 2026-03-30 — **117 tools | 7 resources | 17 prompts**
+> Last verified: 2026-04-03 — **116 tools | 6 resources | 16 prompts**
 
-### Tools by Category (117 total)
+### Tools by Category (116 total)
 
 #### Server (1 tool)
 `server_info`
@@ -404,7 +441,7 @@ Categories:
 #### Undo (1 tool)
 `revert_last_apply`
 
-### Resources (7 total)
+### Resources (6 total)
 
 | URI Template | Description | MIME Type |
 |---|---|---|
@@ -415,7 +452,7 @@ Categories:
 | `roslyn://workspace/{workspaceId}/diagnostics` | Compiler diagnostics | `application/json` |
 | `roslyn://workspace/{workspaceId}/file/{filePath}` | Source file content | `text/x-csharp` |
 
-### Prompts (17 total)
+### Prompts (16 total)
 
 | Prompt | Description |
 |---|---|
