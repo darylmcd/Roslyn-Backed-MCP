@@ -10,6 +10,12 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class AnalysisTools
 {
+    private enum DiagnosticBucket
+    {
+        Workspace,
+        Compiler,
+        Analyzer,
+    }
 
     [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get compiler diagnostics (errors, warnings) for the workspace, optionally filtered by project, file, or severity")]
     public static Task<string> GetProjectDiagnostics(
@@ -19,15 +25,52 @@ public static class AnalysisTools
         [Description("Optional: filter by project name")] string? project = null,
         [Description("Optional: filter by file path")] string? file = null,
         [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden)")] string? severity = null,
+        [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
+        [Description("Maximum number of diagnostics to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
         {
             ParameterValidation.ValidateSeverity(severity);
+            ParameterValidation.ValidatePagination(offset, limit);
             return gate.RunAsync(workspaceId, async c =>
             {
                 var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, project, file, severity, c);
-                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
+
+                var allDiagnostics = results.WorkspaceDiagnostics
+                    .Select(diagnostic => (Bucket: DiagnosticBucket.Workspace, Diagnostic: diagnostic))
+                    .Concat(results.CompilerDiagnostics.Select(diagnostic => (Bucket: DiagnosticBucket.Compiler, Diagnostic: diagnostic)))
+                    .Concat(results.AnalyzerDiagnostics.Select(diagnostic => (Bucket: DiagnosticBucket.Analyzer, Diagnostic: diagnostic)))
+                    .ToList();
+
+                var pagedDiagnostics = allDiagnostics
+                    .Skip(offset)
+                    .Take(limit)
+                    .ToList();
+
+                return JsonSerializer.Serialize(new
+                {
+                    results.TotalErrors,
+                    results.TotalWarnings,
+                    results.TotalInfo,
+                    totalDiagnostics = allDiagnostics.Count,
+                    offset,
+                    limit,
+                    returnedDiagnostics = pagedDiagnostics.Count,
+                    hasMore = offset + pagedDiagnostics.Count < allDiagnostics.Count,
+                    workspaceDiagnostics = pagedDiagnostics
+                        .Where(entry => entry.Bucket == DiagnosticBucket.Workspace)
+                        .Select(entry => entry.Diagnostic)
+                        .ToList(),
+                    compilerDiagnostics = pagedDiagnostics
+                        .Where(entry => entry.Bucket == DiagnosticBucket.Compiler)
+                        .Select(entry => entry.Diagnostic)
+                        .ToList(),
+                    analyzerDiagnostics = pagedDiagnostics
+                        .Where(entry => entry.Bucket == DiagnosticBucket.Analyzer)
+                        .Select(entry => entry.Diagnostic)
+                        .ToList(),
+                }, JsonDefaults.Indented);
             }, ct);
         });
     }

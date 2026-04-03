@@ -487,7 +487,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 ProjectReferences: project.ProjectReferences
                     .Select(reference => solution.GetProject(reference.ProjectId)?.Name ?? "unknown")
                     .ToList(),
-                TargetFrameworks: Helpers.ProjectMetadataParser.GetTargetFrameworks(projectDoc),
+                TargetFrameworks: Helpers.ProjectMetadataParser.GetTargetFrameworks(project, projectDoc, _logger),
                 IsTestProject: Helpers.ProjectMetadataParser.IsTestProject(projectDoc),
                 AssemblyName: Helpers.ProjectMetadataParser.GetAssemblyName(project),
                 OutputType: Helpers.ProjectMetadataParser.GetOutputType(projectDoc));

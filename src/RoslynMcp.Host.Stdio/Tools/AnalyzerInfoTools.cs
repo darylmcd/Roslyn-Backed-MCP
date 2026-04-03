@@ -15,14 +15,42 @@ public static class AnalyzerInfoTools
         IAnalyzerInfoService analyzerInfoService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? project = null,
+        [Description("Number of analyzer rules to skip before returning results (default: 0)")] int offset = 0,
+        [Description("Maximum number of analyzer rules to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
+                ParameterValidation.ValidatePagination(offset, limit);
                 var results = await analyzerInfoService.ListAnalyzersAsync(workspaceId, project, c);
                 var totalRules = results.Sum(a => a.Rules.Count);
-                return JsonSerializer.Serialize(new { analyzerCount = results.Count, totalRules, analyzers = results }, JsonDefaults.Indented);
+
+                var pagedRules = results
+                    .SelectMany(analyzer => analyzer.Rules.Select(rule => new { analyzer.AssemblyName, Rule = rule }))
+                    .Skip(offset)
+                    .Take(limit)
+                    .ToList();
+
+                var pagedAnalyzers = pagedRules
+                    .GroupBy(entry => entry.AssemblyName, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => new RoslynMcp.Core.Models.AnalyzerInfoDto(
+                        group.Key,
+                        group.Select(entry => entry.Rule).ToList()))
+                    .OrderBy(analyzer => analyzer.AssemblyName, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                return JsonSerializer.Serialize(new
+                {
+                    analyzerCount = results.Count,
+                    totalRules,
+                    offset,
+                    limit,
+                    returnedRules = pagedRules.Count,
+                    returnedAnalyzerCount = pagedAnalyzers.Count,
+                    hasMore = offset + pagedRules.Count < totalRules,
+                    analyzers = pagedAnalyzers,
+                }, JsonDefaults.Indented);
             }, ct));
     }
 }
