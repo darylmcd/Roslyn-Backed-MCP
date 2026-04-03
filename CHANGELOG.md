@@ -4,6 +4,79 @@ All notable changes to Roslyn-Backed MCP Server will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.4.0] - 2026-04-03
+
+### Added
+
+- Security diagnostic surface: `SecurityTestProject` with `InsecureLib`, `SecurityDiagnosticIntegrationTests`, and `SecurityCodeScan` coverage for `get_security_diagnostics` (FEAT-01).
+- Workspace-specific resources now discoverable via MCP resource listing; `ServerResources` extended with workspace-scoped entries (AUDIT-14 partial).
+- `WorkspaceStatusDto` extended with additional workspace metadata fields.
+
+### Fixed
+
+- `CohesionMetricsDto` contract field alignment (`CohesionAnalysisService`, `ICohesionAnalysisService`).
+- `UnusedCodeAnalyzer` improvements: additional symbol categories and reliability fixes.
+- `InterfaceExtractionService` edge-case correctness fixes.
+- `CodeActionService` action-application reliability.
+- `ProjectMutationService` correctness and edge-case handling.
+- `WorkspaceManager` concurrency correctness fixes.
+- `ServerSurfaceCatalog` surface count updated.
+
+### Changed
+
+- Repository line-ending policy switched to LF; `.gitattributes` enforces LF for all common text assets.
+
+## [1.3.0] - 2026-04-01
+
+### Added
+
+- `GatedCommandExecutor` / `IGatedCommandExecutor` abstraction: shared CLI execution logic extracted from `BuildService` and `TestRunnerService`, eliminating ~200 lines of duplication.
+- Offset/limit pagination for `project_diagnostics` and `list_analyzers` tools.
+- Evaluated target-framework resolution via `ProjectMetadataParser`: reads MSBuild-evaluated `TargetFramework(s)` instead of raw XML, fixing inherited values from `Directory.Build.props`.
+- 11 new integration tests (`BacklogFixTests.cs`); total test count 154.
+
+### Fixed
+
+- `WorkspaceManager` concurrency: apply-gate and version tracking hardened.
+- `TestDiscoveryService` reliability for large solutions.
+- `FixAllService` exception handling and partial-success reporting.
+- `TypeMoveService` correctness for types with nested members.
+- `ToolErrorHandler` structured error response improvements.
+- `RefactoringService` edge cases for partial classes.
+- `FlowAnalysisService` data-flow accuracy improvements.
+- `MutationAnalysisService` stale-result detection fixes.
+
+## [1.2.0] - 2026-03-29
+
+### Added
+
+- Offset/limit pagination and filter parameters for `find_references`, `symbol_search`, and `list_members` (AUDIT-24, AUDIT-25, AUDIT-36).
+
+### Fixed
+
+- `compile_check` tool description clarified to reflect actual behaviour (AUDIT-31, AUDIT-26).
+
+## [1.1.0] - 2026-03-27
+
+### Fixed
+
+- `PathFilter` path-validation hardening; symlink/junction resolution correctness (AUDIT-01).
+- `CrossProjectRefactoringService` null-safety and project-graph edge cases (AUDIT-22).
+- `InterfaceExtractionService` member-extraction edge cases (AUDIT-28).
+- `ScaffoldingService` null-safety and generated-code correctness (AUDIT-29).
+- `SymbolResolver` resolution reliability for overloaded members (AUDIT-05, AUDIT-19).
+- `SymbolServiceHelpers` deduplication and ranking fixes (AUDIT-20, AUDIT-30).
+- `TestRunnerService` output-capture and exit-code handling (AUDIT-02).
+- `UnusedCodeAnalyzer` false-positive reduction (initial pass).
+- `DotnetOutputParser` edge cases for multi-target builds (AUDIT-03, AUDIT-04).
+- `ProjectMutationService` property allowlist enforcement tightened (AUDIT-09).
+- `SymbolNavigationService` location mapping for generated files (AUDIT-13).
+- `TypeMoveService` namespace-update correctness.
+
+### Changed
+
+- Removed dead `CreateFixtureCopy` test fixture helper; added `.editorconfig` to repo root (CODE-05, CODE-06).
+
 ## [1.0.0] - 2026-03-26
 
 First stable release.
