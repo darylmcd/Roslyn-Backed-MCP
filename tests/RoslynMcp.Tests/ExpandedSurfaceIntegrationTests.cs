@@ -129,6 +129,86 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
     }
 
     [TestMethod]
+    public async Task Symbol_And_Usage_Tools_Apply_Pagination_Metadata()
+    {
+        var animalServicePath = FindDocumentPath("AnimalService.cs");
+        var refsJson = await SymbolTools.FindReferences(
+            WorkspaceExecutionGate,
+            ReferenceService,
+            WorkspaceId,
+            filePath: animalServicePath,
+            line: 16,
+            column: 17,
+            symbolHandle: null,
+            limit: 1,
+            offset: 0,
+            CancellationToken.None);
+
+        using var refsDoc = JsonDocument.Parse(refsJson);
+        Assert.IsTrue(refsDoc.RootElement.GetProperty("count").GetInt32() <= 1);
+        Assert.IsTrue(refsDoc.RootElement.TryGetProperty("totalCount", out _));
+        Assert.IsTrue(refsDoc.RootElement.TryGetProperty("hasMore", out _));
+
+        var usagesJson = await AnalysisTools.FindTypeUsages(
+            WorkspaceExecutionGate,
+            MutationAnalysisService,
+            WorkspaceId,
+            filePath: null,
+            line: null,
+            column: null,
+            symbolHandle: null,
+            metadataName: "SampleLib.IAnimal",
+            limit: 1,
+            offset: 0,
+            CancellationToken.None);
+
+        using var usagesDoc = JsonDocument.Parse(usagesJson);
+        Assert.IsTrue(usagesDoc.RootElement.GetProperty("count").GetInt32() <= 1);
+        Assert.IsTrue(usagesDoc.RootElement.TryGetProperty("totalCount", out _));
+        Assert.IsTrue(usagesDoc.RootElement.TryGetProperty("hasMore", out _));
+    }
+
+    [TestMethod]
+    public async Task Relationship_And_Cohesion_Tools_Expose_New_Limit_And_Interface_Flags()
+    {
+        var iAnimalPath = FindDocumentPath("IAnimal.cs");
+        var relationshipsJson = await SymbolTools.GetSymbolRelationships(
+            WorkspaceExecutionGate,
+            SymbolRelationshipService,
+            WorkspaceId,
+            filePath: iAnimalPath,
+            line: 6,
+            column: 12,
+            symbolHandle: null,
+            metadataName: null,
+            limit: 1,
+            CancellationToken.None);
+
+        using var relationshipsDoc = JsonDocument.Parse(relationshipsJson);
+        Assert.AreEqual(1, relationshipsDoc.RootElement.GetProperty("limit").GetInt32());
+        Assert.IsTrue(relationshipsDoc.RootElement.TryGetProperty("totals", out _));
+
+        var cohesionJson = await CohesionAnalysisTools.GetCohesionMetrics(
+            WorkspaceExecutionGate,
+            CohesionAnalysisService,
+            WorkspaceId,
+            filePath: null,
+            project: "SampleLib",
+            minMethods: 1,
+            limit: 50,
+            includeInterfaces: true,
+            excludeTests: false,
+            CancellationToken.None);
+
+        using var cohesionDoc = JsonDocument.Parse(cohesionJson);
+        var metrics = cohesionDoc.RootElement.GetProperty("metrics").EnumerateArray().ToList();
+        Assert.IsTrue(metrics.Any(m =>
+            m.TryGetProperty("TypeKind", out var typeKind) &&
+            typeKind.GetString() == "Interface"),
+            "Expected at least one interface metric when includeInterfaces=true.");
+    }
+
+    [TestMethod]
     public async Task Reflection_And_Di_Analysis_Run_On_Repo_Solution()
     {
         var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");

@@ -11,7 +11,11 @@ public sealed record CohesionMetricsDto(
     int MethodCount,
     int FieldCount,
     int Lcom4Score,
-    IReadOnlyList<MethodClusterDto> Clusters);
+    IReadOnlyList<MethodClusterDto> Clusters)
+{
+    /// <summary>The kind of type: Class, Struct, Interface, Enum, etc.</summary>
+    public string TypeKind { get; init; } = "Class";
+}
 
 /// <summary>
 /// A cluster of methods that share access to the same fields/properties.

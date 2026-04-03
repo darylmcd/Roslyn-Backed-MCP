@@ -50,7 +50,8 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot);
 
         // Add interface to type's base list
-        var interfaceTypeSyntax = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName));
+        var interfaceTypeSyntax = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
+            .WithLeadingTrivia(SyntaxFactory.Space);
         TypeDeclarationSyntax updatedTypeDecl;
         if (typeDecl.BaseList is not null)
         {
@@ -193,13 +194,14 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         InterfaceDeclarationSyntax interfaceDecl, TypeDeclarationSyntax typeDecl, CompilationUnitSyntax sourceRoot)
     {
         var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
+        var filteredUsings = FilterRelevantUsings(sourceRoot.Usings, interfaceDecl);
 
         if (namespaceDecl is FileScopedNamespaceDeclarationSyntax fileScopedNs)
         {
             var newNs = SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
                 .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
             return SyntaxFactory.CompilationUnit()
-                .WithUsings(sourceRoot.Usings)
+                .WithUsings(filteredUsings)
                 .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
                 .NormalizeWhitespace();
         }
@@ -209,15 +211,33 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             var newNs = SyntaxFactory.NamespaceDeclaration(blockNs.Name)
                 .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
             return SyntaxFactory.CompilationUnit()
-                .WithUsings(sourceRoot.Usings)
+                .WithUsings(filteredUsings)
                 .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
                 .NormalizeWhitespace();
         }
 
         return SyntaxFactory.CompilationUnit()
-            .WithUsings(sourceRoot.Usings)
+            .WithUsings(filteredUsings)
             .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl))
             .NormalizeWhitespace();
+    }
+
+    private static SyntaxList<UsingDirectiveSyntax> FilterRelevantUsings(
+        SyntaxList<UsingDirectiveSyntax> usings,
+        InterfaceDeclarationSyntax interfaceDecl)
+    {
+        var text = interfaceDecl.ToFullString();
+        var filtered = usings.Where(u =>
+        {
+            var ns = u.Name?.ToString();
+            if (string.IsNullOrWhiteSpace(ns)) return false;
+            if (ns.StartsWith("System", StringComparison.Ordinal)) return true;
+            var shortName = ns.Split('.').Last();
+            return text.Contains(shortName, StringComparison.Ordinal) ||
+                   text.Contains(ns, StringComparison.Ordinal);
+        });
+
+        return SyntaxFactory.List(filtered);
     }
 
     private async Task ValidateNoConflictsAsync(

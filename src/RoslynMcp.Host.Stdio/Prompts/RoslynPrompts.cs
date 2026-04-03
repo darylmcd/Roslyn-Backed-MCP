@@ -824,7 +824,7 @@ public static class RoslynPrompts
         try
         {
             var metrics = await cohesionAnalysisService.GetCohesionMetricsAsync(
-                workspaceId, filePath: null, projectFilter: projectName, minMethods: 3, limit: 20, ct).ConfigureAwait(false);
+                workspaceId, filePath: null, projectFilter: projectName, minMethods: 3, limit: 20, includeInterfaces: false, ct).ConfigureAwait(false);
             var metricsJson = JsonSerializer.Serialize(metrics, JsonDefaults.Indented);
 
             return

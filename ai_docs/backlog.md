@@ -2,7 +2,7 @@
 
 Canonical location for all unfinished work items. Prioritized by impact.
 
-Last audit: 2026-03-30. Updated 2026-04-03 (pagination, TFM, BUG-08 regression). Consolidated from deep-review-report.md, mcp-server-audit-report.md (35 issues across 4 solutions), and prior backlog.
+Last audit: 2026-03-30. Updated 2026-04-03 (pagination, TFM, BUG-08 regression, P2/P3 data-quality batch, FEAT-01 security surface). Consolidated from deep-review-report.md, mcp-server-audit-report.md (35 issues across 4 solutions), and prior backlog.
 
 ---
 
@@ -20,19 +20,19 @@ _All P0 items resolved._
 
 ## P2 — Code Quality Improvements
 
-- [ ] **CODE-11**: Increase test coverage from 49.8% line / 37.6% branch. Focus on high-complexity methods in Roslyn.Services layer. (3 new tests added 2026-04-03 — 154→157 total.)
+- [x] **CODE-11**: Increase test coverage from 49.8% line / 37.6% branch. Focus on high-complexity methods in Roslyn.Services layer. Expanded coverage added 2026-04-03 — 157→162 total tests with new integration coverage for cohesion/interface handling and pagination metadata. ✓ resolved.
 
 ---
 
 ## P3 — Server Data Quality & Usability
 
-- [ ] **DATA-01**: `find_shared_members` returns empty for types with readonly fields and static classes. Should include field reads, not just writes.
-- [ ] **DATA-02**: `find_unused_symbols` false positives — deduplication and generated-file filtering fixed (AUDIT-19, AUDIT-20). Remaining: consider attribute-aware analysis for framework-invoked methods (e.g. `[Fact]`, `[DataMember]`).
+- [x] **DATA-01**: `find_shared_members` returns empty for types with readonly fields and static classes. Fixed 2026-04-03 — static type/member analysis now includes static private members and static call sites. ✓ resolved.
+- [x] **DATA-02**: `find_unused_symbols` false positives — deduplication and generated-file filtering fixed (AUDIT-19, AUDIT-20). Fixed 2026-04-03 — added attribute-aware skipping for framework-invoked members (e.g. `[Fact]`, `[TestMethod]`, `[DataMember]`, MVC HTTP attributes). ✓ resolved.
 - [x] **DATA-03**: `TargetFrameworks` shows "unknown" for most projects across all solutions. Fixed 2026-04-03 — `ProjectMetadataParser` now evaluates TFM via MSBuild `ProjectCollection` before falling back to raw XML, resolving inherited values from `Directory.Build.props`. ✓ resolved.
-- [ ] **DATA-05**: `get_cohesion_metrics` includes interfaces in LCOM4 results (trivially LCOM4 = method count). `excludeTests` filter added (AUDIT-36). Remaining: filter/flag interfaces separately.
-- [ ] **DATA-06**: `get_code_actions` returns empty at most positions. May need additional code fix providers loaded in MSBuildWorkspace.
-- [ ] **DATA-07**: Add `limit`/`offset` to `find_references`, `find_type_mutations`, `find_type_usages`, `symbol_relationships`, `callers_callees` — prevent multi-hundred-KB output overflows.
-- [ ] **DATA-09**: `extract_interface_preview` missing spaces in generated base type list. Also copies unnecessary usings.
+- [x] **DATA-05**: `get_cohesion_metrics` includes interfaces in LCOM4 results (trivially LCOM4 = method count). Fixed 2026-04-03 — added `includeInterfaces` option and `TypeKind` output field to flag interfaces explicitly. ✓ resolved.
+- [x] **DATA-06**: `get_code_actions` returns empty at most positions. Fixed 2026-04-03 — default zero-length spans now expand to line-end to improve diagnostic intersection for code fix discovery. ✓ resolved.
+- [x] **DATA-07**: Add `limit`/`offset` to `find_references`, `find_type_mutations`, `find_type_usages`, `symbol_relationships`, `callers_callees` — prevent multi-hundred-KB output overflows. Fixed 2026-04-03 — tools now enforce limit/offset or per-bucket limits and return paging metadata (`totalCount`, `hasMore`, etc.). ✓ resolved.
+- [x] **DATA-09**: `extract_interface_preview` missing spaces in generated base type list. Also copies unnecessary usings. Fixed 2026-04-03 — base list spacing corrected and generated interface now filters copied usings. ✓ resolved.
 - [x] **AUDIT-08**: `list_analyzers` (175K-252K chars) and `project_diagnostics` (626K chars on ITChatBot) have no effective pagination. Fixed 2026-04-03 — both tools now accept `offset`/`limit` parameters with `hasMore`/`totalRules`/`totalDiagnostics` response metadata. ✓ resolved.
 - [ ] **AUDIT-10**: `split_class_preview` reformats unrelated code during partial class split.
 - [ ] **AUDIT-11**: `source_generated_documents` shows duplicate entries for Debug/Release/platform obj folders.
@@ -51,7 +51,8 @@ _All P0 items resolved._
 
 ## P4 — Feature Additions
 
-- [ ] **FEAT-01**: Add security diagnostic surface — curated mapping of Roslyn diagnostic IDs to OWASP categories with fix guidance. See `ai_docs/prompts/add-security-diagnostic-surface.prompt.md` for full specification.
+- [x] **FEAT-01**: Add security diagnostic surface — curated mapping of Roslyn diagnostic IDs to OWASP categories with fix guidance. Implemented: `SecurityDiagnosticRegistry` (80+ IDs), `security_diagnostics` and `security_analyzer_status` tools, `security_review` prompt, `SecurityTestProject` fixture with positive-detection tests (5 new, 167 total passing). ✓ resolved.
+- [ ] **FEAT-06**: NuGet vulnerability scanning — scan workspace package references for known CVEs via `dotnet list package --vulnerable --format json`. Extends `IDependencyAnalysisService` with a `nuget_vulnerability_scan` tool. Addresses OWASP A06:2021 (Vulnerable and Outdated Components). See `ai_docs/prompts/add-nuget-vulnerability-surface.prompt.md` for full specification.
 - [ ] **FEAT-02**: `.editorconfig` write support — current `get_editorconfig_options` is read-only. Add ability to modify style rules programmatically.
 - [ ] **FEAT-03**: MSBuild property/item evaluation — query resolved MSBuild properties, conditional values, SDK metadata.
 - [ ] **FEAT-04**: Suppression & severity management — programmatic pragma suppression, SuppressMessage, and .editorconfig severity overrides.

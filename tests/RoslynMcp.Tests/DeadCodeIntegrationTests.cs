@@ -89,4 +89,21 @@ public sealed class DeadCodeIntegrationTests : TestBase
         Assert.AreEqual(0, unusedCountAnimals.Count,
             $"CountAnimals overload(s) should not be reported as unused. Found: {string.Join(", ", unusedCountAnimals.Select(s => $"{s.ContainingType}.{s.SymbolName}"))}");
     }
+
+    [TestMethod]
+    public async Task TestMethod_Attributed_Methods_Are_Not_Reported_As_Unused()
+    {
+        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
+        var workspaceId = status.WorkspaceId;
+
+        var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
+            workspaceId, "SampleLib.Tests", includePublic: true, limit: 200, CancellationToken.None);
+
+        var unusedNames = unusedSymbols.Select(s => s.SymbolName).ToHashSet(StringComparer.Ordinal);
+
+        Assert.IsFalse(unusedNames.Contains("CountAnimals_Returns_Total_Count"),
+            "[TestMethod] entry point should be treated as framework-invoked and not reported as unused.");
+        Assert.IsFalse(unusedNames.Contains("GetAllAnimals_Returns_Dog_And_Cat"),
+            "[TestMethod] entry point should be treated as framework-invoked and not reported as unused.");
+    }
 }

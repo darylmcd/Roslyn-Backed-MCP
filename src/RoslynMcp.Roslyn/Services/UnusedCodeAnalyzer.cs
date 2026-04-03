@@ -11,6 +11,34 @@ namespace RoslynMcp.Roslyn.Services;
 
 public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
 {
+    private static readonly HashSet<string> FrameworkInvokedAttributeNames =
+    [
+        "Fact",
+        "Theory",
+        "Test",
+        "TestMethod",
+        "TestCase",
+        "DataMember",
+        "JsonProperty",
+        "JsonRequired",
+        "JsonInclude",
+        "Required",
+        "Key",
+        "Column",
+        "Table",
+        "HttpGet",
+        "HttpPost",
+        "HttpPut",
+        "HttpDelete",
+        "HttpPatch",
+        "Route",
+        "ApiController",
+        "Controller",
+        "EventHandler",
+        "MessageHandler",
+        "Subscribe"
+    ];
+
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<UnusedCodeAnalyzer> _logger;
 
@@ -78,6 +106,9 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
 
                     // Skip entry points
                     if (symbol is IMethodSymbol { Name: "Main" } && symbol.IsStatic) continue;
+
+                    // Skip symbols with framework-invoked attributes (test methods, serialized members, etc.)
+                    if (HasFrameworkInvokedAttribute(symbol)) continue;
 
                     // Skip static classes that contain extension methods — they are
                     // accessed implicitly through their members, not by direct reference.
@@ -221,5 +252,23 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         }
 
         return null;
+    }
+
+    private static bool HasFrameworkInvokedAttribute(ISymbol symbol)
+    {
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            var name = attribute.AttributeClass?.Name;
+            if (string.IsNullOrWhiteSpace(name)) continue;
+
+            var normalized = name.EndsWith("Attribute", StringComparison.Ordinal)
+                ? name[..^"Attribute".Length]
+                : name;
+
+            if (FrameworkInvokedAttributeNames.Contains(normalized))
+                return true;
+        }
+
+        return false;
     }
 }
