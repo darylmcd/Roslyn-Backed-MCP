@@ -36,6 +36,7 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | `procedures/doc-migration-checklist.md` | Checklist for documentation migrations |
 | `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive code review (all 16 phases). Keep in sync with project surface. Do not delete. |
 | `prompts/add-security-diagnostic-surface.prompt.md` | Feature specification for FEAT-01 |
+| `prompts/add-nuget-vulnerability-surface.prompt.md` | Feature specification for FEAT-06 (NuGet vulnerability scanning) |
 
 ## Archive
 
