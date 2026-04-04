@@ -147,9 +147,56 @@ public sealed class BacklogFixTests : TestBase
     private async Task<string> LoadSampleSolutionAsync()
     {
         var existing = WorkspaceManager.ListWorkspaces();
-        if (existing.Count > 0) return existing[0].WorkspaceId;
+        if (existing.Count > 0)
+        {
+            var id = existing[0].WorkspaceId;
+            await WorkspaceManager.ReloadAsync(id, CancellationToken.None);
+            return id;
+        }
 
         var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
         return status.WorkspaceId;
+    }
+
+    // ── AUDIT-23: semantic_search query parsing ──
+
+    [TestMethod]
+    public async Task SemanticSearch_ClassesImplementingIDisposable_FindsDisposableClass()
+    {
+        var workspaceId = await LoadSampleSolutionAsync();
+        var response = await CodePatternAnalyzer.SemanticSearchAsync(
+            workspaceId, "classes implementing IDisposable", "SampleLib", 50, CancellationToken.None);
+
+        Assert.IsTrue(
+            response.Results.Any(r => r.SymbolName == "BacklogDisposableSample"),
+            "Expected disposable sample class.");
+        Assert.IsNull(response.Warning);
+    }
+
+    [TestMethod]
+    public async Task SemanticSearch_MethodsReturningTaskBool_FindsSample()
+    {
+        var workspaceId = await LoadSampleSolutionAsync();
+        var response = await CodePatternAnalyzer.SemanticSearchAsync(
+            workspaceId, "methods returning Task<bool>", "SampleLib", 50, CancellationToken.None);
+
+        Assert.IsTrue(
+            response.Results.Any(r => r.SymbolName == "ReturnsBoolAsync"),
+            "Expected method returning Task<bool>.");
+    }
+
+    // ── AUDIT-35: unused symbol confidence ──
+
+    [TestMethod]
+    public async Task FindUnusedSymbols_PublicEnumValue_HasLowConfidence_WhenUnused()
+    {
+        var workspaceId = await LoadSampleSolutionAsync();
+        var unused = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
+            workspaceId, "SampleLib", includePublic: true, limit: 200,
+            excludeEnums: false, excludeRecordProperties: false, CancellationToken.None);
+
+        var enumMember = unused.FirstOrDefault(u => u.SymbolName == "NeverReferencedValue");
+        Assert.IsNotNull(enumMember, "Expected unused public enum member in backlog sample.");
+        Assert.AreEqual("low", enumMember.Confidence);
     }
 }

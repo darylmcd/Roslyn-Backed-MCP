@@ -10,7 +10,7 @@ public static class AdvancedAnalysisTools
 {
 
     [McpServerTool(Name = "find_unused_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Find symbols (types, methods, properties, fields) with zero references across the solution — helps identify dead code")]
+     Description("Find symbols (types, methods, properties, fields) with zero references across the solution — helps identify dead code. Each hit includes Confidence: high (private/internal), medium (public API), low (enum members, record/serialization-shaped properties, interface members — often false positives).")]
     public static Task<string> FindUnusedSymbols(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
@@ -18,12 +18,15 @@ public static class AdvancedAnalysisTools
         [Description("Optional: filter by project name")] string? project = null,
         [Description("Include public symbols in the search (default: false, since public APIs may be consumed externally)")] bool includePublic = false,
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
+        [Description("When true, skip enum members (often referenced indirectly).")] bool excludeEnums = false,
+        [Description("When true, skip properties declared on record types (often DTO/serialization shaped).")] bool excludeRecordProperties = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(workspaceId, project, includePublic, limit, c);
+                var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
+                    workspaceId, project, includePublic, limit, excludeEnums, excludeRecordProperties, c);
                 return JsonSerializer.Serialize(new { count = results.Count, unusedSymbols = results }, JsonDefaults.Indented);
             }, ct));
     }
@@ -150,8 +153,13 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var results = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, project, limit, c);
-                return JsonSerializer.Serialize(new { count = results.Count, results }, JsonDefaults.Indented);
+                var response = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, project, limit, c);
+                return JsonSerializer.Serialize(new
+                {
+                    count = response.Results.Count,
+                    results = response.Results,
+                    warning = response.Warning
+                }, JsonDefaults.Indented);
             }, ct));
     }
 }

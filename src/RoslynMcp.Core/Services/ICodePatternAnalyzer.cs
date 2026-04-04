@@ -10,6 +10,6 @@ public interface ICodePatternAnalyzer
 {
     Task<IReadOnlyList<ReflectionUsageDto>> FindReflectionUsagesAsync(
         string workspaceId, string? projectFilter, CancellationToken ct);
-    Task<IReadOnlyList<SemanticSearchResultDto>> SemanticSearchAsync(
+    Task<SemanticSearchResponseDto> SemanticSearchAsync(
         string workspaceId, string query, string? projectFilter, int limit, CancellationToken ct);
 }

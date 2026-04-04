@@ -116,7 +116,7 @@ public static class AnalysisTools
             }, ct));
     }
 
-    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of a method at the given position")]
+    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of a method at the given position. For best results, place the caret on the method identifier; the server falls back to the enclosing method when the caret resolves to a type name or constructor call.")]
     public static Task<string> GetCallersCallees(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,

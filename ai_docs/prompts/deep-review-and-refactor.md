@@ -8,18 +8,32 @@
      Last surface audit: 2026-04-03 (116 tools, 6 resources, 16 prompts). -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
-> It exercises every major tool category and surfaces both codebase issues AND MCP server bugs.
+> **Primary purpose:** produce an MCP server audit (bugs, incorrect results, gaps). **Mechanism:** real refactoring plus tool calls that exercise the full surface.
 
 ---
 
 ## Prompt
 
-You are a senior .NET architect performing a comprehensive code review and refactoring pass on a C# solution. You have access to a Roslyn MCP server that provides semantic analysis, refactoring, and validation tools. Your job is twofold:
+You are a senior .NET architect. Your **primary mission** is to **audit the Roslyn MCP server** — capture incorrect results, crashes, timeouts, missing data, inconsistencies between tools, and UX/documentation gaps. Your **secondary mechanism** is to **actually refactor the target solution** (Phases 0–6) so tool calls run against real code, previews have real diffs, and `compile_check` / `test_run` mean something.
 
-1. **Review and refactor the codebase** using every available tool
-2. **Audit the MCP server itself** — report any tool failures, incorrect results, crashes, timeouts, or unexpected behavior as bugs
+1. **MCP server audit (primary)** — For every tool call, ask whether the result is correct, complete, and consistent with sibling tools. Record issues in the mandatory audit file (see Output Format). Also record **tool coverage** (what was exercised vs skipped) and **verified working** tools — not only failures.
+2. **Refactor the codebase (supporting)** — In **Phase 6 only**, apply meaningful improvements (fixes, renames, extractions, dead code removal, format, organize). Verify with `compile_check` and `test_run`. Those changes belong in the target repo’s git history. Summarize what you applied in the audit report’s **Phase 6 refactor summary** subsection (see Output Format); that summary is part of the single MCP audit file, not a separate deliverable.
 
-Work through each phase below **in order**. After each tool call, evaluate whether the result is correct and complete. If a tool returns an error, empty results when data was expected, or results that seem wrong, log it in a `## MCP Server Issues` section at the end of your report.
+**Known issues:** Open MCP server work is tracked in [`ai_docs/backlog.md`](../backlog.md) in the **Roslyn-Backed-MCP** repository (the repo that ships this server). If you hit a known issue, cite the backlog item briefly (e.g. “matches AUDIT-23”) and put **detail only on new or divergent behavior**.
+
+**Phase order note:** After Phase 8, run **Phase 10** before **Phase 9** (Undo). Phase 9 is placed after Phase 10 so `revert_last_apply` does **not** undo Phase 6 refactoring — see Phase 9.
+
+Work through each phase below **in order** (including the Phase 10 → Phase 9 sequence). After each tool call, evaluate whether the result is correct and complete. If a tool returns an error, empty results when data was expected, or results that seem wrong, record it for the MCP Server Audit Report.
+
+### Cross-cutting audit principles (apply to every phase)
+
+These standing rules apply to **every** tool call across all phases. Do not wait for a specific phase checkpoint to observe these — capture them in real time.
+
+1. **Inline severity signal:** After each tool call, mentally tag the result: **PASS** (correct and complete), **FLAG** (minor issue or unexpected behavior worth noting), or **FAIL** (incorrect, crash, or missing data). Accumulate FLAGs and FAILs for the report so observations are not lost between tool calls and report-writing time.
+2. **Tool description accuracy:** Compare each tool's actual behavior with its MCP tool schema/description. Did the schema accurately describe required vs optional parameters? Did defaults match the description? Were there undocumented parameters that changed behavior? Was the return shape consistent with what the description promised? Schema-vs-behavior mismatches are high-value findings because the descriptions are the API documentation consumed by every AI client.
+3. **Performance observation:** Note any tool call that is notably slow (>5 s for a simple single-symbol operation, >15 s for a solution-wide scan). Record the tool name, input scale, and approximate wall-clock time for the report's **Performance observations** subsection.
+4. **Error message quality:** When a tool returns an error, evaluate the message itself: Is it **actionable** (tells the caller what went wrong and what to do differently)? **Vague** (generic message with no remediation hint)? Or **unhelpful** (raw exception / stack trace)? Record the rating in the report.
+5. **Response contract consistency:** Across tool calls, note inconsistencies in response contracts: Are line numbers 0-based or 1-based consistently? Do related tools (`find_consumers`, `find_references`, `find_type_usages`) use the same field names for the same concepts? Are classification values always strings or sometimes numeric codes? Note inconsistencies in the report.
 
 ---
 
@@ -124,6 +138,8 @@ For each method with high complexity:
 
 ### Phase 6: Refactoring Pass
 
+**Applies for real product changes happen here only.** Phases 10, 12, and 13 are **preview-only** (audit the tools without leaving scaffold, package, or project-mutation junk in the repo). Phase 6 is where you apply fixes, renames, extractions, formatting, and dead-code removal that genuinely improve the solution.
+
 #### 6a. Fix All Diagnostics
 1. Pick a diagnostic ID that appears many times (e.g., IDE0005 unused usings, CS8600 nullable).
 2. Call `fix_all_preview` with `scope="solution"` and that diagnostic ID.
@@ -184,6 +200,8 @@ For each method with high complexity:
 
 **MCP audit checkpoint:** Does `fix_all_preview` find ALL instances? Does it crash or timeout on large scopes? Does `rename_preview` catch references in comments or strings? Does `extract_interface_preview` generate valid C# syntax? Does `bulk_replace_type_preview` miss any usages? Does `extract_type_preview` handle shared private members correctly? Does `format_range_preview` format only the specified range or does it bleed? Does `remove_dead_code_preview` correctly remove only the targeted symbols? After each apply, does `compile_check` pass?
 
+**Cross-tool chain validation (Phase 6):** After `rename_apply`, call `find_references` on the new name — does the count match the preview? After `extract_interface_apply`, call `type_hierarchy` on the new interface — does it show the implementor? After `fix_all_apply`, call `project_diagnostics` with the same diagnostic ID — did the count drop to zero? After `organize_usings_apply`, call `get_source_text` — are usings actually sorted? These chains verify that workspace state stays consistent across mutations.
+
 ---
 
 ### Phase 7: EditorConfig & Configuration
@@ -201,49 +219,49 @@ For each method with high complexity:
 1. Call `workspace_reload` to refresh the workspace after all refactoring file changes.
 2. Call `build_workspace` to do a full MSBuild build after all refactoring.
 3. Call `build_project` on individual projects that were modified.
-3. Call `test_discover` to find all tests.
-4. Call `test_related_files` with the list of files you modified during refactoring.
-5. Call `test_related` on a symbol you refactored to find tests targeting it specifically.
-6. Call `test_run` with the filter from `test_related_files` to run affected tests.
-7. Call `test_run` with no filter to run the full suite.
-8. Call `test_coverage` to measure coverage.
+4. Call `test_discover` to find all tests.
+5. Call `test_related_files` with the list of files you modified during refactoring.
+6. Call `test_related` on a symbol you refactored to find tests targeting it specifically.
+7. Call `test_run` with the filter from `test_related_files` to run affected tests.
+8. Call `test_run` with no filter to run the full suite.
+9. Call `test_coverage` to measure coverage.
 
-**MCP audit checkpoint:** Does `build_workspace` match `compile_check` results? Does `test_related_files` correctly identify related tests? Does `test_related` find the right tests for the symbol? Does `test_run` produce structured results with pass/fail counts? Does `test_coverage` produce coverage data?
+**MCP audit checkpoint:** Does `build_workspace` match `compile_check` results (same error count, same diagnostic IDs, same locations)? Does `test_related_files` correctly identify related tests? Does `test_related` find the right tests for the symbol? Does `test_run` produce structured results with pass/fail counts — and do the aggregated counts reflect the full solution or only the last assembly? Does `test_coverage` produce coverage data?
 
----
-
-### Phase 9: Undo Verification
-
-1. Call `revert_last_apply` to undo the most recent refactoring.
-2. Call `compile_check` to verify the revert was clean.
-3. Note: only Roslyn solution-level changes can be reverted.
-
-**MCP audit checkpoint:** Does `revert_last_apply` actually restore the previous state? Does it handle the case where there's nothing to revert? Does it report what was undone?
-
-When finished with all phases, call `workspace_close` to release the session.
+**Do not** call `revert_last_apply` yet — that would undo the most recent Phase 6 apply. Continue to **Phase 10** (preview-only), then **Phase 9** (Undo verification).
 
 ---
 
-### Phase 10: Cross-Project Operations (if multi-project solution)
+### Phase 10: Cross-Project Operations (preview only — if multi-project solution)
+
+**PREVIEW ONLY — do not apply.** Exercise preview and composite tools; inspect diffs and JSON. Applying moves, deletes, scaffolds, or package migrations here leaves audit artifacts in the repo and is **out of scope** for this prompt.
 
 1. Call `move_type_to_file_preview` to move a type into its own file.
-2. Call `move_type_to_file_apply` to apply the move.
-3. Call `move_file_preview` to move a file to a different directory with namespace update.
-4. Call `move_file_apply` to apply the file move.
-5. Call `create_file_preview` to preview creating a new source file in a project.
-6. Call `create_file_apply` to apply the file creation.
-7. Call `delete_file_preview` to preview deleting an unused source file.
-8. Call `delete_file_apply` to apply the file deletion.
-9. Call `extract_interface_cross_project_preview` to extract an interface into a different project.
-10. Call `dependency_inversion_preview` to extract interface + update constructor dependencies.
-11. Call `move_type_to_project_preview` to move a type declaration into another project.
-12. Call `extract_and_wire_interface_preview` to extract an interface and rewrite DI registrations.
-13. Call `split_class_preview` to split a type into partial class files.
-14. Call `migrate_package_preview` to replace one NuGet package with another across projects.
-15. For orchestration previews (steps 9-14), call `apply_composite_preview` to apply.
-16. Call `compile_check` after each apply to verify correctness.
+2. Call `move_file_preview` to move a file to a different directory with namespace update.
+3. Call `create_file_preview` to preview creating a new source file in a project.
+4. Call `delete_file_preview` to preview deleting an unused source file (pick a path that would be safe if you were applying — do **not** apply).
+5. Call `extract_interface_cross_project_preview` to extract an interface into a different project.
+6. Call `dependency_inversion_preview` to extract interface + update constructor dependencies.
+7. Call `move_type_to_project_preview` to move a type declaration into another project.
+8. Call `extract_and_wire_interface_preview` to extract an interface and rewrite DI registrations.
+9. Call `split_class_preview` to split a type into partial class files.
+10. Call `migrate_package_preview` to replace one NuGet package with another across projects.
+11. Optionally call `apply_composite_preview` **only as a preview path** if the server requires it to materialize a composite diff — if that would write to disk, skip and note in the audit.
 
-**MCP audit checkpoint:** Do cross-project operations correctly add project references? Do namespace updates apply? Are all references updated? Does `extract_and_wire_interface_preview` correctly identify DI registrations? Does `split_class_preview` produce valid partial classes? Do file creation and deletion previews produce correct diffs?
+**MCP audit checkpoint:** Do cross-project previews produce valid diffs? Do namespace and reference updates look correct in the preview? Does `extract_and_wire_interface_preview` correctly identify DI registrations? Does `split_class_preview` produce valid partial classes? Do file creation and deletion previews produce correct diffs?
+
+---
+
+### Phase 9: Undo Verification (run after Phase 10)
+
+**Why after Phase 10:** Calling `revert_last_apply` immediately after Phase 8 would undo the **last Phase 6 apply** (e.g. dead-code removal), not “all of Phase 6.” To test undo **without** losing Phase 6 work, add one **audit-only** apply on top, then revert it.
+
+1. Perform **exactly one** low-impact Roslyn apply whose reversal is safe — for example `format_document_preview` then `format_document_apply` on a single file (prefer one already touched in Phase 6), or another minimal apply that only affects one file. This apply must become the **new** top of the undo stack.
+2. Call `revert_last_apply`. Confirm it undoes **only** that audit-only apply; Phase 6 changes must remain.
+3. Call `compile_check` to verify the workspace is still consistent.
+4. Note: only Roslyn solution-level changes can be reverted; document if `revert_last_apply` errors or no-ops.
+
+**MCP audit checkpoint:** Does `revert_last_apply` restore the prior state for that one apply? Does it report what was undone? Does it behave correctly when there is nothing to revert (if tested)?
 
 ---
 
@@ -259,19 +277,21 @@ When finished with all phases, call `workspace_close` to release the session.
 
 ---
 
-### Phase 12: Scaffolding
+### Phase 12: Scaffolding (preview only)
 
-1. Call `scaffold_type_preview` to scaffold a new class in a project. Verify the generated file content and namespace.
-2. Call `scaffold_type_apply` to apply the scaffolded type.
-3. Call `scaffold_test_preview` to scaffold a test file for an existing type. Verify it targets the correct type and uses the right test framework.
-4. Call `scaffold_test_apply` to apply the scaffolded test.
-5. Call `compile_check`.
+**PREVIEW ONLY — do not apply.** Do not call `scaffold_type_apply` or `scaffold_test_apply`; audit the previews only.
 
-**MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace from the project structure? Does `scaffold_test_preview` generate valid test stubs? Do the apply operations write files correctly?
+1. Call `scaffold_type_preview` to scaffold a new class in a project. Verify the generated file content and namespace in the preview payload.
+2. Call `scaffold_test_preview` to scaffold a test file for an existing type. Verify it targets the correct type and uses the right test framework in the preview.
+3. Call `compile_check` if the server requires a fresh compilation for previews; otherwise skip (previews alone do not change disk).
+
+**MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace from the project structure? Does `scaffold_test_preview` generate valid test stubs? Are preview payloads complete and apply-able in principle?
 
 ---
 
-### Phase 13: Project Mutation
+### Phase 13: Project Mutation (preview only)
+
+**PREVIEW ONLY — do not apply.** Do not call `apply_project_mutation` (or any path that writes `.csproj` / `Directory.Packages.props`). Inspect preview XML/diffs only.
 
 1. Call `add_package_reference_preview` to add a NuGet package to a project.
 2. Call `remove_package_reference_preview` to remove a NuGet package.
@@ -281,11 +301,9 @@ When finished with all phases, call `workspace_close` to release the session.
 6. Call `set_conditional_property_preview` to set a conditional project property scoped to a configuration.
 7. Call `add_target_framework_preview` to add a target framework to a multi-targeting project.
 8. Call `remove_target_framework_preview` to remove a target framework.
-9. If the solution uses Central Package Management, call `add_central_package_version_preview` and `remove_central_package_version_preview`.
-10. Call `apply_project_mutation` to apply each previewed mutation.
-11. Call `compile_check` after each apply to verify the mutations.
+9. If the solution uses Central Package Management, call `add_central_package_version_preview` and `remove_central_package_version_preview` (preview only).
 
-**MCP audit checkpoint:** Do project mutation previews produce correct XML diffs? Does `apply_project_mutation` write valid project files? Do `set_conditional_property_preview` conditions evaluate correctly? Do framework additions/removals update the TargetFrameworks property correctly? Do subsequent `compile_check` calls reflect the mutations?
+**MCP audit checkpoint:** Do project mutation previews produce correct XML diffs? Do `set_conditional_property_preview` conditions evaluate correctly in the preview? Do framework additions/removals look correct in the preview? (Do not verify via apply.)
 
 ---
 
@@ -312,37 +330,177 @@ When finished with all phases, call `workspace_close` to release the session.
 5. Read `roslyn://workspace/{workspaceId}/diagnostics` and compare with `project_diagnostics` tool output.
 6. Read `roslyn://workspace/{workspaceId}/file/{filePath}` for a source file and compare with `get_source_text`.
 
-**MCP audit checkpoint:** Do resources return data consistent with their tool counterparts? Are URI templates resolved correctly? Is the server catalog accurate and up to date?
+**MCP audit checkpoint:** Do resources return data consistent with their tool counterparts? Are URI templates resolved correctly? Is the server catalog accurate and up to date? Do resource DTOs use the same field names as their tool counterparts (e.g., `Name` vs `ProjectName`)? Does the catalog tool/resource/prompt count match `server_info`?
 
 ---
 
-## Output Format
+### Phase 16: Prompt Verification (pick 4+ prompts)
 
-Produce two documents:
+The server exposes 16 prompts. Exercise at least 4 representative ones to verify their argument templates, output quality, and accuracy.
 
-### Document 1: Code Review & Refactoring Report
-- Executive summary of codebase health
-- Issues found by category (security, complexity, cohesion, dead code, etc.)
-- Refactorings performed and their impact
-- Remaining items that need manual attention
-- Metrics before and after (diagnostic counts, complexity, LCOM4, test coverage)
+1. Call `explain_error` with a diagnostic from Phase 1. Verify the explanation is accurate and actionable.
+2. Call `suggest_refactoring` on a symbol or region you analyzed in Phase 3. Verify the suggestions reference real tools and produce sensible guidance.
+3. Call `review_file` on a file modified in Phase 6. Verify the review references actual code and produces useful observations.
+4. Call `discover_capabilities` with a task category (e.g. "refactoring", "testing", "security"). Verify it returns relevant tools for the category.
+5. Optionally call additional prompts (`dead_code_audit`, `review_complexity`, `cohesion_analysis`, `consumer_impact`, `security_review`, `debug_test_failure`, etc.) for broader coverage.
 
-### Document 2: MCP Server Audit Report
-For each issue found, include:
-- **Tool name** that exhibited the issue
-- **Input parameters** that triggered it
-- **Expected behavior** vs **actual behavior**
-- **Severity**: crash / incorrect result / missing data / degraded performance / cosmetic
-- **Reproducibility**: always / sometimes / once
+**MCP audit checkpoint:** Do prompt argument templates make sense? Does the prompt output reference correct tools and produce actionable guidance? Are prompt descriptions accurate? Do any prompts fail, return empty output, or produce hallucinated tool names?
 
-Categories:
-- Tool crashes or unhandled exceptions
-- Incorrect or incomplete results
-- Inconsistencies between tools that should agree
-- Missing functionality or edge cases not handled
-- Performance issues (tools that take unreasonably long)
-- Serialization issues (malformed JSON, truncated output)
-- Line number or position mapping errors
+---
+
+### Phase 17: Boundary & Negative Testing
+
+Deliberately probe edge cases and error paths. The goal is to verify that the server validates inputs, returns helpful error messages, and does not crash on bad data.
+
+#### 17a. Invalid Identifiers
+1. Call a workspace-scoped tool (e.g. `workspace_status`) with a **non-existent workspace id**. Verify the error is actionable.
+2. Call `find_references` (or `symbol_info`) with a **fabricated symbol handle**. Verify it returns a clear error, not a crash or empty success.
+3. Call `rename_preview` with the same fabricated handle. Verify error handling.
+
+#### 17b. Out-of-Range Positions
+1. Call `go_to_definition` with a **line number beyond the end of the file**. Verify the error.
+2. Call `enclosing_symbol` at **line 0, column 0** (potential off-by-one). Verify behavior.
+3. Call `analyze_data_flow` with **startLine > endLine**. Verify it rejects or handles gracefully.
+
+#### 17c. Empty and Degenerate Inputs
+1. Call `symbol_search` with an **empty string** query. Verify it returns an empty result or a clear error, not a crash.
+2. Call `analyze_snippet` with an **empty string** code body. Verify behavior.
+3. Call `evaluate_csharp` with an **empty string**. Verify behavior.
+
+#### 17d. Stale and Double-Apply
+1. Call any `*_apply` tool with a **preview token from a previous phase** that has already been applied. Verify it rejects the stale token.
+2. Call `revert_last_apply` **twice** in succession. Verify the second call returns a clear "nothing to revert" response, not an error.
+
+#### 17e. Post-Close Operations
+1. Call `workspace_close` to close the session.
+2. Call `workspace_status` with the **now-closed workspace id**. Verify the error is clear.
+3. Call `workspace_load` to re-open the workspace for subsequent phases (or confirm session is still active for the remaining phases if you defer this sub-phase to the end).
+
+**MCP audit checkpoint:** For every error path tested: Did the server return an actionable error message or did it crash / return a vague MCP error? Rate each error message as **actionable**, **vague**, or **unhelpful**. Were there any 500-level or unhandled exceptions? Did any bad input cause the server to enter a degraded state affecting subsequent calls?
+
+---
+
+### Phase 18: Regression Verification (re-test backlog items)
+
+Before writing the report, deliberately re-test 3–5 items from [`ai_docs/backlog.md`](../backlog.md), prioritizing P1 and P2 items.
+
+1. Read `ai_docs/backlog.md` and select 3–5 items that can be reproduced with the current workspace.
+2. For each selected item, reproduce the exact scenario described (same tool, similar inputs). Record the result:
+   - **Still reproduces** — confirm with current server version.
+   - **Partially fixed** — describe what changed and what remains.
+   - **No longer reproduces** — mark as **candidate for closure** in the report.
+3. Include findings in the report's **Backlog regression check** section.
+
+**MCP audit checkpoint:** Did any previously reported issues get fixed without being removed from the backlog? Did any issues change in character (e.g., different error message, partial fix)?
+
+---
+
+When finished with all phases, call `workspace_close` to release the session (if not already closed during Phase 17e).
+
+---
+
+## Output Format — MANDATORY
+
+### What goes in git (no audit file)
+
+Meaningful refactoring from **Phase 6** is committed in the **target solution’s** repository. A short **Phase 6 refactor summary** in the MCP audit report (see Report contents) ties git history to tools exercised; the code changes themselves are not a separate file deliverable.
+
+### What goes in a file (one mandatory output)
+
+You **MUST** write exactly one file: the **MCP Server Audit Report**. The task is **not finished** until this file exists on disk. Do not only paste it in chat.
+
+### Where to save the report
+
+Save the file in the **Roslyn-Backed-MCP** repository (the repo that contains this prompt and ships the MCP server), **not** necessarily the target solution’s repo:
+
+**Canonical path:** `<Roslyn-Backed-MCP-root>/ai_docs/refactor/<repo-id>_mcp-server-audit.md`
+
+- If your workspace **is** Roslyn-Backed-MCP, use `ai_docs/refactor/` relative to that repo root.
+- If you are auditing another solution in a different workspace and **cannot** write to Roslyn-Backed-MCP, write the file to the **current workspace root** as `ai_docs/refactor/<repo-id>_mcp-server-audit.md` (create `ai_docs/refactor/` if needed) **and** state in the report header: *“Intended final path: `<path-to-Roslyn-Backed-MCP>/ai_docs/refactor/…` — copy this file there for backlog review.”*
+
+### Naming scheme (`<repo-id>`)
+
+Derive `<repo-id>` from the **audited** solution or repository name:
+- Strip the `.sln` / `.slnx` / `.csproj` extension
+- Lowercase; replace spaces and dots with hyphens
+- Examples: `ITChatBot.sln` → `itchatbot`, `FirewallAnalyzer.slnx` → `firewallanalyzer`, `Roslyn-Backed-MCP.sln` → `roslyn-backed-mcp`, `NetworkDocumentation.sln` → `networkdocumentation`
+
+### Report contents (required sections)
+
+1. **Header (metadata)** — server version (from `server_info`), Roslyn / .NET versions if available, **audited** solution path and name, date, workspace id, approximate project count and document count from `workspace_load` / `project_graph`.
+2. **Tool coverage** — For each **category** below, state **exercised** / **skipped** (with reason) / **N/A** (e.g. single-project solution and cross-project previews not applicable). Categories: Server; Workspace; Symbols; Analysis; Advanced Analysis; Consumer & Cohesion; Security; Flow; Syntax & Operations; Compilation; Analyzer Info; Snippet & Scripting; Refactoring (rename/format/organize); Code Actions & Fixes; Fix All; Interface/Type extraction; Type movement; Bulk refactor; Cross-project refactor; Orchestration; Dead code; Text edits; File ops; Project mutation (previews); Scaffolding (previews); Build & Test; EditorConfig; Undo; Resources (MCP resources); Prompts; Boundary & Negative Testing; Regression Verification.
+3. **Verified tools (working)** — Bullet list: tool name + one-line evidence (e.g. “`compile_check` — 0 errors after Phase 6”). This distinguishes “tested and fine” from “never called.”
+4. **Phase 6 refactor summary** — Concise record of **applied** Phase 6 work (not preview-only phases). Include: target repo identity (if different from Roslyn-Backed-MCP); **scope** (e.g. fix-all + rename + format — which sub-steps 6a–6i you actually applied); **notable symbols or files** touched; **MCP tools used** for each change (e.g. `rename_apply`, `fix_all_apply`); **verification** (`compile_check` / `test_run` / `build_workspace` outcomes). If Phase 6 had **no** applies (skipped or audit-only), state **N/A** with one line why. Optional: git commit hash or PR link if available.
+5. **MCP server issues (bugs)** — For each issue: **Tool name**, **inputs**, **expected** vs **actual**, **severity** (crash / incorrect result / missing data / degraded performance / cosmetic / error-message-quality), **reproducibility** (always / sometimes / once). Watch for: crashes, wrong or incomplete results, tool-vs-tool inconsistency, missing functionality, slow tools, bad JSON/truncation, bad line/position mapping, unhelpful error messages.
+6. **Improvement suggestions** — Things that work correctly but could work better. UX friction (confusing parameter names, unexpected defaults, verbose output). Missing convenience features (e.g., “I wished tool X also returned Y”). Workflow gaps (sequences of 3+ tool calls that could be a single composite tool). Output enrichment (e.g., numeric codes where string labels would be more useful). Schema/description mismatches (tool description says one thing, actual behavior does another). These are not bugs — they are actionable input for the next release.
+7. **Performance observations** — List any tools that were notably slow, with tool name, input scale, and approximate wall-clock time. If all tools responded within expected bounds, state that.
+8. **Backlog regression check** — For the 3–5 backlog items re-tested in Phase 18, state: **still reproduces**, **partially fixed** (describe), or **candidate for closure** (no longer reproduces). Include the AUDIT-ID and one-line summary for each.
+9. **Known backlog cross-check** — List any *newly observed* issues that match [`ai_docs/backlog.md`](../backlog.md) (e.g. “AUDIT-23 — semantic_search Task<bool>”) with one line each; put **full write-ups only for new or different** behavior.
+
+If there are **zero** new issues, still write sections 1–4 and 6–9; in section 5 state **“No new issues found”** and confirm the audit ran.
+
+### Markdown template (copy, fill in, save)
+
+```markdown
+# MCP Server Audit Report
+
+## Header
+- **Date:**
+- **Audited solution:**
+- **Workspace id:**
+- **Server:** (from `server_info`)
+- **Roslyn / .NET:** (if reported)
+- **Scale:** ~N projects, ~M documents
+- **Report path note:** (if not saved under Roslyn-Backed-MCP, state intended copy destination)
+
+## Tool coverage
+| Category | Status | Notes |
+|----------|--------|--------|
+| Server | exercised / skipped / N/A | |
+| Workspace | | |
+| … | | |
+
+## Verified tools (working)
+- `tool_name` — one-line observation
+- …
+
+## Phase 6 refactor summary
+- **Target repo:** (name / path; same as audited solution if in-repo)
+- **Scope:** (which of 6a–6i applied; or **N/A** — no applies, with reason)
+- **Changes:** bullets — symbol/file, tool used (`rename_apply`, etc.)
+- **Verification:** `compile_check` / `test_run` / `build_workspace` — outcome
+- **Optional:** commit / PR reference
+
+## MCP server issues (bugs)
+### 1. (title or tool name)
+| Field | Detail |
+|--------|--------|
+| Tool | |
+| Input | |
+| Expected | |
+| Actual | |
+| Severity | |
+| Reproducibility | |
+
+## Improvement suggestions
+- `tool_name` — suggestion (UX friction / missing feature / workflow gap / output enrichment / schema mismatch)
+- …
+
+## Performance observations
+- `tool_name` — input scale, ~Ns wall-clock (or "All tools responded within expected bounds")
+
+## Backlog regression check
+| AUDIT-ID | Summary | Status |
+|----------|---------|--------|
+| AUDIT-XX | one-line summary | still reproduces / partially fixed / candidate for closure |
+
+## Known backlog cross-check
+- …
+```
+
+### Completion gate
+
+The file must exist at the canonical path above (or the documented fallback). Create `ai_docs/refactor/` if missing. The task is **incomplete** without this file.
 
 ---
 

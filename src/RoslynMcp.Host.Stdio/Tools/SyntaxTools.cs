@@ -21,13 +21,15 @@ public static class SyntaxTools
         [Description("Optional: start line (1-based) to limit the tree to a specific range")] int? startLine = null,
         [Description("Optional: end line (1-based) to limit the tree to a specific range")] int? endLine = null,
         [Description("Maximum depth of the syntax tree to return (default: 3)")] int maxDepth = 3,
+        [Description("Approximate maximum characters of leaf text to accumulate before truncating the tree (default: 65536).")] int maxOutputChars = 65536,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-                var result = await syntaxService.GetSyntaxTreeAsync(workspaceId, filePath, startLine, endLine, maxDepth, c);
+                var result = await syntaxService.GetSyntaxTreeAsync(
+                    workspaceId, filePath, startLine, endLine, maxDepth, c, maxOutputChars);
                 if (result is null) throw new KeyNotFoundException($"Document not found: {filePath}");
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));

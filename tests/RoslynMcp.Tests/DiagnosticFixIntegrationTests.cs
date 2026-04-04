@@ -39,21 +39,22 @@ public class DiagnosticFixIntegrationTests : TestBase
     }
 
     [TestMethod]
-    public async Task Diagnostic_Details_For_Unsupported_Diagnostic_Has_No_Fixes()
+    public async Task Diagnostic_Details_For_CS0414_Includes_Curated_RemoveUnusedField_Fix()
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
-        var dogFile = solution.Projects.SelectMany(project => project.Documents).First(document => document.Name == "Dog.cs");
+        var probeFile = solution.Projects.SelectMany(project => project.Documents).First(document => document.Name == "DiagnosticsProbe.cs");
 
         var details = await DiagnosticService.GetDiagnosticDetailsAsync(
             WorkspaceId,
             diagnosticId: "CS0414",
-            filePath: dogFile.FilePath!,
-            line: 5,
-            column: 17,
+            filePath: probeFile.FilePath!,
+            line: 9,
+            column: 24,
             CancellationToken.None);
 
         Assert.IsNotNull(details);
-        Assert.AreEqual(0, details.SupportedFixes.Count);
+        Assert.AreEqual(1, details.SupportedFixes.Count);
+        Assert.AreEqual("remove_unused_field", details.SupportedFixes[0].FixId);
     }
 
     [TestMethod]

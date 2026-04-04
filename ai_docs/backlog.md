@@ -1,7 +1,5 @@
 # Next work and backlog
 
-# Backlog
-
 ## Instructions
 
 This file is the current-state repository for unfinished work only.
@@ -12,35 +10,25 @@ This file is the current-state repository for unfinished work only.
 - Keep entries scoped, current, and linkable to the relevant audit or reference doc.
 - Do not use this file as a changelog; completed-history narrative belongs in commit history or the archived deep-audit docs.
 
-Last audit: 2026-04-03. Consolidated from deep-review-report.md, mcp-server-audit-report.md (35 issues across 4 solutions), and prior backlog.
+Last audit: 2026-04-04.
 
 ---
 
-## P3 — Server Data Quality & Usability
+## P4 — Documentation, cosmetic, features, and release
 
-- [ ] **AUDIT-10**: `split_class_preview` reformats unrelated code during partial class split.
-- [ ] **AUDIT-11**: `source_generated_documents` shows duplicate entries for Debug/Release/platform obj folders.
-- [ ] **AUDIT-12**: `add_package_reference_preview` generates inline XML without indentation.
-- [ ] **AUDIT-14**: Resource listing omits dynamic workspace-specific resources; not discoverable via MCP resource listing.
-- [ ] **AUDIT-15**: Resource DTO property name inconsistency (`Name` vs `ProjectName` across resource responses).
-- [ ] **AUDIT-06**: `server_info` surface counts (116/6/16) don't match catalog counts. Minor discrepancy.
-- [ ] **AUDIT-21**: `fix_all_preview` returns "No code fix provider" for IDE0005, CS8019, CS0414, CA5351, CA1707. IDE and CA analyzers/fixers not loaded in MSBuildWorkspace (SDK-implicit only active during `dotnet build`). `project_diagnostics` reports 1,107 CA warnings on ITChatBot but none are fixable. Workaround: `organize_usings_preview` for unused usings.
-- [ ] **AUDIT-23**: `semantic_search` unreliable for generic return type queries (e.g., `Task<bool>`). Returns 0 on NetworkDocumentation; intermittent on ITChatBot (0 on first call, 2 correct on second). Non-generic version works fine.
-- [ ] **AUDIT-32**: `get_syntax_tree` exceeds output (142K chars) for methods >100 LOC at `maxDepth=3`. Workaround: use smaller line ranges or `maxDepth=2`.
-- [ ] **AUDIT-33**: `analyze_data_flow` variable names not scope-disambiguated. Same-named variables in different loop scopes appear as duplicates in flat list. Add scope/line info per entry.
-- [ ] **AUDIT-34**: `find_consumers` misses DI generic argument registration pattern (e.g., `AddSingleton<IFoo, Foo>`). `find_references` captures it but `find_consumers` does not classify it.
-- [ ] **AUDIT-35**: `find_unused_symbols` no confidence scoring for public symbols. Flags public enum values and DTO properties as unused. Needs high/medium/low confidence or `excludeEnums`/`excludeRecordProperties` options.
-
----
-
-## P4 — Feature Additions
-
+- [ ] **DOC-01**: Prompt appendix resource/tool count drift — `ai_docs/prompts/deep-review-and-refactor.md` lists 6 resources; live catalog reports 7 stable (includes `roslyn://server/resource-templates`). Confirmed across all 4 audit repos. Reconcile on each release.
+- [ ] **AUDIT-06**: `server_info` surface counts (116/6/16) don't match catalog counts. Minor discrepancy; subsumes prompt-vs-catalog count mismatch.
+- [ ] **AUDIT-48**: `workspace_load` accepts `.slnx` files successfully but documentation/descriptor only mentions `.sln`/`.csproj`. On FirewallAnalyzer.slnx. Update docs to reflect actual support.
+- [ ] **AUDIT-49**: `list_analyzers` field definitions unclear — `analyzerCount` vs `returnedAnalyzerCount` vs `totalRules` easy to misread. Pagination (`hasMore`) not obvious to single-shot callers. Confirmed on Roslyn-Backed-MCP.sln and ITChatBot.sln. Clarify field semantics in tool description.
 - [ ] **FEAT-06**: NuGet vulnerability scanning — scan workspace package references for known CVEs via `dotnet list package --vulnerable --format json`. Extends `IDependencyAnalysisService` with a `nuget_vulnerability_scan` tool. Addresses OWASP A06:2021 (Vulnerable and Outdated Components). See `ai_docs/prompts/add-nuget-vulnerability-surface.prompt.md` for full specification.
+- [ ] **CODE-01**: Reduce cyclomatic complexity in `RoslynMcp.Roslyn.Services` — prioritize methods that change often or are hard to test (e.g., high-CC paths such as `FindUnusedSymbolsAsync`, `ClassifyTypeUsage`, `GetDiRegistrationsAsync`, `DiscoverTestsAsync`, and long preview-style methods). Incremental extract-method / decomposition.
 - [ ] **FEAT-02**: `.editorconfig` write support — current `get_editorconfig_options` is read-only. Add ability to modify style rules programmatically.
 - [ ] **FEAT-03**: MSBuild property/item evaluation — query resolved MSBuild properties, conditional values, SDK metadata.
-- [ ] **FEAT-04**: Suppression & severity management — programmatic pragma suppression, SuppressMessage, and .editorconfig severity overrides.
-- [ ] **FEAT-05**: Maintainability Index — composite metric extending existing complexity_metrics.
+- [ ] **FEAT-04**: Suppression and severity management — programmatic pragma suppression, SuppressMessage, and .editorconfig severity overrides.
+- [ ] **FEAT-05**: Maintainability Index — composite metric extending existing `complexity_metrics`.
+- [ ] **CODE-02**: Cohesion / LCOM4 — exclude or down-rank test projects when using LCOM4 for production SRP decisions (tooling filter, defaults, or documented workflow). Test types such as `IntegrationTests` can show high LCOM4 legitimately.
 - [ ] **REL-10**: Create 512x512 PNG icon for MCP directory listing and manifest. Required by [Anthropic MCP submission guide](https://support.claude.com/en/articles/12922832-local-mcp-server-submission-guide).
+- [ ] **WORK-01**: If parallel test hosts cause MSBuild file-lock errors (`testhost.exe` holding outputs), run a full `dotnet test` on the solution after closing other hosts.
 
 ---
 
@@ -48,5 +36,5 @@ Last audit: 2026-04-03. Consolidated from deep-review-report.md, mcp-server-audi
 
 - Keep only open/incomplete items. Remove items when resolved.
 - Reprioritize on each audit pass.
-- Bug items reference `mcp-server-audit-report.md` for full reproduction details.
-- Code items reference `ai_docs/deep-review-report.md` for analysis context.
+- Bug and tool items: full reproduction and session context live in reports under `ai_docs/reports/` where applicable.
+- Broader code review and complexity notes: `ai_docs/archive/deep-review-report.md` and consolidated items in this file.

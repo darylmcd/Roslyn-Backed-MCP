@@ -24,7 +24,7 @@ public static class WorkspaceResources
     }
 
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/status", Name = "workspace_status", MimeType = "application/json")]
-    [Description("Get the current status of a loaded workspace including projects and diagnostics")]
+    [Description("Get the current status of a loaded workspace including projects and diagnostics. URI uses the workspace_status template; see roslyn://server/resource-templates if your client does not list template URIs.")]
     public static string GetWorkspaceStatus(
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId)
@@ -39,7 +39,7 @@ public static class WorkspaceResources
     }
 
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/projects", Name = "workspace_projects", MimeType = "application/json")]
-    [Description("Get the project dependency graph and project metadata for a workspace")]
+    [Description("Get the project dependency graph and project metadata for a workspace. Requires workspaceId from workspace_load; see roslyn://server/resource-templates for the URI pattern.")]
     public static string GetProjects(
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId)
@@ -54,7 +54,7 @@ public static class WorkspaceResources
     }
 
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/diagnostics", Name = "workspace_diagnostics", MimeType = "application/json")]
-    [Description("Get all compiler diagnostics for a loaded workspace")]
+    [Description("Get all compiler diagnostics for a loaded workspace. Workspace-scoped URI; see roslyn://server/resource-templates.")]
     public static async Task<string> GetDiagnostics(
         IDiagnosticService diagnosticService,
         [Description("The workspace session identifier")] string workspaceId,
@@ -70,7 +70,7 @@ public static class WorkspaceResources
     }
 
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/file/{filePath}", Name = "source_file", MimeType = "text/x-csharp")]
-    [Description("Read the source text of a file in the loaded workspace")]
+    [Description("Read the source text of a file in the loaded workspace. filePath must be URL-encoded; see roslyn://server/resource-templates.")]
     public static async Task<string> GetSourceFile(
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId,

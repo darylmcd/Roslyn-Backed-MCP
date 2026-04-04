@@ -22,6 +22,12 @@ Compact reminder layer aligned with `ai_docs/workflow.md`.
 - Imperative subject line, ≤72 chars
 - Reference backlog item IDs in body when applicable (e.g., `BUG-08`, `FEAT-01`)
 
+## Roslyn MCP (C#)
+
+- Connect the **`roslyn`** MCP server (repo `.mcp.json`: `roslynmcp` stdio).
+- For C# edits, use Roslyn MCP **refactoring** tools (`rename_*`, `extract_*`, `code_fix_*`, etc.) when available—not only navigation/diagnostics.
+- Use preview → apply; pass `workspaceId` and respect workspace version for mutations.
+
 ## Merge-Ready Handoff
 
 - Follow `CI_POLICY.md` before merge handoff.
@@ -32,5 +38,5 @@ Compact reminder layer aligned with `ai_docs/workflow.md`.
 
 - Canonical git/worktree/PR policy: `ai_docs/workflow.md`
 - Canonical validation and merge gating: `CI_POLICY.md`
-- Canonical runtime context: `ai_docs/runtime.md`
+- Canonical runtime context and Roslyn MCP agent policy: `ai_docs/runtime.md`
 - Implementation quality and safety rules: `.github/copilot-instructions.md`

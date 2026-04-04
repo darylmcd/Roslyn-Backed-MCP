@@ -22,7 +22,7 @@ public sealed record WorkspaceStatusDto(
 /// Represents the status of a project within a loaded workspace.
 /// </summary>
 public sealed record ProjectStatusDto(
-    [property: JsonPropertyName("ProjectName")]
+    [property: JsonPropertyName("name")]
     string Name,
     string FilePath,
     int DocumentCount,

@@ -16,6 +16,14 @@ public interface ISyntaxService
     /// <param name="endLine">The 1-based end line of the range to return, or <see langword="null"/> for the end of the file.</param>
     /// <param name="maxDepth">The maximum recursion depth for child nodes.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="maxOutputChars">Approximate cap on leaf text accumulation; remaining tree is replaced with a truncation notice when exceeded.</param>
     /// <returns>The root syntax node, or <see langword="null"/> if the file is not found in the workspace.</returns>
-    Task<SyntaxNodeDto?> GetSyntaxTreeAsync(string workspaceId, string filePath, int? startLine, int? endLine, int maxDepth, CancellationToken ct);
+    Task<SyntaxNodeDto?> GetSyntaxTreeAsync(
+        string workspaceId,
+        string filePath,
+        int? startLine,
+        int? endLine,
+        int maxDepth,
+        CancellationToken ct,
+        int maxOutputChars = 65536);
 }

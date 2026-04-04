@@ -9,7 +9,8 @@ public sealed record ControlFlowAnalysisDto(
     bool EndPointIsReachable,
     IReadOnlyList<string> EntryPoints,
     IReadOnlyList<string> ExitPoints,
-    IReadOnlyList<ReturnStatementDto> ReturnStatements);
+    IReadOnlyList<ReturnStatementDto> ReturnStatements,
+    string? Warning = null);
 
 /// <summary>
 /// Describes a return statement found during control flow analysis.

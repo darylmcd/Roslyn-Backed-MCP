@@ -174,7 +174,8 @@ public sealed class OrchestrationService : IOrchestrationService
         var namespaceName = GetNamespaceName(typeDeclaration);
         var partialCompilationUnit = CreateCompilationUnit(root, partialNewType, namespaceName);
         var newFilePath = Path.Combine(Path.GetDirectoryName(filePath)!, newFileName);
-        var newFileContent = partialCompilationUnit.NormalizeWhitespace().ToFullString();
+        // Avoid NormalizeWhitespace() — it reformats unrelated trivia; preserve member formatting from the source tree
+        var newFileContent = partialCompilationUnit.ToFullString();
 
         var originalContent = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
         var mutations = new List<CompositeFileMutation>

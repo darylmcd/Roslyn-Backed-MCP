@@ -9,7 +9,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class ScriptingTools
 {
     [McpServerTool(Name = "evaluate_csharp", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Evaluate a C# expression or script interactively using the Roslyn Scripting API. Returns the result value and type. Use for quick expression testing, prototyping, and validating logic without creating files or running builds.")]
+     Description("Evaluate a C# expression or script interactively using the Roslyn Scripting API. Returns the result value and type. The server enforces a script timeout (default 10 seconds, override with env ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS); infinite loops are cancelled server-side. The MCP client may also enforce its own session timeout (e.g. error -32001) independently of the server.")]
     public static Task<string> EvaluateCSharp(
         IScriptingService scriptingService,
         [Description("The C# code to evaluate (expression, statement, or multi-line script)")] string code,

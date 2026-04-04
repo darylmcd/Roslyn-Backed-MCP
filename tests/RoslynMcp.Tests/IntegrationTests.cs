@@ -43,13 +43,12 @@ public class IntegrationTests : TestBase
     }
 
     [TestMethod]
-    public void Workspace_Status_Serializes_Project_Name_As_ProjectName()
+    public void Workspace_Status_Serializes_Project_Name_As_Name_JsonKey()
     {
         var status = WorkspaceManager.GetStatus(WorkspaceId);
         var json = JsonSerializer.Serialize(status);
 
-        StringAssert.Contains(json, "\"ProjectName\"");
-        Assert.IsFalse(json.Contains("\"Name\"", StringComparison.Ordinal));
+        StringAssert.Contains(json, "\"name\":");
     }
 
     [TestMethod]
@@ -88,6 +87,14 @@ public class IntegrationTests : TestBase
         var graph = WorkspaceManager.GetProjectGraph(WorkspaceId);
         var sampleTestsGraph = graph.Projects.First(project => project.ProjectName == "SampleLib.Tests");
         CollectionAssert.Contains(sampleTestsGraph.TargetFrameworks.ToList(), "net10.0");
+    }
+
+    [TestMethod]
+    public void Project_Graph_Serializes_Project_Node_With_Name_JsonKey()
+    {
+        var graph = WorkspaceManager.GetProjectGraph(WorkspaceId);
+        var json = JsonSerializer.Serialize(graph);
+        StringAssert.Contains(json, "\"name\":");
     }
 
     [TestMethod]

@@ -51,8 +51,9 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
 
                 if (fileNamespace is null) continue;
 
-                // Count types in this namespace
-                var typeCount = root.DescendantNodes().OfType<TypeDeclarationSyntax>().Count();
+                // Count types in this namespace (classes, records, structs, interfaces, enums, delegates)
+                var typeCount = root.DescendantNodes().OfType<BaseTypeDeclarationSyntax>().Count()
+                    + root.DescendantNodes().OfType<DelegateDeclarationSyntax>().Count();
                 if (namespaceCounts.TryGetValue(fileNamespace, out var existing))
                     namespaceCounts[fileNamespace] = (existing.Count + typeCount, project.Name);
                 else
@@ -73,11 +74,22 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
             }
         }
 
-        var nodes = namespaceCounts.Select(kvp =>
-            new NamespaceNodeDto(kvp.Key, kvp.Value.Count, kvp.Value.Project)).ToList();
-
         var edgeList = edges.Select(kvp =>
             new NamespaceEdgeDto(kvp.Key.From, kvp.Key.To, kvp.Value)).ToList();
+
+        // Ensure namespaces that appear only as edge targets/sources still appear as nodes (TypeCount may be 0)
+        foreach (var edge in edgeList)
+        {
+            if (!namespaceCounts.ContainsKey(edge.FromNamespace))
+                namespaceCounts[edge.FromNamespace] = (0, null);
+            if (!namespaceCounts.ContainsKey(edge.ToNamespace))
+                namespaceCounts[edge.ToNamespace] = (0, null);
+        }
+
+        var nodes = namespaceCounts
+            .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
+            .Select(kvp => new NamespaceNodeDto(kvp.Key, kvp.Value.Count, kvp.Value.Project))
+            .ToList();
 
         // Detect circular dependencies using DFS
         var cycles = DetectCycles(edgeList);
@@ -209,7 +221,22 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
                     else if (method.TypeArguments.Length == 1)
                     {
                         serviceType = method.TypeArguments[0].ToDisplayString();
-                        implType = serviceType;
+                        // Factory / delegate overload: AddSingleton<T>(Func<IServiceProvider, T> factory)
+                        var args = invocation.ArgumentList.Arguments;
+                        if (args.Count > 0 &&
+                            args[0].Expression is AnonymousFunctionExpressionSyntax or LambdaExpressionSyntax)
+                        {
+                            implType = "factory";
+                        }
+                        else
+                            implType = serviceType;
+                    }
+
+                    if (serviceType == "unknown" &&
+                        TryGetDiTypesFromTypeOfArguments(invocation, semanticModel, ct, out var st, out var it))
+                    {
+                        serviceType = st;
+                        implType = it;
                     }
 
                     var lineSpan = invocation.GetLocation().GetLineSpan();
@@ -226,6 +253,33 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
         }
 
         return results;
+    }
+
+    private static bool TryGetDiTypesFromTypeOfArguments(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        CancellationToken ct,
+        out string serviceType,
+        out string implType)
+    {
+        serviceType = "unknown";
+        implType = "unknown";
+        var args = invocation.ArgumentList.Arguments;
+        if (args.Count >= 2 &&
+            args[0].Expression is TypeOfExpressionSyntax t0 &&
+            args[1].Expression is TypeOfExpressionSyntax t1)
+        {
+            var st = semanticModel.GetTypeInfo(t0, ct).Type;
+            var it = semanticModel.GetTypeInfo(t1, ct).Type;
+            if (st is not null && it is not null)
+            {
+                serviceType = st.ToDisplayString();
+                implType = it.ToDisplayString();
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static IReadOnlyList<CircularDependencyDto> DetectCycles(IReadOnlyList<NamespaceEdgeDto> edges)

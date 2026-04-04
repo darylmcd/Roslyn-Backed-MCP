@@ -120,9 +120,22 @@ public sealed class DiagnosticService : IDiagnosticService
 
         return new DiagnosticDetailsDto(
             Diagnostic: SymbolMapper.ToDiagnosticDto(diagnostic),
-            Description: diagnostic.Descriptor.Description.ToString(),
+            Description: BuildDiagnosticDescription(diagnostic),
             HelpLinkUri: BuildHelpLink(diagnostic.Id),
             SupportedFixes: GetSupportedFixes(diagnostic.Id));
+    }
+
+    private static string BuildDiagnosticDescription(Diagnostic diagnostic)
+    {
+        var fromDesc = diagnostic.Descriptor.Description.ToString();
+        if (!string.IsNullOrWhiteSpace(fromDesc))
+            return fromDesc;
+
+        var fromFormat = diagnostic.Descriptor.MessageFormat.ToString();
+        if (!string.IsNullOrWhiteSpace(fromFormat))
+            return fromFormat;
+
+        return diagnostic.GetMessage();
     }
 
     private static DiagnosticSeverity? ParseSeverity(string? severityFilter) =>
@@ -186,7 +199,7 @@ public sealed class DiagnosticService : IDiagnosticService
         $"https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-messages/{diagnosticId.ToLowerInvariant()}";
 
     private static IReadOnlyList<CodeFixOptionDto> GetSupportedFixes(string diagnosticId) =>
-        diagnosticId switch
+        diagnosticId.ToUpperInvariant() switch
         {
             "CS8019" =>
             [
@@ -195,8 +208,48 @@ public sealed class DiagnosticService : IDiagnosticService
                     Title: "Remove unused using",
                     Description: "Deletes the using directive flagged as unnecessary.")
             ],
+            "IDE0005" =>
+            [
+                new CodeFixOptionDto(
+                    FixId: "remove_unused_using",
+                    Title: "Remove unnecessary using directive",
+                    Description: "IDE-style unused using removal (requires a matching code fix provider in the workspace).")
+            ],
+            "CS0414" =>
+            [
+                new CodeFixOptionDto(
+                    FixId: "remove_unused_field",
+                    Title: "Remove unused field",
+                    Description: "Field is assigned but never read; remove or use the field.")
+            ],
+            "CS8600" or "CS8602" or "CS8603" =>
+            [
+                new CodeFixOptionDto(
+                    FixId: "nullable_fix",
+                    Title: "Address nullable reference warning",
+                    Description: "Add null check, use null-forgiving operator, or adjust annotations.")
+            ],
+            "CA2234" =>
+            [
+                new CodeFixOptionDto(
+                    FixId: "pass_system_uri",
+                    Title: "Pass System.Uri instead of string",
+                    Description: "CA2234: use Uri overload for HTTP client calls where applicable.")
+            ],
             _ => []
         };
+
+    private static bool DiagnosticMatchesLocation(Diagnostic diagnostic, string diagnosticId, string filePath, int line, int column)
+    {
+        if (!string.Equals(diagnostic.Id, diagnosticId, StringComparison.OrdinalIgnoreCase) ||
+            !diagnostic.Location.IsInSource)
+            return false;
+
+        var lineSpan = diagnostic.Location.GetLineSpan();
+        return string.Equals(Path.GetFullPath(lineSpan.Path), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase) &&
+               lineSpan.StartLinePosition.Line + 1 == line &&
+               lineSpan.StartLinePosition.Character + 1 == column;
+    }
 
     private static async Task<Diagnostic?> FindDiagnosticAsync(
         Solution solution,
@@ -210,25 +263,34 @@ public sealed class DiagnosticService : IDiagnosticService
         {
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null)
-            {
                 continue;
-            }
 
             foreach (var diagnostic in compilation.GetDiagnostics(ct))
             {
-                if (!string.Equals(diagnostic.Id, diagnosticId, StringComparison.OrdinalIgnoreCase) ||
-                    !diagnostic.Location.IsInSource)
-                {
-                    continue;
-                }
-
-                var lineSpan = diagnostic.Location.GetLineSpan();
-                if (string.Equals(Path.GetFullPath(lineSpan.Path), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase) &&
-                    lineSpan.StartLinePosition.Line + 1 == line &&
-                    lineSpan.StartLinePosition.Character + 1 == column)
-                {
+                if (DiagnosticMatchesLocation(diagnostic, diagnosticId, filePath, line, column))
                     return diagnostic;
-                }
+            }
+
+            var analyzers = project.AnalyzerReferences
+                .SelectMany(reference => reference.GetAnalyzers(project.Language))
+                .ToImmutableArray();
+            if (analyzers.Length == 0)
+                continue;
+
+            var compilationWithAnalyzers = compilation.WithAnalyzers(
+                analyzers,
+                new CompilationWithAnalyzersOptions(
+                    options: project.AnalyzerOptions,
+                    onAnalyzerException: null,
+                    concurrentAnalysis: true,
+                    logAnalyzerExecutionTime: false,
+                    reportSuppressedDiagnostics: false));
+
+            var analyzerDiagnostics = await compilationWithAnalyzers.GetAllDiagnosticsAsync(ct).ConfigureAwait(false);
+            foreach (var diagnostic in analyzerDiagnostics)
+            {
+                if (DiagnosticMatchesLocation(diagnostic, diagnosticId, filePath, line, column))
+                    return diagnostic;
             }
         }
 
