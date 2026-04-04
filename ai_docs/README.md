@@ -62,3 +62,4 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | Doc-only change | `CI_POLICY.md` (run `verify-ai-docs.ps1`) |
 | Planning new features | `backlog.md` → `architecture.md` → `docs/roadmap.md` |
 | Human setup / Docker / CI artifacts | `docs/setup.md` |
+| Release parity / must-have matrix | `docs/parity-gap-implementation-plan.md` |

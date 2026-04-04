@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Threading;
 using System.Xml.Linq;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -48,6 +49,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private readonly IFileWatcherService _fileWatcher;
     private readonly WorkspaceManagerOptions _options;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
+    /// <summary>Limits concurrent workspace sessions; paired with <see cref="Close"/> and <see cref="Dispose"/>.</summary>
+    private readonly SemaphoreSlim _workspaceSlots;
 
     public WorkspaceManager(
         ILogger<WorkspaceManager> logger,
@@ -59,20 +62,24 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _previewStore = previewStore;
         _fileWatcher = fileWatcher;
         _options = options ?? new WorkspaceManagerOptions();
+        var max = _options.MaxConcurrentWorkspaces > 0 ? _options.MaxConcurrentWorkspaces : 8;
+        _workspaceSlots = new SemaphoreSlim(max, max);
     }
+
+    public bool ContainsWorkspace(string workspaceId) =>
+        !string.IsNullOrWhiteSpace(workspaceId) && _sessions.ContainsKey(workspaceId);
 
     public async Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct)
     {
         var fullPath = ValidateWorkspacePath(path);
-        if (_sessions.Count >= _options.MaxConcurrentWorkspaces)
+        if (!await _workspaceSlots.WaitAsync(0, ct).ConfigureAwait(false))
         {
             throw new InvalidOperationException(
-                $"The server is already tracking {_sessions.Count} workspaces. Close an existing workspace before loading another.");
+                $"The server is already tracking {_options.MaxConcurrentWorkspaces} workspaces. Close an existing workspace before loading another.");
         }
-
         var workspaceId = Guid.NewGuid().ToString("N");
         var session = new WorkspaceSession(workspaceId);
-
+        var sessionAdded = false;
         try
         {
             await LoadIntoSessionAsync(session, fullPath, ct).ConfigureAwait(false);
@@ -81,6 +88,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
             }
 
+            sessionAdded = true;
             _fileWatcher.Watch(workspaceId, session.LoadedPath!);
             return BuildStatus(session);
         }
@@ -109,6 +117,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             session.Dispose();
             throw;
         }
+        finally
+        {
+            if (!sessionAdded)
+            {
+                _workspaceSlots.Release();
+            }
+        }
     }
 
     public async Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
@@ -131,6 +146,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _fileWatcher.Unwatch(workspaceId);
         _previewStore.InvalidateAll(workspaceId);
         session.Dispose();
+        _workspaceSlots.Release();
         LogWorkspaceClosed(_logger, workspaceId, null);
         return true;
     }
@@ -329,7 +345,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         {
             session.Dispose();
         }
+        var n = _sessions.Count;
         _sessions.Clear();
+        for (var i = 0; i < n; i++)
+        {
+            _workspaceSlots.Release();
+        }
+
+        _workspaceSlots.Dispose();
     }
 
     private async Task LoadIntoSessionAsync(WorkspaceSession session, string path, CancellationToken ct)

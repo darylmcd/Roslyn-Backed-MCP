@@ -68,6 +68,8 @@ static WorkspaceManagerOptions BindWorkspaceManagerOptions()
     var opts = new WorkspaceManagerOptions();
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_MAX_WORKSPACES"), out var maxWs) && maxWs > 0)
         opts = new WorkspaceManagerOptions { MaxConcurrentWorkspaces = maxWs, MaxSourceGeneratedDocuments = opts.MaxSourceGeneratedDocuments };
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_MAX_SOURCE_GENERATED_DOCS"), out var maxGen) && maxGen > 0)
+        opts = new WorkspaceManagerOptions { MaxConcurrentWorkspaces = opts.MaxConcurrentWorkspaces, MaxSourceGeneratedDocuments = maxGen };
     return opts;
 }
 
@@ -81,6 +83,8 @@ static ValidationServiceOptions BindValidationServiceOptions()
         opts = new ValidationServiceOptions { BuildTimeout = TimeSpan.FromSeconds(bs), TestTimeout = opts.TestTimeout, MaxRelatedFiles = opts.MaxRelatedFiles };
     if (int.TryParse(testSec, out var ts) && ts > 0)
         opts = new ValidationServiceOptions { BuildTimeout = opts.BuildTimeout, TestTimeout = TimeSpan.FromSeconds(ts), MaxRelatedFiles = opts.MaxRelatedFiles };
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_MAX_RELATED_FILES"), out var mrf) && mrf > 0)
+        opts = new ValidationServiceOptions { BuildTimeout = opts.BuildTimeout, TestTimeout = opts.TestTimeout, MaxRelatedFiles = mrf };
 
     return opts;
 }
@@ -89,7 +93,9 @@ static PreviewStoreOptions BindPreviewStoreOptions()
 {
     var opts = new PreviewStoreOptions();
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_MAX_ENTRIES"), out var max) && max > 0)
-        opts = new PreviewStoreOptions { MaxEntries = max };
+        opts = new PreviewStoreOptions { MaxEntries = max, TtlMinutes = opts.TtlMinutes };
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_TTL_MINUTES"), out var ttl) && ttl > 0)
+        opts = new PreviewStoreOptions { MaxEntries = opts.MaxEntries, TtlMinutes = ttl };
     return opts;
 }
 

@@ -71,12 +71,12 @@ public abstract class TestBase
         }
 
         PreviewStore = new PreviewStore();
-        WorkspaceExecutionGate = new WorkspaceExecutionGate();
-        DotnetCommandRunner = new DotnetCommandRunner();
         WorkspaceManager = new WorkspaceManager(
             NullLogger<WorkspaceManager>.Instance,
             PreviewStore,
             new FileWatcherService(NullLogger<FileWatcherService>.Instance));
+        WorkspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), WorkspaceManager);
+        DotnetCommandRunner = new DotnetCommandRunner();
         GatedCommandExecutor = new GatedCommandExecutor(
             WorkspaceManager,
             DotnetCommandRunner,

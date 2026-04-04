@@ -17,17 +17,19 @@ public static class ServiceCollectionExtensions
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
     public static IServiceCollection AddRoslynServices(this IServiceCollection services)
     {
+        services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
         services.AddSingleton<IWorkspaceExecutionGate>(sp =>
         {
             var opts = sp.GetService<ExecutionGateOptions>() ?? new ExecutionGateOptions();
-            return new WorkspaceExecutionGate(opts);
+            return new WorkspaceExecutionGate(opts, sp.GetRequiredService<IWorkspaceManager>());
         });
         services.AddSingleton<IDotnetCommandRunner, DotnetCommandRunner>();
         services.AddSingleton<IGatedCommandExecutor, GatedCommandExecutor>();
         services.AddSingleton<IPreviewStore>(sp =>
         {
             var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
-            return new PreviewStore(opts.MaxEntries);
+            var ttl = TimeSpan.FromMinutes(opts.TtlMinutes > 0 ? opts.TtlMinutes : 5);
+            return new PreviewStore(opts.MaxEntries, ttl);
         });
         services.AddSingleton<IProjectMutationPreviewStore>(sp =>
         {
@@ -39,7 +41,6 @@ public static class ServiceCollectionExtensions
             var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
             return new CompositePreviewStore(opts.MaxEntries);
         });
-        services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
         services.AddSingleton<ISymbolNavigationService, SymbolNavigationService>();
         services.AddSingleton<ISymbolSearchService, SymbolSearchService>();
         services.AddSingleton<IReferenceService, ReferenceService>();
