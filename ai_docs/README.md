@@ -40,6 +40,8 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | `prompts/standardize-backlog-hygiene.md` | Align backlog hygiene across repos with `backlog.md` and `workflow.md` |
 | `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive code review and MCP server audit (all 18 phases). Keep in sync with project surface. Do not delete. |
 | `audit-reports/README.md` | Where to store MCP deep-review audit outputs; links baseline template |
+| `audit-reports/deep-review-baseline-2026-04-04.md` | Baseline checklist for a full deep-review session (update when tool surface changes) |
+| `audit-reports/2026-04-04-post-1.5-surface-audit.md` | Example post-release surface audit snapshot |
 
 ## Archive
 

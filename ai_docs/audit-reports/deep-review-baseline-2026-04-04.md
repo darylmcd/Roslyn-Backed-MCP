@@ -1,5 +1,7 @@
 # Deep review & MCP audit — baseline session (2026-04-04)
 
+<!-- purpose: Baseline checklist template for full deep-review MCP sessions; update when surface changes. -->
+
 This file is a **baseline template** for executing [`ai_docs/prompts/deep-review-and-refactor.md`](../prompts/deep-review-and-refactor.md). A full PASS/FAIL matrix requires an **interactive MCP session** (Cursor or other client) with the server running (`dotnet run --project src/RoslynMcp.Host.Stdio` or global `roslynmcp`).
 
 ## Session parameters

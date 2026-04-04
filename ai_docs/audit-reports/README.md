@@ -1,5 +1,7 @@
 # MCP deep-review audit reports
 
+<!-- purpose: Index for deep-review audit outputs; points to baseline and session snapshots. -->
+
 Use the living prompt [`ai_docs/prompts/deep-review-and-refactor.md`](../prompts/deep-review-and-refactor.md) with an MCP client connected to **roslyn-mcp** to exercise the full tool surface against a real solution.
 
 ## Outputs
