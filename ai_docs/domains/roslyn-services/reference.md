@@ -1,5 +1,7 @@
 # Roslyn Services Domain Reference
 
+<!-- purpose: Workspace, analysis, navigation, and refactoring behavior. -->
+
 ## Scope
 
 This domain covers workspace loading, diagnostics, semantic navigation, and refactoring behavior.

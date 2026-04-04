@@ -1,5 +1,7 @@
 # Documentation Migration Checklist
 
+<!-- purpose: Steps for structural migrations of AI-facing documentation. -->
+
 Use this for structural AI-doc migrations.
 
 ## Checklist

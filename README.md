@@ -22,6 +22,8 @@ For the shortest safe path in new agent sessions:
 
 ## Quick Start
 
+For packaging, Docker, the global `dotnet` tool, and CI artifact names, see [docs/setup.md](docs/setup.md).
+
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) (10.0.104+)

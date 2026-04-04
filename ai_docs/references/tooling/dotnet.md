@@ -1,5 +1,7 @@
 # Dotnet Tooling Reference
 
+<!-- purpose: Common dotnet CLI entry points used in this repository. -->
+
 ## Core Commands
 
 - Build: `dotnet build RoslynMcp.slnx --nologo`

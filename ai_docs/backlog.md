@@ -1,5 +1,7 @@
 # Next work and backlog
 
+<!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
+
 **updated_at:** 2026-04-04
 
 ## Agent contract
@@ -19,8 +21,8 @@
 These are **not** backlog rows; do not delete them when clearing completed work.
 
 - Reprioritize on each audit pass.
-- Bug and tool items: full reproduction and session context live in reports under `ai_docs/reports/` where applicable.
-- Broader code review and complexity notes: `ai_docs/archive/deep-review-report.md` and consolidated open items in this file.
+- Bug and tool items: put reproduction and session context in the PR or linked issue when it helps reviewers.
+- Broader planning and complexity notes stay in this file; `ai_docs/archive/` holds policy only (see `archive/README.md`).
 
 ## Open work
 

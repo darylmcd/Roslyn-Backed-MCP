@@ -1,5 +1,7 @@
 # Architecture
 
+<!-- purpose: Current system layers, dependencies, data flow, and known gaps. -->
+
 ## Layer Map
 
 | Layer | Project | Responsibility |

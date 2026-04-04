@@ -1,5 +1,7 @@
 # Tool Usage Guide for AI Agents
 
+<!-- purpose: Help agents pick Roslyn MCP tools and preview/apply workflows. -->
+
 This document helps AI agents choose the right tools and workflows for common tasks.
 Call `discover_capabilities` with a category to get contextual guidance, or use `server_info` for a full capability overview.
 

@@ -1,5 +1,7 @@
 # MCP Client Tooling Reference
 
+<!-- purpose: How MCP clients (e.g. Cursor) connect to this server and policy pointers. -->
+
 ## Cursor
 
 - This repository ships **`.mcp.json`** at the repo root with a `roslyn` server (`command: roslynmcp`, stdio). Cursor loads project MCP config when present; you can mirror the same entry in `.cursor/mcp.json` or user MCP settings if needed.

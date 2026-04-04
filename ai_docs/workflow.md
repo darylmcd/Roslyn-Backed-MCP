@@ -1,5 +1,7 @@
 # Workflow
 
+<!-- purpose: Git branches, worktrees, PRs, and merge-ready handoff for this repo. -->
+
 This document is the single owner for branch, worktree, pull-request, and merge-ready handoff workflow.
 
 ## Branching
