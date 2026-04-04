@@ -100,6 +100,7 @@ public sealed class SecurityDiagnosticService : ISecurityDiagnosticService
 
     public Task<SecurityAnalyzerStatusDto> GetAnalyzerStatusAsync(string workspaceId, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
         var netAnalyzersPresent = false;
@@ -107,6 +108,7 @@ public sealed class SecurityDiagnosticService : ISecurityDiagnosticService
 
         foreach (var project in solution.Projects)
         {
+            ct.ThrowIfCancellationRequested();
             foreach (var analyzerRef in project.AnalyzerReferences)
             {
                 var displayName = analyzerRef.Display ?? string.Empty;

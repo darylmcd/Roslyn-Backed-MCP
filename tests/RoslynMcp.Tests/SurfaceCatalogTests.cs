@@ -76,6 +76,8 @@ public sealed class SurfaceCatalogTests
         public bool Close(string workspaceId) => throw new NotSupportedException();
         public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
         public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
         public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();

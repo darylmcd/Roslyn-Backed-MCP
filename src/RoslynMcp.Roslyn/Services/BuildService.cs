@@ -26,7 +26,7 @@ public sealed class BuildService : IBuildService
 
     public async Task<BuildResultDto> BuildWorkspaceAsync(string workspaceId, CancellationToken ct)
     {
-        var status = _workspaceManager.GetStatus(workspaceId);
+        var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
         var targetPath = status.LoadedPath ?? throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
         var execution = await _executor.ExecuteAsync(
             workspaceId,

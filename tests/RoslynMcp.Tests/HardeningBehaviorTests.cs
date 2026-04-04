@@ -128,6 +128,8 @@ public sealed class HardeningBehaviorTests : TestBase
                 IsLoaded: true,
                 IsStale: false,
                 WorkspaceDiagnostics: []);
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(GetStatus(workspaceId));
         public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();

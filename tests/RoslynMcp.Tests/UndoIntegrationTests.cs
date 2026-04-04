@@ -57,7 +57,7 @@ public sealed class UndoIntegrationTests : TestBase
             StringAssert.Contains(undoEntry.Description, "Rename");
 
             // Revert
-            var reverted = UndoService.Revert(workspaceId, WorkspaceManager);
+            var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
             Assert.IsTrue(reverted, "Revert should succeed");
 
             // Verify original name is back
@@ -72,9 +72,9 @@ public sealed class UndoIntegrationTests : TestBase
     }
 
     [TestMethod]
-    public void Revert_Without_Prior_Apply_Returns_False()
+    public async Task Revert_Without_Prior_Apply_Returns_False()
     {
-        var result = UndoService.Revert("nonexistent-workspace", WorkspaceManager);
+        var result = await UndoService.RevertAsync("nonexistent-workspace", WorkspaceManager, CancellationToken.None);
         Assert.IsFalse(result);
     }
 

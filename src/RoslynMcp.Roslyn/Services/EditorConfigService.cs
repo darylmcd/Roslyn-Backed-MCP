@@ -198,6 +198,7 @@ public sealed class EditorConfigService : IEditorConfigService
     public Task<EditorConfigWriteResultDto> SetOptionAsync(
         string workspaceId, string sourceFilePath, string key, string value, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         _ = _workspace.GetCurrentSolution(workspaceId);
         if (string.IsNullOrWhiteSpace(key))
         {

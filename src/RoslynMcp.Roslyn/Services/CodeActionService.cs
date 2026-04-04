@@ -123,7 +123,7 @@ public sealed class CodeActionService : ICodeActionService
                 {
                     await provider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogDebug(ex, "Code fix provider {Provider} failed", provider.GetType().Name);
                 }
@@ -145,7 +145,7 @@ public sealed class CodeActionService : ICodeActionService
             {
                 await provider.ComputeRefactoringsAsync(context).ConfigureAwait(false);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogDebug(ex, "Code refactoring provider {Provider} failed", provider.GetType().Name);
             }
@@ -175,7 +175,7 @@ public sealed class CodeActionService : ICodeActionService
                 .Select(t =>
                 {
                     try { return (CodeFixProvider?)Activator.CreateInstance(t); }
-                    catch { return null; }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
                 })
                 .Where(p => p is not null)
                 .Cast<CodeFixProvider>()
@@ -184,7 +184,7 @@ public sealed class CodeActionService : ICodeActionService
             _logger.LogInformation("Loaded {Count} code fix providers from CSharp Features", providers.Length);
             return providers;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Failed to load code fix providers");
             return [];
@@ -201,7 +201,7 @@ public sealed class CodeActionService : ICodeActionService
                 .Select(t =>
                 {
                     try { return (CodeRefactoringProvider?)Activator.CreateInstance(t); }
-                    catch { return null; }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
                 })
                 .Where(p => p is not null)
                 .Cast<CodeRefactoringProvider>()
@@ -210,7 +210,7 @@ public sealed class CodeActionService : ICodeActionService
             _logger.LogInformation("Loaded {Count} code refactoring providers from CSharp Features", providers.Length);
             return providers;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Failed to load code refactoring providers");
             return [];

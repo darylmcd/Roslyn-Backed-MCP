@@ -7,7 +7,7 @@ namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
 /// Retains the last pre-apply solution snapshot per workspace so that it can
-/// be restored via <see cref="Revert"/>.
+/// be restored via <see cref="RevertAsync"/>.
 /// </summary>
 public sealed class UndoService : IUndoService
 {
@@ -29,7 +29,7 @@ public sealed class UndoService : IUndoService
         return new UndoEntry(snapshot.WorkspaceId, snapshot.Description, snapshot.AppliedAtUtc);
     }
 
-    public bool Revert(string workspaceId, IWorkspaceManager workspace)
+    public async Task<bool> RevertAsync(string workspaceId, IWorkspaceManager workspace, CancellationToken cancellationToken = default)
     {
         if (!_snapshots.TryRemove(workspaceId, out var snapshot))
             return false;
@@ -47,7 +47,7 @@ public sealed class UndoService : IUndoService
                 var oldDoc = snapshot.PreApplySolution.GetDocument(docId);
                 if (oldDoc is null) continue;
 
-                var oldText = oldDoc.GetTextAsync().GetAwaiter().GetResult();
+                var oldText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
                 targetSolution = targetSolution.WithDocumentText(docId, oldText);
             }
         }

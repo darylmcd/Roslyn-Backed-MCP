@@ -86,10 +86,10 @@ public static class WorkspaceTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, _ =>
+            gate.RunAsync(workspaceId, async c =>
             {
-                var status = workspace.GetStatus(workspaceId);
-                return Task.FromResult(JsonSerializer.Serialize(status, JsonDefaults.Indented));
+                var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
+                return JsonSerializer.Serialize(status, JsonDefaults.Indented);
             }, ct));
     }
 

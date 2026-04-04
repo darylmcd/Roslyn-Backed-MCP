@@ -143,7 +143,7 @@ public sealed class ReferenceService : IReferenceService
 
                 return new BulkReferenceResultDto(key, symbol.ToDisplayString(), locations.Count, locations, null);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 return new BulkReferenceResultDto(key, null, 0, [], ex.Message);
             }

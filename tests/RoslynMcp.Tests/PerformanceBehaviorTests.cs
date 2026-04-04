@@ -122,6 +122,9 @@ public class PerformanceBehaviorTests : TestBase
                 IsStale: false,
                 WorkspaceDiagnostics: []);
 
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(GetStatus(workspaceId));
+
         public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
 
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) =>

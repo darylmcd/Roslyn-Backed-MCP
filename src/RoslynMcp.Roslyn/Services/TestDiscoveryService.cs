@@ -33,7 +33,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             return cached.Result;
 
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
-        var testProjectNames = _workspaceManager.GetStatus(workspaceId).Projects
+        var testProjectNames = (await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false)).Projects
             .Where(project => project.IsTestProject)
             .Select(project => project.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -137,7 +137,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
         foreach (var filePath in filePaths)
         {
-            var document = _workspaceManager.GetCurrentSolution(workspaceId)
+            var document = solution
                 .Projects
                 .SelectMany(p => p.Documents)
                 .FirstOrDefault(d => d.FilePath is not null &&

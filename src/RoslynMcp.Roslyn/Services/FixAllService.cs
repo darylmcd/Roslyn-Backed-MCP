@@ -233,7 +233,7 @@ public sealed class FixAllService : IFixAllService
             {
                 await provider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Some providers may fail on specific diagnostics; try the next one
                 continue;
@@ -370,7 +370,7 @@ public sealed class FixAllService : IFixAllService
                         list.Add(p);
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogDebug(ex, "Could not load code fix providers from analyzer assembly {Path}", analyzerPath);
                 }
@@ -408,7 +408,7 @@ public sealed class FixAllService : IFixAllService
         {
             return Assembly.Load("Microsoft.CodeAnalysis.CSharp.Features");
         }
-        catch
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return null;
         }
@@ -430,7 +430,7 @@ public sealed class FixAllService : IFixAllService
                 .Select(t =>
                 {
                     try { return (CodeFixProvider?)Activator.CreateInstance(t); }
-                    catch { return null; }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
                 })
                 .Where(p => p is not null)
                 .Cast<CodeFixProvider>()
@@ -439,7 +439,7 @@ public sealed class FixAllService : IFixAllService
             _logger.LogInformation("FixAllService loaded {Count} code fix providers from CSharp Features", providers.Length);
             return providers;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Failed to load code fix providers for FixAll");
             return [];
@@ -458,7 +458,7 @@ public sealed class FixAllService : IFixAllService
                 .Select(t =>
                 {
                     try { return (DiagnosticAnalyzer?)Activator.CreateInstance(t); }
-                    catch { return null; }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
                 })
                 .Where(a => a is not null)
                 .Cast<DiagnosticAnalyzer>()
@@ -467,7 +467,7 @@ public sealed class FixAllService : IFixAllService
             _logger.LogInformation("FixAllService loaded {Count} diagnostic analyzers from CSharp Features", analyzers.Length);
             return analyzers;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Failed to load diagnostic analyzers for FixAll");
             return [];

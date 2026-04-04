@@ -48,6 +48,15 @@ public interface IWorkspaceManager
     WorkspaceStatusDto GetStatus(string workspaceId);
 
     /// <summary>
+    /// Returns the current status for the specified workspace session, waiting on the same load lock as
+    /// <see cref="GetStatus"/> without blocking a thread while the lock is held.
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <exception cref="System.Collections.Generic.KeyNotFoundException">Thrown when no session with <paramref name="workspaceId"/> exists.</exception>
+    Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Returns the project and dependency graph for the specified workspace session.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier.</param>
