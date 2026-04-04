@@ -34,6 +34,7 @@ Supported stable tool families:
 - diagnostics and impact-analysis tools
 - build/test discovery, execution, and coverage collection (`test_discover`, `test_run`, `test_related`, `test_related_files`, `test_coverage`, etc.)
 - security diagnostics and vulnerability scanning (`security_diagnostics`, `security_analyzer_status`, `nuget_vulnerability_scan`)
+- read-only analysis helpers promoted in v1.6.0: `compile_check`, `list_analyzers`, `find_consumers`, `get_cohesion_metrics`, `find_shared_members`, `analyze_snippet`
 - preview/apply refactoring tools
 
 Stable resources:

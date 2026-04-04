@@ -40,7 +40,7 @@ For session bootstrap and workflow, follow `AGENTS.md` first.
 - Prefer integration tests over unit tests — mock-only tests have previously masked real failures
 - Use sample solutions in `samples/` for workspace-level tests
 - Run `dotnet test RoslynMcp.slnx --nologo` before declaring work merge-ready
-- Current coverage baseline (from Cobertura root after `./eng/verify-release.ps1`): **~59.3% line / ~46.4% branch** — do not regress it; see `docs/coverage-baseline.md`
+- Current coverage baseline (from Cobertura root after `./eng/verify-release.ps1`): **~60.7% line / ~47.3% branch** — do not regress it; see `docs/coverage-baseline.md`
 
 ## Safety Guardrails
 

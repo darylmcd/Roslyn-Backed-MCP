@@ -16,23 +16,27 @@ This document supports the post-release roadmap item **“promote experimental �
 
 | Tier | Tools | Resources | Prompts |
 |------|-------|-----------|---------|
-| Stable | 50 | 8 stable / 0 experimental | 0 stable / 18 experimental |
-| Experimental | 73 | — | — |
+| Stable | 56 | 8 stable / 0 experimental | 0 stable / 18 experimental |
+| Experimental | 67 | — | — |
 
 Authoritative counts: `ServerSurfaceCatalog.GetSummary()` / `server_info` / `roslyn://server/catalog`.
 
-## Tier 1 — candidates for **future** promotion (pending review)
+## Tier 1 — promoted (v1.6.0)
 
-These are **read-only or preview-first** tools that align with stable contract themes (navigation, diagnostics, validation) and already have integration-test adjacency or clear user value. **No promotion is approved here** — use this as a backlog for human/product review.
+The following were promoted to **stable** in v1.6.0 per `docs/release-policy.md` (catalog + contract + semver).
 
-| Tool | Category | Rationale for review |
-|------|----------|----------------------|
-| `compile_check` | validation | Fast compileability signal without `dotnet build`; complements stable build/test tools. |
-| `list_analyzers` | analysis | Supports diagnostics workflows; read-only. |
+| Tool | Category | Notes |
+|------|----------|--------|
+| `compile_check` | validation | Fast compileability signal without `dotnet build`. |
+| `list_analyzers` | analysis | Diagnostics workflows; read-only. |
 | `find_consumers` | analysis | Consumer/impact analysis; read-only. |
-| `get_cohesion_metrics` | analysis | Cohesion metrics; read-only. |
-| `find_shared_members` | analysis | Supports refactor planning; read-only. |
+| `get_cohesion_metrics` | analysis | LCOM4 cohesion metrics; read-only. |
+| `find_shared_members` | analysis | Refactor planning; read-only. |
 | `analyze_snippet` | analysis | Ephemeral analysis without workspace; read-only. |
+
+## Next promotion pass
+
+Repopulate Tier 1 candidates after the next audit or when operational evidence justifies additional stable promotions.
 
 ## Tier 2 — needs stronger evidence before promotion
 

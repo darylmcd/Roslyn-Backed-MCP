@@ -56,6 +56,21 @@ Thresholds are **examples** — adjust for your user expectations.
 | compile_check (emit) P50 / P95 | |
 | Decision | Stay on hardening / Open performance backlog item |
 
+## Recorded run — sample solution smoke (2026-04-04)
+
+This run **validates the procedure** on the repo’s small sample fixture. It is **not** a substitute for measuring a 50+ project “worst case” solution; treat it as a methodology checkpoint only.
+
+| Field | Value |
+|-------|--------|
+| Date | 2026-04-04 |
+| Solution | Repository `samples/SampleSolution` (fixture for integration tests) |
+| Project count | 4 |
+| roslyn-mcp version / commit | 1.6.0 (see `Directory.Build.props`) |
+| Method | Wall-clock budgets enforced by `tests/RoslynMcp.Tests/PerformanceBaselineTests.cs` (`dotnet test RoslynMcp.slnx --filter PerformanceBaselineTests`) — not full P50/P95 spreadsheet |
+| workspace_load / symbol_search / find_references | All completed within the generous budgets in `PerformanceBaselineTests` on a typical dev workstation |
+| compile_check | Covered by `ValidationToolsIntegrationTests` and `HighValueCoverageIntegrationTests` (correctness + failure fixture); not timed for P95 here |
+| Decision | **Stay on hardening** for this profile. **Large-solution (50+ projects) profiling:** repeat the template above when a representative customer-scale solution is available; add a backlog row only with measured P95 per `## Backlog linkage`. |
+
 ## Backlog linkage
 
 If performance work is justified, add a row to `ai_docs/backlog.md` with **measured** P95, operation name, and solution profile — not generic “make it faster.”
