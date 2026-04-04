@@ -17,7 +17,7 @@
 
 | File | Role |
 |------|------|
-| [`.mcp.json`](../../../.mcp.json) (repo root) | Registers `roslyn` with `type: stdio`, `command: roslynmcp`. Cursor loads project MCP when present. |
+| `.mcp.json` (repo root; optional; often gitignored locally) — see [MCP Client Configuration](../../../README.md#mcp-client-configuration) | Registers `roslyn` with `type: stdio`, `command: roslynmcp`. Cursor loads project MCP when present. |
 | `.cursor/mcp.json` or user MCP settings | Optional mirror; same `command`/`args` model. |
 
 **Do not commit** machine-specific absolute paths. Prefer `roslynmcp` on `PATH` or document `dotnet run` with a **local** path in your own config only.
