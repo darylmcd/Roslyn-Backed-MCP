@@ -9,7 +9,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class FixAllTools
 {
     [McpServerTool(Name = "fix_all_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
-     Description("Preview applying a code fix to ALL instances of a diagnostic across a scope (document, project, or solution). Dramatically faster than fixing diagnostics one at a time. Use list_analyzers or project_diagnostics to find diagnostic IDs.")]
+     Description("Preview applying a code fix to ALL instances of a diagnostic across a scope (document, project, or solution). Dramatically faster than fixing diagnostics one at a time. Use list_analyzers or project_diagnostics to find diagnostic IDs. When no provider or no FixAll support exists, the response includes guidanceMessage with next steps (e.g. organize_usings_preview for IDE0005).")]
     public static Task<string> PreviewFixAll(
         IWorkspaceExecutionGate gate,
         IFixAllService fixAllService,

@@ -42,7 +42,7 @@ public static class SecurityTools
     }
 
     [McpServerTool(Name = "nuget_vulnerability_scan", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Scan NuGet package references for known security vulnerabilities (CVEs) using the NuGet vulnerability database via dotnet list package. Returns affected packages with severity, advisory links, and project locations. Requires .NET 8+ SDK with JSON output support.")]
+     Description("Scan NuGet package references for known security vulnerabilities (CVEs) using the NuGet vulnerability database via dotnet list package. Returns affected packages with severity, advisory links, and project locations. Response includes IncludesTransitive: when false, results match direct references only — use includeTransitive=true (and CLI transitive flags) when you need full transitive CVE coverage. Requires .NET 8+ SDK with JSON output support.")]
     public static Task<string> ScanNuGetVulnerabilities(
         IWorkspaceExecutionGate gate,
         IDependencyAnalysisService dependencyService,

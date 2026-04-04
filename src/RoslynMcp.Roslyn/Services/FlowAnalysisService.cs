@@ -95,6 +95,13 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             warning =
                 "Control-flow results may be incomplete for this line range. Prefer a range that covers full statement blocks within a single method body (not a partial slice of a method).";
         }
+        else if (!result.EndPointIsReachable &&
+                 (returnStatements.Count > 0 || exitPoints.Count > 0))
+        {
+            warning =
+                "EndPointIsReachable is false because Roslyn models whether execution can fall through the end of the analyzed region without an explicit return/throw — not whether the method can complete. " +
+                "If return/exit points are listed, the region still exits via those paths.";
+        }
 
         return new ControlFlowAnalysisDto(
             Succeeded: result.Succeeded,

@@ -50,9 +50,12 @@ public static class AnalysisTools
 
                 return JsonSerializer.Serialize(new
                 {
-                    results.TotalErrors,
-                    results.TotalWarnings,
-                    results.TotalInfo,
+                    totalErrors = results.TotalErrors,
+                    totalWarnings = results.TotalWarnings,
+                    totalInfo = results.TotalInfo,
+                    compilerErrors = results.CompilerErrors,
+                    analyzerErrors = results.AnalyzerErrors,
+                    workspaceErrors = results.WorkspaceErrors,
                     totalDiagnostics = allDiagnostics.Count,
                     offset,
                     limit,
@@ -116,7 +119,7 @@ public static class AnalysisTools
             }, ct));
     }
 
-    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of a method at the given position. For best results, place the caret on the method identifier; the server falls back to the enclosing method when the caret resolves to a type name or constructor call.")]
+    [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of the symbol resolved at the exact line/column (or symbolHandle). Resolution uses the token at that position — e.g. a caret on a field name inside a method resolves the field, not the enclosing method. Place the caret on the method name to analyze the method.")]
     public static Task<string> GetCallersCallees(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,

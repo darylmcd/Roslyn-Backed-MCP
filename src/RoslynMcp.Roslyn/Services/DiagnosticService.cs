@@ -26,8 +26,9 @@ public sealed class DiagnosticService : IDiagnosticService
         // Default to Warning severity when no filter specified to avoid multi-MB Hidden output
         DiagnosticSeverity? minSeverity = ParseSeverity(severityFilter) ?? DiagnosticSeverity.Warning;
 
+        var rawWorkspace = (await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false)).WorkspaceDiagnostics;
         var workspaceDiagnostics = FilterDiagnostics(
-            (await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false)).WorkspaceDiagnostics,
+            NormalizeWorkspaceDiagnostics(rawWorkspace),
             fileFilter,
             minSeverity: minSeverity);
 
@@ -88,19 +89,68 @@ public sealed class DiagnosticService : IDiagnosticService
         var compilerDiagnostics = results.SelectMany(r => r.compiler).ToList();
         var analyzerDiagnostics = results.SelectMany(r => r.analyzer).ToList();
 
+        var compilerErrors = compilerDiagnostics.Count(d => d.Severity == "Error");
+        var analyzerErrors = analyzerDiagnostics.Count(d => d.Severity == "Error");
+        var workspaceErrors = workspaceDiagnostics.Count(d => d.Severity == "Error");
+
         return new DiagnosticsResultDto(
             workspaceDiagnostics,
             compilerDiagnostics,
             analyzerDiagnostics,
-            TotalErrors: compilerDiagnostics.Count(d => d.Severity == "Error")
-                + analyzerDiagnostics.Count(d => d.Severity == "Error")
-                + workspaceDiagnostics.Count(d => d.Severity == "Error"),
+            TotalErrors: compilerErrors + analyzerErrors + workspaceErrors,
             TotalWarnings: compilerDiagnostics.Count(d => d.Severity == "Warning")
                 + analyzerDiagnostics.Count(d => d.Severity == "Warning")
                 + workspaceDiagnostics.Count(d => d.Severity == "Warning"),
             TotalInfo: compilerDiagnostics.Count(d => d.Severity == "Info")
                 + analyzerDiagnostics.Count(d => d.Severity == "Info")
-                + workspaceDiagnostics.Count(d => d.Severity == "Info"));
+                + workspaceDiagnostics.Count(d => d.Severity == "Info"),
+            CompilerErrors: compilerErrors,
+            AnalyzerErrors: analyzerErrors,
+            WorkspaceErrors: workspaceErrors);
+    }
+
+    /// <summary>
+    /// Downgrades known informational SDK/workspace messages that MSBuildWorkspace surfaces as failures.
+    /// </summary>
+    private static IReadOnlyList<DiagnosticDto> NormalizeWorkspaceDiagnostics(IReadOnlyList<DiagnosticDto> diagnostics)
+    {
+        if (diagnostics.Count == 0)
+        {
+            return diagnostics;
+        }
+
+        var list = new List<DiagnosticDto>(diagnostics.Count);
+        foreach (var d in diagnostics)
+        {
+            if (string.Equals(d.Severity, "Error", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(d.Category, "Workspace", StringComparison.OrdinalIgnoreCase) &&
+                IsInformationalWorkspaceFailureMessage(d.Message))
+            {
+                list.Add(d with { Severity = "Warning" });
+            }
+            else
+            {
+                list.Add(d);
+            }
+        }
+
+        return list;
+    }
+
+    private static bool IsInformationalWorkspaceFailureMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return false;
+        }
+
+        // SDK package pruning hints (e.g. "PackageReference X will not be pruned...")
+        if (message.Contains("pruned", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     public async Task<DiagnosticDetailsDto?> GetDiagnosticDetailsAsync(

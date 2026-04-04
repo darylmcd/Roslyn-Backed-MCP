@@ -23,6 +23,7 @@ public static class ServerTools
                           ?? assembly.GetName().Version?.ToString() ?? "unknown";
 
             var catalogSummary = ServerSurfaceCatalog.GetSummary();
+            var wsCount = workspace.ListWorkspaces().Count;
             var info = new
             {
                 server = "roslyn-mcp",
@@ -31,7 +32,10 @@ public static class ServerTools
                 runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
                 os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
                 roslynVersion = typeof(Microsoft.CodeAnalysis.SyntaxNode).Assembly.GetName().Version?.ToString() ?? "unknown",
-                workspaceCount = workspace.ListWorkspaces().Count,
+                workspaceCount = wsCount,
+                workspaceCountHint = wsCount == 0
+                    ? "If you just called workspace_load, workspaceCount may still be 0 briefly; call workspace_list for authoritative session ids."
+                    : null,
                 catalogVersion = ServerSurfaceCatalog.CatalogVersion,
                 surface = new
                 {
