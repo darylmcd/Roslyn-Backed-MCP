@@ -23,6 +23,7 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
         using var collection = new ProjectCollection();
         try
         {
+            ct.ThrowIfCancellationRequested();
             var msbuildProj = collection.LoadProject(roslynProj.FilePath!);
             var value = msbuildProj.GetPropertyValue(propertyName);
             return Task.FromResult(new MsBuildPropertyEvaluationDto(

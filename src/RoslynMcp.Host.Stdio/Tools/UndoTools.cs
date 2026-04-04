@@ -18,7 +18,7 @@ public static class UndoTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, _ =>
+            gate.RunAsync(workspaceId, async c =>
             {
                 var entry = undoService.GetLastOperation(workspaceId);
                 if (entry is null)
@@ -30,10 +30,10 @@ public static class UndoTools
                                   "or the last operation was a disk-direct change (file create/delete/move, " +
                                   "project mutation) which is not revertible."
                     };
-                    return Task.FromResult(JsonSerializer.Serialize(nothingResult, JsonDefaults.Indented));
+                    return JsonSerializer.Serialize(nothingResult, JsonDefaults.Indented);
                 }
 
-                var success = undoService.Revert(workspaceId, workspace);
+                var success = await undoService.RevertAsync(workspaceId, workspace, c).ConfigureAwait(false);
                 if (!success)
                 {
                     var failResult = new
@@ -42,7 +42,7 @@ public static class UndoTools
                         message = "Failed to revert — the workspace state may have changed since the operation was applied.",
                         operation = entry.Description
                     };
-                    return Task.FromResult(JsonSerializer.Serialize(failResult, JsonDefaults.Indented));
+                    return JsonSerializer.Serialize(failResult, JsonDefaults.Indented);
                 }
 
                 var result = new
@@ -51,7 +51,7 @@ public static class UndoTools
                     revertedOperation = entry.Description,
                     appliedAtUtc = entry.AppliedAtUtc
                 };
-                return Task.FromResult(JsonSerializer.Serialize(result, JsonDefaults.Indented));
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 }

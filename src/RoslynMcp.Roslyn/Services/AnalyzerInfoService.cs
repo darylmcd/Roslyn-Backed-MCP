@@ -61,7 +61,7 @@ public sealed class AnalyzerInfoService : IAnalyzerInfoService
                         }
                     }
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogWarning(ex, "Failed to load analyzers from {Assembly}", assemblyName);
                     rules.Add(new AnalyzerRuleDto(

@@ -27,7 +27,7 @@ public static class TestCoverageTools
             gate.RunAsync(workspaceId, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
-                var status = workspace.GetStatus(workspaceId);
+                var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
                 var loadedPath = status.LoadedPath ?? throw new InvalidOperationException("Workspace has no loaded path.");
 
                 var coverageDir = Path.Combine(Path.GetTempPath(), "roslyn-mcp-coverage", Guid.NewGuid().ToString("N"));

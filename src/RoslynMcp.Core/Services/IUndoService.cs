@@ -25,7 +25,7 @@ public interface IUndoService
     /// Reverts the most recent apply operation for the given workspace.
     /// Returns <see langword="true"/> if the revert succeeded.
     /// </summary>
-    bool Revert(string workspaceId, IWorkspaceManager workspace);
+    Task<bool> RevertAsync(string workspaceId, IWorkspaceManager workspace, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Clears undo history for a workspace (e.g., on workspace close).

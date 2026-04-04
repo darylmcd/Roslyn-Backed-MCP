@@ -179,6 +179,27 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         }
     }
 
+    public async Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default)
+    {
+        var session = GetRequiredSession(workspaceId);
+
+        if (!await session.LoadLock.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogWarning("GetStatus timed out waiting for LoadLock on {WorkspaceId}", workspaceId);
+            throw new TimeoutException(
+                $"Workspace '{workspaceId}' is currently loading. Try again shortly.");
+        }
+
+        try
+        {
+            return BuildStatus(session);
+        }
+        finally
+        {
+            session.LoadLock.Release();
+        }
+    }
+
     public ProjectGraphDto GetProjectGraph(string workspaceId)
     {
         var session = GetRequiredSession(workspaceId);
@@ -290,7 +311,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             var text = await document.GetTextAsync(ct).ConfigureAwait(false);
             return text.ToString();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // Fall back to reading from disk if workspace text retrieval fails
             _logger.LogWarning(ex, "Failed to get text from workspace for {FilePath}, falling back to disk read", filePath);

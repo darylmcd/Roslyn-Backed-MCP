@@ -26,7 +26,7 @@ public sealed class TestRunnerService : ITestRunnerService
 
     public async Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
     {
-        var status = _workspaceManager.GetStatus(workspaceId);
+        var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
 
         if (projectName is not null)
         {

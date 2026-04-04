@@ -27,7 +27,7 @@ public sealed class DiagnosticService : IDiagnosticService
         DiagnosticSeverity? minSeverity = ParseSeverity(severityFilter) ?? DiagnosticSeverity.Warning;
 
         var workspaceDiagnostics = FilterDiagnostics(
-            _workspace.GetStatus(workspaceId).WorkspaceDiagnostics,
+            (await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false)).WorkspaceDiagnostics,
             fileFilter,
             minSeverity: minSeverity);
 

@@ -140,7 +140,7 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
                     users.Add(project.Name);
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogWarning(ex, "Failed to parse project file {Path}", project.FilePath);
             }
@@ -376,7 +376,7 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
         CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
-        var status = _workspace.GetStatus(workspaceId);
+        var status = await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
         if (string.IsNullOrEmpty(status.LoadedPath))
         {
             throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");

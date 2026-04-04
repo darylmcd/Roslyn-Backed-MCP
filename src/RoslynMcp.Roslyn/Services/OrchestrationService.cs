@@ -37,7 +37,7 @@ public sealed class OrchestrationService : IOrchestrationService
         string newVersion,
         CancellationToken ct)
     {
-        var status = _workspace.GetStatus(workspaceId);
+        var status = await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
         var workspaceVersion = _workspace.GetCurrentVersion(workspaceId);
         var packagesPropsPath = MsBuildMetadataHelper.FindDirectoryPackagesProps(status.LoadedPath);
         var usesCentralPackageManagement = packagesPropsPath is not null && MsBuildMetadataHelper.IsCentralPackageManagementEnabled(packagesPropsPath);
