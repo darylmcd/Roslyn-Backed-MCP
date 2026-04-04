@@ -39,6 +39,7 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | `prompts/standardize-documentation.md` | Cross-repo prompt: run `/doc-audit` first, then align human + AI docs, packaging/install inventory, stale ref removal |
 | `prompts/standardize-backlog-hygiene.md` | Align backlog hygiene across repos with `backlog.md` and `workflow.md` |
 | `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive code review and MCP server audit (all 18 phases). Keep in sync with project surface. Do not delete. |
+| `audit-reports/README.md` | Where to store MCP deep-review audit outputs; links baseline template |
 
 ## Archive
 
@@ -63,3 +64,7 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | Planning new features | `backlog.md` → `architecture.md` → `docs/roadmap.md` |
 | Human setup / Docker / CI artifacts | `docs/setup.md` |
 | Release parity / must-have matrix | `docs/parity-gap-implementation-plan.md` |
+| Coverage baseline / CI artifacts | `docs/coverage-baseline.md` → `references/testing.md` |
+| Experimental → stable promotion review | `docs/experimental-promotion-analysis.md` |
+| Large-solution profiling method | `docs/large-solution-profiling-baseline.md` |
+| MCP deep-review audit session | `prompts/deep-review-and-refactor.md` → `audit-reports/` |

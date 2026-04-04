@@ -15,7 +15,7 @@
 | Local build | `RoslynMcp.slnx` | `dotnet build RoslynMcp.slnx --nologo` | Primary solution file. |
 | Test | `RoslynMcp.slnx` | `dotnet test RoslynMcp.slnx --nologo` | |
 | Run from source (stdio MCP) | `src/RoslynMcp.Host.Stdio/` | `dotnet run --project src/RoslynMcp.Host.Stdio` | |
-| Full release validation | `eng/verify-release.ps1` | `./eng/verify-release.ps1` (or `-Configuration Release`) | Restore, build, test, publish to `artifacts/publish/host-stdio`, SHA256 manifest under `artifacts/manifests/`. |
+| Full release validation | `eng/verify-release.ps1` | `./eng/verify-release.ps1` (or `-Configuration Release`) | Restore, build, test (with Cobertura under `artifacts/coverage/`), publish to `artifacts/publish/host-stdio`, SHA256 manifest under `artifacts/manifests/`. See `docs/coverage-baseline.md`. |
 | AI documentation validation | `eng/verify-ai-docs.ps1` | `./eng/verify-ai-docs.ps1` | Same script as CI. |
 | NuGet global tool | `src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj` (`PackAsTool`, `ToolCommandName`: `roslynmcp`) | `dotnet pack src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj -c Release -o ./nupkg` then `dotnet tool install -g RoslynMcp --add-source ./nupkg` | Package id `RoslynMcp`; see `.csproj` for metadata. |
 | Publish + reinstall local tool | MSBuild target `PackAndReinstallGlobalTool` | `dotnet publish -c Release /p:ReinstallTool=true` (Windows) | Uninstalls prior global install, packs to `nupkg/`, reinstalls. Uses `taskkill` on `roslynmcp.exe`. |
@@ -31,6 +31,7 @@ GitHub Actions `ci` workflow uploads:
 |-----------------|----------|
 | `host-stdio-publish` | `artifacts/publish/host-stdio` — published host output. |
 | `release-manifests` | `artifacts/manifests` — e.g. SHA256 manifest from `verify-release.ps1`. |
+| `code-coverage` | `artifacts/coverage` — Cobertura XML from tests; CI also generates `artifacts/coverage/report` (HtmlSummary) via ReportGenerator. |
 
 Download from the workflow run’s **Artifacts** section. Requires a GitHub account with access to the repository.
 

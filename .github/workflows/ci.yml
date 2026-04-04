@@ -28,6 +28,18 @@ jobs:
         shell: pwsh
         run: ./eng/verify-release.ps1 -Configuration Release
 
+      - name: Generate coverage HTML summary
+        shell: pwsh
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.7 --no-cache
+          $tools = Join-Path $env:HOME ".dotnet/tools"
+          $env:PATH = "$tools$([IO.Path]::PathSeparator)$env:PATH"
+          $files = Get-ChildItem -Path "artifacts/coverage" -Recurse -Filter "coverage.cobertura.xml" -ErrorAction SilentlyContinue
+          if (-not $files) { throw "No coverage.cobertura.xml under artifacts/coverage" }
+          $reports = ($files | ForEach-Object { $_.FullName }) -join ";"
+          $target = Join-Path $PWD "artifacts/coverage/report"
+          reportgenerator "-reports:$reports" "-targetdir:$target" -reporttypes:HtmlSummary
+
       - name: Audit packages for known vulnerabilities
         shell: pwsh
         run: dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive
@@ -43,3 +55,9 @@ jobs:
         with:
           name: release-manifests
           path: artifacts/manifests
+
+      - name: Upload code coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage
+          path: artifacts/coverage
