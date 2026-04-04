@@ -1,5 +1,7 @@
 # Host Stdio Domain Reference
 
+<!-- purpose: MCP stdio host layer: wiring, DI, and transport concerns. -->
+
 ## Scope
 
 This domain covers MCP host startup, tool/resource/prompt wiring, and protocol-safe logging.

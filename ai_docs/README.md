@@ -1,5 +1,7 @@
 # AI Docs Index
 
+<!-- purpose: Route agents to canonical AI docs; index only—no embedded policy prose. -->
+
 This directory is the canonical AI-facing documentation tree. Read this file to find what to load for your task.
 
 ## Core References (read on every session)
@@ -34,17 +36,15 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | File | Purpose |
 |------|---------|
 | `procedures/doc-migration-checklist.md` | Checklist for documentation migrations |
+| `prompts/standardize-documentation.md` | Cross-repo prompt: run `/doc-audit` first, then align human + AI docs, packaging/install inventory, stale ref removal |
+| `prompts/standardize-backlog-hygiene.md` | Align backlog hygiene across repos with `backlog.md` and `workflow.md` |
 | `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive code review and MCP server audit (all 18 phases). Keep in sync with project surface. Do not delete. |
-| `prompts/add-security-diagnostic-surface.prompt.md` | Feature specification for FEAT-01 |
-| `prompts/add-nuget-vulnerability-surface.prompt.md` | Feature specification for FEAT-06 (NuGet vulnerability scanning) |
 
 ## Archive
 
 | File | Purpose |
 |------|---------|
-| `archive/README.md` | Index of archived material |
-| `archive/deep-review-report.md` | Point-in-time code review report (2026-03-30, v1.2.0) |
-| `archive/mcp-server-audit-report.md` | Point-in-time MCP server audit (2026-03-30, 35 issues across 4 solutions) |
+| `archive/README.md` | Policy for archived material; no other markdown files are tracked in this folder |
 
 ---
 
@@ -61,3 +61,4 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | Merge-ready handoff | `CI_POLICY.md` → `workflow.md` |
 | Doc-only change | `CI_POLICY.md` (run `verify-ai-docs.ps1`) |
 | Planning new features | `backlog.md` → `architecture.md` → `docs/roadmap.md` |
+| Human setup / Docker / CI artifacts | `docs/setup.md` |

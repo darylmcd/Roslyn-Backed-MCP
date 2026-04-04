@@ -1,5 +1,7 @@
 # Testing Reference
 
+<!-- purpose: Test commands, patterns, and coverage expectations for this repo. -->
+
 ## Primary Command
 
 - `dotnet test RoslynMcp.slnx --nologo`

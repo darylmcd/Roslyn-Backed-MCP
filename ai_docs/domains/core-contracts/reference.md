@@ -1,5 +1,7 @@
 # Core Contracts Domain Reference
 
+<!-- purpose: DTOs and cross-layer contracts for the MCP surface. -->
+
 ## Scope
 
 This domain covers DTOs, shared abstractions, and cross-layer contract boundaries.

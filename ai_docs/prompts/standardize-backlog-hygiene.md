@@ -1,5 +1,7 @@
 # Prompt: Standardize backlog hygiene + planner closure
 
+<!-- purpose: Cross-repo prompt to keep backlog.md and workflow.md aligned with open-work-only rules. -->
+
 Portable prompt for Cursor, Claude, or other planners. **Canonical paths are fixed:** `ai_docs/backlog.md` and `ai_docs/workflow.md` (same layout across your repos). Copy the block below as-is.
 
 ---

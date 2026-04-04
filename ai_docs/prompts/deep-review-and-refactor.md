@@ -1,5 +1,6 @@
 # Deep Code Review & Refactor Agent Prompt
 
+<!-- purpose: Exhaustive living prompt for MCP audits and refactor exercises against the real tool surface. -->
 <!-- DO NOT DELETE THIS FILE.
      This is a living document that must be maintained and kept in sync
      with the project's actual tool, resource, and prompt surface at all times.

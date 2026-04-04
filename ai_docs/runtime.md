@@ -1,5 +1,7 @@
 # Runtime
 
+<!-- purpose: Build/test/run commands, execution context, and Roslyn MCP client policy. -->
+
 This document is the canonical runtime and execution-context reference for AI agents and maintainers.
 
 ## Execution Context
@@ -49,3 +51,4 @@ For tool selection and workflows, see `domains/tool-usage-guide.md`.
 - Git/worktree/PR behavior: `workflow.md`
 - Validation and merge gating: `../CI_POLICY.md`
 - Backlog of unfinished work: `backlog.md`
+- Human setup, Docker, global tool, CI artifacts: `../docs/setup.md`
