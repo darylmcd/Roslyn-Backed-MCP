@@ -118,6 +118,14 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
 
         if (parent is null) return "Other";
 
+        // services.AddSingleton<IFoo, Foo>() — type appears inside generic argument list
+        if (parent is TypeArgumentListSyntax typeArgs &&
+            typeArgs.Parent is InvocationExpressionSyntax inv &&
+            inv.Expression is MemberAccessExpressionSyntax ma &&
+            ma.Name.Identifier.Text is "AddSingleton" or "AddScoped" or "AddTransient" or "AddHostedService"
+                or "AddKeyedSingleton" or "AddKeyedScoped" or "AddKeyedTransient")
+            return "DIRegistration";
+
         // Constructor parameter
         if (parent is ParameterSyntax param)
         {

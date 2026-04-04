@@ -672,7 +672,9 @@ public static class RoslynPrompts
     {
         try
         {
-            var unused = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(workspaceId, projectName, includePublic: false, limit: 50, ct).ConfigureAwait(false);
+            var unused = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
+                workspaceId, projectName, includePublic: false, limit: 50,
+                excludeEnums: false, excludeRecordProperties: false, ct).ConfigureAwait(false);
             var unusedSummary = unused.Take(20).Select(u =>
                 $"- `{u.SymbolName}` ({u.SymbolKind}) in {u.FilePath}:{u.Line} — {u.ContainingType ?? "top-level"}").ToArray();
 

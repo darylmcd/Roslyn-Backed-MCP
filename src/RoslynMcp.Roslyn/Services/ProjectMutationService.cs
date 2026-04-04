@@ -417,6 +417,14 @@ public sealed class ProjectMutationService : IProjectMutationService
             return;
         }
 
+        // Existing siblings: insert newline + indent before the new element (matches first-child formatting)
+        var lastElement = parent.Elements().LastOrDefault();
+        if (lastElement is not null)
+        {
+            lastElement.AddAfterSelf(new XText(lineEnding + childIndentation), child);
+            return;
+        }
+
         parent.Add(child);
     }
 

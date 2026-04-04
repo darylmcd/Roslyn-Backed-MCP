@@ -9,4 +9,5 @@ public sealed record ScriptEvaluationDto(
     string? ResultValue,
     string? Error,
     IReadOnlyList<DiagnosticDto>? CompilationErrors,
-    long ElapsedMs);
+    long ElapsedMs,
+    int? AppliedScriptTimeoutSeconds = null);

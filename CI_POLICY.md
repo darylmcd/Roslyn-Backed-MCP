@@ -8,6 +8,7 @@ This document is the single canonical source for validation requirements and mer
 - CI currently runs `./eng/verify-ai-docs.ps1`.
 - CI currently runs `./eng/verify-release.ps1 -Configuration Release`.
 - CI currently runs `dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive`.
+- `.github/workflows/codeql.yml` runs the **Analyze C#** CodeQL job on every pull request, push to `main`, weekly schedule, and manual dispatch so the check stays required and always completes. On pull requests, a path filter runs first: if the diff only touches documentation or other non-code paths, CodeQL skips `init`/build/analyze (the job still succeeds). Pull requests that run CodeQL use the `security-extended` query suite; pushes to `main` and scheduled runs use `security-and-quality`. SARIF upload to GitHub Code Scanning is disabled (`upload: never`).
 
 ## Local Validation
 

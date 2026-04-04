@@ -59,6 +59,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
             startLine: null,
             endLine: null,
             maxDepth: 2,
+            maxOutputChars: 65536,
             CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);

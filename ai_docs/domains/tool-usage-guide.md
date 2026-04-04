@@ -3,6 +3,8 @@
 This document helps AI agents choose the right tools and workflows for common tasks.
 Call `discover_capabilities` with a category to get contextual guidance, or use `server_info` for a full capability overview.
 
+**Policy:** Use the Roslyn MCP server for C# **refactoring** as well as discovery—see [`runtime.md`](../runtime.md) (*Roslyn MCP client policy*).
+
 ## Quick Decision Tree
 
 **"I need to understand code"** → Start with `symbol_search`, `symbol_info`, `go_to_definition`, `document_symbols`

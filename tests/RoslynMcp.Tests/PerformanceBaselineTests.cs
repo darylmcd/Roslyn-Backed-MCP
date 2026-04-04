@@ -73,7 +73,8 @@ public sealed class PerformanceBaselineTests : TestBase
     {
         var sw = Stopwatch.StartNew();
         var results = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
-            WorkspaceId, null, includePublic: true, limit: 50, CancellationToken.None);
+            WorkspaceId, null, includePublic: true, limit: 50,
+            excludeEnums: false, excludeRecordProperties: false, CancellationToken.None);
         sw.Stop();
 
         Assert.IsTrue(sw.ElapsedMilliseconds < 30_000,

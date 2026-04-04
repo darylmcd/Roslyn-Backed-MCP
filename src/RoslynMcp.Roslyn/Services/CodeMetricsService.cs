@@ -132,7 +132,15 @@ public sealed class CodeMetricsService : ICodeMetricsService
                 BlockSyntax when child.Parent is IfStatementSyntax or ElseClauseSyntax
                     or WhileStatementSyntax or ForStatementSyntax or ForEachStatementSyntax
                     or DoStatementSyntax or TryStatementSyntax or CatchClauseSyntax
-                    or LockStatementSyntax or UsingStatementSyntax => currentDepth + 1,
+                    or LockStatementSyntax or UsingStatementSyntax or FixedStatementSyntax
+                    or CheckedStatementSyntax or UnsafeStatementSyntax or SwitchStatementSyntax
+                    or SwitchSectionSyntax => currentDepth + 1,
+                // Nested blocks inside another block (e.g. extra braces, local scopes)
+                BlockSyntax when child.Parent is BlockSyntax => currentDepth + 1,
+                // Method / accessor / constructor / local function body block
+                BlockSyntax when child.Parent is BaseMethodDeclarationSyntax or AccessorDeclarationSyntax
+                    or LocalFunctionStatementSyntax => currentDepth + 1,
+                SwitchExpressionSyntax => currentDepth + 1,
                 _ => currentDepth
             };
 

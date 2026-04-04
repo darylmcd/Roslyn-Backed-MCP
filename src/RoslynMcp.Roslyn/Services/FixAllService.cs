@@ -36,12 +36,14 @@ public sealed class FixAllService : IFixAllService
         var fixAllScope = ParseScope(scope);
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
-        // Find a provider that can fix this diagnostic
-        var provider = _codeFixProviders.Value
-            .FirstOrDefault(p => p.FixableDiagnosticIds.Contains(diagnosticId))
+        var staticProviders = _codeFixProviders.Value;
+        var analyzerAssemblyProviders = LoadCodeFixProvidersFromAnalyzerReferences(solution);
+        var provider = FindCodeFixProvider(staticProviders, diagnosticId)
+            ?? FindCodeFixProvider(analyzerAssemblyProviders, diagnosticId)
             ?? throw new InvalidOperationException(
                 $"No code fix provider found for diagnostic '{diagnosticId}'. " +
-                "Use list_analyzers to see available diagnostic IDs.");
+                "Restore analyzer packages (IDE/CA rules) or use organize_usings_preview for unused usings. " +
+                "Use list_analyzers to see loaded diagnostic IDs.");
 
         var fixAllProvider = provider.GetFixAllProvider()
             ?? throw new InvalidOperationException(
@@ -50,11 +52,26 @@ public sealed class FixAllService : IFixAllService
         // Determine target document and project
         var (targetDocument, targetProject) = ResolveTargets(solution, fixAllScope, filePath, projectName);
 
-        // Collect all diagnostics matching the ID across the scope
+        var projectAnalyzers = CollectProjectAnalyzersForDiagnosticId(solution, diagnosticId);
         bool isIdeDiagnostic = diagnosticId.StartsWith("IDE", StringComparison.OrdinalIgnoreCase);
+        bool isCaDiagnostic = diagnosticId.StartsWith("CA", StringComparison.OrdinalIgnoreCase);
+
+        ImmutableArray<DiagnosticAnalyzer> analyzersForCollection;
+        if (isIdeDiagnostic)
+        {
+            var merged = new HashSet<DiagnosticAnalyzer>(ReferenceEqualityComparer.Instance);
+            foreach (var a in _analyzers.Value) merged.Add(a);
+            foreach (var a in projectAnalyzers) merged.Add(a);
+            analyzersForCollection = [..merged];
+        }
+        else if (isCaDiagnostic)
+            analyzersForCollection = projectAnalyzers;
+        else
+            analyzersForCollection = [];
+
         var diagnosticsMap = await CollectDiagnosticsAsync(
             solution, diagnosticId, fixAllScope, targetDocument, targetProject,
-            isIdeDiagnostic ? _analyzers.Value : [], ct).ConfigureAwait(false);
+            analyzersForCollection, ct).ConfigureAwait(false);
 
         var totalDiagCount = diagnosticsMap.Values.Sum(d => d.Length);
         if (totalDiagCount == 0)
@@ -321,6 +338,68 @@ public sealed class FixAllService : IFixAllService
         }
 
         return changes;
+    }
+
+    private static CodeFixProvider? FindCodeFixProvider(ImmutableArray<CodeFixProvider> providers, string diagnosticId) =>
+        providers.FirstOrDefault(p => p.FixableDiagnosticIds.Contains(diagnosticId));
+
+    private ImmutableArray<CodeFixProvider> LoadCodeFixProvidersFromAnalyzerReferences(Solution solution)
+    {
+        var list = new List<CodeFixProvider>();
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in solution.Projects)
+        {
+            foreach (var ar in project.AnalyzerReferences)
+            {
+                if (ar is not AnalyzerFileReference afr)
+                    continue;
+                var analyzerPath = afr.Display;
+                if (string.IsNullOrWhiteSpace(analyzerPath) || !paths.Add(analyzerPath))
+                    continue;
+                try
+                {
+                    var assembly = Assembly.LoadFrom(analyzerPath);
+                    foreach (var t in assembly.GetTypes())
+                    {
+                        if (t.IsAbstract || !typeof(CodeFixProvider).IsAssignableFrom(t))
+                            continue;
+                        if (t.GetConstructor(Type.EmptyTypes) is null)
+                            continue;
+                        if (Activator.CreateInstance(t) is not CodeFixProvider p)
+                            continue;
+                        list.Add(p);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not load code fix providers from analyzer assembly {Path}", analyzerPath);
+                }
+            }
+        }
+
+        if (list.Count > 0)
+            _logger.LogInformation("FixAllService loaded {Count} code fix provider(s) from project analyzer references", list.Count);
+
+        return [..list];
+    }
+
+    private static ImmutableArray<DiagnosticAnalyzer> CollectProjectAnalyzersForDiagnosticId(
+        Solution solution, string diagnosticId)
+    {
+        var set = new HashSet<DiagnosticAnalyzer>(ReferenceEqualityComparer.Instance);
+        foreach (var project in solution.Projects)
+        {
+            foreach (var ar in project.AnalyzerReferences)
+            {
+                foreach (var a in ar.GetAnalyzers(project.Language))
+                {
+                    if (a.SupportedDiagnostics.Any(d => d.Id == diagnosticId))
+                        set.Add(a);
+                }
+            }
+        }
+
+        return [..set];
     }
 
     private static Assembly? LoadFeaturesAssembly()

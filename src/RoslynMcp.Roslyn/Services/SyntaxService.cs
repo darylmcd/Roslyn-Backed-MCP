@@ -8,7 +8,20 @@ namespace RoslynMcp.Roslyn.Services;
 
 public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
 {
-    public async Task<SyntaxNodeDto?> GetSyntaxTreeAsync(string workspaceId, string filePath, int? startLine, int? endLine, int maxDepth, CancellationToken ct)
+    private sealed class SyntaxBudget(int maxChars)
+    {
+        public int Remaining { get; set; } = maxChars;
+        public bool Truncated { get; set; }
+    }
+
+    public async Task<SyntaxNodeDto?> GetSyntaxTreeAsync(
+        string workspaceId,
+        string filePath,
+        int? startLine,
+        int? endLine,
+        int maxDepth,
+        CancellationToken ct,
+        int maxOutputChars = 65536)
     {
         var solution = workspace.GetCurrentSolution(workspaceId);
         var document = Helpers.SymbolResolver.FindDocument(solution, filePath);
@@ -19,6 +32,7 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
 
         var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+        var budget = new SyntaxBudget(maxOutputChars);
 
         SyntaxNode targetNode = root;
         if (startLine.HasValue && endLine.HasValue)
@@ -29,8 +43,6 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
             var endPosition = text.Lines[endIdx].End;
             var span = TextSpan.FromBounds(startPosition, endPosition);
 
-            // FindNode returns the smallest enclosing node (often the entire class).
-            // Instead, find nodes whose spans are contained within the requested range.
             var enclosingNode = root.FindNode(span, findInsideTrivia: false, getInnermostNodeForTie: false);
             var nodesInRange = enclosingNode.ChildNodes()
                 .Where(n => span.Contains(n.Span))
@@ -38,38 +50,105 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
 
             if (nodesInRange.Count > 0)
             {
-                // Build a virtual container showing only the nodes within the range
-                var children = nodesInRange
-                    .Select(n => BuildNode(n, text, 0, maxDepth))
-                    .ToList();
-                var lineSpan = enclosingNode.GetLocation().GetLineSpan();
+                var children = new List<SyntaxNodeDto>();
+                foreach (var n in nodesInRange)
+                {
+                    if (budget.Truncated || budget.Remaining <= 0)
+                        break;
+                    children.Add(BuildNode(n, text, 0, maxDepth, budget));
+                }
+
+                if (budget.Truncated &&
+                    (children.Count == 0 || children[^1].Kind != "TruncationNotice"))
+                    children.Add(CreateTruncationNotice());
+
                 var enclosingLineSpan = enclosingNode.GetLocation().GetLineSpan();
-                return new SyntaxNodeDto(
-                    Kind: enclosingNode.Kind().ToString(),
-                    Text: null,
-                    StartLine: startLine.Value,
-                    StartColumn: enclosingLineSpan.StartLinePosition.Character + 1,
-                    EndLine: endLine.Value,
-                    EndColumn: enclosingLineSpan.EndLinePosition.Character + 1,
-                    Children: children);
+                return FinalizeWithBudget(
+                    new SyntaxNodeDto(
+                        Kind: enclosingNode.Kind().ToString(),
+                        Text: null,
+                        StartLine: startLine.Value,
+                        StartColumn: enclosingLineSpan.StartLinePosition.Character + 1,
+                        EndLine: endLine.Value,
+                        EndColumn: enclosingLineSpan.EndLinePosition.Character + 1,
+                        Children: children),
+                    budget);
             }
 
             targetNode = enclosingNode;
         }
 
-        return BuildNode(targetNode, text, 0, maxDepth);
+        return FinalizeWithBudget(BuildNode(targetNode, text, 0, maxDepth, budget), budget);
     }
 
-    private static SyntaxNodeDto BuildNode(SyntaxNode node, SourceText text, int depth, int maxDepth)
+    private static SyntaxNodeDto FinalizeWithBudget(SyntaxNodeDto node, SyntaxBudget budget)
     {
-        var lineSpan = node.GetLocation().GetLineSpan();
-        var children = depth < maxDepth
-            ? node.ChildNodes().Select(c => BuildNode(c, text, depth + 1, maxDepth)).ToList()
-            : null;
+        if (!budget.Truncated || node.Kind == "TruncationNotice")
+            return node;
 
-        var nodeText = (children is null || children.Count == 0) ? node.ToString() : null;
-        if (nodeText is not null && nodeText.Length > 500)
-            nodeText = string.Concat(nodeText.AsSpan(0, 500), "\u2026");
+        var kids = node.Children?.ToList() ?? [];
+        if (kids.Count > 0 && kids[^1].Kind == "TruncationNotice")
+            return node;
+
+        if (kids.Count == 0)
+            return node with { Children = [CreateTruncationNotice()] };
+
+        kids.Add(CreateTruncationNotice());
+        return node with { Children = kids };
+    }
+
+    private static SyntaxNodeDto CreateTruncationNotice() =>
+        new(
+            Kind: "TruncationNotice",
+            Text: "Further syntax output omitted (maxOutputChars budget exceeded). Narrow the line range, lower maxDepth, or increase maxOutputChars on the tool.",
+            StartLine: 0,
+            StartColumn: 0,
+            EndLine: 0,
+            EndColumn: 0,
+            Children: null);
+
+    private static SyntaxNodeDto BuildNode(SyntaxNode node, SourceText text, int depth, int maxDepth, SyntaxBudget budget)
+    {
+        if (budget.Remaining <= 0)
+        {
+            budget.Truncated = true;
+            return CreateTruncationNotice();
+        }
+
+        var lineSpan = node.GetLocation().GetLineSpan();
+        List<SyntaxNodeDto>? children = null;
+        if (depth < maxDepth)
+        {
+            children = [];
+            foreach (var child in node.ChildNodes())
+            {
+                if (budget.Remaining <= 0)
+                {
+                    budget.Truncated = true;
+                    break;
+                }
+
+                children.Add(BuildNode(child, text, depth + 1, maxDepth, budget));
+            }
+        }
+
+        string? nodeText = null;
+        if (children is null || children.Count == 0)
+        {
+            nodeText = node.ToString();
+            if (nodeText.Length > 500)
+                nodeText = string.Concat(nodeText.AsSpan(0, 500), "\u2026");
+
+            var cost = nodeText.Length;
+            if (cost > budget.Remaining)
+            {
+                budget.Truncated = true;
+                nodeText = string.Concat(nodeText.AsSpan(0, Math.Max(0, budget.Remaining)), "\u2026");
+                cost = nodeText.Length;
+            }
+
+            budget.Remaining -= cost;
+        }
 
         return new SyntaxNodeDto(
             Kind: node.GetType().Name.Replace("Syntax", ""),

@@ -1,0 +1,88 @@
+# CodeQL static analysis for C#. The job "Analyze C#" always completes successfully on every PR
+# (doc-only PRs skip init/build/analyze but still report green) so required checks stay satisfied.
+
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "27 5 * * 1"
+
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze C#
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect code / project changes (PR only)
+        id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - "**/*.cs"
+              - "**/*.fs"
+              - "**/*.csproj"
+              - "**/*.vbproj"
+              - "**/*.sqlproj"
+              - "**/*.sln"
+              - "**/*.slnx"
+              - "**/Directory.Build.props"
+              - "**/Directory.Build.targets"
+              - "**/Directory.Packages.props"
+              - "**/global.json"
+              - "**/*.razor"
+              - "**/*.cshtml"
+              - "**/*.xaml"
+              - "**/*.resx"
+              - "**/NuGet.config"
+              - "**/nuget.config"
+
+      - name: CodeQL skipped (no matching paths in this PR)
+        if: github.event_name == 'pull_request' && steps.filter.outputs.code != 'true'
+        run: |
+          echo "CodeQL analysis skipped — no matching code or project files in this pull request."
+          exit 0
+
+      - name: Set up .NET
+        if: github.event_name != 'pull_request' || steps.filter.outputs.code == 'true'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Initialize CodeQL
+        if: github.event_name != 'pull_request' || steps.filter.outputs.code == 'true'
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          build-mode: manual
+          queries: "${{ github.event_name == 'pull_request' && 'security-extended' || 'security-and-quality' }}"
+
+      - name: Restore and build
+        if: github.event_name != 'pull_request' || steps.filter.outputs.code == 'true'
+        run: dotnet restore RoslynMcp.slnx && dotnet build RoslynMcp.slnx -c Release --no-restore
+
+      - name: Perform CodeQL Analysis
+        if: github.event_name != 'pull_request' || steps.filter.outputs.code == 'true'
+        uses: github/codeql-action/analyze@v3
+        with:
+          upload: never
+          wait-for-processing: false

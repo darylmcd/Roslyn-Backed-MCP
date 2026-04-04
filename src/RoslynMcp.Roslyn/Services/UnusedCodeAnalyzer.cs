@@ -49,7 +49,13 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     }
 
     public async Task<IReadOnlyList<UnusedSymbolDto>> FindUnusedSymbolsAsync(
-        string workspaceId, string? projectFilter, bool includePublic, int limit, CancellationToken ct)
+        string workspaceId,
+        string? projectFilter,
+        bool includePublic,
+        int limit,
+        bool excludeEnums,
+        bool excludeRecordProperties,
+        CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<UnusedSymbolDto>();
@@ -85,6 +91,13 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
 
                     // Skip public symbols unless explicitly requested
                     if (!includePublic && symbol.DeclaredAccessibility == Accessibility.Public) continue;
+
+                    if (excludeEnums && symbol is IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum })
+                        continue;
+
+                    if (excludeRecordProperties && symbol is IPropertySymbol prop &&
+                        prop.ContainingType?.IsRecord == true)
+                        continue;
 
                     // Skip constructors, operators, finalizers
                     if (symbol is IMethodSymbol method &&
@@ -143,7 +156,8 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                             lineSpan.StartLinePosition.Line + 1,
                             lineSpan.StartLinePosition.Character + 1,
                             symbol.ContainingType?.Name,
-                            SymbolHandleSerializer.CreateHandle(symbol)));
+                            SymbolHandleSerializer.CreateHandle(symbol),
+                            ComputeUnusedConfidence(symbol)));
                     }
                 }
             }
@@ -252,6 +266,38 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         }
 
         return null;
+    }
+
+    private static string ComputeUnusedConfidence(ISymbol symbol)
+    {
+        if (symbol.ContainingType?.TypeKind == TypeKind.Interface)
+            return "low";
+
+        if (symbol is IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum })
+            return "low";
+
+        if (symbol is IPropertySymbol p &&
+            (p.ContainingType?.IsRecord == true || HasJsonSerializationHint(p)))
+            return "low";
+
+        if (symbol.DeclaredAccessibility == Accessibility.Public)
+            return "medium";
+
+        return "high";
+    }
+
+    private static bool HasJsonSerializationHint(IPropertySymbol p)
+    {
+        foreach (var attribute in p.GetAttributes())
+        {
+            var name = attribute.AttributeClass?.Name;
+            if (name is null) continue;
+            if (name is "JsonPropertyNameAttribute" or "JsonPropertyAttribute" or "JsonIncludeAttribute"
+                or "DataMemberAttribute")
+                return true;
+        }
+
+        return false;
     }
 
     private static bool HasFrameworkInvokedAttribute(ISymbol symbol)

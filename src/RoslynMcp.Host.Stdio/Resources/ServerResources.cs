@@ -17,7 +17,7 @@ public static class ServerResources
     }
 
     [McpServerResource(UriTemplate = "roslyn://server/resource-templates", Name = "resource_templates", MimeType = "application/json")]
-    [Description("Lists all supported MCP resource URI templates, including workspace-scoped templates.")]
+    [Description("Lists all supported MCP resource URI templates. Workspace-scoped resources (status, projects, diagnostics, source files) are not returned as static entries in clients that only call resources/list — substitute workspaceId (and filePath where required) using these templates.")]
     public static string GetResourceTemplates()
     {
         var templates = ServerSurfaceCatalog.Resources

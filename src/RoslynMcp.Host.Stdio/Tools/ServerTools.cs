@@ -12,7 +12,7 @@ public static class ServerTools
 {
 
     [McpServerTool(Name = "server_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Get server version, capabilities, runtime information, and loaded workspace count")]
+     Description("Get server version, capabilities, runtime information, and loaded workspace count. workspaceCount reflects sessions at call time and may briefly lag if invoked in parallel with or immediately after workspace_load; use workspace_list for authoritative session enumeration.")]
     public static Task<string> GetServerInfo(
         IWorkspaceManager workspace)
     {

@@ -352,6 +352,18 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         if (member is IMethodSymbol method &&
             method.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation)
         {
+            // Public API surface often mutates via Add*/Set*/Remove*/Clear* without obvious field writes in the body
+            if (method.DeclaredAccessibility == Accessibility.Public &&
+                !method.IsStatic &&
+                method.ReturnsVoid &&
+                (method.Name.StartsWith("Add", StringComparison.Ordinal) ||
+                 method.Name.StartsWith("Set", StringComparison.Ordinal) ||
+                 method.Name.StartsWith("Remove", StringComparison.Ordinal) ||
+                 method.Name.StartsWith("Clear", StringComparison.Ordinal) ||
+                 method.Name.StartsWith("Update", StringComparison.Ordinal) ||
+                 method.Name.StartsWith("Insert", StringComparison.Ordinal)))
+                return true;
+
             var location = method.Locations.FirstOrDefault(l => l.IsInSource);
             if (location?.SourceTree is null) return false;
 
@@ -409,17 +421,14 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var memberAccess = node.FirstAncestorOrSelf<MemberAccessExpressionSyntax>();
         if (memberAccess is not null)
         {
-            var receiverTypeInfo = model.GetTypeInfo(memberAccess.Expression, ct);
+            var expr = memberAccess.Expression;
+            while (expr is ParenthesizedExpressionSyntax paren)
+                expr = paren.Expression;
+
+            var receiverTypeInfo = model.GetTypeInfo(expr, ct);
             var receiverType = receiverTypeInfo.Type ?? receiverTypeInfo.ConvertedType;
             if (receiverType is INamedTypeSymbol receiverNamed)
-            {
-                // Accept if receiver IS the target type or derives from it
-                return SymbolEqualityComparer.Default.Equals(receiverNamed, targetType) ||
-                       receiverNamed.AllInterfaces.Concat<INamedTypeSymbol>(GetBaseTypes(receiverNamed))
-                           .Any(b => SymbolEqualityComparer.Default.Equals(b, targetType)) ||
-                       targetType.AllInterfaces.Concat<INamedTypeSymbol>(GetBaseTypes(targetType))
-                           .Any(b => SymbolEqualityComparer.Default.Equals(b, receiverNamed));
-            }
+                return ReceiverMatchesMutationTarget(receiverNamed, targetType);
         }
 
         // For well-known interface methods (Dispose, GetHashCode, Equals, ToString),
@@ -435,8 +444,25 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             }
         }
 
-        // For other methods with no receiver (implicit this or other pattern), accept it
-        return true;
+        return false;
+    }
+
+    /// <summary>
+    /// True when the call's receiver is the same type as the analyzed type, or a derived class instance
+    /// (so external calls on subtypes are kept). Does not treat unrelated types as matching via shared interfaces.
+    /// </summary>
+    private static bool ReceiverMatchesMutationTarget(INamedTypeSymbol receiver, INamedTypeSymbol targetType)
+    {
+        if (SymbolEqualityComparer.Default.Equals(receiver, targetType))
+            return true;
+
+        for (var b = receiver.BaseType; b is not null; b = b.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(b, targetType))
+                return true;
+        }
+
+        return false;
     }
 
     private static IEnumerable<INamedTypeSymbol> GetBaseTypes(INamedTypeSymbol type)

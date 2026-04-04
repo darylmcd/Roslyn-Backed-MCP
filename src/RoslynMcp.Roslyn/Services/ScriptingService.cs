@@ -57,7 +57,8 @@ public sealed class ScriptingService : IScriptingService
                 ResultValue: FormatResult(result),
                 Error: null,
                 CompilationErrors: null,
-                ElapsedMs: sw.ElapsedMilliseconds);
+                ElapsedMs: sw.ElapsedMilliseconds,
+                AppliedScriptTimeoutSeconds: null);
         }
         catch (CompilationErrorException ex)
         {
@@ -86,7 +87,8 @@ public sealed class ScriptingService : IScriptingService
                 ResultValue: null,
                 Error: ex.Message,
                 CompilationErrors: compilationErrors,
-                ElapsedMs: sw.ElapsedMilliseconds);
+                ElapsedMs: sw.ElapsedMilliseconds,
+                AppliedScriptTimeoutSeconds: null);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -97,7 +99,8 @@ public sealed class ScriptingService : IScriptingService
                 ResultValue: null,
                 Error: $"Script execution timed out after {TimeoutSeconds} seconds. Set ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS to increase.",
                 CompilationErrors: null,
-                ElapsedMs: sw.ElapsedMilliseconds);
+                ElapsedMs: sw.ElapsedMilliseconds,
+                AppliedScriptTimeoutSeconds: TimeoutSeconds);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -108,7 +111,8 @@ public sealed class ScriptingService : IScriptingService
                 ResultValue: null,
                 Error: $"Runtime error: {ex.GetType().Name}: {ex.Message}",
                 CompilationErrors: null,
-                ElapsedMs: sw.ElapsedMilliseconds);
+                ElapsedMs: sw.ElapsedMilliseconds,
+                AppliedScriptTimeoutSeconds: null);
         }
     }
 

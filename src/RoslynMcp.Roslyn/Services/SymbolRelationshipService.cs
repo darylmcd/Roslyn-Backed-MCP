@@ -147,8 +147,11 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         if (symbol is null) return null;
 
         // If the resolved symbol is a type (e.g. Task<T> from an async method's return type),
-        // try to find the enclosing method declaration instead
-        if (symbol is INamedTypeSymbol && locator.HasSourceLocation)
+        // or a constructor invoked at the caret (e.g. new InvalidOperationException(...)),
+        // resolve the enclosing method for callers/callees analysis.
+        if (locator.HasSourceLocation &&
+            (symbol is INamedTypeSymbol ||
+             (symbol is IMethodSymbol methodAtCaret && methodAtCaret.MethodKind == MethodKind.Constructor)))
         {
             var enclosingMethod = await TryResolveEnclosingMethodAsync(solution, locator, ct).ConfigureAwait(false);
             if (enclosingMethod is not null)

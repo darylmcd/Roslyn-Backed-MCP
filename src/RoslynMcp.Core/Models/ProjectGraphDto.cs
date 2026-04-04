@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace RoslynMcp.Core.Models;
 
 /// <summary>
@@ -11,6 +13,7 @@ public sealed record ProjectGraphDto(
 /// Represents a project node within a workspace project graph.
 /// </summary>
 public sealed record ProjectGraphNodeDto(
+    [property: JsonPropertyName("name")]
     string ProjectName,
     string FilePath,
     string AssemblyName,

@@ -2,7 +2,9 @@
 
 ## Cursor
 
-Configure `.cursor/mcp.json` to launch the host project or published executable.
+- This repository ships **`.mcp.json`** at the repo root with a `roslyn` server (`command: roslynmcp`, stdio). Cursor loads project MCP config when present; you can mirror the same entry in `.cursor/mcp.json` or user MCP settings if needed.
+- Prefer the published `roslynmcp` executable for lower startup overhead when repeatedly launching.
+- AI agents should follow **`ai_docs/runtime.md`** (*Roslyn MCP client policy*): use the server for C# **refactoring**, not only discovery.
 
 ## Claude Code
 

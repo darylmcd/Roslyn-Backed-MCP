@@ -83,7 +83,9 @@ public sealed class TestRunnerService : ITestRunnerService
                 arguments,
                 _options.TestTimeout,
                 ct).ConfigureAwait(false);
-            return DotnetOutputParser.ParseTestRun(execution, trxPath);
+
+            var trxFiles = Directory.GetFiles(resultsDirectory, "*.trx", SearchOption.TopDirectoryOnly);
+            return DotnetOutputParser.ParseTestRun(execution, trxFiles);
         }
         finally
         {

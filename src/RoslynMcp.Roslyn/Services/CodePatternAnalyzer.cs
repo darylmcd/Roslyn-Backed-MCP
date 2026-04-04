@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -128,16 +129,39 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         }
     }
 
-    public async Task<IReadOnlyList<SemanticSearchResultDto>> SemanticSearchAsync(
+    public async Task<SemanticSearchResponseDto> SemanticSearchAsync(
         string workspaceId, string query, string? projectFilter, int limit, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<SemanticSearchResultDto>();
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
-        // Parse the query into predicates
         var predicates = ParseSemanticQuery(query);
+        bool Combined(ISymbol s) => predicates.All(p => p(s));
+        await CollectSemanticSearchMatchesAsync(solution, projects, Combined, limit, results, ct).ConfigureAwait(false);
 
+        string? warning = null;
+        if (results.Count == 0 && query.Trim().Length >= 2)
+        {
+            var term = query.Trim();
+            bool NameMatch(ISymbol s) => s.Name.Contains(term, StringComparison.OrdinalIgnoreCase);
+            await CollectSemanticSearchMatchesAsync(solution, projects, NameMatch, limit, results, ct)
+                .ConfigureAwait(false);
+            if (results.Count > 0)
+                warning = "No structured query match; results use a name substring fallback.";
+        }
+
+        return new SemanticSearchResponseDto(results, warning);
+    }
+
+    private static async Task CollectSemanticSearchMatchesAsync(
+        Solution solution,
+        IEnumerable<Project> projects,
+        Func<ISymbol, bool> symbolMatches,
+        int limit,
+        List<SemanticSearchResultDto> results,
+        CancellationToken ct)
+    {
         foreach (var project in projects)
         {
             if (ct.IsCancellationRequested || results.Count >= limit) break;
@@ -161,7 +185,7 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
                     if (symbol is null || symbol is INamespaceSymbol) continue;
                     if (symbol.IsImplicitlyDeclared) continue;
 
-                    if (!predicates.All(p => p(symbol))) continue;
+                    if (!symbolMatches(symbol)) continue;
 
                     var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
                     if (location is null) continue;
@@ -179,8 +203,6 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
                 }
             }
         }
-
-        return results;
     }
 
     private static string? GetContainingMethodName(SyntaxNode node, SemanticModel model, CancellationToken ct)
@@ -218,11 +240,21 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         var predicates = new List<Func<ISymbol, bool>>();
         var q = query.ToLowerInvariant().Trim();
 
-        // Simple keyword predicates from the lookup table
+        // Simple keyword predicates from the lookup table.
+        // Use a word boundary for "interface" so "IDisposable" does not trigger the interface symbol filter.
         foreach (var (keyword, predicate) in KeywordPredicates)
         {
-            if (q.Contains(keyword))
-                predicates.Add(predicate);
+            if (keyword == "interface")
+            {
+                if (!Regex.IsMatch(q, @"\binterface\b"))
+                    continue;
+            }
+            else if (!q.Contains(keyword))
+            {
+                continue;
+            }
+
+            predicates.Add(predicate);
         }
 
         // "static" with guard against "non-static"
@@ -268,13 +300,39 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
             return;
 
         var returnTypeStart = q.IndexOf("returning ", StringComparison.Ordinal);
-        if (returnTypeStart < 0) returnTypeStart = q.IndexOf("returns ", StringComparison.Ordinal);
+        var keywordLen = "returning ".Length;
+        if (returnTypeStart < 0)
+        {
+            returnTypeStart = q.IndexOf("returns ", StringComparison.Ordinal);
+            keywordLen = "returns ".Length;
+        }
+
         if (returnTypeStart < 0) return;
 
-        var afterKeyword = q[(q.IndexOf(' ', returnTypeStart) + 1)..].Trim();
-        var returnType = afterKeyword.Split(' ', ',')[0].Trim();
-        predicates.Add(s => s is IMethodSymbol m &&
-            m.ReturnType.ToDisplayString().Contains(returnType, StringComparison.OrdinalIgnoreCase));
+        var slice = q[(returnTypeStart + keywordLen)..].Trim();
+        foreach (var stop in new[] { " methods", " method", " async", " with ", " that ", " in " })
+        {
+            var idx = slice.IndexOf(stop, StringComparison.Ordinal);
+            if (idx > 0)
+                slice = slice[..idx].Trim();
+        }
+
+        var typeFragment = slice.Trim();
+        if (string.IsNullOrEmpty(typeFragment)) return;
+
+        var normalizedSpaced = Regex.Replace(typeFragment, @"[\<\>\,]", " ").Trim();
+        var compactFragment = new string(typeFragment.Where(c => !char.IsWhiteSpace(c)).ToArray());
+
+        predicates.Add(s =>
+        {
+            if (s is not IMethodSymbol m) return false;
+            var ret = m.ReturnType.ToDisplayString();
+            var retCompact = new string(ret.Where(c => !char.IsWhiteSpace(c)).ToArray());
+            return ret.Contains(normalizedSpaced, StringComparison.OrdinalIgnoreCase) ||
+                   ret.Contains(typeFragment, StringComparison.OrdinalIgnoreCase) ||
+                   (!string.IsNullOrEmpty(compactFragment) &&
+                    retCompact.Contains(compactFragment, StringComparison.OrdinalIgnoreCase));
+        });
     }
 
     private static void AddImplementingPredicate(List<Func<ISymbol, bool>> predicates, string q)
@@ -283,7 +341,11 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
             return;
 
         var ifaceName = q[(q.IndexOf("implementing ", StringComparison.Ordinal) + 13)..].Trim().Split(' ', ',')[0];
+        if (string.IsNullOrEmpty(ifaceName)) return;
+
+        var requireClass = Regex.IsMatch(q, @"\bclasses?\b");
         predicates.Add(s => s is INamedTypeSymbol t &&
+            (!requireClass || t.TypeKind == TypeKind.Class) &&
             t.AllInterfaces.Any(i => i.Name.Equals(ifaceName, StringComparison.OrdinalIgnoreCase) ||
                 i.ToDisplayString().Contains(ifaceName, StringComparison.OrdinalIgnoreCase)));
     }

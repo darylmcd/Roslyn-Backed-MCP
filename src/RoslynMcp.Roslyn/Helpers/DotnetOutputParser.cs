@@ -55,17 +55,14 @@ internal static partial class DotnetOutputParser
     }
 
     /// <summary>
-    /// Parses a TRX (Visual Studio Test Results) file produced by <c>dotnet test</c> into a
-    /// <see cref="TestRunResultDto"/>.
+    /// Parses one or more TRX files produced by <c>dotnet test</c> (solution runs may emit multiple TRX files)
+    /// into a single aggregated <see cref="TestRunResultDto"/>.
     /// </summary>
-    /// <param name="execution">The command execution details to embed in the result.</param>
-    /// <param name="trxPath">The absolute path to the <c>.trx</c> file.</param>
-    /// <returns>A <see cref="TestRunResultDto"/> with counters and failure details. If the file does not exist, returns an empty result.</returns>
     public static TestRunResultDto ParseTestRun(
         CommandExecutionDto execution,
-        string trxPath)
+        IReadOnlyList<string> trxPaths)
     {
-        if (!File.Exists(trxPath))
+        if (trxPaths.Count == 0)
         {
             return new TestRunResultDto(
                 execution,
@@ -76,6 +73,30 @@ internal static partial class DotnetOutputParser
                 Failures: []);
         }
 
+        var total = 0;
+        var passed = 0;
+        var failed = 0;
+        var skipped = 0;
+        var failures = new List<TestFailureDto>();
+
+        foreach (var trxPath in trxPaths.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        {
+            var one = ParseSingleTrxFile(trxPath);
+            total += one.Total;
+            passed += one.Passed;
+            failed += one.Failed;
+            skipped += one.Skipped;
+            failures.AddRange(one.Failures);
+        }
+
+        return new TestRunResultDto(execution, total, passed, failed, skipped, failures);
+    }
+
+    private static (int Total, int Passed, int Failed, int Skipped, List<TestFailureDto> Failures) ParseSingleTrxFile(string trxPath)
+    {
+        if (!File.Exists(trxPath))
+            return (0, 0, 0, 0, []);
+
         var document = XDocument.Load(trxPath);
         XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
 
@@ -85,8 +106,6 @@ internal static partial class DotnetOutputParser
         var failed = ParseCounter(counters, "failed");
         var skipped = ParseCounter(counters, "notExecuted");
 
-        // Fallback: if notExecuted counter is 0 but UnitTestResult elements show skipped tests,
-        // count them directly (some test frameworks don't populate the Counters element)
         if (skipped == 0)
         {
             skipped = document.Descendants(ns + "UnitTestResult")
@@ -113,7 +132,7 @@ internal static partial class DotnetOutputParser
             })
             .ToList();
 
-        return new TestRunResultDto(execution, total, passed, failed, skipped, failures);
+        return (total, passed, failed, skipped, failures);
     }
 
     private static string Capitalize(string value) =>

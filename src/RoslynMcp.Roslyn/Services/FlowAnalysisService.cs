@@ -88,13 +88,22 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             })
             .ToList();
 
+        string? warning = null;
+        if (!result.Succeeded ||
+            (entryPoints.Count == 0 && exitPoints.Count == 0 && returnStatements.Count == 0))
+        {
+            warning =
+                "Control-flow results may be incomplete for this line range. Prefer a range that covers full statement blocks within a single method body (not a partial slice of a method).";
+        }
+
         return new ControlFlowAnalysisDto(
             Succeeded: result.Succeeded,
             StartPointIsReachable: result.StartPointIsReachable,
             EndPointIsReachable: result.EndPointIsReachable,
             EntryPoints: entryPoints,
             ExitPoints: exitPoints,
-            ReturnStatements: returnStatements);
+            ReturnStatements: returnStatements,
+            Warning: warning);
     }
 
     private async Task<(SyntaxNode First, SyntaxNode Last, SemanticModel Model)> ResolveStatementRangeAsync(
@@ -176,8 +185,31 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
     }
 
     private static IReadOnlyList<string> SymbolNames(
-        System.Collections.Immutable.ImmutableArray<ISymbol> symbols) =>
-        symbols.Select(s => s.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)).ToList();
+        System.Collections.Immutable.ImmutableArray<ISymbol> symbols)
+    {
+        var names = symbols
+            .Select(s => s.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))
+            .ToList();
+        var dupNames = names.GroupBy(n => n).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet(StringComparer.Ordinal);
+
+        var result = new List<string>(symbols.Length);
+        for (var i = 0; i < symbols.Length; i++)
+        {
+            var sym = symbols[i];
+            var name = names[i];
+            if (!dupNames.Contains(name))
+            {
+                result.Add(name);
+                continue;
+            }
+
+            var loc = sym.Locations.FirstOrDefault(l => l.IsInSource);
+            var line = loc?.GetLineSpan().StartLinePosition.Line + 1 ?? 0;
+            result.Add($"{name} (decl line {line})");
+        }
+
+        return result;
+    }
 
     private static string FormatSyntaxLocation(SyntaxNode node)
     {

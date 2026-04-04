@@ -22,6 +22,12 @@ For session bootstrap and workflow, follow `AGENTS.md` first.
 - Do NOT put transport-specific logic in `RoslynMcp.Roslyn`
 - `stdout` is reserved for MCP protocol traffic — use `stderr` for all operational logging
 
+## Roslyn MCP (AI sessions in this repo)
+
+- Enable the **`roslyn`** MCP server (`roslynmcp` via stdio; see repo `.mcp.json`).
+- For C# changes, prefer Roslyn MCP **refactoring** tools over ad hoc multi-file text edits when a tool covers the operation (rename, extract/move type, code fixes, bulk type replace, etc.).
+- Discovery-only workflows are insufficient for semantic refactors—plan with read-only tools, then execute with preview/apply tools. Canonical policy: `ai_docs/runtime.md` (*Roslyn MCP client policy*).
+
 ## Mutation Safety
 
 - All mutations must go through preview → apply flow

@@ -212,7 +212,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     var objDirectory = Path.Combine(projectDirectory, "obj");
                     if (Directory.Exists(objDirectory))
                     {
-                        projectResults.AddRange(Directory.EnumerateFiles(objDirectory, "*.g.cs", SearchOption.AllDirectories)
+                        // Deduplicate Debug/Release/platform copies of the same generated file name
+                        projectResults.AddRange(Directory
+                            .EnumerateFiles(objDirectory, "*.g.cs", SearchOption.AllDirectories)
+                            .GroupBy(filePath => Path.GetFileName(filePath), StringComparer.OrdinalIgnoreCase)
+                            .Select(g => g.OrderBy(f => f.Length).First())
                             .Select(filePath => new GeneratedDocumentDto(
                                 ProjectName: project.Name,
                                 HintName: Path.GetFileName(filePath),

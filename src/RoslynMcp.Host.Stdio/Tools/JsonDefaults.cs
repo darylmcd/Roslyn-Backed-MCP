@@ -1,8 +1,13 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace RoslynMcp.Host.Stdio;
 
 internal static class JsonDefaults
 {
-    public static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+    public static readonly JsonSerializerOptions Indented = new()
+    {
+        WriteIndented = true,
+        Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+    };
 }
