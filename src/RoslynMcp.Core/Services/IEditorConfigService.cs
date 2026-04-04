@@ -11,4 +11,10 @@ public interface IEditorConfigService
     /// Gets the effective .editorconfig options for the specified source file.
     /// </summary>
     Task<EditorConfigOptionsDto> GetOptionsAsync(string workspaceId, string filePath, CancellationToken ct);
+
+    /// <summary>
+    /// Sets or updates an .editorconfig key for files matching C# sources, creating a file next to the source tree if needed.
+    /// </summary>
+    Task<EditorConfigWriteResultDto> SetOptionAsync(
+        string workspaceId, string sourceFilePath, string key, string value, CancellationToken ct);
 }

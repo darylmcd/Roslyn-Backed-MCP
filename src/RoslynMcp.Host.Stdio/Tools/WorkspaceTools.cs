@@ -11,12 +11,12 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class WorkspaceTools
 {
 
-    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Load a .sln or .csproj file into the workspace for semantic analysis")]
+    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis")]
     public static Task<string> LoadWorkspace(
         McpServer server,
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
-        [Description("Absolute path to a .sln or .csproj file")] string path,
+        [Description("Absolute path to a .sln, .slnx, or .csproj file")] string path,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {

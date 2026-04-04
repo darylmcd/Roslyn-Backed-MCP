@@ -198,6 +198,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
             minMethods: 1,
             limit: 50,
             includeInterfaces: true,
+            excludeTestProjects: false,
             excludeTests: false,
             CancellationToken.None);
 

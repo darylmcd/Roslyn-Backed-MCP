@@ -13,7 +13,7 @@ public interface ICohesionAnalysisService
     /// independent method clusters that share no state.
     /// </summary>
     Task<IReadOnlyList<CohesionMetricsDto>> GetCohesionMetricsAsync(
-        string workspaceId, string? filePath, string? projectFilter, int? minMethods, int limit, bool includeInterfaces, CancellationToken ct);
+        string workspaceId, string? filePath, string? projectFilter, int? minMethods, int limit, bool includeInterfaces, bool excludeTestProjects, CancellationToken ct);
 
     /// <summary>
     /// Finds private members of a type that are referenced by multiple public methods.

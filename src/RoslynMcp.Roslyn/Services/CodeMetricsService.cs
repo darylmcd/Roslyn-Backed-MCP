@@ -66,6 +66,7 @@ public sealed class CodeMetricsService : ICodeMetricsService
                 var paramCount = symbol is IMethodSymbol m ? m.Parameters.Length : 0;
 
                 var lineSpan = decl.GetLocation().GetLineSpan();
+                var maintainability = ComputeMaintainabilityIndex(complexity, loc);
 
                 results.Add(new ComplexityMetricsDto(
                     symbol.Name,
@@ -76,11 +77,26 @@ public sealed class CodeMetricsService : ICodeMetricsService
                     loc,
                     nesting,
                     paramCount,
-                    symbol.ContainingType?.Name));
+                    symbol.ContainingType?.Name,
+                    maintainability));
             }
         }
 
         return results.OrderByDescending(r => r.CyclomaticComplexity).Take(limit).ToList();
+    }
+
+    /// <summary>
+    /// Approximate Visual Studio-style maintainability index (0–100, higher is better).
+    /// Uses cyclomatic complexity and LOC with a Halstead-volume heuristic when full Halstead metrics are not computed.
+    /// </summary>
+    private static double ComputeMaintainabilityIndex(int cyclomaticComplexity, int linesOfCode)
+    {
+        var loc = Math.Max(1, linesOfCode);
+        var cc = Math.Max(1, cyclomaticComplexity);
+        var hv = Math.Max(1.0, loc * Math.Log(1 + cc, 2));
+        var raw = 171.0 - 5.2 * Math.Log(hv) - 0.23 * cc - 16.2 * Math.Log(loc);
+        var index = raw * 100.0 / 171.0;
+        return Math.Round(Math.Clamp(index, 0, 100), 2);
     }
 
     private static int CalculateCyclomaticComplexity(SyntaxNode node)

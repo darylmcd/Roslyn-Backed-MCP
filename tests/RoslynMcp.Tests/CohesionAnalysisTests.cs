@@ -19,10 +19,22 @@ public sealed class CohesionAnalysisTests : TestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
+    public async Task GetCohesionMetrics_WhenExcludeTestProjects_OmitsTestProjectSources()
+    {
+        var result = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            WorkspaceId, null, null, 2, 200, includeInterfaces: false, excludeTestProjects: true, CancellationToken.None);
+
+        Assert.IsTrue(
+            result.All(m => m.FilePath is null ||
+                !m.FilePath.Contains("SampleLib.Tests", StringComparison.OrdinalIgnoreCase)),
+            "Types from MSBuild test projects should be omitted when excludeTestProjects is true.");
+    }
+
+    [TestMethod]
     public async Task GetCohesionMetrics_ReturnsMetrics()
     {
         var result = await CohesionAnalysisService.GetCohesionMetricsAsync(
-            WorkspaceId, null, null, 2, 50, includeInterfaces: false, CancellationToken.None);
+            WorkspaceId, null, null, 2, 50, includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
 
         Assert.IsNotNull(result);
         Assert.IsTrue(result.Count > 0, "Expected at least one type with cohesion metrics");
@@ -52,7 +64,7 @@ public sealed class CohesionAnalysisTests : TestBase
         Assert.IsNotNull(doc?.FilePath, "AnimalService.cs not found in workspace");
 
         var result = await CohesionAnalysisService.GetCohesionMetricsAsync(
-            WorkspaceId, doc.FilePath, null, 1, 50, includeInterfaces: false, CancellationToken.None);
+            WorkspaceId, doc.FilePath, null, 1, 50, includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
 
         Assert.IsNotNull(result);
         Assert.IsTrue(result.Count > 0, "Expected at least one metric from filtered file");
@@ -65,7 +77,7 @@ public sealed class CohesionAnalysisTests : TestBase
     public async Task GetCohesionMetrics_WhenIncludingInterfaces_Returns_InterfaceTypeKind()
     {
         var result = await CohesionAnalysisService.GetCohesionMetricsAsync(
-            WorkspaceId, null, "SampleLib", 1, 100, includeInterfaces: true, CancellationToken.None);
+            WorkspaceId, null, "SampleLib", 1, 100, includeInterfaces: true, excludeTestProjects: false, CancellationToken.None);
 
         var interfaces = result.Where(m => m.TypeKind == "Interface").ToList();
         Assert.IsTrue(interfaces.Count > 0, "Expected at least one interface when includeInterfaces=true.");

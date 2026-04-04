@@ -89,44 +89,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                     if (symbol.IsImplicitlyDeclared) continue;
                     if (!processedSymbols.Add(symbol)) continue;
 
-                    // Skip public symbols unless explicitly requested
-                    if (!includePublic && symbol.DeclaredAccessibility == Accessibility.Public) continue;
-
-                    if (excludeEnums && symbol is IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum })
-                        continue;
-
-                    if (excludeRecordProperties && symbol is IPropertySymbol prop &&
-                        prop.ContainingType?.IsRecord == true)
-                        continue;
-
-                    // Skip constructors, operators, finalizers
-                    if (symbol is IMethodSymbol method &&
-                        (method.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor
-                            or MethodKind.Destructor or MethodKind.UserDefinedOperator
-                            or MethodKind.Conversion))
-                        continue;
-
-                    // Skip interface implementations
-                    if (symbol.ContainingType is not null &&
-                        symbol.ContainingType.AllInterfaces.Any(i =>
-                            i.GetMembers().Any(m => SymbolEqualityComparer.Default.Equals(
-                                symbol.ContainingType.FindImplementationForInterfaceMember(m), symbol))))
-                        continue;
-
-                    // Skip overrides
-                    if (symbol is IMethodSymbol { IsOverride: true } or IPropertySymbol { IsOverride: true })
-                        continue;
-
-                    // Skip entry points
-                    if (symbol is IMethodSymbol { Name: "Main" } && symbol.IsStatic) continue;
-
-                    // Skip symbols with framework-invoked attributes (test methods, serialized members, etc.)
-                    if (HasFrameworkInvokedAttribute(symbol)) continue;
-
-                    // Skip static classes that contain extension methods — they are
-                    // accessed implicitly through their members, not by direct reference.
-                    if (symbol is INamedTypeSymbol { IsStatic: true } staticType &&
-                        staticType.GetMembers().OfType<IMethodSymbol>().Any(m => m.IsExtensionMethod))
+                    if (ShouldSkipSymbolForUnusedAnalysis(symbol, includePublic, excludeEnums, excludeRecordProperties))
                         continue;
 
                     var refs = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
@@ -164,6 +127,53 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Returns true when the symbol should not be analyzed for unused status (filters noise: public API, tests, etc.).
+    /// </summary>
+    private static bool ShouldSkipSymbolForUnusedAnalysis(
+        ISymbol symbol,
+        bool includePublic,
+        bool excludeEnums,
+        bool excludeRecordProperties)
+    {
+        if (!includePublic && symbol.DeclaredAccessibility == Accessibility.Public)
+            return true;
+
+        if (excludeEnums && symbol is IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum })
+            return true;
+
+        if (excludeRecordProperties && symbol is IPropertySymbol prop &&
+            prop.ContainingType?.IsRecord == true)
+            return true;
+
+        if (symbol is IMethodSymbol method &&
+            (method.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor
+                or MethodKind.Destructor or MethodKind.UserDefinedOperator
+                or MethodKind.Conversion))
+            return true;
+
+        if (symbol.ContainingType is not null &&
+            symbol.ContainingType.AllInterfaces.Any(i =>
+                i.GetMembers().Any(m => SymbolEqualityComparer.Default.Equals(
+                    symbol.ContainingType!.FindImplementationForInterfaceMember(m), symbol))))
+            return true;
+
+        if (symbol is IMethodSymbol { IsOverride: true } or IPropertySymbol { IsOverride: true })
+            return true;
+
+        if (symbol is IMethodSymbol { Name: "Main" } && symbol.IsStatic)
+            return true;
+
+        if (HasFrameworkInvokedAttribute(symbol))
+            return true;
+
+        if (symbol is INamedTypeSymbol { IsStatic: true } staticType &&
+            staticType.GetMembers().OfType<IMethodSymbol>().Any(m => m.IsExtensionMethod))
+            return true;
+
+        return false;
     }
 
     /// <summary>

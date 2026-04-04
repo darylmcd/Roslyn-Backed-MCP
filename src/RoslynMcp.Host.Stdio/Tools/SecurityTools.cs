@@ -40,4 +40,22 @@ public static class SecurityTools
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
+
+    [McpServerTool(Name = "nuget_vulnerability_scan", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     Description("Scan NuGet package references for known security vulnerabilities (CVEs) using the NuGet vulnerability database via dotnet list package. Returns affected packages with severity, advisory links, and project locations. Requires .NET 8+ SDK with JSON output support.")]
+    public static Task<string> ScanNuGetVulnerabilities(
+        IWorkspaceExecutionGate gate,
+        IDependencyAnalysisService dependencyService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: restrict scan to a specific project name")] string? project = null,
+        [Description("Include transitive (indirect) dependencies in the scan. Default: false")] bool includeTransitive = false,
+        CancellationToken ct = default)
+    {
+        return ToolErrorHandler.ExecuteAsync(() =>
+            gate.RunAsync(workspaceId, async c =>
+            {
+                var result = await dependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, project, includeTransitive, c);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }, ct));
+    }
 }

@@ -34,6 +34,10 @@ Use the **Roslyn MCP server** for C# work in this repository—not only for disc
 
 For tool selection and workflows, see `domains/tool-usage-guide.md`.
 
+## Known issues (local validation)
+
+- **Parallel test hosts / MSBuild file locks:** If `dotnet test` or `dotnet build` fails with errors copying the test assembly (`RoslynMcp.Tests.dll`) because `testhost.exe` still holds the file, close other test runners or IDE test sessions that loaded that output, then run a full `dotnet test RoslynMcp.slnx --nologo` again from a clean state.
+
 ## Session And Mutation Safety
 
 - Maintain and pass `workspaceId` for workspace-scoped operations.

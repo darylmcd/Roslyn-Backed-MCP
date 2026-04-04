@@ -132,6 +132,7 @@ public abstract class TestBase
             NullLogger<CodeMetricsService>.Instance);
         DependencyAnalysisService = new DependencyAnalysisService(
             WorkspaceManager,
+            GatedCommandExecutor,
             NullLogger<DependencyAnalysisService>.Instance);
         CodePatternAnalyzer = new CodePatternAnalyzer(
             WorkspaceManager,

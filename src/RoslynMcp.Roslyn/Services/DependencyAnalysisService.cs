@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -12,11 +14,16 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class DependencyAnalysisService : IDependencyAnalysisService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly IGatedCommandExecutor _executor;
     private readonly ILogger<DependencyAnalysisService> _logger;
 
-    public DependencyAnalysisService(IWorkspaceManager workspace, ILogger<DependencyAnalysisService> logger)
+    public DependencyAnalysisService(
+        IWorkspaceManager workspace,
+        IGatedCommandExecutor executor,
+        ILogger<DependencyAnalysisService> logger)
     {
         _workspace = workspace;
+        _executor = executor;
         _logger = logger;
     }
 
@@ -183,77 +190,93 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
                 var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
                 foreach (var invocation in invocations)
                 {
-                    var symbolInfo = semanticModel.GetSymbolInfo(invocation, ct);
-                    if (symbolInfo.Symbol is not IMethodSymbol method) continue;
-
-                    // Check if this is an IServiceCollection extension method
-                    var receiverType = method.ReceiverType ?? method.Parameters.FirstOrDefault()?.Type;
-                    if (receiverType is null) continue;
-
-                    var isServiceCollectionMethod = receiverType.Name is "IServiceCollection"
-                        || receiverType.AllInterfaces.Any(i => i.Name == "IServiceCollection");
-
-                    if (!isServiceCollectionMethod && !method.ContainingType.Name.Contains("ServiceCollection"))
-                        continue;
-
-                    var lifetime = method.Name switch
-                    {
-                        "AddSingleton" => "Singleton",
-                        "AddScoped" => "Scoped",
-                        "AddTransient" => "Transient",
-                        "AddHostedService" => "Singleton",
-                        "AddKeyedSingleton" => "Singleton",
-                        "AddKeyedScoped" => "Scoped",
-                        "AddKeyedTransient" => "Transient",
-                        _ => null
-                    };
-
-                    if (lifetime is null) continue;
-
-                    var serviceType = "unknown";
-                    var implType = "unknown";
-
-                    if (method.TypeArguments.Length == 2)
-                    {
-                        serviceType = method.TypeArguments[0].ToDisplayString();
-                        implType = method.TypeArguments[1].ToDisplayString();
-                    }
-                    else if (method.TypeArguments.Length == 1)
-                    {
-                        serviceType = method.TypeArguments[0].ToDisplayString();
-                        // Factory / delegate overload: AddSingleton<T>(Func<IServiceProvider, T> factory)
-                        var args = invocation.ArgumentList.Arguments;
-                        if (args.Count > 0 &&
-                            args[0].Expression is AnonymousFunctionExpressionSyntax or LambdaExpressionSyntax)
-                        {
-                            implType = "factory";
-                        }
-                        else
-                            implType = serviceType;
-                    }
-
-                    if (serviceType == "unknown" &&
-                        TryGetDiTypesFromTypeOfArguments(invocation, semanticModel, ct, out var st, out var it))
-                    {
-                        serviceType = st;
-                        implType = it;
-                    }
-
-                    var lineSpan = invocation.GetLocation().GetLineSpan();
-
-                    results.Add(new DiRegistrationDto(
-                        serviceType,
-                        implType,
-                        lifetime,
-                        lineSpan.Path,
-                        lineSpan.StartLinePosition.Line + 1,
-                        method.Name));
+                    if (TryCreateDiRegistration(invocation, semanticModel, ct, out var dto))
+                        results.Add(dto);
                 }
             }
         }
 
         return results;
     }
+
+    private static bool TryCreateDiRegistration(
+        InvocationExpressionSyntax invocation,
+        SemanticModel semanticModel,
+        CancellationToken ct,
+        out DiRegistrationDto dto)
+    {
+        dto = default!;
+
+        var symbolInfo = semanticModel.GetSymbolInfo(invocation, ct);
+        if (symbolInfo.Symbol is not IMethodSymbol method)
+            return false;
+
+        var receiverType = method.ReceiverType ?? method.Parameters.FirstOrDefault()?.Type;
+        if (receiverType is null)
+            return false;
+
+        var isServiceCollectionMethod = receiverType.Name is "IServiceCollection"
+            || receiverType.AllInterfaces.Any(i => i.Name == "IServiceCollection");
+
+        if (!isServiceCollectionMethod && !method.ContainingType.Name.Contains("ServiceCollection", StringComparison.Ordinal))
+            return false;
+
+        var lifetime = MapDiLifetime(method.Name);
+        if (lifetime is null)
+            return false;
+
+        var serviceType = "unknown";
+        var implType = "unknown";
+
+        if (method.TypeArguments.Length == 2)
+        {
+            serviceType = method.TypeArguments[0].ToDisplayString();
+            implType = method.TypeArguments[1].ToDisplayString();
+        }
+        else if (method.TypeArguments.Length == 1)
+        {
+            serviceType = method.TypeArguments[0].ToDisplayString();
+            var args = invocation.ArgumentList.Arguments;
+            if (args.Count > 0 &&
+                args[0].Expression is AnonymousFunctionExpressionSyntax or LambdaExpressionSyntax)
+            {
+                implType = "factory";
+            }
+            else
+            {
+                implType = serviceType;
+            }
+        }
+
+        if (serviceType == "unknown" &&
+            TryGetDiTypesFromTypeOfArguments(invocation, semanticModel, ct, out var st, out var it))
+        {
+            serviceType = st;
+            implType = it;
+        }
+
+        var lineSpan = invocation.GetLocation().GetLineSpan();
+        dto = new DiRegistrationDto(
+            serviceType,
+            implType,
+            lifetime,
+            lineSpan.Path,
+            lineSpan.StartLinePosition.Line + 1,
+            method.Name);
+        return true;
+    }
+
+    private static string? MapDiLifetime(string methodName) => methodName switch
+    {
+        "AddSingleton" => "Singleton",
+        "AddScoped" => "Scoped",
+        "AddTransient" => "Transient",
+        "AddHostedService" => "Singleton",
+        "AddKeyedSingleton" => "Singleton",
+        "AddKeyedScoped" => "Scoped",
+        "AddKeyedTransient" => "Transient",
+        _ => null
+    };
 
     private static bool TryGetDiTypesFromTypeOfArguments(
         InvocationExpressionSyntax invocation,
@@ -344,5 +367,149 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
 
         path.RemoveAt(path.Count - 1);
         inStack.Remove(node);
+    }
+
+    public async Task<NuGetVulnerabilityScanResultDto> ScanNuGetVulnerabilitiesAsync(
+        string workspaceId,
+        string? projectFilter,
+        bool includeTransitive,
+        CancellationToken ct)
+    {
+        var sw = Stopwatch.StartNew();
+        var status = _workspace.GetStatus(workspaceId);
+        if (string.IsNullOrEmpty(status.LoadedPath))
+        {
+            throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
+        }
+
+        var targetPath = string.IsNullOrWhiteSpace(projectFilter)
+            ? status.LoadedPath
+            : _executor.ResolveProject(workspaceId, projectFilter).FilePath;
+
+        var args = new List<string> { "list", targetPath, "package", "--vulnerable", "--format", "json" };
+        if (includeTransitive)
+        {
+            args.Add("--include-transitive");
+        }
+
+        var execution = await _executor.ExecuteAsync(
+            workspaceId,
+            targetPath,
+            args,
+            TimeSpan.FromSeconds(120),
+            ct).ConfigureAwait(false);
+
+        sw.Stop();
+
+        if (!execution.Succeeded)
+        {
+            var err = string.IsNullOrWhiteSpace(execution.StdErr) ? execution.StdOut : execution.StdErr;
+            throw new InvalidOperationException(
+                $"dotnet list package --vulnerable failed (exit {execution.ExitCode}). {err.Trim()}");
+        }
+
+        var vulnerabilities = ParseNuGetVulnerabilityJson(execution.StdOut, out var scannedProjects);
+        var critical = vulnerabilities.Count(v => string.Equals(v.Severity, "Critical", StringComparison.OrdinalIgnoreCase));
+        var high = vulnerabilities.Count(v => string.Equals(v.Severity, "High", StringComparison.OrdinalIgnoreCase));
+        var medium = vulnerabilities.Count(v => string.Equals(v.Severity, "Medium", StringComparison.OrdinalIgnoreCase));
+        var low = vulnerabilities.Count(v => string.Equals(v.Severity, "Low", StringComparison.OrdinalIgnoreCase));
+
+        return new NuGetVulnerabilityScanResultDto(
+            vulnerabilities,
+            scannedProjects,
+            vulnerabilities.Count,
+            critical,
+            high,
+            medium,
+            low,
+            includeTransitive,
+            sw.ElapsedMilliseconds);
+    }
+
+    private static IReadOnlyList<NuGetVulnerablePackageDto> ParseNuGetVulnerabilityJson(string json, out int scannedProjects)
+    {
+        scannedProjects = 0;
+        var results = new List<NuGetVulnerablePackageDto>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("projects", out var projectsEl) || projectsEl.ValueKind != JsonValueKind.Array)
+        {
+            return results;
+        }
+
+        scannedProjects = projectsEl.GetArrayLength();
+
+        foreach (var project in projectsEl.EnumerateArray())
+        {
+            var projectPath = project.TryGetProperty("path", out var pathProp) ? pathProp.GetString() ?? "" : "";
+            var projectName = string.IsNullOrEmpty(projectPath)
+                ? "unknown"
+                : Path.GetFileNameWithoutExtension(projectPath);
+
+            if (!project.TryGetProperty("frameworks", out var frameworks) || frameworks.ValueKind != JsonValueKind.Array)
+            {
+                continue;
+            }
+
+            foreach (var framework in frameworks.EnumerateArray())
+            {
+                AddPackagesFromFramework(framework, "topLevelPackages", isTransitive: false);
+                AddPackagesFromFramework(framework, "transitivePackages", isTransitive: true);
+            }
+
+            void AddPackagesFromFramework(JsonElement fw, string arrayName, bool isTransitive)
+            {
+                if (!fw.TryGetProperty(arrayName, out var pkgs) || pkgs.ValueKind != JsonValueKind.Array)
+                {
+                    return;
+                }
+
+                foreach (var pkg in pkgs.EnumerateArray())
+                {
+                    var id = pkg.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
+                    var resolved = pkg.TryGetProperty("resolvedVersion", out var rv)
+                        ? rv.GetString() ?? ""
+                        : pkg.TryGetProperty("requestedVersion", out var rq)
+                            ? rq.GetString() ?? ""
+                            : "";
+
+                    if (!pkg.TryGetProperty("vulnerabilities", out var vulns) || vulns.ValueKind != JsonValueKind.Array)
+                    {
+                        continue;
+                    }
+
+                    foreach (var vuln in vulns.EnumerateArray())
+                    {
+                        var severity = vuln.TryGetProperty("severity", out var sev)
+                            ? sev.GetString() ?? "Unknown"
+                            : "Unknown";
+                        var advisoryUrl = vuln.TryGetProperty("advisoryurl", out var adv)
+                            ? adv.GetString()
+                            : vuln.TryGetProperty("advisoryUrl", out var adv2)
+                                ? adv2.GetString()
+                                : null;
+
+                        var dedupeKey = $"{projectPath}|{id}|{resolved}|{advisoryUrl}|{severity}|{isTransitive}";
+                        if (!seen.Add(dedupeKey))
+                        {
+                            continue;
+                        }
+
+                        results.Add(new NuGetVulnerablePackageDto(
+                            id,
+                            resolved,
+                            severity,
+                            advisoryUrl,
+                            projectName,
+                            isTransitive,
+                            PatchedVersion: null));
+                    }
+                }
+            }
+        }
+
+        return results;
     }
 }

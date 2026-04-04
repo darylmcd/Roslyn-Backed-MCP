@@ -5,7 +5,7 @@
      with the project's actual tool, resource, and prompt surface at all times.
      When tools, resources, or prompts are added, removed, or renamed,
      update the Tools Reference appendix accordingly.
-     Last surface audit: 2026-04-03 (116 tools, 6 resources, 16 prompts). -->
+     Last surface audit: 2026-04-04 (see appendix; 123 tools, 7 resources, 16 prompts). -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** produce an MCP server audit (bugs, incorrect results, gaps). **Mechanism:** real refactoring plus tool calls that exercise the full surface.
@@ -324,11 +324,12 @@ For each method with high complexity:
 ### Phase 15: Resource Verification
 
 1. Read `roslyn://server/catalog` to get the machine-readable surface inventory.
-2. Read `roslyn://workspaces` to list active workspace sessions.
-3. Read `roslyn://workspace/{workspaceId}/status` and compare with `workspace_status` tool output.
-4. Read `roslyn://workspace/{workspaceId}/projects` and compare with `project_graph` tool output.
-5. Read `roslyn://workspace/{workspaceId}/diagnostics` and compare with `project_diagnostics` tool output.
-6. Read `roslyn://workspace/{workspaceId}/file/{filePath}` for a source file and compare with `get_source_text`.
+2. Read `roslyn://server/resource-templates` to list all resource URI templates and compare with the catalog.
+3. Read `roslyn://workspaces` to list active workspace sessions.
+4. Read `roslyn://workspace/{workspaceId}/status` and compare with `workspace_status` tool output.
+5. Read `roslyn://workspace/{workspaceId}/projects` and compare with `project_graph` tool output.
+6. Read `roslyn://workspace/{workspaceId}/diagnostics` and compare with `project_diagnostics` tool output.
+7. Read `roslyn://workspace/{workspaceId}/file/{filePath}` for a source file and compare with `get_source_text`.
 
 **MCP audit checkpoint:** Do resources return data consistent with their tool counterparts? Are URI templates resolved correctly? Is the server catalog accurate and up to date? Do resource DTOs use the same field names as their tool counterparts (e.g., `Name` vs `ProjectName`)? Does the catalog tool/resource/prompt count match `server_info`?
 
@@ -508,9 +509,9 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 
 > **Maintenance note:** This appendix must be kept in sync with the actual server surface.
 > When tools, resources, or prompts change, update this section.
-> Last verified: 2026-04-03 — **116 tools | 6 resources | 16 prompts**
+> Last verified: 2026-04-04 — **123 tools | 7 resources | 16 prompts**
 
-### Tools by Category (116 total)
+### Tools by Category (123 total)
 
 #### Server (1 tool)
 `server_info`
@@ -530,8 +531,8 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 #### Consumer & Cohesion Analysis (3 tools)
 `find_consumers` `get_cohesion_metrics` `find_shared_members`
 
-#### Security (2 tools)
-`security_diagnostics` `security_analyzer_status`
+#### Security (3 tools)
+`security_diagnostics` `security_analyzer_status` `nuget_vulnerability_scan`
 
 #### Flow Analysis (2 tools)
 `analyze_data_flow` `analyze_control_flow`
@@ -593,17 +594,24 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 #### Validation — Build & Test (7 tools)
 `build_workspace` `build_project` `test_discover` `test_run` `test_related` `test_related_files` `test_coverage`
 
-#### EditorConfig (1 tool)
-`get_editorconfig_options`
+#### EditorConfig (2 tools)
+`get_editorconfig_options` `set_editorconfig_option`
+
+#### MSBuild evaluation (3 tools)
+`evaluate_msbuild_property` `evaluate_msbuild_items` `get_msbuild_properties`
+
+#### Suppression and severity (2 tools)
+`set_diagnostic_severity` `add_pragma_suppression`
 
 #### Undo (1 tool)
 `revert_last_apply`
 
-### Resources (6 total)
+### Resources (7 total)
 
 | URI Template | Description | MIME Type |
 |---|---|---|
 | `roslyn://server/catalog` | Machine-readable surface inventory and support policy | `application/json` |
+| `roslyn://server/resource-templates` | Lists all resource URI templates, including workspace-scoped templates | `application/json` |
 | `roslyn://workspaces` | List active workspace sessions | `application/json` |
 | `roslyn://workspace/{workspaceId}/status` | Workspace status and diagnostics | `application/json` |
 | `roslyn://workspace/{workspaceId}/projects` | Project graph metadata | `application/json` |
@@ -642,7 +650,7 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 | `AdvancedAnalysisTools.cs` | 7 | Advanced Analysis |
 | `ConsumerAnalysisTools.cs` | 1 | Consumer Analysis |
 | `CohesionAnalysisTools.cs` | 2 | Cohesion Analysis |
-| `SecurityTools.cs` | 2 | Security |
+| `SecurityTools.cs` | 3 | Security |
 | `FlowAnalysisTools.cs` | 2 | Flow Analysis |
 | `SyntaxTools.cs` | 1 | Syntax |
 | `OperationTools.cs` | 1 | Operations |
@@ -666,5 +674,7 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 | `ProjectMutationTools.cs` | 11 | Project Mutation |
 | `ScaffoldingTools.cs` | 4 | Scaffolding |
 | `ValidationTools.cs` | 7 | Build, Test, Coverage |
-| `EditorConfigTools.cs` | 1 | EditorConfig |
+| `EditorConfigTools.cs` | 2 | EditorConfig |
+| `MSBuildTools.cs` | 3 | MSBuild evaluation |
+| `SuppressionTools.cs` | 2 | Suppression and severity |
 | `UndoTools.cs` | 1 | Undo |
