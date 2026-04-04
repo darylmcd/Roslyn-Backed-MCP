@@ -23,4 +23,4 @@ Policy ownership:
 - Validation and merge gating: `CI_POLICY.md`
 - Runtime assumptions and execution context: `ai_docs/runtime.md`
 - Roslyn MCP usage (refactoring, not discovery-only): `ai_docs/runtime.md` — section *Roslyn MCP client policy (AI sessions)*
-- Unfinished work tracking: `ai_docs/backlog.md`
+- Unfinished work tracking: `ai_docs/backlog.md` (contract: **Agent contract** section — unfinished only; sync on ship).

@@ -49,7 +49,7 @@ public static class AdvancedAnalysisTools
     }
 
     [McpServerTool(Name = "get_complexity_metrics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Calculate cyclomatic complexity, lines of code, nesting depth, and parameter count for methods in the workspace")]
+     Description("Calculate cyclomatic complexity, lines of code, nesting depth, parameter count, and an approximate maintainability index (0–100, higher is better) for methods in the workspace")]
     public static Task<string> GetComplexityMetrics(
         IWorkspaceExecutionGate gate,
         ICodeMetricsService codeMetricsService,

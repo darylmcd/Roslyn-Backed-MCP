@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using ModelContextProtocol.Protocol;
@@ -549,6 +550,7 @@ public static class RoslynPrompts
     [Description("Generate a prompt that guides a comprehensive security review using security diagnostic tools and code fix workflows.")]
     public static async Task<IEnumerable<PromptMessage>> SecurityReview(
         ISecurityDiagnosticService securityService,
+        IDependencyAnalysisService dependencyAnalysisService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
@@ -557,6 +559,16 @@ public static class RoslynPrompts
         {
             var status = await securityService.GetAnalyzerStatusAsync(workspaceId, ct).ConfigureAwait(false);
             var findings = await securityService.GetSecurityDiagnosticsAsync(workspaceId, projectName, null, ct).ConfigureAwait(false);
+            NuGetVulnerabilityScanResultDto? vulnScan = null;
+            try
+            {
+                vulnScan = await dependencyAnalysisService.ScanNuGetVulnerabilitiesAsync(
+                    workspaceId, projectName, includeTransitive: false, ct).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // Network/SDK: still emit prompt; agent can run nuget_vulnerability_scan manually.
+            }
 
             var statusSummary = new List<string>();
             statusSummary.Add($"- .NET SDK Analyzers: {(status.NetAnalyzersPresent ? "Present" : "Not detected")}");
@@ -569,6 +581,10 @@ public static class RoslynPrompts
             var findingsSummary = findings.Findings.Take(20).Select(f =>
                 $"- [{f.SecuritySeverity}] {f.DiagnosticId} ({f.OwaspCategory}): {f.Message} at {f.FilePath}:{f.StartLine}").ToArray();
 
+            var vulnSummary = vulnScan is null
+                ? "(NuGet vulnerability scan was not run in this prompt — call `nuget_vulnerability_scan` on the workspace.)"
+                : $"{vulnScan.TotalVulnerabilities} vulnerable package reference(s) ({vulnScan.CriticalCount} critical, {vulnScan.HighCount} high, {vulnScan.MediumCount} medium, {vulnScan.LowCount} low). Scanned projects: {vulnScan.ScannedProjects}.";
+
             return
             [
                 CreatePromptMessage($"""
@@ -579,6 +595,9 @@ public static class RoslynPrompts
                     **Analyzer Coverage:**
                     {string.Join('\n', statusSummary)}
 
+                    **NuGet dependency vulnerabilities (CVE database):**
+                    {vulnSummary}
+
                     **Security Findings Summary:** {findings.TotalFindings} total ({findings.CriticalCount} critical, {findings.HighCount} high, {findings.MediumCount} medium, {findings.LowCount} low)
 
                     **Findings:**
@@ -586,13 +605,14 @@ public static class RoslynPrompts
 
                     Use this workflow:
                     1. Review the analyzer coverage above. If recommended packages are missing, consider using `add_package_reference_preview` to add them, then `workspace_reload` to pick up new analyzers.
-                    2. Triage findings by severity — address Critical and High findings first.
-                    3. For each finding, call `diagnostic_details` with the diagnostic ID, file, line, and column to get detailed fix information.
-                    4. If a Roslyn code fix is available, use `code_fix_preview` to inspect the proposed change, then `code_fix_apply` to apply it.
-                    5. If no automated fix is available, use `get_code_actions` at the finding location, or apply manual fixes via `apply_text_edit` or `apply_multi_file_edit`.
-                    6. After fixing a batch of findings, call `build_workspace` to verify the fixes compile.
-                    7. Re-run `security_diagnostics` to confirm the finding count has decreased.
-                    8. Flag any findings that require architectural changes or manual review rather than mechanical fixes.
+                    2. Run `nuget_vulnerability_scan` (optionally with `includeTransitive: true`) to refresh dependency CVE data. Treat Critical/High package vulnerabilities as urgent; use `add_package_reference_preview` / package upgrades to resolved patched versions when available.
+                    3. Triage Roslyn security findings by severity — address Critical and High first.
+                    4. For each finding, call `diagnostic_details` with the diagnostic ID, file, line, and column to get detailed fix information.
+                    5. If a Roslyn code fix is available, use `code_fix_preview` to inspect the proposed change, then `code_fix_apply` to apply it.
+                    6. If no automated fix is available, use `get_code_actions` at the finding location, or apply manual fixes via `apply_text_edit` or `apply_multi_file_edit`.
+                    7. After fixing a batch of findings, call `build_workspace` to verify the fixes compile.
+                    8. Re-run `security_diagnostics` and `nuget_vulnerability_scan` to confirm exposure has decreased.
+                    9. Flag any findings that require architectural changes or manual review rather than mechanical fixes.
 
                     Prioritize fixes that eliminate injection vulnerabilities and insecure deserialization patterns.
                     """)
@@ -826,7 +846,7 @@ public static class RoslynPrompts
         try
         {
             var metrics = await cohesionAnalysisService.GetCohesionMetricsAsync(
-                workspaceId, filePath: null, projectFilter: projectName, minMethods: 3, limit: 20, includeInterfaces: false, ct).ConfigureAwait(false);
+                workspaceId, filePath: null, projectFilter: projectName, minMethods: 3, limit: 20, includeInterfaces: false, excludeTestProjects: true, ct).ConfigureAwait(false);
             var metricsJson = JsonSerializer.Serialize(metrics, JsonDefaults.Indented);
 
             return

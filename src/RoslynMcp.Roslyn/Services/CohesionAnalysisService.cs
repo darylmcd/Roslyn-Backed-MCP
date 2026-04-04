@@ -20,7 +20,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     }
 
     public async Task<IReadOnlyList<CohesionMetricsDto>> GetCohesionMetricsAsync(
-        string workspaceId, string? filePath, string? projectFilter, int? minMethods, int limit, bool includeInterfaces, CancellationToken ct)
+        string workspaceId, string? filePath, string? projectFilter, int? minMethods, int limit, bool includeInterfaces, bool excludeTestProjects, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<CohesionMetricsDto>();
@@ -30,12 +30,14 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         {
             var normalizedPath = Path.GetFullPath(filePath);
             documents = solution.Projects
+                .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p))
                 .SelectMany(p => p.Documents)
                 .Where(d => d.FilePath is not null && Path.GetFullPath(d.FilePath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
         }
         else
         {
-            var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
+            var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter)
+                .Where(p => !excludeTestProjects || !ProjectMetadataParser.IsTestProject(p));
             documents = projects.SelectMany(p => p.Documents);
         }
 

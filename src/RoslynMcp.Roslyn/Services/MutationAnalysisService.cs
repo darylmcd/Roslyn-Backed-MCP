@@ -267,7 +267,6 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var parent = refNode.Parent;
         if (parent is null) return TypeUsageClassification.Other;
 
-        // Walk up past qualified names, generic names, etc.
         var typeNode = refNode;
         while (parent is QualifiedNameSyntax or AliasQualifiedNameSyntax or NullableTypeSyntax or ArrayTypeSyntax)
         {
@@ -276,30 +275,26 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             if (parent is null) return TypeUsageClassification.Other;
         }
 
-        // Handle generic type arguments (e.g., List<T>)
+        return ClassifyTypeUsageAfterWalk(typeNode, parent);
+    }
+
+    private static TypeUsageClassification ClassifyTypeUsageAfterWalk(SyntaxNode typeNode, SyntaxNode parent)
+    {
         if (parent is TypeArgumentListSyntax)
             return TypeUsageClassification.GenericArgument;
 
-        // Method return type
         if (parent is MethodDeclarationSyntax methodDecl && methodDecl.ReturnType == typeNode)
             return TypeUsageClassification.MethodReturnType;
 
-        // Local function return type
         if (parent is LocalFunctionStatementSyntax localFunc && localFunc.ReturnType == typeNode)
             return TypeUsageClassification.MethodReturnType;
 
-        // Method parameter
-        if (parent is ParameterSyntax param)
-        {
-            if (param.Type == typeNode)
-                return TypeUsageClassification.MethodParameter;
-        }
+        if (parent is ParameterSyntax param && param.Type == typeNode)
+            return TypeUsageClassification.MethodParameter;
 
-        // Property type
         if (parent is PropertyDeclarationSyntax propDecl && propDecl.Type == typeNode)
             return TypeUsageClassification.PropertyType;
 
-        // Variable declaration — field or local
         if (parent is VariableDeclarationSyntax varDecl && varDecl.Type == typeNode)
         {
             var grandparent = varDecl.Parent;
@@ -308,11 +303,9 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                 : TypeUsageClassification.LocalVariable;
         }
 
-        // Base list (base class or interface)
         if (parent is SimpleBaseTypeSyntax || parent is BaseListSyntax)
             return TypeUsageClassification.BaseType;
 
-        // Cast expression: (T)expr or expr as T
         if (parent is CastExpressionSyntax castExpr && castExpr.Type == typeNode)
             return TypeUsageClassification.Cast;
         if (parent is BinaryExpressionSyntax binaryAs &&
@@ -320,7 +313,6 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             binaryAs.Right == typeNode)
             return TypeUsageClassification.Cast;
 
-        // Is-pattern / type check
         if (parent is IsPatternExpressionSyntax)
             return TypeUsageClassification.TypeCheck;
         if (parent is BinaryExpressionSyntax binaryIs &&
@@ -329,7 +321,6 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         if (parent is TypePatternSyntax || parent is DeclarationPatternSyntax)
             return TypeUsageClassification.TypeCheck;
 
-        // Object creation: new T()
         if (parent is ObjectCreationExpressionSyntax objCreate && objCreate.Type == typeNode)
             return TypeUsageClassification.ObjectCreation;
         if (parent is ImplicitObjectCreationExpressionSyntax)

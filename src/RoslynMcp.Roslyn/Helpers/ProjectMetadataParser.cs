@@ -109,6 +109,15 @@ internal static class ProjectMetadataParser
         return false;
     }
 
+    /// <summary>
+    /// Whether the Roslyn project is a test project (<c>IsTestProject</c> or test framework packages).
+    /// </summary>
+    public static bool IsTestProject(RoslynProject project)
+    {
+        var doc = LoadProjectDocument(project.FilePath, null);
+        return IsTestProject(doc);
+    }
+
     public static string GetOutputType(XDocument? document)
     {
         return document?.Descendants("OutputType").FirstOrDefault()?.Value.Trim() ?? "Library";

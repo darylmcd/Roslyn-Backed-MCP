@@ -12,7 +12,7 @@ public static class ServerSurfaceCatalog
     [
         Tool("server_info", "server", "stable", true, false, "Inspect server capabilities, versions, and support tiers."),
 
-        Tool("workspace_load", "workspace", "stable", false, false, "Load a solution or project into a named Roslyn workspace session."),
+        Tool("workspace_load", "workspace", "stable", false, false, "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session."),
         Tool("workspace_reload", "workspace", "stable", false, false, "Reload an existing workspace session from disk."),
         Tool("workspace_close", "workspace", "stable", false, true, "Close a loaded workspace session and release resources."),
         Tool("workspace_list", "workspace", "stable", true, false, "List active workspace sessions."),
@@ -110,6 +110,7 @@ public static class ServerSurfaceCatalog
 
         Tool("security_diagnostics", "security", "stable", true, false, "Return security-relevant diagnostics with OWASP categorization and fix hints."),
         Tool("security_analyzer_status", "security", "stable", true, false, "Check which security analyzer packages are present and recommend missing ones."),
+        Tool("nuget_vulnerability_scan", "security", "stable", true, false, "Scan NuGet references for known CVEs using dotnet list package --vulnerable."),
 
         Tool("find_consumers", "analysis", "experimental", true, false, "Find all types that depend on a given type or interface, classified by dependency kind."),
         Tool("get_cohesion_metrics", "analysis", "experimental", true, false, "Measure type cohesion via LCOM4 metrics, identifying independent method clusters."),
@@ -137,7 +138,13 @@ public static class ServerSurfaceCatalog
         Tool("format_range_apply", "refactoring", "experimental", false, true, "Apply a previously previewed range format operation."),
         Tool("analyze_snippet", "analysis", "experimental", true, false, "Analyze a C# code snippet in an ephemeral workspace without loading a solution."),
         Tool("evaluate_csharp", "scripting", "experimental", true, false, "Evaluate a C# expression or script interactively via the Roslyn Scripting API."),
-        Tool("get_editorconfig_options", "configuration", "experimental", true, false, "Get effective .editorconfig options for a source file.")
+        Tool("get_editorconfig_options", "configuration", "experimental", true, false, "Get effective .editorconfig options for a source file."),
+        Tool("set_editorconfig_option", "configuration", "experimental", false, false, "Set or update a key in .editorconfig for C# files (creates file if needed)."),
+        Tool("evaluate_msbuild_property", "project-mutation", "experimental", true, false, "Evaluate a single MSBuild property for a project."),
+        Tool("evaluate_msbuild_items", "project-mutation", "experimental", true, false, "List MSBuild items of a type with evaluated includes and metadata."),
+        Tool("get_msbuild_properties", "project-mutation", "experimental", true, false, "Dump evaluated MSBuild properties for a project."),
+        Tool("set_diagnostic_severity", "configuration", "experimental", false, false, "Set dotnet_diagnostic severity in .editorconfig."),
+        Tool("add_pragma_suppression", "editing", "experimental", false, false, "Insert a #pragma warning disable before a line.")
     ];
 
     public static IReadOnlyList<SurfaceEntry> Resources { get; } =

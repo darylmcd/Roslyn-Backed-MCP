@@ -14,4 +14,10 @@ public interface IDependencyAnalysisService
         string workspaceId, CancellationToken ct);
     Task<IReadOnlyList<DiRegistrationDto>> GetDiRegistrationsAsync(
         string workspaceId, string? projectFilter, CancellationToken ct);
+
+    /// <summary>
+    /// Scans NuGet package references for known vulnerabilities using <c>dotnet list package --vulnerable</c>.
+    /// </summary>
+    Task<NuGetVulnerabilityScanResultDto> ScanNuGetVulnerabilitiesAsync(
+        string workspaceId, string? projectFilter, bool includeTransitive, CancellationToken ct);
 }

@@ -20,13 +20,15 @@ public static class CohesionAnalysisTools
         [Description("Optional: minimum instance method count threshold (default: 2)")] int? minMethods = null,
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         [Description("When true, include interface types in results and mark them with TypeKind=Interface")] bool includeInterfaces = false,
-        [Description("When true, exclude test classes (decorated with TestClass, TestFixture, Fact attributes) from results")] bool excludeTests = false,
+        [Description("When true, exclude MSBuild test projects (IsTestProject / test framework packages) from analysis")] bool excludeTestProjects = false,
+        [Description("When true, exclude test classes (names/paths suggesting tests) from results after metrics are computed")] bool excludeTests = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunAsync(workspaceId, async c =>
             {
-                var results = await cohesionAnalysisService.GetCohesionMetricsAsync(workspaceId, filePath, project, minMethods, limit, includeInterfaces, c);
+                var results = await cohesionAnalysisService.GetCohesionMetricsAsync(
+                    workspaceId, filePath, project, minMethods, limit, includeInterfaces, excludeTestProjects, c);
 
                 if (excludeTests)
                 {

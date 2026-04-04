@@ -200,7 +200,7 @@ public class SecurityDiagnosticIntegrationTests : TestBase
             .Where(t => t.Category == "security")
             .ToList();
 
-        Assert.AreEqual(2, securityTools.Count);
+        Assert.AreEqual(3, securityTools.Count);
         foreach (var tool in securityTools)
         {
             Assert.AreEqual("stable", tool.SupportTier,

@@ -23,6 +23,11 @@ This document is the single owner for branch, worktree, pull-request, and merge-
 - Resolve merge conflicts before merge handoff.
 - If repository settings require the branch to be up to date with base, sync it before merge.
 
+## Backlog closure
+
+- When a change **closes** rows in `ai_docs/backlog.md`, update that file in the **same PR** (or an immediate follow-up).
+- **Implementation plans** must include a final todo such as `backlog: sync ai_docs/backlog.md` so the backlog stays aligned with shipped work.
+
 ## Post-Merge Cleanup
 
 - Delete merged task branches.

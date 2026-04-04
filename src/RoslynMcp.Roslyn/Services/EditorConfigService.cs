@@ -194,4 +194,80 @@ public sealed class EditorConfigService : IEditorConfigService
             "dotnet_nullable",
         ];
     }
+
+    public Task<EditorConfigWriteResultDto> SetOptionAsync(
+        string workspaceId, string sourceFilePath, string key, string value, CancellationToken ct)
+    {
+        _ = _workspace.GetCurrentSolution(workspaceId);
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException("Key is required.", nameof(key));
+        }
+
+        var normalizedSource = Path.GetFullPath(sourceFilePath);
+        var editorconfigPath = FindEditorconfigPath(normalizedSource)
+            ?? Path.Combine(Path.GetDirectoryName(normalizedSource) ?? throw new InvalidOperationException("Invalid source path."), ".editorconfig");
+
+        var created = !File.Exists(editorconfigPath);
+        var lines = created ? new List<string>() : File.ReadAllLines(editorconfigPath).ToList();
+
+        const string csharpSection = "[*.{cs,csx,cake}]";
+        UpsertKeyInSection(lines, csharpSection, key.Trim(), value.Trim());
+
+        var directory = Path.GetDirectoryName(editorconfigPath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllLines(editorconfigPath, lines);
+
+        return Task.FromResult(new EditorConfigWriteResultDto(editorconfigPath, key, value, created));
+    }
+
+    private static void UpsertKeyInSection(List<string> lines, string sectionHeader, string key, string value)
+    {
+        var assignment = $"{key} = {value}";
+        var sectionIndex = lines.FindIndex(l => l.Trim().Equals(sectionHeader, StringComparison.OrdinalIgnoreCase));
+        if (sectionIndex < 0)
+        {
+            if (lines.Count > 0 && lines[^1].Trim().Length > 0)
+            {
+                lines.Add(string.Empty);
+            }
+
+            lines.Add(sectionHeader);
+            lines.Add(assignment);
+            return;
+        }
+
+        var keyPrefix = key + " =";
+        var end = lines.Count;
+        for (var i = sectionIndex + 1; i < lines.Count; i++)
+        {
+            var line = lines[i].Trim();
+            if (line.StartsWith('[') && line.EndsWith(']'))
+            {
+                end = i;
+                break;
+            }
+        }
+
+        for (var i = sectionIndex + 1; i < end; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (trimmed.StartsWith('#') || string.IsNullOrWhiteSpace(trimmed))
+            {
+                continue;
+            }
+
+            if (trimmed.StartsWith(keyPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                lines[i] = assignment;
+                return;
+            }
+        }
+
+        lines.Insert(end, assignment);
+    }
 }

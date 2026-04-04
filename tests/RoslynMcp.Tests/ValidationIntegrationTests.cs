@@ -50,7 +50,7 @@ public class ValidationIntegrationTests : TestBase
 
         Assert.IsTrue(result.Execution.Succeeded, result.Execution.StdErr);
         Assert.AreEqual(0, result.Execution.ExitCode);
-        Assert.IsTrue(result.Diagnostics.Count == 0, "Expected no build diagnostics for the sample solution.");
+        Assert.AreEqual(0, result.ErrorCount, "Expected no build errors for the sample solution (warnings may appear in some SDK configurations).");
     }
 
     [TestMethod]
