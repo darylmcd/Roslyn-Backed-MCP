@@ -21,6 +21,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     /// <summary>Global concurrency limit across all workspaces.</summary>
     private static readonly int MaxGlobalConcurrency = Math.Max(2, Environment.ProcessorCount);
 
+    private readonly IWorkspaceManager _workspaceManager;
     private readonly TimeSpan _requestTimeout;
     private readonly int _rateLimitMax;
     private readonly TimeSpan _rateLimitWindow;
@@ -32,10 +33,9 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     /// <summary>Sliding window rate limiter — stores timestamps of recent requests.</summary>
     private readonly ConcurrentQueue<long> _requestTimestamps = new();
 
-    public WorkspaceExecutionGate() : this(new ExecutionGateOptions()) { }
-
-    public WorkspaceExecutionGate(ExecutionGateOptions options)
+    public WorkspaceExecutionGate(ExecutionGateOptions options, IWorkspaceManager workspaceManager)
     {
+        _workspaceManager = workspaceManager;
         _requestTimeout = options.RequestTimeout;
         _rateLimitMax = options.RateLimitMaxRequests;
         _rateLimitWindow = options.RateLimitWindow;
@@ -47,6 +47,24 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         EnforceRateLimit();
 
         var key = string.IsNullOrWhiteSpace(gateKey) ? IWorkspaceExecutionGate.LoadGateKey : gateKey;
+        if (key != IWorkspaceExecutionGate.LoadGateKey)
+        {
+            if (key.StartsWith("__apply__:", StringComparison.Ordinal))
+            {
+                var applyWs = key["__apply__:".Length..];
+                if (!_workspaceManager.ContainsWorkspace(applyWs))
+                {
+                    throw new KeyNotFoundException(
+                        $"Workspace '{applyWs}' not found or has been closed. Active workspace IDs are listed by workspace_list.");
+                }
+            }
+            else if (key != "__apply__" && !_workspaceManager.ContainsWorkspace(key))
+            {
+                throw new KeyNotFoundException(
+                    $"Workspace '{key}' not found or has been closed. Active workspace IDs are listed by workspace_list.");
+            }
+        }
+
         var gate = key == IWorkspaceExecutionGate.LoadGateKey ? _loadGate : _workspaceGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
 
         // Apply per-request timeout and global concurrency throttle

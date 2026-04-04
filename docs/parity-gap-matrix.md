@@ -19,6 +19,8 @@ Use with:
 
 ## Must-Have Before Release
 
+Implementation status, evidence pointers, and recommendations: **`docs/parity-gap-implementation-plan.md`**.
+
 - explicit stable vs experimental surface
 - machine-readable contract via `server_catalog`
 - wrapper/integration tests for previously under-tested tool families

@@ -24,6 +24,11 @@ public interface IWorkspaceManager
     Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct);
 
     /// <summary>
+    /// Returns whether an active workspace session exists for the given identifier.
+    /// </summary>
+    bool ContainsWorkspace(string workspaceId);
+
+    /// <summary>
     /// Closes the specified workspace session and releases its resources.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier to close.</param>

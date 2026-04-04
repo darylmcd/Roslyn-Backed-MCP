@@ -26,7 +26,7 @@ For packaging, Docker, the global `dotnet` tool, and CI artifact names, see [doc
 
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) (10.0.104+)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) — **10.0.100** per [`global.json`](global.json) (`rollForward` is `latestFeature`; compatible **10.0.x** patches generally work). See [docs/setup.md](docs/setup.md).
 
 ### Build
 

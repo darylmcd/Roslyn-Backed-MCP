@@ -32,12 +32,14 @@ Supported stable tool families:
 - source text and source-generated document reads
 - semantic symbol navigation and relationship tools
 - diagnostics and impact-analysis tools
-- build/test discovery and execution tools
+- build/test discovery, execution, and coverage collection (`test_discover`, `test_run`, `test_related`, `test_related_files`, `test_coverage`, etc.)
+- security diagnostics and vulnerability scanning (`security_diagnostics`, `security_analyzer_status`, `nuget_vulnerability_scan`)
 - preview/apply refactoring tools
 
 Stable resources:
 
 - `server_catalog`
+- `resource_templates`
 - `workspaces`
 - `workspace_status`
 - `workspace_projects`
@@ -61,7 +63,6 @@ Current experimental families:
 - dead-code removal tools
 - syntax-tree inspection
 - generic Roslyn code actions
-- coverage collection
 - all prompts
 
 ## Product Boundaries

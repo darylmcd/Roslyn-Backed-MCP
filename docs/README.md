@@ -11,6 +11,7 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | `release-policy.md` | Release gates, compatibility rules, deprecation policy, versioning |
 | `roadmap.md` | Strategic roadmap decisions and planned feature directions |
 | `parity-gap-matrix.md` | Hard boundaries vs roadmap opportunities; what agents should treat as known gaps |
+| `parity-gap-implementation-plan.md` | Status and next steps for matrix “must-have” items; release verify vs roadmap |
 
 ## Related
 

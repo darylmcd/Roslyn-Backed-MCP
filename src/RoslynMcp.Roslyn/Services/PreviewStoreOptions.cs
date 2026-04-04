@@ -10,4 +10,9 @@ public sealed class PreviewStoreOptions
     /// Defaults to 20.
     /// </summary>
     public int MaxEntries { get; init; } = 20;
+
+    /// <summary>
+    /// Gets the TTL for preview entries in minutes. Defaults to 5.
+    /// </summary>
+    public int TtlMinutes { get; init; } = 5;
 }

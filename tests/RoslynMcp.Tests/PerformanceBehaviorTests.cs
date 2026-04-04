@@ -95,6 +95,8 @@ public class PerformanceBehaviorTests : TestBase
 
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
 
+        public bool ContainsWorkspace(string workspaceId) => !string.IsNullOrWhiteSpace(workspaceId);
+
         public WorkspaceStatusDto GetStatus(string workspaceId) =>
             new(
                 WorkspaceId: workspaceId,
