@@ -19,9 +19,9 @@ This document walks **`docs/parity-gap-matrix.md`** and records **what is alread
 | Matrix item | Status | Evidence / next steps |
 |-------------|--------|------------------------|
 | `server_catalog` | Done | Resource `roslyn://server/catalog` (`ServerResources.GetServerCatalog`), `ServerSurfaceCatalog` + `CatalogVersion`. **Release check 2026-04-04:** `SurfaceCatalogTests.ServerSurfaceCatalog_CoversAllRegisteredToolsResourcesAndPrompts` passes; catalog aligns with registered MCP surface. Family-level contract in `docs/product-contract.md` matches tier intent (stable vs experimental). |
-| `server_info` + tiers | Done | `ServerTools`, `ServerSurfaceCatalog` stable/experimental labels. **Release check 2026-04-04:** `SurfaceCatalogTests.ServerInfo_IncludesSurfaceSupportSummary` passes; `eng/verify-release.ps1 -Configuration Release` green (196 tests). |
+| `server_info` + tiers | Done | `ServerTools`, `ServerSurfaceCatalog` stable/experimental labels. **Release check 2026-04-04:** `SurfaceCatalogTests.ServerInfo_IncludesSurfaceSupportSummary` passes; `eng/verify-release.ps1 -Configuration Release` green (209 tests; v1.6.0). |
 | Explicit stable vs experimental surface | Done | `docs/product-contract.md`, `ServerSurfaceCatalog`, catalog JSON. **Release check 2026-04-04:** no drift; promotion remains gated by `docs/release-policy.md` + release notes. |
-| Wrapper/integration tests for under-tested tool families | Done | `WorkspaceToolsIntegrationTests`, `RefactoringToolsIntegrationTests`, `ValidationToolsIntegrationTests`, `WorkspaceResourceTests`, `PromptSmokeTests`; `SurfaceCatalogTests` for catalog parity. **Release check 2026-04-04:** full `dotnet test` via `verify-release` — 196 passed. |
+| Wrapper/integration tests for under-tested tool families | Done | `WorkspaceToolsIntegrationTests`, `RefactoringToolsIntegrationTests`, `ValidationToolsIntegrationTests`, `WorkspaceResourceTests`, `PromptSmokeTests`; `SurfaceCatalogTests` for catalog parity. **Release check 2026-04-04:** full `dotnet test` via `verify-release` — 209 passed (includes `HighValueCoverageIntegrationTests`, `BoundedStoreEvictionTests`, `ServiceCollectionExtensionsTests`). |
 | Workspace/session limits and failed-load cleanup | Done | `WorkspaceManagerOptions` (defaults 8 / 500), `WorkspaceManager`, `WorkspaceExecutionGate`. **Release check 2026-04-04:** env defaults in `ai_docs/runtime.md` verified against `Program.cs` + `WorkspaceManagerOptions` / `ValidationServiceOptions` / `PreviewStoreOptions` / `ExecutionGateOptions` / `SecurityOptions`. |
 | Bounded related-test scans and command timeouts | Done | `ValidationServiceOptions` (5 min build / 10 min test / 25 related files default), `WorkspaceExecutionGate`, `TestRunnerService`, `TestDiscoveryService`. **Release check 2026-04-04:** defaults documented in `ai_docs/runtime.md` match code. |
 | Canonical CI and publish verification path | Done | `.github/workflows/ci.yml`, `eng/verify-release.ps1`, `eng/verify-ai-docs.ps1` (see `CI_POLICY.md`). **Release check 2026-04-04:** local `verify-release` produced `artifacts/publish/host-stdio` and `artifacts/manifests/host-stdio-sha256.txt`; CI uploads `host-stdio-publish` and `release-manifests` on green runs. |
@@ -32,6 +32,7 @@ This document walks **`docs/parity-gap-matrix.md`** and records **what is alread
 | When | Commit | Check |
 |------|--------|--------|
 | 2026-04-04 | `1f2e4fb8382666da0bf7f15b456ff2f72931eed3` | `./eng/verify-release.ps1 -Configuration Release` — build OK, **196** tests passed, publish + SHA-256 manifest written. |
+| 2026-04-04 | `f61adb629ef564edf4dc36b82b68ce285d52c56d` | `./eng/verify-release.ps1 -Configuration Release` — build OK, **209** tests passed, v1.6.0 stable promotions + coverage uplift; publish + SHA-256 manifest written. |
 
 ---
 

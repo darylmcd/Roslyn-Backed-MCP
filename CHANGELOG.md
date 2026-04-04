@@ -6,20 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-04-04
+
 ### Added
 
-- `eng/verify-release.ps1` collects **XPlat Code Coverage** (Cobertura) under `artifacts/coverage`; CI uploads **`code-coverage`** artifact and generates ReportGenerator **HtmlSummary**.
-- `docs/coverage-baseline.md` — measured line/branch baseline and test-priority notes.
-- `docs/experimental-promotion-analysis.md` — promotion scoring dimensions and candidate tiers.
-- `docs/large-solution-profiling-baseline.md` — P50/P95 methodology for large-solution performance decisions.
-- `ai_docs/audit-reports/` — README and deep-review baseline template for MCP audit sessions.
-- Integration tests for `compile_check` (`ValidationToolsIntegrationTests`).
+- Integration tests targeting P1/P2 coverage gaps: `HighValueCoverageIntegrationTests`, `BoundedStoreEvictionTests`, `ServiceCollectionExtensionsTests`.
+- Sample-solution profiling smoke record and methodology notes in `docs/large-solution-profiling-baseline.md`.
+- Post-1.5 surface audit summary in `ai_docs/audit-reports/2026-04-04-post-1.5-surface-audit.md`.
 
 ### Changed
 
-- `.github/copilot-instructions.md` — coverage baseline updated to match current Cobertura aggregate.
-- `docs/parity-gap-implementation-plan.md` — release verification evidence for 2026-04-04.
-- `CI_POLICY.md` — documents coverage + artifacts.
+- **Stable surface:** promoted six read-only analysis/validation tools from experimental to stable — `compile_check`, `list_analyzers`, `find_consumers`, `get_cohesion_metrics`, `find_shared_members`, `analyze_snippet` (`ServerSurfaceCatalog`, `docs/product-contract.md`, `docs/experimental-promotion-analysis.md`).
 
 ## [1.5.0] - 2026-04-04
 
