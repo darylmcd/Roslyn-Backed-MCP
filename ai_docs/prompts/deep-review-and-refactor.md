@@ -56,10 +56,11 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 2. Call `compile_check` (no filters) to get in-memory compilation diagnostics. Compare the results with `project_diagnostics` — they should be consistent but may differ in count or detail.
 3. Call `security_diagnostics` to identify security-relevant findings with OWASP categorization.
 4. Call `security_analyzer_status` to check which analyzer packages are installed and what's missing.
-5. Call `list_analyzers` to enumerate all loaded analyzers and their rules. Note total rule count.
-6. Call `diagnostic_details` on a representative error and a representative warning to inspect full detail.
+5. Call `nuget_vulnerability_scan` to scan NuGet references for known CVEs. Compare with `security_diagnostics` — vulnerability scan covers supply-chain CVEs while security diagnostics covers source-level patterns.
+6. Call `list_analyzers` to enumerate all loaded analyzers and their rules. Note total rule count.
+7. Call `diagnostic_details` on a representative error and a representative warning to inspect full detail.
 
-**MCP audit checkpoint:** Do `project_diagnostics` and `compile_check` agree on error counts? Does `compile_check` with `emitValidation=true` find additional issues? Does `list_analyzers` return data for all projects? Are there any analyzers that fail to load (look for LOAD_ERROR entries)? Does `diagnostic_details` return accurate location and message information?
+**MCP audit checkpoint:** Do `project_diagnostics` and `compile_check` agree on error counts? Does `compile_check` with `emitValidation=true` find additional issues? Does `nuget_vulnerability_scan` find any known CVEs, and does it return structured results with package name, advisory URL, and severity? Does `list_analyzers` return data for all projects? Are there any analyzers that fail to load (look for LOAD_ERROR entries)? Does `diagnostic_details` return accurate location and message information?
 
 ---
 
@@ -84,19 +85,20 @@ For each key type in the solution:
 2. Call `symbol_info` to understand the type.
 3. Call `document_symbols` on its file to see its member structure.
 4. Call `type_hierarchy` to understand inheritance.
-5. Call `find_references` to see how widely it's used.
-6. Call `find_consumers` to classify dependency kinds (constructor, field, parameter, etc.).
-7. Call `find_shared_members` to identify private members shared across public methods.
-8. Call `find_type_mutations` to find all mutating members and their external callers.
-9. Call `find_type_usages` to see how the type is used (return types, parameters, fields, casts, etc.).
-10. Call `callers_callees` on 2-3 of its methods to map call chains.
-11. Call `find_property_writes` on any settable properties to classify init vs post-construction writes.
-12. Call `member_hierarchy` on overridden/implemented members.
-13. Call `symbol_relationships` for a combined view.
-14. Call `symbol_signature_help` on a key method to verify signature documentation.
-15. Call `impact_analysis` on a symbol you might refactor to estimate change blast radius.
+5. Call `find_implementations` on any interface or abstract type discovered via `type_hierarchy`. Verify the list is complete.
+6. Call `find_references` to see how widely it's used.
+7. Call `find_consumers` to classify dependency kinds (constructor, field, parameter, etc.).
+8. Call `find_shared_members` to identify private members shared across public methods.
+9. Call `find_type_mutations` to find all mutating members and their external callers.
+10. Call `find_type_usages` to see how the type is used (return types, parameters, fields, casts, etc.).
+11. Call `callers_callees` on 2-3 of its methods to map call chains.
+12. Call `find_property_writes` on any settable properties to classify init vs post-construction writes.
+13. Call `member_hierarchy` on overridden/implemented members.
+14. Call `symbol_relationships` for a combined view.
+15. Call `symbol_signature_help` on a key method to verify signature documentation.
+16. Call `impact_analysis` on a symbol you might refactor to estimate change blast radius.
 
-**MCP audit checkpoint:** Are `find_references` and `find_consumers` consistent? Does `find_type_usages` categorize correctly? Do `callers_callees` results match what you'd expect from reading the code? Does `symbol_relationships` combine data correctly from its sub-tools? Does `impact_analysis` produce a reasonable blast radius estimate?
+**MCP audit checkpoint:** Does `find_implementations` return all concrete implementations of an interface or abstract type? Are `find_references` and `find_consumers` consistent? Does `find_type_usages` categorize correctly? Do `callers_callees` results match what you'd expect from reading the code? Does `symbol_relationships` combine data correctly from its sub-tools? Does `impact_analysis` produce a reasonable blast radius estimate?
 
 ---
 
@@ -183,6 +185,12 @@ For each method with high complexity:
 3. Call `code_fix_apply`.
 4. Call `compile_check`.
 
+#### 6f-ii. Diagnostic Suppression
+1. Pick a diagnostic that should be suppressed rather than fixed (e.g., a deliberate pattern that triggers a style warning).
+2. Call `set_diagnostic_severity` to change the severity of that diagnostic ID in `.editorconfig` (e.g., downgrade to `suggestion` or `none`).
+3. Call `add_pragma_suppression` to insert a `#pragma warning disable` before a specific occurrence in source.
+4. Call `compile_check` to verify the suppression took effect and no new errors were introduced.
+
 #### 6g. Code Actions
 1. Call `get_code_actions` at a position with available refactorings.
 2. Call `preview_code_action` on an interesting action.
@@ -199,7 +207,7 @@ For each method with high complexity:
 3. Call `remove_dead_code_apply`.
 4. Call `compile_check`.
 
-**MCP audit checkpoint:** Does `fix_all_preview` find ALL instances? Does it crash or timeout on large scopes? Does `rename_preview` catch references in comments or strings? Does `extract_interface_preview` generate valid C# syntax? Does `bulk_replace_type_preview` miss any usages? Does `extract_type_preview` handle shared private members correctly? Does `format_range_preview` format only the specified range or does it bleed? Does `remove_dead_code_preview` correctly remove only the targeted symbols? After each apply, does `compile_check` pass?
+**MCP audit checkpoint:** Does `fix_all_preview` find ALL instances? Does it crash or timeout on large scopes? Does `rename_preview` catch references in comments or strings? Does `extract_interface_preview` generate valid C# syntax? Does `bulk_replace_type_preview` miss any usages? Does `extract_type_preview` handle shared private members correctly? Does `format_range_preview` format only the specified range or does it bleed? Does `remove_dead_code_preview` correctly remove only the targeted symbols? Does `set_diagnostic_severity` correctly update or create the `.editorconfig` entry? Does `add_pragma_suppression` insert the pragma at the correct line without breaking surrounding code? After each apply, does `compile_check` pass?
 
 **Cross-tool chain validation (Phase 6):** After `rename_apply`, call `find_references` on the new name — does the count match the preview? After `extract_interface_apply`, call `type_hierarchy` on the new interface — does it show the implementor? After `fix_all_apply`, call `project_diagnostics` with the same diagnostic ID — did the count drop to zero? After `organize_usings_apply`, call `get_source_text` — are usings actually sorted? These chains verify that workspace state stays consistent across mutations.
 
@@ -210,8 +218,15 @@ For each method with high complexity:
 1. Pick a source file and call `get_editorconfig_options` on it.
 2. Verify the returned options match what you'd expect from the .editorconfig files in the repo.
 3. Check if key options like `csharp_style_var_for_built_in_types`, `indent_style`, and `dotnet_sort_system_directives_first` are present and correct.
+4. Call `set_editorconfig_option` to set or update a non-destructive key (e.g., `dotnet_sort_system_directives_first = true`). Verify the `.editorconfig` file was created or updated correctly.
+5. Call `get_editorconfig_options` again on the same file to confirm the change is reflected.
 
-**MCP audit checkpoint:** Does `get_editorconfig_options` return options? Are the values accurate? Does it find the correct .editorconfig file path? Are there options that should appear but don't?
+#### 7b. MSBuild Evaluation
+1. Pick a project and call `get_msbuild_properties` to dump its evaluated MSBuild properties. Verify key properties like `TargetFramework`, `RootNamespace`, and `OutputType` are present and correct.
+2. Call `evaluate_msbuild_property` on a specific property (e.g., `TargetFramework`) for the same project. Verify the result matches the value from `get_msbuild_properties`.
+3. Call `evaluate_msbuild_items` with item type `Compile` to list source files. Verify the count is reasonable and includes files you know exist.
+
+**MCP audit checkpoint:** Does `get_editorconfig_options` return options? Are the values accurate? Does it find the correct .editorconfig file path? Are there options that should appear but don't? Does `set_editorconfig_option` correctly write the key-value pair? Does `get_msbuild_properties` return a complete set of evaluated properties? Does `evaluate_msbuild_property` return the same value as `get_msbuild_properties` for the same key? Does `evaluate_msbuild_items` list items with correct paths and metadata?
 
 ---
 
@@ -430,7 +445,7 @@ Derive `<repo-id>` from the **audited** solution or repository name:
 ### Report contents (required sections)
 
 1. **Header (metadata)** — server version (from `server_info`), Roslyn / .NET versions if available, **audited** solution path and name, date, workspace id, approximate project count and document count from `workspace_load` / `project_graph`.
-2. **Tool coverage** — For each **category** below, state **exercised** / **skipped** (with reason) / **N/A** (e.g. single-project solution and cross-project previews not applicable). Categories: Server; Workspace; Symbols; Analysis; Advanced Analysis; Consumer & Cohesion; Security; Flow; Syntax & Operations; Compilation; Analyzer Info; Snippet & Scripting; Refactoring (rename/format/organize); Code Actions & Fixes; Fix All; Interface/Type extraction; Type movement; Bulk refactor; Cross-project refactor; Orchestration; Dead code; Text edits; File ops; Project mutation (previews); Scaffolding (previews); Build & Test; EditorConfig; Undo; Resources (MCP resources); Prompts; Boundary & Negative Testing; Regression Verification.
+2. **Tool coverage** — For each **category** below, state **exercised** / **skipped** (with reason) / **N/A** (e.g. single-project solution and cross-project previews not applicable). Categories: Server; Workspace; Symbols; Analysis; Advanced Analysis; Consumer & Cohesion; Security; Flow; Syntax & Operations; Compilation; Analyzer Info; Snippet & Scripting; Refactoring (rename/format/organize); Code Actions & Fixes; Fix All; Interface/Type extraction; Type movement; Bulk refactor; Cross-project refactor; Orchestration; Dead code; Text edits; File ops; Project mutation (previews); Scaffolding (previews); Build & Test; EditorConfig; MSBuild evaluation; Suppression & severity; Undo; Resources (MCP resources); Prompts; Boundary & Negative Testing; Regression Verification.
 3. **Verified tools (working)** — Bullet list: tool name + one-line evidence (e.g. “`compile_check` — 0 errors after Phase 6”). This distinguishes “tested and fine” from “never called.”
 4. **Phase 6 refactor summary** — Concise record of **applied** Phase 6 work (not preview-only phases). Include: target repo identity (if different from Roslyn-Backed-MCP); **scope** (e.g. fix-all + rename + format — which sub-steps 6a–6i you actually applied); **notable symbols or files** touched; **MCP tools used** for each change (e.g. `rename_apply`, `fix_all_apply`); **verification** (`compile_check` / `test_run` / `build_workspace` outcomes). If Phase 6 had **no** applies (skipped or audit-only), state **N/A** with one line why. Optional: git commit hash or PR link if available.
 5. **MCP server issues (bugs)** — For each issue: **Tool name**, **inputs**, **expected** vs **actual**, **severity** (crash / incorrect result / missing data / degraded performance / cosmetic / error-message-quality), **reproducibility** (always / sometimes / once). Watch for: crashes, wrong or incomplete results, tool-vs-tool inconsistency, missing functionality, slow tools, bad JSON/truncation, bad line/position mapping, unhelpful error messages.
