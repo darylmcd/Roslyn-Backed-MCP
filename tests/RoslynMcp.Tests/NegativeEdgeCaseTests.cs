@@ -26,22 +26,22 @@ public sealed class NegativeEdgeCaseTests : TestBase
     }
 
     [TestMethod]
-    public async Task MalformedSymbolHandle_InvalidBase64_ReturnsGracefully()
+    public async Task MalformedSymbolHandle_InvalidBase64_ThrowsArgumentException()
     {
         var locator = SymbolLocator.ByHandle("not-valid-base64!!!");
-        var result = await SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None);
-        Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.Count);
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None));
+        StringAssert.Contains(ex.Message, "base64", StringComparison.OrdinalIgnoreCase);
     }
 
     [TestMethod]
-    public async Task MalformedSymbolHandle_ValidBase64InvalidJson_ReturnsGracefully()
+    public async Task MalformedSymbolHandle_ValidBase64InvalidJson_ThrowsArgumentException()
     {
         var handle = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("this is not json"));
         var locator = SymbolLocator.ByHandle(handle);
-        var result = await SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None);
-        Assert.IsNotNull(result);
-        Assert.AreEqual(0, result.Count);
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None));
+        StringAssert.Contains(ex.Message, "JSON", StringComparison.OrdinalIgnoreCase);
     }
 
     [TestMethod]

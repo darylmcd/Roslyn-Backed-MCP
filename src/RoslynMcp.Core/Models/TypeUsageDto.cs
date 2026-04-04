@@ -15,6 +15,8 @@ public enum TypeUsageClassification
     Cast,
     TypeCheck,
     ObjectCreation,
+    Constructor,
+    DIRegistration,
     Other
 }
 

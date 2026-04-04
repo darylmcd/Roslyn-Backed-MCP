@@ -39,15 +39,36 @@ public sealed class FixAllService : IFixAllService
         var staticProviders = _codeFixProviders.Value;
         var analyzerAssemblyProviders = LoadCodeFixProvidersFromAnalyzerReferences(solution);
         var provider = FindCodeFixProvider(staticProviders, diagnosticId)
-            ?? FindCodeFixProvider(analyzerAssemblyProviders, diagnosticId)
-            ?? throw new InvalidOperationException(
-                $"No code fix provider found for diagnostic '{diagnosticId}'. " +
-                "Restore analyzer packages (IDE/CA rules) or use organize_usings_preview for unused usings. " +
-                "Use list_analyzers to see loaded diagnostic IDs.");
+            ?? FindCodeFixProvider(analyzerAssemblyProviders, diagnosticId);
+        if (provider is null)
+        {
+            return new FixAllPreviewDto(
+                PreviewToken: "",
+                DiagnosticId: diagnosticId,
+                Scope: scope,
+                FixedCount: 0,
+                Changes: [],
+                GuidanceMessage:
+                    $"No code fix provider is loaded for diagnostic '{diagnosticId}'. " +
+                    "Restore analyzer packages (IDE/CA rules) or use organize_usings_preview / organize_usings_apply for unused usings (IDE0005). " +
+                    "Use list_analyzers to see loaded diagnostic IDs.");
+        }
 
-        var fixAllProvider = provider.GetFixAllProvider()
-            ?? throw new InvalidOperationException(
-                $"The code fix provider for '{diagnosticId}' does not support FixAll operations.");
+        var fixAllProvider = provider.GetFixAllProvider();
+        if (fixAllProvider is null)
+        {
+            var hint = diagnosticId.StartsWith("IDE", StringComparison.OrdinalIgnoreCase)
+                ? $"The IDE code fix provider for '{diagnosticId}' does not support FixAll in this workspace. " +
+                  "For IDE0005 (unnecessary usings), use organize_usings_preview / organize_usings_apply instead."
+                : $"The code fix provider for '{diagnosticId}' does not support FixAll; use code_fix_preview on individual instances or a narrower scope.";
+            return new FixAllPreviewDto(
+                PreviewToken: "",
+                DiagnosticId: diagnosticId,
+                Scope: scope,
+                FixedCount: 0,
+                Changes: [],
+                GuidanceMessage: hint);
+        }
 
         // Determine target document and project
         var (targetDocument, targetProject) = ResolveTargets(solution, fixAllScope, filePath, projectName);

@@ -56,17 +56,17 @@ public sealed class TestRunnerService : ITestRunnerService
 
         var resultsDirectory = Path.Combine(Path.GetTempPath(), "RoslynMcpTestResults", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(resultsDirectory);
-        var trxPath = Path.Combine(resultsDirectory, "results.trx");
 
         try
         {
+            // Do not set LogFileName: solution-level runs emit one TRX per test project; a fixed name would overwrite.
             var arguments = new List<string>
             {
                 "test",
                 targetPath,
                 "--nologo",
                 "--logger",
-                $"trx;LogFileName={Path.GetFileName(trxPath)}",
+                "trx",
                 "--results-directory",
                 resultsDirectory
             };
@@ -85,6 +85,16 @@ public sealed class TestRunnerService : ITestRunnerService
                 ct).ConfigureAwait(false);
 
             var trxFiles = Directory.GetFiles(resultsDirectory, "*.trx", SearchOption.TopDirectoryOnly);
+            if (trxFiles.Length == 0 && !execution.Succeeded)
+            {
+                var tail = execution.StdOut.Length > 2000
+                    ? execution.StdOut[^2000..]
+                    : execution.StdOut;
+                throw new InvalidOperationException(
+                    $"dotnet test exited with code {execution.ExitCode} and produced no TRX output. " +
+                    $"StdErr: {execution.StdErr}\nStdOut (tail): {tail}");
+            }
+
             return DotnetOutputParser.ParseTestRun(execution, trxFiles);
         }
         finally

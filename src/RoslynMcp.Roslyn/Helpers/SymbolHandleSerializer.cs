@@ -43,24 +43,11 @@ internal static class SymbolHandleSerializer
     /// <param name="solution">The solution to search.</param>
     /// <param name="symbolHandle">The base-64-encoded handle string.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>The resolved symbol, or <see langword="null"/> if the handle is malformed or the symbol cannot be found.</returns>
+    /// <returns>The resolved symbol, or <see langword="null"/> if the handle decodes correctly but the symbol cannot be found in the solution.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="symbolHandle"/> is empty, not valid base64, not valid JSON, or not a well-formed handle payload.</exception>
     public static async Task<ISymbol?> ResolveHandleAsync(Solution solution, string symbolHandle, CancellationToken ct)
     {
-        SymbolHandlePayload? payload;
-        try
-        {
-            var json = Encoding.UTF8.GetString(Convert.FromBase64String(symbolHandle));
-            payload = JsonSerializer.Deserialize<SymbolHandlePayload>(json);
-        }
-        catch (Exception)
-        {
-            return null;
-        }
-
-        if (payload is null)
-        {
-            return null;
-        }
+        var payload = ParseHandlePayload(symbolHandle);
 
         if (!string.IsNullOrWhiteSpace(payload.MetadataName))
         {
@@ -93,7 +80,56 @@ internal static class SymbolHandleSerializer
         return null;
     }
 
-    private sealed record SymbolHandlePayload(
+    /// <summary>
+    /// Decodes a symbol handle string. Throws <see cref="ArgumentException"/> if the string is not a valid handle
+    /// (distinguishes malformed handles from "valid handle, symbol not found" at resolution time).
+    /// </summary>
+    internal static SymbolHandlePayload ParseHandlePayload(string symbolHandle)
+    {
+        if (string.IsNullOrWhiteSpace(symbolHandle))
+        {
+            throw new ArgumentException("symbolHandle is empty.", nameof(symbolHandle));
+        }
+
+        string json;
+        try
+        {
+            json = Encoding.UTF8.GetString(Convert.FromBase64String(symbolHandle.Trim()));
+        }
+        catch (FormatException ex)
+        {
+            throw new ArgumentException("symbolHandle is not valid base64.", nameof(symbolHandle), ex);
+        }
+
+        SymbolHandlePayload? payload;
+        try
+        {
+            payload = JsonSerializer.Deserialize<SymbolHandlePayload>(json);
+        }
+        catch (JsonException ex)
+        {
+            throw new ArgumentException("symbolHandle is not valid JSON.", nameof(symbolHandle), ex);
+        }
+
+        if (payload is null)
+        {
+            throw new ArgumentException("symbolHandle JSON deserialized to null.", nameof(symbolHandle));
+        }
+
+        var hasMetadata = !string.IsNullOrWhiteSpace(payload.MetadataName);
+        var hasSource = !string.IsNullOrWhiteSpace(payload.FilePath) && payload.Line.HasValue && payload.Column.HasValue;
+        var hasDisplay = !string.IsNullOrWhiteSpace(payload.DisplayName);
+        if (!hasMetadata && !hasSource && !hasDisplay)
+        {
+            throw new ArgumentException(
+                "symbolHandle payload must include MetadataName, source location (filePath, line, column), or DisplayName.",
+                nameof(symbolHandle));
+        }
+
+        return payload;
+    }
+
+    internal sealed record SymbolHandlePayload(
         string? MetadataName,
         string? DisplayName,
         string? FilePath,

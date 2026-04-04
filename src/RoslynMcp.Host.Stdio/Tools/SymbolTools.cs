@@ -205,7 +205,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get display signature, parameters, return type, and documentation for a symbol")]
+    [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get display signature, parameters, return type, and documentation for the symbol resolved at the exact line/column (or handle/metadata name). The caret position matters: on a field identifier you get the field's type/signature, not the enclosing method.")]
     public static Task<string> GetSignatureHelp(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,

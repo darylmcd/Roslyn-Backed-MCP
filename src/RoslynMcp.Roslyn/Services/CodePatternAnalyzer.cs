@@ -136,19 +136,25 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         var results = new List<SemanticSearchResultDto>();
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
-        var predicates = ParseSemanticQuery(query);
+        var (predicates, usedImplicitNameOnly) = ParseSemanticQuery(query);
         bool Combined(ISymbol s) => predicates.All(p => p(s));
         await CollectSemanticSearchMatchesAsync(solution, projects, Combined, limit, results, ct).ConfigureAwait(false);
 
         string? warning = null;
-        if (results.Count == 0 && query.Trim().Length >= 2)
+        if (results.Count == 0 && query.Trim().Length >= 2 && !usedImplicitNameOnly)
         {
             var term = query.Trim();
             bool NameMatch(ISymbol s) => s.Name.Contains(term, StringComparison.OrdinalIgnoreCase);
             await CollectSemanticSearchMatchesAsync(solution, projects, NameMatch, limit, results, ct)
                 .ConfigureAwait(false);
             if (results.Count > 0)
+            {
                 warning = "No structured query match; results use a name substring fallback.";
+            }
+            else
+            {
+                warning = $"No symbols matched this semantic query: {term}";
+            }
         }
 
         return new SemanticSearchResponseDto(results, warning);
@@ -235,7 +241,8 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         ["protected"] = Accessibility.Protected,
     };
 
-    private static List<Func<ISymbol, bool>> ParseSemanticQuery(string query)
+    /// <returns>Predicate list and whether the query fell back to name-only matching (no structured keywords).</returns>
+    private static (List<Func<ISymbol, bool>> Predicates, bool UsedImplicitNameOnly) ParseSemanticQuery(string query)
     {
         var predicates = new List<Func<ISymbol, bool>>();
         var q = query.ToLowerInvariant().Trim();
@@ -289,9 +296,12 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
 
         // Fallback: name-based search
         if (predicates.Count == 0)
+        {
             predicates.Add(s => s.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+            return (predicates, UsedImplicitNameOnly: true);
+        }
 
-        return predicates;
+        return (predicates, UsedImplicitNameOnly: false);
     }
 
     private static void AddReturnTypePredicate(List<Func<ISymbol, bool>> predicates, string q)

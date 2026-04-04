@@ -11,7 +11,7 @@ public static class EditTools
 {
 
     [McpServerTool(Name = "apply_text_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
-     Description("Apply one or more text edits to a source file in the workspace. Each edit specifies a range (start/end line and column) and the replacement text. The workspace is updated in-place and a diff is returned.")]
+     Description("Apply one or more text edits to a source file in the workspace. Each edit specifies a range (start/end line and column) and the replacement text. The workspace is updated in-place and a diff is returned. Text edits are disk-direct and are not registered for revert_last_apply; use Roslyn preview/apply tools when you need undo.")]
     public static Task<string> ApplyTextEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,

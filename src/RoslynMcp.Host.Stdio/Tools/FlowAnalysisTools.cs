@@ -28,7 +28,7 @@ public static class FlowAnalysisTools
     }
 
     [McpServerTool(Name = "analyze_control_flow", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Analyze control flow through a code region: entry/exit points, reachability, and return statements. Use to detect unreachable code and validate all code paths.")]
+     Description("Analyze control flow through a code region: entry/exit points, reachability, and return statements. EndPointIsReachable follows Roslyn semantics (whether execution can fall through the end of the region without return/throw), not whether the method can complete; see Warning when returns exist but EndPointIsReachable is false.")]
     public static Task<string> AnalyzeControlFlow(
         IWorkspaceExecutionGate gate,
         IFlowAnalysisService flowAnalysisService,

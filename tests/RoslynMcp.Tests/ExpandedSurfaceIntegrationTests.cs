@@ -130,6 +130,27 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
     }
 
     [TestMethod]
+    public async Task ProjectDiagnostics_IncludesSplitErrorCounts()
+    {
+        var diagnosticsJson = await AnalysisTools.GetProjectDiagnostics(
+            WorkspaceExecutionGate,
+            DiagnosticService,
+            WorkspaceId,
+            project: "SampleLib",
+            file: null,
+            severity: null,
+            offset: 0,
+            limit: 50,
+            CancellationToken.None);
+        using var diagnosticsDoc = JsonDocument.Parse(diagnosticsJson);
+        Assert.IsTrue(diagnosticsDoc.RootElement.TryGetProperty("compilerErrors", out var ce));
+        Assert.IsTrue(diagnosticsDoc.RootElement.TryGetProperty("analyzerErrors", out var ae));
+        Assert.IsTrue(diagnosticsDoc.RootElement.TryGetProperty("workspaceErrors", out var we));
+        var total = diagnosticsDoc.RootElement.GetProperty("totalErrors").GetInt32();
+        Assert.AreEqual(total, ce.GetInt32() + ae.GetInt32() + we.GetInt32());
+    }
+
+    [TestMethod]
     public async Task Symbol_And_Usage_Tools_Apply_Pagination_Metadata()
     {
         var animalServicePath = FindDocumentPath("AnimalService.cs");

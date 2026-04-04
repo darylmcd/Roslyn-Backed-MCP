@@ -107,7 +107,7 @@ public static class ValidationTools
                 var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
                 ProgressHelper.Report(progress, 1, 1);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct), toolName: "test_run");
     }
 
     [McpServerTool(Name = "test_related", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find likely related tests for a symbol by source location or symbol handle. Results use heuristic name matching and may not be exhaustive.")]

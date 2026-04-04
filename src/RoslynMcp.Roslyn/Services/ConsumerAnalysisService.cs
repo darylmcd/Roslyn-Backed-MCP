@@ -116,7 +116,7 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
             parent = parent.Parent;
         }
 
-        if (parent is null) return "Other";
+        if (parent is null) return nameof(TypeUsageClassification.Other);
 
         // services.AddSingleton<IFoo, Foo>() — type appears inside generic argument list
         if (parent is TypeArgumentListSyntax typeArgs &&
@@ -124,41 +124,41 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
             inv.Expression is MemberAccessExpressionSyntax ma &&
             ma.Name.Identifier.Text is "AddSingleton" or "AddScoped" or "AddTransient" or "AddHostedService"
                 or "AddKeyedSingleton" or "AddKeyedScoped" or "AddKeyedTransient")
-            return "DIRegistration";
+            return nameof(TypeUsageClassification.DIRegistration);
 
         // Constructor parameter
         if (parent is ParameterSyntax param)
         {
             var paramParent = param.Parent?.Parent;
             if (paramParent is ConstructorDeclarationSyntax)
-                return "Constructor";
-            return "Parameter";
+                return nameof(TypeUsageClassification.Constructor);
+            return nameof(TypeUsageClassification.MethodParameter);
         }
 
         // Field declaration
         if (parent is VariableDeclarationSyntax varDecl)
         {
             if (varDecl.Parent is FieldDeclarationSyntax)
-                return "Field";
-            return "LocalVariable";
+                return nameof(TypeUsageClassification.FieldType);
+            return nameof(TypeUsageClassification.LocalVariable);
         }
 
         // Base type list
         if (parent is SimpleBaseTypeSyntax or BaseListSyntax)
-            return "BaseType";
+            return nameof(TypeUsageClassification.BaseType);
 
         // Property type
         if (parent is PropertyDeclarationSyntax)
-            return "Property";
+            return nameof(TypeUsageClassification.PropertyType);
 
         // Method return type
         if (parent is MethodDeclarationSyntax)
-            return "ReturnType";
+            return nameof(TypeUsageClassification.MethodReturnType);
 
         // Type argument (e.g., List<T>)
         if (parent is TypeArgumentListSyntax)
-            return "GenericArgument";
+            return nameof(TypeUsageClassification.GenericArgument);
 
-        return "Other";
+        return nameof(TypeUsageClassification.Other);
     }
 }

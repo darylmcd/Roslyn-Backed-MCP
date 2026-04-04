@@ -8,4 +8,5 @@ public sealed record FixAllPreviewDto(
     string DiagnosticId,
     string Scope,
     int FixedCount,
-    IReadOnlyList<FileChangeDto> Changes);
+    IReadOnlyList<FileChangeDto> Changes,
+    string? GuidanceMessage = null);
