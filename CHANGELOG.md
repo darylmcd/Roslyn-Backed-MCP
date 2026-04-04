@@ -4,6 +4,24 @@ All notable changes to Roslyn-Backed MCP Server will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.5.0] - 2026-04-04
+
+### Added
+
+- P4 MCP surface: NuGet vulnerability scan, `.editorconfig` write, MSBuild evaluation tools, suppression tools, cohesion `excludeTestProjects`, maintainability index, and related refactors; MCP manifest icon and integration tests.
+- CodeQL workflow (PR path filter, query suites) with CI policy note.
+- Human-facing `docs/setup.md` (build, test, global tool, Docker, CI artifacts); standardized AI doc prompts and indexes; backlog agent-contract and hygiene workflow.
+- `docs/parity-gap-implementation-plan.md`; environment bindings for source-gen docs cap, related-test scan cap, and preview TTL (see `ai_docs/runtime.md`).
+
+### Changed
+
+- `WorkspaceManager` / `WorkspaceExecutionGate`: concurrent session limits, workspace validation, apply gate keys, bounded gates; `PreviewStore` and `IWorkspaceManager` extensions; DI registration updates.
+
+### Fixed
+
+- Parity-gap hardening across Roslyn services (diagnostics, fix-all, mutations, flow/control/syntax, unused confidence, TRX aggregation, workspace generated docs, and more from P1–P3 backlog audits).
+- Host tools and DTOs (semantic search warning, JSON enums, resource name keys, server/script/syntax surfaces, prompts).
+
 ## [1.4.0] - 2026-04-03
 
 ### Added
