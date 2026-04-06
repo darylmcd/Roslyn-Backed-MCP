@@ -70,18 +70,20 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
+            // Phase 1 (sequential, cheap): walk syntax and collect candidates that survive
+            // the pre-filter. The HashSet de-dup must run on a single thread.
+            var candidates = new List<ISymbol>();
             foreach (var tree in compilation.SyntaxTrees)
             {
-                if (ct.IsCancellationRequested || results.Count >= limit) break;
+                if (ct.IsCancellationRequested) break;
                 if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
 
                 var semanticModel = compilation.GetSemanticModel(tree);
                 var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
 
-                var declarations = root.DescendantNodes().OfType<MemberDeclarationSyntax>();
-                foreach (var decl in declarations)
+                foreach (var decl in root.DescendantNodes().OfType<MemberDeclarationSyntax>())
                 {
-                    if (ct.IsCancellationRequested || results.Count >= limit) break;
+                    if (ct.IsCancellationRequested) break;
 
                     var symbol = semanticModel.GetDeclaredSymbol(decl, ct);
                     if (symbol is null) continue;
@@ -92,7 +94,26 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                     if (ShouldSkipSymbolForUnusedAnalysis(symbol, includePublic, excludeEnums, excludeRecordProperties))
                         continue;
 
-                    var refs = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
+                    candidates.Add(symbol);
+                }
+            }
+
+            if (candidates.Count == 0) continue;
+
+            // Phase 2 (parallel, expensive): each candidate fans out to a SymbolFinder lookup
+            // (and possibly a cross-compilation fallback). Roslyn's Solution is immutable, so
+            // SymbolFinder is safe under concurrency. Bound parallelism by CPU count.
+            var parallelism = Math.Clamp(Environment.ProcessorCount, 4, 16);
+            using var semaphore = new SemaphoreSlim(parallelism, parallelism);
+            var capturedProject = project;
+            var capturedSolution = solution;
+
+            var tasks = candidates.Select(async symbol =>
+            {
+                await semaphore.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    var refs = await SymbolFinder.FindReferencesAsync(symbol, capturedSolution, ct).ConfigureAwait(false);
                     var refCount = refs.Sum(r => r.Locations.Count());
 
                     // Fallback: cross-compilation re-resolution for symbols prone to
@@ -103,30 +124,46 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                     if (refCount == 0 && NeedsCrossCompilationCheck(symbol))
                     {
                         refCount = await CountCrossCompilationReferencesAsync(
-                            symbol, project, solution, ct).ConfigureAwait(false);
+                            symbol, capturedProject, capturedSolution, ct).ConfigureAwait(false);
                     }
 
-                    if (refCount == 0)
-                    {
-                        var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
-                        if (location is null) continue;
-                        var lineSpan = location.GetLineSpan();
-
-                        results.Add(new UnusedSymbolDto(
-                            symbol.Name,
-                            symbol.Kind.ToString(),
-                            lineSpan.Path,
-                            lineSpan.StartLinePosition.Line + 1,
-                            lineSpan.StartLinePosition.Character + 1,
-                            symbol.ContainingType?.Name,
-                            SymbolHandleSerializer.CreateHandle(symbol),
-                            ComputeUnusedConfidence(symbol)));
-                    }
+                    return refCount == 0 ? BuildUnusedDto(symbol) : null;
                 }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            // Preserve original ordering (project → tree → declaration order) by awaiting
+            // in input order, not completion order.
+            var unusedDtos = await Task.WhenAll(tasks).ConfigureAwait(false);
+            foreach (var dto in unusedDtos)
+            {
+                if (dto is null) continue;
+                results.Add(dto);
+                if (results.Count >= limit) break;
             }
         }
 
         return results;
+    }
+
+    private static UnusedSymbolDto? BuildUnusedDto(ISymbol symbol)
+    {
+        var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
+        if (location is null) return null;
+        var lineSpan = location.GetLineSpan();
+
+        return new UnusedSymbolDto(
+            symbol.Name,
+            symbol.Kind.ToString(),
+            lineSpan.Path,
+            lineSpan.StartLinePosition.Line + 1,
+            lineSpan.StartLinePosition.Character + 1,
+            symbol.ContainingType?.Name,
+            SymbolHandleSerializer.CreateHandle(symbol),
+            ComputeUnusedConfidence(symbol));
     }
 
     /// <summary>

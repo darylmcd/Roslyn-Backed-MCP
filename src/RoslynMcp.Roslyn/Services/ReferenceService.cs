@@ -27,22 +27,50 @@ public sealed class ReferenceService : IReferenceService
         if (symbol is null) return [];
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
-        var results = new List<LocationDto>();
+        var refLocations = references.SelectMany(r => r.Locations).ToList();
+        return await MaterializeReferenceLocationsAsync(refLocations, ct).ConfigureAwait(false);
+    }
 
-        foreach (var refSymbol in references)
+    /// <summary>
+    /// Resolves a flat list of <see cref="ReferenceLocation"/>s to <see cref="LocationDto"/>s in parallel.
+    /// Each location requires an async preview-text fetch and a containing-symbol lookup; doing them
+    /// sequentially is the dominant cost for high-reference symbols. Uses a bounded semaphore so we
+    /// don't blow up document caches on large fan-outs.
+    /// </summary>
+    private static async Task<IReadOnlyList<LocationDto>> MaterializeReferenceLocationsAsync(
+        IReadOnlyList<ReferenceLocation> refLocations, CancellationToken ct)
+    {
+        if (refLocations.Count == 0) return [];
+
+        var parallelism = Math.Min(Environment.ProcessorCount, 8);
+        using var semaphore = new SemaphoreSlim(parallelism, parallelism);
+
+        var tasks = new Task<LocationDto>[refLocations.Count];
+        for (var i = 0; i < refLocations.Count; i++)
         {
-            foreach (var refLocation in refSymbol.Locations)
-            {
-                var doc = refLocation.Document;
-                var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-
-                var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-                var classification = SymbolMapper.ClassifyReferenceLocation(refLocation);
-                results.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview, classification));
-            }
+            var refLocation = refLocations[i];
+            tasks[i] = ToLocationDtoAsync(refLocation, semaphore, ct);
         }
 
-        return results;
+        return await Task.WhenAll(tasks).ConfigureAwait(false);
+    }
+
+    private static async Task<LocationDto> ToLocationDtoAsync(
+        ReferenceLocation refLocation, SemaphoreSlim semaphore, CancellationToken ct)
+    {
+        await semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var doc = refLocation.Document;
+            var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
+            var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
+            var classification = SymbolMapper.ClassifyReferenceLocation(refLocation);
+            return SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview, classification);
+        }
+        finally
+        {
+            semaphore.Release();
+        }
     }
 
     public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
@@ -99,7 +127,11 @@ public sealed class ReferenceService : IReferenceService
             throw new ArgumentException("Maximum of 50 symbols per bulk request.");
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var semaphore = new SemaphoreSlim(6, 6);
+        // Outer fan-out: how many bulk symbols we resolve concurrently. Each task may itself
+        // spawn parallel preview fetches inside MaterializeReferenceLocationsAsync, so keep
+        // the outer cap modest on big boxes to avoid runaway document-cache pressure.
+        var bulkParallelism = Math.Clamp(Environment.ProcessorCount / 2, 4, 8);
+        using var semaphore = new SemaphoreSlim(bulkParallelism, bulkParallelism);
 
         async Task<BulkReferenceResultDto> ProcessOneAsync(BulkSymbolLocator bulk, int index)
         {
@@ -129,17 +161,9 @@ public sealed class ReferenceService : IReferenceService
                     }
                 }
 
-                foreach (var refSymbol in references)
-                {
-                    foreach (var refLocation in refSymbol.Locations)
-                    {
-                        var doc = refLocation.Document;
-                        var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-                        var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-                        var classification = SymbolMapper.ClassifyReferenceLocation(refLocation);
-                        locations.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview, classification));
-                    }
-                }
+                var refLocations = references.SelectMany(r => r.Locations).ToList();
+                var refDtos = await MaterializeReferenceLocationsAsync(refLocations, ct).ConfigureAwait(false);
+                locations.AddRange(refDtos);
 
                 return new BulkReferenceResultDto(key, symbol.ToDisplayString(), locations.Count, locations, null);
             }
