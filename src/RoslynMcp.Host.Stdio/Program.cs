@@ -78,13 +78,16 @@ static ValidationServiceOptions BindValidationServiceOptions()
     var opts = new ValidationServiceOptions();
     var buildSec = Environment.GetEnvironmentVariable("ROSLYNMCP_BUILD_TIMEOUT_SECONDS");
     var testSec = Environment.GetEnvironmentVariable("ROSLYNMCP_TEST_TIMEOUT_SECONDS");
+    var vulnSec = Environment.GetEnvironmentVariable("ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS");
 
     if (int.TryParse(buildSec, out var bs) && bs > 0)
-        opts = new ValidationServiceOptions { BuildTimeout = TimeSpan.FromSeconds(bs), TestTimeout = opts.TestTimeout, MaxRelatedFiles = opts.MaxRelatedFiles };
+        opts = opts with { BuildTimeout = TimeSpan.FromSeconds(bs) };
     if (int.TryParse(testSec, out var ts) && ts > 0)
-        opts = new ValidationServiceOptions { BuildTimeout = opts.BuildTimeout, TestTimeout = TimeSpan.FromSeconds(ts), MaxRelatedFiles = opts.MaxRelatedFiles };
+        opts = opts with { TestTimeout = TimeSpan.FromSeconds(ts) };
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_MAX_RELATED_FILES"), out var mrf) && mrf > 0)
-        opts = new ValidationServiceOptions { BuildTimeout = opts.BuildTimeout, TestTimeout = opts.TestTimeout, MaxRelatedFiles = mrf };
+        opts = opts with { MaxRelatedFiles = mrf };
+    if (int.TryParse(vulnSec, out var vs) && vs > 0)
+        opts = opts with { VulnerabilityScanTimeout = TimeSpan.FromSeconds(vs) };
 
     return opts;
 }

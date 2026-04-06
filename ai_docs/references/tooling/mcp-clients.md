@@ -33,9 +33,32 @@
 - Any client that supports **stdio MCP** can run the same command line as above.
 - Pass no extra arguments unless your client documents them; the server uses environment variables for tuning (see `ai_docs/runtime.md` — e.g. execution gate, timeouts where documented).
 
-## Claude Code / Codex / other agents
+## Claude Code
+
+**Plugin install (recommended):**
+
+```
+/plugin marketplace add darylmcd/Roslyn-Backed-MCP
+/plugin install roslyn-mcp@roslyn-mcp-marketplace
+```
+
+This installs the MCP server + 10 curated skills + safety hooks. Requires `roslynmcp` on PATH (`dotnet tool install -g RoslynMcp`).
+
+**Manual MCP config (alternative):**
 
 - Configure the MCP server with the same **stdio** pattern: command `roslynmcp` or `dotnet` with args `run --project ...`.
+
+**Local plugin dev:**
+
+```
+claude --plugin-dir /path/to/Roslyn-Backed-MCP
+```
+
+Point agents at **`ai_docs/README.md`** for bootstrap and **`ai_docs/runtime.md`** for policy.
+
+## Other agents (Codex, etc.)
+
+- Configure the MCP server with **stdio**: command `roslynmcp` or `dotnet` with args `run --project ...`.
 - Point agents at **`ai_docs/README.md`** for bootstrap and **`ai_docs/runtime.md`** for policy.
 
 ## Operational checklist

@@ -10,6 +10,16 @@ public abstract class TestBase
 {
     private static readonly object _initLock = new();
     private static bool _msbuildInitialized;
+    private static bool _servicesInitialized;
+    private static readonly WorkspaceIdCache _workspaceIdCache = new();
+
+    /// <summary>
+    /// Validation timeouts for integration tests. These match production defaults
+    /// (<see cref="ValidationServiceOptions"/>): timeouts should fail loudly when a real
+    /// regression appears, not be padded to mask perf smells. The shared workspace cache
+    /// below eliminated the previous MSBuild contention that caused 5-minute hangs.
+    /// </summary>
+    private static readonly ValidationServiceOptions TestValidationOptions = new();
 
     protected static IPreviewStore PreviewStore { get; private set; } = null!;
     protected static WorkspaceManager WorkspaceManager { get; private set; } = null!;
@@ -61,20 +71,41 @@ public abstract class TestBase
 
     protected static void InitializeServices()
     {
+        // Idempotent: services and workspace manager are created once per test assembly,
+        // not once per test class. Previously each [ClassInitialize] disposed and recreated
+        // the WorkspaceManager (32 times per run), causing MSBuild file-lock contention on
+        // the shared sample fixtures and unbounded build hangs under load.
         lock (_initLock)
         {
+            if (_servicesInitialized)
+            {
+                return;
+            }
+
             if (!_msbuildInitialized)
             {
                 MsBuildInitializer.EnsureInitialized();
                 _msbuildInitialized = true;
             }
-        }
 
+            InitializeServicesCore();
+            _servicesInitialized = true;
+        }
+    }
+
+    private static void InitializeServicesCore()
+    {
         PreviewStore = new PreviewStore();
+        // Tests retain workspaces across the full assembly run instead of disposing them
+        // per-class. We need a higher limit than the production default (8) because
+        // ~22 test classes load fixture solutions (some loading multiple) without ever
+        // closing them. The cap is still bounded so a runaway test that loads in a loop
+        // will fail loudly rather than exhaust memory.
         WorkspaceManager = new WorkspaceManager(
             NullLogger<WorkspaceManager>.Instance,
             PreviewStore,
-            new FileWatcherService(NullLogger<FileWatcherService>.Instance));
+            new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 });
         WorkspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), WorkspaceManager);
         DotnetCommandRunner = new DotnetCommandRunner();
         GatedCommandExecutor = new GatedCommandExecutor(
@@ -109,14 +140,17 @@ public abstract class TestBase
         BuildService = new BuildService(
             WorkspaceManager,
             GatedCommandExecutor,
-            NullLogger<BuildService>.Instance);
+            NullLogger<BuildService>.Instance,
+            TestValidationOptions);
         TestRunnerService = new TestRunnerService(
             WorkspaceManager,
             GatedCommandExecutor,
-            NullLogger<TestRunnerService>.Instance);
+            NullLogger<TestRunnerService>.Instance,
+            TestValidationOptions);
         TestDiscoveryService = new TestDiscoveryService(
             WorkspaceManager,
-            NullLogger<TestDiscoveryService>.Instance);
+            NullLogger<TestDiscoveryService>.Instance,
+            TestValidationOptions);
         CompletionService = new CompletionService(
             WorkspaceManager,
             NullLogger<CompletionService>.Instance);
@@ -133,7 +167,8 @@ public abstract class TestBase
         DependencyAnalysisService = new DependencyAnalysisService(
             WorkspaceManager,
             GatedCommandExecutor,
-            NullLogger<DependencyAnalysisService>.Instance);
+            NullLogger<DependencyAnalysisService>.Instance,
+            TestValidationOptions);
         CodePatternAnalyzer = new CodePatternAnalyzer(
             WorkspaceManager,
             NullLogger<CodePatternAnalyzer>.Instance);
@@ -206,112 +241,71 @@ public abstract class TestBase
             WorkspaceManager,
             NullLogger<EditorConfigService>.Instance);
 
-        RepositoryRootPath = FindRepositoryRoot();
-        SampleSolutionPath = FindFixturePath("SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
-        BuildFailureSolutionPath = FindFixturePath("BuildFailureSolution", "BuildFailureSolution.slnx", "BuildFailureSolution.sln");
-        GeneratedDocumentSolutionPath = FindFixturePath("GeneratedDocumentSolution", "GeneratedDocumentSolution.slnx", "GeneratedDocumentSolution.sln");
+        RepositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
+        SampleSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
+        BuildFailureSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "BuildFailureSolution", "BuildFailureSolution.slnx", "BuildFailureSolution.sln");
+        GeneratedDocumentSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "GeneratedDocumentSolution", "GeneratedDocumentSolution.slnx", "GeneratedDocumentSolution.sln");
     }
 
+    /// <summary>
+    /// No-op since the test assembly now owns service lifetime. Disposal happens in
+    /// <see cref="AssemblyLifecycle.Cleanup"/> after all tests complete. Kept for source
+    /// compatibility with existing <c>[ClassCleanup]</c> hooks across test classes.
+    /// </summary>
     protected static void DisposeServices()
     {
-        WorkspaceManager?.Dispose();
+        // Intentional no-op. See AssemblyLifecycle.Cleanup.
+    }
+
+    /// <summary>
+    /// Disposes the shared <see cref="WorkspaceManager"/> and resets the workspace cache.
+    /// Called from <see cref="AssemblyLifecycle.Cleanup"/> after the entire test assembly
+    /// finishes. Test code should not call this directly.
+    /// </summary>
+    internal static void DisposeAssemblyResources()
+    {
+        lock (_initLock)
+        {
+            if (!_servicesInitialized)
+            {
+                return;
+            }
+
+            try
+            {
+                WorkspaceManager?.Dispose();
+            }
+            catch
+            {
+                // Best-effort: avoid masking real test failures with cleanup errors.
+            }
+
+            _workspaceIdCache.Clear();
+            _servicesInitialized = false;
+        }
+    }
+
+    /// <summary>
+    /// Loads a workspace from the given solution path, caching the resulting <c>WorkspaceId</c>
+    /// so multiple test classes that need the same fixture share a single
+    /// <see cref="Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace"/> instance. Eliminates the
+    /// 22× duplicate <c>SampleSolution</c> loads that previously caused MSBuild file-lock
+    /// contention. Test classes can still call <see cref="WorkspaceManager"/>.<c>LoadAsync</c>
+    /// directly for fixtures they want isolated (e.g., temp copies via
+    /// <see cref="CreateSampleSolutionCopy"/>).
+    /// </summary>
+    protected static async Task<string> GetOrLoadWorkspaceIdAsync(string solutionPath, CancellationToken ct = default)
+    {
+        return await _workspaceIdCache.GetOrLoadAsync(WorkspaceManager, solutionPath, ct).ConfigureAwait(false);
     }
 
     protected static string CreateSampleSolutionCopy()
     {
-        var sampleRoot = Path.GetDirectoryName(SampleSolutionPath)
-            ?? throw new InvalidOperationException("Sample solution root could not be resolved.");
-        var tempRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", Guid.NewGuid().ToString("N"));
-        CopyDirectory(sampleRoot, tempRoot);
-        CopyRepositorySupportFiles(tempRoot);
-
-        var slnxPath = Path.Combine(tempRoot, "SampleSolution.slnx");
-        if (File.Exists(slnxPath))
-        {
-            return slnxPath;
-        }
-
-        var slnPath = Path.Combine(tempRoot, "SampleSolution.sln");
-        if (File.Exists(slnPath))
-        {
-            return slnPath;
-        }
-
-        throw new InvalidOperationException("Copied sample solution is missing a solution file.");
+        return TestFixtureFileSystem.CreateSampleSolutionCopy(RepositoryRootPath, SampleSolutionPath);
     }
 
     protected static void DeleteDirectoryIfExists(string path)
     {
-        if (Directory.Exists(path))
-        {
-            Directory.Delete(path, recursive: true);
-        }
-    }
-
-    private static void CopyDirectory(string sourceDir, string destinationDir)
-    {
-        Directory.CreateDirectory(destinationDir);
-
-        foreach (var file in Directory.GetFiles(sourceDir))
-        {
-            var destinationFile = Path.Combine(destinationDir, Path.GetFileName(file));
-            File.Copy(file, destinationFile, overwrite: true);
-        }
-
-        foreach (var directory in Directory.GetDirectories(sourceDir))
-        {
-            var destinationSubdirectory = Path.Combine(destinationDir, Path.GetFileName(directory));
-            CopyDirectory(directory, destinationSubdirectory);
-        }
-    }
-
-    private static string FindFixturePath(string fixtureDirectory, params string[] candidateFiles)
-    {
-        var dir = RepositoryRootPath;
-        while (dir is not null)
-        {
-            foreach (var candidateFile in candidateFiles)
-            {
-                var candidate = Path.Combine(dir, "samples", fixtureDirectory, candidateFile);
-                if (File.Exists(candidate))
-                {
-                    return candidate;
-                }
-            }
-
-            dir = Directory.GetParent(dir)?.FullName;
-        }
-
-        throw new InvalidOperationException(
-            $"Could not find fixture '{fixtureDirectory}'. Ensure the samples directory exists at the repo root.");
-    }
-
-    private static string FindRepositoryRoot()
-    {
-        var dir = AppContext.BaseDirectory;
-        while (dir is not null)
-        {
-            if (File.Exists(Path.Combine(dir, "RoslynMcp.slnx")) &&
-                File.Exists(Path.Combine(dir, "Directory.Build.props")))
-            {
-                return dir;
-            }
-
-            dir = Directory.GetParent(dir)?.FullName;
-        }
-
-        throw new InvalidOperationException("Could not find the repository root.");
-    }
-
-    private static void CopyRepositorySupportFiles(string destinationRoot)
-    {
-        foreach (var fileName in new[] { "Directory.Build.props", "Directory.Packages.props", "global.json" })
-        {
-            var sourcePath = Path.Combine(RepositoryRootPath, fileName);
-            if (File.Exists(sourcePath))
-            {
-                File.Copy(sourcePath, Path.Combine(destinationRoot, fileName), overwrite: true);
-            }
-        }
+        TestFixtureFileSystem.DeleteDirectoryIfExists(path);
     }
 }

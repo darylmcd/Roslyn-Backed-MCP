@@ -35,6 +35,26 @@ GitHub Actions `ci` workflow uploads:
 
 Download from the workflow run’s **Artifacts** section. Requires a GitHub account with access to the repository.
 
+## Claude Code Plugin
+
+The server is also packaged as a **Claude Code plugin** with 10 curated skills and safety hooks.
+
+| Form | Config or source | Command(s) | Notes |
+|------|------------------|------------|-------|
+| Plugin marketplace install | `.claude-plugin/marketplace.json` | `/plugin marketplace add darylmcd/Roslyn-Backed-MCP` then `/plugin install roslyn-mcp@roslyn-mcp-marketplace` | Installs MCP server + 10 skills + hooks. Requires `roslynmcp` on PATH. |
+| Plugin local dev | `.claude-plugin/plugin.json`, `skills/`, `hooks/` | `claude --plugin-dir /path/to/Roslyn-Backed-MCP` | Load plugin from local checkout for testing. |
+| Plugin validation | `.claude-plugin/` | `claude plugin validate .` | Validates plugin and marketplace manifests. |
+
+Plugin components:
+
+| Directory | Contents |
+|-----------|----------|
+| `.claude-plugin/` | Plugin manifest (`plugin.json`) and marketplace descriptor (`marketplace.json`) |
+| `skills/` | 10 SKILL.md files: analyze, refactor, review, document, security, dead-code, test-coverage, migrate-package, explain-error, complexity |
+| `hooks/` | `hooks.json` with PreToolUse (preview-before-apply guard) and PostToolUse (compile-check reminder) |
+
+See `README.md` § *Claude Code Plugin Installation* for the full skill table.
+
 ## Related
 
 - Agent-facing commands and MCP policy: `ai_docs/runtime.md`

@@ -16,8 +16,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
-        WorkspaceId = status.WorkspaceId;
+        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
     [ClassCleanup]

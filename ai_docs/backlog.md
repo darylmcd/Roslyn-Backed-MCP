@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-04T22:30:00Z
+**updated_at:** 2026-04-06T03:00:00Z
 
 ## Agent contract
 
@@ -28,7 +28,10 @@ These are **not** backlog rows; do not delete them when clearing completed work.
 
 | id | blocker | deps | do |
 |----|---------|------|-----|
-| *(none)* | — | — | No open backlog rows. Add rows here when work is actionable and incomplete. |
+| `testbase-srp-split` | none | — | **P3 / refactor.** `TestBase` is a 318-line god class owning: 40+ static service properties, MSBuild init, filesystem helpers, path resolution, fixture copy logic, and now workspace caching. The recent fix made it idempotent and added a workspace cache, but the class still violates SRP. Plan: extract `TestServiceContainer` (services + lifecycle), `TestFixtures` (path resolution + copy helpers), and keep `TestBase` as a thin pass-through. Defer until a touch-the-class change is needed — the current split would touch 30+ test classes. |
+| `vuln-scan-network-mock` | none | — | **P3 / test isolation.** `ScanNuGetVulnerabilitiesAsync_ReturnsStructuredResult` shells out to `dotnet list package --vulnerable`, which hits `api.nuget.org`. Now passes reliably with the workspace-cache fix, but still fails in air-gapped environments. Consider mocking the NuGet client at the gated-executor boundary, or marking the test `[Category("Network")]` so it can be filtered. |
+| `verify-release-test-output-policy` | none | — | **P3 / process.** `eng/verify-release.ps1` runs `dotnet test` with default verbosity. Add `--logger "console;verbosity=normal"` and `$ErrorActionPreference = 'Stop'` so failing tests are not masked by tail/pipe operations in any wrapper script. |
+| `semantic-search-async-modifier-doc` | none | — | **P3 / docs.** `semantic_search` query `async methods returning Task<bool>` returns 0 because Roslyn `IMethodSymbol.IsAsync` requires the `async` modifier on the declaration; pass-through `Task.FromResult` methods are not matched. Document this gotcha in `CodePatternAnalyzer` tool description and the `/roslyn-mcp:review` skill so users know to query for "methods returning Task<bool>" without "async" if they want all Task-returning methods. |
 
 ## Refs
 

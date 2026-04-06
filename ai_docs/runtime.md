@@ -30,6 +30,7 @@ Optional overrides read at startup from `src/RoslynMcp.Host.Stdio/Program.cs`. V
 | `ROSLYNMCP_MAX_SOURCE_GENERATED_DOCS` | `WorkspaceManagerOptions.MaxSourceGeneratedDocuments` | 500 |
 | `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `ValidationServiceOptions.BuildTimeout` | 5 minutes |
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `ValidationServiceOptions.TestTimeout` | 10 minutes |
+| `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `ValidationServiceOptions.VulnerabilityScanTimeout` | 2 minutes |
 | `ROSLYNMCP_MAX_RELATED_FILES` | `ValidationServiceOptions.MaxRelatedFiles` | 25 |
 | `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `PreviewStoreOptions.MaxEntries` | 20 |
 | `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `PreviewStoreOptions.TtlMinutes` | 5 minutes |
@@ -37,6 +38,16 @@ Optional overrides read at startup from `src/RoslynMcp.Host.Stdio/Program.cs`. V
 | `ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS` | `ExecutionGateOptions.RateLimitWindow` | 60 |
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `ExecutionGateOptions.RequestTimeout` | 120 |
 | `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `SecurityOptions.PathValidationFailOpen` | `false` (must parse as `true`/`false` to override) |
+
+## Claude Code Plugin
+
+The server is also distributed as a Claude Code plugin. Plugin-relevant configuration:
+
+- `.mcp.json` passes user-configurable env vars via `${user_config.*}` placeholders to the `roslynmcp` process.
+- `hooks/hooks.json` defines PreToolUse and PostToolUse hooks for safety enforcement.
+- Plugin skills in `skills/` compose multiple MCP tools into guided workflows; they run as Claude Code skill prompts, not as MCP protocol extensions.
+
+Install via: `/plugin marketplace add darylmcd/Roslyn-Backed-MCP` then `/plugin install roslyn-mcp@roslyn-mcp-marketplace`
 
 ## MCP Runtime Notes
 

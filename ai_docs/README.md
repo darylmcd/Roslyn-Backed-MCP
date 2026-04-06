@@ -39,6 +39,7 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | `prompts/standardize-documentation.md` | Cross-repo prompt: run `/doc-audit` first, then align human + AI docs, packaging/install inventory, stale ref removal |
 | `prompts/standardize-backlog-hygiene.md` | Align backlog hygiene across repos with `backlog.md` and `workflow.md` |
 | `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive code review and MCP server audit (all 18 phases). Keep in sync with project surface. Do not delete. |
+| `prompts/test-suite-audit.md` | Audit tests for performance smells, workspace/init issues, SRP, and tight focus—suite should not introduce slowness or instability |
 | `audit-reports/README.md` | Where to store MCP deep-review audit outputs; links baseline template |
 | `audit-reports/deep-review-baseline-2026-04-04.md` | Baseline checklist for a full deep-review session (update when tool surface changes) |
 | `audit-reports/2026-04-04-post-1.5-surface-audit.md` | Example post-release surface audit snapshot |
@@ -61,10 +62,12 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | Add or change a tool | `domains/host-stdio/reference.md` → `domains/roslyn-services/reference.md` → `references/testing.md` |
 | Evolve a DTO or contract | `domains/core-contracts/reference.md` → `architecture.md` |
 | Write or update tests | `references/testing.md` → `runtime.md` |
+| Audit test suite (performance, SRP, workspace/init smells) | `prompts/test-suite-audit.md` → `references/testing.md` |
 | Merge-ready handoff | `CI_POLICY.md` → `workflow.md` |
 | Doc-only change | `CI_POLICY.md` (run `verify-ai-docs.ps1`) |
 | Planning new features | `backlog.md` → `architecture.md` → `docs/roadmap.md` |
 | Human setup / Docker / CI artifacts | `docs/setup.md` |
+| Claude Code plugin / skills / hooks | `README.md` § *Claude Code Plugin Installation* → `docs/setup.md` § *Claude Code Plugin* |
 | Release parity / must-have matrix | `docs/parity-gap-implementation-plan.md` |
 | Coverage baseline / CI artifacts | `docs/coverage-baseline.md` → `references/testing.md` |
 | Experimental → stable promotion review | `docs/experimental-promotion-analysis.md` |

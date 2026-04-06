@@ -3,7 +3,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// <summary>
 /// Configuration options for <c>ValidationService</c> build and test timeouts.
 /// </summary>
-public sealed class ValidationServiceOptions
+public sealed record ValidationServiceOptions
 {
     /// <summary>
     /// Gets the maximum time allowed for a build operation before it is cancelled.
@@ -23,4 +23,11 @@ public sealed class ValidationServiceOptions
     /// Defaults to 25.
     /// </summary>
     public int MaxRelatedFiles { get; init; } = 25;
+
+    /// <summary>
+    /// Gets the maximum time allowed for a NuGet vulnerability scan
+    /// (<c>dotnet list package --vulnerable</c>) before it is cancelled.
+    /// Defaults to 2 minutes.
+    /// </summary>
+    public TimeSpan VulnerabilityScanTimeout { get; init; } = TimeSpan.FromMinutes(2);
 }

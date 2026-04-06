@@ -16,15 +16,18 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
     private readonly IWorkspaceManager _workspace;
     private readonly IGatedCommandExecutor _executor;
     private readonly ILogger<DependencyAnalysisService> _logger;
+    private readonly ValidationServiceOptions _options;
 
     public DependencyAnalysisService(
         IWorkspaceManager workspace,
         IGatedCommandExecutor executor,
-        ILogger<DependencyAnalysisService> logger)
+        ILogger<DependencyAnalysisService> logger,
+        ValidationServiceOptions? options = null)
     {
         _workspace = workspace;
         _executor = executor;
         _logger = logger;
+        _options = options ?? new ValidationServiceOptions();
     }
 
     public async Task<NamespaceDependencyGraphDto> GetNamespaceDependenciesAsync(
@@ -396,7 +399,7 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
             workspaceId,
             targetPath,
             args,
-            TimeSpan.FromSeconds(120),
+            _options.VulnerabilityScanTimeout,
             ct).ConfigureAwait(false);
 
         sw.Stop();
