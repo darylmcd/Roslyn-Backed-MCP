@@ -11,7 +11,7 @@ namespace RoslynMcp.Tests;
 /// Tests covering P0-P2 backlog fixes: error handling, defensive wrapping, and refactored services.
 /// </summary>
 [TestClass]
-public sealed class BacklogFixTests : TestBase
+public sealed class BacklogFixTests : SharedWorkspaceTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
@@ -146,16 +146,7 @@ public sealed class BacklogFixTests : TestBase
 
     private async Task<string> LoadSampleSolutionAsync()
     {
-        var existing = WorkspaceManager.ListWorkspaces();
-        if (existing.Count > 0)
-        {
-            var id = existing[0].WorkspaceId;
-            await WorkspaceManager.ReloadAsync(id, CancellationToken.None);
-            return id;
-        }
-
-        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
-        return status.WorkspaceId;
+        return await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
     // ── AUDIT-23: semantic_search query parsing ──

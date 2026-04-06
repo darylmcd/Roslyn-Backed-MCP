@@ -66,7 +66,7 @@ Reason:
 
 - plugin bundles MCP server + curated skills + safety hooks into a single installable unit
 - lowers barrier to entry for Claude Code users (two-command install)
-- skills compose the 147 MCP tools into guided workflows for common tasks
+- skills compose the current MCP surface into guided workflows for common tasks
 - hooks enforce safety patterns (preview-before-apply, post-refactoring compile-check)
 
 Delivered:

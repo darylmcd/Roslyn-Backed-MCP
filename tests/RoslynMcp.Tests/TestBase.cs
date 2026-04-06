@@ -1,8 +1,6 @@
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
@@ -95,151 +93,56 @@ public abstract class TestBase
 
     private static void InitializeServicesCore()
     {
-        PreviewStore = new PreviewStore();
+        var services = TestServiceContainer.Create(TestValidationOptions);
+
         // Tests retain workspaces across the full assembly run instead of disposing them
         // per-class. We need a higher limit than the production default (8) because
         // ~22 test classes load fixture solutions (some loading multiple) without ever
         // closing them. The cap is still bounded so a runaway test that loads in a loop
         // will fail loudly rather than exhaust memory.
-        WorkspaceManager = new WorkspaceManager(
-            NullLogger<WorkspaceManager>.Instance,
-            PreviewStore,
-            new FileWatcherService(NullLogger<FileWatcherService>.Instance),
-            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 });
-        WorkspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), WorkspaceManager);
-        DotnetCommandRunner = new DotnetCommandRunner();
-        GatedCommandExecutor = new GatedCommandExecutor(
-            WorkspaceManager,
-            DotnetCommandRunner,
-            NullLogger<GatedCommandExecutor>.Instance);
-        SymbolNavigationService = new SymbolNavigationService(
-            WorkspaceManager,
-            NullLogger<SymbolNavigationService>.Instance);
-        SymbolSearchService = new SymbolSearchService(
-            WorkspaceManager,
-            NullLogger<SymbolSearchService>.Instance);
-        ReferenceService = new ReferenceService(
-            WorkspaceManager,
-            NullLogger<ReferenceService>.Instance);
-        MutationAnalysisService = new MutationAnalysisService(
-            WorkspaceManager,
-            NullLogger<MutationAnalysisService>.Instance);
-        SymbolRelationshipService = new SymbolRelationshipService(
-            WorkspaceManager,
-            ReferenceService,
-            NullLogger<SymbolRelationshipService>.Instance);
-        DiagnosticService = new DiagnosticService(
-            WorkspaceManager,
-            NullLogger<DiagnosticService>.Instance);
-        UndoService = new UndoService();
-        RefactoringService = new RefactoringService(
-            WorkspaceManager,
-            PreviewStore,
-            NullLogger<RefactoringService>.Instance,
-            UndoService);
-        BuildService = new BuildService(
-            WorkspaceManager,
-            GatedCommandExecutor,
-            NullLogger<BuildService>.Instance,
-            TestValidationOptions);
-        TestRunnerService = new TestRunnerService(
-            WorkspaceManager,
-            GatedCommandExecutor,
-            NullLogger<TestRunnerService>.Instance,
-            TestValidationOptions);
-        TestDiscoveryService = new TestDiscoveryService(
-            WorkspaceManager,
-            NullLogger<TestDiscoveryService>.Instance,
-            TestValidationOptions);
-        CompletionService = new CompletionService(
-            WorkspaceManager,
-            NullLogger<CompletionService>.Instance);
-        CodeActionService = new CodeActionService(
-            WorkspaceManager,
-            PreviewStore,
-            NullLogger<CodeActionService>.Instance);
-        UnusedCodeAnalyzer = new UnusedCodeAnalyzer(
-            WorkspaceManager,
-            NullLogger<UnusedCodeAnalyzer>.Instance);
-        CodeMetricsService = new CodeMetricsService(
-            WorkspaceManager,
-            NullLogger<CodeMetricsService>.Instance);
-        DependencyAnalysisService = new DependencyAnalysisService(
-            WorkspaceManager,
-            GatedCommandExecutor,
-            NullLogger<DependencyAnalysisService>.Instance,
-            TestValidationOptions);
-        CodePatternAnalyzer = new CodePatternAnalyzer(
-            WorkspaceManager,
-            NullLogger<CodePatternAnalyzer>.Instance);
-        EditService = new EditService(
-            WorkspaceManager,
-            NullLogger<EditService>.Instance);
-        FileOperationService = new FileOperationService(
-            WorkspaceManager,
-            PreviewStore,
-            NullLogger<FileOperationService>.Instance);
-        ProjectMutationService = new ProjectMutationService(
-            WorkspaceManager,
-            new ProjectMutationPreviewStore(),
-            NullLogger<ProjectMutationService>.Instance);
-        CrossProjectRefactoringService = new CrossProjectRefactoringService(
-            WorkspaceManager,
-            PreviewStore);
-        OrchestrationService = new OrchestrationService(
-            WorkspaceManager,
-            new CompositePreviewStore(),
-            PreviewStore,
-            CrossProjectRefactoringService,
-            DependencyAnalysisService);
-        ScaffoldingService = new ScaffoldingService(
-            WorkspaceManager,
-            FileOperationService);
-        DeadCodeService = new DeadCodeService(
-            WorkspaceManager,
-            PreviewStore);
-        SyntaxService = new SyntaxService(WorkspaceManager);
-        BulkRefactoringService = new BulkRefactoringService(
-            WorkspaceManager,
-            PreviewStore,
-            NullLogger<BulkRefactoringService>.Instance);
-        CohesionAnalysisService = new CohesionAnalysisService(
-            WorkspaceManager,
-            NullLogger<CohesionAnalysisService>.Instance);
-        ConsumerAnalysisService = new ConsumerAnalysisService(
-            WorkspaceManager,
-            NullLogger<ConsumerAnalysisService>.Instance);
-        TypeExtractionService = new TypeExtractionService(
-            WorkspaceManager,
-            PreviewStore,
-            NullLogger<TypeExtractionService>.Instance);
-        TypeMoveService = new TypeMoveService(
-            WorkspaceManager,
-            PreviewStore,
-            NullLogger<TypeMoveService>.Instance);
-        FlowAnalysisService = new FlowAnalysisService(
-            WorkspaceManager,
-            NullLogger<FlowAnalysisService>.Instance);
-        CompileCheckService = new CompileCheckService(
-            WorkspaceManager,
-            NullLogger<CompileCheckService>.Instance);
-        AnalyzerInfoService = new AnalyzerInfoService(
-            WorkspaceManager,
-            NullLogger<AnalyzerInfoService>.Instance);
-        FixAllService = new FixAllService(
-            WorkspaceManager,
-            PreviewStore,
-            NullLogger<FixAllService>.Instance);
-        OperationService = new OperationService(
-            WorkspaceManager,
-            NullLogger<OperationService>.Instance);
-        SnippetAnalysisService = new SnippetAnalysisService(
-            NullLogger<SnippetAnalysisService>.Instance);
-        ScriptingService = new ScriptingService(
-            NullLogger<ScriptingService>.Instance);
-        EditorConfigService = new EditorConfigService(
-            WorkspaceManager,
-            NullLogger<EditorConfigService>.Instance);
+        PreviewStore = services.PreviewStore;
+        WorkspaceManager = services.WorkspaceManager;
+        SymbolNavigationService = services.SymbolNavigationService;
+        SymbolSearchService = services.SymbolSearchService;
+        ReferenceService = services.ReferenceService;
+        SymbolRelationshipService = services.SymbolRelationshipService;
+        MutationAnalysisService = services.MutationAnalysisService;
+        DiagnosticService = services.DiagnosticService;
+        RefactoringService = services.RefactoringService;
+        BuildService = services.BuildService;
+        TestRunnerService = services.TestRunnerService;
+        TestDiscoveryService = services.TestDiscoveryService;
+        CompletionService = services.CompletionService;
+        CodeActionService = services.CodeActionService;
+        UnusedCodeAnalyzer = services.UnusedCodeAnalyzer;
+        CodeMetricsService = services.CodeMetricsService;
+        DependencyAnalysisService = services.DependencyAnalysisService;
+        CodePatternAnalyzer = services.CodePatternAnalyzer;
+        EditService = services.EditService;
+        FileOperationService = services.FileOperationService;
+        ProjectMutationService = services.ProjectMutationService;
+        CrossProjectRefactoringService = services.CrossProjectRefactoringService;
+        OrchestrationService = services.OrchestrationService;
+        ScaffoldingService = services.ScaffoldingService;
+        DeadCodeService = services.DeadCodeService;
+        SyntaxService = services.SyntaxService;
+        WorkspaceExecutionGate = services.WorkspaceExecutionGate;
+        DotnetCommandRunner = services.DotnetCommandRunner;
+        GatedCommandExecutor = services.GatedCommandExecutor;
+        BulkRefactoringService = services.BulkRefactoringService;
+        CohesionAnalysisService = services.CohesionAnalysisService;
+        ConsumerAnalysisService = services.ConsumerAnalysisService;
+        TypeExtractionService = services.TypeExtractionService;
+        TypeMoveService = services.TypeMoveService;
+        UndoService = services.UndoService;
+        FlowAnalysisService = services.FlowAnalysisService;
+        CompileCheckService = services.CompileCheckService;
+        AnalyzerInfoService = services.AnalyzerInfoService;
+        FixAllService = services.FixAllService;
+        OperationService = services.OperationService;
+        SnippetAnalysisService = services.SnippetAnalysisService;
+        ScriptingService = services.ScriptingService;
+        EditorConfigService = services.EditorConfigService;
 
         RepositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
         SampleSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");

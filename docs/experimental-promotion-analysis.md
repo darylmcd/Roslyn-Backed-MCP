@@ -9,17 +9,19 @@ This document supports the post-release roadmap item **“promote experimental �
 | **Read-only vs mutation** | High | Read-only tools are easier to stabilize; destructive tools need stronger preview/apply evidence. |
 | **Integration test coverage** | High | Prefer evidence in `tests/RoslynMcp.Tests/` (see `docs/coverage-baseline.md`). |
 | **Contract simplicity** | Medium | Narrow JSON DTOs with few optional branches reduce breaking-change risk. |
-| **Operational usage** | Medium | Field feedback, audit runs (`ai_docs/prompts/deep-review-and-refactor.md`), or dogfood sessions. |
+| **Operational usage** | Medium | Field feedback, repo-matrix audit rollups under `ai_docs/reports/`, and supporting raw deep-review runs under `ai_docs/audit-reports/`. |
 | **Schema/description accuracy** | Medium | Tool description matches behavior (audit PASS on schema-vs-behavior). |
 
 ## Aggregate surface (reference)
 
 | Tier | Tools | Resources | Prompts |
 |------|-------|-----------|---------|
-| Stable | 56 | 8 stable / 0 experimental | 0 stable / 18 experimental |
+| Stable | 56 | 7 stable / 0 experimental | 0 stable / 16 experimental |
 | Experimental | 67 | — | — |
 
 Authoritative counts: `ServerSurfaceCatalog.GetSummary()` / `server_info` / `roslyn://server/catalog`.
+
+Operational evidence for promotion decisions should come from the latest deep-review rollup in `ai_docs/reports/`, backed by immutable raw audits in `ai_docs/audit-reports/`.
 
 ## Tier 1 — promoted (v1.6.0)
 
@@ -36,7 +38,7 @@ The following were promoted to **stable** in v1.6.0 per `docs/release-policy.md`
 
 ## Next promotion pass
 
-Repopulate Tier 1 candidates after the next audit or when operational evidence justifies additional stable promotions.
+Repopulate Tier 1 candidates after the next repo-matrix audit rollup or when operational evidence justifies additional stable promotions.
 
 ## Tier 2 — needs stronger evidence before promotion
 

@@ -4,7 +4,7 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class RefactoringToolsIntegrationTests : TestBase
+public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 
@@ -12,7 +12,7 @@ public sealed class RefactoringToolsIntegrationTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
     [ClassCleanup]

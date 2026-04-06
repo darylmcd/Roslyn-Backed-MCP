@@ -36,13 +36,18 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | File | Purpose |
 |------|---------|
 | `procedures/doc-migration-checklist.md` | Checklist for documentation migrations |
+| `procedures/deep-review-program.md` | Multi-repo deep-review matrix, raw-vs-rollup outputs, and backlog intake rules |
+| `procedures/deep-review-command-reference.md` | Example shell commands for import, rollup, and one-command batch deep-review workflows |
 | `prompts/standardize-documentation.md` | Cross-repo prompt: run `/doc-audit` first, then align human + AI docs, packaging/install inventory, stale ref removal |
 | `prompts/standardize-backlog-hygiene.md` | Align backlog hygiene across repos with `backlog.md` and `workflow.md` |
 | `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive code review and MCP server audit (all 18 phases). Keep in sync with project surface. Do not delete. |
 | `prompts/test-suite-audit.md` | Audit tests for performance smells, workspace/init issues, SRP, and tight focus—suite should not introduce slowness or instability |
-| `audit-reports/README.md` | Where to store MCP deep-review audit outputs; links baseline template |
+| `audit-reports/README.md` | Where raw MCP deep-review audit outputs live; links baseline template and rollup handoff |
 | `audit-reports/deep-review-baseline-2026-04-04.md` | Baseline checklist for a full deep-review session (update when tool surface changes) |
 | `audit-reports/2026-04-04-post-1.5-surface-audit.md` | Example post-release surface audit snapshot |
+| `reports/README.md` | Where synthesized rollups and cross-cutting audit reports live |
+| `reports/2026-04-06-deep-review-rollup-example.md` | Concrete example of a synthesized deep-review rollup for multi-repo batches |
+| `reports/2026-04-06-test-suite-audit.md` | Example cross-cutting audit report for test-suite review |
 
 ## Archive
 
@@ -72,4 +77,5 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | Coverage baseline / CI artifacts | `docs/coverage-baseline.md` → `references/testing.md` |
 | Experimental → stable promotion review | `docs/experimental-promotion-analysis.md` |
 | Large-solution profiling method | `docs/large-solution-profiling-baseline.md` |
-| MCP deep-review audit session | `prompts/deep-review-and-refactor.md` → `audit-reports/` |
+| MCP deep-review audit session | `prompts/deep-review-and-refactor.md` → `audit-reports/README.md` |
+| Multi-repo MCP deep-review batch | `procedures/deep-review-program.md` → `procedures/deep-review-command-reference.md` → `prompts/deep-review-and-refactor.md` → `audit-reports/README.md` → `reports/README.md` |

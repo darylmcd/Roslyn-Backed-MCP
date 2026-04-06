@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public class PerformanceBehaviorTests : TestBase
+public class PerformanceBehaviorTests : SharedWorkspaceTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _)

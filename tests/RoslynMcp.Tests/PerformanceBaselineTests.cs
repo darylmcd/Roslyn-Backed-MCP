@@ -9,7 +9,7 @@ namespace RoslynMcp.Tests;
 /// a generous wall-clock budget to catch severe regressions.
 /// </summary>
 [TestClass]
-public sealed class PerformanceBaselineTests : TestBase
+public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 
@@ -17,8 +17,7 @@ public sealed class PerformanceBaselineTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
-        WorkspaceId = status.WorkspaceId;
+        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
     [ClassCleanup]

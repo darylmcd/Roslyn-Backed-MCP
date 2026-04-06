@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public class IntegrationTests : TestBase
+public class IntegrationTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 

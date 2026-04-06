@@ -3,7 +3,7 @@ using RoslynMcp.Core.Models;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class CohesionAnalysisTests : TestBase
+public sealed class CohesionAnalysisTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 
@@ -11,7 +11,7 @@ public sealed class CohesionAnalysisTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
     [ClassCleanup]

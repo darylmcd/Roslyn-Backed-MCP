@@ -1,7 +1,7 @@
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public class ValidationIntegrationTests : TestBase
+public class ValidationIntegrationTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 
@@ -9,7 +9,7 @@ public class ValidationIntegrationTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
     [ClassCleanup]

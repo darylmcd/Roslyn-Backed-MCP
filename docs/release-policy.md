@@ -12,6 +12,7 @@ A release is production-ready when all of the following are true:
 - `eng/verify-release.ps1` succeeds and writes publish hashes
 - CI passes on the protected branch
 - dependency audit output has been reviewed for vulnerable packages
+- for material tool/resource/prompt surface or tiering changes, the latest deep-review rollup in `ai_docs/reports/` has been reviewed against its supporting raw audits in `ai_docs/audit-reports/`
 
 ## Compatibility Policy
 
@@ -33,8 +34,9 @@ A release is production-ready when all of the following are true:
 2. Review the generated publish hash manifest under `artifacts/manifests/`.
 3. Review dependency audit output from CI.
 4. Confirm `server_info` and `server_catalog` reflect the intended support tiers.
-5. Publish the host executable built from `src/RoslynMcp.Host.Stdio`.
-6. Confirm docs remain synchronized (`README.md`, `AGENTS.md`, and `docs/product-contract.md`) for any surface or tiering change.
+5. For material surface, preview/apply-behavior, or tiering changes, review the latest deep-review rollup under `ai_docs/reports/` and its raw evidence under `ai_docs/audit-reports/`.
+6. Publish the host executable built from `src/RoslynMcp.Host.Stdio`.
+7. Confirm docs remain synchronized (`README.md`, `AGENTS.md`, and `docs/product-contract.md`) for any surface or tiering change.
 
 ## Agent Session Release Gate
 
@@ -44,6 +46,7 @@ Before declaring a session complete for release-impacting work:
 - machine-readable catalog and written docs agree
 - stable vs experimental placement is intentional and documented
 - changed behavior is covered by tests or explicitly deferred with rationale
+- for material surface or tiering work, audit evidence exists or the lack of a deep-review pass is explicitly deferred with rationale
 
 ## CI Gate
 

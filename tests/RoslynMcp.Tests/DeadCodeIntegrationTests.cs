@@ -1,7 +1,7 @@
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class DeadCodeIntegrationTests : TestBase
+public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _)
@@ -61,8 +61,7 @@ public sealed class DeadCodeIntegrationTests : TestBase
     [TestMethod]
     public async Task Extension_Method_With_Callers_Not_Reported_As_Unused()
     {
-        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
-        var workspaceId = status.WorkspaceId;
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
 
         var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
             workspaceId, "SampleLib", includePublic: true, limit: 200,
@@ -79,8 +78,7 @@ public sealed class DeadCodeIntegrationTests : TestBase
     [TestMethod]
     public async Task Implicit_Conversion_Overload_With_Callers_Not_Reported_As_Unused()
     {
-        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
-        var workspaceId = status.WorkspaceId;
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
 
         var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
             workspaceId, "SampleLib", includePublic: true, limit: 200,
@@ -97,8 +95,7 @@ public sealed class DeadCodeIntegrationTests : TestBase
     [TestMethod]
     public async Task TestMethod_Attributed_Methods_Are_Not_Reported_As_Unused()
     {
-        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
-        var workspaceId = status.WorkspaceId;
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
 
         var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
             workspaceId, "SampleLib.Tests", includePublic: true, limit: 200,

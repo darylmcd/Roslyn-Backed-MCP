@@ -8,7 +8,7 @@ using ModelContextProtocol.Protocol;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class ExpandedSurfaceIntegrationTests : TestBase
+public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 
@@ -16,7 +16,7 @@ public sealed class ExpandedSurfaceIntegrationTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
     [ClassCleanup]

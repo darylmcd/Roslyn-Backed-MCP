@@ -4,7 +4,7 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class ValidationToolsIntegrationTests : TestBase
+public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 

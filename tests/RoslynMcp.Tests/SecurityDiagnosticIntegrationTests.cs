@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public class SecurityDiagnosticIntegrationTests : TestBase
+public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
     private static string InsecureWorkspaceId { get; set; } = null!;
@@ -16,7 +16,7 @@ public class SecurityDiagnosticIntegrationTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
 
         var secTestPath = Path.Combine(RepositoryRootPath, "samples", "SecurityTestProject", "SecurityTestProject.slnx");
         var insecureStatus = await WorkspaceManager.LoadAsync(secTestPath, CancellationToken.None);
