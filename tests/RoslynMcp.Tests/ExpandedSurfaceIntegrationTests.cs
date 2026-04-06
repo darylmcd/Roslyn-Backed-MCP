@@ -37,6 +37,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             programFile,
             line: 6,
             column: 9,
+            filterText: null,
+            maxItems: 100,
             CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);

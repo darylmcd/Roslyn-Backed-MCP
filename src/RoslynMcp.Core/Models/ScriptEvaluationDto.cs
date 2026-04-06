@@ -10,4 +10,8 @@ public sealed record ScriptEvaluationDto(
     string? Error,
     IReadOnlyList<DiagnosticDto>? CompilationErrors,
     long ElapsedMs,
-    int? AppliedScriptTimeoutSeconds = null);
+    int? AppliedScriptTimeoutSeconds = null,
+    /// <summary>
+    /// Number of heartbeat intervals that fired while evaluation was in progress (diagnostics for long-running script/compile).
+    /// </summary>
+    int? ProgressHeartbeatCount = null);

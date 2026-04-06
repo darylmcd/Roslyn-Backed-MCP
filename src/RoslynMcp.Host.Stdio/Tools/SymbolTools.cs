@@ -67,7 +67,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await symbolNavigationService.GoToDefinitionAsync(workspaceId, locator, c);
                 if (results.Count == 0) throw new KeyNotFoundException("No definition found for the symbol at the specified location");
                 return JsonSerializer.Serialize(results, JsonDefaults.Indented);
@@ -91,7 +91,7 @@ public static class SymbolTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(offset, limit);
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await referenceService.FindReferencesAsync(workspaceId, locator, c);
                 var paged = results.Skip(offset).Take(limit).ToList();
                 var hasMore = offset + paged.Count < results.Count;
@@ -107,21 +107,22 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all implementations of an interface or abstract member at the given position")]
+    [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all implementations of an interface or abstract member at the given position. IMPORTANT: when using filePath/line/column, the column must point at the symbol identifier token (e.g., the interface name 'IMyService'), not the start of the line — otherwise no symbol can be resolved and the result is empty. For interface lookups, prefer metadataName (fully qualified) when you do not have an exact cursor position.")]
     public static Task<string> FindImplementations(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
         [Description("Optional: 1-based line number")] int? line = null,
-        [Description("Optional: 1-based column number")] int? column = null,
+        [Description("Optional: 1-based column number — must point at the symbol name token")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.IMyInterface")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await referenceService.FindImplementationsAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(new { count = results.Count, implementations = results }, JsonDefaults.Indented);
             }, ct));
@@ -159,7 +160,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await referenceService.FindOverridesAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
@@ -179,7 +180,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await referenceService.FindBaseMembersAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
@@ -199,7 +200,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var result = await symbolRelationshipService.GetMemberHierarchyAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
@@ -307,7 +308,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await mutationAnalysisService.FindPropertyWritesAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(new { count = results.Count, writes = results }, JsonDefaults.Indented);
             }, ct));
@@ -348,14 +349,14 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await symbolNavigationService.GoToTypeDefinitionAsync(workspaceId, locator, c);
                 if (results.Count == 0) throw new KeyNotFoundException("No type definition found for the symbol at the specified location");
                 return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
 
-    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file. Returns up to 100 items; IsIncomplete indicates more exist but this tool does not support offset/limit pagination. InlineDescription may be empty when Roslyn does not supply inline text for an item.")]
+    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file. Use filterText for case-insensitive prefix narrowing and maxItems for paging (UX-007). The response IsIncomplete flag indicates that the filtered list is longer than maxItems — raise maxItems or refine filterText to see the rest. InlineDescription may be empty when Roslyn does not supply inline text for an item.")]
     public static Task<string> GetCompletions(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -364,13 +365,15 @@ public static class SymbolTools
         [Description("Absolute path to the source file")] string filePath,
         [Description("1-based line number")] int line,
         [Description("1-based column number")] int column,
+        [Description("Optional: case-insensitive prefix filter applied to candidate FilterText/DisplayText (UX-007)")] string? filterText = null,
+        [Description("Maximum number of completion items to return (default: 100, must be > 0)")] int maxItems = 100,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-                var result = await completionService.GetCompletionsAsync(workspaceId, filePath, line, column, c);
+                var result = await completionService.GetCompletionsAsync(workspaceId, filePath, line, column, filterText, maxItems, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

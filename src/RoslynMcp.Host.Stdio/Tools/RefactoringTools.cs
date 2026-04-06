@@ -24,7 +24,7 @@ public static class RefactoringTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), newName, c);
+                var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), newName, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

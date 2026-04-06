@@ -141,8 +141,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var updatedTypeDeclaration = AddBaseType(typeDeclaration, resolvedInterfaceName);
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
-        if (updatedSourceRoot is CompilationUnitSyntax updatedCu)
-            updatedSourceRoot = updatedCu.NormalizeWhitespace();
+        // BUG-004: Do not normalize whitespace on the entire compilation unit — that re-flows
+        // unrelated code (collapses multi-line bodies, reshuffles format specifiers). ReplaceNode
+        // preserves the surrounding source layout while still applying our targeted edit.
 
         var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
             .AddDocument(
@@ -397,12 +398,34 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             throw new InvalidOperationException($"Type '{typeSymbol.Name}' does not have public instance members that can be extracted.");
         }
 
+        // BUG-003: Match the source type's accessibility. A cross-project extraction MUST stay
+        // public because the interface is moved into a different assembly and an internal
+        // interface would not be visible to consumers; for in-project extraction we honor
+        // internal/private types so we don't accidentally widen visibility. `filterUsings` is
+        // true exactly when this is a cross-project extraction.
+        var matchSourceAccessibility = !filterUsings;
+        var accessibilityToken = matchSourceAccessibility
+            ? GetAccessibilityToken(typeSymbol.DeclaredAccessibility)
+            : SyntaxFactory.Token(SyntaxKind.PublicKeyword);
+
         var interfaceDeclaration = SyntaxFactory.InterfaceDeclaration(interfaceName)
-            .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword))
+            .AddModifiers(accessibilityToken)
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
         return CreateCompilationUnitForMember(sourceRoot, interfaceDeclaration, namespaceName, filterUsings);
     }
+
+    /// <summary>
+    /// Maps a Roslyn <see cref="Accessibility"/> to a C# modifier token used on generated
+    /// interface declarations. Mirrors <c>InterfaceExtractionService.GetAccessibilityToken</c>.
+    /// </summary>
+    private static SyntaxToken GetAccessibilityToken(Accessibility accessibility) => accessibility switch
+    {
+        Accessibility.Internal => SyntaxFactory.Token(SyntaxKind.InternalKeyword),
+        Accessibility.ProtectedAndInternal => SyntaxFactory.Token(SyntaxKind.InternalKeyword),
+        Accessibility.ProtectedOrInternal => SyntaxFactory.Token(SyntaxKind.InternalKeyword),
+        _ => SyntaxFactory.Token(SyntaxKind.PublicKeyword),
+    };
 
     private static MemberDeclarationSyntax? CreateInterfaceMember(ISymbol member)
     {

@@ -45,18 +45,21 @@ public static class MSBuildTools
     }
 
     [McpServerTool(Name = "get_msbuild_properties", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Dump all evaluated MSBuild properties for a project (can be large).")]
+     Description("Dump evaluated MSBuild properties for a project. The full set is large (frequently 60KB+ of mostly internal MSBuild state); always pass a propertyNameFilter substring or an explicit includedNames allowlist unless you really need everything (BUG-008). The response includes totalCount/returnedCount/appliedFilter for visibility.")]
     public static Task<string> GetMsbuildProperties(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Project name as loaded in the workspace")] string project,
+        [Description("Optional: case-insensitive substring filter applied to property names (e.g., 'Nullable', 'Target')")] string? propertyNameFilter = null,
+        [Description("Optional: explicit allowlist of property names to return. Takes precedence over propertyNameFilter when supplied.")] string[]? includedNames = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await msbuildEvaluation.GetEvaluatedPropertiesAsync(workspaceId, project, c);
+                var result = await msbuildEvaluation.GetEvaluatedPropertiesAsync(
+                    workspaceId, project, propertyNameFilter, includedNames, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

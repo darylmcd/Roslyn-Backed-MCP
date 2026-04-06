@@ -166,7 +166,7 @@ public class ServiceCoverageTests : SharedWorkspaceTestBase
 
         // Line 20 column 30 is inside method body where completions are available
         var result = await CompletionService.GetCompletionsAsync(
-            WorkspaceId, animalServicePath, 20, 30, CancellationToken.None);
+            WorkspaceId, animalServicePath, 20, 30, filterText: null, maxItems: 100, CancellationToken.None);
 
         Assert.IsTrue(result.Items.Count > 0,
             "Expected completion items at a valid position in AnimalService.cs");

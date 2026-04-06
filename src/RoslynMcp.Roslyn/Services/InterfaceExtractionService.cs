@@ -43,13 +43,18 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         await ValidateNoConflictsAsync(solution, typeSymbol, interfaceName, ct).ConfigureAwait(false);
 
+        // BUG-003: Match the interface accessibility to the source type so an internal class
+        // does not produce a public interface that escapes its assembly boundary.
+        var interfaceAccessibilityToken = GetAccessibilityToken(typeSymbol.DeclaredAccessibility);
         var interfaceDecl = SyntaxFactory.InterfaceDeclaration(interfaceName)
-            .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
+            .WithModifiers(SyntaxFactory.TokenList(interfaceAccessibilityToken))
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
         var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot);
 
-        // Add interface to type's base list
+        // Add interface to type's base list. Use formatting-preserving syntax annotations so the
+        // existing source layout (modifiers, expression bodies, format specifiers) is not disturbed
+        // by a NormalizeWhitespace() pass over the entire compilation unit (BUG-004).
         var interfaceTypeSyntax = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
             .WithLeadingTrivia(SyntaxFactory.Space);
         TypeDeclarationSyntax updatedTypeDecl;
@@ -60,13 +65,17 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         }
         else
         {
-            updatedTypeDecl = typeDecl.WithBaseList(
-                SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceTypeSyntax)));
+            // No existing base list. Attach `: IName` to the type declaration directly; Roslyn
+            // emits the leading colon token automatically.
+            var newBaseList = SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceTypeSyntax))
+                .WithLeadingTrivia(SyntaxFactory.Space);
+            updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
         }
 
+        // BUG-004: Do NOT call NormalizeWhitespace() here — that re-flows the entire file and
+        // produces unrelated formatting churn (collapses multi-line bodies, alters string format
+        // specifier spacing). ReplaceNode preserves the surrounding source layout.
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
-        if (updatedSourceRoot is CompilationUnitSyntax updatedCu)
-            updatedSourceRoot = updatedCu.NormalizeWhitespace();
 
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
@@ -322,4 +331,18 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             return b ? "true" : "false";
         return parameter.ExplicitDefaultValue.ToString() ?? "default";
     }
+
+    /// <summary>
+    /// Maps a Roslyn <see cref="Accessibility"/> level to the matching C# modifier token used on
+    /// generated interface declarations. Internal types map to <c>internal</c>; the rest fall back
+    /// to <c>public</c> since interfaces extracted from a private nested class can still be public
+    /// within the containing type.
+    /// </summary>
+    private static SyntaxToken GetAccessibilityToken(Accessibility accessibility) => accessibility switch
+    {
+        Accessibility.Internal => SyntaxFactory.Token(SyntaxKind.InternalKeyword),
+        Accessibility.ProtectedAndInternal => SyntaxFactory.Token(SyntaxKind.InternalKeyword),
+        Accessibility.ProtectedOrInternal => SyntaxFactory.Token(SyntaxKind.InternalKeyword),
+        _ => SyntaxFactory.Token(SyntaxKind.PublicKeyword),
+    };
 }

@@ -28,36 +28,67 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not INamedTypeSymbol namedType) return null;
 
+        // BUG-006: For interface symbols, FindDerivedClassesAsync returns nothing (it only walks
+        // class inheritance) and namedType.BaseType is also null, so the legacy implementation
+        // produced an empty hierarchy for every interface. Use FindImplementationsAsync to find
+        // implementing types and FindDerivedInterfacesAsync to find sub-interfaces, and treat
+        // namedType.Interfaces (the interfaces this interface extends) as base types.
+        var isInterface = namedType.TypeKind == TypeKind.Interface;
+
         var baseTypes = new List<TypeHierarchyDto>();
-        var current = namedType.BaseType;
-        while (current is not null && current.SpecialType != SpecialType.System_Object)
+        if (isInterface)
         {
-            var loc = current.Locations.FirstOrDefault(l => l.IsInSource);
-            baseTypes.Add(new TypeHierarchyDto(
-                current.Name, current.ToDisplayString(),
-                loc?.GetLineSpan().Path, loc?.GetLineSpan().StartLinePosition.Line + 1,
-                null, null, null));
-            current = current.BaseType;
+            // An interface's "base types" are the interfaces it directly extends.
+            foreach (var baseInterface in namedType.Interfaces)
+            {
+                baseTypes.Add(BuildHierarchyEntry(baseInterface));
+            }
+        }
+        else
+        {
+            var current = namedType.BaseType;
+            while (current is not null && current.SpecialType != SpecialType.System_Object)
+            {
+                baseTypes.Add(BuildHierarchyEntry(current));
+                current = current.BaseType;
+            }
         }
 
-        var derivedClasses = await SymbolFinder.FindDerivedClassesAsync(namedType, solution, cancellationToken: ct).ConfigureAwait(false);
-        var derivedTypes = derivedClasses.Select(d =>
+        var derivedTypes = new List<TypeHierarchyDto>();
+        if (isInterface)
         {
-            var loc = d.Locations.FirstOrDefault(l => l.IsInSource);
-            return new TypeHierarchyDto(
-                d.Name, d.ToDisplayString(),
-                loc?.GetLineSpan().Path, loc?.GetLineSpan().StartLinePosition.Line + 1,
-                null, null, null);
-        }).ToList();
+            // Implementing types: classes/structs that say `: IFoo` (or inherit a class that does).
+            var implementations = await SymbolFinder.FindImplementationsAsync(
+                namedType, solution, cancellationToken: ct).ConfigureAwait(false);
+            foreach (var impl in implementations.OfType<INamedTypeSymbol>())
+            {
+                derivedTypes.Add(BuildHierarchyEntry(impl));
+            }
 
-        var interfacesList = namedType.Interfaces.Select(i =>
+            // Sub-interfaces: interfaces that extend this one.
+            var derivedInterfaces = await SymbolFinder.FindDerivedInterfacesAsync(
+                namedType, solution, cancellationToken: ct).ConfigureAwait(false);
+            foreach (var derivedInterface in derivedInterfaces)
+            {
+                derivedTypes.Add(BuildHierarchyEntry(derivedInterface));
+            }
+        }
+        else
         {
-            var loc = i.Locations.FirstOrDefault(l => l.IsInSource);
-            return new TypeHierarchyDto(
-                i.Name, i.ToDisplayString(),
-                loc?.GetLineSpan().Path, loc?.GetLineSpan().StartLinePosition.Line + 1,
-                null, null, null);
-        }).ToList();
+            var derivedClasses = await SymbolFinder.FindDerivedClassesAsync(
+                namedType, solution, cancellationToken: ct).ConfigureAwait(false);
+            foreach (var derivedClass in derivedClasses)
+            {
+                derivedTypes.Add(BuildHierarchyEntry(derivedClass));
+            }
+        }
+
+        // For non-interface types this is the implemented interfaces. For interfaces themselves
+        // we already promoted the directly-extended interfaces to BaseTypes above, so leave the
+        // Interfaces bucket empty to avoid duplication.
+        var interfacesList = isInterface
+            ? new List<TypeHierarchyDto>()
+            : namedType.Interfaces.Select(BuildHierarchyEntry).ToList();
 
         var selfLoc = namedType.Locations.FirstOrDefault(l => l.IsInSource);
         return new TypeHierarchyDto(
@@ -66,6 +97,19 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             baseTypes.Count > 0 ? baseTypes : null,
             derivedTypes.Count > 0 ? derivedTypes : null,
             interfacesList.Count > 0 ? interfacesList : null);
+    }
+
+    private static TypeHierarchyDto BuildHierarchyEntry(INamedTypeSymbol type)
+    {
+        var loc = type.Locations.FirstOrDefault(l => l.IsInSource);
+        return new TypeHierarchyDto(
+            type.Name,
+            type.ToDisplayString(),
+            loc?.GetLineSpan().Path,
+            loc?.GetLineSpan().StartLinePosition.Line + 1,
+            null,
+            null,
+            null);
     }
 
     public async Task<MemberHierarchyDto?> GetMemberHierarchyAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)

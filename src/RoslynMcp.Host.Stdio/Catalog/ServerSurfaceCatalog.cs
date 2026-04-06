@@ -137,7 +137,7 @@ public static class ServerSurfaceCatalog
         Tool("format_range_preview", "refactoring", "experimental", true, false, "Preview formatting a specific range within a document."),
         Tool("format_range_apply", "refactoring", "experimental", false, true, "Apply a previously previewed range format operation."),
         Tool("analyze_snippet", "analysis", "stable", true, false, "Analyze a C# code snippet in an ephemeral workspace without loading a solution."),
-        Tool("evaluate_csharp", "scripting", "experimental", true, false, "Evaluate a C# expression or script interactively via the Roslyn Scripting API."),
+        Tool("evaluate_csharp", "scripting", "experimental", true, false, "Evaluate a C# expression or script interactively via the Roslyn Scripting API. Emits MCP progress and heartbeat logs during long compile/run so clients are not stuck on a static label."),
         Tool("get_editorconfig_options", "configuration", "experimental", true, false, "Get effective .editorconfig options for a source file."),
         Tool("set_editorconfig_option", "configuration", "experimental", false, false, "Set or update a key in .editorconfig for C# files (creates file if needed)."),
         Tool("evaluate_msbuild_property", "project-mutation", "experimental", true, false, "Evaluate a single MSBuild property for a project."),

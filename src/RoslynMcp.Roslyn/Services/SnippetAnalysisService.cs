@@ -27,10 +27,17 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
         var allUsings = DefaultUsings
             .Concat(usings ?? [])
             .Distinct()
-            .Select(u => $"using {u};");
+            .ToList();
 
-        var usingBlock = string.Join("\n", allUsings);
+        var usingBlock = string.Join("\n", allUsings.Select(u => $"using {u};"));
         var wrappedCode = WrapCode(code, kind, usingBlock);
+
+        // UX-001: Diagnostics from the wrapped source carry line numbers relative to the wrapper,
+        // not the user's input. The wrapper prepends N using-directive lines and a `\n`, so user
+        // line K is wrapped line (N + K) for every kind. Subtract that offset before reporting.
+        // We clamp to 1 because diagnostics that fall on the wrapper itself (e.g., a missing
+        // using import) are surfaced as line 1 of the user input rather than as a negative number.
+        var lineOffset = allUsings.Count;
 
         var tree = CSharpSyntaxTree.ParseText(wrappedCode, cancellationToken: ct);
 
@@ -53,16 +60,27 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
         var diagnosticDtos = diagnostics.Select(d =>
         {
             var lineSpan = d.Location.GetMappedLineSpan();
+            int? StartLine = null, StartCol = null, EndLine = null, EndCol = null;
+            if (lineSpan.IsValid)
+            {
+                // Convert from wrapped (0-based) to user (1-based) coordinates and remove the
+                // wrapper offset. Anything that lands above the user's line 1 is clamped to 1.
+                StartLine = Math.Max(1, lineSpan.StartLinePosition.Line + 1 - lineOffset);
+                StartCol = lineSpan.StartLinePosition.Character + 1;
+                EndLine = Math.Max(1, lineSpan.EndLinePosition.Line + 1 - lineOffset);
+                EndCol = lineSpan.EndLinePosition.Character + 1;
+            }
+
             return new DiagnosticDto(
                 Id: d.Id,
                 Message: d.GetMessage(),
                 Severity: d.Severity.ToString(),
                 Category: d.Descriptor.Category,
                 FilePath: null,
-                StartLine: lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
-                StartColumn: lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
-                EndLine: lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
-                EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null);
+                StartLine: StartLine,
+                StartColumn: StartCol,
+                EndLine: EndLine,
+                EndColumn: EndCol);
         }).ToList();
 
         // Extract declared symbols from the compilation

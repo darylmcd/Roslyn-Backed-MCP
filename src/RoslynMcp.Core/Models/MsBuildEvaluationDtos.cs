@@ -19,4 +19,7 @@ public sealed record MsBuildItemInstanceDto(
 public sealed record MsBuildPropertiesDumpDto(
     string ProjectName,
     string ProjectPath,
-    IReadOnlyDictionary<string, string> Properties);
+    IReadOnlyDictionary<string, string> Properties,
+    int TotalCount = 0,
+    int ReturnedCount = 0,
+    string? AppliedFilter = null);

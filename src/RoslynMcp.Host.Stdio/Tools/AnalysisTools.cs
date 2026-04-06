@@ -113,7 +113,7 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
+                var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), c);
                 if (result is null) throw new KeyNotFoundException("No type found at the specified location");
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
@@ -137,7 +137,7 @@ public static class AnalysisTools
             {
                 ParameterValidation.ValidatePagination(0, callersLimit);
                 ParameterValidation.ValidatePagination(0, calleesLimit);
-                var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
+                var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
 
                 var callers = result.Callers.Take(callersLimit).ToList();
@@ -174,7 +174,7 @@ public static class AnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await mutationAnalysisService.AnalyzeImpactAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
+                var result = await mutationAnalysisService.AnalyzeImpactAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
@@ -196,7 +196,7 @@ public static class AnalysisTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(0, limit);
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var result = await mutationAnalysisService.FindTypeMutationsAsync(workspaceId, locator, c);
                 if (result is null) throw new KeyNotFoundException("No named type found at the specified location");
 
