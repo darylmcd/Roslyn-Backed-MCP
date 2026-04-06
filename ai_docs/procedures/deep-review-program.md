@@ -53,6 +53,41 @@ If no repo matches a bucket, record that gap in the rollup rather than inventing
 
 At least one full-surface client lane must run before treating prompt/resource families as adequately covered.
 
+## Concurrency lock-mode lane (`ROSLYNMCP_WORKSPACE_RW_LOCK`)
+
+The deep-review prompt's **Phase 8b** exercises the per-workspace `AsyncReaderWriterLock` feature flag. The flag is bound at server startup, but the agent reads its actual value from inside the running server process via `evaluate_csharp` (Phase 0 step 4), so the audited lock mode is always known with certainty regardless of how the operator launched the server. The audit prompt also auto-pairs run 1 and run 2 of a dual-mode lane by globbing `ai_docs/audit-reports/` for an opposite-mode partial of the same `<repo-id>`, so the operator does not have to track which run is which.
+
+| Mode | Env var | Server gate | Use |
+|------|---------|-------------|-----|
+| `legacy-mutex` (default) | `ROSLYNMCP_WORKSPACE_RW_LOCK` unset or `false` | per-workspace `SemaphoreSlim(1,1)` | Default lane. Establishes the parity baseline used by every routine deep-review run. |
+| `rw-lock` (opt-in) | `ROSLYNMCP_WORKSPACE_RW_LOCK=true` | per-workspace `Nito.AsyncEx.AsyncReaderWriterLock` | Required lane for any release candidate, perf-claim verification, or backlog item that touches `workspace-rw-lock-flag-flip`. Drives the read-heavy unlock from the deep-review survey. |
+| `dual-mode` | sequential sessions, one per value | both, in two consecutive prompt invocations paired automatically by `<repo-id>` | Required for full-surface release candidates and any audit that needs the concurrency mode matrix populated under both modes. Dual-mode is the only way to surface lock-mode-specific defects (issues that reproduce under one mode but not the other). |
+
+### The four-step operator dance for a dual-mode run
+
+The complete dual-mode lane is:
+
+1. Operator invokes the deep-review prompt against the target repo.
+2. Operator runs `./eng/flip-rw-lock.ps1`. The script reads the current User-scope env var, kills any running server process, and writes the inverse value.
+3. Operator fully closes and reopens the MCP client so the next server subprocess inherits the flipped env var.
+4. Operator invokes the deep-review prompt a second time against the same disposable checkout.
+
+The agent handles the rest:
+- Phase 0 step 4 calls `evaluate_csharp` to read `ROSLYNMCP_WORKSPACE_RW_LOCK` from inside the running server process. This is the canonical lock mode and is recorded in the report header.
+- Phase 0 step 15 globs `ai_docs/audit-reports/*_<repo-id>_<oppositeMode>_mcp-server-audit.md`. If a recent partial exists with `skipped-pending-second-run` markers, this is run 2 of a dual-mode pair.
+- Phase 8b.6 either marks Session B columns `skipped-pending-second-run` (run 1) or inherits the run-1 partial's probe slot ids and fills both Session A and Session B columns in this run's file (run 2).
+- Audit files are auto-named `<timestamp>_<repo-id>_<lockMode>_mcp-server-audit.md`. The run-2 file is the canonical dual-mode raw audit and is self-contained.
+
+There is no manual filename, no manual matrix merge, and no operator decision about which run is which. See `deep-review-command-reference.md` → *Dual-mode deep-review — the four-step flow* for the concrete command sequence.
+
+### Operator rules
+
+1. The **default** lane for every routine smoke run is whichever mode the operator's MCP client is currently launched in. Phase 0 step 4 records the actual mode regardless.
+2. **Release-candidate runs** and any pass that consumes the `workspace-rw-lock-flag-flip` backlog row must be **dual-mode** (i.e., the operator must do the four steps, not just one). The run-2 file populates the concurrency mode matrix in both columns.
+3. **Performance investigations** triggered by the large-solution lane should always be dual-mode so the wall-clock comparison is grounded in matched probe-set evidence.
+4. The lock mode is tracked in the raw audit header (`Lock mode at audit time`) and propagated into every per-call evidence row by the audit prompt's cross-cutting principle #8. Rollups must dedupe by `tool + symptom + catalog-version + client-family + lock-mode` whenever a defect is plausibly mode-specific.
+5. Dual-mode runs must use the **same disposable checkout** in both prompt invocations so the workspace state is identical and the matrix is mechanically diffable. The agent's auto-pair logic relies on `<repo-id>` matching, so the second invocation must target a checkout whose entrypoint resolves to the same repo identity as the first.
+
 ## Helper execution and context conservation
 
 Use helper execution when the client/runtime supports it so long-running validation does not consume the primary agent's context window.
@@ -65,12 +100,13 @@ Use helper execution when the client/runtime supports it so long-running validat
 
 ## Cadence
 
-| Trigger | Recommended scope |
-|---------|-------------------|
-| Routine internal change with no surface or tiering impact | Smoke subset: 2-3 representative repos on the primary client. |
-| Material tool/resource/prompt surface change, schema change, or preview/apply behavior change | Full repo-shape matrix plus at least one full-surface client lane. |
-| Release candidate or experimental-to-stable promotion pass | Full matrix, full-surface client lane, and synthesized rollup review before sign-off. |
-| Performance concern on customer-scale repos | Add the large-solution lane and follow `docs/large-solution-profiling-baseline.md`. |
+| Trigger | Recommended scope | Lock-mode lane |
+|---------|-------------------|----------------|
+| Routine internal change with no surface or tiering impact | Smoke subset: 2-3 representative repos on the primary client. | Single mode (whichever the client is launched with). Record it. |
+| Material tool/resource/prompt surface change, schema change, or preview/apply behavior change | Full repo-shape matrix plus at least one full-surface client lane. | Dual-mode for at least one repo in the matrix. |
+| Release candidate or experimental-to-stable promotion pass | Full matrix, full-surface client lane, and synthesized rollup review before sign-off. | Dual-mode for all repos in the matrix. |
+| Performance concern on customer-scale repos | Add the large-solution lane and follow `docs/large-solution-profiling-baseline.md`. | Dual-mode required for the large-solution lane so the parallel-fan-out matrix is comparable. |
+| Closing the `workspace-rw-lock-flag-flip` backlog row | Full matrix, full-surface client lane, dual-mode for every repo, plus the soak duration noted in the backlog row. | Dual-mode required. Rollup must include the `parallel_speedup` numbers from every repo. |
 
 ## Normalized metadata
 
@@ -83,10 +119,14 @@ Each raw audit or batch manifest should capture these fields so rollups are comp
 | Client name / version | Separate server defects from client limitations. |
 | Server version and catalog version | Keep evidence aligned with the live surface. |
 | Audit mode | Distinguish `full-surface` from `conservative`. |
+| Lock mode at audit time | `legacy-mutex` / `rw-lock` / `dual-mode (legacy-mutex → rw-lock)` / `dual-mode (rw-lock → legacy-mutex)`. Required so rollups can dedupe lock-mode-specific defects. |
+| Lock mode source of truth | `launch-config` / `shell-env` / `behavioral-fingerprint`. Documents how the operator established what value the server was running with. |
 | Repo-shape tags | Explain why some families were or were not applicable. |
 | Client capability notes | Record prompt/resource availability or `blocked` limitations. |
+| Debug log channel | `yes` / `partial` / `no` — whether the client surfaced MCP `notifications/message` log entries. Drives whether the rollup can rely on captured server-side log evidence. |
 | Helper execution notes | Record whether subagents/background agents handled long-running validation and any related client/runtime limits. |
 | Coverage counts by status | Compare exercised vs skipped vs blocked across runs. |
+| Concurrency probe wall-clocks | Required when Phase 8b ran. Pulled from the raw audit's *Concurrency mode matrix → Sequential baseline* and *Parallel fan-out* tables; needed by the rollup to compare wall-clocks across repos and modes. |
 | New issue count / candidate closure count | Support rollup triage. |
 
 Use these fields as the manifest schema for manual review, future automation, or the lightweight scaffold script.
@@ -107,7 +147,9 @@ Each batch rollup in `ai_docs/reports/` should include:
 | Input files | Flat list of raw audit file paths from `ai_docs/audit-reports/`. |
 | Repo coverage | Which repo-shape buckets ran and which were missing. |
 | Client coverage | Full-surface vs constrained lanes and `blocked` families. |
-| Unique issues | Deduped findings table keyed by tool + symptom + catalog version + client family. |
+| Lock mode coverage | Which lock modes were exercised across the batch (`legacy-mutex` / `rw-lock` / dual-mode) and which repos were single-mode only. Required when any input audit reports a non-default lock mode or any input audit ran Phase 8b. |
+| Concurrency matrix rollup | Aggregated `parallel_speedup` numbers per repo per mode (pulled from the raw *Parallel fan-out* tables). Required when ≥2 input audits exercised Phase 8b dual-mode. |
+| Unique issues | Deduped findings table keyed by tool + symptom + catalog version + client family **+ lock mode** (when the defect is plausibly mode-specific). |
 | Blocked-by-client summary | Prompt/resource or client-surface limitations that are not server defects by default. |
 | Candidate closures | Prior issues that no longer reproduce, with raw evidence links. |
 | Backlog actions | New rows to open, existing rows to update, and items intentionally not backlogged. |
@@ -115,8 +157,9 @@ Each batch rollup in `ai_docs/reports/` should include:
 ## Backlog intake rules
 
 - Open or update backlog rows from the rollup, not directly from raw per-repo audits.
-- Default dedupe key: `tool + symptom + catalog-version + client-family`.
-- If the same defect reproduces across multiple repos, keep one backlog row and cite all evidence in the rollup.
+- Default dedupe key: `tool + symptom + catalog-version + client-family`. Add `lock-mode` to the key whenever a defect plausibly differs between `legacy-mutex` and `rw-lock` (any concurrency, lifecycle, gate, or apply/preview behavior).
+- If the same defect reproduces across multiple repos under the same lock mode, keep one backlog row and cite all evidence in the rollup.
+- If a defect reproduces under one lock mode but not the other, open a separate row tagged `lock-mode:<mode>` so the `workspace-rw-lock-flag-flip` rollout can use it as gate evidence.
 - Pure client limitations stay in the rollup unless they belong to an explicit client/plugin backlog.
 - Candidate closures require the prior source id and current raw evidence path.
 
