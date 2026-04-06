@@ -1,0 +1,46 @@
+{
+  "name": "roslyn-mcp",
+  "version": "1.6.0",
+  "description": "Semantic C# analysis and refactoring for AI agents, powered by Roslyn. Load .sln/.csproj files and get 147 tools for navigation, diagnostics, refactoring, security, and more.",
+  "author": {
+    "name": "darylmcd",
+    "url": "https://github.com/darylmcd/Roslyn-Backed-MCP"
+  },
+  "repository": "https://github.com/darylmcd/Roslyn-Backed-MCP",
+  "license": "MIT",
+  "keywords": ["csharp", "dotnet", "roslyn", "refactoring", "analysis", "mcp"],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "userConfig": {
+    "ROSLYNMCP_MAX_WORKSPACES": {
+      "title": "Max Workspaces",
+      "description": "Maximum concurrent workspace sessions (default: 8)",
+      "type": "number",
+      "sensitive": false
+    },
+    "ROSLYNMCP_BUILD_TIMEOUT_SECONDS": {
+      "title": "Build Timeout",
+      "description": "Build timeout in seconds (default: 300)",
+      "type": "number",
+      "sensitive": false
+    },
+    "ROSLYNMCP_TEST_TIMEOUT_SECONDS": {
+      "title": "Test Timeout",
+      "description": "Test timeout in seconds (default: 600)",
+      "type": "number",
+      "sensitive": false
+    },
+    "ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS": {
+      "title": "Rate Limit",
+      "description": "Maximum tool invocations per sliding window (default: 120)",
+      "type": "number",
+      "sensitive": false
+    },
+    "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS": {
+      "title": "Request Timeout",
+      "description": "Per-request timeout for tool invocations in seconds (default: 120)",
+      "type": "number",
+      "sensitive": false
+    }
+  }
+}

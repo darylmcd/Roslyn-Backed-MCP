@@ -1,0 +1,24 @@
+{
+  "name": "roslyn-mcp-marketplace",
+  "owner": {
+    "name": "darylmcd",
+    "email": "darylmcd@users.noreply.github.com"
+  },
+  "metadata": {
+    "description": "Roslyn-Backed MCP plugin for Claude Code — semantic C# analysis and refactoring",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "roslyn-mcp",
+      "source": "./",
+      "description": "Semantic C# analysis and refactoring powered by Roslyn. 147 tools for navigation, diagnostics, refactoring, security, testing, and more.",
+      "version": "1.6.0",
+      "author": {
+        "name": "darylmcd"
+      },
+      "category": "development",
+      "tags": ["csharp", "dotnet", "roslyn", "refactoring", "analysis", "mcp"]
+    }
+  ]
+}
