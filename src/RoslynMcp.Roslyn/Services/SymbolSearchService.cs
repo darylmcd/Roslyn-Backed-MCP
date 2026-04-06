@@ -91,7 +91,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
         var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
         if (root is null) return [];
 
-        return CollectSymbols(root);
+        return CollectSymbols(root, ct);
     }
 
     private static bool MatchesKind(ISymbol symbol, string kindFilter)
@@ -105,12 +105,14 @@ public sealed class SymbolSearchService : ISymbolSearchService
         return kinds.Any(kind => string.Equals(kind, kindFilter, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static IReadOnlyList<DocumentSymbolDto> CollectSymbols(SyntaxNode node)
+    private static IReadOnlyList<DocumentSymbolDto> CollectSymbols(SyntaxNode node, CancellationToken ct)
     {
         var symbols = new List<DocumentSymbolDto>();
 
         foreach (var child in node.ChildNodes())
         {
+            if (ct.IsCancellationRequested) break;
+
             switch (child)
             {
                 case NamespaceDeclarationSyntax ns:
@@ -118,10 +120,10 @@ public sealed class SymbolSearchService : ISymbolSearchService
                         ns.Name.ToString(), "Namespace", null,
                         ns.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
                         ns.GetLocation().GetLineSpan().EndLinePosition.Line + 1,
-                        CollectSymbols(ns)));
+                        CollectSymbols(ns, ct)));
                     break;
                 case FileScopedNamespaceDeclarationSyntax fns:
-                    symbols.AddRange(CollectSymbols(fns));
+                    symbols.AddRange(CollectSymbols(fns, ct));
                     break;
                 case TypeDeclarationSyntax typeDecl:
                     var kind = typeDecl switch
@@ -137,7 +139,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
                         typeDecl.Modifiers.Select(m => m.Text).ToList(),
                         typeDecl.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
                         typeDecl.GetLocation().GetLineSpan().EndLinePosition.Line + 1,
-                        CollectMembers(typeDecl)));
+                        CollectMembers(typeDecl, ct)));
                     break;
                 case EnumDeclarationSyntax enumDecl:
                     symbols.Add(new DocumentSymbolDto(
@@ -167,12 +169,14 @@ public sealed class SymbolSearchService : ISymbolSearchService
         return symbols;
     }
 
-    private static IReadOnlyList<DocumentSymbolDto> CollectMembers(TypeDeclarationSyntax typeDecl)
+    private static IReadOnlyList<DocumentSymbolDto> CollectMembers(TypeDeclarationSyntax typeDecl, CancellationToken ct)
     {
         var members = new List<DocumentSymbolDto>();
 
         foreach (var member in typeDecl.Members)
         {
+            if (ct.IsCancellationRequested) break;
+
             switch (member)
             {
                 case MethodDeclarationSyntax method:
@@ -232,7 +236,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
                         nestedType.Modifiers.Select(m => m.Text).ToList(),
                         nestedType.GetLocation().GetLineSpan().StartLinePosition.Line + 1,
                         nestedType.GetLocation().GetLineSpan().EndLinePosition.Line + 1,
-                        CollectMembers(nestedType)));
+                        CollectMembers(nestedType, ct)));
                     break;
             }
         }

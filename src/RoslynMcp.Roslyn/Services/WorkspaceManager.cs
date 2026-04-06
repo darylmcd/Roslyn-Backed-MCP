@@ -52,6 +52,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// <summary>Limits concurrent workspace sessions; paired with <see cref="Close"/> and <see cref="Dispose"/>.</summary>
     private readonly SemaphoreSlim _workspaceSlots;
 
+    /// <inheritdoc />
+    public event Action<string>? WorkspaceClosed;
+
     public WorkspaceManager(
         ILogger<WorkspaceManager> logger,
         IPreviewStore previewStore,
@@ -147,8 +150,28 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _previewStore.InvalidateAll(workspaceId);
         session.Dispose();
         _workspaceSlots.Release();
+        RaiseWorkspaceClosed(workspaceId);
         LogWorkspaceClosed(_logger, workspaceId, null);
         return true;
+    }
+
+    /// <summary>
+    /// Notifies subscribers (e.g., <see cref="ICompilationCache"/>) that a workspace has been
+    /// closed. Wrapped so that handler exceptions cannot break the close path.
+    /// </summary>
+    private void RaiseWorkspaceClosed(string workspaceId)
+    {
+        var handler = WorkspaceClosed;
+        if (handler is null) return;
+
+        try
+        {
+            handler(workspaceId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "WorkspaceClosed handler threw for {WorkspaceId}", workspaceId);
+        }
     }
 
     public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces()
@@ -362,6 +385,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public void Dispose()
     {
         _fileWatcher.Dispose();
+
+        // Capture session ids before dispose so we can raise WorkspaceClosed for each one.
+        // This lets singletons like ICompilationCache free per-workspace state on host shutdown
+        // (or test-assembly teardown) instead of leaking until process exit.
+        var ids = _sessions.Keys.ToArray();
         foreach (var session in _sessions.Values)
         {
             session.Dispose();
@@ -371,6 +399,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         for (var i = 0; i < n; i++)
         {
             _workspaceSlots.Release();
+        }
+
+        foreach (var id in ids)
+        {
+            RaiseWorkspaceClosed(id);
         }
 
         _workspaceSlots.Dispose();

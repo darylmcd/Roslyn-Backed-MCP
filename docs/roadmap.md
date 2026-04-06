@@ -41,7 +41,7 @@ Future direction:
 
 ## Large-Solution Performance Strategy
 
-Decision: ship bounded local behavior now, then add indexing/caching later if real users need it.
+Decision: ship bounded local behavior now, layer in-process caches and parallelism as concrete hot paths emerge, defer cross-session/persistent indexing until real users need it.
 
 Release-1 strategy:
 
@@ -51,9 +51,19 @@ Release-1 strategy:
 - bounded generated-document discovery
 - workspace-count cap
 
+Delivered after release-1 (in-process):
+
+- cross-tool compilation cache (`ICompilationCache`) — per-workspace, version-keyed cache for `Compilation` and `CompilationWithAnalyzers` with task-level dedupe; invalidated on `IWorkspaceManager.WorkspaceClosed`
+- per-workspace diagnostic cache in `DiagnosticService` — solution-wide diagnostics reused by `GetDiagnosticDetailsAsync` instead of recompiling
+- bounded-semaphore parallelism for reference materialization (`ReferenceLocationMaterializer`), reused by `ReferenceService`, `MutationAnalysisService`, and `ConsumerAnalysisService`
+- bounded-semaphore parallelism for `UnusedCodeAnalyzer` Phase 2 (`SymbolFinder.FindReferencesAsync` per candidate)
+- parallel `FindDiagnosticAsync` via `Task.WhenAll` over per-project compilations
+- parallel outer loop in `MutationAnalysisService.FindTypeMutationsAsync` (per mutating member) backed by `ConcurrentDictionary` document caches
+
 Post-release candidates:
 
-- persistent symbol/index cache
+- workspace reader/writer locking — design captured in `ai_docs/reports/2026-04-06-workspace-rw-lock-design-note.md` (would let concurrent reads on the same workspace overlap instead of serializing)
+- persistent (cross-session) symbol/index cache
 - incremental background indexing
 - opt-in warmup for enterprise solutions
 - separate performance profile for remote hosting

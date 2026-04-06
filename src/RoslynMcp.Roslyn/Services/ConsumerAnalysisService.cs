@@ -27,39 +27,35 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
         if (symbol is null) return null;
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
+        var refLocations = references.SelectMany(r => r.Locations).ToList();
+
+        // The materializer fetches syntax roots + semantic models in parallel under a bounded
+        // semaphore. This is the dominant cost for high-fanout types like IWorkspaceManager.
+        var materialized = await ReferenceLocationMaterializer.MaterializeAsync(refLocations, ct).ConfigureAwait(false);
 
         // Group references by containing type and classify dependency kind
         var consumerMap = new Dictionary<INamedTypeSymbol, HashSet<string>>(SymbolEqualityComparer.Default);
 
-        foreach (var refSymbol in references)
+        foreach (var item in materialized)
         {
-            foreach (var refLocation in refSymbol.Locations)
+            if (ct.IsCancellationRequested) break;
+            if (item.SyntaxRoot is null || item.SemanticModel is null) continue;
+
+            var node = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan);
+            var containingType = FindContainingType(node, item.SemanticModel, ct);
+            if (containingType is null) continue;
+
+            // Don't include self-references
+            if (SymbolEqualityComparer.Default.Equals(containingType, symbol)) continue;
+
+            if (!consumerMap.TryGetValue(containingType, out var kinds))
             {
-                if (ct.IsCancellationRequested) break;
-
-                var doc = refLocation.Document;
-                var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                if (root is null) continue;
-
-                var node = root.FindNode(refLocation.Location.SourceSpan);
-                var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                if (semanticModel is null) continue;
-
-                var containingType = FindContainingType(node, semanticModel, ct);
-                if (containingType is null) continue;
-
-                // Don't include self-references
-                if (SymbolEqualityComparer.Default.Equals(containingType, symbol)) continue;
-
-                if (!consumerMap.TryGetValue(containingType, out var kinds))
-                {
-                    kinds = new HashSet<string>(StringComparer.Ordinal);
-                    consumerMap[containingType] = kinds;
-                }
-
-                var kind = ClassifyDependencyKind(node);
-                kinds.Add(kind);
+                kinds = new HashSet<string>(StringComparer.Ordinal);
+                consumerMap[containingType] = kinds;
             }
+
+            var kind = ClassifyDependencyKind(node);
+            kinds.Add(kind);
         }
 
         var consumers = consumerMap.Select(kvp =>

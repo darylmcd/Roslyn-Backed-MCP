@@ -14,17 +14,20 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class DependencyAnalysisService : IDependencyAnalysisService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly IGatedCommandExecutor _executor;
     private readonly ILogger<DependencyAnalysisService> _logger;
     private readonly ValidationServiceOptions _options;
 
     public DependencyAnalysisService(
         IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
         IGatedCommandExecutor executor,
         ILogger<DependencyAnalysisService> logger,
         ValidationServiceOptions? options = null)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _executor = executor;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
@@ -43,7 +46,7 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
         {
             if (ct.IsCancellationRequested) break;
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var tree in compilation.SyntaxTrees)
@@ -192,7 +195,7 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
         {
             if (ct.IsCancellationRequested) break;
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var tree in compilation.SyntaxTrees)

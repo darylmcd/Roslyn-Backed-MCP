@@ -19,7 +19,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// each project has at most one slot per cache and stale tasks are released as soon as the
 /// new entry is installed.
 /// </remarks>
-public sealed class CompilationCache : ICompilationCache
+public sealed class CompilationCache : ICompilationCache, IDisposable
 {
     private readonly IWorkspaceManager _workspaceManager;
 
@@ -34,6 +34,16 @@ public sealed class CompilationCache : ICompilationCache
     public CompilationCache(IWorkspaceManager workspaceManager)
     {
         _workspaceManager = workspaceManager;
+        // Free per-workspace cache slots when the workspace closes. Without this hook, closed
+        // workspace IDs (GUIDs) accumulate forever — stale entries are functionally inert
+        // because every read re-checks GetCurrentVersion, but they hold Compilation references
+        // until process exit.
+        _workspaceManager.WorkspaceClosed += Invalidate;
+    }
+
+    public void Dispose()
+    {
+        _workspaceManager.WorkspaceClosed -= Invalidate;
     }
 
     public Task<Compilation?> GetCompilationAsync(string workspaceId, Project project, CancellationToken ct)
@@ -105,12 +115,12 @@ public sealed class CompilationCache : ICompilationCache
 
     public void Invalidate(string workspaceId)
     {
-        // Note: stale entries (workspace closed, version bumped) are functionally inert
-        // because every read re-checks GetCurrentVersion. Invalidate is exposed for callers
-        // that want to free dictionary slots eagerly — currently it's not wired into
-        // WorkspaceManager.Close to avoid a circular DI dependency, but a future event-based
-        // notification could call this. ConcurrentDictionary doesn't support bulk-by-key
-        // removal, so iterate. The set of keys per workspace is small (one per project).
+        // Stale entries (workspace closed, version bumped) are functionally inert because
+        // every read re-checks GetCurrentVersion, but they hold Compilation references until
+        // process exit. This method is wired to IWorkspaceManager.WorkspaceClosed in the
+        // constructor so closed workspace ids are dropped eagerly.
+        // ConcurrentDictionary doesn't support bulk-by-key removal, so iterate. The set of
+        // keys per workspace is small (one per project).
         foreach (var key in _compilations.Keys)
         {
             if (key.WorkspaceId == workspaceId)

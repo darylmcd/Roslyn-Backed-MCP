@@ -78,6 +78,7 @@ internal sealed class TestServiceContainer
         var undoService = new UndoService();
         var dependencyAnalysisService = new DependencyAnalysisService(
             workspaceManager,
+            compilationCache,
             gatedCommandExecutor,
             NullLogger<DependencyAnalysisService>.Instance,
             validationOptions);
