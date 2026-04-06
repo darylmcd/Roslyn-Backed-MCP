@@ -94,6 +94,8 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
 
     private sealed class FakeWorkspaceManager : IWorkspaceManager
     {
+        public event Action<string>? WorkspaceClosed { add { } remove { } }
+
         public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
 
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -27,24 +28,19 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         if (symbol is null) return null;
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
-        var directRefs = new List<LocationDto>();
+        var refLocations = references.SelectMany(r => r.Locations).ToList();
+        var materialized = await ReferenceLocationMaterializer.MaterializeAsync(refLocations, ct).ConfigureAwait(false);
+
+        var directRefs = new List<LocationDto>(materialized.Count);
         var affectedDeclarations = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
         var affectedProjects = new HashSet<string>();
 
-        foreach (var refSymbol in references)
+        foreach (var item in materialized)
         {
-            foreach (var refLocation in refSymbol.Locations)
-            {
-                var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
-                var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
-                var classification = SymbolMapper.ClassifyReferenceLocation(refLocation);
-                directRefs.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview, classification));
-
-                if (containingSymbol is not null)
-                    affectedDeclarations.Add(containingSymbol);
-
-                affectedProjects.Add(refLocation.Document.Project.Name);
-            }
+            directRefs.Add(item.Dto);
+            if (item.ContainingSymbol is not null)
+                affectedDeclarations.Add(item.ContainingSymbol);
+            affectedProjects.Add(item.Source.Document.Project.Name);
         }
 
         if (symbol is INamedTypeSymbol namedType)
@@ -76,40 +72,34 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         if (symbol is not IPropertySymbol property) return [];
 
         var references = await SymbolFinder.FindReferencesAsync(property, solution, ct).ConfigureAwait(false);
+        var refLocations = references.SelectMany(r => r.Locations).ToList();
+        var materialized = await ReferenceLocationMaterializer.MaterializeAsync(refLocations, ct).ConfigureAwait(false);
+
         var results = new List<PropertyWriteDto>();
-
-        foreach (var refSymbol in references)
+        foreach (var item in materialized)
         {
-            foreach (var refLocation in refSymbol.Locations)
-            {
-                var doc = refLocation.Document;
-                var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                if (root is null) continue;
+            if (item.SyntaxRoot is null) continue;
 
-                var refNode = root.FindNode(refLocation.Location.SourceSpan);
+            var refNode = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan);
 
-                // Determine if this reference is a write (left side of assignment, out/ref arg, or in an initializer)
-                var isWrite = IsWriteReference(refNode);
-                if (!isWrite) continue;
+            // Determine if this reference is a write (left side of assignment, out/ref arg, or in an initializer)
+            if (!IsWriteReference(refNode)) continue;
 
-                var isObjectInitializer = refNode.Ancestors()
-                    .Any(static a => a is InitializerExpressionSyntax init &&
-                        init.Kind() == SyntaxKind.ObjectInitializerExpression);
+            var isObjectInitializer = refNode.Ancestors()
+                .Any(static a => a is InitializerExpressionSyntax init &&
+                    init.Kind() == SyntaxKind.ObjectInitializerExpression);
 
-                var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-                var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-                var lineSpan = refLocation.Location.GetLineSpan();
+            var lineSpan = item.Source.Location.GetLineSpan();
 
-                results.Add(new PropertyWriteDto(
-                    FilePath: lineSpan.Path,
-                    StartLine: lineSpan.StartLinePosition.Line + 1,
-                    StartColumn: lineSpan.StartLinePosition.Character + 1,
-                    EndLine: lineSpan.EndLinePosition.Line + 1,
-                    EndColumn: lineSpan.EndLinePosition.Character + 1,
-                    ContainingMember: containingSymbol?.ToDisplayString(),
-                    PreviewText: preview,
-                    IsObjectInitializer: isObjectInitializer));
-            }
+            results.Add(new PropertyWriteDto(
+                FilePath: lineSpan.Path,
+                StartLine: lineSpan.StartLinePosition.Line + 1,
+                StartColumn: lineSpan.StartLinePosition.Character + 1,
+                EndLine: lineSpan.EndLinePosition.Line + 1,
+                EndColumn: lineSpan.EndLinePosition.Character + 1,
+                ContainingMember: item.ContainingSymbol?.ToDisplayString(),
+                PreviewText: item.Dto.PreviewText,
+                IsObjectInitializer: isObjectInitializer));
         }
 
         return results;
@@ -122,33 +112,28 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         if (symbol is null) return [];
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
-        var results = new List<TypeUsageDto>();
+        var refLocations = references.SelectMany(r => r.Locations).ToList();
+        var materialized = await ReferenceLocationMaterializer.MaterializeAsync(refLocations, ct).ConfigureAwait(false);
 
-        foreach (var refSymbol in references)
+        var results = new List<TypeUsageDto>(materialized.Count);
+        foreach (var item in materialized)
         {
-            foreach (var refLocation in refSymbol.Locations)
-            {
-                var doc = refLocation.Document;
-                var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                if (root is null) continue;
+            if (item.SyntaxRoot is null) continue;
 
-                var refNode = root.FindNode(refLocation.Location.SourceSpan);
-                var classification = ClassifyTypeUsage(refNode, symbol);
+            var refNode = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan);
+            var classification = ClassifyTypeUsage(refNode, symbol);
 
-                var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-                var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-                var lineSpan = refLocation.Location.GetLineSpan();
+            var lineSpan = item.Source.Location.GetLineSpan();
 
-                results.Add(new TypeUsageDto(
-                    FilePath: lineSpan.Path,
-                    StartLine: lineSpan.StartLinePosition.Line + 1,
-                    StartColumn: lineSpan.StartLinePosition.Character + 1,
-                    EndLine: lineSpan.EndLinePosition.Line + 1,
-                    EndColumn: lineSpan.EndLinePosition.Character + 1,
-                    ContainingMember: containingSymbol?.ToDisplayString(),
-                    PreviewText: preview,
-                    Classification: classification));
-            }
+            results.Add(new TypeUsageDto(
+                FilePath: lineSpan.Path,
+                StartLine: lineSpan.StartLinePosition.Line + 1,
+                StartColumn: lineSpan.StartLinePosition.Character + 1,
+                EndLine: lineSpan.EndLinePosition.Line + 1,
+                EndColumn: lineSpan.EndLinePosition.Character + 1,
+                ContainingMember: item.ContainingSymbol?.ToDisplayString(),
+                PreviewText: item.Dto.PreviewText,
+                Classification: classification));
         }
 
         return results;
@@ -160,75 +145,109 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not INamedTypeSymbol namedType) return null;
 
-        var mutatingMembers = new List<MutatingMemberDto>();
+        // Filter to mutating members up front so we can fan out the expensive
+        // SymbolFinder.FindReferencesAsync calls in parallel while preserving declaration order.
+        var candidates = namedType.GetMembers()
+            .Where(m => IsMutatingMember(m, namedType))
+            .ToArray();
 
-        // Cache document roots and semantic models to avoid redundant async lookups
-        // across multiple members referencing the same documents.
-        var rootCache = new Dictionary<DocumentId, SyntaxNode?>();
-        var modelCache = new Dictionary<DocumentId, SemanticModel?>();
-
-        foreach (var member in namedType.GetMembers())
+        if (candidates.Length == 0)
         {
-            if (!IsMutatingMember(member, namedType)) continue;
-
-            var callers = new List<MutationCallerDto>();
-            var references = await SymbolFinder.FindReferencesAsync(member, solution, ct).ConfigureAwait(false);
-
-            foreach (var refSymbol in references)
-            {
-                foreach (var refLocation in refSymbol.Locations)
-                {
-                    var doc = refLocation.Document;
-                    if (!rootCache.TryGetValue(doc.Id, out var root))
-                    {
-                        root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                        rootCache[doc.Id] = root;
-                    }
-                    if (!modelCache.TryGetValue(doc.Id, out var model))
-                    {
-                        model = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                        modelCache[doc.Id] = model;
-                    }
-
-                    // For interface-implemented members (e.g. Dispose), filter to only calls
-                    // where the receiver type matches the target type
-                    if (root is not null && model is not null && !IsReceiverOfTargetType(root, model, refLocation.Location, namedType, ct))
-                        continue;
-
-                    var containingSymbol = root is not null && model is not null
-                        ? SymbolServiceHelpers.GetContainingSymbolFromRoot(root, model, refLocation.Location, ct)
-                        : null;
-
-                    // Skip calls from within the type itself (internal mutators calling each other)
-                    if (containingSymbol is not null &&
-                        SymbolEqualityComparer.Default.Equals(containingSymbol.ContainingType, namedType))
-                        continue;
-
-                    var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-                    var phase = ClassifyCallerPhase(root, model, refLocation.Location, namedType);
-                    var lineSpan = refLocation.Location.GetLineSpan();
-
-                    callers.Add(new MutationCallerDto(
-                        FilePath: lineSpan.Path,
-                        StartLine: lineSpan.StartLinePosition.Line + 1,
-                        StartColumn: lineSpan.StartLinePosition.Character + 1,
-                        ContainingMember: containingSymbol?.ToDisplayString(),
-                        PreviewText: preview,
-                        CallerPhase: phase));
-                }
-            }
-
-            var memberLoc = member.Locations.FirstOrDefault(l => l.IsInSource);
-            mutatingMembers.Add(new MutatingMemberDto(
-                Name: member.Name,
-                FullyQualifiedName: member.ToDisplayString(),
-                Kind: member.Kind.ToString(),
-                FilePath: memberLoc?.GetLineSpan().Path,
-                Line: memberLoc?.GetLineSpan().StartLinePosition.Line + 1,
-                ExternalCallers: callers));
+            return new TypeMutationDto(
+                Type: SymbolMapper.ToDto(namedType, solution),
+                MutatingMembers: [],
+                Summary: $"Type '{namedType.Name}' has 0 mutating member(s) with 0 external caller(s).");
         }
 
-        var summary = $"Type '{namedType.Name}' has {mutatingMembers.Count} mutating member(s) " +
+        // Concurrent caches shared across the parallel member tasks. Roslyn's per-document
+        // caches mean these are mostly redundant after warmup, but the dictionary still saves
+        // the async-state-machine cost on hot documents.
+        var rootCache = new ConcurrentDictionary<DocumentId, SyntaxNode?>();
+        var modelCache = new ConcurrentDictionary<DocumentId, SemanticModel?>();
+
+        var parallelism = Math.Clamp(Environment.ProcessorCount, 4, 16);
+        using var semaphore = new SemaphoreSlim(parallelism, parallelism);
+
+        async Task<MutatingMemberDto> ProcessMemberAsync(ISymbol member)
+        {
+            await semaphore.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                var callers = new List<MutationCallerDto>();
+                var references = await SymbolFinder.FindReferencesAsync(member, solution, ct).ConfigureAwait(false);
+
+                foreach (var refSymbol in references)
+                {
+                    foreach (var refLocation in refSymbol.Locations)
+                    {
+                        var doc = refLocation.Document;
+
+                        // ConcurrentDictionary has no async value factory, so we check-then-add.
+                        // The race is benign: at worst two members fetch the same document's
+                        // root/model concurrently and one TryAdd loses; the result is identical.
+                        if (!rootCache.TryGetValue(doc.Id, out var root))
+                        {
+                            root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                            rootCache.TryAdd(doc.Id, root);
+                        }
+                        if (!modelCache.TryGetValue(doc.Id, out var model))
+                        {
+                            model = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
+                            modelCache.TryAdd(doc.Id, model);
+                        }
+
+                        // For interface-implemented members (e.g. Dispose), filter to only calls
+                        // where the receiver type matches the target type
+                        if (root is not null && model is not null && !IsReceiverOfTargetType(root, model, refLocation.Location, namedType, ct))
+                            continue;
+
+                        var containingSymbol = root is not null && model is not null
+                            ? SymbolServiceHelpers.GetContainingSymbolFromRoot(root, model, refLocation.Location, ct)
+                            : null;
+
+                        // Skip calls from within the type itself (internal mutators calling each other)
+                        if (containingSymbol is not null &&
+                            SymbolEqualityComparer.Default.Equals(containingSymbol.ContainingType, namedType))
+                            continue;
+
+                        var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
+                        var phase = ClassifyCallerPhase(root, model, refLocation.Location, namedType);
+                        var lineSpan = refLocation.Location.GetLineSpan();
+
+                        callers.Add(new MutationCallerDto(
+                            FilePath: lineSpan.Path,
+                            StartLine: lineSpan.StartLinePosition.Line + 1,
+                            StartColumn: lineSpan.StartLinePosition.Character + 1,
+                            ContainingMember: containingSymbol?.ToDisplayString(),
+                            PreviewText: preview,
+                            CallerPhase: phase));
+                    }
+                }
+
+                var memberLoc = member.Locations.FirstOrDefault(l => l.IsInSource);
+                return new MutatingMemberDto(
+                    Name: member.Name,
+                    FullyQualifiedName: member.ToDisplayString(),
+                    Kind: member.Kind.ToString(),
+                    FilePath: memberLoc?.GetLineSpan().Path,
+                    Line: memberLoc?.GetLineSpan().StartLinePosition.Line + 1,
+                    ExternalCallers: callers);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }
+
+        var memberTasks = new Task<MutatingMemberDto>[candidates.Length];
+        for (var i = 0; i < candidates.Length; i++)
+        {
+            memberTasks[i] = ProcessMemberAsync(candidates[i]);
+        }
+
+        var mutatingMembers = await Task.WhenAll(memberTasks).ConfigureAwait(false);
+
+        var summary = $"Type '{namedType.Name}' has {mutatingMembers.Length} mutating member(s) " +
                       $"with {mutatingMembers.Sum(m => m.ExternalCallers.Count)} external caller(s).";
 
         return new TypeMutationDto(

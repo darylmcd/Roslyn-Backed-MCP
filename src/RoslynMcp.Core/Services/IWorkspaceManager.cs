@@ -10,6 +10,14 @@ namespace RoslynMcp.Core.Services;
 public interface IWorkspaceManager
 {
     /// <summary>
+    /// Raised when a workspace session is closed (via <see cref="Close"/> or process disposal).
+    /// Subscribers receive the closed workspace's identifier and can use it to free their own
+    /// per-workspace state. Handlers must not throw; the manager will swallow exceptions to keep
+    /// the close path reliable.
+    /// </summary>
+    event Action<string>? WorkspaceClosed;
+
+    /// <summary>
     /// Loads a solution or project file from disk into a new named workspace session.
     /// </summary>
     /// <param name="path">The absolute path to the <c>.sln</c>, <c>.slnx</c>, or <c>.csproj</c> file to load.</param>
