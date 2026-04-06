@@ -6,7 +6,7 @@ using ModelContextProtocol.Protocol;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class PromptSmokeTests : TestBase
+public sealed class PromptSmokeTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
     private static SecurityDiagnosticService SecurityService { get; set; } = null!;
@@ -15,7 +15,7 @@ public sealed class PromptSmokeTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
         SecurityService = new SecurityDiagnosticService(
             DiagnosticService,
             WorkspaceManager,

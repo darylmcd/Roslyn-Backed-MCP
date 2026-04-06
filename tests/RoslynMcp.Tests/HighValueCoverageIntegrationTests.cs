@@ -7,7 +7,7 @@ namespace RoslynMcp.Tests;
 /// DependencyAnalysisService, DeadCodeService (see docs/coverage-baseline.md).
 /// </summary>
 [TestClass]
-public sealed class HighValueCoverageIntegrationTests : TestBase
+public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
 {
     private static string SampleWorkspaceId { get; set; } = null!;
 
@@ -15,7 +15,7 @@ public sealed class HighValueCoverageIntegrationTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        SampleWorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        SampleWorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
     }
 
     [ClassCleanup]

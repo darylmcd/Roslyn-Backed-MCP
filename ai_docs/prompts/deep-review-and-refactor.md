@@ -27,13 +27,16 @@ You are a senior .NET architect. Your **primary mission** is to **audit the Rosl
 **Portability and completeness contract:**
 
 1. This prompt is intended to run against **any loadable C# repo**. Prefer a `.sln` or `.slnx`; if the repo has no solution file, use a `.csproj`.
+   - If no entrypoint loads successfully, continue with the workspace-independent families that still apply (`server_info`, server resources, `analyze_snippet`, `evaluate_csharp`, and any live prompts the client can invoke without a workspace) and mark every workspace-scoped entry `blocked` with the concrete load failure.
 2. **Default to `full-surface`.** Only opt into `conservative` when you cannot safely use a disposable branch/worktree/clone.
    - **`full-surface` (default):** disposable branch/worktree/clone; drive preview -> apply families end-to-end where safe and clean up or reverse audit-only mutations.
    - **`conservative` (opt-in):** non-disposable repo; keep high-impact families preview-only and mark the skipped apply siblings as `skipped-safety`.
+   - Before the first write-capable call, record the disposable branch/worktree/clone path you will mutate. If you cannot do that safely, switch to `conservative` and say why.
 3. Treat `server_info`, `roslyn://server/catalog`, and `roslyn://server/resource-templates` as the **authoritative live surface**. If this prompt's appendix disagrees with the running server, the live catalog wins and the mismatch is itself a finding.
 4. Build a live **coverage ledger** from the catalog. Every live tool, resource, and prompt must end with exactly one final status: `exercised`, `exercised-apply`, `exercised-preview-only`, `skipped-repo-shape`, `skipped-safety`, or `blocked`. Silent omissions mean the audit is incomplete.
-5. Record repo-shape constraints up front: single vs multi-project, tests present, analyzers present, source generators present, DI usage present, `.editorconfig` present, Central Package Management / `Directory.Packages.props`, multi-targeting, and network/package-restore constraints.
-6. Do not invent applicability. If the repo has no tests, no DI, no source generators, no multi-targeting, or only one project, record that explicitly and treat the corresponding steps as `skipped-repo-shape`.
+5. If the MCP client cannot invoke a live resource or prompt family, mark those catalog entries `blocked` with the client limitation. Do not silently omit them or relabel them as skipped.
+6. Record repo-shape constraints up front: single vs multi-project, tests present, analyzers present, source generators present, DI usage present, `.editorconfig` present, Central Package Management / `Directory.Packages.props`, multi-targeting, and network/package-restore constraints.
+7. Do not invent applicability. If the repo has no tests, no DI, no source generators, no multi-targeting, or only one project, record that explicitly and treat the corresponding steps as `skipped-repo-shape`.
 
 Work through each phase below **in order** (including the Phase 10 -> Phase 9 sequence), then complete the **Final surface closure** step before you write the report. After each tool call, evaluate whether the result is correct and complete. If a tool returns an error, empty results when data was expected, or results that seem wrong, record it for the MCP Server Audit Report.
 
@@ -46,7 +49,8 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 3. **Performance observation:** Note any tool call that is notably slow (>5 s for a simple single-symbol operation, >15 s for a solution-wide scan). Record the tool name, input scale, and approximate wall-clock time for the report's **Performance observations** subsection.
 4. **Error message quality:** When a tool returns an error, evaluate the message itself: Is it **actionable** (tells the caller what went wrong and what to do differently)? **Vague** (generic message with no remediation hint)? Or **unhelpful** (raw exception / stack trace)? Record the rating in the report.
 5. **Response contract consistency:** Across tool calls, note inconsistencies in response contracts: Are line numbers 0-based or 1-based consistently? Do related tools (`find_consumers`, `find_references`, `find_type_usages`) use the same field names for the same concepts? Are classification values always strings or sometimes numeric codes? Note inconsistencies in the report.
-6. **Precondition discipline:** Distinguish server defects from repo/environment constraints. If a tool depends on tests, analyzers, network access, source generators, DI registrations, Central Package Management, or a multi-project graph, record whether the precondition is absent in the repo, blocked by the environment, or mishandled by the server. A clear, actionable dependency or not-applicable response is not the same as a server bug.
+6. **Parameter-path coverage:** Happy-path defaults are not enough. For each major family you exercise, probe at least one non-default path when the live schema exposes it: project/file filters, severity filters, offset/limit pagination, boolean flags, alternate `kind` values, or similar. If the running schema does not expose a parameter mentioned in this prompt, record that as `N/A` rather than inventing it.
+7. **Precondition discipline:** Distinguish server defects from repo/environment constraints. If a tool depends on tests, analyzers, network access, source generators, DI registrations, Central Package Management, or a multi-project graph, record whether the precondition is absent in the repo, blocked by the environment, or mishandled by the server. A clear, actionable dependency or not-applicable response is not the same as a server bug.
 
 ---
 
@@ -54,31 +58,35 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 
 1. Pick the entrypoint you will load: prefer a `.sln` or `.slnx`; fall back to a `.csproj` if needed.
 2. Record whether this session is running in the default `full-surface` mode or an explicitly opted-in `conservative` mode.
-3. Call `server_info` to record the server version, Roslyn version, catalog version, and live stable/experimental counts.
-4. Read `roslyn://server/catalog` to capture the authoritative live surface inventory.
-5. Read `roslyn://server/resource-templates` to capture all resource URI templates.
-6. Call `workspace_load` with the chosen entrypoint.
-7. Call `workspace_list` to confirm the session appears.
-8. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
-9. Call `project_graph` to understand the project dependency structure.
-10. From the loaded repo, record the repo-shape constraints that affect later phases (projects, tests, analyzers, DI, source generators, Central Package Management, multi-targeting, network limits).
-11. Seed or update the coverage ledger so every live tool/resource/prompt already has a planned phase or a provisional skip reason.
+3. If `full-surface`, record the disposable branch/worktree/clone path you will mutate and how audit-only changes will be cleaned up. If `conservative`, record why safe disposable isolation is unavailable.
+4. Call `server_info` to record the server version, Roslyn version, catalog version, and live stable/experimental counts.
+5. Read `roslyn://server/catalog` to capture the authoritative live surface inventory.
+6. Read `roslyn://server/resource-templates` to capture all resource URI templates.
+7. Call `workspace_load` with the chosen entrypoint.
+8. Call `workspace_list` to confirm the session appears.
+9. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
+10. Call `project_graph` to understand the project dependency structure.
+11. From the loaded repo, record the repo-shape constraints that affect later phases (projects, tests, analyzers, DI, source generators, Central Package Management, multi-targeting, network limits).
+12. Seed or update the coverage ledger so every live tool/resource/prompt already has a planned phase or a provisional skip reason.
 
-**MCP audit checkpoint:** Did `server_info` and `roslyn://server/catalog` agree on live counts and tiers? Did `workspace_load` succeed on the chosen entrypoint? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Did you explicitly confirm either the default `full-surface` mode or a justified `conservative` opt-in, plus the repo shape and an initial coverage ledger with no silent omissions?
+**MCP audit checkpoint:** Did `server_info` and `roslyn://server/catalog` agree on live counts and tiers? Did `workspace_load` succeed on the chosen entrypoint? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Did you explicitly record either the disposable isolation path for `full-surface` or a justified `conservative` rationale, plus the repo shape and an initial coverage ledger with no silent omissions? If every candidate entrypoint failed to load, did you mark workspace-scoped rows `blocked` and continue only with workspace-independent families?
 
 ---
 
 ### Phase 1: Broad Diagnostics Scan
 
 1. Call `project_diagnostics` (no filters) to get all compiler errors and warnings across the solution.
-2. Call `compile_check` (no filters) to get in-memory compilation diagnostics. Compare the results with `project_diagnostics` — they should be consistent but may differ in count or detail.
-3. Call `security_diagnostics` to identify security-relevant findings with OWASP categorization.
-4. Call `security_analyzer_status` to check which analyzer packages are installed and what's missing.
-5. Call `nuget_vulnerability_scan` to scan NuGet references for known CVEs. Compare with `security_diagnostics` — vulnerability scan covers supply-chain CVEs while security diagnostics covers source-level patterns.
-6. Call `list_analyzers` to enumerate all loaded analyzers and their rules. Note total rule count.
-7. Call `diagnostic_details` on a representative error and a representative warning to inspect full detail.
+2. Call `project_diagnostics` again with at least one non-default selector exposed by the live schema (project, file, severity, and/or offset/limit pagination). Verify scoped results and paging boundaries are correct.
+3. Call `compile_check` (no filters) to get in-memory compilation diagnostics. Compare the results with `project_diagnostics` — they should be consistent but may differ in count or detail.
+4. Call `compile_check` again with `emitValidation=true`. Compare diagnostics and wall-clock time with the default call.
+5. Call `security_diagnostics` to identify security-relevant findings with OWASP categorization.
+6. Call `security_analyzer_status` to check which analyzer packages are installed and what's missing.
+7. Call `nuget_vulnerability_scan` to scan NuGet references for known CVEs. Compare with `security_diagnostics` — vulnerability scan covers supply-chain CVEs while security diagnostics covers source-level patterns.
+8. Call `list_analyzers` to enumerate all loaded analyzers and their rules. Note total rule count.
+9. If the live schema exposes a non-default selector or paging option for `list_analyzers`, call it that way too and verify the bounded result is stable.
+10. Call `diagnostic_details` on a representative error and a representative warning to inspect full detail.
 
-**MCP audit checkpoint:** Do `project_diagnostics` and `compile_check` agree on error counts? Does `compile_check` with `emitValidation=true` find additional issues? Does `nuget_vulnerability_scan` find any known CVEs, and does it return structured results with package name, advisory URL, and severity? If the environment blocks network or package metadata access, does `nuget_vulnerability_scan` fail fast with a clear explanation instead of hanging or returning misleading success? Does `list_analyzers` return data for all projects? Are there any analyzers that fail to load (look for LOAD_ERROR entries)? Does `diagnostic_details` return accurate location and message information?
+**MCP audit checkpoint:** Do `project_diagnostics` and `compile_check` agree on error counts? Did the non-default `project_diagnostics` selector behave correctly and preserve stable counts/page boundaries? Does `compile_check` with `emitValidation=true` find additional issues, and does the slower path still return a clear structured result? Does `nuget_vulnerability_scan` find any known CVEs, and does it return structured results with package name, advisory URL, and severity? If the environment blocks network or package metadata access, does `nuget_vulnerability_scan` fail fast with a clear explanation instead of hanging or returning misleading success? Does `list_analyzers` return data for all projects, and do any paging/selector options behave correctly if exposed? Are there any analyzers that fail to load (look for LOAD_ERROR entries)? Does `diagnostic_details` return accurate location and message information?
 
 ---
 
@@ -379,13 +387,13 @@ If `test_discover` returns zero tests, still record that result. Then explicitly
 
 ### Phase 16: Prompt Verification
 
-The server currently exposes 16 prompts. In `conservative` mode, exercise at least 6 prompts spanning error explanation, refactoring, review, testing, security, and capability discovery. In `full-surface` mode, exercise all 16 prompts unless a prompt is truly `skipped-repo-shape`.
+The live catalog is authoritative for prompt count. In `conservative` mode, exercise at least 6 prompts spanning error explanation, refactoring, review, testing, security, and capability discovery (or all live prompts if fewer than 6 exist). In `full-surface` mode, exercise every live prompt from the catalog unless a prompt is truly `skipped-repo-shape` or `blocked` by the client.
 
 1. Call `explain_error` with a diagnostic from Phase 1. Verify the explanation is accurate and actionable.
 2. Call `suggest_refactoring` on a symbol or region you analyzed in Phase 3. Verify the suggestions reference real tools and produce sensible guidance.
 3. Call `review_file` on a file modified in Phase 6. Verify the review references actual code and produces useful observations.
 4. Call `discover_capabilities` with a task category (e.g. "refactoring", "testing", "security"). Verify it returns relevant tools for the category.
-5. Cover the remaining prompt surface as applicable (`analyze_dependencies`, `debug_test_failure`, `refactor_and_validate`, `fix_all_diagnostics`, `guided_package_migration`, `guided_extract_interface`, `security_review`, `dead_code_audit`, `review_test_coverage`, `review_complexity`, `cohesion_analysis`, `consumer_impact`).
+5. Cover the remaining live prompt surface as applicable (current snapshot: `analyze_dependencies`, `debug_test_failure`, `refactor_and_validate`, `fix_all_diagnostics`, `guided_package_migration`, `guided_extract_interface`, `security_review`, `dead_code_audit`, `review_test_coverage`, `review_complexity`, `cohesion_analysis`, `consumer_impact`). If the live catalog differs, trust the catalog and record prompt drift.
 
 **MCP audit checkpoint:** Do prompt argument templates make sense? Does the prompt output reference correct tools and produce actionable guidance? Does `discover_capabilities` align with the live catalog from Phase 0? Are prompt descriptions accurate? Do any prompts fail, return empty output, or produce hallucinated tool names?
 
@@ -412,14 +420,15 @@ Deliberately probe edge cases and error paths. The goal is to verify that the se
 
 #### 17d. Stale and Double-Apply
 1. Call any `*_apply` tool with a **preview token from a previous phase** that has already been applied. Verify it rejects the stale token.
-2. Call `revert_last_apply` **twice** in succession. Verify the second call returns a clear "nothing to revert" response, not an error.
+2. Create a **fresh preview token**, then advance the workspace version with a separate successful low-impact mutation that the current audit mode allows. Attempt to apply the older token and verify a clear workspace-version/staleness rejection. If this is unsafe in `conservative` mode, mark this sub-step `skipped-safety` rather than faking it.
+3. Call `revert_last_apply` **twice** in succession. Verify the second call returns a clear "nothing to revert" response, not an error.
 
 #### 17e. Post-Close Operations
 1. Call `workspace_close` to close the session.
 2. Call `workspace_status` with the **now-closed workspace id**. Verify the error is clear.
 3. Call `workspace_load` to re-open the workspace for subsequent phases (or confirm session is still active for the remaining phases if you defer this sub-phase to the end).
 
-**MCP audit checkpoint:** For every error path tested: Did the server return an actionable error message or did it crash / return a vague MCP error? Rate each error message as **actionable**, **vague**, or **unhelpful**. Were there any 500-level or unhandled exceptions? Did any bad input cause the server to enter a degraded state affecting subsequent calls?
+**MCP audit checkpoint:** For every error path tested: Did the server return an actionable error message or did it crash / return a vague MCP error? Did stale-token and workspace-version mismatch cases fail cleanly? Rate each error message as **actionable**, **vague**, or **unhelpful**. Were there any 500-level or unhandled exceptions? Did any bad input cause the server to enter a degraded state affecting subsequent calls?
 
 ---
 
@@ -443,7 +452,8 @@ Before writing the report, deliberately re-test 3–5 previously recorded issues
 1. Compare your coverage ledger against the live catalog captured in Phase 0.
 2. For every unaccounted tool, resource, or prompt, either call it now or assign a final explicit status (`skipped-repo-shape`, `skipped-safety`, or `blocked`) with a one-line reason.
 3. If the live catalog exposed entries that had no natural place in the phased plan, record that as prompt drift in **Improvement suggestions** and still include the entries in the ledger.
-4. Confirm that ledger totals match the live catalog totals and that the catalog summary matches `server_info`.
+4. Confirm that all audit-only mutations from Phases 9-13 were reverted or cleaned up. Only intentional Phase 6 product improvements should remain.
+5. Confirm that ledger totals match the live catalog totals and that the catalog summary matches `server_info`.
 
 ---
 
@@ -459,29 +469,36 @@ Meaningful refactoring from **Phase 6** is committed in the **target solution’
 
 ### What goes in a file (one mandatory output)
 
-You **MUST** write exactly one file: the **MCP Server Audit Report**. The task is **not finished** until this file exists on disk. Do not only paste it in chat.
+You **MUST** write exactly one file: the **raw MCP Server Audit Report**. The task is **not finished** until this file exists on disk. Do not only paste it in chat.
+
+This prompt writes **raw per-run evidence only**. If you are running a multi-repo audit campaign, synthesize the cross-repo findings later into a separate rollup under `ai_docs/reports/`; do **not** write the raw audit file there.
 
 ### Where to save the report
 
 Save the file in the **Roslyn-Backed-MCP** repository (the repo that contains this prompt and ships the MCP server), **not** necessarily the target solution’s repo:
 
-**Canonical path:** `<Roslyn-Backed-MCP-root>/ai_docs/refactor/<repo-id>_mcp-server-audit.md`
+**Canonical path:** `<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/<timestamp>_<repo-id>_mcp-server-audit.md`
 
-- If your workspace **is** Roslyn-Backed-MCP, use `ai_docs/refactor/` relative to that repo root.
-- If you are auditing another solution in a different workspace and **cannot** write to Roslyn-Backed-MCP, write the file to the **current workspace root** as `ai_docs/refactor/<repo-id>_mcp-server-audit.md` (create `ai_docs/refactor/` if needed) **and** state in the report header: *“Intended final path: `<path-to-Roslyn-Backed-MCP>/ai_docs/refactor/…` — copy this file there for backlog review.”*
+- `<timestamp>` is the current UTC time in `yyyyMMddTHHmmssZ`. This makes raw audit files immutable and easy to sort during later rollups.
+- If your workspace **is** Roslyn-Backed-MCP, use `ai_docs/audit-reports/` relative to that repo root.
+- If you are auditing another solution in a different workspace and **cannot** write to Roslyn-Backed-MCP, write the file to the **current workspace root** as `ai_docs/audit-reports/<timestamp>_<repo-id>_mcp-server-audit.md` (create `ai_docs/audit-reports/` if needed) **and** state in the report header: *“Intended final path: `<path-to-Roslyn-Backed-MCP>/ai_docs/audit-reports/…` — copy this file there before creating a rollup or backlog update.”*
+- When the run happens outside Roslyn-Backed-MCP, import the raw file back into the canonical store with `eng/import-deep-review-audit.ps1 -AuditFiles <path>` before generating any rollup.
+- Do **not** place raw audit files under `ai_docs/reports/`; that directory is for synthesized rollups and actioning summaries.
 
-### Naming scheme (`<repo-id>`)
+### Naming scheme (`<timestamp>_<repo-id>`)
+
+Derive `<timestamp>` from the current UTC time in `yyyyMMddTHHmmssZ`.
 
 Derive `<repo-id>` from the **audited** solution or repository name:
 - Strip the `.sln` / `.slnx` / `.csproj` extension
 - Lowercase; replace spaces and dots with hyphens
-- Examples: `ITChatBot.sln` → `itchatbot`, `FirewallAnalyzer.slnx` → `firewallanalyzer`, `Roslyn-Backed-MCP.sln` → `roslyn-backed-mcp`, `NetworkDocumentation.sln` → `networkdocumentation`
+- Examples: `20260406T154500Z_itchatbot_mcp-server-audit.md`, `20260406T154500Z_firewallanalyzer_mcp-server-audit.md`, `20260406T154500Z_roslyn-backed-mcp_mcp-server-audit.md`
 
 ### Report contents (required sections)
 
-1. **Header (metadata)** — server version (from `server_info`), Roslyn / .NET versions if available, **audited** solution path and name, chosen entrypoint (`.sln` / `.slnx` / `.csproj`), audit mode (`full-surface` by default or explicitly opted-in `conservative`), date, workspace id, approximate project count and document count from `workspace_load` / `project_graph`, repo-shape summary, and the prior-issue source used for Phase 18.
+1. **Header (metadata)** — server version (from `server_info`), Roslyn / .NET versions if available, MCP client name/version if available, **audited** solution path and name, audited repo revision/branch if available, chosen entrypoint (`.sln` / `.slnx` / `.csproj`), audit mode (`full-surface` by default or explicitly opted-in `conservative`), disposable isolation path or conservative rationale, date, workspace id, approximate project count and document count from `workspace_load` / `project_graph`, repo-shape summary, and the prior-issue source used for Phase 18.
 2. **Coverage summary** — Group by the live catalog's `Kind` + `Category` values from `roslyn://server/catalog`. For each group, report counts for `exercised`, `exercised-apply`, `exercised-preview-only`, `skipped-repo-shape`, `skipped-safety`, and `blocked`.
-3. **Coverage ledger (required)** — One row for every live tool, resource, and prompt from `roslyn://server/catalog`. Columns: `kind`, `name`, `tier`, `status`, `phase`, `notes`. The audit is incomplete if the ledger row count does not match the live catalog total or if any entry is omitted.
+3. **Coverage ledger (required)** — One row for every live tool, resource, and prompt from `roslyn://server/catalog`. Columns: `kind`, `name`, `tier`, `status`, `phase`, `notes`. The audit is incomplete if the ledger row count does not match the live catalog total or if any entry is omitted. For `blocked` rows, say whether the blocker was a client limitation, workspace-load failure, or server/runtime fault.
 4. **Verified tools (working)** — Bullet list: tool name + one-line evidence (e.g. “`compile_check` — 0 errors after Phase 6”). This distinguishes “tested and fine” from “never called.”
 5. **Phase 6 refactor summary** — Concise record of **applied** Phase 6 work (not preview-only phases). Include: target repo identity (if different from Roslyn-Backed-MCP); **scope** (e.g. fix-all + rename + format — which sub-steps 6a–6i you actually applied); **notable symbols or files** touched; **MCP tools used** for each change (e.g. `rename_apply`, `fix_all_apply`); **verification** (`compile_check` / `test_run` / `build_workspace` outcomes). If Phase 6 had **no** applies (skipped or audit-only), state **N/A** with one line why. Optional: git commit hash or PR link if available.
 6. **MCP server issues (bugs)** — For each issue: **Tool name**, **inputs**, **expected** vs **actual**, **severity** (crash / incorrect result / missing data / degraded performance / cosmetic / error-message-quality), **reproducibility** (always / sometimes / once). Watch for: crashes, wrong or incomplete results, tool-vs-tool inconsistency, missing functionality, slow tools, bad JSON/truncation, bad line/position mapping, unhelpful error messages.
@@ -500,8 +517,11 @@ If there are **zero** new issues, still write sections 1–5 and 7–10; in sect
 ## Header
 - **Date:**
 - **Audited solution:**
+- **Audited revision:** (commit / branch if available)
 - **Entrypoint loaded:**
 - **Audit mode:** (`full-surface` by default; state reason if `conservative`)
+- **Isolation:** (disposable branch/worktree/clone path, or conservative rationale)
+- **Client:** (name/version; say if prompt or resource invocation was client-blocked)
 - **Workspace id:**
 - **Server:** (from `server_info`)
 - **Roslyn / .NET:** (if reported)
@@ -511,12 +531,12 @@ If there are **zero** new issues, still write sections 1–5 and 7–10; in sect
 - **Report path note:** (if not saved under Roslyn-Backed-MCP, state intended copy destination)
 
 ## Coverage summary
-| Kind | Category | Exercised | Apply | Preview-only | Skipped | Blocked | Notes |
-|------|----------|-----------|-------|--------------|---------|---------|-------|
-| tool | workspace | | | | | | |
-| tool | refactoring | | | | | | |
-| resource | workspace | | n/a | n/a | | | |
-| prompt | prompts | | n/a | n/a | | | |
+| Kind | Category | Exercised | Exercised-apply | Preview-only | Skipped-repo-shape | Skipped-safety | Blocked | Notes |
+|------|----------|-----------|------------------|--------------|--------------------|----------------|---------|-------|
+| tool | workspace | | | | | | | |
+| tool | refactoring | | | | | | | |
+| resource | workspace | | n/a | n/a | | | | |
+| prompt | prompts | | n/a | n/a | | | | |
 
 ## Coverage ledger
 | Kind | Name | Tier | Status | Phase | Notes |
@@ -524,7 +544,9 @@ If there are **zero** new issues, still write sections 1–5 and 7–10; in sect
 | tool | `workspace_load` | stable | exercised | 0 | |
 | tool | `create_file_apply` | experimental | skipped-safety | 10 | conservative audit on non-disposable repo |
 | resource | `server_catalog` | stable | exercised | 0, 15 | |
+| resource | `workspace_diagnostics` | stable | blocked | 15 | client cannot read workspace-scoped resources directly; limitation confirmed from the MCP client surface |
 | prompt | `discover_capabilities` | experimental | exercised | 16 | |
+| prompt | `security_review` | experimental | blocked | 16 | client does not expose prompt invocation; live catalog still lists the prompt |
 
 ## Verified tools (working)
 - `tool_name` — one-line observation
@@ -566,7 +588,7 @@ If there are **zero** new issues, still write sections 1–5 and 7–10; in sect
 
 ### Completion gate
 
-The file must exist at the canonical path above (or the documented fallback). Create `ai_docs/refactor/` if missing. The task is **incomplete** without this file.
+The file must exist at the canonical path above (or the documented fallback). Create `ai_docs/audit-reports/` if missing. The task is **incomplete** without this file.
 
 ---
 
@@ -575,6 +597,7 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 > **Maintenance note:** This appendix must be kept in sync with the actual server surface.
 > The live catalog from Phase 0 is authoritative. Treat this appendix as a convenience snapshot; if it drifts from the running server, record prompt drift and trust the live catalog.
 > When tools, resources, or prompts change, update this section.
+> Client limitations do **not** change the appendix counts. If a client cannot invoke prompts or resources, record those entries as `blocked` in the audit ledger rather than editing them out of the documented surface.
 > Last verified: 2026-04-06 against catalog version 2026.03 — **123 tools (56 stable / 67 experimental) | 7 resources (7 stable) | 16 prompts (16 experimental)**
 
 ### Tools by Category (123 total)
@@ -672,7 +695,9 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 #### Undo (1 tool)
 `revert_last_apply`
 
-### Resources (7 total)
+### Resources (2026.03 snapshot: 7 total)
+
+If a client cannot list or read one of these resources, keep the resource in the audit ledger with status `blocked` and note the client limitation explicitly. Do not treat that as prompt drift or as a missing server surface entry.
 
 | URI Template | Description | MIME Type |
 |---|---|---|
@@ -684,7 +709,9 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 | `roslyn://workspace/{workspaceId}/diagnostics` | Compiler diagnostics | `application/json` |
 | `roslyn://workspace/{workspaceId}/file/{filePath}` | Source file content | `text/x-csharp` |
 
-### Prompts (16 total)
+### Prompts (2026.03 snapshot: 16 total)
+
+If a client cannot enumerate or invoke prompts, keep the live prompt rows in the audit ledger with status `blocked` and name the client limitation. The live catalog, not the client UI, determines prompt presence.
 
 | Prompt | Description |
 |---|---|

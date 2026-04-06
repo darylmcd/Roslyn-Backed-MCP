@@ -1,0 +1,48 @@
+# AI reports
+
+<!-- purpose: Index for synthesized rollups and cross-cutting audit reports that drive actioning and backlog intake. -->
+
+Use this folder for **synthesized** outputs that combine or interpret multiple raw inputs.
+
+## What belongs here
+
+- Cross-repo deep-review rollups built from raw files in `../audit-reports/`
+- Cross-cutting audit reports such as test-suite reviews
+- Actioning summaries that decide what should or should not reach `ai_docs/backlog.md`
+
+## What does not belong here
+
+- Raw per-repo deep-review prompt outputs. Store those in `../audit-reports/`.
+
+## Deep-review rollup minimum contents
+
+Use immutable naming: `yyyyMMddTHHmmssZ_deep-review-rollup.md`.
+
+Each rollup should include:
+
+| Section | Must include |
+|---------|--------------|
+| Scope | Batch date, clients, server/catalog version, campaign purpose |
+| Inputs | Raw audit file list from `../audit-reports/` |
+| Repo matrix coverage | Covered buckets and missing buckets |
+| Client coverage | Full-surface vs constrained lanes and blocked families |
+| Deduped issues | Unique defect key and linked evidence |
+| Candidate closures | Prior ids and current evidence |
+| Backlog actions | Rows to open, update, or intentionally leave out |
+
+Only the rollup should feed `ai_docs/backlog.md` during a multi-repo audit campaign.
+
+If some raw audits were produced outside this workspace, import them first with `eng/import-deep-review-audit.ps1` so the rollup references canonical local evidence paths.
+
+To scaffold a rollup from existing raw audit files, run `eng/new-deep-review-rollup.ps1 -AuditFiles <paths...>` from the repo root.
+
+For the common external-audit path, run `eng/new-deep-review-batch.ps1 -AuditFiles <paths...>` to import non-canonical raw audits and scaffold the rollup in one command.
+
+## Current files
+
+| File | Purpose |
+|------|---------|
+| `2026-04-06-deep-review-rollup-example.md` | Concrete example of a synthesized deep-review rollup with deduped issues, blocked-client summary, and backlog actions. |
+| `2026-04-06-test-suite-audit.md` | Cross-cutting audit of the test suite's speed, SRP, and setup costs. |
+
+For the full deep-review workflow, start with `../procedures/deep-review-program.md`.

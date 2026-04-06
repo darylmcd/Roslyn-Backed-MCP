@@ -4,7 +4,7 @@ using RoslynMcp.Host.Stdio.Resources;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class WorkspaceResourceTests : TestBase
+public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 

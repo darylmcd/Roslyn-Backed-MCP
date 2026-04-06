@@ -1,0 +1,212 @@
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace RoslynMcp.Tests;
+
+internal sealed class TestServiceContainer
+{
+    public required IPreviewStore PreviewStore { get; init; }
+    public required WorkspaceManager WorkspaceManager { get; init; }
+    public required SymbolNavigationService SymbolNavigationService { get; init; }
+    public required SymbolSearchService SymbolSearchService { get; init; }
+    public required ReferenceService ReferenceService { get; init; }
+    public required SymbolRelationshipService SymbolRelationshipService { get; init; }
+    public required MutationAnalysisService MutationAnalysisService { get; init; }
+    public required DiagnosticService DiagnosticService { get; init; }
+    public required RefactoringService RefactoringService { get; init; }
+    public required BuildService BuildService { get; init; }
+    public required TestRunnerService TestRunnerService { get; init; }
+    public required TestDiscoveryService TestDiscoveryService { get; init; }
+    public required CompletionService CompletionService { get; init; }
+    public required CodeActionService CodeActionService { get; init; }
+    public required UnusedCodeAnalyzer UnusedCodeAnalyzer { get; init; }
+    public required CodeMetricsService CodeMetricsService { get; init; }
+    public required DependencyAnalysisService DependencyAnalysisService { get; init; }
+    public required CodePatternAnalyzer CodePatternAnalyzer { get; init; }
+    public required EditService EditService { get; init; }
+    public required FileOperationService FileOperationService { get; init; }
+    public required ProjectMutationService ProjectMutationService { get; init; }
+    public required CrossProjectRefactoringService CrossProjectRefactoringService { get; init; }
+    public required OrchestrationService OrchestrationService { get; init; }
+    public required ScaffoldingService ScaffoldingService { get; init; }
+    public required DeadCodeService DeadCodeService { get; init; }
+    public required SyntaxService SyntaxService { get; init; }
+    public required WorkspaceExecutionGate WorkspaceExecutionGate { get; init; }
+    public required DotnetCommandRunner DotnetCommandRunner { get; init; }
+    public required GatedCommandExecutor GatedCommandExecutor { get; init; }
+    public required BulkRefactoringService BulkRefactoringService { get; init; }
+    public required CohesionAnalysisService CohesionAnalysisService { get; init; }
+    public required ConsumerAnalysisService ConsumerAnalysisService { get; init; }
+    public required TypeExtractionService TypeExtractionService { get; init; }
+    public required TypeMoveService TypeMoveService { get; init; }
+    public required UndoService UndoService { get; init; }
+    public required FlowAnalysisService FlowAnalysisService { get; init; }
+    public required CompileCheckService CompileCheckService { get; init; }
+    public required AnalyzerInfoService AnalyzerInfoService { get; init; }
+    public required FixAllService FixAllService { get; init; }
+    public required OperationService OperationService { get; init; }
+    public required SnippetAnalysisService SnippetAnalysisService { get; init; }
+    public required ScriptingService ScriptingService { get; init; }
+    public required EditorConfigService EditorConfigService { get; init; }
+
+    public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
+    {
+        var previewStore = new PreviewStore();
+        var workspaceManager = new WorkspaceManager(
+            NullLogger<WorkspaceManager>.Instance,
+            previewStore,
+            new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+            new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 });
+        var workspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), workspaceManager);
+        var dotnetCommandRunner = new DotnetCommandRunner();
+        var gatedCommandExecutor = new GatedCommandExecutor(
+            workspaceManager,
+            dotnetCommandRunner,
+            NullLogger<GatedCommandExecutor>.Instance);
+        var referenceService = new ReferenceService(
+            workspaceManager,
+            NullLogger<ReferenceService>.Instance);
+        var mutationAnalysisService = new MutationAnalysisService(
+            workspaceManager,
+            NullLogger<MutationAnalysisService>.Instance);
+        var diagnosticService = new DiagnosticService(
+            workspaceManager,
+            NullLogger<DiagnosticService>.Instance);
+        var undoService = new UndoService();
+        var dependencyAnalysisService = new DependencyAnalysisService(
+            workspaceManager,
+            gatedCommandExecutor,
+            NullLogger<DependencyAnalysisService>.Instance,
+            validationOptions);
+        var fileOperationService = new FileOperationService(
+            workspaceManager,
+            previewStore,
+            NullLogger<FileOperationService>.Instance);
+        var crossProjectRefactoringService = new CrossProjectRefactoringService(
+            workspaceManager,
+            previewStore);
+
+        return new TestServiceContainer
+        {
+            PreviewStore = previewStore,
+            WorkspaceManager = workspaceManager,
+            WorkspaceExecutionGate = workspaceExecutionGate,
+            DotnetCommandRunner = dotnetCommandRunner,
+            GatedCommandExecutor = gatedCommandExecutor,
+            SymbolNavigationService = new SymbolNavigationService(
+                workspaceManager,
+                NullLogger<SymbolNavigationService>.Instance),
+            SymbolSearchService = new SymbolSearchService(
+                workspaceManager,
+                NullLogger<SymbolSearchService>.Instance),
+            ReferenceService = referenceService,
+            MutationAnalysisService = mutationAnalysisService,
+            SymbolRelationshipService = new SymbolRelationshipService(
+                workspaceManager,
+                referenceService,
+                NullLogger<SymbolRelationshipService>.Instance),
+            DiagnosticService = diagnosticService,
+            UndoService = undoService,
+            RefactoringService = new RefactoringService(
+                workspaceManager,
+                previewStore,
+                NullLogger<RefactoringService>.Instance,
+                undoService),
+            BuildService = new BuildService(
+                workspaceManager,
+                gatedCommandExecutor,
+                NullLogger<BuildService>.Instance,
+                validationOptions),
+            TestRunnerService = new TestRunnerService(
+                workspaceManager,
+                gatedCommandExecutor,
+                NullLogger<TestRunnerService>.Instance,
+                validationOptions),
+            TestDiscoveryService = new TestDiscoveryService(
+                workspaceManager,
+                NullLogger<TestDiscoveryService>.Instance,
+                validationOptions),
+            CompletionService = new CompletionService(
+                workspaceManager,
+                NullLogger<CompletionService>.Instance),
+            CodeActionService = new CodeActionService(
+                workspaceManager,
+                previewStore,
+                NullLogger<CodeActionService>.Instance),
+            UnusedCodeAnalyzer = new UnusedCodeAnalyzer(
+                workspaceManager,
+                NullLogger<UnusedCodeAnalyzer>.Instance),
+            CodeMetricsService = new CodeMetricsService(
+                workspaceManager,
+                NullLogger<CodeMetricsService>.Instance),
+            DependencyAnalysisService = dependencyAnalysisService,
+            CodePatternAnalyzer = new CodePatternAnalyzer(
+                workspaceManager,
+                NullLogger<CodePatternAnalyzer>.Instance),
+            EditService = new EditService(
+                workspaceManager,
+                NullLogger<EditService>.Instance),
+            FileOperationService = fileOperationService,
+            ProjectMutationService = new ProjectMutationService(
+                workspaceManager,
+                new ProjectMutationPreviewStore(),
+                NullLogger<ProjectMutationService>.Instance),
+            CrossProjectRefactoringService = crossProjectRefactoringService,
+            OrchestrationService = new OrchestrationService(
+                workspaceManager,
+                new CompositePreviewStore(),
+                previewStore,
+                crossProjectRefactoringService,
+                dependencyAnalysisService),
+            ScaffoldingService = new ScaffoldingService(
+                workspaceManager,
+                fileOperationService),
+            DeadCodeService = new DeadCodeService(
+                workspaceManager,
+                previewStore),
+            SyntaxService = new SyntaxService(workspaceManager),
+            BulkRefactoringService = new BulkRefactoringService(
+                workspaceManager,
+                previewStore,
+                NullLogger<BulkRefactoringService>.Instance),
+            CohesionAnalysisService = new CohesionAnalysisService(
+                workspaceManager,
+                NullLogger<CohesionAnalysisService>.Instance),
+            ConsumerAnalysisService = new ConsumerAnalysisService(
+                workspaceManager,
+                NullLogger<ConsumerAnalysisService>.Instance),
+            TypeExtractionService = new TypeExtractionService(
+                workspaceManager,
+                previewStore,
+                NullLogger<TypeExtractionService>.Instance),
+            TypeMoveService = new TypeMoveService(
+                workspaceManager,
+                previewStore,
+                NullLogger<TypeMoveService>.Instance),
+            FlowAnalysisService = new FlowAnalysisService(
+                workspaceManager,
+                NullLogger<FlowAnalysisService>.Instance),
+            CompileCheckService = new CompileCheckService(
+                workspaceManager,
+                NullLogger<CompileCheckService>.Instance),
+            AnalyzerInfoService = new AnalyzerInfoService(
+                workspaceManager,
+                NullLogger<AnalyzerInfoService>.Instance),
+            FixAllService = new FixAllService(
+                workspaceManager,
+                previewStore,
+                NullLogger<FixAllService>.Instance),
+            OperationService = new OperationService(
+                workspaceManager,
+                NullLogger<OperationService>.Instance),
+            SnippetAnalysisService = new SnippetAnalysisService(
+                NullLogger<SnippetAnalysisService>.Instance),
+            ScriptingService = new ScriptingService(
+                NullLogger<ScriptingService>.Instance),
+            EditorConfigService = new EditorConfigService(
+                workspaceManager,
+                NullLogger<EditorConfigService>.Instance)
+        };
+    }
+}

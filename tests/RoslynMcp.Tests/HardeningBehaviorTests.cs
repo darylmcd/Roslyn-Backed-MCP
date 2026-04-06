@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace RoslynMcp.Tests;
 
 [TestClass]
-public sealed class HardeningBehaviorTests : TestBase
+public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
 {
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
@@ -56,20 +56,13 @@ public sealed class HardeningBehaviorTests : TestBase
     [TestMethod]
     public async Task FindRelatedTestsForFiles_RejectsTooManyFilePaths()
     {
-        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
         var excessivePaths = Enumerable.Range(0, 26)
             .Select(index => Path.Combine(Path.GetTempPath(), $"File{index}.cs"))
             .ToArray();
 
-        try
-        {
-            await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-                TestDiscoveryService.FindRelatedTestsForFilesAsync(status.WorkspaceId, excessivePaths, 100, CancellationToken.None));
-        }
-        finally
-        {
-            WorkspaceManager.Close(status.WorkspaceId);
-        }
+        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            TestDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, excessivePaths, 100, CancellationToken.None));
     }
 
     [TestMethod]
