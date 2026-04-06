@@ -53,6 +53,16 @@ If no repo matches a bucket, record that gap in the rollup rather than inventing
 
 At least one full-surface client lane must run before treating prompt/resource families as adequately covered.
 
+## Helper execution and context conservation
+
+Use helper execution when the client/runtime supports it so long-running validation does not consume the primary agent's context window.
+
+1. If the client/runtime supports **subagents**, **background agents**, or another background execution facility, operators SHOULD prefer them for long-running or high-output validation work.
+2. Prioritize delegation for full-solution build/test/coverage work and other log-heavy operations, especially `test_run` with no filter, `test_coverage`, and equivalent shell-based validation. Keep repo selection, scenario selection, and short low-output probes in the primary agent unless delegation clearly reduces noise.
+3. Delegation changes execution ownership, not audit ownership. The primary agent still owns audit mode, workspace/disposable-checkout context, PASS / FLAG / FAIL judgment, coverage-ledger updates, and the final raw audit report.
+4. Require helpers to return a concise structured summary rather than raw logs: tool or command used, scope or filter, pass/fail counts, failing test names, approximate duration, coverage headline, and any anomalies or client/tool errors.
+5. Do not delegate preview/apply chains or workspace-version-sensitive mutation sequences unless the helper can operate against the same disposable checkout and workspace state safely. If helper/background execution is unavailable, run the steps directly and record that constraint only if it materially affected the run.
+
 ## Cadence
 
 | Trigger | Recommended scope |
@@ -75,6 +85,7 @@ Each raw audit or batch manifest should capture these fields so rollups are comp
 | Audit mode | Distinguish `full-surface` from `conservative`. |
 | Repo-shape tags | Explain why some families were or were not applicable. |
 | Client capability notes | Record prompt/resource availability or `blocked` limitations. |
+| Helper execution notes | Record whether subagents/background agents handled long-running validation and any related client/runtime limits. |
 | Coverage counts by status | Compare exercised vs skipped vs blocked across runs. |
 | New issue count / candidate closure count | Support rollup triage. |
 

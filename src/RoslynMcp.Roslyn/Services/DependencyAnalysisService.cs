@@ -113,6 +113,7 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var projectDtos = new List<NuGetProjectDto>();
         var packageMap = new Dictionary<(string Id, string Version), List<string>>();
+        var packagesPropsPath = MsBuildMetadataHelper.FindDirectoryPackagesProps(_workspace.GetStatus(workspaceId).LoadedPath);
 
         foreach (var project in solution.Projects)
         {
@@ -132,7 +133,14 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
                     var version = pkgRef.Attribute("Version")?.Value ?? "centrally-managed";
                     if (id is null) continue;
 
-                    packages.Add(new NuGetPackageReferenceDto(id, version));
+                    string? resolvedCentral = null;
+                    if (string.Equals(version, "centrally-managed", StringComparison.OrdinalIgnoreCase) &&
+                        packagesPropsPath is not null)
+                    {
+                        resolvedCentral = MsBuildMetadataHelper.TryGetCentralPackageVersion(packagesPropsPath, id);
+                    }
+
+                    packages.Add(new NuGetPackageReferenceDto(id, version, resolvedCentral));
 
                     var key = (id, version);
                     if (!packageMap.TryGetValue(key, out var users))
@@ -152,7 +160,22 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
         }
 
         var packageDtos = packageMap.Select(kvp =>
-            new NuGetPackageDto(kvp.Key.Id, kvp.Key.Version, kvp.Value)).ToList();
+        {
+            var displayVersion = kvp.Key.Version;
+            if (string.Equals(kvp.Key.Version, "centrally-managed", StringComparison.OrdinalIgnoreCase))
+            {
+                var resolved = projectDtos
+                    .SelectMany(p => p.PackageReferences)
+                    .Where(pr => string.Equals(pr.PackageId, kvp.Key.Id, StringComparison.OrdinalIgnoreCase) &&
+                                 string.Equals(pr.Version, "centrally-managed", StringComparison.OrdinalIgnoreCase))
+                    .Select(pr => pr.ResolvedCentralVersion)
+                    .FirstOrDefault(rv => !string.IsNullOrEmpty(rv));
+                if (resolved is not null)
+                    displayVersion = resolved;
+            }
+
+            return new NuGetPackageDto(kvp.Key.Id, displayVersion, kvp.Value);
+        }).ToList();
 
         return new NuGetDependencyResultDto(packageDtos, projectDtos);
     }

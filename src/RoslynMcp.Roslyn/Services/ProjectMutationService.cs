@@ -144,9 +144,10 @@ public sealed class ProjectMutationService : IProjectMutationService
             var propertyGroup = document.Root?.Elements("PropertyGroup").FirstOrDefault();
             if (propertyGroup is null)
             {
-                // Create a new PropertyGroup if none exists (e.g., Directory.Build.props-based projects)
-                propertyGroup = new System.Xml.Linq.XElement("PropertyGroup");
-                document.Root!.AddFirst(propertyGroup);
+                // Create a new PropertyGroup if none exists (e.g., Directory.Build.props-based projects).
+                // Insert with line breaks so the project file does not become a single-line malformed document.
+                propertyGroup = new XElement("PropertyGroup");
+                InsertFirstElementChildWithFormatting(document, propertyGroup);
             }
 
             // Detect no-op: check if property already has the target value
@@ -389,8 +390,55 @@ public sealed class ProjectMutationService : IProjectMutationService
         }
 
         var itemGroup = new XElement("ItemGroup");
-        document.Root?.Add(itemGroup);
+        var root = document.Root;
+        if (root is null)
+        {
+            return itemGroup;
+        }
+
+        var lineEnding = DetectLineEnding(document);
+        const string indent = "  ";
+        if (root.Elements().Any())
+        {
+            var lastElement = root.Elements().Last();
+            lastElement.AddAfterSelf(new XText(lineEnding + indent));
+            lastElement.AddAfterSelf(itemGroup);
+        }
+        else
+        {
+            root.Add(new XText(lineEnding + "  "));
+            root.Add(itemGroup);
+            root.Add(new XText(lineEnding));
+        }
+
         return itemGroup;
+    }
+
+    /// <summary>
+    /// Inserts an element as the first child of the document root with a leading newline and indent,
+    /// avoiding inline concatenation on the same line as the opening <c>&lt;Project&gt;</c> tag.
+    /// </summary>
+    private static void InsertFirstElementChildWithFormatting(XDocument document, XElement element)
+    {
+        var root = document.Root;
+        if (root is null)
+        {
+            return;
+        }
+
+        var lineEnding = DetectLineEnding(document);
+        const string indent = "  ";
+        var firstElement = root.Elements().FirstOrDefault();
+        if (firstElement is not null)
+        {
+            firstElement.AddBeforeSelf(element);
+            firstElement.AddBeforeSelf(new XText(lineEnding + indent));
+            return;
+        }
+
+        root.Add(new XText(lineEnding + indent));
+        root.Add(element);
+        root.Add(new XText(lineEnding));
     }
 
     private static void AddChildElementPreservingIndentation(XElement parent, XElement child)

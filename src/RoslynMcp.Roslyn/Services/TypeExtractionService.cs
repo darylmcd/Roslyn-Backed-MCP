@@ -74,6 +74,8 @@ public sealed class TypeExtractionService : ITypeExtractionService
         if (membersToExtract.Count == 0)
             throw new InvalidOperationException("No members matched for extraction.");
 
+        var warnings = CollectExtractTypeDanglingReferenceWarnings(semanticModel, typeSymbol, membersToExtract, ct);
+
         // Determine target file path
         var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
         var resolvedTargetPath = newFilePath ?? Path.Combine(sourceDir, $"{newTypeName}.cs");
@@ -158,8 +160,11 @@ public sealed class TypeExtractionService : ITypeExtractionService
         updatedTypeDecl = updatedTypeDecl.WithMembers(
             updatedTypeDecl.Members.Insert(0, fieldDecl));
 
-        // Replace in source root
+        // Replace in source root (normalize so field/modifier tokens get proper spacing)
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
+        if (updatedSourceRoot is CompilationUnitSyntax normalizedRoot)
+            updatedSourceRoot = normalizedRoot.NormalizeWhitespace();
+
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
         // Add new document
@@ -173,7 +178,72 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var description = $"Extract {membersToExtract.Count} member(s) from '{sourceTypeName}' into new type '{newTypeName}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
-        return new RefactoringPreviewDto(token, description, changes, null);
+        return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
+    }
+
+    /// <summary>
+    /// Warns when extracted members reference symbols that remain on the original type (not moved with the extraction).
+    /// </summary>
+    private static List<string> CollectExtractTypeDanglingReferenceWarnings(
+        SemanticModel semanticModel,
+        INamedTypeSymbol typeSymbol,
+        IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
+        CancellationToken ct)
+    {
+        var extractedDeclared = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        foreach (var m in membersToExtract)
+        {
+            var sym = semanticModel.GetDeclaredSymbol(m, ct);
+            if (sym is not null)
+                extractedDeclared.Add(sym);
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var warnings = new List<string>();
+
+        foreach (var member in membersToExtract)
+        {
+            foreach (var node in member.DescendantNodesAndSelf())
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var sym = semanticModel.GetSymbolInfo(node, ct).Symbol;
+                if (sym is null) continue;
+
+                if (sym is ILocalSymbol or IParameterSymbol or ILabelSymbol)
+                    continue;
+
+                if (extractedDeclared.Contains(sym))
+                    continue;
+
+                if (!IsDeclaredInOrUnderType(sym, typeSymbol))
+                    continue;
+
+                if (sym is INamedTypeSymbol nt && SymbolEqualityComparer.Default.Equals(nt, typeSymbol))
+                    continue;
+
+                var msg =
+                    $"Extracted member may reference '{sym.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}' " +
+                    $"which remains on the original type '{typeSymbol.Name}' and is not available in the new type.";
+                if (seen.Add(msg))
+                    warnings.Add(msg);
+            }
+        }
+
+        return warnings;
+    }
+
+    private static bool IsDeclaredInOrUnderType(ISymbol sym, INamedTypeSymbol typeSymbol)
+    {
+        INamedTypeSymbol? t = sym.ContainingType;
+        while (t is not null)
+        {
+            if (SymbolEqualityComparer.Default.Equals(t, typeSymbol))
+                return true;
+            t = t.ContainingType;
+        }
+
+        return false;
     }
 
     private static string? GetMemberName(MemberDeclarationSyntax member)

@@ -60,7 +60,7 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task NegativeLineColumn_ThrowsArgumentOutOfRange()
+    public async Task NegativeLineColumn_ThrowsArgumentException()
     {
         var status = WorkspaceManager.GetStatus(WorkspaceId);
         var project = status.Projects.First(p => !p.IsTestProject);
@@ -69,8 +69,9 @@ public sealed class NegativeEdgeCaseTests : SharedWorkspaceTestBase
             .Documents.First(d => d.FilePath?.EndsWith(".cs") == true);
 
         var locator = SymbolLocator.BySource(doc.FilePath!, -1, -1);
-        await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(() =>
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
             SymbolNavigationService.GoToDefinitionAsync(WorkspaceId, locator, CancellationToken.None));
+        StringAssert.Contains(ex.Message, "out of range");
     }
 
     [TestMethod]

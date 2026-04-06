@@ -8,7 +8,6 @@ using Microsoft.CodeAnalysis.CodeRefactorings;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 using System.Collections.Immutable;
-using System.Composition.Hosting;
 using System.Reflection;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -165,11 +164,29 @@ public sealed class CodeActionService : ICodeActionService
         return TextSpan.FromBounds(startPosition, lineEnd);
     }
 
+    private static Assembly? LoadCSharpFeaturesAssembly()
+    {
+        try
+        {
+            return Assembly.Load("Microsoft.CodeAnalysis.CSharp.Features");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
     private ImmutableArray<CodeFixProvider> LoadCodeFixProviders()
     {
         try
         {
-            var featuresAssembly = typeof(Microsoft.CodeAnalysis.CSharp.Formatting.CSharpFormattingOptions).Assembly;
+            var featuresAssembly = LoadCSharpFeaturesAssembly();
+            if (featuresAssembly is null)
+            {
+                _logger.LogWarning("Could not load Microsoft.CodeAnalysis.CSharp.Features assembly for code fix providers");
+                return [];
+            }
+
             var providers = featuresAssembly.GetTypes()
                 .Where(t => !t.IsAbstract && typeof(CodeFixProvider).IsAssignableFrom(t))
                 .Select(t =>
@@ -181,7 +198,7 @@ public sealed class CodeActionService : ICodeActionService
                 .Cast<CodeFixProvider>()
                 .ToImmutableArray();
 
-            _logger.LogInformation("Loaded {Count} code fix providers from CSharp Features", providers.Length);
+            _logger.LogInformation("Loaded {Count} code fix providers from Microsoft.CodeAnalysis.CSharp.Features", providers.Length);
             return providers;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -195,7 +212,13 @@ public sealed class CodeActionService : ICodeActionService
     {
         try
         {
-            var featuresAssembly = typeof(Microsoft.CodeAnalysis.CSharp.Formatting.CSharpFormattingOptions).Assembly;
+            var featuresAssembly = LoadCSharpFeaturesAssembly();
+            if (featuresAssembly is null)
+            {
+                _logger.LogWarning("Could not load Microsoft.CodeAnalysis.CSharp.Features assembly for code refactoring providers");
+                return [];
+            }
+
             var providers = featuresAssembly.GetTypes()
                 .Where(t => !t.IsAbstract && typeof(CodeRefactoringProvider).IsAssignableFrom(t))
                 .Select(t =>
@@ -207,7 +230,7 @@ public sealed class CodeActionService : ICodeActionService
                 .Cast<CodeRefactoringProvider>()
                 .ToImmutableArray();
 
-            _logger.LogInformation("Loaded {Count} code refactoring providers from CSharp Features", providers.Length);
+            _logger.LogInformation("Loaded {Count} code refactoring providers from Microsoft.CodeAnalysis.CSharp.Features", providers.Length);
             return providers;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

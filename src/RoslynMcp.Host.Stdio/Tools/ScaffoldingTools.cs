@@ -56,7 +56,7 @@ public static class ScaffoldingTools
     }
 
     [McpServerTool(Name = "scaffold_test_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
-     Description("Preview scaffolding a new MSTest file for a target type.")]
+     Description("Preview scaffolding a new test file for a target type. Supports MSTest, xUnit, and NUnit (use testFramework or auto-detect from the test project's package references).")]
     public static Task<string> PreviewScaffoldTest(
         IWorkspaceExecutionGate gate,
         IScaffoldingService scaffoldingService,
@@ -64,6 +64,7 @@ public static class ScaffoldingTools
         [Description("Test project name or project file path within the loaded workspace")] string testProjectName,
         [Description("Target type name for the generated test")] string targetTypeName,
         [Description("Optional: target method name for the generated test stub")] string? targetMethodName = null,
+        [Description("Test framework: mstest, xunit, nunit, or auto (infer from PackageReference in the test csproj)")] string testFramework = "auto",
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
@@ -71,7 +72,7 @@ public static class ScaffoldingTools
             {
                 var result = await scaffoldingService.PreviewScaffoldTestAsync(
                     workspaceId,
-                    new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName),
+                    new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName, testFramework),
                     c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));

@@ -205,7 +205,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get display signature, parameters, return type, and documentation for the symbol resolved at the exact line/column (or handle/metadata name). The caret position matters: on a field identifier you get the field's type/signature, not the enclosing method.")]
+    [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get display signature, parameters, return type, and documentation for the symbol resolved at the exact line/column (or handle/metadata name). The caret position matters: on a field identifier you get the field's type/signature, not the enclosing method. On a method declaration, placing the caret on the return type resolves that type symbol, not the method — use the method name identifier for method signature help.")]
     public static Task<string> GetSignatureHelp(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,
@@ -355,7 +355,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file")]
+    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file. Returns up to 100 items; IsIncomplete indicates more exist but this tool does not support offset/limit pagination. InlineDescription may be empty when Roslyn does not supply inline text for an item.")]
     public static Task<string> GetCompletions(
         McpServer server,
         IWorkspaceExecutionGate gate,

@@ -42,6 +42,12 @@ public sealed class RefactoringService : IRefactoringService
         if (symbol is null)
             throw new InvalidOperationException("No symbol found for the provided rename target.");
 
+        if (!symbol.Locations.Any(static l => l.IsInSource))
+        {
+            throw new InvalidOperationException(
+                $"Cannot rename metadata or built-in symbol '{symbol.ToDisplayString()}' — renames require a source declaration.");
+        }
+
         var newSolution = await Renamer.RenameSymbolAsync(
             solution, symbol, new SymbolRenameOptions(), newName, ct).ConfigureAwait(false);
 

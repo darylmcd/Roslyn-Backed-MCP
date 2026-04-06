@@ -35,6 +35,13 @@ public sealed class CompletionService : ICompletionService
         }
 
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+        if (line < 1 || line > text.Lines.Count)
+        {
+            throw new ArgumentException(
+                $"Line {line} is out of range. The file has {text.Lines.Count} line(s).",
+                nameof(line));
+        }
+
         var position = text.Lines[line - 1].Start + (column - 1);
 
         var completions = await completionService.GetCompletionsAsync(document, position, cancellationToken: ct).ConfigureAwait(false);
@@ -49,11 +56,19 @@ public sealed class CompletionService : ICompletionService
                 DisplayText: item.DisplayText,
                 FilterText: item.FilterText,
                 SortText: item.SortText,
-                InlineDescription: item.InlineDescription,
+                InlineDescription: BuildCompletionInlineDescription(item),
                 Kind: item.Tags.Length > 0 ? item.Tags[0] : "Unknown",
                 Tags: item.Tags.Length > 0 ? item.Tags.ToList() : null))
             .ToList();
 
         return new CompletionResultDto(items, completions.ItemsList.Count > 100);
+    }
+
+    private static string? BuildCompletionInlineDescription(CompletionItem item)
+    {
+        if (!string.IsNullOrEmpty(item.InlineDescription))
+            return item.InlineDescription;
+
+        return item.Properties.TryGetValue("Description", out var desc) ? desc : null;
     }
 }

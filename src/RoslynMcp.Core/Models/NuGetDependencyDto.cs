@@ -28,4 +28,5 @@ public sealed record NuGetProjectDto(
 /// </summary>
 public sealed record NuGetPackageReferenceDto(
     string PackageId,
-    string Version);
+    string Version,
+    string? ResolvedCentralVersion = null);

@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -34,24 +35,71 @@ public sealed class ScaffoldingService : IScaffoldingService
 
     public async Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(string workspaceId, ScaffoldTestDto request, CancellationToken ct)
     {
-        if (!string.Equals(request.TestFramework, "mstest", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Only MSTest scaffolding is currently supported.");
-        }
-
         var project = ResolveProject(workspaceId, request.TestProjectName);
         var projectDirectory = Path.GetDirectoryName(project.FilePath)
             ?? throw new InvalidOperationException($"Project directory could not be resolved for '{project.FilePath}'.");
         var testFilePath = Path.Combine(projectDirectory, $"{request.TargetTypeName}GeneratedTests.cs");
         var testNamespace = project.Name;
 
-        var typeInfo = await ResolveTargetTypeAsync(workspaceId, request.TestProjectName, request.TargetTypeName, ct).ConfigureAwait(false);
-        var content = BuildTestContent(testNamespace, request, typeInfo.targetNamespace, typeInfo.constructorArgs);
-        return await _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, testFilePath, content), ct).ConfigureAwait(false);
+        var framework = ResolveTestFramework(request.TestFramework, project.FilePath);
+
+        var typeInfo = await ResolveTargetTypeAndMethodAsync(
+            workspaceId, request.TestProjectName, request.TargetTypeName, request.TargetMethodName, ct).ConfigureAwait(false);
+        var content = BuildTestContent(testNamespace, request, typeInfo.targetNamespace, typeInfo.constructorArgs, framework, typeInfo.targetMethod);
+        var preview = await _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, testFilePath, content), ct).ConfigureAwait(false);
+
+        if (typeInfo.warnings is null || typeInfo.warnings.Count == 0)
+            return preview;
+
+        return preview with { Warnings = typeInfo.warnings };
     }
 
-    private async Task<(string targetNamespace, string constructorArgs)> ResolveTargetTypeAsync(
-        string workspaceId, string testProjectName, string targetTypeName, CancellationToken ct)
+    private static string ResolveTestFramework(string? requested, string? projectFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(requested) ||
+            string.Equals(requested, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return DetectTestFrameworkFromProjectFile(projectFilePath);
+        }
+
+        if (string.Equals(requested, "mstest", StringComparison.OrdinalIgnoreCase)) return "mstest";
+        if (string.Equals(requested, "xunit", StringComparison.OrdinalIgnoreCase)) return "xunit";
+        if (string.Equals(requested, "nunit", StringComparison.OrdinalIgnoreCase)) return "nunit";
+
+        throw new InvalidOperationException(
+            $"Unsupported testFramework '{requested}'. Use mstest, xunit, nunit, or auto.");
+    }
+
+    private static string DetectTestFrameworkFromProjectFile(string? projectFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
+            return "mstest";
+
+        try
+        {
+            var doc = XDocument.Load(projectFilePath, LoadOptions.None);
+            var includes = doc.Descendants("PackageReference")
+                .Select(e => e.Attribute("Include")?.Value)
+                .Where(i => !string.IsNullOrWhiteSpace(i))
+                .Select(i => i!.ToLowerInvariant())
+                .ToList();
+
+            if (includes.Any(i => i.Contains("xunit", StringComparison.Ordinal)))
+                return "xunit";
+            if (includes.Any(i => i.Contains("nunit", StringComparison.Ordinal)))
+                return "nunit";
+        }
+        catch
+        {
+            // Fall through to default
+        }
+
+        return "mstest";
+    }
+
+    private async Task<(string targetNamespace, string constructorArgs, IMethodSymbol? targetMethod, List<string>? warnings)>
+        ResolveTargetTypeAndMethodAsync(
+            string workspaceId, string testProjectName, string targetTypeName, string? targetMethodName, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var testProject = solution.Projects.FirstOrDefault(p =>
@@ -59,9 +107,8 @@ public sealed class ScaffoldingService : IScaffoldingService
             string.Equals(p.FilePath, testProjectName, StringComparison.OrdinalIgnoreCase));
 
         if (testProject is null)
-            return (string.Empty, string.Empty);
+            return (string.Empty, string.Empty, null, null);
 
-        // Search the test project and all its referenced projects for the target type
         var projectsToSearch = new List<Project> { testProject };
         foreach (var projectRef in testProject.ProjectReferences)
         {
@@ -98,19 +145,41 @@ public sealed class ScaffoldingService : IScaffoldingService
         }
 
         if (matchedType is null)
-            return (string.Empty, string.Empty);
+            return (string.Empty, string.Empty, null, null);
 
         var ns = matchedType.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : matchedType.ContainingNamespace.ToDisplayString();
 
         var constructorArgs = BuildConstructorArgs(matchedType);
-        return (ns, constructorArgs);
+
+        IMethodSymbol? targetMethod = null;
+        List<string>? warnings = null;
+        if (!string.IsNullOrWhiteSpace(targetMethodName))
+        {
+            targetMethod = matchedType.GetMembers(targetMethodName)
+                .OfType<IMethodSymbol>()
+                .FirstOrDefault(m => m.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation);
+
+            if (targetMethod is null)
+            {
+                warnings ??= [];
+                warnings.Add($"Target method '{targetMethodName}' was not found on type '{matchedType.Name}'.");
+            }
+            else if (targetMethod.DeclaredAccessibility == Accessibility.Private)
+            {
+                warnings ??= [];
+                warnings.Add(
+                    $"Target method '{targetMethodName}' is private — the scaffold uses reflection to invoke it; " +
+                    "prefer InternalsVisibleTo or testing via public API when possible.");
+            }
+        }
+
+        return (ns, constructorArgs, targetMethod, warnings);
     }
 
     private static string BuildConstructorArgs(INamedTypeSymbol type)
     {
-        // Find the most accessible constructor, preferring parameterless
         var constructors = type.Constructors
             .Where(c => !c.IsImplicitlyDeclared || c.Parameters.Length == 0)
             .Where(c => c.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
@@ -162,7 +231,13 @@ public sealed class ScaffoldingService : IScaffoldingService
         return $"namespace {typeNamespace};\n\npublic {typeKeyword} {request.TypeName}{inheritanceClause}\n{{\n}}\n";
     }
 
-    private static string BuildTestContent(string testNamespace, ScaffoldTestDto request, string targetNamespace, string constructorArgs)
+    private static string BuildTestContent(
+        string testNamespace,
+        ScaffoldTestDto request,
+        string targetNamespace,
+        string constructorArgs,
+        string framework,
+        IMethodSymbol? targetMethod)
     {
         var methodName = string.IsNullOrWhiteSpace(request.TargetMethodName)
             ? "Generated_Test"
@@ -176,6 +251,135 @@ public sealed class ScaffoldingService : IScaffoldingService
             ? $"new {request.TargetTypeName}()"
             : $"new {request.TargetTypeName}({constructorArgs})";
 
-        return $"using Microsoft.VisualStudio.TestTools.UnitTesting;\n{usingDirective}\nnamespace {testNamespace};\n\n[TestClass]\npublic class {request.TargetTypeName}GeneratedTests\n{{\n    [TestMethod]\n    public void {methodName}()\n    {{\n        var subject = {ctorCall};\n\n        Assert.IsNotNull(subject);\n        Assert.Fail(\"Add real assertions.\");\n    }}\n}}\n";
+        var methodTargetBlock = BuildMethodTargetInvocationBlock(framework, request.TargetTypeName, request.TargetMethodName, targetMethod);
+
+        return framework switch
+        {
+            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock),
+            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock),
+            _ => BuildMSTestTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock),
+        };
+    }
+
+    private static string BuildMethodTargetInvocationBlock(
+        string framework,
+        string targetTypeName,
+        string? targetMethodName,
+        IMethodSymbol? targetMethod)
+    {
+        if (string.IsNullOrWhiteSpace(targetMethodName))
+        {
+            return "        // No target method specified.\n";
+        }
+
+        if (targetMethod is null)
+        {
+            return $"        // Target method '{targetMethodName}' was not resolved on {targetTypeName}.\n";
+        }
+
+        if (targetMethod.DeclaredAccessibility == Accessibility.Private)
+        {
+            var assertNotNull = framework switch
+            {
+                "xunit" => "Assert.NotNull(__method);",
+                "nunit" => "Assert.That(__method, Is.Not.Null);",
+                _ => "Assert.IsNotNull(__method);",
+            };
+            return
+                "        // Private method — invoke via reflection (replace with InternalsVisibleTo or a public API test if preferred).\n" +
+                $"        var __method = typeof({targetTypeName}).GetMethod(\n" +
+                $"            \"{targetMethodName}\",\n" +
+                "            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);\n" +
+                "        " + assertNotNull + "\n" +
+                "        __method!.Invoke(subject, null);\n";
+        }
+
+        if (targetMethod.Parameters.Length == 0 && !targetMethod.ReturnsVoid)
+        {
+            return $"        _ = subject.{targetMethodName}();\n";
+        }
+
+        if (targetMethod.Parameters.Length == 0 && targetMethod.ReturnsVoid)
+        {
+            return $"        subject.{targetMethodName}();\n";
+        }
+
+        return
+            $"        // Target method '{targetMethodName}' has parameters — add arguments or use a wrapper.\n" +
+            $"        // Example: subject.{targetMethodName}(/* args */);\n";
+    }
+
+    private static string BuildMSTestTestContent(
+        string testNamespace,
+        string usingDirective,
+        string targetTypeName,
+        string methodName,
+        string ctorCall,
+        string methodBlock)
+    {
+        return
+            "using Microsoft.VisualStudio.TestTools.UnitTesting;\n" +
+            usingDirective +
+            "\nnamespace " + testNamespace + ";\n\n" +
+            "[TestClass]\n" +
+            "public class " + targetTypeName + "GeneratedTests\n" +
+            "{\n" +
+            "    [TestMethod]\n" +
+            "    public void " + methodName + "()\n" +
+            "    {\n" +
+            "        var subject = " + ctorCall + ";\n\n" +
+            methodBlock +
+            "        Assert.IsNotNull(subject);\n" +
+            "    }\n" +
+            "}\n";
+    }
+
+    private static string BuildXUnitTestContent(
+        string testNamespace,
+        string usingDirective,
+        string targetTypeName,
+        string methodName,
+        string ctorCall,
+        string methodBlock)
+    {
+        return
+            "using Xunit;\n" +
+            usingDirective +
+            "\nnamespace " + testNamespace + ";\n\n" +
+            "public class " + targetTypeName + "GeneratedTests\n" +
+            "{\n" +
+            "    [Fact]\n" +
+            "    public void " + methodName + "()\n" +
+            "    {\n" +
+            "        var subject = " + ctorCall + ";\n\n" +
+            methodBlock +
+            "        Assert.NotNull(subject);\n" +
+            "    }\n" +
+            "}\n";
+    }
+
+    private static string BuildNUnitTestContent(
+        string testNamespace,
+        string usingDirective,
+        string targetTypeName,
+        string methodName,
+        string ctorCall,
+        string methodBlock)
+    {
+        return
+            "using NUnit.Framework;\n" +
+            usingDirective +
+            "\nnamespace " + testNamespace + ";\n\n" +
+            "[TestFixture]\n" +
+            "public class " + targetTypeName + "GeneratedTests\n" +
+            "{\n" +
+            "    [Test]\n" +
+            "    public void " + methodName + "()\n" +
+            "    {\n" +
+            "        var subject = " + ctorCall + ";\n\n" +
+            methodBlock +
+            "        Assert.That(subject, Is.Not.Null);\n" +
+            "    }\n" +
+            "}\n";
     }
 }

@@ -65,6 +65,9 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         }
 
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
+        if (updatedSourceRoot is CompilationUnitSyntax updatedCu)
+            updatedSourceRoot = updatedCu.NormalizeWhitespace();
+
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
         // Add interface document

@@ -62,6 +62,22 @@ internal static class MsBuildMetadataHelper
             string.Equals((string?)element.Attribute("Include"), packageId, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// Returns the <c>Version</c> attribute for a <c>PackageVersion</c> with matching <c>Include</c>, or <see langword="null"/>.
+    /// </summary>
+    public static string? TryGetCentralPackageVersion(string packagesPropsPath, string packageId)
+    {
+        if (!File.Exists(packagesPropsPath))
+        {
+            return null;
+        }
+
+        var document = XDocument.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
+        var element = document.Descendants("PackageVersion").FirstOrDefault(e =>
+            string.Equals((string?)e.Attribute("Include"), packageId, StringComparison.OrdinalIgnoreCase));
+        return element?.Attribute("Version")?.Value;
+    }
+
     private static string? FindNearestFile(string? loadedPath, string fileName)
     {
         var directory = ResolveDirectory(loadedPath);

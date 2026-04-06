@@ -37,7 +37,8 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             {
                 var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
                 var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
-                directRefs.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview));
+                var classification = SymbolMapper.ClassifyReferenceLocation(refLocation);
+                directRefs.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview, classification));
 
                 if (containingSymbol is not null)
                     affectedDeclarations.Add(containingSymbol);
@@ -132,7 +133,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                 if (root is null) continue;
 
                 var refNode = root.FindNode(refLocation.Location.SourceSpan);
-                var classification = ClassifyTypeUsage(refNode);
+                var classification = ClassifyTypeUsage(refNode, symbol);
 
                 var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
                 var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
@@ -262,7 +263,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         return false;
     }
 
-    private static TypeUsageClassification ClassifyTypeUsage(SyntaxNode refNode)
+    private static TypeUsageClassification ClassifyTypeUsage(SyntaxNode refNode, ISymbol referencedSymbol)
     {
         var parent = refNode.Parent;
         if (parent is null) return TypeUsageClassification.Other;
@@ -275,11 +276,19 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             if (parent is null) return TypeUsageClassification.Other;
         }
 
-        return ClassifyTypeUsageAfterWalk(typeNode, parent);
+        return ClassifyTypeUsageAfterWalk(typeNode, parent, referencedSymbol);
     }
 
-    private static TypeUsageClassification ClassifyTypeUsageAfterWalk(SyntaxNode typeNode, SyntaxNode parent)
+    private static TypeUsageClassification ClassifyTypeUsageAfterWalk(SyntaxNode typeNode, SyntaxNode parent, ISymbol referencedSymbol)
     {
+        // Static class usage at call sites: TypeName.Member (expression is the type identifier).
+        if (referencedSymbol is INamedTypeSymbol { IsStatic: true } &&
+            parent is MemberAccessExpressionSyntax ma &&
+            ma.Expression.Equals(typeNode))
+        {
+            return TypeUsageClassification.StaticMemberAccess;
+        }
+
         if (parent is TypeArgumentListSyntax)
             return TypeUsageClassification.GenericArgument;
 

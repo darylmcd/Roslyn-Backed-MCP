@@ -130,7 +130,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         await DetectExistingTypeConflictAsync(solution, namespaceName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
         var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject);
-        var interfaceFilePath = Path.Combine(targetProjectDirectory, resolvedInterfaceName + ".cs");
+        var interfaceDirectory = isCrossProject
+            ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
+            : targetProjectDirectory;
+        var interfaceFilePath = Path.Combine(interfaceDirectory, resolvedInterfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
             throw new InvalidOperationException($"Target interface file already exists: {interfaceFilePath}");
@@ -138,6 +141,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var updatedTypeDeclaration = AddBaseType(typeDeclaration, resolvedInterfaceName);
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
+        if (updatedSourceRoot is CompilationUnitSyntax updatedCu)
+            updatedSourceRoot = updatedCu.NormalizeWhitespace();
 
         var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
             .AddDocument(
@@ -230,6 +235,34 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
+    private static string ResolvePreferredInterfaceSubdirectory(Solution solution, Project targetProject, string projectDirectory)
+    {
+        var conventional = new[] { "Interfaces", "Abstractions", "Contracts" };
+        foreach (var dir in conventional)
+        {
+            var path = Path.Combine(projectDirectory, dir);
+            if (Directory.Exists(path))
+                return path;
+        }
+
+        foreach (var doc in targetProject.Documents)
+        {
+            if (doc.FilePath is null || !doc.FilePath.StartsWith(projectDirectory, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var rel = Path.GetRelativePath(projectDirectory, doc.FilePath);
+            var firstSegment = rel.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault();
+            if (firstSegment is not null &&
+                conventional.Any(s => string.Equals(s, firstSegment, StringComparison.OrdinalIgnoreCase)))
+            {
+                return Path.Combine(projectDirectory, firstSegment);
+            }
+        }
+
+        return projectDirectory;
+    }
+
     private static Project ResolveProject(Solution solution, string targetProjectName)
     {
         return solution.Projects.FirstOrDefault(project =>
@@ -306,6 +339,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         SyntaxList<UsingDirectiveSyntax> sourceUsings,
         MemberDeclarationSyntax member)
     {
+        var memberText = member.ToFullString();
+
         // Collect all type names referenced in the interface member signatures
         var referencedNames = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in member.DescendantNodes())
@@ -323,6 +358,12 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         {
             var name = u.Name?.ToString();
             if (name is null) return false;
+            if (string.Equals(name, "System.Collections.Concurrent", StringComparison.Ordinal) &&
+                !memberText.Contains("Concurrent", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
             if (name is "System") return true;
             // Keep the using if its last segment matches any referenced name
             var lastSegment = name.Contains('.') ? name[(name.LastIndexOf('.') + 1)..] : name;
@@ -466,7 +507,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         await DetectExistingTypeConflictAsync(solution, namespaceName, interfaceName, ct).ConfigureAwait(false);
 
         var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject);
-        var interfaceFilePath = Path.Combine(targetProjectDirectory, interfaceName + ".cs");
+        var interfaceFileDirectory = isCrossProject
+            ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
+            : targetProjectDirectory;
+        var interfaceFilePath = Path.Combine(interfaceFileDirectory, interfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
             throw new InvalidOperationException($"Target interface file already exists: {interfaceFilePath}");
@@ -474,6 +518,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var updatedTypeDeclaration = AddBaseType(typeDeclaration, interfaceName);
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
+        if (updatedSourceRoot is CompilationUnitSyntax updatedCu)
+            updatedSourceRoot = updatedCu.NormalizeWhitespace();
 
         var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
             .AddDocument(

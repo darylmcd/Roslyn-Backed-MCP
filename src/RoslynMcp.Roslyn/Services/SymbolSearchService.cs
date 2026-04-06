@@ -85,7 +85,8 @@ public sealed class SymbolSearchService : ISymbolSearchService
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
-        if (document is null) return [];
+        if (document is null)
+            throw new FileNotFoundException($"Source file not found in the loaded workspace: {filePath}");
 
         var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
         if (root is null) return [];
