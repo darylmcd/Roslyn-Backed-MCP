@@ -59,6 +59,7 @@ internal sealed class TestServiceContainer
             new FileWatcherService(NullLogger<FileWatcherService>.Instance),
             new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 });
         var workspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), workspaceManager);
+        var compilationCache = new CompilationCache(workspaceManager);
         var dotnetCommandRunner = new DotnetCommandRunner();
         var gatedCommandExecutor = new GatedCommandExecutor(
             workspaceManager,
@@ -72,6 +73,7 @@ internal sealed class TestServiceContainer
             NullLogger<MutationAnalysisService>.Instance);
         var diagnosticService = new DiagnosticService(
             workspaceManager,
+            compilationCache,
             NullLogger<DiagnosticService>.Instance);
         var undoService = new UndoService();
         var dependencyAnalysisService = new DependencyAnalysisService(
@@ -136,6 +138,7 @@ internal sealed class TestServiceContainer
                 NullLogger<CodeActionService>.Instance),
             UnusedCodeAnalyzer = new UnusedCodeAnalyzer(
                 workspaceManager,
+                compilationCache,
                 NullLogger<UnusedCodeAnalyzer>.Instance),
             CodeMetricsService = new CodeMetricsService(
                 workspaceManager,

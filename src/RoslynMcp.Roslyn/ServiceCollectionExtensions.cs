@@ -18,6 +18,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddRoslynServices(this IServiceCollection services)
     {
         services.AddSingleton<IWorkspaceManager, WorkspaceManager>();
+        services.AddSingleton<ICompilationCache, CompilationCache>();
         services.AddSingleton<IWorkspaceExecutionGate>(sp =>
         {
             var opts = sp.GetService<ExecutionGateOptions>() ?? new ExecutionGateOptions();
