@@ -23,7 +23,7 @@ public static class FileOperationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var result = await fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(projectName, filePath, content), c).ConfigureAwait(false);
@@ -40,13 +40,16 @@ public static class FileOperationTools
         [Description("The preview token returned by create_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
     [McpServerTool(Name = "delete_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -60,7 +63,7 @@ public static class FileOperationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var result = await fileOperationService.PreviewDeleteFileAsync(workspaceId, new DeleteFileDto(filePath), c).ConfigureAwait(false);
@@ -77,13 +80,16 @@ public static class FileOperationTools
         [Description("The preview token returned by delete_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
     [McpServerTool(Name = "move_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -100,7 +106,7 @@ public static class FileOperationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, sourceFilePath, c).ConfigureAwait(false);
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, destinationFilePath, c).ConfigureAwait(false);
@@ -121,12 +127,15 @@ public static class FileOperationTools
         [Description("The preview token returned by move_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 }

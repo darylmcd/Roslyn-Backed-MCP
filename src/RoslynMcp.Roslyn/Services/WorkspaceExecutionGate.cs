@@ -1,20 +1,33 @@
 using System.Collections.Concurrent;
+using Nito.AsyncEx;
 using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
-/// Serializes workspace operations using per-workspace semaphores so that concurrent callers
+/// Serializes workspace operations using per-workspace gates so that concurrent callers
 /// (e.g., multiple MCP sub-agents) cannot corrupt shared Roslyn state.
 /// </summary>
 /// <remarks>
-/// A dedicated load gate (<see cref="IWorkspaceExecutionGate.LoadGateKey"/>) is used for <c>workspace_load</c> and
-/// <c>workspace_reload</c> operations because those operations replace the entire session state.
-/// All other operations run under a per-workspace gate keyed by the workspace session identifier.
-/// A global concurrency throttle bounds the total number of simultaneous operations across all
-/// workspaces to <c>max(2, Environment.ProcessorCount)</c>.
-/// Each operation is subject to a configurable per-request timeout (default 2 minutes) and
-/// a sliding-window rate limiter (default 120 requests per 60 seconds).
+/// A dedicated load gate (<see cref="IWorkspaceExecutionGate.LoadGateKey"/>) is used for
+/// <c>workspace_load</c> and <c>workspace_reload</c> operations because those operations
+/// replace the entire session state.
+///
+/// <para>
+/// All other operations run under a per-workspace gate keyed by the workspace session
+/// identifier. The legacy gate is a <see cref="SemaphoreSlim"/> that fully serializes reads
+/// and writes against the same workspace. When the reader/writer lock feature flag is enabled
+/// (<see cref="ExecutionGateOptions.UseReaderWriterLock"/>) the gate is an
+/// <see cref="AsyncReaderWriterLock"/> that allows concurrent reads on the same workspace
+/// while keeping writes exclusive against all other operations on that workspace.
+/// </para>
+///
+/// <para>
+/// A global concurrency throttle bounds the total number of simultaneous operations across
+/// all workspaces to <c>max(2, Environment.ProcessorCount)</c>. Each operation is subject to
+/// a configurable per-request timeout (default 2 minutes) and a sliding-window rate limiter
+/// (default 120 requests per 60 seconds).
+/// </para>
 /// </remarks>
 public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposable
 {
@@ -25,10 +38,20 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     private readonly TimeSpan _requestTimeout;
     private readonly int _rateLimitMax;
     private readonly TimeSpan _rateLimitWindow;
+    private readonly bool _useRwLock;
 
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly SemaphoreSlim _globalThrottle = new(MaxGlobalConcurrency, MaxGlobalConcurrency);
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _workspaceGates = new(StringComparer.Ordinal);
+    private readonly AsyncReaderWriterLockRegistry _rwLocks = new();
+
+    /// <summary>
+    /// Tracks whether the current async context already holds a <see cref="_globalThrottle"/>
+    /// slot. Used to skip re-acquisition when a lifecycle method (e.g., <c>workspace_close</c>
+    /// nesting <c>RunWriteAsync</c> inside <c>RunAsync(LoadGateKey, ...)</c>) would otherwise
+    /// consume two slots and risk deadlock when the throttle is saturated.
+    /// </summary>
+    private readonly AsyncLocal<int> _globalThrottleHeld = new();
 
     /// <summary>Sliding window rate limiter — stores timestamps of recent requests.</summary>
     private readonly ConcurrentQueue<long> _requestTimestamps = new();
@@ -39,42 +62,167 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         _requestTimeout = options.RequestTimeout;
         _rateLimitMax = options.RateLimitMaxRequests;
         _rateLimitWindow = options.RateLimitWindow;
+        _useRwLock = options.UseReaderWriterLock;
+    }
+
+    public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
+    {
+        return RunPerWorkspaceAsync(workspaceId, isWrite: false, action, ct);
+    }
+
+    public Task<T> RunWriteAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
+    {
+        return RunPerWorkspaceAsync(workspaceId, isWrite: true, action, ct);
     }
 
     public async Task<T> RunAsync<T>(string? gateKey, Func<CancellationToken, Task<T>> action, CancellationToken ct)
     {
-        // Rate limiting: enforce sliding-window request cap
-        EnforceRateLimit();
-
         var key = string.IsNullOrWhiteSpace(gateKey) ? IWorkspaceExecutionGate.LoadGateKey : gateKey;
-        if (key != IWorkspaceExecutionGate.LoadGateKey)
+
+        if (key == IWorkspaceExecutionGate.LoadGateKey)
         {
-            if (key.StartsWith("__apply__:", StringComparison.Ordinal))
+            return await RunLoadGateAsync(action, ct).ConfigureAwait(false);
+        }
+
+        if (key.StartsWith("__apply__:", StringComparison.Ordinal))
+        {
+            var applyWs = key["__apply__:".Length..];
+            return await RunWriteAsync(applyWs, action, ct).ConfigureAwait(false);
+        }
+
+        if (key == "__apply__")
+        {
+            // Fallback apply key with no workspace context (legacy behavior used by ApplyGateKeyFor
+            // when a token had no associated workspace id). Run with global throttle only.
+            return await RunGlobalOnlyAsync(action, ct).ConfigureAwait(false);
+        }
+
+        // Bare workspace id — treat as a reader.
+        return await RunReadAsync(key, action, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Acquire the global throttle for the duration of <paramref name="body"/>, skipping the
+    /// physical wait if the current async context already holds a slot. The async-local depth
+    /// counter ensures one async stack frame can nest two gate calls (e.g.,
+    /// <c>workspace_close</c>'s <c>LoadGate → RunWriteAsync</c>) without consuming two slots,
+    /// which would risk deadlock under throttle saturation.
+    /// </summary>
+    private async Task<T> WithGlobalThrottle<T>(Func<Task<T>> body, CancellationToken ct)
+    {
+        if (_globalThrottleHeld.Value > 0)
+        {
+            _globalThrottleHeld.Value++;
+            try
             {
-                var applyWs = key["__apply__:".Length..];
-                if (!_workspaceManager.ContainsWorkspace(applyWs))
-                {
-                    throw new KeyNotFoundException(
-                        $"Workspace '{applyWs}' not found or has been closed. Active workspace IDs are listed by workspace_list.");
-                }
+                return await body().ConfigureAwait(false);
             }
-            else if (key != "__apply__" && !_workspaceManager.ContainsWorkspace(key))
+            finally
             {
-                throw new KeyNotFoundException(
-                    $"Workspace '{key}' not found or has been closed. Active workspace IDs are listed by workspace_list.");
+                _globalThrottleHeld.Value--;
             }
         }
 
-        var gate = key == IWorkspaceExecutionGate.LoadGateKey ? _loadGate : _workspaceGates.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+        await _globalThrottle.WaitAsync(ct).ConfigureAwait(false);
+        _globalThrottleHeld.Value = 1;
+        try
+        {
+            return await body().ConfigureAwait(false);
+        }
+        finally
+        {
+            _globalThrottleHeld.Value = 0;
+            _globalThrottle.Release();
+        }
+    }
 
-        // Apply per-request timeout and global concurrency throttle
+    private async Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
+    {
+        EnforceRateLimit();
+
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(_requestTimeout);
         var linked = timeoutCts.Token;
 
-        await _globalThrottle.WaitAsync(linked).ConfigureAwait(false);
-        try
+        return await WithGlobalThrottle(async () =>
         {
+            await _loadGate.WaitAsync(linked).ConfigureAwait(false);
+            try
+            {
+                return await action(linked).ConfigureAwait(false);
+            }
+            finally
+            {
+                _loadGate.Release();
+            }
+        }, linked).ConfigureAwait(false);
+    }
+
+    private async Task<T> RunGlobalOnlyAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
+    {
+        EnforceRateLimit();
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(_requestTimeout);
+        var linked = timeoutCts.Token;
+
+        return await WithGlobalThrottle(() => action(linked), linked).ConfigureAwait(false);
+    }
+
+    private async Task<T> RunPerWorkspaceAsync<T>(
+        string workspaceId,
+        bool isWrite,
+        Func<CancellationToken, Task<T>> action,
+        CancellationToken ct)
+    {
+        EnforceRateLimit();
+
+        if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            throw new ArgumentException("workspaceId is required.", nameof(workspaceId));
+        }
+
+        if (!_workspaceManager.ContainsWorkspace(workspaceId))
+        {
+            throw new KeyNotFoundException(
+                $"Workspace '{workspaceId}' not found or has been closed. Active workspace IDs are listed by workspace_list.");
+        }
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(_requestTimeout);
+        var linked = timeoutCts.Token;
+
+        return await WithGlobalThrottle(async () =>
+        {
+            if (_useRwLock)
+            {
+                var rwLock = _rwLocks.Get(workspaceId);
+                if (isWrite)
+                {
+                    using (await rwLock.WriterLockAsync(linked).ConfigureAwait(false))
+                    {
+                        EnsureWorkspaceStillExists(workspaceId);
+                        return await action(linked).ConfigureAwait(false);
+                    }
+                }
+                else
+                {
+                    using (await rwLock.ReaderLockAsync(linked).ConfigureAwait(false))
+                    {
+                        EnsureWorkspaceStillExists(workspaceId);
+                        return await action(linked).ConfigureAwait(false);
+                    }
+                }
+            }
+
+            // Legacy mutex path: reads and writes both serialize behind the same per-workspace
+            // semaphore. This is bit-for-bit identical to the pre-flag behavior for bare-id
+            // (read) calls. Apply calls historically used a separate __apply__:<ws> semaphore
+            // instance — under the legacy code path, RunAsync still routes them through that
+            // separate key, so the dual-mode body here only ever sees the read-side mutex. Once
+            // the flag flips on, both classes converge on the same per-workspace lock.
+            var legacyKey = isWrite ? $"__apply__:{workspaceId}" : workspaceId;
+            var gate = _workspaceGates.GetOrAdd(legacyKey, _ => new SemaphoreSlim(1, 1));
             await gate.WaitAsync(linked).ConfigureAwait(false);
             try
             {
@@ -84,21 +232,48 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             {
                 gate.Release();
             }
-        }
-        finally
+        }, linked).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Re-check that a workspace still exists after acquiring its read/write lock. Closes the
+    /// TOCTOU race where a reader passes the initial existence check, then waits behind a
+    /// concurrent <c>workspace_close</c>'s write lock, then would otherwise operate on a closed
+    /// workspace.
+    /// </summary>
+    private void EnsureWorkspaceStillExists(string workspaceId)
+    {
+        if (!_workspaceManager.ContainsWorkspace(workspaceId))
         {
-            _globalThrottle.Release();
+            throw new KeyNotFoundException(
+                $"Workspace '{workspaceId}' was closed while waiting for the workspace lock.");
         }
     }
 
     /// <summary>
-    /// Remove and dispose the gate for a workspace that is being closed.
+    /// Remove and dispose the per-workspace gate(s) for a workspace that is being closed.
     /// </summary>
+    /// <remarks>
+    /// Under the legacy code path this disposes both the read (<c>workspaceId</c>) and write
+    /// (<c>__apply__:workspaceId</c>) semaphores. Under the reader/writer lock code path it
+    /// also drops the lock entry from the registry. The caller must already hold the per-
+    /// workspace write lock when the flag is enabled (see <see cref="IWorkspaceExecutionGate.RemoveGate"/>).
+    /// </remarks>
     public void RemoveGate(string workspaceId)
     {
-        if (_workspaceGates.TryRemove(workspaceId, out var gate))
+        if (_workspaceGates.TryRemove(workspaceId, out var readGate))
         {
-            gate.Dispose();
+            readGate.Dispose();
+        }
+
+        if (_workspaceGates.TryRemove($"__apply__:{workspaceId}", out var writeGate))
+        {
+            writeGate.Dispose();
+        }
+
+        if (_useRwLock)
+        {
+            _rwLocks.Remove(workspaceId);
         }
     }
 

@@ -18,13 +18,13 @@ public static class UndoTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+        {
+            if (string.IsNullOrWhiteSpace(workspaceId))
             {
-                if (string.IsNullOrWhiteSpace(workspaceId))
-                {
-                    throw new ArgumentException("workspaceId is required. Pass the session id returned by workspace_load.");
-                }
-
+                throw new ArgumentException("workspaceId is required. Pass the session id returned by workspace_load.");
+            }
+            return gate.RunWriteAsync(workspaceId, async c =>
+            {
                 var entry = undoService.GetLastOperation(workspaceId);
                 if (entry is null)
                 {
@@ -57,6 +57,7 @@ public static class UndoTools
                     appliedAtUtc = entry.AppliedAtUtc
                 };
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 }

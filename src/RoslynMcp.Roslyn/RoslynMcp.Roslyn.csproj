@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="DiffPlex" />
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" />
+    <PackageReference Include="Nito.AsyncEx" />
   </ItemGroup>
 
   <!-- MSBuildLocator requires MSBuild packages to exclude runtime assets -->

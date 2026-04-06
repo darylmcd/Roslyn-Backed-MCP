@@ -19,7 +19,7 @@ public static class ValidationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
                 var result = await buildService.BuildWorkspaceAsync(workspaceId, c);
@@ -37,7 +37,7 @@ public static class ValidationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await buildService.BuildProjectAsync(workspaceId, projectName, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -54,7 +54,7 @@ public static class ValidationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await testDiscoveryService.DiscoverTestsAsync(workspaceId, c);
 
@@ -101,7 +101,7 @@ public static class ValidationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
                 var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
@@ -122,7 +122,7 @@ public static class ValidationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
                 var result = await testDiscoveryService.FindRelatedTestsAsync(workspaceId, locator, c);
@@ -140,7 +140,7 @@ public static class ValidationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await testDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, filePaths, maxResults, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);

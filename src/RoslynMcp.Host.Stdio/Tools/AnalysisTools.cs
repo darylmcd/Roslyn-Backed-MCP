@@ -33,7 +33,7 @@ public static class AnalysisTools
         {
             ParameterValidation.ValidateSeverity(severity);
             ParameterValidation.ValidatePagination(offset, limit);
-            return gate.RunAsync(workspaceId, async c =>
+            return gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, project, file, severity, c);
 
@@ -91,7 +91,7 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var result = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, c);
@@ -111,7 +111,7 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
                 if (result is null) throw new KeyNotFoundException("No type found at the specified location");
@@ -133,7 +133,7 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(0, callersLimit);
                 ParameterValidation.ValidatePagination(0, calleesLimit);
@@ -172,7 +172,7 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await mutationAnalysisService.AnalyzeImpactAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
@@ -193,7 +193,7 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(0, limit);
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
@@ -229,7 +229,7 @@ public static class AnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(offset, limit);
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);

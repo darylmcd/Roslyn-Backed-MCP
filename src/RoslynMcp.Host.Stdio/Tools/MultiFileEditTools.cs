@@ -21,7 +21,7 @@ public static class MultiFileEditTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunWriteAsync(workspaceId, async c =>
             {
                 var results = new List<FileEditSummaryDto>();
                 foreach (var fileEdit in fileEdits)

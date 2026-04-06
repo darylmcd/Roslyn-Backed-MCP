@@ -22,7 +22,7 @@ public static class CrossProjectRefactoringTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await crossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
                     workspaceId,
@@ -48,7 +48,7 @@ public static class CrossProjectRefactoringTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await crossProjectRefactoringService.PreviewExtractInterfaceAsync(
                     workspaceId,
@@ -74,7 +74,7 @@ public static class CrossProjectRefactoringTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await crossProjectRefactoringService.PreviewDependencyInversionAsync(
                     workspaceId,

@@ -18,7 +18,7 @@ public static class EditorConfigTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await editorConfigService.GetOptionsAsync(workspaceId, filePath, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -37,7 +37,7 @@ public static class EditorConfigTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunWriteAsync(workspaceId, async c =>
             {
                 var result = await editorConfigService.SetOptionAsync(workspaceId, filePath, key, value, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);

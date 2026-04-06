@@ -26,7 +26,7 @@ public static class ScaffoldingTools
         return ToolErrorHandler.ExecuteAsync(() =>
         {
             ParameterValidation.ValidateTypeKind(typeKind);
-            return gate.RunAsync(workspaceId, async c =>
+            return gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await scaffoldingService.PreviewScaffoldTypeAsync(
                     workspaceId,
@@ -46,13 +46,16 @@ public static class ScaffoldingTools
         [Description("The preview token returned by scaffold_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
     [McpServerTool(Name = "scaffold_test_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -68,7 +71,7 @@ public static class ScaffoldingTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await scaffoldingService.PreviewScaffoldTestAsync(
                     workspaceId,
@@ -87,12 +90,15 @@ public static class ScaffoldingTools
         [Description("The preview token returned by scaffold_test_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 }

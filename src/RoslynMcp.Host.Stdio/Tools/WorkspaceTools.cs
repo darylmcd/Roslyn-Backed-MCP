@@ -40,13 +40,16 @@ public static class WorkspaceTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct)
     {
+        // Reload acquires both the global load gate AND the per-workspace write lock so that
+        // any in-flight readers on this workspace complete before the solution is replaced.
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, async c =>
-            {
-                var status = await workspace.ReloadAsync(workspaceId, c);
-                _ = NotifyResourcesChangedAsync(server);
-                return JsonSerializer.Serialize(status, JsonDefaults.Indented);
-            }, ct));
+            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, outerCt =>
+                gate.RunWriteAsync(workspaceId, async innerCt =>
+                {
+                    var status = await workspace.ReloadAsync(workspaceId, innerCt);
+                    _ = NotifyResourcesChangedAsync(server);
+                    return JsonSerializer.Serialize(status, JsonDefaults.Indented);
+                }, outerCt), ct));
     }
 
     [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources")]
@@ -57,14 +60,17 @@ public static class WorkspaceTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
+        // Close acquires both the global load gate AND the per-workspace write lock so that
+        // no reader is in flight when the workspace's lock entry is dropped from the registry.
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, c =>
-            {
-                var closed = workspace.Close(workspaceId);
-                gate.RemoveGate(workspaceId);
-                _ = NotifyResourcesChangedAsync(server);
-                return Task.FromResult(JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented));
-            }, ct));
+            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, outerCt =>
+                gate.RunWriteAsync(workspaceId, innerCt =>
+                {
+                    var closed = workspace.Close(workspaceId);
+                    gate.RemoveGate(workspaceId);
+                    _ = NotifyResourcesChangedAsync(server);
+                    return Task.FromResult(JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented));
+                }, outerCt), ct));
     }
 
     [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions")]
@@ -86,7 +92,7 @@ public static class WorkspaceTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(status, JsonDefaults.Indented);
@@ -101,7 +107,7 @@ public static class WorkspaceTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, _ =>
+            gate.RunReadAsync(workspaceId, _ =>
             {
                 var graph = workspace.GetProjectGraph(workspaceId);
                 return Task.FromResult(JsonSerializer.Serialize(graph, JsonDefaults.Indented));
@@ -117,7 +123,7 @@ public static class WorkspaceTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var documents = await workspace.GetSourceGeneratedDocumentsAsync(workspaceId, projectName, c);
                 return JsonSerializer.Serialize(documents, JsonDefaults.Indented);
@@ -133,7 +139,7 @@ public static class WorkspaceTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var text = await workspace.GetSourceTextAsync(workspaceId, filePath, c);
                 if (text is null) throw new KeyNotFoundException($"Document not found: {filePath}");

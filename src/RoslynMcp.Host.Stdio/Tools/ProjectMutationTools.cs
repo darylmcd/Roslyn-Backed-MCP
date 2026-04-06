@@ -22,7 +22,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewAddPackageReferenceAsync(
                     workspaceId,
@@ -43,7 +43,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewRemovePackageReferenceAsync(
                     workspaceId,
@@ -64,7 +64,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewAddProjectReferenceAsync(
                     workspaceId,
@@ -85,7 +85,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewRemoveProjectReferenceAsync(
                     workspaceId,
@@ -107,7 +107,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewSetProjectPropertyAsync(
                     workspaceId,
@@ -128,7 +128,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewAddTargetFrameworkAsync(
                     workspaceId,
@@ -149,7 +149,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewRemoveTargetFrameworkAsync(
                     workspaceId,
@@ -172,7 +172,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewSetConditionalPropertyAsync(
                     workspaceId,
@@ -193,7 +193,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewAddCentralPackageVersionAsync(
                     workspaceId,
@@ -213,7 +213,7 @@ public static class ProjectMutationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewRemoveCentralPackageVersionAsync(
                     workspaceId,
@@ -232,13 +232,15 @@ public static class ProjectMutationTools
         [Description("The preview token returned by one of the project mutation preview tools")] string previewToken,
         CancellationToken ct = default)
     {
-        var wsId = projectMutationPreviewStore.PeekWorkspaceId(previewToken);
-        var gateKey = wsId != null ? $"__apply__:{wsId}" : "__apply__";
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = projectMutationPreviewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await projectMutationService.ApplyProjectMutationAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 }

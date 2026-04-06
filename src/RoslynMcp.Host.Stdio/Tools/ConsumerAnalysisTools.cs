@@ -23,7 +23,7 @@ public static class ConsumerAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, c);

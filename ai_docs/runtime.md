@@ -38,6 +38,7 @@ Optional overrides read at startup from `src/RoslynMcp.Host.Stdio/Program.cs`. V
 | `ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS` | `ExecutionGateOptions.RateLimitWindow` | 60 |
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `ExecutionGateOptions.RequestTimeout` | 120 |
 | `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `SecurityOptions.PathValidationFailOpen` | `false` (must parse as `true`/`false` to override) |
+| `ROSLYNMCP_WORKSPACE_RW_LOCK` | `ExecutionGateOptions.UseReaderWriterLock` | `false` (must parse as `true`/`false`; opt-in per-workspace `AsyncReaderWriterLock` in place of the legacy mutex) |
 
 ## Claude Code Plugin
 

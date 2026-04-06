@@ -25,7 +25,7 @@ public static class CohesionAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await cohesionAnalysisService.GetCohesionMetricsAsync(
                     workspaceId, filePath, project, minMethods, limit, includeInterfaces, excludeTestProjects, c);
@@ -64,7 +64,7 @@ public static class CohesionAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
                 var results = await cohesionAnalysisService.FindSharedMembersAsync(workspaceId, locator, c);
