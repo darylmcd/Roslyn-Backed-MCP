@@ -66,6 +66,54 @@ The server runs on Windows, macOS, and Linux wherever the .NET 10 SDK is availab
 
 See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy.
 
+## Claude Code Plugin Installation
+
+The easiest way to use this server with Claude Code is as a plugin.
+
+### Prerequisites
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) — **10.0.100** per [`global.json`](global.json)
+- Install the global tool: `dotnet tool install -g RoslynMcp`
+
+### Install as Plugin
+
+```bash
+# Add the marketplace
+/plugin marketplace add darylmcd/Roslyn-Backed-MCP
+
+# Install the plugin
+/plugin install roslyn-mcp@roslyn-mcp-marketplace
+```
+
+Or for local development/testing:
+
+```bash
+# Load directly from a local checkout
+claude --plugin-dir /path/to/Roslyn-Backed-MCP
+```
+
+### Available Skills
+
+| Skill | Description |
+|-------|-------------|
+| `/roslyn-mcp:analyze` | Solution health check — diagnostics, complexity, cohesion, vulnerabilities |
+| `/roslyn-mcp:refactor` | Guided semantic refactoring — rename, extract, move, split |
+| `/roslyn-mcp:review` | Semantic code review — diagnostics, dead code, complexity, security |
+| `/roslyn-mcp:document` | XML documentation generator for public APIs |
+| `/roslyn-mcp:security` | Security audit — OWASP diagnostics, CVE scan, reflection, DI |
+| `/roslyn-mcp:dead-code` | Dead code detection and safe cleanup |
+| `/roslyn-mcp:test-coverage` | Test coverage analysis and test scaffolding |
+| `/roslyn-mcp:migrate-package` | NuGet package migration across projects |
+| `/roslyn-mcp:explain-error` | Diagnostic explanation with auto-fix |
+| `/roslyn-mcp:complexity` | Complexity hotspot and god class analysis |
+
+### Plugin Hooks
+
+The plugin includes safety hooks that enforce the preview/apply pattern:
+
+- **Pre-apply guard**: Blocks `*_apply` calls that weren't preceded by a `*_preview`.
+- **Post-apply verifier**: Reminds the agent to run `compile_check` after structural refactorings.
+
 ## MCP Client Configuration
 
 ### Cursor

@@ -1,0 +1,90 @@
+---
+name: analyze
+description: "Solution health check. Use when: analyzing a C# solution or project, checking build health, finding diagnostics, assessing code quality, or getting an overview of a .sln/.csproj. Takes a path to a solution or project file as input."
+---
+
+# Solution Health Analysis
+
+You are a C# solution analyst. Your job is to load a workspace and produce a comprehensive, actionable health report.
+
+## Input
+
+`$ARGUMENTS` is the path to a `.sln`, `.slnx`, or `.csproj` file. If the user does not provide a path, search the current working directory for solution files and ask which one to analyze.
+
+## Workflow
+
+Execute these steps in order. Use the Roslyn MCP tools — do not shell out for analysis.
+
+### Step 1: Load Workspace
+
+1. Call `workspace_load` with the solution/project path.
+2. Store the returned `workspaceId` for all subsequent calls.
+3. Call `workspace_status` to confirm the workspace loaded successfully and note any load-time warnings.
+
+### Step 2: Project Structure
+
+1. Call `project_graph` to get the dependency structure.
+2. Summarize: number of projects, dependency relationships, target frameworks.
+
+### Step 3: Compilation Health
+
+1. Call `compile_check` to run a fast in-memory compilation.
+2. Call `project_diagnostics` with `severity: "Error"` to get all errors.
+3. Call `project_diagnostics` with `severity: "Warning"` with `limit: 50` to get top warnings.
+4. Summarize: total errors, total warnings, top diagnostic IDs by frequency.
+
+### Step 4: Complexity Hotspots
+
+1. Call `get_complexity_metrics` with `minComplexity: 10` and `limit: 20`.
+2. For each result, note the method name, file, cyclomatic complexity, nesting depth, and maintainability index.
+3. Flag methods with maintainability index below 40 or cyclomatic complexity above 20 as critical.
+
+### Step 5: Cohesion Analysis
+
+1. Call `get_cohesion_metrics` with `minMethods: 3` and `limit: 15`.
+2. Flag types with LCOM4 > 1 as SRP violation candidates.
+3. Note the independent method clusters for each flagged type.
+
+### Step 6: Security & Vulnerabilities
+
+1. Call `nuget_vulnerability_scan` to check for known CVEs.
+2. Call `security_diagnostics` to get security-related compiler findings.
+3. Summarize any findings by severity.
+
+### Step 7: Close Workspace
+
+1. Call `workspace_close` to release resources.
+
+## Output Format
+
+Present a structured report with these sections:
+
+```
+## Solution Health Report: {solution-name}
+
+### Summary
+- Projects: {count}
+- Target Framework(s): {list}
+- Compilation: {pass/fail} ({error-count} errors, {warning-count} warnings)
+- Complexity Hotspots: {count} methods above threshold
+- SRP Violations: {count} types with LCOM4 > 1
+- Security Findings: {count}
+- NuGet Vulnerabilities: {count}
+
+### Compilation Issues
+{table of top errors and warnings with file, line, diagnostic ID, message}
+
+### Complexity Hotspots
+{table of methods ranked by complexity: name, file:line, cyclomatic, nesting, maintainability}
+
+### Cohesion Issues (SRP Candidates)
+{table of types with LCOM4 > 1: type, file, LCOM4 score, cluster count}
+
+### Security & Vulnerabilities
+{list of findings with severity and remediation guidance}
+
+### Recommendations
+{prioritized list of actionable items}
+```
+
+Rank recommendations by impact: errors first, then security, then complexity, then cohesion.
