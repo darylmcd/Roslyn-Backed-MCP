@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Collections.Immutable;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -12,6 +11,7 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class DiagnosticService : IDiagnosticService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<DiagnosticService> _logger;
 
     /// <summary>
@@ -25,9 +25,10 @@ public sealed class DiagnosticService : IDiagnosticService
 
     private sealed record DiagnosticCacheEntry(int Version, IReadOnlyList<Diagnostic> Diagnostics);
 
-    public DiagnosticService(IWorkspaceManager workspace, ILogger<DiagnosticService> logger)
+    public DiagnosticService(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<DiagnosticService> logger)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -54,7 +55,9 @@ public sealed class DiagnosticService : IDiagnosticService
             var analyzer = new List<DiagnosticDto>();
             var raw = new List<Diagnostic>();
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            // Use the shared compilation cache so independent tools (and the diagnostic
+            // detail cold path) reuse the same warm Compilation across requests.
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null)
             {
                 compiler.Add(new DiagnosticDto(
@@ -72,20 +75,13 @@ public sealed class DiagnosticService : IDiagnosticService
                 }
             }
 
-            var analyzers = project.AnalyzerReferences
-                .SelectMany(reference => reference.GetAnalyzers(project.Language))
-                .ToImmutableArray();
-            if (analyzers.Length > 0)
+            // CompilationWithAnalyzers is also cached: subsequent diagnostic calls (and
+            // related tools that need analyzer diagnostics) reuse the same instance.
+            var compilationWithAnalyzers = await _compilationCache
+                .GetCompilationWithAnalyzersAsync(workspaceId, project, ct)
+                .ConfigureAwait(false);
+            if (compilationWithAnalyzers is not null)
             {
-                var compilationWithAnalyzers = compilation.WithAnalyzers(
-                    analyzers,
-                    new CompilationWithAnalyzersOptions(
-                        options: project.AnalyzerOptions,
-                        onAnalyzerException: null,
-                        concurrentAnalysis: true,
-                        logAnalyzerExecutionTime: false,
-                        reportSuppressedDiagnostics: false));
-
                 var projectAnalyzerDiagnostics = await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync(ct).ConfigureAwait(false);
                 foreach (var diagnostic in projectAnalyzerDiagnostics)
                 {
@@ -352,7 +348,7 @@ public sealed class DiagnosticService : IDiagnosticService
         // Walk all projects in parallel — each one is an independent compilation+analyzer
         // pass, and there's no reason to serialize them. Roslyn's compilation and analyzer
         // APIs are thread-safe over immutable Project/Compilation objects.
-        var projectTasks = solution.Projects.Select(project => CollectProjectDiagnosticsAsync(project, ct));
+        var projectTasks = solution.Projects.Select(project => CollectProjectDiagnosticsAsync(workspaceId, project, ct));
         var perProjectResults = await Task.WhenAll(projectTasks).ConfigureAwait(false);
 
         // Warm the cache so a follow-up details lookup (or a project_diagnostics call that
@@ -369,27 +365,18 @@ public sealed class DiagnosticService : IDiagnosticService
         return null;
     }
 
-    private static async Task<IReadOnlyList<Diagnostic>> CollectProjectDiagnosticsAsync(Project project, CancellationToken ct)
+    private async Task<IReadOnlyList<Diagnostic>> CollectProjectDiagnosticsAsync(string workspaceId, Project project, CancellationToken ct)
     {
-        var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+        var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
         if (compilation is null) return [];
 
         var collected = new List<Diagnostic>();
         collected.AddRange(compilation.GetDiagnostics(ct));
 
-        var analyzers = project.AnalyzerReferences
-            .SelectMany(reference => reference.GetAnalyzers(project.Language))
-            .ToImmutableArray();
-        if (analyzers.Length == 0) return collected;
-
-        var compilationWithAnalyzers = compilation.WithAnalyzers(
-            analyzers,
-            new CompilationWithAnalyzersOptions(
-                options: project.AnalyzerOptions,
-                onAnalyzerException: null,
-                concurrentAnalysis: true,
-                logAnalyzerExecutionTime: false,
-                reportSuppressedDiagnostics: false));
+        var compilationWithAnalyzers = await _compilationCache
+            .GetCompilationWithAnalyzersAsync(workspaceId, project, ct)
+            .ConfigureAwait(false);
+        if (compilationWithAnalyzers is null) return collected;
 
         var analyzerDiagnostics = await compilationWithAnalyzers.GetAllDiagnosticsAsync(ct).ConfigureAwait(false);
         collected.AddRange(analyzerDiagnostics);

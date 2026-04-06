@@ -40,11 +40,13 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     ];
 
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<UnusedCodeAnalyzer> _logger;
 
-    public UnusedCodeAnalyzer(IWorkspaceManager workspace, ILogger<UnusedCodeAnalyzer> logger)
+    public UnusedCodeAnalyzer(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<UnusedCodeAnalyzer> logger)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -67,7 +69,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         {
             if (ct.IsCancellationRequested || results.Count >= limit) break;
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             // Phase 1 (sequential, cheap): walk syntax and collect candidates that survive
@@ -124,7 +126,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                     if (refCount == 0 && NeedsCrossCompilationCheck(symbol))
                     {
                         refCount = await CountCrossCompilationReferencesAsync(
-                            symbol, capturedProject, capturedSolution, ct).ConfigureAwait(false);
+                            workspaceId, symbol, capturedProject, capturedSolution, ct).ConfigureAwait(false);
                     }
 
                     return refCount == 0 ? BuildUnusedDto(symbol) : null;
@@ -244,8 +246,8 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     /// Re-resolves a symbol through dependent projects' compilations and checks for
     /// references from each. Returns the total reference count found, or 0 if none.
     /// </summary>
-    private static async Task<int> CountCrossCompilationReferencesAsync(
-        ISymbol symbol, Project declaringProject, Solution solution, CancellationToken ct)
+    private async Task<int> CountCrossCompilationReferencesAsync(
+        string workspaceId, ISymbol symbol, Project declaringProject, Solution solution, CancellationToken ct)
     {
         var containingType = symbol.ContainingType;
         if (containingType is null) return 0;
@@ -263,7 +265,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             if (!project.ProjectReferences.Any(r => r.ProjectId == declaringProject.Id))
                 continue;
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             var resolvedType = compilation.GetTypeByMetadataName(metadataName);
