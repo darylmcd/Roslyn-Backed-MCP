@@ -107,17 +107,21 @@ static ExecutionGateOptions BindExecutionGateOptions()
     var maxReqVal = 120;
     var winSecVal = 60;
     var reqSecVal = 120;
+    var useRwLock = false;
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS"), out var maxReq) && maxReq > 0)
         maxReqVal = maxReq;
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS"), out var winSec) && winSec > 0)
         winSecVal = winSec;
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_REQUEST_TIMEOUT_SECONDS"), out var reqSec) && reqSec > 0)
         reqSecVal = reqSec;
+    if (bool.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_WORKSPACE_RW_LOCK"), out var rwLock))
+        useRwLock = rwLock;
     return new ExecutionGateOptions
     {
         RateLimitMaxRequests = maxReqVal,
         RateLimitWindow = TimeSpan.FromSeconds(winSecVal),
-        RequestTimeout = TimeSpan.FromSeconds(reqSecVal)
+        RequestTimeout = TimeSpan.FromSeconds(reqSecVal),
+        UseReaderWriterLock = useRwLock
     };
 }
 

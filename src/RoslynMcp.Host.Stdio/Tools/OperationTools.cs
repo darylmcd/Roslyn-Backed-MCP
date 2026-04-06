@@ -21,7 +21,7 @@ public static class OperationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await operationService.GetOperationsAsync(workspaceId, filePath, line, column, maxDepth, c);
                 if (result is null)

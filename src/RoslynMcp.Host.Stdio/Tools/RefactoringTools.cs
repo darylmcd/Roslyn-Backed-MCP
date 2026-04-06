@@ -22,7 +22,7 @@ public static class RefactoringTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle), newName, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -37,13 +37,16 @@ public static class RefactoringTools
         [Description("The preview token returned by rename_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
     [McpServerTool(Name = "organize_usings_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview organizing using directives in a file: removes unused usings and sorts them")]
@@ -55,7 +58,7 @@ public static class RefactoringTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewOrganizeUsingsAsync(workspaceId, filePath, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -70,13 +73,16 @@ public static class RefactoringTools
         [Description("The preview token returned by organize_usings_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
     [McpServerTool(Name = "format_document_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview formatting a document: applies standard C# formatting rules")]
@@ -88,7 +94,7 @@ public static class RefactoringTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewFormatDocumentAsync(workspaceId, filePath, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -103,13 +109,16 @@ public static class RefactoringTools
         [Description("The preview token returned by format_document_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
     [McpServerTool(Name = "code_fix_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a curated code fix for a specific diagnostic occurrence")]
@@ -125,7 +134,7 @@ public static class RefactoringTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewCodeFixAsync(workspaceId, diagnosticId, filePath, line, column, fixId, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -140,13 +149,16 @@ public static class RefactoringTools
         [Description("The preview token returned by code_fix_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
     [McpServerTool(Name = "format_range_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -163,7 +175,7 @@ public static class RefactoringTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewFormatRangeAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -179,18 +191,16 @@ public static class RefactoringTools
         [Description("The preview token returned by format_range_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 
-    internal static string ApplyGateKeyFor(IPreviewStore store, string token)
-    {
-        var wsId = store.PeekWorkspaceId(token);
-        return wsId != null ? $"__apply__:{wsId}" : "__apply__";
-    }
 }

@@ -23,7 +23,7 @@ public static class BulkRefactoringTools
         return ToolErrorHandler.ExecuteAsync(() =>
         {
             ParameterValidation.ValidateBulkReplaceScope(scope);
-            return gate.RunAsync(workspaceId, async c =>
+            return gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await bulkRefactoringService.PreviewBulkReplaceTypeAsync(workspaceId, oldTypeName, newTypeName, scope, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -40,12 +40,15 @@ public static class BulkRefactoringTools
         [Description("The preview token returned by bulk_replace_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 }

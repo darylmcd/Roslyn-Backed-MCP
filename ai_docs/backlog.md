@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-06T18:15:00Z
+**updated_at:** 2026-04-06T22:00:00Z
 
 ## Agent contract
 
@@ -32,6 +32,7 @@ These are **not** backlog rows; do not delete them when clearing completed work.
 | `vuln-scan-network-mock` | none | — | **P3 / test isolation.** `ScanNuGetVulnerabilitiesAsync_ReturnsStructuredResult` shells out to `dotnet list package --vulnerable`, which hits `api.nuget.org`. Now passes reliably with the workspace-cache fix, but still fails in air-gapped environments. Consider mocking the NuGet client at the gated-executor boundary, or marking the test `[Category("Network")]` so it can be filtered. |
 | `verify-release-test-output-policy` | none | — | **P3 / process.** `eng/verify-release.ps1` runs `dotnet test` with default verbosity. Add `--logger "console;verbosity=normal"` and `$ErrorActionPreference = 'Stop'` so failing tests are not masked by tail/pipe operations in any wrapper script. |
 | `semantic-search-async-modifier-doc` | none | — | **P3 / docs.** `semantic_search` query `async methods returning Task<bool>` returns 0 because Roslyn `IMethodSymbol.IsAsync` requires the `async` modifier on the declaration; pass-through `Task.FromResult` methods are not matched. Document this gotcha in `CodePatternAnalyzer` tool description and the `/roslyn-mcp:review` skill so users know to query for "methods returning Task<bool>" without "async" if they want all Task-returning methods. |
+| `workspace-rw-lock-flag-flip` | one full release of opt-in soak | `workspace-rw-lock` (shipped opt-in) | **P2 / perf rollout.** Per-workspace `AsyncReaderWriterLock` ships behind `ROSLYNMCP_WORKSPACE_RW_LOCK=true`, default off. Phase-2 follow-up: flip the default to `true`, drop the env-var binding from `Program.BindExecutionGateOptions`, delete the legacy `_workspaceGates`/`_useRwLock` branch in `WorkspaceExecutionGate`, remove the `RunAsync` compat shim if all callers have migrated, and remove this row. Drives the read-heavy unlock from the deep-review survey. Tracked in `ai_docs/reports/2026-04-06-workspace-rw-lock-design-note.md`. |
 
 ## Refs
 

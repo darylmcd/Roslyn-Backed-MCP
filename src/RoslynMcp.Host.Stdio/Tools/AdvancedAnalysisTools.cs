@@ -23,7 +23,7 @@ public static class AdvancedAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
                     workspaceId, project, includePublic, limit, excludeEnums, excludeRecordProperties, c);
@@ -41,7 +41,7 @@ public static class AdvancedAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await dependencyAnalysisService.GetDiRegistrationsAsync(workspaceId, project, c);
                 return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
@@ -61,7 +61,7 @@ public static class AdvancedAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, project, minComplexity, limit, c);
                 return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
@@ -78,7 +78,7 @@ public static class AdvancedAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, project, c);
                 var grouped = results.GroupBy(r => r.UsageKind)
@@ -98,7 +98,7 @@ public static class AdvancedAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, project, c);
 
@@ -132,7 +132,7 @@ public static class AdvancedAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -151,7 +151,7 @@ public static class AdvancedAnalysisTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var response = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, project, limit, c);
                 return JsonSerializer.Serialize(new

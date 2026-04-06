@@ -23,7 +23,7 @@ public static class InterfaceExtractionTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await interfaceExtractionService.PreviewExtractInterfaceAsync(
                     workspaceId, filePath, typeName, interfaceName, memberNames, replaceUsages, c);
@@ -40,12 +40,15 @@ public static class InterfaceExtractionTools
         [Description("The preview token returned by extract_interface_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 }

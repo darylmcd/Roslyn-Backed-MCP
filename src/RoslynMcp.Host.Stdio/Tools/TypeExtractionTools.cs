@@ -23,7 +23,7 @@ public static class TypeExtractionTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await typeExtractionService.PreviewExtractTypeAsync(
                     workspaceId, filePath, typeName, memberNames, newTypeName, newFilePath, c);
@@ -40,12 +40,15 @@ public static class TypeExtractionTools
         [Description("The preview token returned by extract_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        var gateKey = RefactoringTools.ApplyGateKeyFor(previewStore, previewToken);
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = previewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 }

@@ -19,7 +19,7 @@ public static class CompileCheckTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await compileCheckService.CheckAsync(workspaceId, project, emitValidation, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);

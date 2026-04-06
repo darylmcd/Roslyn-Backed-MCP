@@ -19,7 +19,7 @@ public static class SecurityTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await securityService.GetSecurityDiagnosticsAsync(workspaceId, project, file, c);
                 return JsonSerializer.Serialize(results, JsonDefaults.Indented);
@@ -34,7 +34,7 @@ public static class SecurityTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await securityService.GetAnalyzerStatusAsync(workspaceId, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -52,7 +52,7 @@ public static class SecurityTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await dependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, project, includeTransitive, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);

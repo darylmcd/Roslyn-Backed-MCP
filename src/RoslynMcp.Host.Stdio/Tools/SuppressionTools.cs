@@ -20,7 +20,7 @@ public static class SuppressionTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunWriteAsync(workspaceId, async c =>
             {
                 var result = await suppressionService.SetDiagnosticSeverityAsync(
                     workspaceId, diagnosticId, severity, filePath, c);
@@ -40,7 +40,7 @@ public static class SuppressionTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunWriteAsync(workspaceId, async c =>
             {
                 var result = await suppressionService.AddPragmaWarningDisableAsync(
                     workspaceId, filePath, line, diagnosticId, c);

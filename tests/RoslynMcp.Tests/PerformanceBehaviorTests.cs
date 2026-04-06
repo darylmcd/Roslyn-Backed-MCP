@@ -62,6 +62,52 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task RW_Lock_Allows_Parallel_Reads_For_Same_Workspace()
+    {
+        // Two parallel RunReadAsync calls against the same workspace should overlap when the
+        // reader/writer lock feature flag is enabled. This is the unlock the design note
+        // describes — under the legacy mutex (flag off), the second call would queue.
+        var manager = new FakeWorkspaceManager();
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { UseReaderWriterLock = true },
+            manager);
+
+        var maxConcurrent = 0;
+        var current = 0;
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = gate.RunReadAsync("workspace-a", async ct =>
+        {
+            var n = Interlocked.Increment(ref current);
+            if (n > maxConcurrent) maxConcurrent = n;
+            firstStarted.SetResult();
+            await releaseFirst.Task.WaitAsync(ct);
+            Interlocked.Decrement(ref current);
+            return 1;
+        }, CancellationToken.None);
+
+        await firstStarted.Task;
+
+        var second = gate.RunReadAsync("workspace-a", _ =>
+        {
+            var n = Interlocked.Increment(ref current);
+            if (n > maxConcurrent) maxConcurrent = n;
+            secondStarted.SetResult();
+            Interlocked.Decrement(ref current);
+            return Task.FromResult(2);
+        }, CancellationToken.None);
+
+        await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(2, maxConcurrent,
+            "Two reads on the same workspace must overlap when ROSLYNMCP_WORKSPACE_RW_LOCK is on.");
+
+        releaseFirst.SetResult();
+        await Task.WhenAll(first, second);
+    }
+
+    [TestMethod]
     public async Task Validation_Service_Serializes_Commands_For_The_Same_Workspace()
     {
         var workspaceManager = new FakeWorkspaceManager();

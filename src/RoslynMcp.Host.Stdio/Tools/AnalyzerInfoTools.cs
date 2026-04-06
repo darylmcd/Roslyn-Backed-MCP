@@ -23,7 +23,7 @@ public static class AnalyzerInfoTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(offset, limit);
                 var results = await analyzerInfoService.ListAnalyzersAsync(workspaceId, project, c);

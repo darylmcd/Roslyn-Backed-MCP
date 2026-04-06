@@ -24,7 +24,7 @@ public static class TestCoverageTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
                 var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);

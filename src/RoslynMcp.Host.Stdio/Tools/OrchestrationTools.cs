@@ -21,7 +21,7 @@ public static class OrchestrationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await orchestrationService.PreviewMigratePackageAsync(workspaceId, oldPackageId, newPackageId, newVersion, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -41,7 +41,7 @@ public static class OrchestrationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await orchestrationService.PreviewSplitClassAsync(workspaceId, filePath, typeName, memberNames, newFileName, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -62,7 +62,7 @@ public static class OrchestrationTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await orchestrationService.PreviewExtractAndWireInterfaceAsync(
                     workspaceId,
@@ -85,13 +85,15 @@ public static class OrchestrationTools
         [Description("The preview token returned by an orchestration preview tool")] string previewToken,
         CancellationToken ct = default)
     {
-        var wsId = compositePreviewStore.PeekWorkspaceId(previewToken);
-        var gateKey = wsId != null ? $"__apply__:{wsId}" : "__apply__";
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(gateKey, async c =>
+        {
+            var wsId = compositePreviewStore.PeekWorkspaceId(previewToken)
+                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            return gate.RunWriteAsync(wsId, async c =>
             {
                 var result = await orchestrationService.ApplyCompositeAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            }, ct);
+        });
     }
 }

@@ -19,7 +19,7 @@ public static class MSBuildTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await msbuildEvaluation.EvaluatePropertyAsync(workspaceId, project, propertyName, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -37,7 +37,7 @@ public static class MSBuildTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await msbuildEvaluation.EvaluateItemsAsync(workspaceId, project, itemType, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
@@ -54,7 +54,7 @@ public static class MSBuildTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(workspaceId, async c =>
+            gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await msbuildEvaluation.GetEvaluatedPropertiesAsync(workspaceId, project, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
