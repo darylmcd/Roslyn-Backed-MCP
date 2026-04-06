@@ -6,7 +6,7 @@
      with the project's actual tool, resource, and prompt surface at all times.
      When tools, resources, or prompts are added, removed, or renamed,
      update the Tools Reference appendix accordingly.
-     Last surface audit: 2026-04-04 (see appendix; 123 tools, 7 resources, 16 prompts). -->
+   Last surface audit: 2026-04-06 (catalog 2026.03; 123 tools = 56 stable / 67 experimental, 7 resources, 16 prompts). -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** produce an MCP server audit (bugs, incorrect results, gaps). **Mechanism:** real refactoring plus tool calls that exercise the full surface.
@@ -20,11 +20,22 @@ You are a senior .NET architect. Your **primary mission** is to **audit the Rosl
 1. **MCP server audit (primary)** — For every tool call, ask whether the result is correct, complete, and consistent with sibling tools. Record issues in the mandatory audit file (see Output Format). Also record **tool coverage** (what was exercised vs skipped) and **verified working** tools — not only failures.
 2. **Refactor the codebase (supporting)** — In **Phase 6 only**, apply meaningful improvements (fixes, renames, extractions, dead code removal, format, organize). Verify with `compile_check` and `test_run`. Those changes belong in the target repo’s git history. Summarize what you applied in the audit report’s **Phase 6 refactor summary** subsection (see Output Format); that summary is part of the single MCP audit file, not a separate deliverable.
 
-**Known issues:** Open MCP server work is tracked in [`ai_docs/backlog.md`](../backlog.md) in the **Roslyn-Backed-MCP** repository (the repo that ships this server). If you hit a known issue, cite the backlog item briefly (e.g. “matches AUDIT-23”) and put **detail only on new or divergent behavior**.
+**Known issues / prior findings:** If you are auditing from within **Roslyn-Backed-MCP** or you otherwise have access to the server backlog, cross-check open MCP issues in [`ai_docs/backlog.md`](../backlog.md) and cite matching ids briefly (for example `semantic-search-async-modifier-doc`). If you are auditing from another repo and do not have that backlog available, use the closest equivalent prior source you do have (previous audit report, issue tracker, saved repro list). If no prior source exists, mark the regression section **N/A** instead of inventing one.
 
 **Phase order note:** After Phase 8, run **Phase 10** before **Phase 9** (Undo). Phase 9 is placed after Phase 10 so `revert_last_apply` does **not** undo Phase 6 refactoring — see Phase 9.
 
-Work through each phase below **in order** (including the Phase 10 → Phase 9 sequence). After each tool call, evaluate whether the result is correct and complete. If a tool returns an error, empty results when data was expected, or results that seem wrong, record it for the MCP Server Audit Report.
+**Portability and completeness contract:**
+
+1. This prompt is intended to run against **any loadable C# repo**. Prefer a `.sln` or `.slnx`; if the repo has no solution file, use a `.csproj`.
+2. **Default to `full-surface`.** Only opt into `conservative` when you cannot safely use a disposable branch/worktree/clone.
+   - **`full-surface` (default):** disposable branch/worktree/clone; drive preview -> apply families end-to-end where safe and clean up or reverse audit-only mutations.
+   - **`conservative` (opt-in):** non-disposable repo; keep high-impact families preview-only and mark the skipped apply siblings as `skipped-safety`.
+3. Treat `server_info`, `roslyn://server/catalog`, and `roslyn://server/resource-templates` as the **authoritative live surface**. If this prompt's appendix disagrees with the running server, the live catalog wins and the mismatch is itself a finding.
+4. Build a live **coverage ledger** from the catalog. Every live tool, resource, and prompt must end with exactly one final status: `exercised`, `exercised-apply`, `exercised-preview-only`, `skipped-repo-shape`, `skipped-safety`, or `blocked`. Silent omissions mean the audit is incomplete.
+5. Record repo-shape constraints up front: single vs multi-project, tests present, analyzers present, source generators present, DI usage present, `.editorconfig` present, Central Package Management / `Directory.Packages.props`, multi-targeting, and network/package-restore constraints.
+6. Do not invent applicability. If the repo has no tests, no DI, no source generators, no multi-targeting, or only one project, record that explicitly and treat the corresponding steps as `skipped-repo-shape`.
+
+Work through each phase below **in order** (including the Phase 10 -> Phase 9 sequence), then complete the **Final surface closure** step before you write the report. After each tool call, evaluate whether the result is correct and complete. If a tool returns an error, empty results when data was expected, or results that seem wrong, record it for the MCP Server Audit Report.
 
 ### Cross-cutting audit principles (apply to every phase)
 
@@ -35,18 +46,25 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 3. **Performance observation:** Note any tool call that is notably slow (>5 s for a simple single-symbol operation, >15 s for a solution-wide scan). Record the tool name, input scale, and approximate wall-clock time for the report's **Performance observations** subsection.
 4. **Error message quality:** When a tool returns an error, evaluate the message itself: Is it **actionable** (tells the caller what went wrong and what to do differently)? **Vague** (generic message with no remediation hint)? Or **unhelpful** (raw exception / stack trace)? Record the rating in the report.
 5. **Response contract consistency:** Across tool calls, note inconsistencies in response contracts: Are line numbers 0-based or 1-based consistently? Do related tools (`find_consumers`, `find_references`, `find_type_usages`) use the same field names for the same concepts? Are classification values always strings or sometimes numeric codes? Note inconsistencies in the report.
+6. **Precondition discipline:** Distinguish server defects from repo/environment constraints. If a tool depends on tests, analyzers, network access, source generators, DI registrations, Central Package Management, or a multi-project graph, record whether the precondition is absent in the repo, blocked by the environment, or mishandled by the server. A clear, actionable dependency or not-applicable response is not the same as a server bug.
 
 ---
 
-### Phase 0: Setup
+### Phase 0: Setup, live surface baseline, and repo shape
 
-1. Call `workspace_load` with the solution path.
-2. Call `workspace_list` to confirm the session appears.
-3. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
-4. Call `server_info` to record the server version, Roslyn version, and tool counts.
-5. Call `project_graph` to understand the project dependency structure.
+1. Pick the entrypoint you will load: prefer a `.sln` or `.slnx`; fall back to a `.csproj` if needed.
+2. Record whether this session is running in the default `full-surface` mode or an explicitly opted-in `conservative` mode.
+3. Call `server_info` to record the server version, Roslyn version, catalog version, and live stable/experimental counts.
+4. Read `roslyn://server/catalog` to capture the authoritative live surface inventory.
+5. Read `roslyn://server/resource-templates` to capture all resource URI templates.
+6. Call `workspace_load` with the chosen entrypoint.
+7. Call `workspace_list` to confirm the session appears.
+8. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
+9. Call `project_graph` to understand the project dependency structure.
+10. From the loaded repo, record the repo-shape constraints that affect later phases (projects, tests, analyzers, DI, source generators, Central Package Management, multi-targeting, network limits).
+11. Seed or update the coverage ledger so every live tool/resource/prompt already has a planned phase or a provisional skip reason.
 
-**MCP audit checkpoint:** Did `workspace_load` succeed? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Does `server_info` report the expected tool counts?
+**MCP audit checkpoint:** Did `server_info` and `roslyn://server/catalog` agree on live counts and tiers? Did `workspace_load` succeed on the chosen entrypoint? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Did you explicitly confirm either the default `full-surface` mode or a justified `conservative` opt-in, plus the repo shape and an initial coverage ledger with no silent omissions?
 
 ---
 
@@ -60,7 +78,7 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 6. Call `list_analyzers` to enumerate all loaded analyzers and their rules. Note total rule count.
 7. Call `diagnostic_details` on a representative error and a representative warning to inspect full detail.
 
-**MCP audit checkpoint:** Do `project_diagnostics` and `compile_check` agree on error counts? Does `compile_check` with `emitValidation=true` find additional issues? Does `nuget_vulnerability_scan` find any known CVEs, and does it return structured results with package name, advisory URL, and severity? Does `list_analyzers` return data for all projects? Are there any analyzers that fail to load (look for LOAD_ERROR entries)? Does `diagnostic_details` return accurate location and message information?
+**MCP audit checkpoint:** Do `project_diagnostics` and `compile_check` agree on error counts? Does `compile_check` with `emitValidation=true` find additional issues? Does `nuget_vulnerability_scan` find any known CVEs, and does it return structured results with package name, advisory URL, and severity? If the environment blocks network or package metadata access, does `nuget_vulnerability_scan` fail fast with a clear explanation instead of hanging or returning misleading success? Does `list_analyzers` return data for all projects? Are there any analyzers that fail to load (look for LOAD_ERROR entries)? Does `diagnostic_details` return accurate location and message information?
 
 ---
 
@@ -211,6 +229,8 @@ For each method with high complexity:
 
 **Cross-tool chain validation (Phase 6):** After `rename_apply`, call `find_references` on the new name — does the count match the preview? After `extract_interface_apply`, call `type_hierarchy` on the new interface — does it show the implementor? After `fix_all_apply`, call `project_diagnostics` with the same diagnostic ID — did the count drop to zero? After `organize_usings_apply`, call `get_source_text` — are usings actually sorted? These chains verify that workspace state stays consistent across mutations.
 
+**Mutation-family coverage note:** By the end of Phase 6 plus the later file/scaffolding/project-mutation phases, every write-capable family exposed by the live catalog must be either exercised end-to-end or explicitly marked `skipped-safety` / `skipped-repo-shape`. Do not assume a preview-only call covers an apply sibling unless the catalog exposes no separate apply tool.
+
 ---
 
 ### Phase 7: EditorConfig & Configuration
@@ -242,29 +262,32 @@ For each method with high complexity:
 8. Call `test_run` with no filter to run the full suite.
 9. Call `test_coverage` to measure coverage.
 
+If `test_discover` returns zero tests, still record that result. Then explicitly distinguish one of these outcomes: `test_run` returns a clean zero-test result, `test_run` / `test_coverage` are `skipped-repo-shape`, or the server mishandles the no-test case.
+
 **MCP audit checkpoint:** Does `build_workspace` match `compile_check` results (same error count, same diagnostic IDs, same locations)? Does `test_related_files` correctly identify related tests? Does `test_related` find the right tests for the symbol? Does `test_run` produce structured results with pass/fail counts — and do the aggregated counts reflect the full solution or only the last assembly? Does `test_coverage` produce coverage data?
 
-**Do not** call `revert_last_apply` yet — that would undo the most recent Phase 6 apply. Continue to **Phase 10** (preview-only), then **Phase 9** (Undo verification).
+**Do not** call `revert_last_apply` yet — that would undo the most recent Phase 6 apply. Continue to **Phase 10**, then **Phase 9** (Undo verification).
 
 ---
 
-### Phase 10: Cross-Project Operations (preview only — if multi-project solution)
+### Phase 10: File, Cross-Project, and Orchestration Operations
 
-**PREVIEW ONLY — do not apply.** Exercise preview and composite tools; inspect diffs and JSON. Applying moves, deletes, scaffolds, or package migrations here leaves audit artifacts in the repo and is **out of scope** for this prompt.
+**Default behavior:** inspect previews for every applicable family. In `full-surface` mode on a disposable checkout, you SHOULD also drive at least one safe preview -> apply -> verification -> cleanup chain for the families that expose apply tools here (`move_type_to_file_apply`, `create_file_apply`, `move_file_apply`, `delete_file_apply`, and `apply_composite_preview` when it truly applies a composite result). In `conservative` mode, keep those apply siblings as `skipped-safety`.
 
 1. Call `move_type_to_file_preview` to move a type into its own file.
 2. Call `move_file_preview` to move a file to a different directory with namespace update.
 3. Call `create_file_preview` to preview creating a new source file in a project.
 4. Call `delete_file_preview` to preview deleting an unused source file (pick a path that would be safe if you were applying — do **not** apply).
-5. Call `extract_interface_cross_project_preview` to extract an interface into a different project.
-6. Call `dependency_inversion_preview` to extract interface + update constructor dependencies.
-7. Call `move_type_to_project_preview` to move a type declaration into another project.
-8. Call `extract_and_wire_interface_preview` to extract an interface and rewrite DI registrations.
-9. Call `split_class_preview` to split a type into partial class files.
-10. Call `migrate_package_preview` to replace one NuGet package with another across projects.
-11. Optionally call `apply_composite_preview` **only as a preview path** if the server requires it to materialize a composite diff — if that would write to disk, skip and note in the audit.
+5. If the workspace has multiple projects, call `extract_interface_cross_project_preview` to extract an interface into a different project.
+6. If the workspace has multiple projects, call `dependency_inversion_preview` to extract interface + update constructor dependencies.
+7. If the workspace has multiple projects, call `move_type_to_project_preview` to move a type declaration into another project.
+8. If DI registrations exist or can be inferred, call `extract_and_wire_interface_preview` to extract an interface and rewrite DI registrations.
+9. If a split candidate exists, call `split_class_preview` to split a type into partial class files.
+10. If a package migration candidate exists, call `migrate_package_preview` to replace one NuGet package with another across projects.
+11. In `full-surface` mode on a disposable checkout, execute one safe file/type preview/apply/cleanup loop using the corresponding apply tools (`move_type_to_file_apply`, `create_file_apply`, `move_file_apply`, or `delete_file_apply`). Verify the workspace remains buildable or is restored to its starting state.
+12. If an orchestration preview returns a token that is committed via `apply_composite_preview`, treat `apply_composite_preview` as a **destructive apply tool despite the name**. Only call it in `full-surface` mode on a disposable checkout; otherwise mark it `skipped-safety` and note the naming friction.
 
-**MCP audit checkpoint:** Do cross-project previews produce valid diffs? Do namespace and reference updates look correct in the preview? Does `extract_and_wire_interface_preview` correctly identify DI registrations? Does `split_class_preview` produce valid partial classes? Do file creation and deletion previews produce correct diffs?
+**MCP audit checkpoint:** Do file and cross-project previews produce valid diffs? Do namespace and reference updates look correct in the preview? Does `extract_and_wire_interface_preview` correctly identify DI registrations? Does `split_class_preview` produce valid partial classes? Do file creation and deletion previews produce correct diffs? When you used an apply sibling, did the create/move/delete/apply path behave end-to-end and leave the repo in a clean state?
 
 ---
 
@@ -283,31 +306,33 @@ For each method with high complexity:
 
 ### Phase 11: Semantic Search & Discovery
 
-1. Call `semantic_search` with a natural-language query like `"async methods returning Task<bool>"`. Verify results match the query semantics.
-2. Call `semantic_search` with `"classes implementing IDisposable"`. Cross-check against `find_implementations`.
-3. Call `find_reflection_usages` to locate reflection-heavy code that may resist refactoring.
-4. Call `get_di_registrations` to audit the DI container wiring.
-5. Call `source_generated_documents` to list any source-generator output files.
+1. Call `semantic_search` with a repo-relevant natural-language query like `"async methods returning Task<bool>"` or another pattern that should exist in the target repo.
+2. Call `semantic_search` with a broader paraphrase of the same idea (for example `"methods returning Task<bool>"`) and compare the delta so modifier-sensitive matching is visible.
+3. Call `semantic_search` with `"classes implementing IDisposable"` or another interface-based query you can cross-check against `find_implementations`.
+4. Call `find_reflection_usages` to locate reflection-heavy code that may resist refactoring.
+5. Call `get_di_registrations` to audit the DI container wiring.
+6. Call `source_generated_documents` to list any source-generator output files.
 
-**MCP audit checkpoint:** Does `semantic_search` return relevant results? Does `find_reflection_usages` find all reflection patterns (typeof, GetMethod, Activator, etc.)? Does `get_di_registrations` parse all registration styles?
+**MCP audit checkpoint:** Do the paired `semantic_search` queries return relevant and explainable differences? Does the broader paraphrase expose modifier-sensitive matching issues? Does `find_reflection_usages` find all reflection patterns (typeof, GetMethod, Activator, etc.)? Does `get_di_registrations` parse all registration styles, and is an empty result legitimate for the repo shape? Are source-generated documents correctly listed when generators are present?
 
 ---
 
-### Phase 12: Scaffolding (preview only)
+### Phase 12: Scaffolding
 
-**PREVIEW ONLY — do not apply.** Do not call `scaffold_type_apply` or `scaffold_test_apply`; audit the previews only.
+**Default behavior:** preview-only. In `full-surface` mode on a disposable checkout, apply one scaffold (`scaffold_type_apply` or `scaffold_test_apply`), verify it compiles or is discoverable, then clean it up with file-operation tools or version control. In `conservative` mode, mark the apply siblings `skipped-safety`.
 
 1. Call `scaffold_type_preview` to scaffold a new class in a project. Verify the generated file content and namespace in the preview payload.
-2. Call `scaffold_test_preview` to scaffold a test file for an existing type. Verify it targets the correct type and uses the right test framework in the preview.
-3. Call `compile_check` if the server requires a fresh compilation for previews; otherwise skip (previews alone do not change disk).
+2. If the repo has or can support a test project/framework, call `scaffold_test_preview` to scaffold a test file for an existing type. Verify it targets the correct type and uses the right test framework in the preview.
+3. In `full-surface` mode on a disposable checkout, call the corresponding apply tool for one preview and verify the result with `compile_check`, `test_discover`, or both.
+4. Call `compile_check` if the server requires a fresh compilation for previews; otherwise skip (previews alone do not change disk).
 
-**MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace from the project structure? Does `scaffold_test_preview` generate valid test stubs? Are preview payloads complete and apply-able in principle?
+**MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace from the project structure? Does `scaffold_test_preview` generate valid test stubs when a test target exists? Are preview payloads complete and apply-able in principle? When you used an apply sibling, did the scaffolded file compile or show up in test discovery as expected?
 
 ---
 
-### Phase 13: Project Mutation (preview only)
+### Phase 13: Project Mutation
 
-**PREVIEW ONLY — do not apply.** Do not call `apply_project_mutation` (or any path that writes `.csproj` / `Directory.Packages.props`). Inspect preview XML/diffs only.
+**Default behavior:** preview-only. In `full-surface` mode on a disposable checkout, execute at least one reversible preview -> `apply_project_mutation` -> verification -> inverse-preview -> `apply_project_mutation` loop (for example add then remove a package reference, or set then revert a property). In `conservative` mode, mark `apply_project_mutation` as `skipped-safety`.
 
 1. Call `add_package_reference_preview` to add a NuGet package to a project.
 2. Call `remove_package_reference_preview` to remove a NuGet package.
@@ -318,8 +343,9 @@ For each method with high complexity:
 7. Call `add_target_framework_preview` to add a target framework to a multi-targeting project.
 8. Call `remove_target_framework_preview` to remove a target framework.
 9. If the solution uses Central Package Management, call `add_central_package_version_preview` and `remove_central_package_version_preview` (preview only).
+10. In `full-surface` mode on a disposable checkout, apply one reversible mutation and then reverse it. Verify with `workspace_reload` plus `build_project` or `compile_check`.
 
-**MCP audit checkpoint:** Do project mutation previews produce correct XML diffs? Do `set_conditional_property_preview` conditions evaluate correctly in the preview? Do framework additions/removals look correct in the preview? (Do not verify via apply.)
+**MCP audit checkpoint:** Do project mutation previews produce correct XML diffs? Do `set_conditional_property_preview` conditions evaluate correctly in the preview? Do framework additions/removals look correct in the preview? When you used `apply_project_mutation`, did the forward and reverse mutations both behave correctly? Are multi-targeting and Central Package Management cases correctly marked `skipped-repo-shape` when the repo does not use them?
 
 ---
 
@@ -351,17 +377,17 @@ For each method with high complexity:
 
 ---
 
-### Phase 16: Prompt Verification (pick 4+ prompts)
+### Phase 16: Prompt Verification
 
-The server exposes 16 prompts. Exercise at least 4 representative ones to verify their argument templates, output quality, and accuracy.
+The server currently exposes 16 prompts. In `conservative` mode, exercise at least 6 prompts spanning error explanation, refactoring, review, testing, security, and capability discovery. In `full-surface` mode, exercise all 16 prompts unless a prompt is truly `skipped-repo-shape`.
 
 1. Call `explain_error` with a diagnostic from Phase 1. Verify the explanation is accurate and actionable.
 2. Call `suggest_refactoring` on a symbol or region you analyzed in Phase 3. Verify the suggestions reference real tools and produce sensible guidance.
 3. Call `review_file` on a file modified in Phase 6. Verify the review references actual code and produces useful observations.
 4. Call `discover_capabilities` with a task category (e.g. "refactoring", "testing", "security"). Verify it returns relevant tools for the category.
-5. Optionally call additional prompts (`dead_code_audit`, `review_complexity`, `cohesion_analysis`, `consumer_impact`, `security_review`, `debug_test_failure`, etc.) for broader coverage.
+5. Cover the remaining prompt surface as applicable (`analyze_dependencies`, `debug_test_failure`, `refactor_and_validate`, `fix_all_diagnostics`, `guided_package_migration`, `guided_extract_interface`, `security_review`, `dead_code_audit`, `review_test_coverage`, `review_complexity`, `cohesion_analysis`, `consumer_impact`).
 
-**MCP audit checkpoint:** Do prompt argument templates make sense? Does the prompt output reference correct tools and produce actionable guidance? Are prompt descriptions accurate? Do any prompts fail, return empty output, or produce hallucinated tool names?
+**MCP audit checkpoint:** Do prompt argument templates make sense? Does the prompt output reference correct tools and produce actionable guidance? Does `discover_capabilities` align with the live catalog from Phase 0? Are prompt descriptions accurate? Do any prompts fail, return empty output, or produce hallucinated tool names?
 
 ---
 
@@ -397,18 +423,27 @@ Deliberately probe edge cases and error paths. The goal is to verify that the se
 
 ---
 
-### Phase 18: Regression Verification (re-test backlog items)
+### Phase 18: Regression Verification (re-test known issues or prior findings)
 
-Before writing the report, deliberately re-test 3–5 items from [`ai_docs/backlog.md`](../backlog.md), prioritizing P1 and P2 items.
+Before writing the report, deliberately re-test 3–5 previously recorded issues. Prefer [`ai_docs/backlog.md`](../backlog.md) when auditing **Roslyn-Backed-MCP** or when that file is available. Otherwise use a previous audit report, open issue tracker, or saved repro list. If no prior source exists, mark this phase `N/A` with that reason.
 
-1. Read `ai_docs/backlog.md` and select 3–5 items that can be reproduced with the current workspace.
+1. Read the available prior source and select 3–5 items that can be reproduced with the current workspace.
 2. For each selected item, reproduce the exact scenario described (same tool, similar inputs). Record the result:
    - **Still reproduces** — confirm with current server version.
    - **Partially fixed** — describe what changed and what remains.
    - **No longer reproduces** — mark as **candidate for closure** in the report.
-3. Include findings in the report's **Backlog regression check** section.
+3. Include findings in the report's **Known issue regression check** section.
 
-**MCP audit checkpoint:** Did any previously reported issues get fixed without being removed from the backlog? Did any issues change in character (e.g., different error message, partial fix)?
+**MCP audit checkpoint:** Did any previously reported issues get fixed without being removed from the source tracker? Did any issues change in character (e.g., different error message, partial fix)?
+
+---
+
+### Final surface closure (mandatory before the report)
+
+1. Compare your coverage ledger against the live catalog captured in Phase 0.
+2. For every unaccounted tool, resource, or prompt, either call it now or assign a final explicit status (`skipped-repo-shape`, `skipped-safety`, or `blocked`) with a one-line reason.
+3. If the live catalog exposed entries that had no natural place in the phased plan, record that as prompt drift in **Improvement suggestions** and still include the entries in the ledger.
+4. Confirm that ledger totals match the live catalog totals and that the catalog summary matches `server_info`.
 
 ---
 
@@ -444,17 +479,18 @@ Derive `<repo-id>` from the **audited** solution or repository name:
 
 ### Report contents (required sections)
 
-1. **Header (metadata)** — server version (from `server_info`), Roslyn / .NET versions if available, **audited** solution path and name, date, workspace id, approximate project count and document count from `workspace_load` / `project_graph`.
-2. **Tool coverage** — For each **category** below, state **exercised** / **skipped** (with reason) / **N/A** (e.g. single-project solution and cross-project previews not applicable). Categories: Server; Workspace; Symbols; Analysis; Advanced Analysis; Consumer & Cohesion; Security; Flow; Syntax & Operations; Compilation; Analyzer Info; Snippet & Scripting; Refactoring (rename/format/organize); Code Actions & Fixes; Fix All; Interface/Type extraction; Type movement; Bulk refactor; Cross-project refactor; Orchestration; Dead code; Text edits; File ops; Project mutation (previews); Scaffolding (previews); Build & Test; EditorConfig; MSBuild evaluation; Suppression & severity; Undo; Resources (MCP resources); Prompts; Boundary & Negative Testing; Regression Verification.
-3. **Verified tools (working)** — Bullet list: tool name + one-line evidence (e.g. “`compile_check` — 0 errors after Phase 6”). This distinguishes “tested and fine” from “never called.”
-4. **Phase 6 refactor summary** — Concise record of **applied** Phase 6 work (not preview-only phases). Include: target repo identity (if different from Roslyn-Backed-MCP); **scope** (e.g. fix-all + rename + format — which sub-steps 6a–6i you actually applied); **notable symbols or files** touched; **MCP tools used** for each change (e.g. `rename_apply`, `fix_all_apply`); **verification** (`compile_check` / `test_run` / `build_workspace` outcomes). If Phase 6 had **no** applies (skipped or audit-only), state **N/A** with one line why. Optional: git commit hash or PR link if available.
-5. **MCP server issues (bugs)** — For each issue: **Tool name**, **inputs**, **expected** vs **actual**, **severity** (crash / incorrect result / missing data / degraded performance / cosmetic / error-message-quality), **reproducibility** (always / sometimes / once). Watch for: crashes, wrong or incomplete results, tool-vs-tool inconsistency, missing functionality, slow tools, bad JSON/truncation, bad line/position mapping, unhelpful error messages.
-6. **Improvement suggestions** — Things that work correctly but could work better. UX friction (confusing parameter names, unexpected defaults, verbose output). Missing convenience features (e.g., “I wished tool X also returned Y”). Workflow gaps (sequences of 3+ tool calls that could be a single composite tool). Output enrichment (e.g., numeric codes where string labels would be more useful). Schema/description mismatches (tool description says one thing, actual behavior does another). These are not bugs — they are actionable input for the next release.
-7. **Performance observations** — List any tools that were notably slow, with tool name, input scale, and approximate wall-clock time. If all tools responded within expected bounds, state that.
-8. **Backlog regression check** — For the 3–5 backlog items re-tested in Phase 18, state: **still reproduces**, **partially fixed** (describe), or **candidate for closure** (no longer reproduces). Include the AUDIT-ID and one-line summary for each.
-9. **Known backlog cross-check** — List any *newly observed* issues that match [`ai_docs/backlog.md`](../backlog.md) (e.g. “AUDIT-23 — semantic_search Task<bool>”) with one line each; put **full write-ups only for new or different** behavior.
+1. **Header (metadata)** — server version (from `server_info`), Roslyn / .NET versions if available, **audited** solution path and name, chosen entrypoint (`.sln` / `.slnx` / `.csproj`), audit mode (`full-surface` by default or explicitly opted-in `conservative`), date, workspace id, approximate project count and document count from `workspace_load` / `project_graph`, repo-shape summary, and the prior-issue source used for Phase 18.
+2. **Coverage summary** — Group by the live catalog's `Kind` + `Category` values from `roslyn://server/catalog`. For each group, report counts for `exercised`, `exercised-apply`, `exercised-preview-only`, `skipped-repo-shape`, `skipped-safety`, and `blocked`.
+3. **Coverage ledger (required)** — One row for every live tool, resource, and prompt from `roslyn://server/catalog`. Columns: `kind`, `name`, `tier`, `status`, `phase`, `notes`. The audit is incomplete if the ledger row count does not match the live catalog total or if any entry is omitted.
+4. **Verified tools (working)** — Bullet list: tool name + one-line evidence (e.g. “`compile_check` — 0 errors after Phase 6”). This distinguishes “tested and fine” from “never called.”
+5. **Phase 6 refactor summary** — Concise record of **applied** Phase 6 work (not preview-only phases). Include: target repo identity (if different from Roslyn-Backed-MCP); **scope** (e.g. fix-all + rename + format — which sub-steps 6a–6i you actually applied); **notable symbols or files** touched; **MCP tools used** for each change (e.g. `rename_apply`, `fix_all_apply`); **verification** (`compile_check` / `test_run` / `build_workspace` outcomes). If Phase 6 had **no** applies (skipped or audit-only), state **N/A** with one line why. Optional: git commit hash or PR link if available.
+6. **MCP server issues (bugs)** — For each issue: **Tool name**, **inputs**, **expected** vs **actual**, **severity** (crash / incorrect result / missing data / degraded performance / cosmetic / error-message-quality), **reproducibility** (always / sometimes / once). Watch for: crashes, wrong or incomplete results, tool-vs-tool inconsistency, missing functionality, slow tools, bad JSON/truncation, bad line/position mapping, unhelpful error messages.
+7. **Improvement suggestions** — Things that work correctly but could work better. UX friction (confusing parameter names, unexpected defaults, verbose output). Missing convenience features (e.g., “I wished tool X also returned Y”). Workflow gaps (sequences of 3+ tool calls that could be a single composite tool). Output enrichment (e.g., numeric codes where string labels would be more useful). Schema/description mismatches (tool description says one thing, actual behavior does another). These are not bugs — they are actionable input for the next release.
+8. **Performance observations** — List any tools that were notably slow, with tool name, input scale, and approximate wall-clock time. If all tools responded within expected bounds, state that.
+9. **Known issue regression check** — For the 3–5 items re-tested in Phase 18, state: **still reproduces**, **partially fixed** (describe), or **candidate for closure** (no longer reproduces). Include the source id / issue id and one-line summary for each. If no prior source existed, state **N/A**.
+10. **Known issue cross-check** — List any *newly observed* issues that match the chosen prior source (for example a backlog id, issue number, or previous audit finding) with one line each; put **full write-ups only for new or different** behavior.
 
-If there are **zero** new issues, still write sections 1–4 and 6–9; in section 5 state **“No new issues found”** and confirm the audit ran.
+If there are **zero** new issues, still write sections 1–5 and 7–10; in section 6 state **“No new issues found”** and confirm the audit ran.
 
 ### Markdown template (copy, fill in, save)
 
@@ -464,18 +500,31 @@ If there are **zero** new issues, still write sections 1–4 and 6–9; in secti
 ## Header
 - **Date:**
 - **Audited solution:**
+- **Entrypoint loaded:**
+- **Audit mode:** (`full-surface` by default; state reason if `conservative`)
 - **Workspace id:**
 - **Server:** (from `server_info`)
 - **Roslyn / .NET:** (if reported)
 - **Scale:** ~N projects, ~M documents
+- **Repo shape:**
+- **Prior issue source:**
 - **Report path note:** (if not saved under Roslyn-Backed-MCP, state intended copy destination)
 
-## Tool coverage
-| Category | Status | Notes |
-|----------|--------|--------|
-| Server | exercised / skipped / N/A | |
-| Workspace | | |
-| … | | |
+## Coverage summary
+| Kind | Category | Exercised | Apply | Preview-only | Skipped | Blocked | Notes |
+|------|----------|-----------|-------|--------------|---------|---------|-------|
+| tool | workspace | | | | | | |
+| tool | refactoring | | | | | | |
+| resource | workspace | | n/a | n/a | | | |
+| prompt | prompts | | n/a | n/a | | | |
+
+## Coverage ledger
+| Kind | Name | Tier | Status | Phase | Notes |
+|------|------|------|--------|-------|-------|
+| tool | `workspace_load` | stable | exercised | 0 | |
+| tool | `create_file_apply` | experimental | skipped-safety | 10 | conservative audit on non-disposable repo |
+| resource | `server_catalog` | stable | exercised | 0, 15 | |
+| prompt | `discover_capabilities` | experimental | exercised | 16 | |
 
 ## Verified tools (working)
 - `tool_name` — one-line observation
@@ -506,12 +555,12 @@ If there are **zero** new issues, still write sections 1–4 and 6–9; in secti
 ## Performance observations
 - `tool_name` — input scale, ~Ns wall-clock (or "All tools responded within expected bounds")
 
-## Backlog regression check
-| AUDIT-ID | Summary | Status |
-|----------|---------|--------|
-| AUDIT-XX | one-line summary | still reproduces / partially fixed / candidate for closure |
+## Known issue regression check
+| Source id | Summary | Status |
+|-----------|---------|--------|
+| issue-or-backlog-id | one-line summary | still reproduces / partially fixed / candidate for closure |
 
-## Known backlog cross-check
+## Known issue cross-check
 - …
 ```
 
@@ -524,8 +573,9 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 ## Tools Reference — Complete Surface Inventory
 
 > **Maintenance note:** This appendix must be kept in sync with the actual server surface.
+> The live catalog from Phase 0 is authoritative. Treat this appendix as a convenience snapshot; if it drifts from the running server, record prompt drift and trust the live catalog.
 > When tools, resources, or prompts change, update this section.
-> Last verified: 2026-04-04 — **123 tools | 7 resources | 16 prompts**
+> Last verified: 2026-04-06 against catalog version 2026.03 — **123 tools (56 stable / 67 experimental) | 7 resources (7 stable) | 16 prompts (16 experimental)**
 
 ### Tools by Category (123 total)
 

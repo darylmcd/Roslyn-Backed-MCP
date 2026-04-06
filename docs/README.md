@@ -16,6 +16,16 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | `experimental-promotion-analysis.md` | Stable vs experimental tool counts and promotion notes |
 | `large-solution-profiling-baseline.md` | Methodology and notes for profiling large MSBuild solutions |
 
+## Claude Code Plugin
+
+The server ships as a Claude Code plugin. Plugin-specific documentation:
+
+- `README.md` § *Claude Code Plugin Installation* — install commands, skill table, hook descriptions
+- `setup.md` § *Claude Code Plugin* — plugin packaging, local dev, validation commands
+- `product-contract.md` § *Claude Code Plugin Surface* — how skills relate to the MCP tool tiers
+
+Plugin source files: `.claude-plugin/`, `skills/`, `hooks/`, `.mcp.json`
+
 ## Related
 
 - For AI agent session bootstrap: `AGENTS.md`

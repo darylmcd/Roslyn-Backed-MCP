@@ -260,6 +260,9 @@ For privacy questions, open an issue at [github.com/darylmcd/Roslyn-Backed-MCP/i
 - `tests/RoslynMcp.Tests/`: integration and behavior coverage across stable and experimental surfaces.
 - `samples/`: fixture solutions used by tests for realistic workflows.
 - `eng/verify-release.ps1`: release verification path for publish and hashes.
+- `.claude-plugin/`: Claude Code plugin manifest and marketplace descriptor.
+- `skills/`: 10 Claude Code skill definitions composing MCP tools into guided workflows.
+- `hooks/`: plugin safety hooks enforcing preview/apply and compile-check patterns.
 
 ## Supported Surface
 
@@ -314,14 +317,17 @@ The server exposes a larger surface than earlier versions of the README document
 ## Architecture
 
 ```
+.claude-plugin/              Claude Code plugin manifest + marketplace
+skills/                      10 plugin skills (orchestration prompts)
+hooks/                       Plugin safety hooks (preview/apply guard)
 src/
-  RoslynMcp.Host.Stdio/    MCP stdio host (thin tool wrappers)
-  RoslynMcp.Core/          DTOs, service interfaces, PreviewStore
-  RoslynMcp.Roslyn/        Roslyn workspace/symbol/refactoring services
+  RoslynMcp.Host.Stdio/      MCP stdio host (thin tool wrappers)
+  RoslynMcp.Core/            DTOs, service interfaces, PreviewStore
+  RoslynMcp.Roslyn/          Roslyn workspace/symbol/refactoring services
 tests/
-  RoslynMcp.Tests/         Unit + integration tests
+  RoslynMcp.Tests/           Unit + integration tests
 samples/
-  SampleSolution/                  Multi-project test solution
+  SampleSolution/            Multi-project test solution
 ```
 
 ## Agent Workflow (End-To-End)

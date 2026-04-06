@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Claude Code plugin**: packaged as a first-class Claude Code plugin installable via `/plugin install`. Includes plugin manifest (`.claude-plugin/plugin.json`), marketplace descriptor (`.claude-plugin/marketplace.json`), and user-configurable environment variables.
+- **10 plugin skills**: `/roslyn-mcp:analyze` (solution health), `/roslyn-mcp:refactor` (guided refactoring), `/roslyn-mcp:review` (semantic code review), `/roslyn-mcp:document` (XML doc generation), `/roslyn-mcp:security` (security audit), `/roslyn-mcp:dead-code` (dead code cleanup), `/roslyn-mcp:test-coverage` (coverage analysis), `/roslyn-mcp:migrate-package` (NuGet migration), `/roslyn-mcp:explain-error` (diagnostic fixer), `/roslyn-mcp:complexity` (hotspot analysis).
+- **Plugin safety hooks**: PreToolUse guard enforcing preview-before-apply pattern; PostToolUse reminder to compile-check after structural refactorings.
+- `ValidationServiceOptions.VulnerabilityScanTimeout` (default 2 minutes) and `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` env var to make the NuGet vulnerability scan timeout configurable.
+
+### Fixed
+
+- **Test infrastructure: eliminate MSBuild contention causing intermittent 5-minute timeouts.** Previously every `[ClassInitialize]` called `InitializeServices()` which constructed a new `WorkspaceManager`, and 22 test classes called `WorkspaceManager.LoadAsync(SampleSolutionPath)` independently — spawning 22 separate `MSBuildWorkspace` instances with overlapping file locks on the shared sample fixture. Under load this caused `dotnet build` invocations to hit the service-level cancellation timeout (5 min) and fail. `TestBase` is now idempotent: services are created once per assembly, the workspace manager is disposed in `[AssemblyCleanup]`, and a new `GetOrLoadWorkspaceIdAsync` cache helper makes 22 redundant `LoadAsync` calls collapse into a single MSBuild evaluation. Total test runtime dropped from ~2.3 min to ~2.0 min on a clean run, with the timeout-flake mode eliminated.
+- `DependencyAnalysisService.ScanNuGetVulnerabilitiesAsync` no longer hard-codes a 120-second timeout; it now honors `ValidationServiceOptions.VulnerabilityScanTimeout` (still 2 min default). Previously this ignored every `ROSLYNMCP_*_TIMEOUT_SECONDS` env var.
+
+### Changed
+
+- `ValidationServiceOptions` is now a `record` (was `sealed class`), enabling `with` expression updates for cleaner option-binding code in `Program.cs`.
+- Test workspace cap raised to 64 (from production default of 8) since the shared `WorkspaceManager` now retains workspaces across the full assembly run instead of per-class disposal cycles.
+
 ## [1.6.0] - 2026-04-04
 
 ### Added

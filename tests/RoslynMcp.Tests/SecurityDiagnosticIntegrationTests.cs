@@ -16,8 +16,7 @@ public class SecurityDiagnosticIntegrationTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
-        WorkspaceId = status.WorkspaceId;
+        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
 
         var secTestPath = Path.Combine(RepositoryRootPath, "samples", "SecurityTestProject", "SecurityTestProject.slnx");
         var insecureStatus = await WorkspaceManager.LoadAsync(secTestPath, CancellationToken.None);

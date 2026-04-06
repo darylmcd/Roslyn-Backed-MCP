@@ -42,6 +42,15 @@ For session bootstrap and workflow, follow `AGENTS.md` first.
 - Run `dotnet test RoslynMcp.slnx --nologo` before declaring work merge-ready
 - Current coverage baseline (from Cobertura root after `./eng/verify-release.ps1`): **~60.7% line / ~47.3% branch** — do not regress it; see `docs/coverage-baseline.md`
 
+## Claude Code Plugin
+
+The server ships as a Claude Code plugin with 10 skills and safety hooks. When modifying plugin artifacts:
+
+- **Skills** (`skills/*/SKILL.md`): Reference MCP tools by their tool names. Skills are orchestration prompts, not code — they compose existing tools into workflows.
+- **Hooks** (`hooks/hooks.json`): Matchers use regex against tool names prefixed with `mcp__roslyn__`. Keep matchers in sync when tools are renamed or added.
+- **Plugin manifest** (`.claude-plugin/plugin.json`): Bump `version` when skills or hooks change. Keep `userConfig` entries in sync with env vars documented in `ai_docs/runtime.md`.
+- **Marketplace** (`.claude-plugin/marketplace.json`): Bump `version` to match `plugin.json`.
+
 ## Safety Guardrails
 
 - Never write to `stdout` from service or domain code — MCP protocol owns that stream

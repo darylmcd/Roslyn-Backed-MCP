@@ -74,6 +74,18 @@ Current experimental families:
 - Visual Studio or editor-backed live-workspace parity is a separate integration path, not a promise of the current host.
 - Destructive operations remain bounded to explicit edit requests or preview/apply flows.
 
+## Claude Code Plugin Surface
+
+The server is also distributed as a Claude Code plugin (`roslyn-mcp`) providing:
+
+- **MCP server**: `roslynmcp` via stdio with user-configurable env vars
+- **10 skills**: analyze, refactor, review, document, security, dead-code, test-coverage, migrate-package, explain-error, complexity
+- **Safety hooks**: PreToolUse guard (blocks apply without prior preview) and PostToolUse reminder (compile-check after structural refactoring)
+
+Skills compose multiple Roslyn MCP tools into guided workflows. They are not part of the MCP protocol surface — they are Claude Code-specific orchestration on top of the stable and experimental tool tiers documented above.
+
+Install: `/plugin marketplace add darylmcd/Roslyn-Backed-MCP` then `/plugin install roslyn-mcp@roslyn-mcp-marketplace`
+
 ## Agent Guidance
 
 - Load a workspace first and keep using the returned `workspaceId`.

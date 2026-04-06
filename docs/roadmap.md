@@ -58,6 +58,28 @@ Post-release candidates:
 - opt-in warmup for enterprise solutions
 - separate performance profile for remote hosting
 
+## Claude Code Plugin Distribution
+
+Decision: ship as a Claude Code plugin alongside the existing dotnet global tool and Docker distribution.
+
+Reason:
+
+- plugin bundles MCP server + curated skills + safety hooks into a single installable unit
+- lowers barrier to entry for Claude Code users (two-command install)
+- skills compose the 147 MCP tools into guided workflows for common tasks
+- hooks enforce safety patterns (preview-before-apply, post-refactoring compile-check)
+
+Delivered:
+
+- `.claude-plugin/plugin.json` and `marketplace.json` for distribution via GitHub
+- 10 skills: analyze, refactor, review, document, security, dead-code, test-coverage, migrate-package, explain-error, complexity
+- Safety hooks: PreToolUse apply guard, PostToolUse compile-check reminder
+
+Future direction:
+
+- publish to the MCP Registry for broader discoverability beyond GitHub
+- add skills as the MCP tool surface grows (e.g., architecture analysis, migration planning)
+
 ## Execution Tracks And Primary Touchpoints
 
 Use these tracks to quickly identify where to implement follow-up work:

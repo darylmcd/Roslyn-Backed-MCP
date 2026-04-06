@@ -65,6 +65,19 @@ Operational logs → `stderr` only (stdout reserved for MCP protocol traffic).
 - Validate with build/tests before merge-ready handoff.
 - Update docs/tests when behavior or surface contracts change.
 
+## Claude Code Plugin Layer
+
+The server is also distributed as a Claude Code plugin. Plugin artifacts live outside the C# project structure:
+
+| Directory | Purpose |
+|-----------|---------|
+| `.claude-plugin/` | Plugin manifest (`plugin.json`) and marketplace descriptor (`marketplace.json`) |
+| `skills/` | 10 SKILL.md skill definitions composing Roslyn MCP tools into guided workflows |
+| `hooks/` | `hooks.json` with safety hooks (preview-before-apply guard, post-refactoring compile-check reminder) |
+| `.mcp.json` | MCP server config with userConfig env var passthrough |
+
+The plugin layer is a pure orchestration concern — it does not add code to the C# projects. Skills reference tools by their MCP names and compose them into multi-step workflows. Hooks enforce safety patterns (preview before apply, compile after refactor).
+
 ## Known Gaps
 
 - IDE and CA analyzers not loaded in MSBuildWorkspace — only SDK-implicit diagnostics active at runtime (AUDIT-21).

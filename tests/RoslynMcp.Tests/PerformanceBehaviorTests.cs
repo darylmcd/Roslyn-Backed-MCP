@@ -81,7 +81,10 @@ public class PerformanceBehaviorTests : TestBase
         await commandRunner.FirstInvocationStarted.Task;
 
         var secondTask = buildService.BuildWorkspaceAsync("workspace-a", cts.Token);
-        await Task.Delay(150, cts.Token);
+
+        Assert.IsFalse(
+            secondTask.IsCompleted,
+            "Second build should be waiting on the workspace command gate while the first build is blocked.");
 
         Assert.AreEqual(1, commandRunner.MaxConcurrentCalls);
 

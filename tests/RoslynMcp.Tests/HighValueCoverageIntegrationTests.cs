@@ -15,8 +15,7 @@ public sealed class HighValueCoverageIntegrationTests : TestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        var status = await WorkspaceManager.LoadAsync(SampleSolutionPath, CancellationToken.None);
-        SampleWorkspaceId = status.WorkspaceId;
+        SampleWorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
     [ClassCleanup]
