@@ -66,7 +66,7 @@ public static class CohesionAnalysisTools
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await cohesionAnalysisService.FindSharedMembersAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(new { count = results.Count, sharedMembers = results }, JsonDefaults.Indented);
             }, ct));

@@ -11,7 +11,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class WorkspaceTools
 {
 
-    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis")]
+    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 8) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error — the call is idempotent against repeated loads of the same path (BUG-010).")]
     public static Task<string> LoadWorkspace(
         McpServer server,
         IWorkspaceExecutionGate gate,

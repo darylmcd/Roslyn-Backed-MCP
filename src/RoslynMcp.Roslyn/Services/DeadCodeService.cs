@@ -54,11 +54,19 @@ public sealed class DeadCodeService : IDeadCodeService
             var candidateRoot = await candidateDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false);
             updatedSolution = candidateDocument.Project.Solution;
 
-            if (request.RemoveEmptyFiles && candidateRoot is not null && !candidateRoot.DescendantNodes().OfType<MemberDeclarationSyntax>().Any())
+            // UX-005: A file is considered "effectively empty" when it contains no real
+            // declarations — only namespace shells, using directives, and trivia (whitespace,
+            // XML doc comments). Previously this was checked with `OfType<MemberDeclarationSyntax>()`
+            // which counts NamespaceDeclarationSyntax as a member, so files containing nothing but
+            // an empty namespace (or an orphaned doc comment) were never deleted even with
+            // removeEmptyFiles=true. The new helper unwraps namespaces and ignores trivia.
+            var fileHasNoDeclarations = candidateRoot is not null && IsEffectivelyEmpty(candidateRoot);
+
+            if (request.RemoveEmptyFiles && fileHasNoDeclarations)
             {
                 updatedSolution = updatedSolution.RemoveDocument(document.Id);
             }
-            else if (!request.RemoveEmptyFiles && candidateRoot is not null && !candidateRoot.DescendantNodes().OfType<MemberDeclarationSyntax>().Any())
+            else if (!request.RemoveEmptyFiles && fileHasNoDeclarations)
             {
                 warnings.Add($"Removing '{symbol.Name}' leaves '{document.Name}' empty.");
             }
@@ -67,6 +75,21 @@ public sealed class DeadCodeService : IDeadCodeService
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), "Remove dead code symbols");
         return new RefactoringPreviewDto(token, "Remove dead code symbols", changes, warnings.Count > 0 ? warnings : null);
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the syntax root has no real declarations left after a
+    /// removal — i.e., everything that remains is namespace shells, using directives, or trivia.
+    /// </summary>
+    private static bool IsEffectivelyEmpty(SyntaxNode root)
+    {
+        // Strip all NamespaceDeclarationSyntax / FileScopedNamespaceDeclarationSyntax wrappers and
+        // check whether any non-namespace MemberDeclarationSyntax survived. A namespace counts as
+        // empty when none of its descendants are real members.
+        var realMembers = root.DescendantNodes()
+            .OfType<MemberDeclarationSyntax>()
+            .Where(m => m is not BaseNamespaceDeclarationSyntax);
+        return !realMembers.Any();
     }
 
     private static SyntaxNode? RemoveDeclaration(SyntaxNode root, SyntaxNode targetNode)

@@ -19,8 +19,17 @@ public sealed class CompletionService : ICompletionService
     }
 
     public async Task<CompletionResultDto> GetCompletionsAsync(
-        string workspaceId, string filePath, int line, int column, CancellationToken ct)
+        string workspaceId,
+        string filePath,
+        int line,
+        int column,
+        string? filterText,
+        int maxItems,
+        CancellationToken ct)
     {
+        if (maxItems <= 0)
+            throw new ArgumentException("maxItems must be greater than 0.", nameof(maxItems));
+
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null)
@@ -50,8 +59,23 @@ public sealed class CompletionService : ICompletionService
             return new CompletionResultDto([], false);
         }
 
-        var items = completions.ItemsList
-            .Take(100)
+        // UX-007: Apply the prefix filter BEFORE pagination so the limit refers to filtered
+        // results rather than the raw Roslyn output. The filter matches against the FilterText
+        // when present (the canonical Roslyn filter source) and falls back to DisplayText.
+        IEnumerable<Microsoft.CodeAnalysis.Completion.CompletionItem> source = completions.ItemsList;
+        if (!string.IsNullOrEmpty(filterText))
+        {
+            source = source.Where(item =>
+            {
+                var candidate = !string.IsNullOrEmpty(item.FilterText) ? item.FilterText : item.DisplayText;
+                return candidate.StartsWith(filterText, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+
+        var filteredList = source.ToList();
+        var pagedItems = filteredList.Take(maxItems).ToList();
+
+        var items = pagedItems
             .Select(item => new CompletionItemDto(
                 DisplayText: item.DisplayText,
                 FilterText: item.FilterText,
@@ -61,7 +85,7 @@ public sealed class CompletionService : ICompletionService
                 Tags: item.Tags.Length > 0 ? item.Tags.ToList() : null))
             .ToList();
 
-        return new CompletionResultDto(items, completions.ItemsList.Count > 100);
+        return new CompletionResultDto(items, filteredList.Count > items.Count);
     }
 
     private static string? BuildCompletionInlineDescription(CompletionItem item)

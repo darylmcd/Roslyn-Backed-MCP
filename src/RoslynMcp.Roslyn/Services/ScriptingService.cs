@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Threading;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using Microsoft.CodeAnalysis;
@@ -26,11 +27,42 @@ public sealed class ScriptingService : IScriptingService
     private static readonly int TimeoutSeconds =
         int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS"), out var t) ? t : 10;
 
+    private static readonly int HeartbeatIntervalMs =
+        int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_HEARTBEAT_MS"), out var hb) && hb > 0 ? hb : 2000;
+
+    private static readonly int StuckWarningSeconds =
+        int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_STUCK_WARNING_SECONDS"), out var sw) && sw > 0 ? sw : 5;
+
+    /// <summary>
+    /// Seconds after <see cref="TimeoutSeconds"/> before the watchdog first logs at Critical if evaluation is still running.
+    /// Roslyn may not honor <see cref="CancellationToken"/> during some compilation phases; this detects that class of failure.
+    /// </summary>
+    private static readonly int WatchdogGraceSeconds =
+        int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS"), out var wg) && wg >= 0 ? wg : 10;
+
+    /// <summary>Interval between repeated Critical logs while evaluation exceeds budget + grace.</summary>
+    private static readonly int WatchdogRepeatSeconds =
+        int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_WATCHDOG_REPEAT_SECONDS"), out var wr) && wr > 0 ? wr : 60;
+
     public ScriptingService(ILogger<ScriptingService> logger) => _logger = logger;
 
-    public async Task<ScriptEvaluationDto> EvaluateAsync(string code, string[]? imports, CancellationToken ct)
+    public async Task<ScriptEvaluationDto> EvaluateAsync(
+        string code,
+        string[]? imports,
+        CancellationToken ct,
+        Action<ScriptEvaluationProgress>? onProgress = null,
+        int? timeoutSecondsOverride = null)
     {
+        // UX-002: Honor a per-call timeout override when supplied; fall back to the env-configured
+        // default. Negative or zero values are treated as "use the default" so the caller cannot
+        // accidentally disable the cancellation budget.
+        var effectiveTimeoutSeconds = timeoutSecondsOverride is > 0
+            ? timeoutSecondsOverride.Value
+            : TimeoutSeconds;
+
         var sw = Stopwatch.StartNew();
+        var budget = TimeSpan.FromSeconds(effectiveTimeoutSeconds);
+        var heartbeatInterval = TimeSpan.FromMilliseconds(HeartbeatIntervalMs);
 
         var allImports = DefaultImports.Concat(imports ?? []).Distinct().ToArray();
 
@@ -42,11 +74,69 @@ public sealed class ScriptingService : IScriptingService
                 typeof(System.Text.RegularExpressions.Regex).Assembly)
             .WithEmitDebugInformation(false);
 
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(effectiveTimeoutSeconds));
+
+        using var heartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var heartbeatCount = 0;
+        var slowWarningEmitted = false;
+
+        Task? heartbeatTask = null;
+        if (onProgress is not null || _logger.IsEnabled(LogLevel.Information) || _logger.IsEnabled(LogLevel.Warning))
+        {
+            heartbeatTask = RunHeartbeatAsync(
+                sw,
+                budget,
+                heartbeatInterval,
+                heartbeatCts.Token,
+                p =>
+                {
+                    heartbeatCount = p.HeartbeatIndex;
+                    onProgress?.Invoke(p);
+                    if (p.HeartbeatIndex == 1)
+                    {
+                        _logger.LogInformation(
+                            "evaluate_csharp: Roslyn script evaluation in progress (budget {BudgetSeconds}s, heartbeat every {HeartbeatMs}ms)",
+                            effectiveTimeoutSeconds,
+                            HeartbeatIntervalMs);
+                    }
+
+                    if (!slowWarningEmitted && p.Elapsed.TotalSeconds >= StuckWarningSeconds)
+                    {
+                        slowWarningEmitted = true;
+                        _logger.LogWarning(
+                            "evaluate_csharp: still running after {ElapsedSeconds:F1}s — clients often show a static \"Evaluating C#\" step here; " +
+                            "large compile or synchronous script work may continue until timeout ({BudgetSeconds}s). " +
+                            "Tune ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS / ROSLYNMCP_SCRIPT_STUCK_WARNING_SECONDS if needed.",
+                            p.Elapsed.TotalSeconds,
+                            effectiveTimeoutSeconds);
+                    }
+                });
+        }
+
+        var watchdogCompleted = 0;
+        var firstWatchdogDueMs = Math.Max(0, (effectiveTimeoutSeconds + WatchdogGraceSeconds) * 1000);
+        Timer? watchdogTimer = new Timer(
+            _ =>
+            {
+                if (Volatile.Read(ref watchdogCompleted) != 0)
+                    return;
+
+                var elapsed = sw.Elapsed;
+                _logger.LogCritical(
+                    "evaluate_csharp WATCHDOG: still running after {ElapsedSeconds:F1}s (script budget {BudgetSeconds}s + grace {GraceSeconds}s). " +
+                    "Roslyn may not be honoring cancellation during compilation or execution; restart the MCP host if this repeats. " +
+                    "If the MCP stderr shows no evaluate_csharp lines for tens of minutes while the IDE shows \"Evaluating C#\", the stall is likely client-side (agent/orchestrator), not this tool completing slowly.",
+                    elapsed.TotalSeconds,
+                    effectiveTimeoutSeconds,
+                    WatchdogGraceSeconds);
+            },
+            state: null,
+            dueTime: TimeSpan.FromMilliseconds(firstWatchdogDueMs),
+            period: TimeSpan.FromSeconds(WatchdogRepeatSeconds));
+
         try
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(TimeoutSeconds));
-
             var result = await CSharpScript.EvaluateAsync<object?>(
                 code, options, cancellationToken: timeoutCts.Token).ConfigureAwait(false);
 
@@ -58,7 +148,8 @@ public sealed class ScriptingService : IScriptingService
                 Error: null,
                 CompilationErrors: null,
                 ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: TimeoutSeconds);
+                AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+                ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
         }
         catch (CompilationErrorException ex)
         {
@@ -88,7 +179,8 @@ public sealed class ScriptingService : IScriptingService
                 Error: ex.Message,
                 CompilationErrors: compilationErrors,
                 ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: TimeoutSeconds);
+                AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+                ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -97,10 +189,11 @@ public sealed class ScriptingService : IScriptingService
                 Success: false,
                 ResultType: null,
                 ResultValue: null,
-                Error: $"Script execution timed out after {TimeoutSeconds} seconds. Set ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS to increase.",
+                Error: $"Script execution timed out after {effectiveTimeoutSeconds} seconds. Pass timeoutSeconds on the call (UX-002) or set ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS to raise the default.",
                 CompilationErrors: null,
                 ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: TimeoutSeconds);
+                AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+                ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -112,7 +205,54 @@ public sealed class ScriptingService : IScriptingService
                 Error: $"Runtime error: {ex.GetType().Name}: {ex.Message}",
                 CompilationErrors: null,
                 ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: TimeoutSeconds);
+                AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+                ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
+        }
+        finally
+        {
+            Volatile.Write(ref watchdogCompleted, 1);
+            try
+            {
+                watchdogTimer?.Dispose();
+            }
+            catch
+            {
+                // Best-effort
+            }
+
+            try
+            {
+                heartbeatCts.Cancel();
+                if (heartbeatTask is not null)
+                    await heartbeatTask.ConfigureAwait(false);
+            }
+            catch
+            {
+                // Heartbeat cancellation is best-effort
+            }
+        }
+    }
+
+    private async Task RunHeartbeatAsync(
+        Stopwatch sw,
+        TimeSpan budget,
+        TimeSpan interval,
+        CancellationToken ct,
+        Action<ScriptEvaluationProgress> emit)
+    {
+        var index = 0;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(interval, ct).ConfigureAwait(false);
+                index++;
+                emit(new ScriptEvaluationProgress(sw.Elapsed, budget, index));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when evaluation completes or outer token fires
         }
     }
 

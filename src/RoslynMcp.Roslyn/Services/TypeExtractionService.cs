@@ -76,6 +76,21 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         var warnings = CollectExtractTypeDanglingReferenceWarnings(semanticModel, typeSymbol, membersToExtract, ct);
 
+        // BUG-005 (#2/#3): Refuse to generate code that the warnings prove will not compile.
+        // The previous behavior emitted the warnings but still produced a preview that referenced
+        // members staying on the source type, leading to broken builds when applied. Halting here
+        // forces the caller to either include the missing members in the extraction or to redesign
+        // the split before attempting it.
+        if (warnings.Count > 0)
+        {
+            var summary = string.Join("; ", warnings);
+            throw new InvalidOperationException(
+                $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the selected members reference state " +
+                $"that would remain on the source type, so the generated code would not compile. " +
+                $"Either include the referenced members in the extraction or perform a manual redesign first. " +
+                $"Details: {summary}");
+        }
+
         // Determine target file path
         var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
         var resolvedTargetPath = newFilePath ?? Path.Combine(sourceDir, $"{newTypeName}.cs");
@@ -139,7 +154,34 @@ public sealed class TypeExtractionService : ITypeExtractionService
             var paramName = char.ToLowerInvariant(newTypeName[0]) + newTypeName[1..];
             var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
                 .WithType(SyntaxFactory.ParseTypeName(newTypeName));
-            var updatedCtor = existingCtor.AddParameterListParameters(newParam);
+
+            // BUG-005 (#1): Insert the new required parameter BEFORE any optional parameters.
+            // AddParameterListParameters appends to the end, which produced CS1737
+            // ("required after optional") whenever the existing constructor ended with an
+            // ILogger? logger = null or similar default. Find the first optional parameter and
+            // splice the new one in just before it; if there are no optionals, append.
+            var existingParams = existingCtor.ParameterList.Parameters;
+            var firstOptionalIndex = -1;
+            for (int i = 0; i < existingParams.Count; i++)
+            {
+                if (existingParams[i].Default is not null)
+                {
+                    firstOptionalIndex = i;
+                    break;
+                }
+            }
+
+            ConstructorDeclarationSyntax updatedCtor;
+            if (firstOptionalIndex < 0)
+            {
+                updatedCtor = existingCtor.AddParameterListParameters(newParam);
+            }
+            else
+            {
+                var newParameterList = existingCtor.ParameterList.WithParameters(
+                    existingParams.Insert(firstOptionalIndex, newParam));
+                updatedCtor = existingCtor.WithParameterList(newParameterList);
+            }
 
             // Add assignment to constructor body
             var assignment = SyntaxFactory.ExpressionStatement(

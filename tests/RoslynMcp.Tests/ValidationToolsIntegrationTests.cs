@@ -26,6 +26,8 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             TestDiscoveryService,
             WorkspaceId,
             projectName: null,
+            nameFilter: null,
+            offset: 0,
             limit: 50,
             CancellationToken.None);
         using var doc = JsonDocument.Parse(json);

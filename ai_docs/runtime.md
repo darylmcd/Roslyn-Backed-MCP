@@ -70,6 +70,23 @@ For tool selection and workflows, see `domains/tool-usage-guide.md`.
 
 - **Parallel test hosts / MSBuild file locks:** If `dotnet test` or `dotnet build` fails with errors copying the test assembly (`RoslynMcp.Tests.dll`) because `testhost.exe` still holds the file, close other test runners or IDE test sessions that loaded that output, then run a full `dotnet test RoslynMcp.slnx --nologo` again from a clean state.
 
+## Server surface (live counts)
+
+The current stable/experimental tool, resource, and prompt counts are owned by the live `server_info` tool and the `roslyn://server/catalog` resource — query those for an authoritative answer rather than relying on this document. As of the most recent surface audit (`ai_docs/audit-reports/20260406_networkdocumentation_mcp-server-audit.md`):
+
+- Stable tools: 56 (+ ongoing experimental promotions)
+- Experimental tools: 67
+- Stable resources: 7 (3 static + 4 workspace-scoped templates)
+- Experimental prompts: 16
+
+Resource discovery for clients that only call `resources/list`: workspace-scoped resources are exposed as URI templates (`roslyn://workspace/{workspaceId}/...`). Read `roslyn://server/resource-templates` for the canonical list of supported URI patterns.
+
+## Workspace session lifetime
+
+- Sessions are kept entirely in-memory by the stdio host. There is **no inactivity TTL** and no idle expiration — `KeyNotFoundException` from a workspace-scoped tool means the host process restarted, `workspace_close` was called, or the concurrent-workspace cap forced an eviction (`ROSLYNMCP_MAX_WORKSPACES`, default 8).
+- Recovery is to call `workspace_load` again with the same path; the call is idempotent for repeated loads.
+- Some MCP clients (Cursor, Claude Code) may relaunch the stdio server transparently between conversations, which is the most common cause of "lost" sessions.
+
 ## Session And Mutation Safety
 
 - Maintain and pass `workspaceId` for workspace-scoped operations.

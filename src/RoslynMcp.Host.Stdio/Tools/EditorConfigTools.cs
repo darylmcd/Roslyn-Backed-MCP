@@ -26,7 +26,7 @@ public static class EditorConfigTools
     }
 
     [McpServerTool(Name = "set_editorconfig_option", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
-     Description("Set or update a key/value in the .editorconfig that applies to the given source file (under the [*.{cs,csx,cake}] section). Creates a new .editorconfig next to the file if none exists in the directory chain.")]
+     Description("⚠ DIRECT-APPLY, NOT REVERTIBLE (UX-006): Set or update a key/value in the .editorconfig that applies to the given source file (under the [*.{cs,csx,cake}] section). Creates a new .editorconfig next to the file if none exists in the directory chain. Unlike Roslyn preview/apply tools (rename_*, extract_*, code_fix_*, organize_usings_*), this tool writes to disk immediately and is NOT registered with revert_last_apply — undo is git-only. Read the existing settings first with get_editorconfig_options so you can confirm the change you intend to make before calling this tool.")]
     public static Task<string> SetEditorConfigOption(
         IWorkspaceExecutionGate gate,
         IEditorConfigService editorConfigService,
