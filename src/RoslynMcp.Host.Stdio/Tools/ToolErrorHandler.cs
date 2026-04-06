@@ -22,7 +22,9 @@ internal static class ToolErrorHandler
         [typeof(InvalidOperationException)] = (ex, _) => ex.Message.Contains("Rate limit")
             ? new("RateLimited", ex.Message)
             : new("InvalidOperation",
-                $"Invalid operation: {ex.Message}. The workspace may need to be reloaded (workspace_reload) if the state is stale."),
+                ShouldSuggestReloadAfterInvalidOperation(ex.Message)
+                    ? $"Invalid operation: {ex.Message}. The workspace may need to be reloaded (workspace_reload) if the state is stale."
+                    : $"Invalid operation: {ex.Message}."),
     };
 
     /// <summary>
@@ -71,6 +73,21 @@ internal static class ToolErrorHandler
         return new("InternalError",
             $"Internal error in {toolName}: {detail}. " +
             "If this persists, try reloading the workspace (workspace_reload).");
+    }
+
+    /// <summary>
+    /// Only suggest workspace_reload when the message plausibly indicates stale or missing workspace state.
+    /// </summary>
+    private static bool ShouldSuggestReloadAfterInvalidOperation(string message)
+    {
+        if (string.IsNullOrEmpty(message)) return false;
+        return message.Contains("stale", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("not found in workspace", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Document not found", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("workspace changed", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("workspace version", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("outside the workspace", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("preview token", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetInnerExceptionChain(Exception ex)

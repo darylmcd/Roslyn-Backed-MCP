@@ -58,7 +58,7 @@ public sealed class ScriptingService : IScriptingService
                 Error: null,
                 CompilationErrors: null,
                 ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: null);
+                AppliedScriptTimeoutSeconds: TimeoutSeconds);
         }
         catch (CompilationErrorException ex)
         {
@@ -88,7 +88,7 @@ public sealed class ScriptingService : IScriptingService
                 Error: ex.Message,
                 CompilationErrors: compilationErrors,
                 ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: null);
+                AppliedScriptTimeoutSeconds: TimeoutSeconds);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -112,7 +112,7 @@ public sealed class ScriptingService : IScriptingService
                 Error: $"Runtime error: {ex.GetType().Name}: {ex.Message}",
                 CompilationErrors: null,
                 ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: null);
+                AppliedScriptTimeoutSeconds: TimeoutSeconds);
         }
     }
 

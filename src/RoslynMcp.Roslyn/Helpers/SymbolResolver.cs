@@ -54,7 +54,15 @@ public static class SymbolResolver
         var syntaxTree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
         if (syntaxTree is null) return null;
 
-        var position = syntaxTree.GetText(ct).Lines[line - 1].Start + (column - 1);
+        var text = syntaxTree.GetText(ct);
+        if (line < 1 || line > text.Lines.Count)
+        {
+            throw new ArgumentException(
+                $"Line {line} is out of range. The file has {text.Lines.Count} line(s).",
+                nameof(line));
+        }
+
+        var position = text.Lines[line - 1].Start + (column - 1);
         var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
 
         // Try the token at the exact position first, then also try FindToken with

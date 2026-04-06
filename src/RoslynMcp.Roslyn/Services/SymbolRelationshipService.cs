@@ -174,6 +174,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         }
 
         var callees = new List<LocationDto>();
+        var seenCalleeKeys = new HashSet<string>(StringComparer.Ordinal);
         if (symbol is IMethodSymbol methodSymbol)
         {
             foreach (var location in methodSymbol.Locations.Where(l => l.IsInSource))
@@ -197,6 +198,12 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
                     if (invokedSymbol is not null)
                     {
                         var invokedLoc = invokedSymbol.Locations.FirstOrDefault(l => l.IsInSource) ?? invocation.GetLocation();
+                        var lineSpan = invokedLoc.GetLineSpan();
+                        var dedupeKey =
+                            $"{invokedSymbol.ToDisplayString()}|{lineSpan.Path}|{lineSpan.StartLinePosition.Line}|{lineSpan.StartLinePosition.Character}";
+                        if (!seenCalleeKeys.Add(dedupeKey))
+                            continue;
+
                         callees.Add(SymbolMapper.ToLocationDto(invokedLoc, invokedSymbol));
                     }
                 }

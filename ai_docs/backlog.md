@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-06T03:00:00Z
+**updated_at:** 2026-04-06T18:15:00Z
 
 ## Agent contract
 

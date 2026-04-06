@@ -18,7 +18,7 @@ public sealed record ScaffoldTestDto(
     string TestProjectName,
     string TargetTypeName,
     string? TargetMethodName = null,
-    string TestFramework = "mstest");
+    string TestFramework = "auto");
 
 /// <summary>
 /// Represents a request to remove dead code symbols.

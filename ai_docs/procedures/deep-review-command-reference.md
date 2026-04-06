@@ -91,6 +91,43 @@ Use `-Force` only when you intentionally want to replace the canonical raw copy.
 | External repo raw files need to be staged first | `import-deep-review-audit.ps1` → `new-deep-review-rollup.ps1` |
 | External repo batch, common path | `new-deep-review-batch.ps1` |
 
+## Helper/background test run pattern
+
+Use this when the MCP client supports subagents, background agents, or another background execution facility. The exact helper command is client-specific, so structure the run like this rather than trying to standardize one shell wrapper here.
+
+1. In the **primary agent**, keep workspace setup, repo-shape checks, and test selection (`test_discover`, `test_related_files`, `test_related`). Decide exactly which heavy validations need to run.
+2. Send only the heavy validation step to the helper/background worker: filtered `test_run`, full-suite `test_run`, `test_coverage`, or an equivalent fallback shell test command if the client cannot run the MCP test tools directly.
+3. Point the helper/background worker at the **same repo, branch/worktree, and disposable checkout** as the primary agent. Do not delegate preview/apply chains or other workspace-version-sensitive mutation steps.
+4. Require the helper/background worker to return a **summary only**: tool or command used, filter or scope, pass/fail counts, failing test names, approximate duration, coverage headline, and any anomalies or client/tool errors.
+5. Back in the **primary agent**, convert that summary into PASS / FLAG / FAIL judgments, update the coverage ledger, and record any helper/runtime constraints in the raw audit report.
+
+### Example operator prompt
+
+Use or adapt this when your client can launch a subagent or background worker:
+
+```text
+Run a helper/background validation pass in the same repo, branch/worktree, and disposable checkout as the primary deep-review audit.
+
+Constraints:
+- Do not change code, run preview/apply mutations, or alter workspace state beyond the requested test/build execution.
+- Do not paste raw logs unless execution fails so badly that a short summary is impossible.
+
+Tasks:
+1. Run `test_run` with filter `<related-test-filter>`.
+2. Run full-suite `test_run` with no filter.
+3. Run `test_coverage`.
+4. If the MCP test tools are unavailable in this client, use the approved fallback shell test command for the repo instead.
+
+Return summary only:
+- tool or command used for each step
+- filter or scope
+- pass/fail/skipped counts
+- failing test names
+- approximate duration per step
+- coverage headline
+- anomalies, timeouts, or client/tool errors
+```
+
 ## Related
 
 - `deep-review-program.md` — full workflow, repo matrix, and backlog intake rules

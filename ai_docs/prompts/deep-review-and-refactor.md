@@ -38,6 +38,14 @@ You are a senior .NET architect. Your **primary mission** is to **audit the Rosl
 6. Record repo-shape constraints up front: single vs multi-project, tests present, analyzers present, source generators present, DI usage present, `.editorconfig` present, Central Package Management / `Directory.Packages.props`, multi-targeting, and network/package-restore constraints.
 7. Do not invent applicability. If the repo has no tests, no DI, no source generators, no multi-targeting, or only one project, record that explicitly and treat the corresponding steps as `skipped-repo-shape`.
 
+### Execution strategy and context conservation
+
+1. If the client/runtime supports **subagents**, **background agents**, or another background execution facility, you MAY and generally SHOULD use them for long-running or high-output validation work to conserve the primary agent's context window.
+2. Prioritize delegation for full-solution build/test/coverage work and other log-heavy operations, especially Phase 8 `test_run` with no filter, `test_coverage`, and any equivalent shell-based validation. Keep short, low-output probes inline unless delegation meaningfully reduces noise.
+3. Delegation changes execution ownership, not audit ownership. The primary agent still chooses the scenario, preserves workspace/mode context, evaluates PASS / FLAG / FAIL, updates the coverage ledger, and writes the final report.
+4. Require helpers to return a concise structured summary instead of raw logs: tool or command used, scope or filter, pass/fail counts, failing test names, approximate duration, coverage headline, and any anomalies or client/tool errors.
+5. Do not delegate preview/apply chains or workspace-version-sensitive mutation sequences unless the helper can operate against the same disposable checkout and workspace state safely. If helper/background execution is unavailable, run the steps directly and continue the audit.
+
 Work through each phase below **in order** (including the Phase 10 -> Phase 9 sequence), then complete the **Final surface closure** step before you write the report. After each tool call, evaluate whether the result is correct and complete. If a tool returns an error, empty results when data was expected, or results that seem wrong, record it for the MCP Server Audit Report.
 
 ### Cross-cutting audit principles (apply to every phase)
@@ -259,6 +267,8 @@ For each method with high complexity:
 ---
 
 ### Phase 8: Build & Test Validation
+
+**Execution note:** If the client supports subagents or background agents/tasks, prefer keeping test selection (`test_discover`, `test_related_files`, `test_related`) in the primary agent, then delegate the heavy runs (`test_run` with filters, `test_run` for the full suite, `test_coverage`, and any fallback shell test command). Bring back only the structured summary needed for the audit report and coverage ledger.
 
 1. Call `workspace_reload` to refresh the workspace after all refactoring file changes.
 2. Call `build_workspace` to do a full MSBuild build after all refactoring.

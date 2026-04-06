@@ -11,7 +11,7 @@ public static class WorkspaceResources
 {
 
     [McpServerResource(UriTemplate = "roslyn://workspaces", Name = "workspaces", MimeType = "application/json")]
-    [Description("List all currently loaded workspace sessions with their status")]
+    [Description("List all currently loaded workspace sessions with their status. Workspace-scoped resources (status, projects, diagnostics, source_file) use URI templates — if your MCP client only shows static resources from resources/list, read roslyn://server/resource-templates to discover those templates.")]
     public static string GetWorkspaces(IWorkspaceManager workspace)
     {
         try

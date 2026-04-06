@@ -33,7 +33,7 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
         {
             var doc = solution.GetDocument(location.SourceTree!);
             var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct).ConfigureAwait(false) : null;
-            results.Add(SymbolMapper.ToLocationDto(location, symbol, preview));
+            results.Add(SymbolMapper.ToLocationDto(location, symbol, preview, "Definition"));
         }
 
         return results;
@@ -72,7 +72,7 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
         {
             var doc = solution.GetDocument(location.SourceTree!);
             var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct).ConfigureAwait(false) : null;
-            results.Add(SymbolMapper.ToLocationDto(location, typeSymbol, preview));
+            results.Add(SymbolMapper.ToLocationDto(location, typeSymbol, preview, "Definition"));
         }
 
         return results;
@@ -91,6 +91,13 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
         if (syntaxTree is null) return null;
 
         var text = await syntaxTree.GetTextAsync(ct).ConfigureAwait(false);
+        if (line < 1 || line > text.Lines.Count)
+        {
+            throw new ArgumentException(
+                $"Line {line} is out of range. The file has {text.Lines.Count} line(s).",
+                nameof(line));
+        }
+
         var position = text.Lines[line - 1].Start + (column - 1);
         var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
         var node = root.FindToken(position).Parent;

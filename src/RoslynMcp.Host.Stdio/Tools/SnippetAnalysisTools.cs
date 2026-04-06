@@ -9,7 +9,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class SnippetAnalysisTools
 {
     [McpServerTool(Name = "analyze_snippet", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Analyze a C# code snippet for compilation errors and declared symbols without loading a full solution. Uses an ephemeral workspace for quick validation of code fragments, diffs, or pasted code.")]
+     Description("Analyze a C# code snippet for compilation errors and declared symbols without loading a full solution. Uses an ephemeral workspace for quick validation of code fragments, diffs, or pasted code. For kind 'statements', code is wrapped in a void method — use evaluate_csharp for top-level scripts that return values.")]
     public static Task<string> AnalyzeSnippet(
         ISnippetAnalysisService snippetAnalysisService,
         [Description("The C# code to analyze")] string code,

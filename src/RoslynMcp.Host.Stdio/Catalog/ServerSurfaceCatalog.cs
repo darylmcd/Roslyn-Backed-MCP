@@ -91,7 +91,7 @@ public static class ServerSurfaceCatalog
         Tool("apply_project_mutation", "project-mutation", "experimental", false, true, "Apply a previously previewed project file mutation."),
         Tool("scaffold_type_preview", "scaffolding", "experimental", true, false, "Preview scaffolding a new type file in a project."),
         Tool("scaffold_type_apply", "scaffolding", "experimental", false, true, "Apply a previously previewed type scaffolding operation."),
-        Tool("scaffold_test_preview", "scaffolding", "experimental", true, false, "Preview scaffolding a new MSTest file for a target type."),
+        Tool("scaffold_test_preview", "scaffolding", "experimental", true, false, "Preview scaffolding a new test file (MSTest, xUnit, or NUnit; auto-detect or specify testFramework)."),
         Tool("scaffold_test_apply", "scaffolding", "experimental", false, true, "Apply a previously previewed test scaffolding operation."),
         Tool("remove_dead_code_preview", "dead-code", "experimental", true, false, "Preview removing unused symbols by handle."),
         Tool("remove_dead_code_apply", "dead-code", "experimental", false, true, "Apply a previously previewed dead-code removal operation."),

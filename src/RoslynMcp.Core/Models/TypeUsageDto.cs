@@ -17,6 +17,7 @@ public enum TypeUsageClassification
     ObjectCreation,
     Constructor,
     DIRegistration,
+    StaticMemberAccess,
     Other
 }
 

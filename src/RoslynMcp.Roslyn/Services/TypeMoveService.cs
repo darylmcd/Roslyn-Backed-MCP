@@ -73,7 +73,7 @@ public sealed class TypeMoveService : ITypeMoveService
             var newNs = SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
                 .WithNamespaceKeyword(fileScopedNs.NamespaceKeyword)
                 .WithSemicolonToken(fileScopedNs.SemicolonToken)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedTypeDecl.WithLeadingTrivia(SyntaxFactory.ElasticLineFeed)));
+                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(movedTypeDecl));
 
             newFileRoot = SyntaxFactory.CompilationUnit()
                 .WithUsings(usings)
@@ -107,8 +107,9 @@ public sealed class TypeMoveService : ITypeMoveService
 
         // Add the new document
         var targetFileName = Path.GetFileName(resolvedTargetPath);
+        var newFileText = newFileRoot.ToFullString().TrimStart('\r', '\n');
         var newDocument = newSolution.GetProject(sourceDocument.Project.Id)!
-            .AddDocument(targetFileName, newFileRoot.ToFullString(), filePath: resolvedTargetPath);
+            .AddDocument(targetFileName, newFileText, filePath: resolvedTargetPath);
         newSolution = newDocument.Project.Solution;
 
         // Remove unnecessary usings from the new file by checking for CS8019 diagnostics
