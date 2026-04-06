@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -12,6 +13,17 @@ public sealed class DiagnosticService : IDiagnosticService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<DiagnosticService> _logger;
+
+    /// <summary>
+    /// Cache of full per-project diagnostic lists, keyed by workspaceId. The detail-lookup
+    /// path (<see cref="GetDiagnosticDetailsAsync"/>) is almost always called immediately
+    /// after <see cref="GetDiagnosticsAsync"/>, so we keep the warm Diagnostic objects
+    /// around to skip recompiling and re-running analyzers. Invalidates on workspace
+    /// version bump.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, DiagnosticCacheEntry> _diagnosticCache = new();
+
+    private sealed record DiagnosticCacheEntry(int Version, IReadOnlyList<Diagnostic> Diagnostics);
 
     public DiagnosticService(IWorkspaceManager workspace, ILogger<DiagnosticService> logger)
     {
@@ -40,6 +52,7 @@ public sealed class DiagnosticService : IDiagnosticService
         {
             var compiler = new List<DiagnosticDto>();
             var analyzer = new List<DiagnosticDto>();
+            var raw = new List<Diagnostic>();
 
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null)
@@ -47,11 +60,12 @@ public sealed class DiagnosticService : IDiagnosticService
                 compiler.Add(new DiagnosticDto(
                     "WORKSPACE001", $"Could not get compilation for project '{project.Name}'",
                     "Error", "Workspace", project.FilePath, null, null, null, null));
-                return (compiler, analyzer);
+                return (compiler, analyzer, raw);
             }
 
             foreach (var diagnostic in compilation.GetDiagnostics(ct))
             {
+                raw.Add(diagnostic);
                 if (MatchesFilter(diagnostic, fileFilter, minSeverity))
                 {
                     compiler.Add(SymbolMapper.ToDiagnosticDto(diagnostic));
@@ -75,6 +89,7 @@ public sealed class DiagnosticService : IDiagnosticService
                 var projectAnalyzerDiagnostics = await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync(ct).ConfigureAwait(false);
                 foreach (var diagnostic in projectAnalyzerDiagnostics)
                 {
+                    raw.Add(diagnostic);
                     if (MatchesFilter(diagnostic, fileFilter, minSeverity))
                     {
                         analyzer.Add(SymbolMapper.ToDiagnosticDto(diagnostic));
@@ -82,12 +97,22 @@ public sealed class DiagnosticService : IDiagnosticService
                 }
             }
 
-            return (compiler, analyzer);
+            return (compiler, analyzer, raw);
         });
 
         var results = await Task.WhenAll(projectTasks).ConfigureAwait(false);
         var compilerDiagnostics = results.SelectMany(r => r.compiler).ToList();
         var analyzerDiagnostics = results.SelectMany(r => r.analyzer).ToList();
+
+        // Cache the unfiltered Diagnostic objects so the detail-lookup path (which is
+        // almost always called next) can skip recompilation. Only cache when this call
+        // covered the whole solution; partial filters would produce a misleading cache.
+        if (projectFilter is null && fileFilter is null)
+        {
+            var version = _workspace.GetCurrentVersion(workspaceId);
+            var allRaw = results.SelectMany(r => r.raw).ToList();
+            _diagnosticCache[workspaceId] = new DiagnosticCacheEntry(version, allRaw);
+        }
 
         var compilerErrors = compilerDiagnostics.Count(d => d.Severity == "Error");
         var analyzerErrors = analyzerDiagnostics.Count(d => d.Severity == "Error");
@@ -161,19 +186,32 @@ public sealed class DiagnosticService : IDiagnosticService
         int column,
         CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution(workspaceId);
-        var diagnostic = await FindDiagnosticAsync(solution, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
-        if (diagnostic is null)
+        // Fast path: most callers invoke this immediately after GetDiagnosticsAsync, so the
+        // exact Diagnostic they want is already in the cache. Skip the recompile entirely.
+        var version = _workspace.GetCurrentVersion(workspaceId);
+        if (_diagnosticCache.TryGetValue(workspaceId, out var cached) && cached.Version == version)
         {
-            return null;
+            foreach (var d in cached.Diagnostics)
+            {
+                if (DiagnosticMatchesLocation(d, diagnosticId, filePath, line, column))
+                {
+                    return BuildDetailsDto(d);
+                }
+            }
         }
 
-        return new DiagnosticDetailsDto(
-            Diagnostic: SymbolMapper.ToDiagnosticDto(diagnostic),
-            Description: BuildDiagnosticDescription(diagnostic),
-            HelpLinkUri: BuildHelpLink(diagnostic.Id),
-            SupportedFixes: GetSupportedFixes(diagnostic.Id));
+        // Cold path: cache miss (no prior list call, or workspace was reloaded). Re-run
+        // the search across projects in parallel and warm the cache for next time.
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var diagnostic = await FindDiagnosticAsync(workspaceId, solution, version, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
+        return diagnostic is null ? null : BuildDetailsDto(diagnostic);
     }
+
+    private static DiagnosticDetailsDto BuildDetailsDto(Diagnostic diagnostic) => new(
+        Diagnostic: SymbolMapper.ToDiagnosticDto(diagnostic),
+        Description: BuildDiagnosticDescription(diagnostic),
+        HelpLinkUri: BuildHelpLink(diagnostic.Id),
+        SupportedFixes: GetSupportedFixes(diagnostic.Id));
 
     private static string BuildDiagnosticDescription(Diagnostic diagnostic)
     {
@@ -301,49 +339,60 @@ public sealed class DiagnosticService : IDiagnosticService
                lineSpan.StartLinePosition.Character + 1 == column;
     }
 
-    private static async Task<Diagnostic?> FindDiagnosticAsync(
+    private async Task<Diagnostic?> FindDiagnosticAsync(
+        string workspaceId,
         Solution solution,
+        int version,
         string diagnosticId,
         string filePath,
         int line,
         int column,
         CancellationToken ct)
     {
-        foreach (var project in solution.Projects)
+        // Walk all projects in parallel — each one is an independent compilation+analyzer
+        // pass, and there's no reason to serialize them. Roslyn's compilation and analyzer
+        // APIs are thread-safe over immutable Project/Compilation objects.
+        var projectTasks = solution.Projects.Select(project => CollectProjectDiagnosticsAsync(project, ct));
+        var perProjectResults = await Task.WhenAll(projectTasks).ConfigureAwait(false);
+
+        // Warm the cache so a follow-up details lookup (or a project_diagnostics call that
+        // hits an unrelated diagnostic on the same workspace) hits the fast path.
+        var allDiagnostics = perProjectResults.SelectMany(d => d).ToList();
+        _diagnosticCache[workspaceId] = new DiagnosticCacheEntry(version, allDiagnostics);
+
+        foreach (var diagnostic in allDiagnostics)
         {
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
-            if (compilation is null)
-                continue;
-
-            foreach (var diagnostic in compilation.GetDiagnostics(ct))
-            {
-                if (DiagnosticMatchesLocation(diagnostic, diagnosticId, filePath, line, column))
-                    return diagnostic;
-            }
-
-            var analyzers = project.AnalyzerReferences
-                .SelectMany(reference => reference.GetAnalyzers(project.Language))
-                .ToImmutableArray();
-            if (analyzers.Length == 0)
-                continue;
-
-            var compilationWithAnalyzers = compilation.WithAnalyzers(
-                analyzers,
-                new CompilationWithAnalyzersOptions(
-                    options: project.AnalyzerOptions,
-                    onAnalyzerException: null,
-                    concurrentAnalysis: true,
-                    logAnalyzerExecutionTime: false,
-                    reportSuppressedDiagnostics: false));
-
-            var analyzerDiagnostics = await compilationWithAnalyzers.GetAllDiagnosticsAsync(ct).ConfigureAwait(false);
-            foreach (var diagnostic in analyzerDiagnostics)
-            {
-                if (DiagnosticMatchesLocation(diagnostic, diagnosticId, filePath, line, column))
-                    return diagnostic;
-            }
+            if (DiagnosticMatchesLocation(diagnostic, diagnosticId, filePath, line, column))
+                return diagnostic;
         }
 
         return null;
+    }
+
+    private static async Task<IReadOnlyList<Diagnostic>> CollectProjectDiagnosticsAsync(Project project, CancellationToken ct)
+    {
+        var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+        if (compilation is null) return [];
+
+        var collected = new List<Diagnostic>();
+        collected.AddRange(compilation.GetDiagnostics(ct));
+
+        var analyzers = project.AnalyzerReferences
+            .SelectMany(reference => reference.GetAnalyzers(project.Language))
+            .ToImmutableArray();
+        if (analyzers.Length == 0) return collected;
+
+        var compilationWithAnalyzers = compilation.WithAnalyzers(
+            analyzers,
+            new CompilationWithAnalyzersOptions(
+                options: project.AnalyzerOptions,
+                onAnalyzerException: null,
+                concurrentAnalysis: true,
+                logAnalyzerExecutionTime: false,
+                reportSuppressedDiagnostics: false));
+
+        var analyzerDiagnostics = await compilationWithAnalyzers.GetAllDiagnosticsAsync(ct).ConfigureAwait(false);
+        collected.AddRange(analyzerDiagnostics);
+        return collected;
     }
 }
