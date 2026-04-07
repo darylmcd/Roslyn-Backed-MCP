@@ -50,9 +50,16 @@ internal static class SymbolLocatorFactory
             if (!hasFilePath) missing.Add("filePath");
             if (!line.HasValue) missing.Add("line");
             if (!column.HasValue) missing.Add("column");
+            // FLAG-3A: explicitly disambiguate against the LSP-style "character" name. Some
+            // clients borrow LSP Position field names; this server uses "column" everywhere
+            // and ignores the LSP-style "character" parameter, so a missing column with an
+            // otherwise-complete request often means the caller passed "character" instead.
+            var hint = missing.Contains("column")
+                ? " Note: this server uses parameter name 'column' (1-based), not the LSP-style 'character'. " +
+                  "If your client passed 'character', rename it to 'column'. The column must point at the symbol identifier token (e.g., the interface name), not the start of the line."
+                : " Note: column must point at the symbol identifier token (e.g., the interface name), not the start of the line.";
             throw new ArgumentException(
-                $"Source location is incomplete. Provide all of filePath, line, and column. Missing: {string.Join(", ", missing)}. " +
-                "Note: column must point at the symbol identifier token (e.g., the interface name), not the start of the line.");
+                $"Source location is incomplete. Provide all of filePath, line, and column. Missing: {string.Join(", ", missing)}." + hint);
         }
 
         // BUG-002: Tailor the error message to the strategies that this caller actually exposes.

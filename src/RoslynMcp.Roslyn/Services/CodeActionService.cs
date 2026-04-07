@@ -39,18 +39,49 @@ public sealed class CodeActionService : ICodeActionService
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
         var span = CreateSpan(text, startLine, startColumn, endLine, endColumn);
 
-        var actions = new List<CodeAction>();
+        // FLAG-6C: track which actions came from a code-fix provider vs a refactoring provider so
+        // the Kind column reflects the real category instead of always returning "Unknown".
+        var fixActions = new List<CodeAction>();
+        var refactoringActions = new List<CodeAction>();
 
-        await CollectCodeFixesAsync(document, span, actions, ct).ConfigureAwait(false);
-        await CollectRefactoringsAsync(document, span, actions, ct).ConfigureAwait(false);
+        await CollectCodeFixesAsync(document, span, fixActions, ct).ConfigureAwait(false);
+        await CollectRefactoringsAsync(document, span, refactoringActions, ct).ConfigureAwait(false);
 
-        return actions
-            .Select((action, index) => new CodeActionDto(
-                Index: index,
+        var dtos = new List<CodeActionDto>(fixActions.Count + refactoringActions.Count);
+        var index = 0;
+        foreach (var action in fixActions)
+        {
+            dtos.Add(new CodeActionDto(
+                Index: index++,
                 Title: action.Title,
-                Kind: action.Tags.Length > 0 ? action.Tags[0] : "Unknown",
-                EquivalenceKey: action.EquivalenceKey))
-            .ToList();
+                Kind: ResolveKind(action, defaultKind: "CodeFix"),
+                EquivalenceKey: action.EquivalenceKey));
+        }
+        foreach (var action in refactoringActions)
+        {
+            dtos.Add(new CodeActionDto(
+                Index: index++,
+                Title: action.Title,
+                Kind: ResolveKind(action, defaultKind: "Refactoring"),
+                EquivalenceKey: action.EquivalenceKey));
+        }
+        return dtos;
+    }
+
+    /// <summary>
+    /// FLAG-6C: Pick a meaningful Kind for a code action. Roslyn's <c>CodeAction.Tags</c> may
+    /// contain semantic tags like "Refactoring" / "Style" / "Quality"; if not, fall back to the
+    /// caller-provided default (CodeFix vs Refactoring derived from which provider produced it).
+    /// </summary>
+    private static string ResolveKind(CodeAction action, string defaultKind)
+    {
+        if (action.Tags.IsDefault || action.Tags.Length == 0) return defaultKind;
+        // Prefer well-known semantic tags first.
+        foreach (var preferred in new[] { "Refactoring", "CodeFix", "Style", "Quality" })
+        {
+            if (action.Tags.Contains(preferred)) return preferred;
+        }
+        return action.Tags[0];
     }
 
     public async Task<RefactoringPreviewDto> PreviewCodeActionAsync(

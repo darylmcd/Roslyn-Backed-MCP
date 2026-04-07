@@ -280,6 +280,14 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
             {
                 implType = "factory";
             }
+            else if (args.Count > 0)
+            {
+                // FLAG-11B: When the argument is an instance (not a lambda factory), the
+                // implementation is whatever runtime object the caller passes. Try to resolve
+                // the argument's compile-time type via the semantic model and report that;
+                // fall back to "instance" rather than mirroring the service type.
+                implType = ResolveInstanceArgumentType(args[0].Expression, semanticModel, ct) ?? "instance";
+            }
             else
             {
                 implType = serviceType;
@@ -330,17 +338,66 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
             args[0].Expression is TypeOfExpressionSyntax t0 &&
             args[1].Expression is TypeOfExpressionSyntax t1)
         {
-            var st = semanticModel.GetTypeInfo(t0, ct).Type;
-            var it = semanticModel.GetTypeInfo(t1, ct).Type;
+            // FLAG-11A: typeof(X) is itself a System.Type expression — the SEMANTIC type of the
+            // typeof expression is always System.Type. The actual type being captured lives in
+            // the inner TypeSyntax (t0.Type). Resolve the inner type via GetTypeInfo on .Type
+            // (or GetSymbolInfo for unbound generics) so we capture e.g. ILogger<>, not Type.
+            var st = ResolveTypeOfArgument(t0, semanticModel, ct);
+            var it = ResolveTypeOfArgument(t1, semanticModel, ct);
             if (st is not null && it is not null)
             {
-                serviceType = st.ToDisplayString();
-                implType = it.ToDisplayString();
+                serviceType = st;
+                implType = it;
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// FLAG-11A: Resolve the inner type of a <c>typeof(X)</c> expression. Handles bound and
+    /// unbound generic types (e.g., <c>typeof(ILogger&lt;&gt;)</c>).
+    /// </summary>
+    private static string? ResolveTypeOfArgument(TypeOfExpressionSyntax typeOf, SemanticModel semanticModel, CancellationToken ct)
+    {
+        // First try regular type info on the inner type syntax.
+        var typeInfo = semanticModel.GetTypeInfo(typeOf.Type, ct);
+        if (typeInfo.Type is not null && typeInfo.Type is not IErrorTypeSymbol)
+        {
+            return typeInfo.Type.ToDisplayString();
+        }
+
+        // For unbound generics like typeof(ILogger<>) the type info path may not resolve
+        // through GetTypeInfo on the type syntax — fall back to GetSymbolInfo.
+        var symbolInfo = semanticModel.GetSymbolInfo(typeOf.Type, ct);
+        if (symbolInfo.Symbol is INamedTypeSymbol named)
+        {
+            return named.IsUnboundGenericType ? named.ToDisplayString() : named.ToDisplayString();
+        }
+
+        // Final fallback: return the syntactic text so the caller at least sees what was passed.
+        return typeOf.Type.ToString();
+    }
+
+    /// <summary>
+    /// FLAG-11B: For a one-generic AddSingleton/AddScoped/AddTransient overload that takes a
+    /// pre-constructed instance, resolve the compile-time type of the argument expression so
+    /// the implementation column is meaningful instead of being a copy of the service type.
+    /// </summary>
+    private static string? ResolveInstanceArgumentType(ExpressionSyntax expression, SemanticModel semanticModel, CancellationToken ct)
+    {
+        var typeInfo = semanticModel.GetTypeInfo(expression, ct);
+        if (typeInfo.Type is not null && typeInfo.Type is not IErrorTypeSymbol)
+        {
+            return typeInfo.Type.ToDisplayString();
+        }
+        var converted = typeInfo.ConvertedType;
+        if (converted is not null && converted is not IErrorTypeSymbol)
+        {
+            return converted.ToDisplayString();
+        }
+        return null;
     }
 
     private static IReadOnlyList<CircularDependencyDto> DetectCycles(IReadOnlyList<NamespaceEdgeDto> edges)

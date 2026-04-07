@@ -74,4 +74,57 @@ public sealed class UndoIntegrationTests : IsolatedWorkspaceTestBase
         var entry = UndoService.GetLastOperation("nonexistent-workspace");
         Assert.IsNull(entry);
     }
+
+    [TestMethod]
+    public async Task FLAG_9A_Revert_Last_Apply_Updates_Disk_File()
+    {
+        // FLAG-9A: previously, revert_last_apply returned reverted=true while the on-disk file
+        // still contained the post-rename text. Pin the new behavior: after revert, the on-disk
+        // source file must contain the pre-rename identifier.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+
+        var locator = SymbolLocator.ByMetadataName("SampleLib.IAnimal");
+        var iAnimalDocPath = await FindDocumentPathAsync(workspaceId, "IAnimal");
+        Assert.IsNotNull(iAnimalDocPath, "IAnimal source file path should resolve");
+
+        var beforeRenameDisk = await File.ReadAllTextAsync(iAnimalDocPath, CancellationToken.None);
+        StringAssert.Contains(beforeRenameDisk, "IAnimal");
+
+        var preview = await RefactoringService.PreviewRenameAsync(workspaceId, locator, "ICreature", CancellationToken.None);
+        Assert.IsNotNull(preview.PreviewToken);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        // After apply, disk must show the rename.
+        var afterRenameDisk = await File.ReadAllTextAsync(iAnimalDocPath, CancellationToken.None);
+        StringAssert.Contains(afterRenameDisk, "ICreature");
+
+        // Now revert and verify disk has the pre-rename text again.
+        var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
+        Assert.IsTrue(reverted, "Revert should report success");
+
+        var afterRevertDisk = await File.ReadAllTextAsync(iAnimalDocPath, CancellationToken.None);
+        StringAssert.Contains(afterRevertDisk, "IAnimal");
+        Assert.IsFalse(afterRevertDisk.Contains("ICreature", StringComparison.Ordinal),
+            "FLAG-9A regression: revert_last_apply must restore disk content, not just workspace state");
+    }
+
+    private static async Task<string?> FindDocumentPathAsync(string workspaceId, string typeName)
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(workspaceId);
+        foreach (var project in solution.Projects)
+        {
+            foreach (var doc in project.Documents)
+            {
+                if (doc.FilePath is null) continue;
+                var text = await doc.GetTextAsync().ConfigureAwait(false);
+                if (text.ToString().Contains(typeName, StringComparison.Ordinal))
+                {
+                    return doc.FilePath;
+                }
+            }
+        }
+        return null;
+    }
 }

@@ -123,16 +123,23 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ?? throw new InvalidOperationException("Target project must have a file path on disk.");
 
         var isCrossProject = targetProject.Id != sourceDocument.Project.Id;
+
+        // FLAG-10C: Resolve the interface subdirectory FIRST so the namespace can match the
+        // file's actual on-disk location. Previously the namespace was derived purely from the
+        // project default, producing files at e.g. src/Foo.Domain/Interfaces/IBar.cs that declared
+        // namespace Foo.Domain — inconsistent with sibling files like ISnapshotStore that live in
+        // Foo.Domain.Interfaces.
+        var interfaceDirectory = isCrossProject
+            ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
+            : targetProjectDirectory;
+
         var namespaceName = isCrossProject
-            ? DeriveTargetNamespace(targetProject)
+            ? DeriveTargetNamespaceForPath(targetProject, targetProjectDirectory, interfaceDirectory)
             : GetContainingNamespace(typeSymbol);
 
         await DetectExistingTypeConflictAsync(solution, namespaceName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
         var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject);
-        var interfaceDirectory = isCrossProject
-            ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
-            : targetProjectDirectory;
         var interfaceFilePath = Path.Combine(interfaceDirectory, resolvedInterfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
@@ -292,6 +299,37 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return targetProject.DefaultNamespace
             ?? targetProject.AssemblyName
             ?? targetProject.Name;
+    }
+
+    /// <summary>
+    /// FLAG-10C: Derive a namespace that matches the file's on-disk location relative to the
+    /// project root. If the interface is being placed in a subdirectory like <c>Interfaces/</c>,
+    /// the returned namespace becomes <c>{base}.Interfaces</c> so the new file is consistent with
+    /// the conventional sibling files in the same folder.
+    /// </summary>
+    private static string DeriveTargetNamespaceForPath(Project targetProject, string projectDirectory, string interfaceDirectory)
+    {
+        var baseNamespace = DeriveTargetNamespace(targetProject);
+        if (string.IsNullOrWhiteSpace(projectDirectory) ||
+            string.IsNullOrWhiteSpace(interfaceDirectory) ||
+            string.Equals(projectDirectory, interfaceDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            return baseNamespace;
+        }
+
+        var relative = Path.GetRelativePath(projectDirectory, interfaceDirectory);
+        if (string.IsNullOrWhiteSpace(relative) || relative == ".")
+        {
+            return baseNamespace;
+        }
+
+        var segments = relative
+            .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(segment => !string.Equals(segment, ".", StringComparison.Ordinal))
+            .Select(segment => segment.Replace(' ', '_'))
+            .ToArray();
+
+        return segments.Length == 0 ? baseNamespace : $"{baseNamespace}.{string.Join('.', segments)}";
     }
 
     private static async Task DetectExistingTypeConflictAsync(

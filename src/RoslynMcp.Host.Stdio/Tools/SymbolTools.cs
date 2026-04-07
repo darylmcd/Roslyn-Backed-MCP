@@ -311,8 +311,19 @@ public static class SymbolTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
-                var results = await mutationAnalysisService.FindPropertyWritesAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(new { count = results.Count, writes = results }, JsonDefaults.Indented);
+                var (results, resolvedKind) = await mutationAnalysisService.FindPropertyWritesWithMetadataAsync(workspaceId, locator, c);
+                // FLAG-3C: when the position resolves to a field or other non-property symbol,
+                // return a structured disambiguation hint instead of a silent empty array.
+                string? hint = null;
+                if (results.Count == 0 && resolvedKind is not null && resolvedKind != "Property")
+                {
+                    hint = $"Position resolved to a {resolvedKind}, not a property. Use find_references for fields and other symbol kinds.";
+                }
+                else if (results.Count == 0 && resolvedKind is null)
+                {
+                    hint = "No symbol resolved at the given position. Verify the column points at the symbol identifier.";
+                }
+                return JsonSerializer.Serialize(new { count = results.Count, resolvedSymbolKind = resolvedKind, hint, writes = results }, JsonDefaults.Indented);
             }, ct));
     }
 

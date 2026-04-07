@@ -26,7 +26,15 @@ public sealed class ReferenceService : IReferenceService
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();
-        return await ReferenceLocationMaterializer.MaterializeDtosAsync(refLocations, ct).ConfigureAwait(false);
+        var dtos = await ReferenceLocationMaterializer.MaterializeDtosAsync(refLocations, ct).ConfigureAwait(false);
+        // FLAG-8b-A: stable sort by (FilePath, StartLine, StartColumn) so parallel callers get
+        // identical ordering. Roslyn's symbol-enumeration walker may otherwise produce different
+        // orderings across concurrent invocations of the same query.
+        return dtos
+            .OrderBy(dto => dto.FilePath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(dto => dto.StartLine)
+            .ThenBy(dto => dto.StartColumn)
+            .ToList();
     }
 
     public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)

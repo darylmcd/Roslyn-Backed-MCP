@@ -103,6 +103,44 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task FLAG_13B_Set_Project_Property_Preview_Emits_MultiLine_PropertyGroup()
+    {
+        // FLAG-13B regression: previously the diff added "<PropertyGroup><LangVersion>latest</LangVersion></PropertyGroup>"
+        // on a single line. The fix uses XmlWriter with indentation, so the diff must show the
+        // PropertyGroup elements on separate lines.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewSetProjectPropertyAsync(
+            workspace.WorkspaceId,
+            new SetProjectPropertyDto("SampleLib", "LangVersion", "preview"),
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview);
+        var diff = preview.Changes.First().UnifiedDiff;
+        Assert.IsFalse(diff.Contains("<PropertyGroup><LangVersion>", StringComparison.Ordinal),
+            $"FLAG-13B regression: PropertyGroup must not be single-line. Diff:\n{diff}");
+    }
+
+    [TestMethod]
+    public async Task FLAG_13A_Add_Package_Reference_Preview_Emits_MultiLine_ItemGroup()
+    {
+        // FLAG-13A regression: previously the diff added "</ItemGroup><ItemGroup>" on a single
+        // line. The fix uses XmlWriter with indentation, so the diff must keep ItemGroup tags
+        // on separate lines.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+            workspace.WorkspaceId,
+            new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview);
+        var diff = preview.Changes.First().UnifiedDiff;
+        Assert.IsFalse(diff.Contains("</ItemGroup><ItemGroup>", StringComparison.Ordinal),
+            $"FLAG-13A regression: ItemGroup tags must not be concatenated. Diff:\n{diff}");
+    }
+
+    [TestMethod]
     public async Task Add_And_Remove_Target_Framework_Preview_And_Apply_Updates_Isolated_Project_File()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);

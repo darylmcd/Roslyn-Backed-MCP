@@ -160,5 +160,12 @@ static ScriptingServiceOptions BindScriptingServiceOptions()
         opts = opts with { WatchdogGraceSeconds = wg };
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_WATCHDOG_REPEAT_SECONDS"), out var wr) && wr > 0)
         opts = opts with { WatchdogRepeatSeconds = wr };
+    // FLAG-5C: bound concurrent script evaluations so leaked infinite loops cannot accumulate.
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_MAX_CONCURRENT"), out var mc) && mc > 0)
+        opts = opts with { MaxConcurrentEvaluations = mc };
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS"), out var sl) && sl > 0)
+        opts = opts with { ConcurrencySlotAcquireTimeoutSeconds = sl };
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_MAX_ABANDONED"), out var ma) && ma > 0)
+        opts = opts with { MaxAbandonedEvaluations = ma };
     return opts;
 }
