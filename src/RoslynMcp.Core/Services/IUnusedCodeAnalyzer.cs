@@ -9,12 +9,6 @@ public interface IUnusedCodeAnalyzer
 {
     Task<IReadOnlyList<UnusedSymbolDto>> FindUnusedSymbolsAsync(
         string workspaceId,
-        string? projectFilter,
-        bool includePublic,
-        int limit,
-        bool excludeEnums,
-        bool excludeRecordProperties,
-        bool excludeTestProjects,
-        bool excludeTests,
+        UnusedSymbolsAnalysisOptions options,
         CancellationToken ct);
 }

@@ -3,7 +3,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// <summary>
 /// Configuration options for <c>WorkspaceManager</c> session limits.
 /// </summary>
-public sealed class WorkspaceManagerOptions
+public sealed record WorkspaceManagerOptions
 {
     /// <summary>
     /// Gets the maximum number of workspace sessions that may be open concurrently.

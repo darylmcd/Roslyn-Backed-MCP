@@ -28,7 +28,18 @@ public static class AdvancedAnalysisTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
-                    workspaceId, project, includePublic, limit, excludeEnums, excludeRecordProperties, excludeTestProjects, excludeTests, c);
+                    workspaceId,
+                    new UnusedSymbolsAnalysisOptions
+                    {
+                        ProjectFilter = project,
+                        IncludePublic = includePublic,
+                        Limit = limit,
+                        ExcludeEnums = excludeEnums,
+                        ExcludeRecordProperties = excludeRecordProperties,
+                        ExcludeTestProjects = excludeTestProjects,
+                        ExcludeTests = excludeTests
+                    },
+                    c);
                 return JsonSerializer.Serialize(new { count = results.Count, unusedSymbols = results }, JsonDefaults.Indented);
             }, ct));
     }

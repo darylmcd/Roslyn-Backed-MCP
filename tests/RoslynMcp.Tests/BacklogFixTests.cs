@@ -183,9 +183,9 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     {
         var workspaceId = await LoadSampleSolutionAsync();
         var unused = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
-            workspaceId, "SampleLib", includePublic: true, limit: 200,
-            excludeEnums: false, excludeRecordProperties: false,
-            excludeTestProjects: false, excludeTests: false, CancellationToken.None);
+            workspaceId,
+            new UnusedSymbolsAnalysisOptions { ProjectFilter = "SampleLib", IncludePublic = true, Limit = 200 },
+            CancellationToken.None);
 
         var enumMember = unused.FirstOrDefault(u => u.SymbolName == "NeverReferencedValue");
         Assert.IsNotNull(enumMember, "Expected unused public enum member in backlog sample.");

@@ -52,15 +52,17 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
 
     public async Task<IReadOnlyList<UnusedSymbolDto>> FindUnusedSymbolsAsync(
         string workspaceId,
-        string? projectFilter,
-        bool includePublic,
-        int limit,
-        bool excludeEnums,
-        bool excludeRecordProperties,
-        bool excludeTestProjects,
-        bool excludeTests,
+        UnusedSymbolsAnalysisOptions options,
         CancellationToken ct)
     {
+        var projectFilter = options.ProjectFilter;
+        var includePublic = options.IncludePublic;
+        var limit = options.Limit;
+        var excludeEnums = options.ExcludeEnums;
+        var excludeRecordProperties = options.ExcludeRecordProperties;
+        var excludeTestProjects = options.ExcludeTestProjects;
+        var excludeTests = options.ExcludeTests;
+
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<UnusedSymbolDto>();
         var processedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);

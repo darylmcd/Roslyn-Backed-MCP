@@ -209,7 +209,8 @@ internal sealed class TestServiceContainer
             SnippetAnalysisService = new SnippetAnalysisService(
                 NullLogger<SnippetAnalysisService>.Instance),
             ScriptingService = new ScriptingService(
-                NullLogger<ScriptingService>.Instance),
+                NullLogger<ScriptingService>.Instance,
+                new ScriptingServiceOptions()),
             EditorConfigService = new EditorConfigService(
                 workspaceManager,
                 NullLogger<EditorConfigService>.Instance)

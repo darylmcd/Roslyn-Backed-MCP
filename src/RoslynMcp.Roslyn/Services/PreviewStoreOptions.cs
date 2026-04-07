@@ -3,7 +3,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// <summary>
 /// Configuration options for preview store entry limits.
 /// </summary>
-public sealed class PreviewStoreOptions
+public sealed record PreviewStoreOptions
 {
     /// <summary>
     /// Gets the maximum number of preview entries allowed per store.

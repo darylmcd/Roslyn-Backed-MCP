@@ -25,6 +25,7 @@ builder.Services.AddSingleton(BindValidationServiceOptions());
 builder.Services.AddSingleton(BindPreviewStoreOptions());
 builder.Services.AddSingleton(BindExecutionGateOptions());
 builder.Services.AddSingleton(BindSecurityOptions());
+builder.Services.AddSingleton(BindScriptingServiceOptions());
 
 builder.Services.AddRoslynServices();
 builder.Services
@@ -67,9 +68,9 @@ static WorkspaceManagerOptions BindWorkspaceManagerOptions()
 {
     var opts = new WorkspaceManagerOptions();
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_MAX_WORKSPACES"), out var maxWs) && maxWs > 0)
-        opts = new WorkspaceManagerOptions { MaxConcurrentWorkspaces = maxWs, MaxSourceGeneratedDocuments = opts.MaxSourceGeneratedDocuments };
+        opts = opts with { MaxConcurrentWorkspaces = maxWs };
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_MAX_SOURCE_GENERATED_DOCS"), out var maxGen) && maxGen > 0)
-        opts = new WorkspaceManagerOptions { MaxConcurrentWorkspaces = opts.MaxConcurrentWorkspaces, MaxSourceGeneratedDocuments = maxGen };
+        opts = opts with { MaxSourceGeneratedDocuments = maxGen };
     return opts;
 }
 
@@ -96,9 +97,9 @@ static PreviewStoreOptions BindPreviewStoreOptions()
 {
     var opts = new PreviewStoreOptions();
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_MAX_ENTRIES"), out var max) && max > 0)
-        opts = new PreviewStoreOptions { MaxEntries = max, TtlMinutes = opts.TtlMinutes };
+        opts = opts with { MaxEntries = max };
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_TTL_MINUTES"), out var ttl) && ttl > 0)
-        opts = new PreviewStoreOptions { MaxEntries = opts.MaxEntries, TtlMinutes = ttl };
+        opts = opts with { TtlMinutes = ttl };
     return opts;
 }
 
@@ -131,4 +132,20 @@ static SecurityOptions BindSecurityOptions()
     if (bool.TryParse(raw, out var failOpen))
         return new SecurityOptions { PathValidationFailOpen = failOpen };
     return new SecurityOptions();
+}
+
+static ScriptingServiceOptions BindScriptingServiceOptions()
+{
+    var opts = new ScriptingServiceOptions();
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS"), out var t) && t > 0)
+        opts = opts with { TimeoutSeconds = t };
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_HEARTBEAT_MS"), out var hb) && hb > 0)
+        opts = opts with { HeartbeatIntervalMs = hb };
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_STUCK_WARNING_SECONDS"), out var sw) && sw > 0)
+        opts = opts with { StuckWarningSeconds = sw };
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS"), out var wg) && wg >= 0)
+        opts = opts with { WatchdogGraceSeconds = wg };
+    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_WATCHDOG_REPEAT_SECONDS"), out var wr) && wr > 0)
+        opts = opts with { WatchdogRepeatSeconds = wr };
+    return opts;
 }

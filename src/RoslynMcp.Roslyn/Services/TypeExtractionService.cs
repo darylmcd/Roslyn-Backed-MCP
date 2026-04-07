@@ -46,33 +46,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol
             ?? throw new InvalidOperationException($"Could not resolve type '{sourceTypeName}'.");
 
-        // Find the member declarations to extract
-        var memberNameSet = new HashSet<string>(memberNames, StringComparer.Ordinal);
-        var membersToExtract = new List<MemberDeclarationSyntax>();
-        var membersToKeep = new List<MemberDeclarationSyntax>();
-
-        foreach (var member in typeDecl.Members)
-        {
-            var memberName = GetMemberName(member);
-            if (memberName is not null && memberNameSet.Contains(memberName))
-            {
-                membersToExtract.Add(member);
-                memberNameSet.Remove(memberName);
-            }
-            else
-            {
-                membersToKeep.Add(member);
-            }
-        }
-
-        if (memberNameSet.Count > 0)
-        {
-            throw new InvalidOperationException(
-                $"Members not found in type '{sourceTypeName}': {string.Join(", ", memberNameSet)}");
-        }
-
-        if (membersToExtract.Count == 0)
-            throw new InvalidOperationException("No members matched for extraction.");
+        var (membersToExtract, membersToKeep) = PartitionMembers(typeDecl, memberNames, sourceTypeName);
 
         var warnings = CollectExtractTypeDanglingReferenceWarnings(semanticModel, typeSymbol, membersToExtract, ct);
 
@@ -97,110 +71,13 @@ public sealed class TypeExtractionService : ITypeExtractionService
         resolvedTargetPath = Path.GetFullPath(resolvedTargetPath);
 
         // Build the new type declaration with extracted members
-        // Strip accessibility modifiers from extracted members (make them public in the new type)
-        var extractedMembers = membersToExtract.Select(m => EnsurePublicAccessibility(m)).ToList();
+        var newFileRoot = BuildNewFileRoot(sourceRoot, typeDecl, membersToExtract, newTypeName);
 
-        TypeDeclarationSyntax newTypeDecl = SyntaxFactory.ClassDeclaration(newTypeName)
-            .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword), SyntaxFactory.Token(SyntaxKind.SealedKeyword)))
-            .WithMembers(SyntaxFactory.List(extractedMembers));
-
-        // Build new file
-        var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
-        CompilationUnitSyntax newFileRoot;
-
-        if (namespaceDecl is FileScopedNamespaceDeclarationSyntax fileScopedNs)
-        {
-            var newNs = SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl));
-            newFileRoot = SyntaxFactory.CompilationUnit()
-                .WithUsings(sourceRoot.Usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
-                .NormalizeWhitespace();
-        }
-        else if (namespaceDecl is NamespaceDeclarationSyntax blockNs)
-        {
-            var newNs = SyntaxFactory.NamespaceDeclaration(blockNs.Name)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl));
-            newFileRoot = SyntaxFactory.CompilationUnit()
-                .WithUsings(sourceRoot.Usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
-                .NormalizeWhitespace();
-        }
-        else
-        {
-            newFileRoot = SyntaxFactory.CompilationUnit()
-                .WithUsings(sourceRoot.Usings)
-                .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl))
-                .NormalizeWhitespace();
-        }
-
-        // Remove extracted members from source type
-        var updatedTypeDecl = typeDecl.WithMembers(SyntaxFactory.List(membersToKeep));
-
-        // Add field and constructor parameter for the new type
+        // Remove extracted members from source type and inject field + ctor parameter
         var fieldName = "_" + char.ToLowerInvariant(newTypeName[0]) + newTypeName[1..];
-        var fieldDecl = SyntaxFactory.FieldDeclaration(
-            SyntaxFactory.VariableDeclaration(SyntaxFactory.ParseTypeName(newTypeName))
-                .WithVariables(SyntaxFactory.SingletonSeparatedList(
-                    SyntaxFactory.VariableDeclarator(fieldName))))
-            .WithModifiers(SyntaxFactory.TokenList(
-                SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
-                SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)));
-
-        // Find existing constructor and add parameter, or create one
-        var existingCtor = updatedTypeDecl.Members.OfType<ConstructorDeclarationSyntax>().FirstOrDefault();
-        if (existingCtor is not null)
-        {
-            var paramName = char.ToLowerInvariant(newTypeName[0]) + newTypeName[1..];
-            var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
-                .WithType(SyntaxFactory.ParseTypeName(newTypeName));
-
-            // BUG-005 (#1): Insert the new required parameter BEFORE any optional parameters.
-            // AddParameterListParameters appends to the end, which produced CS1737
-            // ("required after optional") whenever the existing constructor ended with an
-            // ILogger? logger = null or similar default. Find the first optional parameter and
-            // splice the new one in just before it; if there are no optionals, append.
-            var existingParams = existingCtor.ParameterList.Parameters;
-            var firstOptionalIndex = -1;
-            for (int i = 0; i < existingParams.Count; i++)
-            {
-                if (existingParams[i].Default is not null)
-                {
-                    firstOptionalIndex = i;
-                    break;
-                }
-            }
-
-            ConstructorDeclarationSyntax updatedCtor;
-            if (firstOptionalIndex < 0)
-            {
-                updatedCtor = existingCtor.AddParameterListParameters(newParam);
-            }
-            else
-            {
-                var newParameterList = existingCtor.ParameterList.WithParameters(
-                    existingParams.Insert(firstOptionalIndex, newParam));
-                updatedCtor = existingCtor.WithParameterList(newParameterList);
-            }
-
-            // Add assignment to constructor body
-            var assignment = SyntaxFactory.ExpressionStatement(
-                SyntaxFactory.AssignmentExpression(
-                    SyntaxKind.SimpleAssignmentExpression,
-                    SyntaxFactory.IdentifierName(fieldName),
-                    SyntaxFactory.IdentifierName(paramName)));
-
-            if (updatedCtor.Body is not null)
-            {
-                updatedCtor = updatedCtor.WithBody(updatedCtor.Body.AddStatements(assignment));
-            }
-
-            updatedTypeDecl = updatedTypeDecl.ReplaceNode(existingCtor, updatedCtor);
-        }
-
-        // Insert field at the top of the type
-        updatedTypeDecl = updatedTypeDecl.WithMembers(
-            updatedTypeDecl.Members.Insert(0, fieldDecl));
+        var updatedTypeDecl = InjectFieldAndCtorParameter(
+            typeDecl.WithMembers(SyntaxFactory.List(membersToKeep)),
+            newTypeName, fieldName);
 
         // Replace in source root (normalize so field/modifier tokens get proper spacing)
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDecl, updatedTypeDecl);
@@ -221,6 +98,113 @@ public sealed class TypeExtractionService : ITypeExtractionService
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
+    }
+
+    private static (List<MemberDeclarationSyntax> ToExtract, List<MemberDeclarationSyntax> ToKeep) PartitionMembers(
+        TypeDeclarationSyntax typeDecl, IReadOnlyList<string> memberNames, string sourceTypeName)
+    {
+        var memberNameSet = new HashSet<string>(memberNames, StringComparer.Ordinal);
+        var toExtract = new List<MemberDeclarationSyntax>();
+        var toKeep = new List<MemberDeclarationSyntax>();
+
+        foreach (var member in typeDecl.Members)
+        {
+            var name = GetMemberName(member);
+            if (name is not null && memberNameSet.Contains(name))
+            {
+                toExtract.Add(member);
+                memberNameSet.Remove(name);
+            }
+            else
+            {
+                toKeep.Add(member);
+            }
+        }
+
+        if (memberNameSet.Count > 0)
+            throw new InvalidOperationException(
+                $"Members not found in type '{sourceTypeName}': {string.Join(", ", memberNameSet)}");
+
+        if (toExtract.Count == 0)
+            throw new InvalidOperationException("No members matched for extraction.");
+
+        return (toExtract, toKeep);
+    }
+
+    private static CompilationUnitSyntax BuildNewFileRoot(
+        CompilationUnitSyntax sourceRoot,
+        TypeDeclarationSyntax typeDecl,
+        IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
+        string newTypeName)
+    {
+        var extractedMembers = membersToExtract.Select(EnsurePublicAccessibility).ToList();
+        TypeDeclarationSyntax newTypeDecl = SyntaxFactory.ClassDeclaration(newTypeName)
+            .WithModifiers(SyntaxFactory.TokenList(
+                SyntaxFactory.Token(SyntaxKind.PublicKeyword),
+                SyntaxFactory.Token(SyntaxKind.SealedKeyword)))
+            .WithMembers(SyntaxFactory.List(extractedMembers));
+
+        var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
+        MemberDeclarationSyntax topLevelMember = namespaceDecl switch
+        {
+            FileScopedNamespaceDeclarationSyntax fileScopedNs =>
+                SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
+                    .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl)),
+            NamespaceDeclarationSyntax blockNs =>
+                SyntaxFactory.NamespaceDeclaration(blockNs.Name)
+                    .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newTypeDecl)),
+            _ => newTypeDecl
+        };
+
+        return SyntaxFactory.CompilationUnit()
+            .WithUsings(sourceRoot.Usings)
+            .WithMembers(SyntaxFactory.SingletonList(topLevelMember))
+            .NormalizeWhitespace();
+    }
+
+    private static TypeDeclarationSyntax InjectFieldAndCtorParameter(
+        TypeDeclarationSyntax typeDecl, string newTypeName, string fieldName)
+    {
+        var fieldDecl = SyntaxFactory.FieldDeclaration(
+            SyntaxFactory.VariableDeclaration(SyntaxFactory.ParseTypeName(newTypeName))
+                .WithVariables(SyntaxFactory.SingletonSeparatedList(
+                    SyntaxFactory.VariableDeclarator(fieldName))))
+            .WithModifiers(SyntaxFactory.TokenList(
+                SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
+                SyntaxFactory.Token(SyntaxKind.ReadOnlyKeyword)));
+
+        var existingCtor = typeDecl.Members.OfType<ConstructorDeclarationSyntax>().FirstOrDefault();
+        if (existingCtor is not null)
+        {
+            var paramName = char.ToLowerInvariant(newTypeName[0]) + newTypeName[1..];
+            var newParam = SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
+                .WithType(SyntaxFactory.ParseTypeName(newTypeName));
+
+            // BUG-005 (#1): Insert the new required parameter BEFORE any optional parameters.
+            // AddParameterListParameters appends to the end, which produced CS1737
+            // ("required after optional") whenever the existing constructor ended with an
+            // ILogger? logger = null or similar default.
+            var existingParams = existingCtor.ParameterList.Parameters;
+            var firstOptionalIndex = existingParams.IndexOf(p => p.Default is not null);
+            ConstructorDeclarationSyntax updatedCtor = firstOptionalIndex < 0
+                ? existingCtor.AddParameterListParameters(newParam)
+                : existingCtor.WithParameterList(
+                    existingCtor.ParameterList.WithParameters(
+                        existingParams.Insert(firstOptionalIndex, newParam)));
+
+            var assignment = SyntaxFactory.ExpressionStatement(
+                SyntaxFactory.AssignmentExpression(
+                    SyntaxKind.SimpleAssignmentExpression,
+                    SyntaxFactory.IdentifierName(fieldName),
+                    SyntaxFactory.IdentifierName(paramName)));
+
+            if (updatedCtor.Body is not null)
+                updatedCtor = updatedCtor.WithBody(updatedCtor.Body.AddStatements(assignment));
+
+            typeDecl = typeDecl.ReplaceNode(existingCtor, updatedCtor);
+        }
+
+        return typeDecl.WithMembers(typeDecl.Members.Insert(0, fieldDecl));
     }
 
     /// <summary>
