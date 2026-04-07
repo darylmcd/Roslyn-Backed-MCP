@@ -104,6 +104,23 @@ public static class AnalysisTools
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var result = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, c);
+                if (result is null)
+                {
+                    // FLAG-1C: surface a structured "not found" envelope instead of raw JSON null,
+                    // so downstream agents get an actionable error message they can route on.
+                    var notFound = new
+                    {
+                        found = false,
+                        diagnosticId,
+                        filePath,
+                        line,
+                        column,
+                        message = $"No diagnostic with id '{diagnosticId}' was found at {filePath}:{line}:{column}. " +
+                                  "Run project_diagnostics first and copy an exact (id, line, column) tuple from a real entry; " +
+                                  "diagnostic positions must match the analyzer-reported location, not just the surrounding line.",
+                    };
+                    return JsonSerializer.Serialize(notFound, JsonDefaults.Indented);
+                }
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
@@ -169,7 +186,7 @@ public static class AnalysisTools
             }, ct));
     }
 
-    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects")]
+    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects. References and declarations are paginated server-side (FLAG-3D) — use referencesOffset/referencesLimit/declarationsLimit. Total counts and hasMore flags are always returned.")]
     public static Task<string> AnalyzeImpact(
         IWorkspaceExecutionGate gate,
         IMutationAnalysisService mutationAnalysisService,
@@ -178,12 +195,22 @@ public static class AnalysisTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Number of references to skip before returning results (default: 0)")] int referencesOffset = 0,
+        [Description("Maximum number of references to return per page (default: 100). Larger pages can blow MCP output budgets on broad-impact symbols.")] int referencesLimit = 100,
+        [Description("Maximum number of affected declarations to return (default: 100)")] int declarationsLimit = 100,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("impact_analysis", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await mutationAnalysisService.AnalyzeImpactAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), c);
+                ParameterValidation.ValidatePagination(referencesOffset, referencesLimit);
+                if (declarationsLimit < 1) throw new ArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
+                var paging = new ImpactAnalysisPaging(referencesOffset, referencesLimit, declarationsLimit);
+                var result = await mutationAnalysisService.AnalyzeImpactAsync(
+                    workspaceId,
+                    SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false),
+                    paging,
+                    c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));

@@ -25,7 +25,18 @@ public static class CodeActionTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await codeActionService.GetCodeActionsAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c);
-                return JsonSerializer.Serialize(new { count = results.Count, actions = results }, JsonDefaults.Indented);
+                // FLAG-6B: include a hint when the result list is empty so callers understand
+                // why nothing was returned (the position may not be on a fixable diagnostic and
+                // no refactoring providers may apply to a single-token caret).
+                string? hint = null;
+                if (results.Count == 0)
+                {
+                    hint = "No code fixes or refactorings were available at this position. " +
+                           "Code fixes only fire when a diagnostic is reported at the span; " +
+                           "refactorings typically need a wider selection (e.g. an expression or block) rather than a single caret position. " +
+                           "Try widening the range with endLine/endColumn or pointing at a diagnostic flagged by project_diagnostics.";
+                }
+                return JsonSerializer.Serialize(new { count = results.Count, hint, actions = results }, JsonDefaults.Indented);
             }, ct));
     }
 

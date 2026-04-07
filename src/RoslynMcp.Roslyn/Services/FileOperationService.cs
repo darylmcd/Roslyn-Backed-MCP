@@ -37,8 +37,15 @@ public sealed class FileOperationService : IFileOperationService
             throw new InvalidOperationException($"A file already exists at '{fullPath}'.");
         }
 
+        // FLAG-10B: Some MCP clients pass literal "\\n" / "\\r" / "\\t" sequences in the content
+        // parameter (JSON-escape passed as-is rather than decoded to actual control characters).
+        // The server transparently decodes these standard escape sequences so create_file_preview
+        // always emits the multi-line file the caller intended. If the content already contains
+        // real newlines, decoding is skipped to preserve any intentional literal backslash-n.
+        var normalizedContent = NormalizeContentEscapes(request.Content);
+
         var folders = GetFolders(project.FilePath, fullPath);
-        var document = project.AddDocument(Path.GetFileName(fullPath), SourceText.From(request.Content), folders, fullPath);
+        var document = project.AddDocument(Path.GetFileName(fullPath), SourceText.From(normalizedContent), folders, fullPath);
         var newSolution = document.Project.Solution;
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
@@ -47,6 +54,43 @@ public sealed class FileOperationService : IFileOperationService
 
         _logger.LogInformation("Prepared create-file preview for {FilePath} in workspace {WorkspaceId}", fullPath, workspaceId);
         return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    /// <summary>
+    /// FLAG-10B: Decode standard escape sequences (<c>\n</c>, <c>\r</c>, <c>\t</c>, <c>\\</c>) when
+    /// the content has none of the actual control characters they represent. This handles MCP
+    /// clients that pass JSON-quoted strings containing literal backslash-n sequences (the JSON
+    /// parser may have already passed them through unchanged) without losing intentional literal
+    /// backslash-n in legitimately decoded multi-line content.
+    /// </summary>
+    internal static string NormalizeContentEscapes(string content)
+    {
+        if (string.IsNullOrEmpty(content)) return content;
+        // If the content already contains real newlines, trust the caller and skip decoding.
+        if (content.Contains('\n') || content.Contains('\r')) return content;
+        // If there are no backslash-escape sequences either, nothing to do.
+        if (!content.Contains('\\')) return content;
+
+        var sb = new System.Text.StringBuilder(content.Length);
+        for (var i = 0; i < content.Length; i++)
+        {
+            var c = content[i];
+            if (c == '\\' && i + 1 < content.Length)
+            {
+                var next = content[i + 1];
+                switch (next)
+                {
+                    case 'n': sb.Append('\n'); i++; continue;
+                    case 'r': sb.Append('\r'); i++; continue;
+                    case 't': sb.Append('\t'); i++; continue;
+                    case '\\': sb.Append('\\'); i++; continue;
+                    case '"': sb.Append('"'); i++; continue;
+                    default: sb.Append(c); continue;
+                }
+            }
+            sb.Append(c);
+        }
+        return sb.ToString();
     }
 
     public async Task<RefactoringPreviewDto> PreviewDeleteFileAsync(string workspaceId, DeleteFileDto request, CancellationToken ct)

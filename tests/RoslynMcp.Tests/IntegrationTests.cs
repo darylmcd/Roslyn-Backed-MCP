@@ -262,10 +262,12 @@ public class IntegrationTests : SharedWorkspaceTestBase
         var result = await MutationAnalysisService.AnalyzeImpactAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalFile.FilePath!, 6, 12),
+            new ImpactAnalysisPaging(),
             CancellationToken.None);
         Assert.IsNotNull(result, "Impact analysis not found");
         Assert.IsTrue(result.DirectReferences.Count > 0, "Speak should have references");
         Assert.IsTrue(result.AffectedProjects.Count > 0, "Should affect at least one project");
+        Assert.IsTrue(result.TotalDirectReferences >= result.DirectReferences.Count);
     }
 
     [TestMethod]

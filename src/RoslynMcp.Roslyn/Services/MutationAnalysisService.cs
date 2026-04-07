@@ -21,7 +21,11 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         _logger = logger;
     }
 
-    public async Task<ImpactAnalysisDto?> AnalyzeImpactAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    public async Task<ImpactAnalysisDto?> AnalyzeImpactAsync(
+        string workspaceId,
+        SymbolLocator locator,
+        ImpactAnalysisPaging paging,
+        CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
@@ -54,22 +58,68 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                 affectedDeclarations.Add(d);
         }
 
-        var summary = $"Symbol '{symbol.Name}' has {directRefs.Count} reference(s) across {affectedProjects.Count} project(s), " +
-                       $"affecting {affectedDeclarations.Count} declaration(s).";
+        // FLAG-3D: Stable sort + paginate references and declarations server-side. The full
+        // counts are kept on the DTO so callers can detect when more pages are available.
+        var orderedRefs = directRefs
+            .OrderBy(r => r.FilePath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(r => r.StartLine)
+            .ThenBy(r => r.StartColumn)
+            .ToList();
+        var totalRefs = orderedRefs.Count;
+        var refOffset = Math.Max(0, paging.ReferencesOffset);
+        var refLimit = Math.Max(1, paging.ReferencesLimit);
+        var pagedRefs = orderedRefs.Skip(refOffset).Take(refLimit).ToList();
+        var hasMoreRefs = refOffset + pagedRefs.Count < totalRefs;
+
+        var orderedDecls = affectedDeclarations
+            .Select(s => SymbolMapper.ToDto(s, solution))
+            .OrderBy(d => d.FullyQualifiedName, StringComparer.Ordinal)
+            .ThenBy(d => d.Name, StringComparer.Ordinal)
+            .ToList();
+        var totalDecls = orderedDecls.Count;
+        var declLimit = Math.Max(1, paging.DeclarationsLimit);
+        var pagedDecls = orderedDecls.Take(declLimit).ToList();
+        var hasMoreDecls = pagedDecls.Count < totalDecls;
+
+        var summary = $"Symbol '{symbol.Name}' has {totalRefs} reference(s) across {affectedProjects.Count} project(s), " +
+                       $"affecting {totalDecls} declaration(s)." +
+                       (hasMoreRefs || hasMoreDecls
+                           ? $" Showing {pagedRefs.Count} reference(s) (offset {refOffset}, limit {refLimit}) " +
+                             $"and {pagedDecls.Count} declaration(s) (limit {declLimit}). Pass referencesOffset/referencesLimit/declarationsLimit to page."
+                           : string.Empty);
 
         return new ImpactAnalysisDto(
             SymbolMapper.ToDto(symbol, solution),
-            directRefs,
-            affectedDeclarations.Select(s => SymbolMapper.ToDto(s, solution)).ToList(),
-            affectedProjects.ToList(),
-            summary);
+            pagedRefs,
+            pagedDecls,
+            affectedProjects.OrderBy(p => p, StringComparer.Ordinal).ToList(),
+            summary,
+            TotalDirectReferences: totalRefs,
+            TotalAffectedDeclarations: totalDecls,
+            HasMoreReferences: hasMoreRefs,
+            HasMoreDeclarations: hasMoreDecls,
+            ReferencesOffset: refOffset,
+            ReferencesLimit: refLimit);
     }
 
     public async Task<IReadOnlyList<PropertyWriteDto>> FindPropertyWritesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
+        var (writes, _) = await FindPropertyWritesWithMetadataAsync(workspaceId, locator, ct).ConfigureAwait(false);
+        return writes;
+    }
+
+    /// <summary>
+    /// FLAG-3C: Same as <see cref="FindPropertyWritesAsync"/> but returns a tuple including
+    /// the resolved symbol kind so the tool layer can disambiguate "zero writes to property"
+    /// from "position resolved to a non-property symbol".
+    /// </summary>
+    public async Task<(IReadOnlyList<PropertyWriteDto> Writes, string? ResolvedSymbolKind)> FindPropertyWritesWithMetadataAsync(
+        string workspaceId, SymbolLocator locator, CancellationToken ct)
+    {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is not IPropertySymbol property) return [];
+        if (symbol is null) return ([], null);
+        if (symbol is not IPropertySymbol property) return ([], symbol.Kind.ToString());
 
         var references = await SymbolFinder.FindReferencesAsync(property, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();
@@ -102,7 +152,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                 IsObjectInitializer: isObjectInitializer));
         }
 
-        return results;
+        return (results, "Property");
     }
 
     public async Task<IReadOnlyList<TypeUsageDto>> FindTypeUsagesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
