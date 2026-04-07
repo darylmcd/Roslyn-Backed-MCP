@@ -20,7 +20,7 @@ public static class OperationTools
         [Description("Maximum depth of the operation tree to return (default: 3)")] int maxDepth = 3,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_operations", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await operationService.GetOperationsAsync(workspaceId, filePath, line, column, maxDepth, c);

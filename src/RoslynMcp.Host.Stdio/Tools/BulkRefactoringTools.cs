@@ -20,7 +20,7 @@ public static class BulkRefactoringTools
         [Description("Optional: scope filter — 'parameters', 'fields', or 'all' (default: 'all')")] string? scope = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("bulk_replace_type_preview", () =>
         {
             ParameterValidation.ValidateBulkReplaceScope(scope);
             return gate.RunReadAsync(workspaceId, async c =>
@@ -40,7 +40,7 @@ public static class BulkRefactoringTools
         [Description("The preview token returned by bulk_replace_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("bulk_replace_type_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

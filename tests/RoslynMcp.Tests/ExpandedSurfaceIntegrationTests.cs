@@ -205,6 +205,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             symbolHandle: null,
             metadataName: null,
             limit: 1,
+            preferDeclaringMember: true,
             CancellationToken.None);
 
         using var relationshipsDoc = JsonDocument.Parse(relationshipsJson);

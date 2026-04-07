@@ -62,7 +62,11 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 7. **Precondition discipline:** Distinguish server defects from repo/environment constraints. If a tool depends on tests, analyzers, network access, source generators, DI registrations, Central Package Management, or a multi-project graph, record whether the precondition is absent in the repo, blocked by the environment, or mishandled by the server. A clear, actionable dependency or not-applicable response is not the same as a server bug.
 8. **Lock mode tagging:** Every tool call must be associated with the **lock mode** the server was launched in for that call (`legacy-mutex` when `ROSLYNMCP_WORKSPACE_RW_LOCK` is unset/`false`, `rw-lock` when set to `true`). The flag is bound at process startup, so a single server session always has one mode. If the audit includes a dual-mode lane (Phase 8b), record the mode in every per-call evidence row so wall-clock and behavioral differences can be attributed correctly. `server_info` does **not** report this flag — track it via the launch config the operator used and confirm via the Phase 8b behavioral probes.
 9. **Debug log capture:** If the MCP client surfaces server-emitted `notifications/message` log entries (the `McpLoggingProvider` forwards .NET `ILogger` events with structured payloads, including a `correlationId`), keep that channel visible for the entire run and record any `Warning`/`Error`/`Critical` entry verbatim in the report. Record `Information` entries that mention workspace lifecycle (`workspace_load`, `workspace_close`, `workspace_reload`), gate acquisition, lock contention, rate-limit hits, or request timeouts. If the client cannot show these notifications, record that as a client limitation in the header rather than silently dropping the channel.
-10. **`evaluate_csharp`, client UI, and “tens of minutes” stalls:** The server applies a **script timeout** (default 10 seconds via `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS`; raise it only if you intentionally need longer scripts). A healthy `evaluate_csharp` call should **finish or fail within that budget** (plus small overhead). **Tens of minutes** frozen on a label such as **Evaluating C#**, with the agent **only moving after you send another message**, is **not** explained by normal Roslyn work on this tool — it usually means **(a)** the **IDE/agent** is stalled (model not finishing a turn, orchestrator not advancing, or a client bug), **(b)** **stdio/MCP transport** not delivering the next chunk, or **(c)** in rare cases Roslyn **not honoring cancellation** (the server logs `evaluate_csharp WATCHDOG` at **Critical** on a timer after budget + grace; if stderr is **silent** for the whole stall, suspect **(a)/(b)** first). **Diagnosis:** While stalled, check MCP **stderr** for `evaluate_csharp` lines — heartbeats every `ROSLYNMCP_SCRIPT_HEARTBEAT_MS`, then optional warnings, then **WATCHDOG** if the call exceeds budget + grace. **No server log activity at all** for tens of minutes strongly suggests the problem is **not** the Roslyn MCP host completing a long script. For short stalls (seconds to a minute), MCP `progress`, `ProgressHeartbeatCount` in the JSON result, and **Performance observations** still apply.
+10. **`evaluate_csharp` and "tens of minutes" stalls — neutral diagnosis only:** The server applies a **script timeout** (default 10 seconds via `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS`). A healthy `evaluate_csharp` call should finish or fail within that budget plus small overhead. If a call exceeds budget + watchdog grace **and you have not received any tool result**, treat the cause as **unknown** and stop. Do **not** speculate from inside the session about whether the stall is server-side, client-side, or transport-level — you cannot reliably distinguish these from inside the agent loop, and self-attributed diagnoses bias toward whatever exonerates the tools you're using. Persist findings to the draft, log the workspace state from the last known good tool call (`workspace_list`, last successful tool name and elapsed ms), and surface the stall in the report's **MCP server issues** section as `cause: unknown — operator must triage from MCP stderr + client logs`. Diagnostic attribution is for the operator, not the agent.
+11. **Always emit text per turn:** Every assistant turn must emit at least one line of natural-language text alongside any tool calls. A turn that issues only tool calls is a silent stall from the user's perspective even if internal work is in flight. Minimum acceptable text is one sentence describing what is being dispatched, e.g. *"Phase 5 dispatched: `analyze_snippet` ×3, `evaluate_csharp` ×1. Awaiting results."* Empty assistant turns are the visible symptom of context-pressure stalls and have to be treated as a contract violation, not an optimization.
+12. **Phases run sequentially — no cross-phase parallelism:** Within a phase, parallel tool calls are encouraged for independent reads. **Never start phase N+1 before phase N's findings are persisted to the draft file** (see Output Format § draft persistence). Cross-phase parallelism is the most common cause of context-pressure stalls — the model fans out, accumulates tool results from multiple phases at once, and then cannot serialize the report at the end. Sequential phasing lets each phase's results drain to the draft before the next phase begins.
+13. **Output budget per turn:** After cumulative tool-result size in a single turn exceeds **~250 KB**, persist current findings to the draft and start a new turn before issuing more tool calls. The usual culprits are `compile_check`, `project_diagnostics`, `list_analyzers`, `get_namespace_dependencies`, and `get_msbuild_properties` — each can return 50–700 KB on a real solution. Once a phase's tool results are recorded in the draft, drop them from active reasoning so they don't accumulate. Server v1.7+ exposes pagination (`offset`, `limit`, `severity`, `file`) on `compile_check` — use it.
+14. **Workspace heartbeat between phases:** Before starting a new phase, call `workspace_list`. If the workspace is missing (`count: 0`), the host process likely restarted between turns — reload from the recorded entrypoint, then resume from the last persisted phase in the draft. Do not silently continue against a dead workspace; the cascading `KeyNotFoundException` errors that follow waste a lot of agent context before the agent figures out what happened.
 
 ---
 
@@ -71,19 +75,7 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 1. Pick the entrypoint you will load: prefer a `.sln` or `.slnx`; fall back to a `.csproj` if needed.
 2. Record whether this session is running in the default `full-surface` mode or an explicitly opted-in `conservative` mode.
 3. If `full-surface`, record the disposable branch/worktree/clone path you will mutate and how audit-only changes will be cleaned up. If `conservative`, record why safe disposable isolation is unavailable.
-4. **Lock-mode capture via `evaluate_csharp` (source of truth, mandatory).** The server reads `ROSLYNMCP_WORKSPACE_RW_LOCK` once at process startup. The active value is **not** exposed by `server_info` or any other tool, but `evaluate_csharp` runs C# inside the running server process so it can read the server's own environment block — that read is the canonical source of truth. If the UI sits on “Evaluating C#” for **tens of minutes** until you nudge the chat, see cross-cutting principle **#10** — that pattern is usually **agent/client**, not this script completing. Call `evaluate_csharp` with this script and record the returned `LockMode` literally:
-
-   ```csharp
-   var raw = System.Environment.GetEnvironmentVariable("ROSLYNMCP_WORKSPACE_RW_LOCK");
-   var parsed = false;
-   var isOn = bool.TryParse(raw, out parsed) && parsed;
-   new {
-       Raw = raw ?? "(unset)",
-       LockMode = isOn ? "rw-lock" : "legacy-mutex"
-   }
-   ```
-
-   Record the result as the **canonical lock mode** in the report header. Do **not** infer the mode from launch-config inspection or behavioral fingerprints when this call works — it is the authoritative answer. If `evaluate_csharp` is itself unavailable (server defect, scripting disabled, sandbox restriction), fall back to launch-config inspection and record that the audit was forced to use a less reliable source.
+4. **Record the *expected* lock mode from the operator's launch config.** Read `ROSLYNMCP_WORKSPACE_RW_LOCK` from the launch environment (env var, shell variable, MCP client config) and record the expected mode (`rw-lock` when set to `true`/`1`, `legacy-mutex` otherwise). `server_info` does not surface this flag. The **canonical in-process read** via `evaluate_csharp` happens later in **Phase 8b** where the lock mode actually matters — front-loading it here is a footgun because `evaluate_csharp` is the very tool whose stall pattern principle **#10** warns about, and a stall here happens *before* the agent has any draft to recover from.
 5. **Debug log channel check.** Verify that the MCP client is actively surfacing server-emitted `notifications/message` log entries (the `McpLoggingProvider` forwards .NET `ILogger` events with a structured payload that includes `correlationId`, `level`, `logger`, `message`, `eventId`, `eventName`, and any exception). If the client cannot show those notifications, note the limitation in the header and proceed; the audit must still record any structured log entries it can see.
 6. Call `server_info` to record the server version, Roslyn version, catalog version, live stable/experimental counts, and `runtime` / `os` strings.
 7. Read `roslyn://server/catalog` to capture the authoritative live surface inventory.
@@ -93,15 +85,16 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 11. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
 12. Call `project_graph` to understand the project dependency structure.
 13. From the loaded repo, record the repo-shape constraints that affect later phases (projects, tests, analyzers, DI, source generators, Central Package Management, multi-targeting, network limits).
-14. Seed or update the coverage ledger so every live tool/resource/prompt already has a planned phase or a provisional skip reason.
-15. **Auto-pair detection (run-1 vs run-2 of a dual-mode pair).** Before doing any other work, glob `ai_docs/audit-reports/*_<repo-id>_<oppositeMode>_mcp-server-audit.md` (where `<oppositeMode>` is the mode opposite to the one captured in step 4). If you find a recent partial (within the last 24 hours) whose **Concurrency mode matrix** has `skipped-pending-second-run` markers, this prompt invocation is **run 2 of a dual-mode pair**. Record:
+14. **Restore precheck (mandatory for any C# repo).** Before running any Phase-1 semantic-analysis tool, run `dotnet restore <entrypoint>` from the host shell. Unrestored package references put `UnresolvedAnalyzerReference` entries into `Project.AnalyzerReferences`, which historically crashed `find_unused_symbols`, `type_hierarchy`, `callers_callees`, and `impact_analysis` (FLAG-A). Server v1.7+ filters that subtype out, but the precheck remains a precondition discipline — without restore, `compile_check` and `project_diagnostics` flood with hundreds of CS0246 errors from missing types in unrestored packages, which alone is enough to push a single-turn tool result over the output budget (cross-cutting principle #13). If the host has no shell access, mark this step `blocked` and continue — note in the report header that semantic-analysis tools may degrade or surface package-not-restored errors.
+15. Seed or update the coverage ledger so every live tool/resource/prompt already has a planned phase or a provisional skip reason.
+16. **Auto-pair detection (run-1 vs run-2 of a dual-mode pair).** Before doing any other work, glob `ai_docs/audit-reports/*_<repo-id>_<oppositeMode>_mcp-server-audit.md` (where `<oppositeMode>` is the mode opposite to the one captured in step 4). If you find a recent partial (within the last 24 hours) whose **Concurrency mode matrix** has `skipped-pending-second-run` markers, this prompt invocation is **run 2 of a dual-mode pair**. Record:
     - The path of the matched run-1 partial (will be reused in Phase 8b.6).
     - The fact that this run is the "second half" (so the agent fills Session B columns when it reaches Phase 8b).
     - If multiple partials match, pick the most recent one and note the others as `superseded` in the report header.
 
     If no matching partial exists, this prompt invocation is **run 1** (or a single-mode lane). The audit file produced at the end will be saved with the lock mode embedded in the filename (`<timestamp>_<repo-id>_<lockMode>_mcp-server-audit.md`); the agent does this automatically based on step 4's result. No operator-supplied filename is needed.
 
-**MCP audit checkpoint:** Did `evaluate_csharp` return a clean `LockMode` value, and does it match what you would expect from the operator's launch config (if known)? Did `server_info` and `roslyn://server/catalog` agree on live counts and tiers? Did `workspace_load` succeed on the chosen entrypoint? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Did you explicitly record the disposable isolation path / conservative rationale, the repo shape, the **lock mode from `evaluate_csharp`**, the **debug log channel availability**, the **auto-pair detection result** (run 1 / run 2 / single-mode), and an initial coverage ledger with no silent omissions? If every candidate entrypoint failed to load, did you mark workspace-scoped rows `blocked` and continue only with workspace-independent families?
+**MCP audit checkpoint:** Did `server_info` and `roslyn://server/catalog` agree on live counts and tiers? Did `workspace_load` succeed on the chosen entrypoint? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Did `dotnet restore` complete cleanly (or did you mark step 14 `blocked` with a reason)? Did you explicitly record the disposable isolation path / conservative rationale, the repo shape, the **expected lock mode from launch config**, the **debug log channel availability**, the **auto-pair detection result** (run 1 / run 2 / single-mode), and an initial coverage ledger with no silent omissions? If every candidate entrypoint failed to load, did you mark workspace-scoped rows `blocked` and continue only with workspace-independent families?
 
 ---
 
@@ -109,8 +102,8 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 
 1. Call `project_diagnostics` (no filters) to get all compiler errors and warnings across the solution.
 2. Call `project_diagnostics` again with at least one non-default selector exposed by the live schema (project, file, severity, and/or offset/limit pagination). Verify scoped results and paging boundaries are correct.
-3. Call `compile_check` (no filters) to get in-memory compilation diagnostics. Compare the results with `project_diagnostics` — they should be consistent but may differ in count or detail.
-4. Call `compile_check` again with `emitValidation=true`. Compare diagnostics and wall-clock time with the default call.
+3. Call `compile_check` (default `offset=0, limit=50`) to get a paginated slice of in-memory compilation diagnostics. Compare the page contents with `project_diagnostics` for the same scope — they should be consistent but may differ in count or detail. Use `severity=Error` and `file=<path>` selectors to probe non-default parameter paths (cross-cutting principle #6).
+4. Call `compile_check` again with `emitValidation=true` (same pagination). Compare diagnostics, `TotalDiagnostics`, and wall-clock time with the default call. Note: when packages are unrestored, `emitValidation=true` may return byte-identical output to the default — investigate before flagging this as a regression (the precondition matters; see backlog `compile-check-emit-validation-regression-check`).
 5. Call `security_diagnostics` to identify security-relevant findings with OWASP categorization.
 6. Call `security_analyzer_status` to check which analyzer packages are installed and what's missing.
 7. Call `nuget_vulnerability_scan` to scan NuGet references for known CVEs. Compare with `security_diagnostics` — vulnerability scan covers supply-chain CVEs while security diagnostics covers source-level patterns.
@@ -152,8 +145,8 @@ For each key type in the solution:
 11. Call `callers_callees` on 2-3 of its methods to map call chains.
 12. Call `find_property_writes` on any settable properties to classify init vs post-construction writes.
 13. Call `member_hierarchy` on overridden/implemented members.
-14. Call `symbol_relationships` for a combined view.
-15. Call `symbol_signature_help` on a key method to verify signature documentation.
+14. Call `symbol_relationships` for a combined view. With server v1.7+, a caret on a method's return-type token is auto-promoted to the enclosing member by default (`preferDeclaringMember=true`). Verify by pointing the locator at the return-type token of a known method and asserting the result describes the method, not the type — this exercises the FLAG-006 fix.
+15. Call `symbol_signature_help` on a key method to verify signature documentation. Same auto-promotion applies; explicitly pass `preferDeclaringMember=false` once to confirm the literal type-token resolution still works when requested.
 16. Call `impact_analysis` on a symbol you might refactor to estimate change blast radius.
 
 **MCP audit checkpoint:** Does `find_implementations` return all concrete implementations of an interface or abstract type? Are `find_references` and `find_consumers` consistent? Does `find_type_usages` categorize correctly? Do `callers_callees` results match what you'd expect from reading the code? Does `symbol_relationships` combine data correctly from its sub-tools? Does `impact_analysis` produce a reasonable blast radius estimate?
@@ -189,11 +182,12 @@ This phase is another hotspot for the same **Evaluating C#** label as Phase 0 st
 
 1. Call `analyze_snippet` with `kind="expression"` using a simple expression like `1 + 2`. Verify it reports no errors.
 2. Call `analyze_snippet` with `kind="program"` using a small class definition. Verify declared symbols are listed.
-3. Call `analyze_snippet` with intentionally broken code. Verify it reports the expected compilation error.
-4. Call `evaluate_csharp` with a simple expression like `Enumerable.Range(1, 10).Sum()`. Verify the result is `55`.
-5. Call `evaluate_csharp` with a multi-line script. Verify execution.
-6. Call `evaluate_csharp` with code that should produce a runtime error (e.g., `int.Parse("abc")`). Verify it reports the error gracefully.
-7. Call `evaluate_csharp` with an infinite loop. Verify the timeout fires and doesn't hang the server.
+3. Call `analyze_snippet` with intentionally broken code (e.g. `int x = "hello";` with `kind="statements"`). Verify it reports CS0029 **and** that `StartColumn` points at the literal in user-relative coordinates (~9 for that example) rather than at the wrapper-relative column. Pre-fix this returned column 66 (FLAG-C, fixed in v1.7+).
+4. Call `analyze_snippet` with `kind="returnExpression"` using `return 42;`. Verify it reports no errors. The new `returnExpression` kind wraps in `object? Run()` so a value-bearing return is allowed; the older `kind="statements"` still wraps in `void Run()` and rejects returns by design (FLAG-007 documented behavior).
+5. Call `evaluate_csharp` with a simple expression like `Enumerable.Range(1, 10).Sum()`. Verify the result is `55`.
+6. Call `evaluate_csharp` with a multi-line script. Verify execution.
+7. Call `evaluate_csharp` with code that should produce a runtime error (e.g., `int.Parse("abc")`). Verify it reports the error gracefully.
+8. Call `evaluate_csharp` with an infinite loop. Verify the timeout fires and doesn't hang the server.
 
 **MCP audit checkpoint:** Does `analyze_snippet` correctly wrap different `kind` values? Are compilation errors accurate and well-formatted? Does `evaluate_csharp` handle runtime errors without crashing? Does the timeout work? Are result types correctly identified?
 
@@ -638,9 +632,16 @@ When finished with all phases, call `workspace_close` to release the session (if
 
 Meaningful refactoring from **Phase 6** is committed in the **target solution’s** repository. A short **Phase 6 refactor summary** in the MCP audit report (see Report contents) ties git history to tools exercised; the code changes themselves are not a separate file deliverable.
 
-### What goes in a file (one mandatory output)
+### What goes in a file (incremental draft + final canonical output)
 
-You **MUST** write exactly one file: the **raw MCP Server Audit Report**. The task is **not finished** until this file exists on disk. Do not only paste it in chat.
+You **MUST** maintain a draft file at `<canonical-path>.draft.md` and **append findings to it after every phase**. The draft is your audit log — never revisit prior phases by re-running tool calls; read from the draft to recall what you found. When all phases complete, atomically rename the draft to the canonical name (`<canonical-path>`).
+
+The audit is **not finished** until **both** of the following are true:
+
+1. The canonical file exists on disk at `<canonical-path>`.
+2. The draft was continuously updated as each phase completed (never a one-shot final flush from working memory at the end of the run).
+
+A one-shot final flush from working memory is the most common symptom of a broken run — the model accumulates ~1–2 MB of tool results in active context, then runs out of room when it tries to serialize the report. Persisting after every phase keeps each turn within the output budget and lets the next turn drop the prior phase's tool-result bulk from active reasoning.
 
 This prompt writes **raw per-run evidence only**. If you are running a multi-repo audit campaign, synthesize the cross-repo findings later into a separate rollup under `ai_docs/reports/`; do **not** write the raw audit file there.
 
@@ -669,6 +670,10 @@ Derive `<repo-id>` from the **audited** solution or repository name:
 
 The report is consumed by **downstream agents**, not humans browsing prose. Prefer dense tables, fixed schemas, and one-line entries. Avoid narrative paragraphs unless an issue genuinely requires them.
 
+**Mandatory sections:** 1 (Header), 2 (Coverage summary), 3 (Coverage ledger), 4 (Verified tools), 5 (Phase 6 refactor summary), 8 (Debug log capture), 9 (MCP server issues), 10 (Improvement suggestions). These must always appear in full.
+
+**Conditional sections:** 6 (Concurrency mode matrix), 7 (Writer reclassification), 11 (Performance observations), 12 (Regression check), 13 (Cross-check). Fill these with data when data exists; otherwise emit a single line `**N/A — <reason>**` instead of an empty table. The historical "audit incomplete if any section is missing" framing forced the agent to materialize 50-row N/A tables at the end of every run, which contributed to the final-flush stall described in cross-cutting principles #11–#13.
+
 1. **Header (metadata)** — server version (from `server_info`), Roslyn / .NET versions if available, MCP client name/version if available, **audited** solution path and name, audited repo revision/branch if available, chosen entrypoint (`.sln` / `.slnx` / `.csproj`), audit mode (`full-surface` by default or explicitly opted-in `conservative`), disposable isolation path or conservative rationale, date, workspace id, approximate project count and document count from `workspace_load` / `project_graph`, repo-shape summary, the prior-issue source used for Phase 18, **lock mode at audit time** (`legacy-mutex` / `rw-lock` / `dual-mode`), and **debug log channel availability** (`yes` / `no` / `partial`).
 2. **Coverage summary** — Group by the live catalog's `Kind` + `Category` values from `roslyn://server/catalog`. For each group, report counts for `exercised`, `exercised-apply`, `exercised-preview-only`, `skipped-repo-shape`, `skipped-safety`, and `blocked`.
 3. **Coverage ledger (required)** — One row for every live tool, resource, and prompt from `roslyn://server/catalog`. Columns: `kind`, `name`, `tier`, `status`, `phase`, `notes`. The audit is incomplete if the ledger row count does not match the live catalog total or if any entry is omitted. For `blocked` rows, say whether the blocker was a client limitation, workspace-load failure, or server/runtime fault.
@@ -683,7 +688,7 @@ The report is consumed by **downstream agents**, not humans browsing prose. Pref
 12. **Known issue regression check** — For the 3–5 items re-tested in Phase 18, state: **still reproduces**, **partially fixed** (describe), or **candidate for closure** (no longer reproduces). Include the source id / issue id and one-line summary for each. If no prior source existed, state **N/A**.
 13. **Known issue cross-check** — List any *newly observed* issues that match the chosen prior source (for example a backlog id, issue number, or previous audit finding) with one line each; put **full write-ups only for new or different** behavior.
 
-If there are **zero** new issues, still write sections 1–8 and 10–13; in section 9 state **“No new issues found”** and confirm the audit ran.
+If there are **zero** new issues, still write all mandatory sections; in section 9 state **"No new issues found"** and confirm the audit ran. Conditional sections (6, 7, 11, 12, 13) follow the `N/A — <reason>` rule above.
 
 ### Markdown template (copy, fill in, save)
 

@@ -21,7 +21,7 @@ public static class CodeActionTools
         [Description("Optional: 1-based end column number for a selection range")] int? endColumn = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_code_actions", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await codeActionService.GetCodeActionsAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c);
@@ -42,7 +42,7 @@ public static class CodeActionTools
         [Description("Optional: 1-based end column number for a selection range")] int? endColumn = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("preview_code_action", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await codeActionService.PreviewCodeActionAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, actionIndex, c);
@@ -58,7 +58,7 @@ public static class CodeActionTools
         [Description("The preview token returned by preview_code_action")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("apply_code_action", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

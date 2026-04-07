@@ -105,6 +105,7 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
         var signature = await SymbolRelationshipService.GetSignatureHelpAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalServiceFile.FilePath!, 16, 17),
+            preferDeclaringMember: true,
             CancellationToken.None);
 
         Assert.IsNotNull(signature);
@@ -121,6 +122,7 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
         var relationships = await SymbolRelationshipService.GetSymbolRelationshipsAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalFile.FilePath!, 6, 12),
+            preferDeclaringMember: true,
             CancellationToken.None);
 
         Assert.IsNotNull(relationships);

@@ -19,7 +19,14 @@ public sealed class CompileCheckService : ICompileCheckService
     }
 
     public async Task<CompileCheckDto> CheckAsync(
-        string workspaceId, string? projectFilter, bool emitValidation, CancellationToken ct)
+        string workspaceId,
+        string? projectFilter,
+        bool emitValidation,
+        string? severityFilter,
+        string? fileFilter,
+        int offset,
+        int limit,
+        CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -27,6 +34,11 @@ public sealed class CompileCheckService : ICompileCheckService
         var allDiagnostics = new List<DiagnosticDto>();
         int errorCount = 0;
         int warningCount = 0;
+
+        var minSeverity = ParseMinimumSeverity(severityFilter);
+        var normalizedFileFilter = string.IsNullOrWhiteSpace(fileFilter)
+            ? null
+            : Path.GetFullPath(fileFilter);
 
         foreach (var project in projects)
         {
@@ -52,11 +64,20 @@ public sealed class CompileCheckService : ICompileCheckService
             foreach (var diag in diagnostics)
             {
                 if (diag.Severity == DiagnosticSeverity.Hidden) continue;
+                if (minSeverity is not null && diag.Severity < minSeverity) continue;
+
+                var lineSpan = diag.Location.GetMappedLineSpan();
+                if (normalizedFileFilter is not null)
+                {
+                    var diagPath = lineSpan.Path;
+                    if (string.IsNullOrEmpty(diagPath)) continue;
+                    if (!Path.GetFullPath(diagPath).Equals(normalizedFileFilter, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
 
                 if (diag.Severity == DiagnosticSeverity.Error) errorCount++;
                 else if (diag.Severity == DiagnosticSeverity.Warning) warningCount++;
 
-                var lineSpan = diag.Location.GetMappedLineSpan();
                 allDiagnostics.Add(new DiagnosticDto(
                     Id: diag.Id,
                     Message: diag.GetMessage(),
@@ -70,12 +91,32 @@ public sealed class CompileCheckService : ICompileCheckService
             }
         }
 
+        var pagedDiagnostics = allDiagnostics.Skip(offset).Take(limit).ToList();
         sw.Stop();
+
         return new CompileCheckDto(
             Success: errorCount == 0,
             ErrorCount: errorCount,
             WarningCount: warningCount,
-            Diagnostics: allDiagnostics,
+            TotalDiagnostics: allDiagnostics.Count,
+            ReturnedDiagnostics: pagedDiagnostics.Count,
+            Offset: offset,
+            Limit: limit,
+            HasMore: offset + pagedDiagnostics.Count < allDiagnostics.Count,
+            Diagnostics: pagedDiagnostics,
             ElapsedMs: sw.ElapsedMilliseconds);
+    }
+
+    private static DiagnosticSeverity? ParseMinimumSeverity(string? severityFilter)
+    {
+        if (string.IsNullOrWhiteSpace(severityFilter)) return null;
+        return severityFilter.Trim().ToLowerInvariant() switch
+        {
+            "error" => DiagnosticSeverity.Error,
+            "warning" => DiagnosticSeverity.Warning,
+            "info" => DiagnosticSeverity.Info,
+            "hidden" => DiagnosticSeverity.Hidden,
+            _ => null
+        };
     }
 }

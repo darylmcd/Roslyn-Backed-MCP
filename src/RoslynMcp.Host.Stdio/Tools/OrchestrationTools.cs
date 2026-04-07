@@ -20,7 +20,7 @@ public static class OrchestrationTools
         [Description("Replacement package version")] string newVersion,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("migrate_package_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await orchestrationService.PreviewMigratePackageAsync(workspaceId, oldPackageId, newPackageId, newVersion, c).ConfigureAwait(false);
@@ -40,7 +40,7 @@ public static class OrchestrationTools
         [Description("File name for the new partial class file, for example Dog.Behavior.cs")] string newFileName,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("split_class_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await orchestrationService.PreviewSplitClassAsync(workspaceId, filePath, typeName, memberNames, newFileName, c).ConfigureAwait(false);
@@ -61,7 +61,7 @@ public static class OrchestrationTools
         [Description("Whether to rewrite matching DI registrations to use the extracted interface")] bool updateDiRegistrations = true,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("extract_and_wire_interface_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await orchestrationService.PreviewExtractAndWireInterfaceAsync(
@@ -85,7 +85,7 @@ public static class OrchestrationTools
         [Description("The preview token returned by an orchestration preview tool")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("apply_composite_preview", () =>
         {
             var wsId = compositePreviewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

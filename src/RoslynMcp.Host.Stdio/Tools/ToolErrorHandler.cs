@@ -1,7 +1,18 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
+
+internal static class MetaSerializer
+{
+    public static readonly JsonSerializerOptions CamelCase = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+    };
+}
 
 internal static class ToolErrorHandler
 {
@@ -31,27 +42,64 @@ internal static class ToolErrorHandler
     /// Wraps a tool action with structured error handling. Returns errors as structured JSON content
     /// so MCP clients always receive actionable error details, regardless of SDK exception handling.
     /// </summary>
-    public static async Task<string> ExecuteAsync(Func<Task<string>> action, ILogger? auditLogger = null, string? toolName = null)
+    public static async Task<string> ExecuteAsync(string toolName, Func<Task<string>> action, ILogger? auditLogger = null)
     {
+        ArgumentException.ThrowIfNullOrEmpty(toolName);
+
+        // P3: Open an ambient metrics scope so the workspace execution gate can record per-request
+        // queue/hold timings, and we can merge them into the response JSON as `_meta` so clients
+        // that don't surface MCP `notifications/message` (e.g. Claude Code) still get observability.
+        using var metricsScope = AmbientGateMetrics.BeginRequest();
+
         try
         {
             var result = await action().ConfigureAwait(false);
-            auditLogger?.LogInformation("Tool {ToolName} completed successfully", toolName ?? "unknown");
-            return result;
+            auditLogger?.LogInformation("Tool {ToolName} completed successfully", toolName);
+            return InjectMetaIfPossible(result);
         }
         catch (OperationCanceledException)
         {
-            auditLogger?.LogWarning("Tool {ToolName} was cancelled", toolName ?? "unknown");
+            auditLogger?.LogWarning("Tool {ToolName} was cancelled", toolName);
             throw; // Let MCP SDK handle cancellation natively
         }
         catch (Exception ex)
         {
-            var info = ClassifyError(ex, toolName ?? "unknown");
+            var info = ClassifyError(ex, toolName);
             auditLogger?.Log(
                 info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
-                ex, "Tool {ToolName} failed: {ErrorCategory}", toolName ?? "unknown", info.Category);
+                ex, "Tool {ToolName} failed: {ErrorCategory}", toolName, info.Category);
 
-            return FormatErrorResponse(info, toolName ?? "unknown", ex);
+            return InjectMetaIfPossible(FormatErrorResponse(info, toolName, ex));
+        }
+    }
+
+    /// <summary>
+    /// P3: Parse the JSON result and add a top-level <c>_meta</c> property carrying the gate
+    /// metrics snapshot. Only injected when the root is a JSON object — non-object roots
+    /// (arrays, primitives) are returned unchanged so we don't break consumers that expect a
+    /// specific shape. On any parse failure the original string is returned unchanged so this
+    /// never breaks a well-formed response.
+    /// </summary>
+    private static string InjectMetaIfPossible(string json)
+    {
+        var snapshot = AmbientGateMetrics.Snapshot();
+        if (snapshot is null) return json;
+
+        try
+        {
+            var node = JsonNode.Parse(json);
+            if (node is not JsonObject obj) return json;
+
+            var metaNode = JsonSerializer.SerializeToNode(snapshot, MetaSerializer.CamelCase);
+            if (metaNode is null) return json;
+
+            obj["_meta"] = metaNode;
+            return obj.ToJsonString(JsonDefaults.Indented);
+        }
+        catch
+        {
+            // Best-effort: never break a tool response over an injection failure.
+            return json;
         }
     }
 

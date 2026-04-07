@@ -24,7 +24,7 @@ public static class CohesionAnalysisTools
         [Description("When true, exclude test classes (names/paths suggesting tests) from results after metrics are computed")] bool excludeTests = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_cohesion_metrics", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await cohesionAnalysisService.GetCohesionMetricsAsync(
@@ -63,7 +63,7 @@ public static class CohesionAnalysisTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_shared_members", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);

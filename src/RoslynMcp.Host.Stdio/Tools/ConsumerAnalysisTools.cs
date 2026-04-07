@@ -22,7 +22,7 @@ public static class ConsumerAnalysisTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.IMyInterface")] string? metadataName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_consumers", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);

@@ -49,6 +49,19 @@ var host = builder.Build();
 var server = host.Services.GetRequiredService<McpServer>();
 mcpLoggingProvider.SetServer(server);
 
+// FLAG-D: Emit a structured Information event when the host starts with no loaded workspaces.
+// Clients that surface MCP `notifications/message` (via McpLoggingProvider) will see this
+// proactively after a transparent subprocess restart instead of discovering the missing
+// workspace tool-by-tool through cascading KeyNotFoundException errors.
+var startupLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+var startupWorkspaceManager = host.Services.GetRequiredService<RoslynMcp.Core.Services.IWorkspaceManager>();
+if (startupWorkspaceManager.ListWorkspaces().Count == 0)
+{
+    startupLogger.LogInformation(
+        "Roslyn MCP host started with zero loaded workspaces. " +
+        "If this is a transparent subprocess restart, call workspace_load to rehydrate the prior session.");
+}
+
 // Register graceful shutdown to dispose all workspaces
 var lifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
 lifetime.ApplicationStopping.Register(() =>

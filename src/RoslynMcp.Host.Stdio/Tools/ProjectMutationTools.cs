@@ -21,7 +21,7 @@ public static class ProjectMutationTools
         [Description("NuGet package version to add")] string version,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("add_package_reference_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewAddPackageReferenceAsync(
@@ -42,7 +42,7 @@ public static class ProjectMutationTools
         [Description("NuGet package id to remove")] string packageId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("remove_package_reference_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewRemovePackageReferenceAsync(
@@ -63,7 +63,7 @@ public static class ProjectMutationTools
         [Description("Referenced project name or project file path")] string referencedProjectName,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("add_project_reference_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewAddProjectReferenceAsync(
@@ -84,7 +84,7 @@ public static class ProjectMutationTools
         [Description("Referenced project name or project file path")] string referencedProjectName,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("remove_project_reference_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewRemoveProjectReferenceAsync(
@@ -106,7 +106,7 @@ public static class ProjectMutationTools
         [Description("Property value to set")] string value,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("set_project_property_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewSetProjectPropertyAsync(
@@ -127,7 +127,7 @@ public static class ProjectMutationTools
         [Description("Target framework moniker to add, for example net8.0")] string targetFramework,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("add_target_framework_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewAddTargetFrameworkAsync(
@@ -148,7 +148,7 @@ public static class ProjectMutationTools
         [Description("Target framework moniker to remove, for example net8.0")] string targetFramework,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("remove_target_framework_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewRemoveTargetFrameworkAsync(
@@ -171,7 +171,7 @@ public static class ProjectMutationTools
         [Description("Condition expression using $(Configuration), $(TargetFramework), or $(Platform)")] string condition,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("set_conditional_property_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewSetConditionalPropertyAsync(
@@ -192,7 +192,7 @@ public static class ProjectMutationTools
         [Description("NuGet package version to set in Directory.Packages.props")] string version,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("add_central_package_version_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewAddCentralPackageVersionAsync(
@@ -212,7 +212,7 @@ public static class ProjectMutationTools
         [Description("NuGet package id to remove from Directory.Packages.props")] string packageId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("remove_central_package_version_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await projectMutationService.PreviewRemoveCentralPackageVersionAsync(
@@ -232,7 +232,7 @@ public static class ProjectMutationTools
         [Description("The preview token returned by one of the project mutation preview tools")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("apply_project_mutation", () =>
         {
             var wsId = projectMutationPreviewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

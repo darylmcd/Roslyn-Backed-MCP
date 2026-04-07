@@ -24,7 +24,7 @@ public static class AdvancedAnalysisTools
         [Description("When true, skip symbols in test fixture types (xUnit/NUnit/MSTest-shaped names and attributes).")] bool excludeTests = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_unused_symbols", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
@@ -53,7 +53,7 @@ public static class AdvancedAnalysisTools
         [Description("Optional: filter by project name")] string? project = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_di_registrations", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await dependencyAnalysisService.GetDiRegistrationsAsync(workspaceId, project, c);
@@ -73,7 +73,7 @@ public static class AdvancedAnalysisTools
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_complexity_metrics", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, project, minComplexity, limit, c);
@@ -90,7 +90,7 @@ public static class AdvancedAnalysisTools
         [Description("Optional: filter by project name")] string? project = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_reflection_usages", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, project, c);
@@ -110,7 +110,7 @@ public static class AdvancedAnalysisTools
         [Description("When true, return only namespaces and edges involved in circular dependencies")] bool circularOnly = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_namespace_dependencies", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, project, c);
@@ -144,7 +144,7 @@ public static class AdvancedAnalysisTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_nuget_dependencies", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, c);
@@ -163,7 +163,7 @@ public static class AdvancedAnalysisTools
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("semantic_search", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var response = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, project, limit, c);

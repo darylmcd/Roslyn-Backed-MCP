@@ -51,7 +51,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task CompileCheck_Service_GetDiagnostics_Succeeds_For_SampleSolution()
     {
-        var result = await CompileCheckService.CheckAsync(WorkspaceId, projectFilter: null, emitValidation: false, CancellationToken.None);
+        var result = await CompileCheckService.CheckAsync(WorkspaceId, projectFilter: null, emitValidation: false, severityFilter: null, fileFilter: null, offset: 0, limit: 50, CancellationToken.None);
         Assert.IsTrue(result.Success, "Sample solution should compile without errors.");
         Assert.AreEqual(0, result.ErrorCount);
         Assert.IsNotNull(result.Diagnostics);
@@ -60,7 +60,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task CompileCheck_Service_EmitValidation_Completes_For_SampleLib()
     {
-        var result = await CompileCheckService.CheckAsync(WorkspaceId, projectFilter: "SampleLib", emitValidation: true, CancellationToken.None);
+        var result = await CompileCheckService.CheckAsync(WorkspaceId, projectFilter: "SampleLib", emitValidation: true, severityFilter: null, fileFilter: null, offset: 0, limit: 50, CancellationToken.None);
         Assert.IsTrue(result.Success);
         Assert.IsTrue(result.ElapsedMs >= 0);
     }
@@ -74,6 +74,10 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             WorkspaceId,
             project: null,
             emitValidation: false,
+            severity: null,
+            file: null,
+            offset: 0,
+            limit: 50,
             CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;

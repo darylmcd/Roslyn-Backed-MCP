@@ -410,7 +410,8 @@ public sealed class FixAllService : IFixAllService
         var set = new HashSet<DiagnosticAnalyzer>(ReferenceEqualityComparer.Instance);
         foreach (var project in solution.Projects)
         {
-            foreach (var ar in project.AnalyzerReferences)
+            // FLAG-A: skip UnresolvedAnalyzerReference — calling .GetAnalyzers() on it throws.
+            foreach (var ar in project.AnalyzerReferences.Where(r => r is not UnresolvedAnalyzerReference))
             {
                 foreach (var a in ar.GetAnalyzers(project.Language))
                 {

@@ -21,7 +21,7 @@ public static class CrossProjectRefactoringTools
         [Description("Optional: explicit target namespace. Current implementation supports the original namespace only")] string? targetNamespace = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("move_type_to_project_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await crossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
@@ -47,7 +47,7 @@ public static class CrossProjectRefactoringTools
         [Description("Optional: target project name or project file path")] string? targetProjectName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("extract_interface_cross_project_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await crossProjectRefactoringService.PreviewExtractInterfaceAsync(
@@ -73,7 +73,7 @@ public static class CrossProjectRefactoringTools
         [Description("Optional: interface name. Defaults to I + type name")] string? interfaceName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("dependency_inversion_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await crossProjectRefactoringService.PreviewDependencyInversionAsync(

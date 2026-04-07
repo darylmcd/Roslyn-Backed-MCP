@@ -20,7 +20,7 @@ public static class TypeMoveTools
         [Description("Optional: target file path. If omitted, defaults to {TypeName}.cs in the same directory")] string? targetFilePath = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("move_type_to_file_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await typeMoveService.PreviewMoveTypeToFileAsync(workspaceId, sourceFilePath, typeName, targetFilePath, c);
@@ -37,7 +37,7 @@ public static class TypeMoveTools
         [Description("The preview token returned by move_type_to_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("move_type_to_file_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

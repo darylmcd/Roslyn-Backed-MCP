@@ -30,14 +30,13 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
             .ToList();
 
         var usingBlock = string.Join("\n", allUsings.Select(u => $"using {u};"));
-        var wrappedCode = WrapCode(code, kind, usingBlock);
+        var (wrappedCode, userStartLine, userStartColumn) = WrapCode(code, kind, usingBlock, allUsings.Count);
 
-        // UX-001: Diagnostics from the wrapped source carry line numbers relative to the wrapper,
-        // not the user's input. The wrapper prepends N using-directive lines and a `\n`, so user
-        // line K is wrapped line (N + K) for every kind. Subtract that offset before reporting.
-        // We clamp to 1 because diagnostics that fall on the wrapper itself (e.g., a missing
-        // using import) are surfaced as line 1 of the user input rather than as a negative number.
-        var lineOffset = allUsings.Count;
+        // UX-001/FLAG-C: Diagnostics from the wrapped source carry line/column positions relative
+        // to the wrapper, not the user's input. Subtract userStartLine from the wrapped line, and
+        // for diagnostics that land on the first wrapped user line also subtract the column prefix
+        // length (the wrapper text inserted before the user code). Subsequent user lines start at
+        // wrapped column 1 so they need no column transform.
 
         var tree = CSharpSyntaxTree.ParseText(wrappedCode, cancellationToken: ct);
 
@@ -63,12 +62,21 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
             int? StartLine = null, StartCol = null, EndLine = null, EndCol = null;
             if (lineSpan.IsValid)
             {
-                // Convert from wrapped (0-based) to user (1-based) coordinates and remove the
-                // wrapper offset. Anything that lands above the user's line 1 is clamped to 1.
-                StartLine = Math.Max(1, lineSpan.StartLinePosition.Line + 1 - lineOffset);
-                StartCol = lineSpan.StartLinePosition.Character + 1;
-                EndLine = Math.Max(1, lineSpan.EndLinePosition.Line + 1 - lineOffset);
-                EndCol = lineSpan.EndLinePosition.Character + 1;
+                // Convert from wrapped (0-based) to user (1-based) coordinates.
+                var wrappedStartLine = lineSpan.StartLinePosition.Line + 1;
+                var wrappedStartCol = lineSpan.StartLinePosition.Character + 1;
+                var wrappedEndLine = lineSpan.EndLinePosition.Line + 1;
+                var wrappedEndCol = lineSpan.EndLinePosition.Character + 1;
+
+                StartLine = Math.Max(1, wrappedStartLine - userStartLine + 1);
+                StartCol = wrappedStartLine == userStartLine
+                    ? Math.Max(1, wrappedStartCol - userStartColumn + 1)
+                    : wrappedStartCol;
+
+                EndLine = Math.Max(1, wrappedEndLine - userStartLine + 1);
+                EndCol = wrappedEndLine == userStartLine
+                    ? Math.Max(1, wrappedEndCol - userStartColumn + 1)
+                    : wrappedEndCol;
             }
 
             return new DiagnosticDto(
@@ -107,14 +115,44 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
             DeclaredSymbols: declaredSymbols.Count > 0 ? declaredSymbols : null));
     }
 
-    private static string WrapCode(string code, string kind, string usingBlock) => kind.ToLowerInvariant() switch
+    /// <summary>
+    /// Wraps user snippet text in scaffolding appropriate for the requested kind, and returns the
+    /// (1-based) wrapped line and column at which the user code begins. The user-coordinate
+    /// translation in <see cref="AnalyzeAsync"/> uses these so diagnostics map back to the
+    /// original snippet position rather than the wrapped emit position.
+    /// </summary>
+    private static (string Wrapped, int UserStartLine, int UserStartColumn) WrapCode(
+        string code, string kind, string usingBlock, int usingsLineCount)
     {
-        "expression" => $"{usingBlock}\npublic static class Snippet {{ public static object Evaluate() => {code}; }}",
-        "statements" => $"{usingBlock}\npublic static class Snippet {{ public static void Run() {{ {code} }} }}",
-        "members" => $"{usingBlock}\npublic class Snippet {{ {code} }}",
-        "program" or "" => $"{usingBlock}\n{code}",
-        _ => throw new ArgumentException($"Invalid snippet kind '{kind}'. Must be 'expression', 'statements', 'members', or 'program'.")
-    };
+        // The wrapper always emits N using lines, then a newline, then the wrap line on which the
+        // user code starts. So userStartLine = N + 1 in 1-based wrapped coordinates.
+        var userStartLine = usingsLineCount + 1;
+
+        const string ExpressionPrefix = "public static class Snippet { public static object Evaluate() => ";
+        const string StatementsPrefix = "public static class Snippet { public static void Run() { ";
+        const string ReturnExprPrefix = "public static class Snippet { public static object? Run() { ";
+        const string MembersPrefix = "public class Snippet { ";
+
+        return kind.ToLowerInvariant() switch
+        {
+            "expression" =>
+                ($"{usingBlock}\n{ExpressionPrefix}{code}; }}",
+                 userStartLine, ExpressionPrefix.Length + 1),
+            "statements" =>
+                ($"{usingBlock}\n{StatementsPrefix}{code} }} }}",
+                 userStartLine, StatementsPrefix.Length + 1),
+            "returnexpression" =>
+                ($"{usingBlock}\n{ReturnExprPrefix}{code} }} }}",
+                 userStartLine, ReturnExprPrefix.Length + 1),
+            "members" =>
+                ($"{usingBlock}\n{MembersPrefix}{code} }}",
+                 userStartLine, MembersPrefix.Length + 1),
+            "program" or "" =>
+                ($"{usingBlock}\n{code}", userStartLine, 1),
+            _ => throw new ArgumentException(
+                $"Invalid snippet kind '{kind}'. Must be 'expression', 'statements', 'returnExpression', 'members', or 'program'.")
+        };
+    }
 
     private static ImmutableArray<MetadataReference> GetCoreReferences()
     {

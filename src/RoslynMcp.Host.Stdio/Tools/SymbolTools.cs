@@ -23,7 +23,7 @@ public static class SymbolTools
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("symbol_search", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await symbolSearchService.SearchSymbolsAsync(workspaceId, query, project, kind, @namespace, limit, c);
@@ -43,7 +43,7 @@ public static class SymbolTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("symbol_info", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
@@ -64,7 +64,7 @@ public static class SymbolTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("go_to_definition", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
@@ -87,7 +87,7 @@ public static class SymbolTools
         [Description("Number of references to skip before returning results (default: 0)")] int offset = 0,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_references", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(offset, limit);
@@ -119,7 +119,7 @@ public static class SymbolTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.IMyInterface")] string? metadataName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_implementations", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
@@ -137,7 +137,7 @@ public static class SymbolTools
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("document_symbols", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
@@ -157,7 +157,7 @@ public static class SymbolTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_overrides", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
@@ -177,7 +177,7 @@ public static class SymbolTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_base_members", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
@@ -197,7 +197,7 @@ public static class SymbolTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("member_hierarchy", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
@@ -206,7 +206,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get display signature, parameters, return type, and documentation for the symbol resolved at the exact line/column (or handle/metadata name). The caret position matters: on a field identifier you get the field's type/signature, not the enclosing method. On a method declaration, placing the caret on the return type resolves that type symbol, not the method — use the method name identifier for method signature help.")]
+    [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get display signature, parameters, return type, and documentation for the symbol resolved at the exact line/column (or handle/metadata name). When the caret lands on a method's return-type token (or a property's type token), the result is auto-promoted to the enclosing member by default — disable with preferDeclaringMember=false to inspect the type token directly.")]
     public static Task<string> GetSignatureHelp(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,
@@ -216,18 +216,19 @@ public static class SymbolTools
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
+        [Description("When true (default), a caret on a method's return-type token or a property's type token is auto-promoted to the enclosing member symbol. Set to false to resolve the type token literally.")] bool preferDeclaringMember = true,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("symbol_signature_help", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-                var result = await symbolRelationshipService.GetSignatureHelpAsync(workspaceId, locator, c);
+                var result = await symbolRelationshipService.GetSignatureHelpAsync(workspaceId, locator, preferDeclaringMember, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
-    [McpServerTool(Name = "symbol_relationships", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a combined summary of definitions, references, implementations, base members, and overrides")]
+    [McpServerTool(Name = "symbol_relationships", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a combined summary of definitions, references, implementations, base members, and overrides. Auto-promotes a caret on a member's type token to the enclosing member by default (see preferDeclaringMember).")]
     public static Task<string> GetSymbolRelationships(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,
@@ -238,14 +239,15 @@ public static class SymbolTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         [Description("Maximum number of items to return per relationship bucket (default: 100)")] int limit = 100,
+        [Description("When true (default), a caret on a method's return-type token or a property's type token is auto-promoted to the enclosing member symbol. Set to false to resolve the type token literally.")] bool preferDeclaringMember = true,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("symbol_relationships", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(0, limit);
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-                var result = await symbolRelationshipService.GetSymbolRelationshipsAsync(workspaceId, locator, c);
+                var result = await symbolRelationshipService.GetSymbolRelationshipsAsync(workspaceId, locator, preferDeclaringMember, c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
                 var references = result.References.Take(limit).ToList();
                 var implementations = result.Implementations.Take(limit).ToList();
@@ -286,7 +288,7 @@ public static class SymbolTools
         [Description("Include the definition location in each result (default: false)")] bool includeDefinition = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_references_bulk", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await referenceService.FindReferencesBulkAsync(workspaceId, symbols, includeDefinition, c);
@@ -305,7 +307,7 @@ public static class SymbolTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_property_writes", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
@@ -325,7 +327,7 @@ public static class SymbolTools
         [Description("1-based column number")] int column,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("enclosing_symbol", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
@@ -346,7 +348,7 @@ public static class SymbolTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("goto_type_definition", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
@@ -369,7 +371,7 @@ public static class SymbolTools
         [Description("Maximum number of completion items to return (default: 100, must be > 0)")] int maxItems = 100,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_completions", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);

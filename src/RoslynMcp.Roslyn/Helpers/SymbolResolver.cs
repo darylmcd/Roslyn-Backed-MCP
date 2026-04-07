@@ -151,6 +151,49 @@ public static class SymbolResolver
         return null;
     }
 
+    /// <summary>
+    /// FLAG-006: When the caret lands on a member's type token (e.g. the return-type token of a
+    /// method declaration), <see cref="ResolveAtPositionAsync"/> resolves the *type* symbol rather
+    /// than the enclosing member. This helper walks the syntax tree upward from the caret token
+    /// looking for an enclosing member declaration (method, local function, or property) and
+    /// returns its declared symbol so callers can promote a type-token resolution to the more
+    /// useful declaring-member resolution.
+    /// </summary>
+    /// <returns>
+    /// The enclosing <see cref="IMethodSymbol"/> or <see cref="IPropertySymbol"/>, or
+    /// <see langword="null"/> if no enclosing member is found.
+    /// </returns>
+    public static async Task<ISymbol?> TryResolveEnclosingMemberAsync(
+        Solution solution, string filePath, int line, int column, CancellationToken ct)
+    {
+        var document = FindDocument(solution, filePath);
+        if (document is null) return null;
+
+        var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+        var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
+        if (semanticModel is null || tree is null) return null;
+
+        var text = tree.GetText(ct);
+        if (line < 1 || line > text.Lines.Count) return null;
+
+        var position = text.Lines[line - 1].Start + (column - 1);
+        var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+
+        var node = root.FindToken(position).Parent;
+        while (node is not null)
+        {
+            if (node is MethodDeclarationSyntax or LocalFunctionStatementSyntax or PropertyDeclarationSyntax)
+            {
+                var declared = semanticModel.GetDeclaredSymbol(node, ct);
+                if (declared is IMethodSymbol or IPropertySymbol)
+                    return declared;
+            }
+            node = node.Parent;
+        }
+
+        return null;
+    }
+
     public static async Task<string?> GetPreviewTextAsync(Document document, Location location, CancellationToken ct)
     {
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);

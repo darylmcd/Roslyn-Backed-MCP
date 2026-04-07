@@ -20,7 +20,7 @@ public static class ScriptingTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(async () =>
+        return ToolErrorHandler.ExecuteAsync("evaluate_csharp", async () =>
         {
             if (timeoutSeconds is <= 0)
                 throw new ArgumentException("timeoutSeconds must be greater than 0 when supplied.", nameof(timeoutSeconds));

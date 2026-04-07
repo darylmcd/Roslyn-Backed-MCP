@@ -129,7 +129,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         return new MemberHierarchyDto(SymbolMapper.ToDto(symbol, solution), baseMembers, overrides);
     }
 
-    public async Task<SymbolRelationshipsDto?> GetSymbolRelationshipsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    public async Task<SymbolRelationshipsDto?> GetSymbolRelationshipsAsync(string workspaceId, SymbolLocator locator, bool preferDeclaringMember, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
@@ -137,6 +137,8 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         {
             return null;
         }
+
+        symbol = await PromoteToDeclaringMemberIfRequestedAsync(solution, locator, symbol, preferDeclaringMember, ct).ConfigureAwait(false);
 
         var definitions = new List<LocationDto>();
         foreach (var location in symbol.Locations.Where(location => location.IsInSource))
@@ -161,7 +163,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             Overrides: await overridesTask.ConfigureAwait(false) ?? []);
     }
 
-    public async Task<SignatureHelpDto?> GetSignatureHelpAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    public async Task<SignatureHelpDto?> GetSignatureHelpAsync(string workspaceId, SymbolLocator locator, bool preferDeclaringMember, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
@@ -169,6 +171,8 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         {
             return null;
         }
+
+        symbol = await PromoteToDeclaringMemberIfRequestedAsync(solution, locator, symbol, preferDeclaringMember, ct).ConfigureAwait(false);
 
         var dto = SymbolMapper.ToDto(symbol, solution);
         var parameters = symbol is IMethodSymbol method
@@ -260,33 +264,32 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             callees);
     }
 
+    /// <summary>
+    /// FLAG-006: shared helper that promotes a type-token resolution to the enclosing member when
+    /// the caller requested <c>preferDeclaringMember</c>. Used by both <see cref="GetSignatureHelpAsync"/>
+    /// and <see cref="GetSymbolRelationshipsAsync"/>.
+    /// </summary>
+    private static async Task<ISymbol> PromoteToDeclaringMemberIfRequestedAsync(
+        Solution solution, SymbolLocator locator, ISymbol resolved, bool preferDeclaringMember, CancellationToken ct)
+    {
+        if (!preferDeclaringMember || resolved is not INamedTypeSymbol || !locator.HasSourceLocation)
+            return resolved;
+
+        var enclosing = await SymbolResolver.TryResolveEnclosingMemberAsync(
+            solution, locator.FilePath!, locator.Line!.Value, locator.Column!.Value, ct).ConfigureAwait(false);
+        return enclosing ?? resolved;
+    }
+
     private static async Task<IMethodSymbol?> TryResolveEnclosingMethodAsync(
         Solution solution, SymbolLocator locator, CancellationToken ct)
     {
         if (locator.FilePath is null || locator.Line is null || locator.Column is null) return null;
 
-        var document = SymbolResolver.FindDocument(solution, locator.FilePath);
-        if (document is null) return null;
+        var enclosing = await SymbolResolver.TryResolveEnclosingMemberAsync(
+            solution, locator.FilePath, locator.Line.Value, locator.Column.Value, ct).ConfigureAwait(false);
 
-        var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-        var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
-        if (semanticModel is null || tree is null) return null;
-
-        var text = tree.GetText(ct);
-        var position = text.Lines[locator.Line.Value - 1].Start + (locator.Column.Value - 1);
-        var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
-
-        var node = root.FindToken(position).Parent;
-        while (node is not null)
-        {
-            if (node is MethodDeclarationSyntax or LocalFunctionStatementSyntax)
-            {
-                var declared = semanticModel.GetDeclaredSymbol(node, ct);
-                if (declared is IMethodSymbol method)
-                    return method;
-            }
-            node = node.Parent;
-        }
+        if (enclosing is IMethodSymbol method)
+            return method;
 
         return null;
     }

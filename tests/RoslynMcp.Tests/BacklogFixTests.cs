@@ -25,6 +25,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     public async Task ToolErrorHandler_InternalError_IncludesExceptionTypeAndStackTrace()
     {
         var result = await ToolErrorHandler.ExecuteAsync(
+            "test_tool",
             () => throw new NullReferenceException("test null ref"));
 
         var json = JsonDocument.Parse(result);
@@ -41,7 +42,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
         var inner1 = new InvalidCastException("mid cause", inner2);
         var outer = new AggregateException("wrapper", inner1);
 
-        var result = await ToolErrorHandler.ExecuteAsync(() => throw outer);
+        var result = await ToolErrorHandler.ExecuteAsync("test_tool", () => throw outer);
 
         var json = JsonDocument.Parse(result);
         var message = json.RootElement.GetProperty("message").GetString()!;
@@ -53,6 +54,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     public async Task ToolErrorHandler_KnownErrors_DoNotIncludeStackTrace()
     {
         var result = await ToolErrorHandler.ExecuteAsync(
+            "test_tool",
             () => throw new KeyNotFoundException("not found"));
 
         var json = JsonDocument.Parse(result);
@@ -66,6 +68,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     public async Task ToolErrorHandler_InvalidOperation_ClassifiedCorrectly()
     {
         var result = await ToolErrorHandler.ExecuteAsync(
+            "test_tool",
             () => throw new InvalidOperationException("workspace stale"));
 
         var json = JsonDocument.Parse(result);
@@ -76,6 +79,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     public async Task ToolErrorHandler_RateLimit_ClassifiedCorrectly()
     {
         var result = await ToolErrorHandler.ExecuteAsync(
+            "test_tool",
             () => throw new InvalidOperationException("Rate limit exceeded"));
 
         var json = JsonDocument.Parse(result);

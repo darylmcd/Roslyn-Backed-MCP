@@ -136,6 +136,7 @@ public class ServiceCoverageTests : SharedWorkspaceTestBase
         var result = await SymbolRelationshipService.GetSignatureHelpAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalServicePath, 16, 17),
+            preferDeclaringMember: true,
             CancellationToken.None);
 
         Assert.IsNotNull(result, "Signature help should not be null for MakeThemSpeak");

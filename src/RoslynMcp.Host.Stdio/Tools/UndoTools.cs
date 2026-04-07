@@ -17,7 +17,7 @@ public static class UndoTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("revert_last_apply", () =>
         {
             if (string.IsNullOrWhiteSpace(workspaceId))
             {

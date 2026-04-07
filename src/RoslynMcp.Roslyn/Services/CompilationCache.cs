@@ -98,7 +98,12 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         var compilation = await GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
         if (compilation is null) return null;
 
+        // FLAG-A: skip UnresolvedAnalyzerReference entries — calling .GetAnalyzers() on them throws
+        // InvalidOperationException, which historically cascaded through find_unused_symbols,
+        // type_hierarchy, callers_callees, and impact_analysis whenever a project's packages were
+        // not restored. Filter the unresolved subtype out before iterating.
         var analyzers = project.AnalyzerReferences
+            .Where(reference => reference is not UnresolvedAnalyzerReference)
             .SelectMany(reference => reference.GetAnalyzers(project.Language))
             .ToImmutableArray();
         if (analyzers.Length == 0) return null;

@@ -16,7 +16,7 @@ public static class ServerTools
     public static Task<string> GetServerInfo(
         IWorkspaceManager workspace)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("server_info", () =>
         {
             var assembly = typeof(ServerTools).Assembly;
             var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
