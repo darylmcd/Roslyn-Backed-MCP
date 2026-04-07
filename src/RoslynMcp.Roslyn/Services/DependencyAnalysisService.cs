@@ -16,6 +16,7 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly IGatedCommandExecutor _executor;
+    private readonly IMsBuildEvaluationService _msBuildEvaluation;
     private readonly ILogger<DependencyAnalysisService> _logger;
     private readonly ValidationServiceOptions _options;
 
@@ -23,12 +24,14 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
         IWorkspaceManager workspace,
         ICompilationCache compilationCache,
         IGatedCommandExecutor executor,
+        IMsBuildEvaluationService msBuildEvaluation,
         ILogger<DependencyAnalysisService> logger,
         ValidationServiceOptions? options = null)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _executor = executor;
+        _msBuildEvaluation = msBuildEvaluation;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
     }
@@ -127,14 +130,19 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
 
             try
             {
-                var doc = XDocument.Load(project.FilePath);
-                var packageRefs = doc.Descendants("PackageReference");
+                // BUG-N7: Use evaluated MSBuild items so PackageReference from Directory.Build.props
+                // / targets / imports matches `evaluate_msbuild_items` and the real restore graph.
+                var evaluated = await _msBuildEvaluation.EvaluateItemsAsync(
+                    workspaceId, project.Name, "PackageReference", ct).ConfigureAwait(false);
 
-                foreach (var pkgRef in packageRefs)
+                foreach (var item in evaluated.Items)
                 {
-                    var id = pkgRef.Attribute("Include")?.Value;
-                    var version = pkgRef.Attribute("Version")?.Value ?? "centrally-managed";
-                    if (id is null) continue;
+                    var id = item.Include;
+                    if (string.IsNullOrWhiteSpace(id))
+                        continue;
+
+                    item.Metadata.TryGetValue("Version", out var version);
+                    version ??= "centrally-managed";
 
                     string? resolvedCentral = null;
                     if (string.Equals(version, "centrally-managed", StringComparison.OrdinalIgnoreCase) &&
@@ -151,12 +159,13 @@ public sealed class DependencyAnalysisService : IDependencyAnalysisService
                         users = [];
                         packageMap[key] = users;
                     }
+
                     users.Add(project.Name);
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                _logger.LogWarning(ex, "Failed to parse project file {Path}", project.FilePath);
+                _logger.LogWarning(ex, "Failed to enumerate PackageReference items for {Project} via MSBuild", project.Name);
             }
 
             projectDtos.Add(new NuGetProjectDto(project.Name, project.FilePath, packages));

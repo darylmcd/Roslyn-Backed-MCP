@@ -72,6 +72,9 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
         }
 
+        // BUG-N12: avoid `: IName{` glued to the opening brace — keep `{` on its own line for readability.
+        updatedTypeDecl = EnsureOpeningBraceOnOwnLine(updatedTypeDecl);
+
         // BUG-004: Do NOT call NormalizeWhitespace() here — that re-flows the entire file and
         // produces unrelated formatting churn (collapses multi-line bodies, alters string format
         // specifier spacing). ReplaceNode preserves the surrounding source layout.
@@ -243,13 +246,46 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         {
             var ns = u.Name?.ToString();
             if (string.IsNullOrWhiteSpace(ns)) return false;
-            if (ns.StartsWith("System", StringComparison.Ordinal)) return true;
-            var shortName = ns.Split('.').Last();
-            return text.Contains(shortName, StringComparison.Ordinal) ||
+
+            // BUG-N12: do not pull in all System.* namespaces — only those plausibly needed by the interface text.
+            if (string.Equals(ns, "System.Threading", StringComparison.Ordinal))
+            {
+                return text.Contains("CancellationToken", StringComparison.Ordinal) ||
+                       text.Contains("Thread", StringComparison.Ordinal) ||
+                       text.Contains("Interlocked", StringComparison.Ordinal);
+            }
+
+            if (string.Equals(ns, "System.Threading.Tasks", StringComparison.Ordinal))
+            {
+                return System.Text.RegularExpressions.Regex.IsMatch(text, @"\b(Value)?Task(<|\s|\))");
+            }
+
+            if (ns.StartsWith("System.", StringComparison.Ordinal))
+            {
+                var shortName = ns.Split('.').Last();
+                return text.Contains(shortName, StringComparison.Ordinal) ||
+                       text.Contains(ns, StringComparison.Ordinal);
+            }
+
+            var shortName2 = ns.Split('.').Last();
+            return text.Contains(shortName2, StringComparison.Ordinal) ||
                    text.Contains(ns, StringComparison.Ordinal);
         });
 
         return SyntaxFactory.List(filtered);
+    }
+
+    private static TypeDeclarationSyntax EnsureOpeningBraceOnOwnLine(TypeDeclarationSyntax typeDecl)
+    {
+        var brace = typeDecl.OpenBraceToken;
+        if (brace.IsMissing)
+            return typeDecl;
+
+        if (brace.LeadingTrivia.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia)))
+            return typeDecl;
+
+        return typeDecl.WithOpenBraceToken(
+            brace.WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.EndOfLine(Environment.NewLine))));
     }
 
     private async Task ValidateNoConflictsAsync(

@@ -22,9 +22,11 @@ public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
         var insecureStatus = await WorkspaceManager.LoadAsync(secTestPath, CancellationToken.None);
         InsecureWorkspaceId = insecureStatus.WorkspaceId;
 
+        var msBuildEvaluation = new MsBuildEvaluationService(WorkspaceManager);
         SecurityService = new SecurityDiagnosticService(
             DiagnosticService,
             WorkspaceManager,
+            msBuildEvaluation,
             NullLogger<SecurityDiagnosticService>.Instance);
     }
 

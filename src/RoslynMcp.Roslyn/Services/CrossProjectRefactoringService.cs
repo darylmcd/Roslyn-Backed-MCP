@@ -320,7 +320,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         bool filterUsings = false)
     {
         var usings = filterUsings
-            ? FilterUsingsForMember(sourceRoot.Usings, member)
+            ? FilterUsingsForMember(sourceRoot.Usings, member, crossProjectExtraction: filterUsings)
             : sourceRoot.Usings;
 
         var compilationUnit = SyntaxFactory.CompilationUnit()
@@ -338,7 +338,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
     private static SyntaxList<UsingDirectiveSyntax> FilterUsingsForMember(
         SyntaxList<UsingDirectiveSyntax> sourceUsings,
-        MemberDeclarationSyntax member)
+        MemberDeclarationSyntax member,
+        bool crossProjectExtraction = false)
     {
         var memberText = member.ToFullString();
 
@@ -372,8 +373,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                    referencedNames.Any(r => name.EndsWith($".{r}", StringComparison.Ordinal));
         }).ToArray();
 
-        // If filtering removed all usings but there are referenced names, keep all (safer fallback)
-        if (filtered.Length == 0 && referencedNames.Count > 0)
+        // BUG-N3: In cross-project extraction, falling back to all source usings pulls package
+        // namespaces (e.g. Microsoft.Data.Sqlite) that the target project does not reference.
+        // Only use the full-source fallback for same-project generation.
+        if (filtered.Length == 0 && referencedNames.Count > 0 && !crossProjectExtraction)
             return sourceUsings;
 
         return new SyntaxList<UsingDirectiveSyntax>(filtered);

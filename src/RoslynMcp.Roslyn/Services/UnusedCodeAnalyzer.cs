@@ -57,6 +57,8 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         int limit,
         bool excludeEnums,
         bool excludeRecordProperties,
+        bool excludeTestProjects,
+        bool excludeTests,
         CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -68,6 +70,9 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         foreach (var project in projects)
         {
             if (ct.IsCancellationRequested || results.Count >= limit) break;
+
+            if (excludeTestProjects && IsTestProjectName(project.Name))
+                continue;
 
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
@@ -93,7 +98,8 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                     if (symbol.IsImplicitlyDeclared) continue;
                     if (!processedSymbols.Add(symbol)) continue;
 
-                    if (ShouldSkipSymbolForUnusedAnalysis(symbol, includePublic, excludeEnums, excludeRecordProperties))
+                    if (ShouldSkipSymbolForUnusedAnalysis(
+                            symbol, includePublic, excludeEnums, excludeRecordProperties, excludeTests))
                         continue;
 
                     candidates.Add(symbol);
@@ -171,12 +177,20 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     /// <summary>
     /// Returns true when the symbol should not be analyzed for unused status (filters noise: public API, tests, etc.).
     /// </summary>
+    private static bool IsTestProjectName(string projectName) =>
+        projectName.Contains(".Tests", StringComparison.OrdinalIgnoreCase) ||
+        projectName.EndsWith("Tests", StringComparison.OrdinalIgnoreCase);
+
     private static bool ShouldSkipSymbolForUnusedAnalysis(
         ISymbol symbol,
         bool includePublic,
         bool excludeEnums,
-        bool excludeRecordProperties)
+        bool excludeRecordProperties,
+        bool excludeTests)
     {
+        if (excludeTests && symbol is INamedTypeSymbol namedType && IsLikelyTestFixtureType(namedType))
+            return true;
+
         if (!includePublic && symbol.DeclaredAccessibility == Accessibility.Public)
             return true;
 
@@ -206,6 +220,9 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             return true;
 
         if (HasFrameworkInvokedAttribute(symbol))
+            return true;
+
+        if (excludeTests && symbol.ContainingType is not null && IsLikelyTestFixtureType(symbol.ContainingType))
             return true;
 
         if (symbol is INamedTypeSymbol { IsStatic: true } staticType &&
@@ -345,6 +362,26 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                 or "DataMemberAttribute")
                 return true;
         }
+
+        return false;
+    }
+
+    /// <summary>
+    /// BUG-N6: xUnit/NUnit/MSTest types are invoked by the test host via reflection; treat as
+    /// non-dead-code candidates when <paramref name="excludeTests"/> is true.
+    /// </summary>
+    private static bool IsLikelyTestFixtureType(INamedTypeSymbol type)
+    {
+        foreach (var attribute in type.GetAttributes())
+        {
+            var n = attribute.AttributeClass?.Name;
+            if (n is "TestFixtureAttribute" or "TestClassAttribute" or "CollectionAttribute")
+                return true;
+        }
+
+        if (type.Name.EndsWith("Tests", StringComparison.Ordinal) ||
+            type.Name.EndsWith("Test", StringComparison.Ordinal))
+            return true;
 
         return false;
     }

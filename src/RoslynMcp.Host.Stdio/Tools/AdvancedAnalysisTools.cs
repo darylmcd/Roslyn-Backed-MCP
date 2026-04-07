@@ -20,13 +20,15 @@ public static class AdvancedAnalysisTools
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         [Description("When true, skip enum members (often referenced indirectly).")] bool excludeEnums = false,
         [Description("When true, skip properties declared on record types (often DTO/serialization shaped).")] bool excludeRecordProperties = false,
+        [Description("When true, skip projects whose names look like test projects (*.Tests, *Tests).")] bool excludeTestProjects = false,
+        [Description("When true, skip symbols in test fixture types (xUnit/NUnit/MSTest-shaped names and attributes).")] bool excludeTests = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
-                    workspaceId, project, includePublic, limit, excludeEnums, excludeRecordProperties, c);
+                    workspaceId, project, includePublic, limit, excludeEnums, excludeRecordProperties, excludeTestProjects, excludeTests, c);
                 return JsonSerializer.Serialize(new { count = results.Count, unusedSymbols = results }, JsonDefaults.Indented);
             }, ct));
     }

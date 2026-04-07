@@ -249,11 +249,17 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
 
         // Simple keyword predicates from the lookup table.
         // Use a word boundary for "interface" so "IDisposable" does not trigger the interface symbol filter.
+        // BUG-N8: "asynchronous" must not satisfy the "async" keyword (substring match would).
         foreach (var (keyword, predicate) in KeywordPredicates)
         {
             if (keyword == "interface")
             {
                 if (!Regex.IsMatch(q, @"\binterface\b"))
+                    continue;
+            }
+            else if (keyword == "async")
+            {
+                if (!Regex.IsMatch(q, @"\basync\b"))
                     continue;
             }
             else if (!q.Contains(keyword))

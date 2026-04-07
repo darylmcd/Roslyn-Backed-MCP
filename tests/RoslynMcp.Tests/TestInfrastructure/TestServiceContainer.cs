@@ -76,10 +76,12 @@ internal sealed class TestServiceContainer
             compilationCache,
             NullLogger<DiagnosticService>.Instance);
         var undoService = new UndoService();
+        var msBuildEvaluationService = new MsBuildEvaluationService(workspaceManager);
         var dependencyAnalysisService = new DependencyAnalysisService(
             workspaceManager,
             compilationCache,
             gatedCommandExecutor,
+            msBuildEvaluationService,
             NullLogger<DependencyAnalysisService>.Instance,
             validationOptions);
         var fileOperationService = new FileOperationService(

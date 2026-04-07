@@ -113,7 +113,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             .ToList();
 
         var methodFieldMap = BuildMethodFieldMap(instanceMethods, typeSymbol, typeDecl, semanticModel, ct);
-        var clusters = ComputeClusters(methodFieldMap);
+        var clusters = ComputeClusters(methodFieldMap, typeSymbol);
 
         return new CohesionMetricsDto(
             TypeName: typeSymbol.Name,
@@ -258,7 +258,9 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         return false;
     }
 
-    private static List<MethodClusterDto> ComputeClusters(Dictionary<string, HashSet<string>> methodFieldMap)
+    private static List<MethodClusterDto> ComputeClusters(
+        Dictionary<string, HashSet<string>> methodFieldMap,
+        INamedTypeSymbol containingType)
     {
         // Build adjacency: two methods are connected if they share any field/private-method access
         var methodNames = methodFieldMap.Keys.ToList();
@@ -301,8 +303,11 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         return groups.Select(g =>
         {
             var methods = g.OrderBy(m => m).ToList();
+            // BUG-N9: methodFieldMap values mix field/property names with private helper methods;
+            // only fields/properties belong in SharedFields for LCOM-style reporting.
             var sharedFields = methods
                 .SelectMany(m => methodFieldMap[m])
+                .Where(name => containingType.GetMembers(name).Any(ms => ms is IFieldSymbol or IPropertySymbol))
                 .Distinct()
                 .OrderBy(f => f)
                 .ToList();

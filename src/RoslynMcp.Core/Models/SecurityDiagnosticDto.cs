@@ -48,9 +48,13 @@ public sealed record SecurityDiagnosticsResultDto(
 /// Status of security analyzer packages detected in the workspace.
 /// </summary>
 /// <param name="NetAnalyzersPresent">Whether .NET SDK analyzers are present (always true for SDK-style .NET 5+ projects).</param>
-/// <param name="SecurityCodeScanPresent">Whether the SecurityCodeScan NuGet package is referenced.</param>
+/// <param name="SecurityCodeScanPresent">Whether the SecurityCodeScan analyzer is loaded or referenced as a package.</param>
 /// <param name="MissingRecommendedPackages">Recommended security analyzer packages that are not currently referenced.</param>
+/// <param name="PumaSecurityRulesPresent">Whether Puma.Security.Rules (or related) is detected via analyzers or PackageReference.</param>
+/// <param name="SecurityRelatedNuGetPackages">PackageReference identities that appear security-related (subset of evaluated MSBuild items).</param>
 public sealed record SecurityAnalyzerStatusDto(
     bool NetAnalyzersPresent,
     bool SecurityCodeScanPresent,
-    IReadOnlyList<string> MissingRecommendedPackages);
+    IReadOnlyList<string> MissingRecommendedPackages,
+    bool PumaSecurityRulesPresent = false,
+    IReadOnlyList<string>? SecurityRelatedNuGetPackages = null);

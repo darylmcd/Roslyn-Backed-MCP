@@ -135,78 +135,130 @@ public sealed class ScriptingService : IScriptingService
             dueTime: TimeSpan.FromMilliseconds(firstWatchdogDueMs),
             period: TimeSpan.FromSeconds(WatchdogRepeatSeconds));
 
+        // BUG-N0: Run script on the thread pool and race a hard wall-clock deadline. Roslyn's
+        // scripting host may not observe CancellationToken during tight CPU loops; without this,
+        // EvaluateAsync never completes and the MCP response never returns.
+        var hardDeadlineSeconds = effectiveTimeoutSeconds + WatchdogGraceSeconds;
+        var hardDeadline = Task.Delay(TimeSpan.FromSeconds(hardDeadlineSeconds), ct);
+        var scriptTask = Task.Run(
+            () => CSharpScript.EvaluateAsync<object?>(
+                code, options, cancellationToken: timeoutCts.Token),
+            CancellationToken.None);
+
         try
         {
-            var result = await CSharpScript.EvaluateAsync<object?>(
-                code, options, cancellationToken: timeoutCts.Token).ConfigureAwait(false);
+            var winner = await Task.WhenAny(scriptTask, hardDeadline).ConfigureAwait(false);
+            if (winner == hardDeadline)
+            {
+                if (hardDeadline.IsCanceled)
+                    ct.ThrowIfCancellationRequested();
 
-            sw.Stop();
-            return new ScriptEvaluationDto(
-                Success: true,
-                ResultType: result?.GetType().FullName,
-                ResultValue: FormatResult(result),
-                Error: null,
-                CompilationErrors: null,
-                ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
-        }
-        catch (CompilationErrorException ex)
-        {
-            sw.Stop();
-            var compilationErrors = ex.Diagnostics
-                .Where(d => d.Severity != DiagnosticSeverity.Hidden)
-                .Select(d =>
+                sw.Stop();
+                try
                 {
-                    var lineSpan = d.Location.GetMappedLineSpan();
-                    return new DiagnosticDto(
-                        Id: d.Id,
-                        Message: d.GetMessage(),
-                        Severity: d.Severity.ToString(),
-                        Category: d.Descriptor.Category,
-                        FilePath: null,
-                        StartLine: lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
-                        StartColumn: lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
-                        EndLine: lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
-                        EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null);
-                })
-                .ToList();
+                    timeoutCts.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Best-effort cancellation signal for the abandoned script task.
+                }
 
-            return new ScriptEvaluationDto(
-                Success: false,
-                ResultType: null,
-                ResultValue: null,
-                Error: ex.Message,
-                CompilationErrors: compilationErrors,
-                ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            sw.Stop();
-            return new ScriptEvaluationDto(
-                Success: false,
-                ResultType: null,
-                ResultValue: null,
-                Error: $"Script execution timed out after {effectiveTimeoutSeconds} seconds. Pass timeoutSeconds on the call (UX-002) or set ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS to raise the default.",
-                CompilationErrors: null,
-                ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            sw.Stop();
-            return new ScriptEvaluationDto(
-                Success: false,
-                ResultType: null,
-                ResultValue: null,
-                Error: $"Runtime error: {ex.GetType().Name}: {ex.Message}",
-                CompilationErrors: null,
-                ElapsedMs: sw.ElapsedMilliseconds,
-                AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
+                _logger.LogWarning(
+                    "evaluate_csharp: hard deadline ({HardDeadlineSeconds}s = budget {BudgetSeconds}s + grace {GraceSeconds}s) elapsed; returning timeout response. " +
+                    "The script may still be running on a thread-pool thread.",
+                    hardDeadlineSeconds,
+                    effectiveTimeoutSeconds,
+                    WatchdogGraceSeconds);
+
+                return new ScriptEvaluationDto(
+                    Success: false,
+                    ResultType: null,
+                    ResultValue: null,
+                    Error:
+                    $"Script execution was forcibly abandoned after {hardDeadlineSeconds} second(s) (script budget {effectiveTimeoutSeconds}s + ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS {WatchdogGraceSeconds}s). " +
+                    "Roslyn may not cancel tight infinite loops; the server no longer waits for cooperative cancellation.",
+                    CompilationErrors: null,
+                    ElapsedMs: sw.ElapsedMilliseconds,
+                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
+            }
+
+            // scriptTask finished first (success, compilation error, runtime error, or cancel).
+            try
+            {
+                var result = await scriptTask.ConfigureAwait(false);
+                sw.Stop();
+                return new ScriptEvaluationDto(
+                    Success: true,
+                    ResultType: result?.GetType().FullName,
+                    ResultValue: FormatResult(result),
+                    Error: null,
+                    CompilationErrors: null,
+                    ElapsedMs: sw.ElapsedMilliseconds,
+                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (CompilationErrorException ex)
+            {
+                sw.Stop();
+                var compilationErrors = ex.Diagnostics
+                    .Where(d => d.Severity != DiagnosticSeverity.Hidden)
+                    .Select(d =>
+                    {
+                        var lineSpan = d.Location.GetMappedLineSpan();
+                        return new DiagnosticDto(
+                            Id: d.Id,
+                            Message: d.GetMessage(),
+                            Severity: d.Severity.ToString(),
+                            Category: d.Descriptor.Category,
+                            FilePath: null,
+                            StartLine: lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
+                            StartColumn: lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
+                            EndLine: lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
+                            EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null);
+                    })
+                    .ToList();
+
+                return new ScriptEvaluationDto(
+                    Success: false,
+                    ResultType: null,
+                    ResultValue: null,
+                    Error: ex.Message,
+                    CompilationErrors: compilationErrors,
+                    ElapsedMs: sw.ElapsedMilliseconds,
+                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                sw.Stop();
+                return new ScriptEvaluationDto(
+                    Success: false,
+                    ResultType: null,
+                    ResultValue: null,
+                    Error: $"Script execution timed out after {effectiveTimeoutSeconds} seconds. Pass timeoutSeconds on the call (UX-002) or set ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS to raise the default.",
+                    CompilationErrors: null,
+                    ElapsedMs: sw.ElapsedMilliseconds,
+                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                sw.Stop();
+                return new ScriptEvaluationDto(
+                    Success: false,
+                    ResultType: null,
+                    ResultValue: null,
+                    Error: $"Runtime error: {ex.GetType().Name}: {ex.Message}",
+                    CompilationErrors: null,
+                    ElapsedMs: sw.ElapsedMilliseconds,
+                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
+            }
         }
         finally
         {

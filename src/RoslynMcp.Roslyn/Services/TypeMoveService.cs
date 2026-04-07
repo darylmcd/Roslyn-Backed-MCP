@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -112,6 +113,10 @@ public sealed class TypeMoveService : ITypeMoveService
             .AddDocument(targetFileName, newFileText, filePath: resolvedTargetPath);
         newSolution = newDocument.Project.Solution;
 
+        // BUG-N13: source file may rely on ImplicitUsings for generic collections; new file must carry explicit usings when needed.
+        newSolution = await EnsureCollectionsGenericUsingIfNeededAsync(newSolution, newDocument.Id, movedTypeDecl, ct)
+            .ConfigureAwait(false);
+
         // Remove unnecessary usings from the new file by checking for CS8019 diagnostics
         newSolution = await RemoveUnusedUsingsAsync(newSolution, newDocument.Id, ct).ConfigureAwait(false);
 
@@ -121,6 +126,37 @@ public sealed class TypeMoveService : ITypeMoveService
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    private static async Task<Solution> EnsureCollectionsGenericUsingIfNeededAsync(
+        Solution solution, DocumentId documentId, TypeDeclarationSyntax movedType, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var typeText = movedType.ToFullString();
+        var needsGeneric = Regex.IsMatch(
+            typeText,
+            @"\b(Dictionary|List|HashSet|IEnumerable|ICollection|IReadOnlyList|IReadOnlyDictionary|IReadOnlySet|Queue|Stack|LinkedList|SortedDictionary|SortedList|ConcurrentDictionary|ConcurrentBag|ObservableCollection)<",
+            RegexOptions.CultureInvariant);
+        if (!needsGeneric)
+            return solution;
+
+        var document = solution.GetDocument(documentId);
+        if (document is null)
+            return solution;
+
+        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax;
+        if (root is null)
+            return solution;
+
+        var already = root.Usings.Any(u =>
+            u.Name?.ToString().Equals("System.Collections.Generic", StringComparison.Ordinal) == true);
+        if (already)
+            return solution;
+
+        var usingDir = SyntaxFactory.UsingDirective(SyntaxFactory.ParseName("System.Collections.Generic"))
+            .NormalizeWhitespace();
+        var newRoot = root.WithUsings(root.Usings.Add(usingDir));
+        return solution.WithDocumentSyntaxRoot(documentId, newRoot);
     }
 
     private static async Task<Solution> RemoveUnusedUsingsAsync(Solution solution, DocumentId documentId, CancellationToken ct)
