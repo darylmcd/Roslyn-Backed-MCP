@@ -62,15 +62,21 @@ public static class WorkspaceTools
     {
         // Close acquires both the global load gate AND the per-workspace write lock so that
         // no reader is in flight when the workspace's lock entry is dropped from the registry.
+        // BUG-N2: RemoveGate must run after RunWriteAsync completes so the per-workspace semaphore
+        // is released before Dispose; disposing while the writer still holds the gate caused
+        // ObjectDisposedException in gate.Release().
         return ToolErrorHandler.ExecuteAsync(() =>
-            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, outerCt =>
-                gate.RunWriteAsync(workspaceId, innerCt =>
+            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, async outerCt =>
+            {
+                var json = await gate.RunWriteAsync(workspaceId, async innerCt =>
                 {
                     var closed = workspace.Close(workspaceId);
-                    gate.RemoveGate(workspaceId);
                     _ = NotifyResourcesChangedAsync(server);
-                    return Task.FromResult(JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented));
-                }, outerCt), ct));
+                    return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
+                }, outerCt).ConfigureAwait(false);
+                gate.RemoveGate(workspaceId);
+                return json;
+            }, ct));
     }
 
     [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions")]

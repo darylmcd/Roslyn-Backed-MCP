@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml;
 using System.Xml.Linq;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -366,10 +368,33 @@ public sealed class ProjectMutationService : IProjectMutationService
         var document = XDocument.Parse(originalContent, LoadOptions.PreserveWhitespace);
         mutator(document);
 
-        var updatedContent = document.ToString(SaveOptions.DisableFormatting);
+        // BUG-N14: emit readable multi-line XML instead of a single-line <Project> blob.
+        var updatedContent = FormatProjectXml(document, originalContent);
         var diff = DiffGenerator.GenerateUnifiedDiff(originalContent, updatedContent, filePath);
         var token = _previewStore.Store(workspaceId, filePath, updatedContent, _workspace.GetCurrentVersion(workspaceId), description);
         return new RefactoringPreviewDto(token, description, [new FileChangeDto(filePath, diff)], warnings);
+    }
+
+    private static string FormatProjectXml(XDocument document, string originalContent)
+    {
+        var lineEnding = DetectLineEnding(document);
+        var hadXmlDeclaration = originalContent.AsSpan().TrimStart().StartsWith("<?xml".AsSpan(), StringComparison.Ordinal);
+        var sb = new StringBuilder();
+        var settings = new XmlWriterSettings
+        {
+            Indent = true,
+            IndentChars = "  ",
+            NewLineChars = lineEnding,
+            OmitXmlDeclaration = !hadXmlDeclaration,
+            Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+        };
+
+        using (var writer = XmlWriter.Create(sb, settings))
+        {
+            document.Save(writer);
+        }
+
+        return sb.ToString();
     }
 
     private ProjectStatusDto ResolveProject(string workspaceId, string projectName)

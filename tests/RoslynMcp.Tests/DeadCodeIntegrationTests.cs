@@ -38,7 +38,8 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
             var workspaceId = status.WorkspaceId;
             var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
                 workspaceId, "SampleLib", includePublic: false, limit: 50,
-                excludeEnums: false, excludeRecordProperties: false, CancellationToken.None);
+                excludeEnums: false, excludeRecordProperties: false,
+                excludeTestProjects: false, excludeTests: false, CancellationToken.None);
             var unusedField = unusedSymbols.First(symbol => symbol.SymbolName == "UnusedTestOnlyMethod");
 
             var preview = await DeadCodeService.PreviewRemoveDeadCodeAsync(
@@ -65,7 +66,8 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
 
         var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
             workspaceId, "SampleLib", includePublic: true, limit: 200,
-            excludeEnums: false, excludeRecordProperties: false, CancellationToken.None);
+            excludeEnums: false, excludeRecordProperties: false,
+            excludeTestProjects: false, excludeTests: false, CancellationToken.None);
 
         var unusedNames = unusedSymbols.Select(s => s.SymbolName).ToHashSet();
 
@@ -82,7 +84,8 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
 
         var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
             workspaceId, "SampleLib", includePublic: true, limit: 200,
-            excludeEnums: false, excludeRecordProperties: false, CancellationToken.None);
+            excludeEnums: false, excludeRecordProperties: false,
+            excludeTestProjects: false, excludeTests: false, CancellationToken.None);
 
         // The IEnumerable<IAnimal> overload of CountAnimals is called from SampleApp
         // with an IAnimal[] argument (implicit conversion). It should not be reported as unused.
@@ -99,7 +102,8 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
 
         var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
             workspaceId, "SampleLib.Tests", includePublic: true, limit: 200,
-            excludeEnums: false, excludeRecordProperties: false, CancellationToken.None);
+            excludeEnums: false, excludeRecordProperties: false,
+            excludeTestProjects: false, excludeTests: false, CancellationToken.None);
 
         var unusedNames = unusedSymbols.Select(s => s.SymbolName).ToHashSet(StringComparer.Ordinal);
 

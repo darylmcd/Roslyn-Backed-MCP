@@ -23,6 +23,7 @@ public sealed record CohesionMetricsDto(
 /// </summary>
 public sealed record MethodClusterDto(
     IReadOnlyList<string> Methods,
+    /// <summary>Field and property names shared across methods in this cluster (BUG-N9: excludes private method names).</summary>
     IReadOnlyList<string> SharedFields);
 
 /// <summary>

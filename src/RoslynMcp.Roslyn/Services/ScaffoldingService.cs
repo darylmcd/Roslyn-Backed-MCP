@@ -45,7 +45,8 @@ public sealed class ScaffoldingService : IScaffoldingService
 
         var typeInfo = await ResolveTargetTypeAndMethodAsync(
             workspaceId, request.TestProjectName, request.TargetTypeName, request.TargetMethodName, ct).ConfigureAwait(false);
-        var content = BuildTestContent(testNamespace, request, typeInfo.targetNamespace, typeInfo.constructorArgs, framework, typeInfo.targetMethod);
+        var content = BuildTestContent(
+            testNamespace, request, typeInfo.targetNamespace, typeInfo.constructorArgs, framework, typeInfo.targetMethod, typeInfo.matchedType);
         var preview = await _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, testFilePath, content), ct).ConfigureAwait(false);
 
         if (typeInfo.warnings is null || typeInfo.warnings.Count == 0)
@@ -97,7 +98,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         return "mstest";
     }
 
-    private async Task<(string targetNamespace, string constructorArgs, IMethodSymbol? targetMethod, List<string>? warnings)>
+    private async Task<(string targetNamespace, string constructorArgs, IMethodSymbol? targetMethod, List<string>? warnings, INamedTypeSymbol? matchedType)>
         ResolveTargetTypeAndMethodAsync(
             string workspaceId, string testProjectName, string targetTypeName, string? targetMethodName, CancellationToken ct)
     {
@@ -107,7 +108,7 @@ public sealed class ScaffoldingService : IScaffoldingService
             string.Equals(p.FilePath, testProjectName, StringComparison.OrdinalIgnoreCase));
 
         if (testProject is null)
-            return (string.Empty, string.Empty, null, null);
+            return (string.Empty, string.Empty, null, null, null);
 
         var projectsToSearch = new List<Project> { testProject };
         foreach (var projectRef in testProject.ProjectReferences)
@@ -145,7 +146,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         }
 
         if (matchedType is null)
-            return (string.Empty, string.Empty, null, null);
+            return (string.Empty, string.Empty, null, null, null);
 
         var ns = matchedType.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
@@ -175,7 +176,7 @@ public sealed class ScaffoldingService : IScaffoldingService
             }
         }
 
-        return (ns, constructorArgs, targetMethod, warnings);
+        return (ns, constructorArgs, targetMethod, warnings, matchedType);
     }
 
     private static string BuildConstructorArgs(INamedTypeSymbol type)
@@ -237,7 +238,8 @@ public sealed class ScaffoldingService : IScaffoldingService
         string targetNamespace,
         string constructorArgs,
         string framework,
-        IMethodSymbol? targetMethod)
+        IMethodSymbol? targetMethod,
+        INamedTypeSymbol? matchedType)
     {
         var methodName = string.IsNullOrWhiteSpace(request.TargetMethodName)
             ? "Generated_Test"
@@ -247,25 +249,57 @@ public sealed class ScaffoldingService : IScaffoldingService
             ? string.Empty
             : $"using {targetNamespace};\n";
 
-        var ctorCall = string.IsNullOrWhiteSpace(constructorArgs)
-            ? $"new {request.TargetTypeName}()"
-            : $"new {request.TargetTypeName}({constructorArgs})";
+        var useStaticScaffold = ShouldUseStaticTestScaffold(matchedType);
+        var ctorCall = useStaticScaffold
+            ? string.Empty
+            : string.IsNullOrWhiteSpace(constructorArgs)
+                ? $"new {request.TargetTypeName}()"
+                : $"new {request.TargetTypeName}({constructorArgs})";
 
-        var methodTargetBlock = BuildMethodTargetInvocationBlock(framework, request.TargetTypeName, request.TargetMethodName, targetMethod);
+        var methodTargetBlock = BuildMethodTargetInvocationBlock(
+            framework, request.TargetTypeName, request.TargetMethodName, targetMethod, useStaticScaffold);
 
         return framework switch
         {
-            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock),
-            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock),
-            _ => BuildMSTestTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock),
+            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold),
+            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold),
+            _ => BuildMSTestTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold),
         };
+    }
+
+    /// <summary>
+    /// BUG-N10: static classes, or instance classes whose only public API is static methods (utility types),
+    /// should not scaffold <c>new T()</c> + instance assertions.
+    /// </summary>
+    private static bool ShouldUseStaticTestScaffold(INamedTypeSymbol? matchedType)
+    {
+        if (matchedType is null)
+            return false;
+        if (matchedType.IsStatic)
+            return true;
+
+        var ordinaryMethods = matchedType.GetMembers()
+            .OfType<IMethodSymbol>()
+            .Where(m => m.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation)
+            .ToList();
+
+        var hasVisibleInstance = ordinaryMethods.Any(m =>
+            !m.IsStatic &&
+            m.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal or Accessibility.Protected);
+
+        var hasVisibleStatic = ordinaryMethods.Any(m =>
+            m.IsStatic &&
+            m.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal);
+
+        return !hasVisibleInstance && hasVisibleStatic;
     }
 
     private static string BuildMethodTargetInvocationBlock(
         string framework,
         string targetTypeName,
         string? targetMethodName,
-        IMethodSymbol? targetMethod)
+        IMethodSymbol? targetMethod,
+        bool useStaticScaffold)
     {
         if (string.IsNullOrWhiteSpace(targetMethodName))
         {
@@ -277,21 +311,39 @@ public sealed class ScaffoldingService : IScaffoldingService
             return $"        // Target method '{targetMethodName}' was not resolved on {targetTypeName}.\n";
         }
 
+        if (useStaticScaffold && targetMethod.IsStatic)
+        {
+            if (targetMethod.Parameters.Length == 0 && !targetMethod.ReturnsVoid)
+                return $"        _ = {targetTypeName}.{targetMethodName}();\n";
+            if (targetMethod.Parameters.Length == 0 && targetMethod.ReturnsVoid)
+                return $"        {targetTypeName}.{targetMethodName}();\n";
+            return $"        // Add arguments for static method '{targetMethodName}'.\n";
+        }
+
         if (targetMethod.DeclaredAccessibility == Accessibility.Private)
         {
+            if (useStaticScaffold && !targetMethod.IsStatic)
+            {
+                return "        // Private instance method — not reachable from a static-only scaffold; test via public API or InternalsVisibleTo.\n";
+            }
+
             var assertNotNull = framework switch
             {
                 "xunit" => "Assert.NotNull(__method);",
                 "nunit" => "Assert.That(__method, Is.Not.Null);",
                 _ => "Assert.IsNotNull(__method);",
             };
+            var flags = targetMethod.IsStatic
+                ? "System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic"
+                : "System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic";
+            var invokeTarget = targetMethod.IsStatic ? "null" : "subject";
             return
                 "        // Private method — invoke via reflection (replace with InternalsVisibleTo or a public API test if preferred).\n" +
                 $"        var __method = typeof({targetTypeName}).GetMethod(\n" +
                 $"            \"{targetMethodName}\",\n" +
-                "            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);\n" +
+                $"            {flags});\n" +
                 "        " + assertNotNull + "\n" +
-                "        __method!.Invoke(subject, null);\n";
+                $"        __method!.Invoke({invokeTarget}, null);\n";
         }
 
         if (targetMethod.Parameters.Length == 0 && !targetMethod.ReturnsVoid)
@@ -315,8 +367,15 @@ public sealed class ScaffoldingService : IScaffoldingService
         string targetTypeName,
         string methodName,
         string ctorCall,
-        string methodBlock)
+        string methodBlock,
+        bool isStaticType)
     {
+        var instanceSetup = isStaticType
+            ? string.Empty
+            : "        var subject = " + ctorCall + ";\n\n";
+        var tailAssert = isStaticType
+            ? "        Assert.IsTrue(true);\n"
+            : "        Assert.IsNotNull(subject);\n";
         return
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n" +
             usingDirective +
@@ -327,9 +386,9 @@ public sealed class ScaffoldingService : IScaffoldingService
             "    [TestMethod]\n" +
             "    public void " + methodName + "()\n" +
             "    {\n" +
-            "        var subject = " + ctorCall + ";\n\n" +
+            instanceSetup +
             methodBlock +
-            "        Assert.IsNotNull(subject);\n" +
+            tailAssert +
             "    }\n" +
             "}\n";
     }
@@ -340,8 +399,15 @@ public sealed class ScaffoldingService : IScaffoldingService
         string targetTypeName,
         string methodName,
         string ctorCall,
-        string methodBlock)
+        string methodBlock,
+        bool isStaticType)
     {
+        var instanceSetup = isStaticType
+            ? string.Empty
+            : "        var subject = " + ctorCall + ";\n\n";
+        var tailAssert = isStaticType
+            ? "        Assert.True(true);\n"
+            : "        Assert.NotNull(subject);\n";
         return
             "using Xunit;\n" +
             usingDirective +
@@ -351,9 +417,9 @@ public sealed class ScaffoldingService : IScaffoldingService
             "    [Fact]\n" +
             "    public void " + methodName + "()\n" +
             "    {\n" +
-            "        var subject = " + ctorCall + ";\n\n" +
+            instanceSetup +
             methodBlock +
-            "        Assert.NotNull(subject);\n" +
+            tailAssert +
             "    }\n" +
             "}\n";
     }
@@ -364,8 +430,15 @@ public sealed class ScaffoldingService : IScaffoldingService
         string targetTypeName,
         string methodName,
         string ctorCall,
-        string methodBlock)
+        string methodBlock,
+        bool isStaticType)
     {
+        var instanceSetup = isStaticType
+            ? string.Empty
+            : "        var subject = " + ctorCall + ";\n\n";
+        var tailAssert = isStaticType
+            ? "        Assert.That(true, Is.True);\n"
+            : "        Assert.That(subject, Is.Not.Null);\n";
         return
             "using NUnit.Framework;\n" +
             usingDirective +
@@ -376,9 +449,9 @@ public sealed class ScaffoldingService : IScaffoldingService
             "    [Test]\n" +
             "    public void " + methodName + "()\n" +
             "    {\n" +
-            "        var subject = " + ctorCall + ";\n\n" +
+            instanceSetup +
             methodBlock +
-            "        Assert.That(subject, Is.Not.Null);\n" +
+            tailAssert +
             "    }\n" +
             "}\n";
     }

@@ -168,16 +168,18 @@ public sealed class OrchestrationService : IOrchestrationService
         var partialOriginal = EnsurePartial(typeDeclaration.RemoveNodes(selectedMembers, SyntaxRemoveOptions.KeepExteriorTrivia)
             ?? throw new InvalidOperationException("Failed to remove the selected members from the original type."));
         var updatedRoot = root.ReplaceNode(typeDeclaration, partialOriginal);
-        var updatedOriginalContent = updatedRoot.ToFullString();
 
         var partialNewType = EnsurePartial(typeDeclaration.WithMembers(SyntaxFactory.List(selectedMembers)));
         var namespaceName = GetNamespaceName(typeDeclaration);
         var partialCompilationUnit = CreateCompilationUnit(root, partialNewType, namespaceName);
         var newFilePath = Path.Combine(Path.GetDirectoryName(filePath)!, newFileName);
-        // Avoid NormalizeWhitespace() — it reformats unrelated trivia; preserve member formatting from the source tree
-        var newFileContent = partialCompilationUnit.ToFullString();
+        // BUG-N4: Normalize generated trees only (not the whole solution) so file-scoped
+        // namespace and partial/class keywords have guaranteed spacing.
+        var newFileContent = partialCompilationUnit.NormalizeWhitespace().ToFullString();
 
         var originalContent = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+        var updatedRootNormalized = updatedRoot.NormalizeWhitespace();
+        var updatedOriginalContent = updatedRootNormalized.ToFullString();
         var mutations = new List<CompositeFileMutation>
         {
             new(filePath, updatedOriginalContent),
@@ -354,9 +356,12 @@ public sealed class OrchestrationService : IOrchestrationService
 
     private static TypeDeclarationSyntax EnsurePartial(TypeDeclarationSyntax declaration)
     {
-        return declaration.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PartialKeyword))
-            ? declaration
-            : declaration.WithModifiers(declaration.Modifiers.Add(SyntaxFactory.Token(SyntaxKind.PartialKeyword)));
+        if (declaration.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PartialKeyword)))
+            return declaration;
+
+        // BUG-N4: Plain PartialKeyword token can glue to "class" in ToFullString(); keep trivia.
+        var partialToken = SyntaxFactory.Token(SyntaxKind.PartialKeyword).WithTrailingTrivia(SyntaxFactory.ElasticSpace);
+        return declaration.WithModifiers(declaration.Modifiers.Add(partialToken));
     }
 
     private static string GetNamespaceName(TypeDeclarationSyntax declaration)
@@ -372,10 +377,11 @@ public sealed class OrchestrationService : IOrchestrationService
             return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(declaration));
         }
 
-        return compilationUnit.WithMembers(
-            SyntaxFactory.SingletonList<MemberDeclarationSyntax>(
-                SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
-                    .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(declaration))));
+        var nsDecl = SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
+            .WithNamespaceKeyword(
+                SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Space))
+            .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(declaration));
+        return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(nsDecl));
     }
 
     private static void UpsertMutation(List<CompositeFileMutation> mutations, string filePath, string updatedContent)

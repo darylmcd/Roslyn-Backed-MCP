@@ -16,9 +16,11 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
     {
         InitializeServices();
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
+        var msBuildEvaluation = new MsBuildEvaluationService(WorkspaceManager);
         SecurityService = new SecurityDiagnosticService(
             DiagnosticService,
             WorkspaceManager,
+            msBuildEvaluation,
             NullLogger<SecurityDiagnosticService>.Instance);
     }
 

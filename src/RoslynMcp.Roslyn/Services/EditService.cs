@@ -60,6 +60,13 @@ public sealed class EditService : IEditService
             return new TextEditResultDto(false, filePath, 0, []);
         }
 
+        // BUG-N1: Mirror RefactoringService — MSBuildWorkspace may not flush text edits to disk.
+        var persisted = await PersistDocumentTextToDiskAsync(workspaceId, normalizedPath, ct).ConfigureAwait(false);
+        if (!persisted)
+        {
+            return new TextEditResultDto(false, filePath, 0, []);
+        }
+
         // Compute diff
         var newText = newSourceText.ToString();
         var differ = new Differ();
@@ -80,5 +87,29 @@ public sealed class EditService : IEditService
         var fileChange = new FileChangeDto(filePath, string.Join('\n', diffLines));
 
         return new TextEditResultDto(true, filePath, edits.Count, [fileChange]);
+    }
+
+    private async Task<bool> PersistDocumentTextToDiskAsync(string workspaceId, string normalizedPath, CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var document = solution.Projects
+            .SelectMany(p => p.Documents)
+            .FirstOrDefault(d => d.FilePath is not null &&
+                Path.GetFullPath(d.FilePath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+
+        if (document?.FilePath is null)
+            return false;
+
+        try
+        {
+            var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+            await File.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(ex, "Failed to persist document to disk: {Path}", document.FilePath);
+            return false;
+        }
     }
 }

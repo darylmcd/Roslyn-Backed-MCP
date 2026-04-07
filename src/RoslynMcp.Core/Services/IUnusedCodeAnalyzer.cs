@@ -14,5 +14,7 @@ public interface IUnusedCodeAnalyzer
         int limit,
         bool excludeEnums,
         bool excludeRecordProperties,
+        bool excludeTestProjects,
+        bool excludeTests,
         CancellationToken ct);
 }

@@ -26,7 +26,7 @@ public static class AnalysisTools
         [Description("Optional: filter by file path")] string? file = null,
         [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden)")] string? severity = null,
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
-        [Description("Maximum number of diagnostics to return (default: 100)")] int limit = 100,
+        [Description("Maximum number of diagnostics to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync(() =>
@@ -48,6 +48,12 @@ public static class AnalysisTools
                     .Take(limit)
                     .ToList();
 
+                var restoreHint = allDiagnostics.Any(entry =>
+                    entry.Bucket == DiagnosticBucket.Compiler &&
+                    (entry.Diagnostic.Id == "CS0234" ||
+                     (entry.Diagnostic.Message?.Contains("could not be found", StringComparison.OrdinalIgnoreCase) == true) ||
+                     (entry.Diagnostic.Message?.Contains("does not exist in the namespace", StringComparison.OrdinalIgnoreCase) == true)));
+
                 return JsonSerializer.Serialize(new
                 {
                     totalErrors = results.TotalErrors,
@@ -61,6 +67,9 @@ public static class AnalysisTools
                     limit,
                     returnedDiagnostics = pagedDiagnostics.Count,
                     hasMore = offset + pagedDiagnostics.Count < allDiagnostics.Count,
+                    restoreHint = restoreHint
+                        ? "Many missing-type errors often mean NuGet restore has not been run. Run `dotnet restore` on the solution, then `workspace_reload`."
+                        : null,
                     workspaceDiagnostics = pagedDiagnostics
                         .Where(entry => entry.Bucket == DiagnosticBucket.Workspace)
                         .Select(entry => entry.Diagnostic)
@@ -235,9 +244,10 @@ public static class AnalysisTools
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await mutationAnalysisService.FindTypeUsagesAsync(workspaceId, locator, c);
                 var paged = results.Skip(offset).Take(limit).ToList();
+                // BUG-N11: Use PascalCase enum names for dictionary keys (Json may camelCase member names elsewhere).
                 var grouped = paged
-                    .GroupBy(u => u.Classification.ToString())
-                    .ToDictionary(g => g.Key, g => g.ToList());
+                    .GroupBy(u => u.Classification.ToString(), StringComparer.Ordinal)
+                    .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
                 var hasMore = offset + paged.Count < results.Count;
                 return JsonSerializer.Serialize(new
                 {

@@ -109,6 +109,22 @@ public sealed class RefactoringService : IRefactoringService
                 .Cast<string>()
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
+            // BUG-N1: MSBuildWorkspace.TryApplyChanges updates the in-memory solution but does not
+            // reliably persist text edits to disk for change-only operations. Write every changed
+            // document explicitly (same as PersistDocumentSetChangesAsync changed-doc loop).
+            if (success)
+            {
+                try
+                {
+                    await PersistChangedDocumentsFromSolutionAsync(modifiedSolution, solutionChanges, ct).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(ex, "Failed to persist changed documents to disk for workspace {WorkspaceId}", workspaceId);
+                    return new ApplyResultDto(false, [], "Failed to persist applied changes to disk.");
+                }
+            }
         }
 
         _previewStore.Invalidate(previewToken);
@@ -266,6 +282,27 @@ public sealed class RefactoringService : IRefactoringService
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    private static async Task PersistChangedDocumentsFromSolutionAsync(
+        Solution modifiedSolution,
+        SolutionChanges solutionChanges,
+        CancellationToken ct)
+    {
+        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        {
+            foreach (var documentId in projectChange.GetChangedDocuments())
+            {
+                var document = modifiedSolution.GetDocument(documentId);
+                if (document?.FilePath is null)
+                {
+                    continue;
+                }
+
+                var text = (await document.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                await File.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
+            }
+        }
     }
 
     private async Task<(bool Success, IReadOnlyList<string> AppliedFiles)> PersistDocumentSetChangesAsync(
