@@ -23,7 +23,7 @@ public static class TestCoverageTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("test_coverage", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);

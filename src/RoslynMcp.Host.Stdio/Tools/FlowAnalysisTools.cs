@@ -19,7 +19,7 @@ public static class FlowAnalysisTools
         [Description("1-based end line of the code region to analyze")] int endLine,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("analyze_data_flow", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await flowAnalysisService.AnalyzeDataFlowAsync(workspaceId, filePath, startLine, endLine, c);
@@ -38,7 +38,7 @@ public static class FlowAnalysisTools
         [Description("1-based end line of the code region to analyze")] int endLine,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("analyze_control_flow", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await flowAnalysisService.AnalyzeControlFlowAsync(workspaceId, filePath, startLine, endLine, c);

@@ -22,7 +22,7 @@ public static class InterfaceExtractionTools
         [Description("If true, replace parameter and field references to the concrete type with the interface (default: false)")] bool replaceUsages = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("extract_interface_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await interfaceExtractionService.PreviewExtractInterfaceAsync(
@@ -40,7 +40,7 @@ public static class InterfaceExtractionTools
         [Description("The preview token returned by extract_interface_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("extract_interface_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

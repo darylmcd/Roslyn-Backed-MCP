@@ -18,7 +18,7 @@ public static class MSBuildTools
         [Description("Property name (e.g. TargetFramework)")] string propertyName,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("evaluate_msbuild_property", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await msbuildEvaluation.EvaluatePropertyAsync(workspaceId, project, propertyName, c);
@@ -36,7 +36,7 @@ public static class MSBuildTools
         [Description("Item type (e.g. Compile, PackageReference)")] string itemType,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("evaluate_msbuild_items", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await msbuildEvaluation.EvaluateItemsAsync(workspaceId, project, itemType, c);
@@ -55,7 +55,7 @@ public static class MSBuildTools
         [Description("Optional: explicit allowlist of property names to return. Takes precedence over propertyNameFilter when supplied.")] string[]? includedNames = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_msbuild_properties", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await msbuildEvaluation.GetEvaluatedPropertiesAsync(

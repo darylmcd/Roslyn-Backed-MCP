@@ -22,7 +22,7 @@ public static class FileOperationTools
         [Description("Initial file contents")] string content,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("create_file_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
@@ -40,7 +40,7 @@ public static class FileOperationTools
         [Description("The preview token returned by create_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("create_file_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
@@ -62,7 +62,7 @@ public static class FileOperationTools
         [Description("Absolute path to the source file to delete")] string filePath,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("delete_file_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
@@ -80,7 +80,7 @@ public static class FileOperationTools
         [Description("The preview token returned by delete_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("delete_file_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
@@ -105,7 +105,7 @@ public static class FileOperationTools
         [Description("When true, updates the namespace declaration in the moved file to match the destination folder")] bool updateNamespace = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("move_file_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, sourceFilePath, c).ConfigureAwait(false);
@@ -127,7 +127,7 @@ public static class FileOperationTools
         [Description("The preview token returned by move_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("move_file_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

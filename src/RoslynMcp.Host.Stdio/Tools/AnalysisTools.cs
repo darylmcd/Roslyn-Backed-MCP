@@ -29,7 +29,7 @@ public static class AnalysisTools
         [Description("Maximum number of diagnostics to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("project_diagnostics", () =>
         {
             ParameterValidation.ValidateSeverity(severity);
             ParameterValidation.ValidatePagination(offset, limit);
@@ -99,7 +99,7 @@ public static class AnalysisTools
         [Description("1-based column number")] int column,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("diagnostic_details", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
@@ -119,7 +119,7 @@ public static class AnalysisTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("type_hierarchy", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), c);
@@ -141,7 +141,7 @@ public static class AnalysisTools
         [Description("Maximum number of callees to return (default: 100)")] int calleesLimit = 100,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("callers_callees", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(0, callersLimit);
@@ -180,7 +180,7 @@ public static class AnalysisTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("impact_analysis", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await mutationAnalysisService.AnalyzeImpactAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), c);
@@ -201,7 +201,7 @@ public static class AnalysisTools
         [Description("Maximum number of mutating members to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_type_mutations", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(0, limit);
@@ -237,7 +237,7 @@ public static class AnalysisTools
         [Description("Number of usages to skip before returning results (default: 0)")] int offset = 0,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("find_type_usages", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(offset, limit);

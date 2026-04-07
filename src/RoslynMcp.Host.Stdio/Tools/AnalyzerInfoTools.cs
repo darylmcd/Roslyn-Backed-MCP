@@ -22,7 +22,7 @@ public static class AnalyzerInfoTools
         [Description("Maximum number of analyzer rules to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("list_analyzers", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(offset, limit);

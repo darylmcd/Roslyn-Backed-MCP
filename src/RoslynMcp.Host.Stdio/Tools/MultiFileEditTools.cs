@@ -20,7 +20,7 @@ public static class MultiFileEditTools
         [Description("Array of file edits. Each has filePath (string) and edits (array of TextEditDto with startLine, startColumn, endLine, endColumn, newText)")] FileEditsDto[] fileEdits,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("apply_multi_file_edit", () =>
             gate.RunWriteAsync(workspaceId, async c =>
             {
                 var results = new List<FileEditSummaryDto>();

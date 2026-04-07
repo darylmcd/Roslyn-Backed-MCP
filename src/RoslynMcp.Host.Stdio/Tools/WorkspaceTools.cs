@@ -20,7 +20,7 @@ public static class WorkspaceTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("workspace_load", () =>
             gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
@@ -42,7 +42,7 @@ public static class WorkspaceTools
     {
         // Reload acquires both the global load gate AND the per-workspace write lock so that
         // any in-flight readers on this workspace complete before the solution is replaced.
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("workspace_reload", () =>
             gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, outerCt =>
                 gate.RunWriteAsync(workspaceId, async innerCt =>
                 {
@@ -65,7 +65,7 @@ public static class WorkspaceTools
         // BUG-N2: RemoveGate must run after RunWriteAsync completes so the per-workspace semaphore
         // is released before Dispose; disposing while the writer still holds the gate caused
         // ObjectDisposedException in gate.Release().
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("workspace_close", () =>
             gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, async outerCt =>
             {
                 var json = await gate.RunWriteAsync(workspaceId, async innerCt =>
@@ -83,7 +83,7 @@ public static class WorkspaceTools
     public static Task<string> ListWorkspaces(
         IWorkspaceManager workspace)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("workspace_list", () =>
         {
             var workspaces = workspace.ListWorkspaces();
             return Task.FromResult(JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented));
@@ -97,7 +97,7 @@ public static class WorkspaceTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("workspace_status", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
@@ -112,7 +112,7 @@ public static class WorkspaceTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("project_graph", () =>
             gate.RunReadAsync(workspaceId, _ =>
             {
                 var graph = workspace.GetProjectGraph(workspaceId);
@@ -128,7 +128,7 @@ public static class WorkspaceTools
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("source_generated_documents", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var documents = await workspace.GetSourceGeneratedDocumentsAsync(workspaceId, projectName, c);
@@ -144,7 +144,7 @@ public static class WorkspaceTools
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_source_text", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var text = await workspace.GetSourceTextAsync(workspaceId, filePath, c);

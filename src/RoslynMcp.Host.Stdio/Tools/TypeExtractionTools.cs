@@ -22,7 +22,7 @@ public static class TypeExtractionTools
         [Description("Optional: target file path for the new type. If omitted, defaults to {NewTypeName}.cs in the same directory")] string? newFilePath = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("extract_type_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await typeExtractionService.PreviewExtractTypeAsync(
@@ -40,7 +40,7 @@ public static class TypeExtractionTools
         [Description("The preview token returned by extract_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("extract_type_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

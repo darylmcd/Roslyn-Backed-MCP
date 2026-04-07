@@ -24,7 +24,7 @@ public static class SyntaxTools
         [Description("Approximate maximum characters of leaf text to accumulate before truncating the tree (default: 65536).")] int maxOutputChars = 65536,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("get_syntax_tree", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);

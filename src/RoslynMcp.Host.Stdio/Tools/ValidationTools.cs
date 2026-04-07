@@ -18,7 +18,7 @@ public static class ValidationTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("build_workspace", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
@@ -36,7 +36,7 @@ public static class ValidationTools
         [Description("Project name or project file path within the loaded workspace")] string projectName,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("build_project", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await buildService.BuildProjectAsync(workspaceId, projectName, c);
@@ -55,7 +55,7 @@ public static class ValidationTools
         [Description("Maximum number of test cases to return (default: 200; raise carefully — 1000 cases is roughly 350KB of JSON)")] int limit = 200,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("test_discover", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 if (limit <= 0)
@@ -145,14 +145,14 @@ public static class ValidationTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("test_run", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
                 var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
                 ProgressHelper.Report(progress, 1, 1);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct), toolName: "test_run");
+            }, ct));
     }
 
     [McpServerTool(Name = "test_related", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find likely related tests for a symbol by source location or symbol handle. Results use heuristic name matching and may not be exhaustive.")]
@@ -166,7 +166,7 @@ public static class ValidationTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("test_related", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
@@ -184,7 +184,7 @@ public static class ValidationTools
         [Description("Maximum number of test cases to return (default: 100)")] int maxResults = 100,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("test_related_files", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await testDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, filePaths, maxResults, c);

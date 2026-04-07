@@ -23,7 +23,7 @@ public static class ScaffoldingTools
         [Description("Optional: base type name")] string? baseType = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("scaffold_type_preview", () =>
         {
             ParameterValidation.ValidateTypeKind(typeKind);
             return gate.RunReadAsync(workspaceId, async c =>
@@ -46,7 +46,7 @@ public static class ScaffoldingTools
         [Description("The preview token returned by scaffold_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("scaffold_type_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
@@ -70,7 +70,7 @@ public static class ScaffoldingTools
         [Description("Test framework: mstest, xunit, nunit, or auto (infer from PackageReference in the test csproj)")] string testFramework = "auto",
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("scaffold_test_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await scaffoldingService.PreviewScaffoldTestAsync(
@@ -90,7 +90,7 @@ public static class ScaffoldingTools
         [Description("The preview token returned by scaffold_test_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("scaffold_test_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

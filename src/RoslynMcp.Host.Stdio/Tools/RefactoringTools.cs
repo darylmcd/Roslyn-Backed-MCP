@@ -21,7 +21,7 @@ public static class RefactoringTools
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("rename_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), newName, c);
@@ -37,7 +37,7 @@ public static class RefactoringTools
         [Description("The preview token returned by rename_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("rename_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
@@ -57,7 +57,7 @@ public static class RefactoringTools
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("organize_usings_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewOrganizeUsingsAsync(workspaceId, filePath, c);
@@ -73,7 +73,7 @@ public static class RefactoringTools
         [Description("The preview token returned by organize_usings_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("organize_usings_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
@@ -93,7 +93,7 @@ public static class RefactoringTools
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("format_document_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewFormatDocumentAsync(workspaceId, filePath, c);
@@ -109,7 +109,7 @@ public static class RefactoringTools
         [Description("The preview token returned by format_document_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("format_document_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
@@ -133,7 +133,7 @@ public static class RefactoringTools
         [Description("Optional: curated fix identifier from diagnostic_details")] string? fixId = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("code_fix_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewCodeFixAsync(workspaceId, diagnosticId, filePath, line, column, fixId, c);
@@ -149,7 +149,7 @@ public static class RefactoringTools
         [Description("The preview token returned by code_fix_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("code_fix_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
@@ -174,7 +174,7 @@ public static class RefactoringTools
         [Description("1-based end column of the range to format")] int endColumn,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("format_range_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await refactoringService.PreviewFormatRangeAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c);
@@ -191,7 +191,7 @@ public static class RefactoringTools
         [Description("The preview token returned by format_range_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("format_range_apply", () =>
         {
             var wsId = previewStore.PeekWorkspaceId(previewToken)
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");

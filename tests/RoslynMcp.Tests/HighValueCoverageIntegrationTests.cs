@@ -36,7 +36,8 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
         var workspaceId = status.WorkspaceId;
 
         var result = await CompileCheckService.CheckAsync(
-            workspaceId, projectFilter: null, emitValidation: false, CancellationToken.None);
+            workspaceId, projectFilter: null, emitValidation: false,
+            severityFilter: null, fileFilter: null, offset: 0, limit: 50, CancellationToken.None);
 
         Assert.IsFalse(result.Success, "Broken solution should report compile errors.");
         Assert.IsTrue(result.ErrorCount > 0, "Expected at least one error for MissingSymbol.");
@@ -52,7 +53,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
         var cts = new CancellationTokenSource();
         cts.Cancel();
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
-            CompileCheckService.CheckAsync(SampleWorkspaceId, null, false, cts.Token));
+            CompileCheckService.CheckAsync(SampleWorkspaceId, null, false, null, null, 0, 50, cts.Token));
     }
 
     [TestMethod]

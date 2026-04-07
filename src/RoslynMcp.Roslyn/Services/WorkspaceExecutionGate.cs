@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using Nito.AsyncEx;
 using RoslynMcp.Core.Services;
 
@@ -138,6 +139,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 
     private async Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
     {
+        var queueStopwatch = Stopwatch.StartNew();
         EnforceRateLimit();
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -149,7 +151,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             await _loadGate.WaitAsync(linked).ConfigureAwait(false);
             try
             {
-                return await action(linked).ConfigureAwait(false);
+                return await RunWithMetricsAsync("load", queueStopwatch, () => action(linked)).ConfigureAwait(false);
             }
             finally
             {
@@ -160,13 +162,16 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 
     private async Task<T> RunGlobalOnlyAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
     {
+        var queueStopwatch = Stopwatch.StartNew();
         EnforceRateLimit();
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(_requestTimeout);
         var linked = timeoutCts.Token;
 
-        return await WithGlobalThrottle(() => action(linked), linked).ConfigureAwait(false);
+        return await WithGlobalThrottle(
+            () => RunWithMetricsAsync("global-only", queueStopwatch, () => action(linked)),
+            linked).ConfigureAwait(false);
     }
 
     private async Task<T> RunPerWorkspaceAsync<T>(
@@ -175,6 +180,10 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         Func<CancellationToken, Task<T>> action,
         CancellationToken ct)
     {
+        // P3: Begin queue-time tracking immediately so the metrics summary captures rate-limit
+        // wait, global throttle wait, and per-workspace lock wait under a single QueuedMs value.
+        var queueStopwatch = Stopwatch.StartNew();
+
         EnforceRateLimit();
 
         if (string.IsNullOrWhiteSpace(workspaceId))
@@ -192,6 +201,8 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         timeoutCts.CancelAfter(_requestTimeout);
         var linked = timeoutCts.Token;
 
+        var gateMode = _useRwLock ? "rw-lock" : "legacy-mutex";
+
         return await WithGlobalThrottle(async () =>
         {
             if (_useRwLock)
@@ -202,7 +213,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                     using (await rwLock.WriterLockAsync(linked).ConfigureAwait(false))
                     {
                         EnsureWorkspaceStillExists(workspaceId);
-                        return await action(linked).ConfigureAwait(false);
+                        return await RunWithMetricsAsync(gateMode, queueStopwatch, () => action(linked)).ConfigureAwait(false);
                     }
                 }
                 else
@@ -210,7 +221,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                     using (await rwLock.ReaderLockAsync(linked).ConfigureAwait(false))
                     {
                         EnsureWorkspaceStillExists(workspaceId);
-                        return await action(linked).ConfigureAwait(false);
+                        return await RunWithMetricsAsync(gateMode, queueStopwatch, () => action(linked)).ConfigureAwait(false);
                     }
                 }
             }
@@ -226,13 +237,42 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             await gate.WaitAsync(linked).ConfigureAwait(false);
             try
             {
-                return await action(linked).ConfigureAwait(false);
+                return await RunWithMetricsAsync(gateMode, queueStopwatch, () => action(linked)).ConfigureAwait(false);
             }
             finally
             {
                 gate.Release();
             }
         }, linked).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// P3: Capture queue-wait + lock-hold timing into <see cref="AmbientGateMetrics.Current"/>
+    /// for the current request, then run the action. The queue stopwatch is stopped on entry
+    /// (so its elapsed value reflects all wait time before the action ran) and a fresh hold
+    /// stopwatch is started around the action body.
+    /// </summary>
+    private static async Task<T> RunWithMetricsAsync<T>(
+        string gateMode, Stopwatch queueStopwatch, Func<Task<T>> body)
+    {
+        queueStopwatch.Stop();
+        var queuedMs = queueStopwatch.ElapsedMilliseconds;
+        var holdStopwatch = Stopwatch.StartNew();
+        try
+        {
+            return await body().ConfigureAwait(false);
+        }
+        finally
+        {
+            holdStopwatch.Stop();
+            var metrics = AmbientGateMetrics.Current;
+            if (metrics is not null)
+            {
+                metrics.GateMode ??= gateMode;
+                metrics.QueuedMs += queuedMs;
+                metrics.HeldMs += holdStopwatch.ElapsedMilliseconds;
+            }
+        }
     }
 
     /// <summary>

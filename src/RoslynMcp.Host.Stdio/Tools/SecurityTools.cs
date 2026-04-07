@@ -18,7 +18,7 @@ public static class SecurityTools
         [Description("Optional: filter by file path")] string? file = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("security_diagnostics", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await securityService.GetSecurityDiagnosticsAsync(workspaceId, project, file, c);
@@ -33,7 +33,7 @@ public static class SecurityTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("security_analyzer_status", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await securityService.GetAnalyzerStatusAsync(workspaceId, c);
@@ -51,7 +51,7 @@ public static class SecurityTools
         [Description("Include transitive (indirect) dependencies in the scan. Default: false")] bool includeTransitive = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync(() =>
+        return ToolErrorHandler.ExecuteAsync("nuget_vulnerability_scan", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await dependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, project, includeTransitive, c);
