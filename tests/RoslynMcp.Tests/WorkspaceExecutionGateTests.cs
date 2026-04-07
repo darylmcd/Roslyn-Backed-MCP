@@ -18,6 +18,57 @@ public class WorkspaceExecutionGateTests
     }
 
     [TestMethod]
+    public void ExecutionGateOptions_Default_UsesReaderWriterLock()
+    {
+        // Phase-2 flip (2026-04-07): the default ExecutionGateOptions now uses the RW lock.
+        // Pin this so a future refactor doesn't silently revert to legacy mutex.
+        var options = new ExecutionGateOptions();
+        Assert.IsTrue(options.UseReaderWriterLock,
+            "Phase-2 flip: default ExecutionGateOptions.UseReaderWriterLock must be true. " +
+            "Revert only as part of a deliberate rollback documented in backlog.md.");
+    }
+
+    [TestMethod]
+    public async Task RunReadAsync_DefaultGate_AllowsConcurrentReads()
+    {
+        // Behavioral pin: a gate constructed with default options (no useRwLock override)
+        // must allow two concurrent reads on the same workspace to overlap. This would fail
+        // if the default reverts to legacy mutex.
+        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), new FakeGateWorkspaceManager());
+        var tracker = new ConcurrencyTracker();
+
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var first = gate.RunReadAsync(WorkspaceA, async ct =>
+        {
+            tracker.Enter();
+            firstStarted.SetResult();
+            await releaseFirst.Task.WaitAsync(ct);
+            tracker.Leave();
+            return 1;
+        }, CancellationToken.None);
+
+        await firstStarted.Task;
+
+        var secondStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var second = gate.RunReadAsync(WorkspaceA, async ct =>
+        {
+            tracker.Enter();
+            secondStarted.SetResult();
+            tracker.Leave();
+            return 2;
+        }, CancellationToken.None);
+
+        await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(2, tracker.MaxConcurrent,
+            "Default gate must allow overlapping reads (phase-2 rw-lock default).");
+
+        releaseFirst.SetResult();
+        await Task.WhenAll(first, second);
+    }
+
+    [TestMethod]
     public async Task RunReadAsync_TwoConcurrentReads_RunInParallel_WhenFlagOn()
     {
         var gate = CreateGate(useRwLock: true);
