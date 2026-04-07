@@ -1,114 +1,31 @@
-using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 
 namespace RoslynMcp.Core.Services;
 
 /// <summary>
-/// Thread-safe, TTL-bounded in-memory store for pending Roslyn solution previews.
-/// Entries expire after a configurable TTL (default 5 minutes). The store is capped at <see cref="_maxEntries"/> entries;
-/// oldest entries are evicted when the limit is reached.
+/// Thread-safe, TTL-bounded in-memory store for pending Roslyn <see cref="Solution"/> previews.
+/// Entries expire after a configurable TTL (default 5 minutes). The store is capped at
+/// <paramref name="maxEntries"/> entries; oldest entries are evicted when the limit is reached.
 /// </summary>
-public sealed class PreviewStore : IPreviewStore
+public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPreviewStore
 {
-    private readonly ConcurrentDictionary<string, PreviewEntry> _entries = new();
-    private readonly TimeSpan _ttl;
-    private readonly int _maxEntries;
-
     public PreviewStore(int maxEntries = 20, TimeSpan? ttl = null)
-    {
-        _maxEntries = maxEntries > 0 ? maxEntries : 20;
-        _ttl = ttl ?? TimeSpan.FromMinutes(5);
-    }
+        : base(maxEntries, ttl ?? TimeSpan.FromMinutes(5)) { }
 
     public string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description)
-    {
-        CleanExpired();
-        EvictIfOverLimit();
-        var token = Guid.NewGuid().ToString("N");
-        _entries[token] = new PreviewEntry(workspaceId, modifiedSolution, workspaceVersion, description, DateTime.UtcNow);
-        return token;
-    }
+        => StoreEntry(new PreviewEntry(workspaceId, modifiedSolution, workspaceVersion, description, DateTime.UtcNow));
 
     public (string WorkspaceId, Solution ModifiedSolution, int WorkspaceVersion, string Description)? Retrieve(string token)
     {
-        if (!_entries.TryGetValue(token, out var entry))
-            return null;
-
-        if (DateTime.UtcNow - entry.CreatedAt > _ttl)
-        {
-            _entries.TryRemove(token, out _);
-            return null;
-        }
-
+        var entry = RetrieveEntry(token);
+        if (entry is null) return null;
         return (entry.WorkspaceId, entry.ModifiedSolution, entry.WorkspaceVersion, entry.Description);
     }
 
-    public void Invalidate(string token)
-    {
-        _entries.TryRemove(token, out _);
-    }
-
-    public void InvalidateAll(string? workspaceId = null)
-    {
-        if (workspaceId is null)
-        {
-            _entries.Clear();
-            return;
-        }
-
-        foreach (var kvp in _entries)
-        {
-            if (string.Equals(kvp.Value.WorkspaceId, workspaceId, StringComparison.Ordinal))
-            {
-                _entries.TryRemove(kvp.Key, out _);
-            }
-        }
-    }
-
-    public string? PeekWorkspaceId(string token)
-    {
-        if (!_entries.TryGetValue(token, out var entry))
-            return null;
-
-        if (DateTime.UtcNow - entry.CreatedAt > _ttl)
-        {
-            _entries.TryRemove(token, out _);
-            return null;
-        }
-
-        return entry.WorkspaceId;
-    }
-
-    private void CleanExpired()
-    {
-        var now = DateTime.UtcNow;
-        foreach (var kvp in _entries)
-        {
-            if (now - kvp.Value.CreatedAt > _ttl)
-                _entries.TryRemove(kvp.Key, out _);
-        }
-    }
-
-    private void EvictIfOverLimit()
-    {
-        if (_entries.Count <= _maxEntries) return;
-
-        var toEvict = _entries
-            .OrderBy(kvp => kvp.Value.CreatedAt)
-            .Take(_entries.Count - _maxEntries + 1)
-            .Select(kvp => kvp.Key)
-            .ToList();
-
-        foreach (var key in toEvict)
-        {
-            _entries.TryRemove(key, out _);
-        }
-    }
-
-    private sealed record PreviewEntry(
+    public sealed record PreviewEntry(
         string WorkspaceId,
         Solution ModifiedSolution,
         int WorkspaceVersion,
         string Description,
-        DateTime CreatedAt);
+        DateTime CreatedAt) : IBoundedStoreEntry;
 }

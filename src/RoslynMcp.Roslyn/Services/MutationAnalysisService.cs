@@ -371,60 +371,62 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         if (member is IMethodSymbol method &&
             method.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation)
         {
-            // Public API surface often mutates via Add*/Set*/Remove*/Clear* without obvious field writes in the body
-            if (method.DeclaredAccessibility == Accessibility.Public &&
-                !method.IsStatic &&
-                method.ReturnsVoid &&
-                (method.Name.StartsWith("Add", StringComparison.Ordinal) ||
-                 method.Name.StartsWith("Set", StringComparison.Ordinal) ||
-                 method.Name.StartsWith("Remove", StringComparison.Ordinal) ||
-                 method.Name.StartsWith("Clear", StringComparison.Ordinal) ||
-                 method.Name.StartsWith("Update", StringComparison.Ordinal) ||
-                 method.Name.StartsWith("Insert", StringComparison.Ordinal)))
-                return true;
+            if (IsMutatingByName(method)) return true;
 
             var location = method.Locations.FirstOrDefault(l => l.IsInSource);
             if (location?.SourceTree is null) return false;
 
-            var root = location.SourceTree.GetRoot();
-            var methodNode = root.FindNode(location.SourceSpan);
-
-            var hasInstanceAssignment = methodNode.DescendantNodes()
-                .OfType<AssignmentExpressionSyntax>()
-                .Any(a =>
-                {
-                    var left = a.Left;
-                    if (left is MemberAccessExpressionSyntax memberAccess)
-                    {
-                        return memberAccess.Expression is ThisExpressionSyntax ||
-                               (memberAccess.Expression is IdentifierNameSyntax && IsInstanceMember(memberAccess.Name.Identifier.Text, containingType));
-                    }
-                    if (left is IdentifierNameSyntax ident)
-                    {
-                        return IsInstanceMember(ident.Identifier.Text, containingType);
-                    }
-                    return false;
-                });
-
-            if (hasInstanceAssignment) return true;
-
-            // Methods that call mutating collection methods (.Add, .Remove, .Clear) on instance members
-            var hasMutatingCollectionCall = methodNode.DescendantNodes()
-                .OfType<InvocationExpressionSyntax>()
-                .Any(inv =>
-                {
-                    if (inv.Expression is MemberAccessExpressionSyntax access)
-                    {
-                        var methodName = access.Name.Identifier.Text;
-                        return methodName is "Add" or "Remove" or "Clear" or "Insert" or "RemoveAt" or "AddRange" or "RemoveAll";
-                    }
-                    return false;
-                });
-
-            return hasMutatingCollectionCall;
+            var methodNode = location.SourceTree.GetRoot().FindNode(location.SourceSpan);
+            return HasInstanceFieldAssignment(methodNode, containingType)
+                || HasMutatingCollectionCall(methodNode);
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Public API surface often mutates via Add*/Set*/Remove*/Clear* without obvious field
+    /// writes in the body. Matched by naming convention before falling back to AST inspection.
+    /// </summary>
+    private static bool IsMutatingByName(IMethodSymbol method)
+    {
+        if (method.DeclaredAccessibility != Accessibility.Public || !method.ReturnsVoid)
+            return false;
+
+        return method.Name.StartsWith("Add", StringComparison.Ordinal)
+            || method.Name.StartsWith("Set", StringComparison.Ordinal)
+            || method.Name.StartsWith("Remove", StringComparison.Ordinal)
+            || method.Name.StartsWith("Clear", StringComparison.Ordinal)
+            || method.Name.StartsWith("Update", StringComparison.Ordinal)
+            || method.Name.StartsWith("Insert", StringComparison.Ordinal);
+    }
+
+    private static bool HasInstanceFieldAssignment(SyntaxNode methodNode, INamedTypeSymbol containingType)
+    {
+        return methodNode.DescendantNodes()
+            .OfType<AssignmentExpressionSyntax>()
+            .Any(a =>
+            {
+                var left = a.Left;
+                if (left is MemberAccessExpressionSyntax memberAccess)
+                {
+                    return memberAccess.Expression is ThisExpressionSyntax ||
+                           (memberAccess.Expression is IdentifierNameSyntax &&
+                            IsInstanceMember(memberAccess.Name.Identifier.Text, containingType));
+                }
+                if (left is IdentifierNameSyntax ident)
+                    return IsInstanceMember(ident.Identifier.Text, containingType);
+                return false;
+            });
+    }
+
+    private static bool HasMutatingCollectionCall(SyntaxNode methodNode)
+    {
+        return methodNode.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Any(inv => inv.Expression is MemberAccessExpressionSyntax access &&
+                        access.Name.Identifier.Text is "Add" or "Remove" or "Clear" or "Insert"
+                                                            or "RemoveAt" or "AddRange" or "RemoveAll");
     }
 
     /// <summary>
@@ -482,16 +484,6 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         }
 
         return false;
-    }
-
-    private static IEnumerable<INamedTypeSymbol> GetBaseTypes(INamedTypeSymbol type)
-    {
-        var current = type.BaseType;
-        while (current is not null)
-        {
-            yield return current;
-            current = current.BaseType;
-        }
     }
 
     private static bool IsInstanceMember(string name, INamedTypeSymbol type)

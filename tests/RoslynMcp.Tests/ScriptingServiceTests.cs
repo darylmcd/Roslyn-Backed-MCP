@@ -10,7 +10,7 @@ public sealed class ScriptingServiceTests
     [Timeout(30_000)]
     public async Task EvaluateAsync_InfiniteLoop_ReturnsTimeoutWithinBudgetPlusGrace()
     {
-        var service = new ScriptingService(NullLogger<ScriptingService>.Instance);
+        var service = new ScriptingService(NullLogger<ScriptingService>.Instance, new ScriptingServiceOptions());
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var result = await service.EvaluateAsync(
             "while(true){}",
@@ -31,7 +31,7 @@ public sealed class ScriptingServiceTests
     [TestMethod]
     public async Task EvaluateAsync_SimpleExpression_ReturnsResult()
     {
-        var service = new ScriptingService(NullLogger<ScriptingService>.Instance);
+        var service = new ScriptingService(NullLogger<ScriptingService>.Instance, new ScriptingServiceOptions());
         var result = await service.EvaluateAsync(
             "21 + 34",
             imports: null,
@@ -46,7 +46,7 @@ public sealed class ScriptingServiceTests
     [TestMethod]
     public async Task EvaluateAsync_RuntimeError_ReturnsCaughtError()
     {
-        var service = new ScriptingService(NullLogger<ScriptingService>.Instance);
+        var service = new ScriptingService(NullLogger<ScriptingService>.Instance, new ScriptingServiceOptions());
         var result = await service.EvaluateAsync(
             "throw new System.InvalidOperationException(\"boom\");",
             imports: null,

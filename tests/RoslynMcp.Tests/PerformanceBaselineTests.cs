@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -72,9 +73,9 @@ public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
     {
         var sw = Stopwatch.StartNew();
         var results = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
-            WorkspaceId, null, includePublic: true, limit: 50,
-            excludeEnums: false, excludeRecordProperties: false,
-            excludeTestProjects: false, excludeTests: false, CancellationToken.None);
+            WorkspaceId,
+            new UnusedSymbolsAnalysisOptions { ProjectFilter = null, IncludePublic = true, Limit = 50 },
+            CancellationToken.None);
         sw.Stop();
 
         Assert.IsTrue(sw.ElapsedMilliseconds < 30_000,

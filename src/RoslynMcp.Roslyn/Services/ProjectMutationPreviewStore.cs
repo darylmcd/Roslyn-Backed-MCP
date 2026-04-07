@@ -4,7 +4,7 @@ namespace RoslynMcp.Roslyn.Services;
 
 public sealed class ProjectMutationPreviewStore : BoundedStore<ProjectMutationPreviewStore.Entry>, IProjectMutationPreviewStore
 {
-    public ProjectMutationPreviewStore(int maxEntries = 20) : base(maxEntries) { }
+    public ProjectMutationPreviewStore(int maxEntries = 20, TimeSpan ttl = default) : base(maxEntries, ttl) { }
 
     public string Store(string workspaceId, string projectFilePath, string updatedContent, int workspaceVersion, string description)
     {

@@ -35,12 +35,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IProjectMutationPreviewStore>(sp =>
         {
             var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
-            return new ProjectMutationPreviewStore(opts.MaxEntries);
+            var ttl = TimeSpan.FromMinutes(opts.TtlMinutes > 0 ? opts.TtlMinutes : 5);
+            return new ProjectMutationPreviewStore(opts.MaxEntries, ttl);
         });
         services.AddSingleton<ICompositePreviewStore>(sp =>
         {
             var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
-            return new CompositePreviewStore(opts.MaxEntries);
+            var ttl = TimeSpan.FromMinutes(opts.TtlMinutes > 0 ? opts.TtlMinutes : 5);
+            return new CompositePreviewStore(opts.MaxEntries, ttl);
         });
         services.AddSingleton<ISymbolNavigationService, SymbolNavigationService>();
         services.AddSingleton<ISymbolSearchService, SymbolSearchService>();

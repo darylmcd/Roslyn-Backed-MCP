@@ -4,7 +4,7 @@ namespace RoslynMcp.Roslyn.Services;
 
 public sealed class CompositePreviewStore : BoundedStore<CompositePreviewStore.Entry>, ICompositePreviewStore
 {
-    public CompositePreviewStore(int maxEntries = 20) : base(maxEntries) { }
+    public CompositePreviewStore(int maxEntries = 20, TimeSpan ttl = default) : base(maxEntries, ttl) { }
 
     public string Store(string workspaceId, int workspaceVersion, string description, IReadOnlyList<CompositeFileMutation> mutations)
     {
