@@ -58,5 +58,12 @@ public sealed class GateMetricsBuilder
     public long HeldMs { get; set; }
     public int? HeartbeatCount { get; set; }
 
-    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount);
+    /// <summary>
+    /// Wall-clock milliseconds for the entire tool action. Captured by the tool error handler
+    /// at the start/end of <c>ExecuteAsync</c> so every tool — reader or writer — surfaces
+    /// the same per-request timing without each service having to add its own Stopwatch.
+    /// </summary>
+    public long ElapsedMs { get; set; }
+
+    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs);
 }
