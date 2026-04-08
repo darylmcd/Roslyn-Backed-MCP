@@ -45,7 +45,7 @@ public static class SecurityTools
      Description("Scan NuGet package references for known security vulnerabilities (CVEs) using the NuGet vulnerability database via dotnet list package. Returns affected packages with severity, advisory links, and project locations. Response includes IncludesTransitive: when false, results match direct references only — use includeTransitive=true (and CLI transitive flags) when you need full transitive CVE coverage. Requires .NET 8+ SDK with JSON output support.")]
     public static Task<string> ScanNuGetVulnerabilities(
         IWorkspaceExecutionGate gate,
-        IDependencyAnalysisService dependencyService,
+        INuGetDependencyService nuGetDependencyService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: restrict scan to a specific project name")] string? project = null,
         [Description("Include transitive (indirect) dependencies in the scan. Default: false")] bool includeTransitive = false,
@@ -54,7 +54,7 @@ public static class SecurityTools
         return ToolErrorHandler.ExecuteAsync("nuget_vulnerability_scan", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await dependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, project, includeTransitive, c);
+                var result = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, project, includeTransitive, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

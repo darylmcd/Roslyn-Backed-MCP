@@ -50,7 +50,7 @@ public static class AdvancedAnalysisTools
      Description("Scan the solution for dependency injection registrations (AddSingleton, AddScoped, AddTransient) and return the service-to-implementation mappings")]
     public static Task<string> GetDiRegistrations(
         IWorkspaceExecutionGate gate,
-        IDependencyAnalysisService dependencyAnalysisService,
+        IDiRegistrationService diRegistrationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? project = null,
         CancellationToken ct = default)
@@ -58,7 +58,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync("get_di_registrations", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var results = await dependencyAnalysisService.GetDiRegistrationsAsync(workspaceId, project, c);
+                var results = await diRegistrationService.GetDiRegistrationsAsync(workspaceId, project, c);
                 return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
             }, ct));
     }
@@ -106,7 +106,7 @@ public static class AdvancedAnalysisTools
      Description("Get the namespace dependency graph and detect circular namespace dependencies in the solution")]
     public static Task<string> GetNamespaceDependencies(
         IWorkspaceExecutionGate gate,
-        IDependencyAnalysisService dependencyAnalysisService,
+        INamespaceDependencyService namespaceDependencyService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? project = null,
         [Description("When true, return only namespaces and edges involved in circular dependencies")] bool circularOnly = false,
@@ -115,7 +115,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync("get_namespace_dependencies", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, project, c);
+                var result = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, project, c);
 
                 if (circularOnly && result.CircularDependencies.Count > 0)
                 {
@@ -142,14 +142,14 @@ public static class AdvancedAnalysisTools
      Description("List all NuGet package references across projects in the workspace, including which projects use each package")]
     public static Task<string> GetNuGetDependencies(
         IWorkspaceExecutionGate gate,
-        IDependencyAnalysisService dependencyAnalysisService,
+        INuGetDependencyService nuGetDependencyService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("get_nuget_dependencies", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, c);
+                var result = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

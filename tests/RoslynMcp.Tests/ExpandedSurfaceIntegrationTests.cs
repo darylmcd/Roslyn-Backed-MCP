@@ -73,7 +73,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var namespaceJson = await AdvancedAnalysisTools.GetNamespaceDependencies(
             WorkspaceExecutionGate,
-            DependencyAnalysisService,
+            NamespaceDependencyService,
             WorkspaceId,
             project: "SampleLib",
             circularOnly: false,
@@ -245,7 +245,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 status.WorkspaceId,
                 "RoslynMcp.Roslyn",
                 CancellationToken.None);
-            var diRegistrations = await DependencyAnalysisService.GetDiRegistrationsAsync(
+            var diRegistrations = await DiRegistrationService.GetDiRegistrationsAsync(
                 status.WorkspaceId,
                 "RoslynMcp.Roslyn",
                 CancellationToken.None);
@@ -300,7 +300,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
 
         var dependencyMessages = (await RoslynPrompts.AnalyzeDependencies(
             WorkspaceManager,
-            DependencyAnalysisService,
+            NamespaceDependencyService,
+            NuGetDependencyService,
             WorkspaceId,
             CancellationToken.None)).ToList();
         Assert.AreEqual(1, dependencyMessages.Count);

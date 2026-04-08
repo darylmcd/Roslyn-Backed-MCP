@@ -58,7 +58,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICodeActionService, CodeActionService>();
         services.AddSingleton<IUnusedCodeAnalyzer, UnusedCodeAnalyzer>();
         services.AddSingleton<ICodeMetricsService, CodeMetricsService>();
-        services.AddSingleton<IDependencyAnalysisService, DependencyAnalysisService>();
+        services.AddSingleton<INamespaceDependencyService, NamespaceDependencyService>();
+        services.AddSingleton<IDiRegistrationService, DiRegistrationService>();
+        services.AddSingleton<INuGetDependencyService, NuGetDependencyService>();
         services.AddSingleton<IMsBuildEvaluationService, MsBuildEvaluationService>();
         services.AddSingleton<ISuppressionService, SuppressionService>();
         services.AddSingleton<ICodePatternAnalyzer, CodePatternAnalyzer>();

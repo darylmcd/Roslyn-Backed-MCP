@@ -21,7 +21,9 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.IsNotNull(sp.GetRequiredService<IWorkspaceExecutionGate>());
         Assert.IsNotNull(sp.GetRequiredService<ICompileCheckService>());
         Assert.IsNotNull(sp.GetRequiredService<ICodeActionService>());
-        Assert.IsNotNull(sp.GetRequiredService<IDependencyAnalysisService>());
+        Assert.IsNotNull(sp.GetRequiredService<INamespaceDependencyService>());
+        Assert.IsNotNull(sp.GetRequiredService<IDiRegistrationService>());
+        Assert.IsNotNull(sp.GetRequiredService<INuGetDependencyService>());
         Assert.IsNotNull(sp.GetRequiredService<IDeadCodeService>());
         Assert.IsNotNull(sp.GetRequiredService<IPreviewStore>());
         Assert.IsNotNull(sp.GetRequiredService<IProjectMutationPreviewStore>());

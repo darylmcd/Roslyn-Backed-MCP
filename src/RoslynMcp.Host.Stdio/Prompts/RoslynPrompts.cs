@@ -222,7 +222,8 @@ public static class RoslynPrompts
     [Description("Generate a prompt to analyze architecture and dependency structure of a workspace")]
     public static async Task<IEnumerable<PromptMessage>> AnalyzeDependencies(
         IWorkspaceManager workspace,
-        IDependencyAnalysisService dependencyAnalysisService,
+        INamespaceDependencyService namespaceDependencyService,
+        INuGetDependencyService nuGetDependencyService,
         [Description("The workspace session identifier")] string workspaceId,
         CancellationToken ct = default)
     {
@@ -231,7 +232,7 @@ public static class RoslynPrompts
             var graph = workspace.GetProjectGraph(workspaceId);
             var graphJson = SerializeTruncatedList(graph.Projects, 50, JsonDefaults.Indented);
 
-            var namespaceDeps = await dependencyAnalysisService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
+            var namespaceDeps = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
             var truncatedNamespaceDeps = new Core.Models.NamespaceDependencyGraphDto(
                 namespaceDeps.Nodes.Take(100).ToList(),
                 namespaceDeps.Edges.Take(100).ToList(),
@@ -240,7 +241,7 @@ public static class RoslynPrompts
             if (namespaceDeps.Edges.Count > 100)
                 namespaceDepsJson += $"\n[Showing 100 of {namespaceDeps.Edges.Count} edges]";
 
-            var nugetDeps = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
+            var nugetDeps = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
             var nugetDepsJson = SerializeTruncatedList(nugetDeps.Packages, 50, JsonDefaults.Indented);
 
             return
@@ -444,7 +445,7 @@ public static class RoslynPrompts
     [McpServerPrompt(Name = "guided_package_migration")]
     [Description("Generate a prompt that walks a package migration across all affected projects.")]
     public static async Task<IEnumerable<PromptMessage>> GuidedPackageMigration(
-        IDependencyAnalysisService dependencyAnalysisService,
+        INuGetDependencyService nuGetDependencyService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Existing package id to replace")] string oldPackageId,
         [Description("Replacement package id")] string newPackageId,
@@ -453,7 +454,7 @@ public static class RoslynPrompts
     {
         try
         {
-            var dependencyResult = await dependencyAnalysisService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
+            var dependencyResult = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
             var matchingProjects = dependencyResult.Projects
                 .Where(project => project.PackageReferences.Any(reference => string.Equals(reference.PackageId, oldPackageId, StringComparison.OrdinalIgnoreCase)))
                 .Select(project => $"- {project.ProjectName}: {string.Join(", ", project.PackageReferences.Where(reference => string.Equals(reference.PackageId, oldPackageId, StringComparison.OrdinalIgnoreCase)).Select(reference => reference.Version))}")
@@ -550,7 +551,7 @@ public static class RoslynPrompts
     [Description("Generate a prompt that guides a comprehensive security review using security diagnostic tools and code fix workflows.")]
     public static async Task<IEnumerable<PromptMessage>> SecurityReview(
         ISecurityDiagnosticService securityService,
-        IDependencyAnalysisService dependencyAnalysisService,
+        INuGetDependencyService nuGetDependencyService,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
@@ -562,7 +563,7 @@ public static class RoslynPrompts
             NuGetVulnerabilityScanResultDto? vulnScan = null;
             try
             {
-                vulnScan = await dependencyAnalysisService.ScanNuGetVulnerabilitiesAsync(
+                vulnScan = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(
                     workspaceId, projectName, includeTransitive: false, ct).ConfigureAwait(false);
             }
             catch (Exception)
