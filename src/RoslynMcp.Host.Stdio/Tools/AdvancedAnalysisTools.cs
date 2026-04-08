@@ -155,7 +155,7 @@ public static class AdvancedAnalysisTools
     }
 
     [McpServerTool(Name = "semantic_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Search for symbols by semantic criteria. Supports natural language queries like 'async methods returning Task<bool>', 'classes implementing IDisposable', 'methods with more than 5 parameters', 'static methods', 'virtual properties', 'generic classes', etc.")]
+     Description("Search for symbols by semantic criteria. Supports natural language queries like 'async methods returning Task<bool>', 'classes implementing IDisposable', 'methods with more than 5 parameters', 'static methods', 'virtual properties', 'generic classes', etc. async gotcha: the 'async' keyword maps to Roslyn's IMethodSymbol.IsAsync which REQUIRES the 'async' modifier on the declaration — a Task<T>-returning method that uses Task.FromResult(...) without 'async' is NOT matched. Query 'methods returning Task<bool>' without 'async' to match all Task-returning methods. Verbose-query fallback: long natural-language queries that fail structured parsing decompose into stopword-filtered tokens and match any symbol name containing a token; the response Debug payload shows the parsed tokens, applied predicates, and fallback strategy (structured/name-substring/token-or-match/none) so callers can see why a query matched or missed.")]
     public static Task<string> SemanticSearch(
         IWorkspaceExecutionGate gate,
         ICodePatternAnalyzer codePatternAnalyzer,

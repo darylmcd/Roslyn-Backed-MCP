@@ -17,7 +17,7 @@ public static class AnalysisTools
         Analyzer,
     }
 
-    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get compiler diagnostics (errors, warnings) for the workspace, optionally filtered by project, file, or severity")]
+    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get diagnostics (errors, warnings, infos, hints) for the workspace, optionally filtered by project, file, or severity. Includes BOTH compiler diagnostics (CS*) AND analyzer diagnostics (CA*, IDE*) — contrast with compile_check which is CS-only. Severity filter behavior: totalError/totalWarning/totalInfo in the response reflect counts across the WHOLE unfiltered result set; the severity parameter filters the returned page, so it is possible to see totalInfo > 0 with an empty page when severity=Error or when Info-severity diagnostics are paged past by offset. Full-solution scans on large graphs can take 30–40s — narrow by project or file when possible, and raise offset/limit to page.")]
     public static Task<string> GetProjectDiagnostics(
         IWorkspaceExecutionGate gate,
         IDiagnosticService diagnosticService,

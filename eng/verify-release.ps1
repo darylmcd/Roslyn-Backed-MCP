@@ -21,7 +21,8 @@ dotnet restore $solutionPath --nologo
 dotnet build $solutionPath -c $Configuration --no-restore --nologo
 dotnet test $solutionPath -c $Configuration --no-build --nologo `
     --collect:"XPlat Code Coverage" `
-    --results-directory $coverageDir
+    --results-directory $coverageDir `
+    --logger "console;verbosity=normal"
 dotnet publish $hostProject -c $Configuration --no-build -o $publishDir
 
 $hashLines = Get-ChildItem -Path $publishDir -File -Recurse |

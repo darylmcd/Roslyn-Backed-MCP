@@ -9,7 +9,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class MSBuildTools
 {
     [McpServerTool(Name = "evaluate_msbuild_property", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Evaluate a single MSBuild property for a project (e.g. TargetFramework, Nullable) using Microsoft.Build.Evaluation.")]
+     Description("Evaluate a single MSBuild property for a project (e.g. TargetFramework, Nullable) using Microsoft.Build.Evaluation. Parameter naming note: MSBuild-layer tools (this one, evaluate_msbuild_items, get_msbuild_properties) take 'project' — while Roslyn-layer mutation tools such as add_package_reference_preview take 'projectName'. The asymmetry is intentional (different layers) but the parameter name must match the tool.")]
     public static Task<string> EvaluateMsbuildProperty(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
@@ -27,7 +27,7 @@ public static class MSBuildTools
     }
 
     [McpServerTool(Name = "evaluate_msbuild_items", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("List MSBuild items of a given type (e.g. Compile, PackageReference) with evaluated includes and metadata.")]
+     Description("List MSBuild items of a given type (e.g. Compile, PackageReference) with evaluated includes and metadata. Parameter naming note: MSBuild-layer tools take 'project'; Roslyn-layer mutation tools take 'projectName'. DocumentCount discrepancy note: when comparing 'evaluate_msbuild_items Compile' count N to workspace_load's DocumentCount, the latter may be N+3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that are not in the explicit <Compile> item list.")]
     public static Task<string> EvaluateMsbuildItems(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
