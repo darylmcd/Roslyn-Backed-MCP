@@ -77,24 +77,40 @@ public sealed class TestRunnerService : ITestRunnerService
                 arguments.Add(filter);
             }
 
-            var execution = await _executor.ExecuteAsync(
-                workspaceId,
-                targetPath,
-                arguments,
-                _options.TestTimeout,
-                ct).ConfigureAwait(false);
-
-            var trxFiles = Directory.GetFiles(resultsDirectory, "*.trx", SearchOption.TopDirectoryOnly);
-            if (trxFiles.Length == 0 && !execution.Succeeded)
+            CommandExecutionDto execution;
+            try
             {
-                var tail = execution.StdOut.Length > 2000
-                    ? execution.StdOut[^2000..]
-                    : execution.StdOut;
-                throw new InvalidOperationException(
-                    $"dotnet test exited with code {execution.ExitCode} and produced no TRX output. " +
-                    $"StdErr: {execution.StdErr}\nStdOut (tail): {tail}");
+                execution = await _executor.ExecuteAsync(
+                    workspaceId,
+                    targetPath,
+                    arguments,
+                    _options.TestTimeout,
+                    ct).ConfigureAwait(false);
+            }
+            catch (TimeoutException ex)
+            {
+                // Synthesize an execution shell so the parser can emit a Timeout envelope
+                // rather than letting the exception escape to ToolErrorHandler as a bare
+                // invocation error. The caller still gets exit code, working directory,
+                // and the configured timeout in the DTO.
+                var workingDirectory = Path.GetDirectoryName(targetPath) ?? Environment.CurrentDirectory;
+                var shell = new CommandExecutionDto(
+                    Command: "dotnet",
+                    Arguments: arguments,
+                    WorkingDirectory: workingDirectory,
+                    TargetPath: targetPath,
+                    ExitCode: -1,
+                    Succeeded: false,
+                    DurationMs: (long)_options.TestTimeout.TotalMilliseconds,
+                    StdOut: string.Empty,
+                    StdErr: ex.Message);
+                return DotnetOutputParser.BuildTimeoutResult(shell, ex.Message);
             }
 
+            var trxFiles = Directory.GetFiles(resultsDirectory, "*.trx", SearchOption.TopDirectoryOnly);
+            // FLAG-N1: always pass through to the parser — it handles the no-TRX failure case
+            // by emitting a structured TestRunFailureEnvelopeDto instead of throwing. See
+            // test-run-failure-envelope backlog row (2026-04-08 MSB3027 Windows file-lock audits).
             return DotnetOutputParser.ParseTestRun(execution, trxFiles);
         }
         finally

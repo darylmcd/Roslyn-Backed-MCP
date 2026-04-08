@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-08T19:00:00Z
+**updated_at:** 2026-04-08T22:00:00Z
 
 ## Agent contract
 
@@ -30,7 +30,6 @@ Ordered by severity: P2 (contract violations / real-world blockers) → P3 (refa
 
 | id | blocker | deps | do |
 |----|---------|------|-----|
-| `test-run-failure-envelope` | none | — | **P2 / reliability.** 2026-04-08 audits: `test_run` failed with MSB3027/3021 file locks when `testhost` still holds Roslyn DLLs (roslyn-backed-mcp 130615), and with a generic MCP bridge error `An error occurred invoking 'test_run'` with no structured payload (131317). Surface exit code, stdout/stderr excerpts, and whether the failure is retryable; document Windows concurrent-test behavior in the tool description. |
 | `workspace-session-deduplication` | none | — | **P3 / session model.** Loading the same solution path twice in one host process can yield `workspace_list` with multiple distinct `WorkspaceId`s (2026-04-08 roslyn-backed-mcp audit 130615; not reproduced on a later pass — intermittent). Wastes workspace slots and confuses audits. Consider idempotent `workspace_load` or explicit dedup. |
 | `revert-last-apply-disk-consistency` | none | — | **P3 / undo.** `revert_last_apply` reported success while the on-disk file still contained the applied text until manual cleanup and `workspace_reload` (2026-04-08 NetworkDocumentation audit). Align workspace model with disk or document the edge case. |
 | `semantic-search-zero-results-verbose-query` | none | — | **P3 / UX.** `semantic_search` returned `count: 0` for a long natural-language query while a shorter query returned hits on the same repo (2026-04-08 FirewallAnalyzer audit). Add keyword/stem fallback or scoring/debug payload when the embedding ranker returns empty. |
