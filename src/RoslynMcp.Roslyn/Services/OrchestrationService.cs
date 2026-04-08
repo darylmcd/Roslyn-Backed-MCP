@@ -52,75 +52,15 @@ public sealed class OrchestrationService : IOrchestrationService
                 continue;
             }
 
-            var originalContent = await File.ReadAllTextAsync(project.FilePath, ct).ConfigureAwait(false);
-            var document = XDocument.Parse(originalContent, LoadOptions.PreserveWhitespace);
-            var packageReferences = document.Descendants("PackageReference")
-                .Where(element => string.Equals((string?)element.Attribute("Include"), oldPackageId, StringComparison.OrdinalIgnoreCase))
-                .ToArray();
-
-            if (packageReferences.Length == 0)
-            {
-                continue;
-            }
-
-            foreach (var packageReference in packageReferences)
-            {
-                packageReference.Remove();
-            }
-
-            if (document.Descendants("PackageReference").Any(element =>
-                    string.Equals((string?)element.Attribute("Include"), newPackageId, StringComparison.OrdinalIgnoreCase)))
-            {
-                warnings.Add($"Project '{project.Name}' already referenced '{newPackageId}'. Removed '{oldPackageId}' only.");
-            }
-            else
-            {
-                var replacement = new XElement("PackageReference", new XAttribute("Include", newPackageId));
-                if (!usesCentralPackageManagement)
-                {
-                    replacement.Add(new XAttribute("Version", newVersion));
-                }
-
-                GetOrCreateItemGroup(document, "PackageReference").Add(replacement);
-            }
-
-            var updatedContent = document.ToString(SaveOptions.DisableFormatting);
-            if (!string.Equals(originalContent, updatedContent, StringComparison.Ordinal))
-            {
-                mutations.Add(new CompositeFileMutation(project.FilePath, updatedContent));
-                changes.Add(new FileChangeDto(project.FilePath, DiffGenerator.GenerateUnifiedDiff(originalContent, updatedContent, project.FilePath)));
-            }
+            await BuildPackageReferenceEditAsync(
+                project.FilePath, project.Name, oldPackageId, newPackageId, newVersion,
+                usesCentralPackageManagement, mutations, changes, warnings, ct).ConfigureAwait(false);
         }
 
         if (usesCentralPackageManagement && packagesPropsPath is not null && File.Exists(packagesPropsPath))
         {
-            var originalPropsContent = await File.ReadAllTextAsync(packagesPropsPath, ct).ConfigureAwait(false);
-            var propsDocument = XDocument.Parse(originalPropsContent, LoadOptions.PreserveWhitespace);
-
-            var oldCentralVersion = propsDocument.Descendants("PackageVersion")
-                .FirstOrDefault(element => string.Equals((string?)element.Attribute("Include"), oldPackageId, StringComparison.OrdinalIgnoreCase));
-            oldCentralVersion?.Remove();
-
-            var newCentralVersion = propsDocument.Descendants("PackageVersion")
-                .FirstOrDefault(element => string.Equals((string?)element.Attribute("Include"), newPackageId, StringComparison.OrdinalIgnoreCase));
-            if (newCentralVersion is null)
-            {
-                GetOrCreateItemGroup(propsDocument, "PackageVersion")
-                    .Add(new XElement("PackageVersion",
-                        new XAttribute("Include", newPackageId),
-                        new XAttribute("Version", newVersion)));
-            }
-            else
-            {
-                newCentralVersion.SetAttributeValue("Version", newVersion);
-            }
-
-            var updatedPropsContent = propsDocument.ToString(SaveOptions.DisableFormatting);
-            if (!string.Equals(originalPropsContent, updatedPropsContent, StringComparison.Ordinal))
-            {
-                mutations.Add(new CompositeFileMutation(packagesPropsPath, updatedPropsContent));
-                changes.Add(new FileChangeDto(packagesPropsPath, DiffGenerator.GenerateUnifiedDiff(originalPropsContent, updatedPropsContent, packagesPropsPath)));
-            }
+            await BuildCentralVersionEditAsync(
+                packagesPropsPath, oldPackageId, newPackageId, newVersion, mutations, changes, ct).ConfigureAwait(false);
         }
 
         if (mutations.Count == 0)
@@ -131,6 +71,117 @@ public sealed class OrchestrationService : IOrchestrationService
         var description = $"Migrate package '{oldPackageId}' to '{newPackageId}'";
         var token = _compositePreviewStore.Store(workspaceId, workspaceVersion, description, mutations);
         return new RefactoringPreviewDto(token, description, changes, warnings.Count == 0 ? null : warnings);
+    }
+
+    /// <summary>
+    /// Rewrites <c>PackageReference</c> entries inside one project file: removes the old
+    /// package and adds the new one (with a Version attribute when CPM is not in use).
+    /// Appends a <see cref="CompositeFileMutation"/> + <see cref="FileChangeDto"/> when the
+    /// content actually changes; otherwise no-op. When the project already references the new
+    /// package, only the old reference is removed and a warning is appended.
+    /// </summary>
+    private static async Task BuildPackageReferenceEditAsync(
+        string projectFilePath,
+        string projectName,
+        string oldPackageId,
+        string newPackageId,
+        string newVersion,
+        bool usesCentralPackageManagement,
+        List<CompositeFileMutation> mutations,
+        List<FileChangeDto> changes,
+        List<string> warnings,
+        CancellationToken ct)
+    {
+        var originalContent = await File.ReadAllTextAsync(projectFilePath, ct).ConfigureAwait(false);
+        var document = XDocument.Parse(originalContent, LoadOptions.PreserveWhitespace);
+        var packageReferences = document.Descendants("PackageReference")
+            .Where(element => string.Equals((string?)element.Attribute("Include"), oldPackageId, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (packageReferences.Length == 0)
+        {
+            return;
+        }
+
+        foreach (var packageReference in packageReferences)
+        {
+            packageReference.Remove();
+        }
+
+        if (document.Descendants("PackageReference").Any(element =>
+                string.Equals((string?)element.Attribute("Include"), newPackageId, StringComparison.OrdinalIgnoreCase)))
+        {
+            warnings.Add($"Project '{projectName}' already referenced '{newPackageId}'. Removed '{oldPackageId}' only.");
+        }
+        else
+        {
+            var replacement = new XElement("PackageReference", new XAttribute("Include", newPackageId));
+            if (!usesCentralPackageManagement)
+            {
+                replacement.Add(new XAttribute("Version", newVersion));
+            }
+
+            GetOrCreateItemGroup(document, "PackageReference").Add(replacement);
+        }
+
+        var updatedContent = document.ToString(SaveOptions.DisableFormatting);
+        if (!string.Equals(originalContent, updatedContent, StringComparison.Ordinal))
+        {
+            mutations.Add(new CompositeFileMutation(projectFilePath, updatedContent));
+            changes.Add(new FileChangeDto(projectFilePath, DiffGenerator.GenerateUnifiedDiff(originalContent, updatedContent, projectFilePath)));
+        }
+    }
+
+    /// <summary>
+    /// Rewrites a <c>Directory.Packages.props</c> file: removes the old PackageVersion and
+    /// upserts the new one with the requested version. Appends a <see cref="CompositeFileMutation"/>
+    /// + <see cref="FileChangeDto"/> when the content actually changes.
+    /// </summary>
+    private static async Task BuildCentralVersionEditAsync(
+        string packagesPropsPath,
+        string oldPackageId,
+        string newPackageId,
+        string newVersion,
+        List<CompositeFileMutation> mutations,
+        List<FileChangeDto> changes,
+        CancellationToken ct)
+    {
+        var originalPropsContent = await File.ReadAllTextAsync(packagesPropsPath, ct).ConfigureAwait(false);
+        var propsDocument = XDocument.Parse(originalPropsContent, LoadOptions.PreserveWhitespace);
+
+        var oldCentralVersion = propsDocument.Descendants("PackageVersion")
+            .FirstOrDefault(element => string.Equals((string?)element.Attribute("Include"), oldPackageId, StringComparison.OrdinalIgnoreCase));
+        oldCentralVersion?.Remove();
+
+        UpsertCentralPackageVersion(propsDocument, newPackageId, newVersion);
+
+        var updatedPropsContent = propsDocument.ToString(SaveOptions.DisableFormatting);
+        if (!string.Equals(originalPropsContent, updatedPropsContent, StringComparison.Ordinal))
+        {
+            mutations.Add(new CompositeFileMutation(packagesPropsPath, updatedPropsContent));
+            changes.Add(new FileChangeDto(packagesPropsPath, DiffGenerator.GenerateUnifiedDiff(originalPropsContent, updatedPropsContent, packagesPropsPath)));
+        }
+    }
+
+    /// <summary>
+    /// Sets the version of <paramref name="packageId"/> in the props document, creating the
+    /// PackageVersion element if it does not already exist.
+    /// </summary>
+    private static void UpsertCentralPackageVersion(XDocument propsDocument, string packageId, string newVersion)
+    {
+        var existing = propsDocument.Descendants("PackageVersion")
+            .FirstOrDefault(element => string.Equals((string?)element.Attribute("Include"), packageId, StringComparison.OrdinalIgnoreCase));
+        if (existing is null)
+        {
+            GetOrCreateItemGroup(propsDocument, "PackageVersion")
+                .Add(new XElement("PackageVersion",
+                    new XAttribute("Include", packageId),
+                    new XAttribute("Version", newVersion)));
+        }
+        else
+        {
+            existing.SetAttributeValue("Version", newVersion);
+        }
     }
 
     public async Task<RefactoringPreviewDto> PreviewSplitClassAsync(
