@@ -180,6 +180,21 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
             "Expected method returning Task<bool>.");
     }
 
+    [TestMethod]
+    public async Task SemanticSearch_HtmlEncodedAngleBrackets_StillFindsSample()
+    {
+        // BUG fix (semantic-search-html-decode): AI clients commonly double-encode angle
+        // brackets when constructing JSON queries. The decoded query should match the same
+        // results as the unencoded version.
+        var workspaceId = await LoadSampleSolutionAsync();
+        var response = await CodePatternAnalyzer.SemanticSearchAsync(
+            workspaceId, "methods returning Task&lt;bool&gt;", "SampleLib", 50, CancellationToken.None);
+
+        Assert.IsTrue(
+            response.Results.Any(r => r.SymbolName == "ReturnsBoolAsync"),
+            "Expected encoded query 'Task&lt;bool&gt;' to be HTML-decoded and match the same results as 'Task<bool>'.");
+    }
+
     // ── AUDIT-35: unused symbol confidence ──
 
     [TestMethod]
