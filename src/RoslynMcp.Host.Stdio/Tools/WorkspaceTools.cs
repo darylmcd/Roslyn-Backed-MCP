@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -11,12 +12,13 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class WorkspaceTools
 {
 
-    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 8) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error — the call is idempotent against repeated loads of the same path (BUG-010).")]
+    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 8) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error — the call is idempotent against repeated loads of the same path (BUG-010).")]
     public static Task<string> LoadWorkspace(
         McpServer server,
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         [Description("Absolute path to a .sln, .slnx, or .csproj file")] string path,
+        [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
@@ -28,7 +30,9 @@ public static class WorkspaceTools
                 var status = await workspace.LoadAsync(path, c);
                 ProgressHelper.Report(progress, 1, 1);
                 _ = NotifyResourcesChangedAsync(server);
-                return JsonSerializer.Serialize(status, JsonDefaults.Indented);
+                return verbose
+                    ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
+                    : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
             }, ct));
     }
 
@@ -78,29 +82,39 @@ public static class WorkspaceTools
             }, ct));
     }
 
-    [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions")]
+    [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions. Returns a lean summary per workspace by default — pass verbose=true for the full per-project tree of every workspace.")]
     public static Task<string> ListWorkspaces(
-        IWorkspaceManager workspace)
+        IWorkspaceManager workspace,
+        [Description("When true, return the full per-project tree and workspace diagnostics for each workspace. Default false returns only counts and load state.")] bool verbose = false)
     {
         return ToolErrorHandler.ExecuteAsync("workspace_list", () =>
         {
             var workspaces = workspace.ListWorkspaces();
-            return Task.FromResult(JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented));
+            if (verbose)
+            {
+                return Task.FromResult(JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented));
+            }
+
+            var summaries = workspaces.Select(WorkspaceStatusSummaryDto.From).ToList();
+            return Task.FromResult(JsonSerializer.Serialize(new { count = summaries.Count, workspaces = summaries }, JsonDefaults.Indented));
         });
     }
 
-    [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the current status of the loaded workspace including projects and diagnostics")]
+    [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the current status of the loaded workspace. Returns a lean summary by default — pass verbose=true for the full per-project tree and workspace diagnostics.")]
     public static Task<string> GetWorkspaceStatus(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("workspace_status", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(status, JsonDefaults.Indented);
+                return verbose
+                    ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
+                    : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
             }, ct));
     }
 

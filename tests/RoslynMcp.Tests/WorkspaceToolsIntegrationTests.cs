@@ -21,7 +21,7 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task WorkspaceTools_ListWorkspaces_Returns_Count_And_Id()
     {
-        var json = await WorkspaceTools.ListWorkspaces(WorkspaceManager);
+        var json = await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: false);
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.GetProperty("count").GetInt32() >= 1);
         var workspaces = doc.RootElement.GetProperty("workspaces").EnumerateArray().ToList();
@@ -35,9 +35,52 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
             WorkspaceExecutionGate,
             WorkspaceManager,
             WorkspaceId,
+            verbose: false,
             CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.GetProperty("ProjectCount").GetInt32() >= 1);
+    }
+
+    [TestMethod]
+    public async Task WorkspaceTools_GetWorkspaceStatus_Default_Is_Summary()
+    {
+        var json = await WorkspaceTools.GetWorkspaceStatus(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            verbose: false,
+            CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsFalse(doc.RootElement.TryGetProperty("Projects", out _),
+            "Summary mode must NOT include the per-project tree.");
+        Assert.IsTrue(doc.RootElement.TryGetProperty("WorkspaceDiagnosticCount", out _),
+            "Summary mode must include the diagnostic count field.");
+    }
+
+    [TestMethod]
+    public async Task WorkspaceTools_GetWorkspaceStatus_Verbose_Includes_Projects()
+    {
+        var json = await WorkspaceTools.GetWorkspaceStatus(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            verbose: true,
+            CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("Projects", out var projects),
+            "Verbose mode must include the per-project tree.");
+        Assert.IsTrue(projects.GetArrayLength() >= 1);
+    }
+
+    [TestMethod]
+    public async Task WorkspaceTools_ListWorkspaces_Default_Is_Summary()
+    {
+        var json = await WorkspaceTools.ListWorkspaces(WorkspaceManager, verbose: false);
+        using var doc = JsonDocument.Parse(json);
+        var workspaces = doc.RootElement.GetProperty("workspaces").EnumerateArray().ToList();
+        Assert.IsTrue(workspaces.Count >= 1);
+        Assert.IsFalse(workspaces[0].TryGetProperty("Projects", out _),
+            "Summary mode must NOT include the per-project tree on each workspace.");
     }
 
     [TestMethod]

@@ -27,6 +27,49 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public void GetWorkspaceStatus_Resource_Default_Is_Summary()
+    {
+        var json = WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, WorkspaceId);
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsFalse(doc.RootElement.TryGetProperty("Projects", out _),
+            "Default workspace_status resource must return the summary shape (no per-project tree).");
+        Assert.IsTrue(doc.RootElement.TryGetProperty("WorkspaceDiagnosticCount", out _),
+            "Summary shape must include WorkspaceDiagnosticCount.");
+    }
+
+    [TestMethod]
+    public void GetWorkspaceStatusVerbose_Resource_Includes_Projects()
+    {
+        var json = WorkspaceResources.GetWorkspaceStatusVerbose(WorkspaceManager, WorkspaceId);
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("Projects", out var projects),
+            "Verbose workspace_status resource must include the per-project tree.");
+        Assert.IsTrue(projects.GetArrayLength() >= 1);
+    }
+
+    [TestMethod]
+    public void GetWorkspaces_Resource_Default_Is_Summary()
+    {
+        var json = WorkspaceResources.GetWorkspaces(WorkspaceManager);
+        using var doc = JsonDocument.Parse(json);
+        var workspaces = doc.RootElement.GetProperty("workspaces").EnumerateArray().ToList();
+        Assert.IsTrue(workspaces.Count >= 1);
+        Assert.IsFalse(workspaces[0].TryGetProperty("Projects", out _),
+            "Default workspaces resource must return summary shape per workspace.");
+    }
+
+    [TestMethod]
+    public void GetWorkspacesVerbose_Resource_Includes_Projects()
+    {
+        var json = WorkspaceResources.GetWorkspacesVerbose(WorkspaceManager);
+        using var doc = JsonDocument.Parse(json);
+        var workspaces = doc.RootElement.GetProperty("workspaces").EnumerateArray().ToList();
+        Assert.IsTrue(workspaces.Count >= 1);
+        Assert.IsTrue(workspaces[0].TryGetProperty("Projects", out _),
+            "Verbose workspaces resource must include per-project trees.");
+    }
+
+    [TestMethod]
     public void GetProjects_Resource_Returns_Graph()
     {
         var json = WorkspaceResources.GetProjects(WorkspaceManager, WorkspaceId);
