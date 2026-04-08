@@ -9,13 +9,13 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class CompileCheckTools
 {
     [McpServerTool(Name = "compile_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Fast in-memory compilation check using the Roslyn Compilation API — validates compilability without invoking dotnet build. Much faster for quick feedback loops during code generation. Note: only reports compiler diagnostics (CS*); analyzer diagnostics (CA*, IDE*) are excluded — use project_diagnostics for those. The emitValidation option is often much slower than GetDiagnostics-only (frequently 50–100x or more on large solutions) but catches emit-time issues. Results are paginated — use offset/limit to page through large diagnostic sets, and severity/file filters to narrow the scope.")]
+     Description("Fast in-memory compilation check using the Roslyn Compilation API — validates compilability without invoking dotnet build. Much faster for quick feedback loops during code generation. Note: only reports compiler diagnostics (CS*); analyzer diagnostics (CA*, IDE*) are excluded — use project_diagnostics for those. The emitValidation option performs a real PE emit (not metadata-only) and is typically 50–100× slower than GetDiagnostics-only on large solutions, BUT only when the workspace has its NuGet packages restored — on a workspace with unresolved metadata references the emit phase short-circuits and the wall-clock cost matches GetDiagnostics. If you observe identical timing between emitValidation=true and emitValidation=false, run dotnet restore on the workspace first. Results are paginated — use offset/limit to page through large diagnostic sets, and severity/file filters to narrow the scope.")]
     public static Task<string> CompileCheck(
         IWorkspaceExecutionGate gate,
         ICompileCheckService compileCheckService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? project = null,
-        [Description("When true, performs full emit validation (catches more issues like missing references at emit time). Default: false (faster, uses GetDiagnostics only).")] bool emitValidation = false,
+        [Description("When true, performs full PE-emit validation (catches more issues like missing references at emit time). Default: false (faster, uses GetDiagnostics only). Requires restored NuGet packages for the perf delta to materialize — see the tool description.")] bool emitValidation = false,
         [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden)")] string? severity = null,
         [Description("Optional: only return diagnostics whose file path matches this absolute path")] string? file = null,
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
