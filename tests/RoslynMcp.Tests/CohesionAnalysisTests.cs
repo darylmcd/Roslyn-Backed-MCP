@@ -85,6 +85,164 @@ public sealed class CohesionAnalysisTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task GetCohesionMetrics_IgnoresLoggerMessagePartialMethods()
+    {
+        // BUG fix (cohesion-metrics-source-gen-aware): a class with one real method plus
+        // several [LoggerMessage] partials previously got Lcom4Score = N+1 because each
+        // partial was counted as its own LCOM4 cluster. After the fix, partials are excluded
+        // from the method enumeration entirely, so the score reflects only the real method.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        string? workspaceId = null;
+
+        try
+        {
+            var filePath = Path.Combine(copiedRoot, "SampleLib", "QuestionClassifier.cs");
+            await File.WriteAllTextAsync(filePath, """
+namespace SampleLib;
+
+using Microsoft.Extensions.Logging;
+
+public partial class QuestionClassifier
+{
+    private readonly ILogger _logger;
+
+    public QuestionClassifier(ILogger logger)
+    {
+        _logger = logger;
+    }
+
+    public string Classify(string input)
+    {
+        LogStarting(_logger, input);
+        return input.Length > 50 ? "long" : "short";
+    }
+
+    [LoggerMessage(1, LogLevel.Information, "Classifying {Input}")]
+    private static partial void LogStarting(ILogger logger, string input);
+}
+""", CancellationToken.None);
+
+            // Add a stub LoggerMessageAttribute so the file compiles without referencing the
+            // Microsoft.Extensions.Logging.Abstractions package — IsSourceGenPartial matches
+            // by fully-qualified attribute name regardless of where the type is declared.
+            var stubPath = Path.Combine(copiedRoot, "SampleLib", "LoggerMessageStub.cs");
+            await File.WriteAllTextAsync(stubPath, """
+namespace Microsoft.Extensions.Logging;
+
+[System.AttributeUsage(System.AttributeTargets.Method)]
+internal sealed class LoggerMessageAttribute : System.Attribute
+{
+    public LoggerMessageAttribute(int eventId, LogLevel level, string message) { }
+}
+
+internal interface ILogger { }
+
+internal enum LogLevel { Information }
+""", CancellationToken.None);
+
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            workspaceId = status.WorkspaceId;
+
+            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+                workspaceId, filePath, projectFilter: null, minMethods: 1, limit: 50,
+                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+
+            var classifier = metrics.FirstOrDefault(m => m.TypeName == "QuestionClassifier");
+            // With minMethods=1 and only Classify counted, the score should be 1 (or 0 if the
+            // class is filtered out for having < 2 instance methods after exclusions). The
+            // bug case was Lcom4Score = 2+ because LogStarting was a separate cluster.
+            if (classifier is not null)
+            {
+                Assert.AreEqual(1, classifier.Lcom4Score,
+                    "QuestionClassifier should have Lcom4Score=1 — only the real method counts, not [LoggerMessage] partials.");
+                Assert.AreEqual(1, classifier.MethodCount,
+                    "MethodCount should exclude source-gen partials.");
+            }
+        }
+        finally
+        {
+            if (workspaceId is not null)
+            {
+                WorkspaceManager.Close(workspaceId);
+            }
+
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task GetCohesionMetrics_SharedFields_DoesNotContainPrivateHelperNames()
+    {
+        // BUG fix (cohesion-metrics-source-gen-aware, BUG-N9 followup): a private helper
+        // method that two public methods both call previously appeared in the cluster's
+        // SharedFields list alongside real fields. After the split into methodFieldMap +
+        // methodCallMap, only fields/properties show up in SharedFields.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        string? workspaceId = null;
+
+        try
+        {
+            var filePath = Path.Combine(copiedRoot, "SampleLib", "AdapterUnderTest.cs");
+            await File.WriteAllTextAsync(filePath, """
+namespace SampleLib;
+
+public class AdapterUnderTest
+{
+    private readonly string _connectionString;
+
+    public AdapterUnderTest(string connectionString)
+    {
+        _connectionString = connectionString;
+    }
+
+    public string ReadOne()
+    {
+        return CreateFailure(_connectionString);
+    }
+
+    public string ReadMany()
+    {
+        return CreateFailure(_connectionString);
+    }
+
+    private static string CreateFailure(string connection)
+    {
+        return $"failed: {connection}";
+    }
+}
+""", CancellationToken.None);
+
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            workspaceId = status.WorkspaceId;
+
+            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+                workspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+
+            var adapter = metrics.FirstOrDefault(m => m.TypeName == "AdapterUnderTest");
+            Assert.IsNotNull(adapter, "AdapterUnderTest should appear in cohesion metrics.");
+            Assert.IsTrue(adapter.Clusters.Count >= 1, "AdapterUnderTest should have at least one cluster.");
+
+            foreach (var cluster in adapter.Clusters)
+            {
+                Assert.IsFalse(cluster.SharedFields.Contains("CreateFailure"),
+                    "BUG-N9: SharedFields must not contain private helper method names.");
+            }
+        }
+        finally
+        {
+            if (workspaceId is not null)
+            {
+                WorkspaceManager.Close(workspaceId);
+            }
+
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
     public async Task FindSharedMembers_Supports_StaticClasses()
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();
