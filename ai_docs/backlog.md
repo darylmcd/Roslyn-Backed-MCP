@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-08T22:30:00Z
+**updated_at:** 2026-04-08T22:50:00Z
 
 ## Agent contract
 
@@ -31,7 +31,6 @@ Ordered by severity: P2 (contract violations / real-world blockers) → P3 (refa
 | id | blocker | deps | do |
 |----|---------|------|-----|
 | `workspace-session-deduplication` | none | — | **P3 / session model.** Loading the same solution path twice in one host process can yield `workspace_list` with multiple distinct `WorkspaceId`s (2026-04-08 roslyn-backed-mcp audit 130615; not reproduced on a later pass — intermittent). Wastes workspace slots and confuses audits. Consider idempotent `workspace_load` or explicit dedup. |
-| `semantic-search-zero-results-verbose-query` | none | — | **P3 / UX.** `semantic_search` returned `count: 0` for a long natural-language query while a shorter query returned hits on the same repo (2026-04-08 FirewallAnalyzer audit). Add keyword/stem fallback or scoring/debug payload when the embedding ranker returns empty. |
 | `find-type-usages-cref-classification` | none | — | **P4 / cosmetic.** `find_type_usages` buckets `<see cref="X"/>` doc-comment references as `Other` instead of as a `Documentation` classification (observed against ITChatBot 2026-04-07). Enrich the classification enum so doc-comment refs are visually distinguishable from real consumers. |
 | `verify-release-test-output-policy` | none | — | **P4 / process.** `eng/verify-release.ps1` already sets `$ErrorActionPreference = 'Stop'`, but still runs `dotnet test` with default verbosity. Add `--logger "console;verbosity=normal"` so failing test names are not masked by tail/pipe operations in any wrapper script. |
 | `compile-items-vs-document-count-doc` | none | — | **P4 / docs.** `evaluate_msbuild_items Compile <project>` returns N items but Roslyn `workspace_load` reports `DocumentCount=N+3` for the same project (observed in the 2026-04-07 FirewallAnalyzer audit: `FirewallAnalyzer.Application` had 17 Compile items vs 20 documents). The 3-item gap is normal — auto-generated implicit-usings, assembly-info, and GlobalUsings files are added by the SDK and aren't in the explicit Compile item list. Document this expectation in the `workspace_load` and `evaluate_msbuild_items` tool descriptions so downstream agents can interpret the difference. |

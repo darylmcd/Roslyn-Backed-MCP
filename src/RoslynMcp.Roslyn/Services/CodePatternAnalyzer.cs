@@ -143,12 +143,15 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         var results = new List<SemanticSearchResultDto>();
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
-        var (predicates, usedImplicitNameOnly) = ParseSemanticQuery(decodedQuery);
-        bool Combined(ISymbol s) => predicates.All(p => p(s));
+        var parse = ParseSemanticQuery(decodedQuery);
+        bool Combined(ISymbol s) => parse.Predicates.All(p => p(s));
         await CollectSemanticSearchMatchesAsync(solution, projects, Combined, limit, results, ct).ConfigureAwait(false);
 
         string? warning = null;
-        if (results.Count == 0 && decodedQuery.Trim().Length >= 2 && !usedImplicitNameOnly)
+        var fallbackStrategy = results.Count > 0 ? "structured" : "none";
+
+        // First fallback: whole-query name substring match (legacy).
+        if (results.Count == 0 && decodedQuery.Trim().Length >= 2 && !parse.UsedImplicitNameOnly)
         {
             var term = decodedQuery.Trim();
             bool NameMatch(ISymbol s) => s.Name.Contains(term, StringComparison.OrdinalIgnoreCase);
@@ -157,14 +160,46 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
             if (results.Count > 0)
             {
                 warning = "No structured query match; results use a name substring fallback.";
-            }
-            else
-            {
-                warning = $"No symbols matched this semantic query: {term}";
+                fallbackStrategy = "name-substring";
             }
         }
 
-        return new SemanticSearchResponseDto(results, warning);
+        // Second fallback (semantic-search-zero-results-verbose-query): verbose natural-language
+        // queries ("async methods returning Task<bool> inside the Firewall namespace") are too long
+        // to match any symbol name directly. Split into stemmed keyword tokens and match symbols
+        // whose name contains ANY token. Significantly widens the net for long queries while keeping
+        // signal-to-noise reasonable because noise words are dropped via the stopword list.
+        if (results.Count == 0 && parse.Tokens.Count > 0)
+        {
+            var tokens = parse.Tokens;
+            bool TokenOrMatch(ISymbol s)
+            {
+                foreach (var token in tokens)
+                {
+                    if (s.Name.Contains(token, StringComparison.OrdinalIgnoreCase)) return true;
+                }
+                return false;
+            }
+            await CollectSemanticSearchMatchesAsync(solution, projects, TokenOrMatch, limit, results, ct)
+                .ConfigureAwait(false);
+            if (results.Count > 0)
+            {
+                warning = "No structured query match; results use a token-or name fallback over parsed keywords.";
+                fallbackStrategy = "token-or-match";
+            }
+        }
+
+        if (results.Count == 0)
+        {
+            warning ??= $"No symbols matched this semantic query: {decodedQuery.Trim()}";
+        }
+
+        var debug = new SemanticSearchDebugDto(
+            ParsedTokens: parse.Tokens,
+            AppliedPredicates: parse.PredicateLabels,
+            FallbackStrategy: fallbackStrategy);
+
+        return new SemanticSearchResponseDto(results, warning, debug);
     }
 
     private static async Task CollectSemanticSearchMatchesAsync(
@@ -248,10 +283,40 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         ["protected"] = Accessibility.Protected,
     };
 
-    /// <returns>Predicate list and whether the query fell back to name-only matching (no structured keywords).</returns>
-    private static (List<Func<ISymbol, bool>> Predicates, bool UsedImplicitNameOnly) ParseSemanticQuery(string query)
+    private readonly record struct SemanticQueryParse(
+        List<Func<ISymbol, bool>> Predicates,
+        IReadOnlyList<string> PredicateLabels,
+        IReadOnlyList<string> Tokens,
+        bool UsedImplicitNameOnly);
+
+    /// <summary>
+    /// Natural-language stopwords dropped by <see cref="ExtractTokens"/> before tokens are
+    /// used for the verbose-query fallback. Added for
+    /// <c>semantic-search-zero-results-verbose-query</c> so queries like
+    /// "async methods returning Task&lt;bool&gt; inside the Firewall namespace" decompose
+    /// into useful tokens (<c>Task</c>, <c>bool</c>, <c>Firewall</c>) without noise.
+    /// Note: <c>Task</c> is intentionally NOT a stopword — "returning Task&lt;bool&gt;" queries
+    /// want the token-OR fallback to match symbols named <c>TaskRunner</c>, <c>TaskQueue</c>, etc.
+    /// </summary>
+    private static readonly HashSet<string> SemanticQueryStopwords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "a", "an", "the", "of", "for", "with", "by", "to", "from", "on", "in", "inside", "into", "at", "and", "or",
+        "that", "this", "these", "those", "is", "are", "be", "being", "been",
+        "all", "any", "some", "more", "than", "over",
+        "methods", "method", "classes", "class", "types", "type", "members", "member",
+        "properties", "property", "fields", "field", "interfaces", "interface",
+        "return", "returns", "returning", "receive", "receiving",
+        "async", "static", "public", "private", "internal", "protected",
+        "abstract", "virtual", "sealed", "generic",
+        "namespace", "namespaces",
+        "parameter", "parameters",
+    };
+
+    /// <returns>A structured parse result with predicates, their human-readable labels, and the stopword-filtered token list.</returns>
+    private static SemanticQueryParse ParseSemanticQuery(string query)
     {
         var predicates = new List<Func<ISymbol, bool>>();
+        var predicateLabels = new List<string>();
         var q = query.ToLowerInvariant().Trim();
 
         // Simple keyword predicates from the lookup table.
@@ -275,15 +340,22 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
             }
 
             predicates.Add(predicate);
+            predicateLabels.Add($"keyword:{keyword}");
         }
 
         // "static" with guard against "non-static"
         if (q.Contains("static") && !q.Contains("non-static"))
+        {
             predicates.Add(s => s.IsStatic);
+            predicateLabels.Add("keyword:static");
+        }
 
         // "classes" with guard against "classes implementing"
         if (q.Contains("class") && !q.Contains("classes implementing"))
+        {
             predicates.Add(s => s is INamedTypeSymbol { TypeKind: TypeKind.Class });
+            predicateLabels.Add("keyword:class");
+        }
 
         // Accessibility keywords (mutually exclusive) — capture to local to avoid closure issue
         foreach (var (keyword, accessibility) in AccessibilityKeywords)
@@ -292,29 +364,72 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
             if (keyword == "public" ? q.Contains("public") && !q.Contains("non-public") : q.Contains(keyword))
             {
                 predicates.Add(s => s.DeclaredAccessibility == capturedAccessibility);
+                predicateLabels.Add($"accessibility:{keyword}");
                 break;
             }
         }
 
         // "returning/returns <type>"
+        var beforeReturn = predicates.Count;
         AddReturnTypePredicate(predicates, q);
+        if (predicates.Count > beforeReturn)
+        {
+            predicateLabels.Add("returning-type");
+        }
 
         // "implementing <interface>"
+        var beforeImpl = predicates.Count;
         AddImplementingPredicate(predicates, q);
+        if (predicates.Count > beforeImpl)
+        {
+            predicateLabels.Add("implementing-interface");
+        }
 
         // "more than N parameters"
         var paramMatch = System.Text.RegularExpressions.Regex.Match(q, @"(?:more than|>)\s*(\d+)\s*param");
         if (paramMatch.Success && int.TryParse(paramMatch.Groups[1].Value, out var minParams))
+        {
             predicates.Add(s => s is IMethodSymbol m && m.Parameters.Length > minParams);
+            predicateLabels.Add($"min-parameters:{minParams}");
+        }
+
+        var tokens = ExtractTokens(query);
 
         // Fallback: name-based search
         if (predicates.Count == 0)
         {
             predicates.Add(s => s.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
-            return (predicates, UsedImplicitNameOnly: true);
+            predicateLabels.Add("name-contains");
+            return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: true);
         }
 
-        return (predicates, UsedImplicitNameOnly: false);
+        return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: false);
+    }
+
+    /// <summary>
+    /// Splits a natural-language query into significant tokens for the verbose-query fallback.
+    /// Drops stopwords, retains fragments that look like type names (<c>Task</c>, <c>IDisposable</c>),
+    /// and normalizes by lowercasing the comparison — the returned tokens preserve original case
+    /// so the debug payload reads naturally for the caller.
+    /// </summary>
+    private static IReadOnlyList<string> ExtractTokens(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query)) return Array.Empty<string>();
+
+        // Split on whitespace + common punctuation, but keep `<`/`>`/`,` removed so
+        // "Task<bool>" → "Task" + "bool".
+        var splits = Regex.Split(query, @"[\s<>,\(\)\[\]\{\}\""'\.\?!;:]+");
+        var tokens = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in splits)
+        {
+            var token = raw.Trim();
+            if (token.Length < 2) continue;
+            if (SemanticQueryStopwords.Contains(token)) continue;
+            if (!seen.Add(token)) continue;
+            tokens.Add(token);
+        }
+        return tokens;
     }
 
     private static void AddReturnTypePredicate(List<Func<ISymbol, bool>> predicates, string q)
