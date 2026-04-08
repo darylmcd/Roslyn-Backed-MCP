@@ -133,16 +133,40 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
 
     private RoslynProject ResolveRoslynProject(string workspaceId, string projectName)
     {
+        if (string.IsNullOrWhiteSpace(projectName))
+        {
+            // msbuild-tools-bad-argument-message: a missing/whitespace project name is the most
+            // common MCP client mistake (firewall audit, 2026-04-08). Surface the required
+            // parameter name and an invocation example instead of a generic invocation error.
+            throw new ArgumentException(
+                "The 'project' parameter is required. Pass the project name or absolute .csproj path, " +
+                "e.g. { \"workspaceId\": \"<id>\", \"project\": \"MyApp.Core\", \"propertyName\": \"TargetFramework\" }. " +
+                "Use workspace_status to list loaded projects.",
+                nameof(projectName));
+        }
+
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var proj = ProjectFilterHelper.FilterProjects(solution, projectName).FirstOrDefault();
         if (proj is null)
         {
-            throw new InvalidOperationException($"Project '{projectName}' not found in workspace.");
+            // Surface the list of loaded project names so the caller can immediately retry with
+            // the correct identifier instead of opening workspace_status.
+            var loadedProjects = solution.Projects.Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal).ToList();
+            var loadedList = loadedProjects.Count > 0
+                ? string.Join(", ", loadedProjects)
+                : "(none — the workspace has no projects loaded)";
+
+            throw new InvalidOperationException(
+                $"Project '{projectName}' not found in workspace '{workspaceId}'. " +
+                $"Loaded projects ({loadedProjects.Count}): {loadedList}. " +
+                "Pass a matching 'project' value (project name or absolute .csproj path).");
         }
 
         if (string.IsNullOrEmpty(proj.FilePath))
         {
-            throw new InvalidOperationException($"Project '{projectName}' has no file path.");
+            throw new InvalidOperationException(
+                $"Project '{projectName}' has no file path. " +
+                "The workspace solution may contain a virtual/shim project that cannot be evaluated by MSBuild.");
         }
 
         return proj;

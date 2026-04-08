@@ -18,6 +18,13 @@ public enum TypeUsageClassification
     Constructor,
     DIRegistration,
     StaticMemberAccess,
+    /// <summary>
+    /// The reference is inside an XML doc comment (<c>&lt;see cref="X"/&gt;</c>,
+    /// <c>&lt;seealso cref="X"/&gt;</c>, <c>&lt;exception cref="X"/&gt;</c>). Previously
+    /// buckets under <see cref="Other"/>; split out for <c>find-type-usages-cref-classification</c>
+    /// so doc-comment references are visually distinguishable from real consumers.
+    /// </summary>
+    Documentation,
     Other
 }
 

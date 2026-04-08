@@ -32,13 +32,13 @@ internal static class SolutionDiffHelper
         var changes = new List<FileChangeDto>();
         var solutionChanges = newSolution.GetChanges(oldSolution);
         var totalChars = 0;
-        var truncatedFileCount = 0;
+        var truncatedFiles = new List<string>();
 
         bool TryAdd(FileChangeDto change)
         {
             if (totalChars + change.UnifiedDiff.Length > DefaultMaxTotalChars)
             {
-                truncatedFileCount++;
+                truncatedFiles.Add(change.FilePath);
                 return false;
             }
             changes.Add(change);
@@ -95,13 +95,22 @@ internal static class SolutionDiffHelper
             }
         }
 
-        if (truncatedFileCount > 0)
+        if (truncatedFiles.Count > 0)
         {
+            // move-file-preview-large-diff-truncation: surface the list of affected file paths
+            // prominently so the caller can re-read them individually (or rerun with a narrower
+            // scope) without guessing which files were dropped. NetworkDocumentation audit §15.
+            var fileList = string.Join(", ", truncatedFiles.Take(10));
+            if (truncatedFiles.Count > 10)
+            {
+                fileList += $", … ({truncatedFiles.Count - 10} more)";
+            }
             changes.Add(new FileChangeDto(
                 "<truncated>",
                 $"# FLAG-6A: solution diff exceeded {DefaultMaxTotalChars} characters total. " +
-                $"{changes.Count} file diff(s) returned, {truncatedFileCount} omitted. " +
-                "Re-run with narrower scope or read affected files directly."));
+                $"{changes.Count} file diff(s) returned, {truncatedFiles.Count} omitted. " +
+                $"Omitted file(s): {fileList}. " +
+                "Re-run with narrower scope or read the listed files directly with the Read tool."));
         }
 
         return changes;

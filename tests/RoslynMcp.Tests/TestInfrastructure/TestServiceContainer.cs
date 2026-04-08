@@ -51,6 +51,7 @@ internal sealed class TestServiceContainer
     public required SnippetAnalysisService SnippetAnalysisService { get; init; }
     public required ScriptingService ScriptingService { get; init; }
     public required EditorConfigService EditorConfigService { get; init; }
+    public required MsBuildEvaluationService MsBuildEvaluationService { get; init; }
 
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
@@ -226,7 +227,8 @@ internal sealed class TestServiceContainer
             EditorConfigService = new EditorConfigService(
                 workspaceManager,
                 NullLogger<EditorConfigService>.Instance,
-                undoService)
+                undoService),
+            MsBuildEvaluationService = msBuildEvaluationService
         };
     }
 }

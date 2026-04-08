@@ -64,8 +64,59 @@ public sealed class ReferenceService : IReferenceService
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
-        var overrides = await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
+        // find-overrides-virtual-declaration-site-doc: NetworkDocumentation audit
+        // (20260408T195220Z) and ITChatBot I3 showed that invoking find_overrides at an
+        // OVERRIDE site (e.g., `Device.Equals`) returned an empty list while invoking at
+        // the virtual declaration returned the real override chain. Roslyn's
+        // SymbolFinder.FindOverridesAsync walks DOWN from the current symbol, so starting
+        // from a leaf override walks further-derived overrides only. Promote to the
+        // original virtual/interface declaration before the walk so both caret positions
+        // yield the same (complete) result set.
+        var promoted = PromoteToVirtualRoot(symbol);
+
+        var overrides = await SymbolFinder.FindOverridesAsync(promoted, solution, cancellationToken: ct).ConfigureAwait(false);
         return await SymbolServiceHelpers.SymbolsToLocationsAsync(overrides, solution, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Walks an override or interface-implementation symbol to its virtual/interface root so
+    /// that <see cref="SymbolFinder.FindOverridesAsync"/> sees the full override chain. Returns
+    /// the input symbol unchanged if it is not itself an override.
+    /// </summary>
+    private static ISymbol PromoteToVirtualRoot(ISymbol symbol)
+    {
+        switch (symbol)
+        {
+            case IMethodSymbol { IsOverride: true } method:
+            {
+                var current = method;
+                while (current.OverriddenMethod is { } baseMethod)
+                {
+                    current = baseMethod;
+                }
+                return current;
+            }
+            case IPropertySymbol { IsOverride: true } property:
+            {
+                var current = property;
+                while (current.OverriddenProperty is { } baseProperty)
+                {
+                    current = baseProperty;
+                }
+                return current;
+            }
+            case IEventSymbol { IsOverride: true } ev:
+            {
+                var current = ev;
+                while (current.OverriddenEvent is { } baseEvent)
+                {
+                    current = baseEvent;
+                }
+                return current;
+            }
+            default:
+                return symbol;
+        }
     }
 
     public async Task<IReadOnlyList<LocationDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
@@ -146,6 +197,18 @@ public sealed class ReferenceService : IReferenceService
             return SymbolLocator.ByMetadataName(bulk.MetadataName);
         if (!string.IsNullOrWhiteSpace(bulk.FilePath) && bulk.Line.HasValue && bulk.Column.HasValue)
             return SymbolLocator.BySource(bulk.FilePath, bulk.Line.Value, bulk.Column.Value);
-        throw new ArgumentException("BulkSymbolLocator requires symbolHandle, metadataName, or filePath/line/column.");
+
+        // find-references-bulk-schema-error-ux: FirewallAnalyzer audit §14 showed callers
+        // constructing bulk payloads with the wrong shape (missing `symbols` array or empty
+        // locator objects). Surface a concrete JSON example so the first-try-fails cycle
+        // becomes a first-try-succeeds cycle.
+        throw new ArgumentException(
+            "BulkSymbolLocator requires at least one of: symbolHandle, metadataName, or filePath+line+column. " +
+            "Example payload: { \"symbols\": [" +
+            "{ \"metadataName\": \"MyNamespace.MyType\" }, " +
+            "{ \"symbolHandle\": \"<handle from find_references>\" }, " +
+            "{ \"filePath\": \"C:/src/Foo.cs\", \"line\": 42, \"column\": 7 }" +
+            "] }. " +
+            "Every entry must populate ONE of the three locator strategies.");
     }
 }
