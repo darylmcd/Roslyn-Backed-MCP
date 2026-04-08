@@ -57,7 +57,7 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
     {
         var messages = (await RoslynPrompts.SecurityReview(
             SecurityService,
-            DependencyAnalysisService,
+            NuGetDependencyService,
             WorkspaceId,
             projectName: null,
             CancellationToken.None)).ToList();

@@ -93,7 +93,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task DependencyAnalysis_GetNamespaceDependencies_Full_Solution_Has_Nodes_And_Edges()
     {
-        var graph = await DependencyAnalysisService.GetNamespaceDependenciesAsync(
+        var graph = await NamespaceDependencyService.GetNamespaceDependenciesAsync(
             SampleWorkspaceId, projectFilter: null, CancellationToken.None);
 
         Assert.IsTrue(graph.Nodes.Count > 0);
@@ -103,7 +103,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task DependencyAnalysis_GetNuGetDependencies_Returns_Packages_For_SampleSolution()
     {
-        var result = await DependencyAnalysisService.GetNuGetDependenciesAsync(
+        var result = await NuGetDependencyService.GetNuGetDependenciesAsync(
             SampleWorkspaceId, CancellationToken.None);
 
         Assert.IsTrue(result.Projects.Count > 0);

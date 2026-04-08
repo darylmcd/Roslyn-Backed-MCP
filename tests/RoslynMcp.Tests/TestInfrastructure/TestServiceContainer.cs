@@ -22,7 +22,9 @@ internal sealed class TestServiceContainer
     public required CodeActionService CodeActionService { get; init; }
     public required UnusedCodeAnalyzer UnusedCodeAnalyzer { get; init; }
     public required CodeMetricsService CodeMetricsService { get; init; }
-    public required DependencyAnalysisService DependencyAnalysisService { get; init; }
+    public required NamespaceDependencyService NamespaceDependencyService { get; init; }
+    public required DiRegistrationService DiRegistrationService { get; init; }
+    public required NuGetDependencyService NuGetDependencyService { get; init; }
     public required CodePatternAnalyzer CodePatternAnalyzer { get; init; }
     public required EditService EditService { get; init; }
     public required FileOperationService FileOperationService { get; init; }
@@ -77,12 +79,19 @@ internal sealed class TestServiceContainer
             NullLogger<DiagnosticService>.Instance);
         var undoService = new UndoService(NullLogger<UndoService>.Instance);
         var msBuildEvaluationService = new MsBuildEvaluationService(workspaceManager);
-        var dependencyAnalysisService = new DependencyAnalysisService(
+        var namespaceDependencyService = new NamespaceDependencyService(
             workspaceManager,
             compilationCache,
+            NullLogger<NamespaceDependencyService>.Instance);
+        var diRegistrationService = new DiRegistrationService(
+            workspaceManager,
+            compilationCache,
+            NullLogger<DiRegistrationService>.Instance);
+        var nuGetDependencyService = new NuGetDependencyService(
+            workspaceManager,
             gatedCommandExecutor,
             msBuildEvaluationService,
-            NullLogger<DependencyAnalysisService>.Instance,
+            NullLogger<NuGetDependencyService>.Instance,
             validationOptions);
         var fileOperationService = new FileOperationService(
             workspaceManager,
@@ -146,7 +155,9 @@ internal sealed class TestServiceContainer
             CodeMetricsService = new CodeMetricsService(
                 workspaceManager,
                 NullLogger<CodeMetricsService>.Instance),
-            DependencyAnalysisService = dependencyAnalysisService,
+            NamespaceDependencyService = namespaceDependencyService,
+            DiRegistrationService = diRegistrationService,
+            NuGetDependencyService = nuGetDependencyService,
             CodePatternAnalyzer = new CodePatternAnalyzer(
                 workspaceManager,
                 NullLogger<CodePatternAnalyzer>.Instance),
@@ -165,7 +176,7 @@ internal sealed class TestServiceContainer
                 new CompositePreviewStore(),
                 previewStore,
                 crossProjectRefactoringService,
-                dependencyAnalysisService),
+                diRegistrationService),
             ScaffoldingService = new ScaffoldingService(
                 workspaceManager,
                 fileOperationService),

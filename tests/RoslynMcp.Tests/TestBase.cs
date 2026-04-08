@@ -35,7 +35,9 @@ public abstract class TestBase
     protected static CodeActionService CodeActionService { get; private set; } = null!;
     protected static UnusedCodeAnalyzer UnusedCodeAnalyzer { get; private set; } = null!;
     protected static CodeMetricsService CodeMetricsService { get; private set; } = null!;
-    protected static DependencyAnalysisService DependencyAnalysisService { get; private set; } = null!;
+    protected static NamespaceDependencyService NamespaceDependencyService { get; private set; } = null!;
+    protected static DiRegistrationService DiRegistrationService { get; private set; } = null!;
+    protected static NuGetDependencyService NuGetDependencyService { get; private set; } = null!;
     protected static CodePatternAnalyzer CodePatternAnalyzer { get; private set; } = null!;
     protected static EditService EditService { get; private set; } = null!;
     protected static FileOperationService FileOperationService { get; private set; } = null!;
@@ -116,7 +118,9 @@ public abstract class TestBase
         CodeActionService = services.CodeActionService;
         UnusedCodeAnalyzer = services.UnusedCodeAnalyzer;
         CodeMetricsService = services.CodeMetricsService;
-        DependencyAnalysisService = services.DependencyAnalysisService;
+        NamespaceDependencyService = services.NamespaceDependencyService;
+        DiRegistrationService = services.DiRegistrationService;
+        NuGetDependencyService = services.NuGetDependencyService;
         CodePatternAnalyzer = services.CodePatternAnalyzer;
         EditService = services.EditService;
         FileOperationService = services.FileOperationService;
