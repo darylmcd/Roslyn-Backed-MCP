@@ -49,17 +49,30 @@ internal static class ToolErrorHandler
     {
         ArgumentException.ThrowIfNullOrEmpty(source);
 
+        using var metricsScope = AmbientGateMetrics.BeginRequest();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            return action();
+            var result = action();
+            stopwatch.Stop();
+            if (AmbientGateMetrics.Current is { } metrics)
+            {
+                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
+            }
+            return InjectMetaIfPossible(result);
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            if (AmbientGateMetrics.Current is { } metrics)
+            {
+                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
+            }
             var info = ClassifyError(ex, source);
             auditLogger?.Log(
                 info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
                 ex, "Resource {Source} failed: {ErrorCategory}", source, info.Category);
-            return FormatErrorResponse(info, source, ex);
+            return InjectMetaIfPossible(FormatErrorResponse(info, source, ex));
         }
     }
 
@@ -70,9 +83,17 @@ internal static class ToolErrorHandler
     {
         ArgumentException.ThrowIfNullOrEmpty(source);
 
+        using var metricsScope = AmbientGateMetrics.BeginRequest();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            return await action().ConfigureAwait(false);
+            var result = await action().ConfigureAwait(false);
+            stopwatch.Stop();
+            if (AmbientGateMetrics.Current is { } metrics)
+            {
+                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
+            }
+            return InjectMetaIfPossible(result);
         }
         catch (OperationCanceledException)
         {
@@ -80,11 +101,16 @@ internal static class ToolErrorHandler
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            if (AmbientGateMetrics.Current is { } metrics)
+            {
+                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
+            }
             var info = ClassifyError(ex, source);
             auditLogger?.Log(
                 info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
                 ex, "Resource {Source} failed: {ErrorCategory}", source, info.Category);
-            return FormatErrorResponse(info, source, ex);
+            return InjectMetaIfPossible(FormatErrorResponse(info, source, ex));
         }
     }
 
@@ -100,10 +126,19 @@ internal static class ToolErrorHandler
         // queue/hold timings, and we can merge them into the response JSON as `_meta` so clients
         // that don't surface MCP `notifications/message` (e.g. Claude Code) still get observability.
         using var metricsScope = AmbientGateMetrics.BeginRequest();
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
             var result = await action().ConfigureAwait(false);
+            stopwatch.Stop();
+            // backlog: reader-tool-elapsed-ms — every tool, reader or writer, gets the same
+            // wall-clock timing in the response _meta block. Concurrency audits use this to
+            // compute speedup ratios from inside the agent loop.
+            if (AmbientGateMetrics.Current is { } metrics)
+            {
+                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
+            }
             auditLogger?.LogInformation("Tool {ToolName} completed successfully", toolName);
             return InjectMetaIfPossible(result);
         }
@@ -114,6 +149,11 @@ internal static class ToolErrorHandler
         }
         catch (Exception ex)
         {
+            stopwatch.Stop();
+            if (AmbientGateMetrics.Current is { } metrics)
+            {
+                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
+            }
             var info = ClassifyError(ex, toolName);
             auditLogger?.Log(
                 info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,

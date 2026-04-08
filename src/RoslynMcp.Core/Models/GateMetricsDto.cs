@@ -15,8 +15,10 @@ namespace RoslynMcp.Core.Models;
 /// <param name="QueuedMs">Total milliseconds spent waiting in the rate limiter, global throttle, and per-workspace lock queues before the action ran.</param>
 /// <param name="HeldMs">Total milliseconds the per-workspace lock (or load gate) was held while the action executed.</param>
 /// <param name="HeartbeatCount">For long-running operations that emit progress heartbeats, the number of heartbeats observed. <see langword="null"/> when the tool does not emit progress.</param>
+/// <param name="ElapsedMs">Total wall-clock milliseconds the tool action took, including queue + lock-hold + service work. Lets concurrency audits compute speedup ratios from inside the agent loop without external instrumentation.</param>
 public sealed record GateMetricsDto(
     string? GateMode,
     long QueuedMs,
     long HeldMs,
-    int? HeartbeatCount);
+    int? HeartbeatCount,
+    long ElapsedMs = 0);

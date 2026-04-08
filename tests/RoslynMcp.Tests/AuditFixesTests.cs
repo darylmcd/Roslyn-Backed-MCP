@@ -204,6 +204,28 @@ public sealed class AuditFixesTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ToolErrorHandler_SuccessResponse_MetaIncludesElapsedMs()
+    {
+        // BUG fix (reader-tool-elapsed-ms): every tool response should expose wall-clock
+        // elapsed time so concurrency audits can compute speedup ratios from inside the
+        // agent loop without external instrumentation.
+        var result = await ToolErrorHandler.ExecuteAsync(
+            "test_tool",
+            async () =>
+            {
+                await Task.Delay(20);
+                return "{}";
+            });
+
+        var json = JsonDocument.Parse(result);
+        Assert.IsTrue(json.RootElement.TryGetProperty("_meta", out var meta));
+        Assert.IsTrue(meta.TryGetProperty("elapsedMs", out var elapsed),
+            $"_meta should expose elapsedMs. Actual: {meta}");
+        Assert.IsTrue(elapsed.GetInt64() >= 0,
+            "elapsedMs should be a non-negative integer reflecting wall-clock time of the action.");
+    }
+
+    [TestMethod]
     public async Task ToolErrorHandler_ArrayRootResponse_LeftUnchanged_NoMetaWrapping()
     {
         // Backward-compat guarantee: array roots are NOT wrapped in {data, _meta}.
