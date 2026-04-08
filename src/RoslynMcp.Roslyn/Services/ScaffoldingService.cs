@@ -22,15 +22,33 @@ public sealed class ScaffoldingService : IScaffoldingService
         var projectDirectory = Path.GetDirectoryName(project.FilePath)
             ?? throw new InvalidOperationException($"Project directory could not be resolved for '{project.FilePath}'.");
         var typeNamespace = string.IsNullOrWhiteSpace(request.Namespace) ? project.Name : request.Namespace!;
-        var namespaceSuffix = typeNamespace.StartsWith(project.Name + ".", StringComparison.Ordinal)
-            ? typeNamespace[(project.Name.Length + 1)..]
-            : string.Empty;
-        var folderSegments = string.IsNullOrWhiteSpace(namespaceSuffix)
-            ? Array.Empty<string>()
-            : namespaceSuffix.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var folderSegments = ResolveFolderSegmentsForNamespace(typeNamespace, project.Name);
         var filePath = Path.Combine([projectDirectory, .. folderSegments, $"{request.TypeName}.cs"]);
         var content = BuildTypeContent(typeNamespace, request);
         return _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, filePath, content), ct);
+    }
+
+    /// <summary>
+    /// Picks the folder segments under the project root for a scaffolded file. When the
+    /// namespace starts with the project name (the conventional case), strip that prefix and
+    /// use the rest as folder names. Otherwise, use the full namespace path so that an
+    /// explicit \"SomeOther.Sub\" namespace lands in \"SomeOther/Sub/\" instead of the project
+    /// root. Previously the namespace-doesn't-start-with-project-name case fell through to
+    /// the project root, which mismatched the expectation that scaffolded files live under
+    /// a folder matching their namespace.
+    /// </summary>
+    private static IReadOnlyList<string> ResolveFolderSegmentsForNamespace(string typeNamespace, string projectName)
+    {
+        if (string.IsNullOrWhiteSpace(typeNamespace) || string.Equals(typeNamespace, projectName, StringComparison.Ordinal))
+        {
+            return Array.Empty<string>();
+        }
+
+        var workingNamespace = typeNamespace.StartsWith(projectName + ".", StringComparison.Ordinal)
+            ? typeNamespace[(projectName.Length + 1)..]
+            : typeNamespace;
+
+        return workingNamespace.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
     public async Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(string workspaceId, ScaffoldTestDto request, CancellationToken ct)
@@ -194,9 +212,52 @@ public sealed class ScaffoldingService : IScaffoldingService
         if (bestCtor.Parameters.Length == 0)
             return string.Empty;
 
-        var args = bestCtor.Parameters.Select(p =>
-            $"default({p.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat)}) /* {p.Name} */");
+        var args = bestCtor.Parameters.Select(p => $"{BuildArgExpression(p.Type)} /* {p.Name} */");
         return string.Join(", ", args);
+    }
+
+    /// <summary>
+    /// Builds a default-constructible expression for a constructor parameter type. Empty
+    /// collection interfaces (<c>IEnumerable&lt;T&gt;</c>, <c>IList&lt;T&gt;</c>, etc.) get
+    /// <c>Array.Empty&lt;T&gt;()</c>, dictionaries get <c>new Dictionary&lt;K,V&gt;()</c>,
+    /// and <c>string</c> gets <c>string.Empty</c>. Everything else falls back to
+    /// <c>default(T)</c>. Previously every parameter was emitted as <c>default(T)</c>, which
+    /// throws <c>NullReferenceException</c> on the first call when the parameter is a non-null
+    /// collection interface — observed in the 2026-04-07 ITChatBot legacy-mutex audit.
+    /// </summary>
+    private static string BuildArgExpression(ITypeSymbol parameterType)
+    {
+        var displayName = parameterType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+
+        if (parameterType.SpecialType == SpecialType.System_String)
+        {
+            return "string.Empty";
+        }
+
+        if (parameterType is INamedTypeSymbol named && named.IsGenericType)
+        {
+            var openGenericName = named.ConstructedFrom.ToDisplayString();
+
+            if (openGenericName is "System.Collections.Generic.IEnumerable<T>"
+                or "System.Collections.Generic.ICollection<T>"
+                or "System.Collections.Generic.IReadOnlyCollection<T>"
+                or "System.Collections.Generic.IList<T>"
+                or "System.Collections.Generic.IReadOnlyList<T>")
+            {
+                var elementType = named.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                return $"System.Array.Empty<{elementType}>()";
+            }
+
+            if (openGenericName is "System.Collections.Generic.IDictionary<TKey, TValue>"
+                or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>")
+            {
+                var keyType = named.TypeArguments[0].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                var valueType = named.TypeArguments[1].ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+                return $"new System.Collections.Generic.Dictionary<{keyType}, {valueType}>()";
+            }
+        }
+
+        return $"default({displayName})";
     }
 
     private ProjectStatusDto ResolveProject(string workspaceId, string projectName)
@@ -221,7 +282,8 @@ public sealed class ScaffoldingService : IScaffoldingService
         }
 
         var inheritanceClause = inheritance.Count > 0 ? $" : {string.Join(", ", inheritance)}" : string.Empty;
-        var typeKeyword = request.TypeKind.ToLowerInvariant() switch
+        var normalizedKind = request.TypeKind.ToLowerInvariant();
+        var typeKeyword = normalizedKind switch
         {
             "interface" => "interface",
             "record" => "record",
@@ -229,7 +291,15 @@ public sealed class ScaffoldingService : IScaffoldingService
             _ => "class"
         };
 
-        return $"namespace {typeNamespace};\n\npublic {typeKeyword} {request.TypeName}{inheritanceClause}\n{{\n}}\n";
+        // Modern .NET convention: default scaffolded classes to `internal sealed class` so
+        // they don't expand the public API surface and aren't subclassable by accident.
+        // Records/interfaces/enums stay `public` (interface and enum cannot be sealed; records
+        // are typically intended as DTOs that get used widely).
+        var modifier = normalizedKind == "interface" || normalizedKind == "record" || normalizedKind == "enum"
+            ? "public"
+            : "internal sealed";
+
+        return $"namespace {typeNamespace};\n\n{modifier} {typeKeyword} {request.TypeName}{inheritanceClause}\n{{\n}}\n";
     }
 
     private static string BuildTestContent(
