@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
@@ -422,7 +423,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
             session.Workspace.RegisterWorkspaceFailedHandler(args =>
             {
-                var severity = args.Diagnostic.Kind == WorkspaceDiagnosticKind.Failure ? "Error" : "Warning";
+                // Normalize at ingress so workspace_load, workspace_status, project_diagnostics,
+                // and the roslyn://workspaces resource all see the same severity. Previously
+                // only project_diagnostics applied the downgrade, leaving the other readers
+                // surfacing pruning-style informational messages as Error.
+                var severity = WorkspaceDiagnosticSeverityClassifier.Classify(
+                    args.Diagnostic.Kind, args.Diagnostic.Message);
                 var dto = new DiagnosticDto(
                     Id: $"WORKSPACE_{args.Diagnostic.Kind}".ToUpperInvariant(),
                     Message: args.Diagnostic.Message,

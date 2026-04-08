@@ -39,11 +39,17 @@ public sealed class DiagnosticService : IDiagnosticService
         // Default to Warning severity when no filter specified to avoid multi-MB Hidden output
         DiagnosticSeverity? minSeverity = ParseSeverity(severityFilter) ?? DiagnosticSeverity.Warning;
 
+        // Workspace diagnostics already arrive normalized via WorkspaceDiagnosticSeverityClassifier
+        // (applied in WorkspaceManager.LoadIntoSessionAsync at ingress).
         var rawWorkspace = (await _workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false)).WorkspaceDiagnostics;
-        var workspaceDiagnostics = FilterDiagnostics(
-            NormalizeWorkspaceDiagnostics(rawWorkspace),
-            fileFilter,
-            minSeverity: minSeverity);
+        // Apply file filter to workspace diagnostics, but build BOTH a filtered list (for the
+        // returned WorkspaceDiagnostics array) and an unfiltered count basis (for TotalXxx).
+        var workspaceMatchingFile = fileFilter is null
+            ? rawWorkspace
+            : rawWorkspace.Where(d => d.FilePath is not null &&
+                string.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(fileFilter), StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        var workspaceDiagnostics = FilterDiagnostics(workspaceMatchingFile, fileFilter: null, minSeverity: minSeverity);
 
         var projects = solution.Projects
             .Where(p => projectFilter is null || string.Equals(p.Name, projectFilter, StringComparison.OrdinalIgnoreCase))
@@ -51,8 +57,14 @@ public sealed class DiagnosticService : IDiagnosticService
 
         var projectTasks = projects.Select(async project =>
         {
-            var compiler = new List<DiagnosticDto>();
-            var analyzer = new List<DiagnosticDto>();
+            // compilerAll/analyzerAll: every diagnostic in the queried scope (no severity filter)
+            //   used for TotalErrors/TotalWarnings/TotalInfo so callers can see the underlying
+            //   shape of the workspace even when the visible result was severity-narrowed.
+            // compilerFiltered/analyzerFiltered: the rows actually returned to the caller.
+            var compilerAll = new List<DiagnosticDto>();
+            var compilerFiltered = new List<DiagnosticDto>();
+            var analyzerAll = new List<DiagnosticDto>();
+            var analyzerFiltered = new List<DiagnosticDto>();
             var raw = new List<Diagnostic>();
 
             // Use the shared compilation cache so independent tools (and the diagnostic
@@ -60,18 +72,25 @@ public sealed class DiagnosticService : IDiagnosticService
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null)
             {
-                compiler.Add(new DiagnosticDto(
+                var miss = new DiagnosticDto(
                     "WORKSPACE001", $"Could not get compilation for project '{project.Name}'",
-                    "Error", "Workspace", project.FilePath, null, null, null, null));
-                return (compiler, analyzer, raw);
+                    "Error", "Workspace", project.FilePath, null, null, null, null);
+                compilerAll.Add(miss);
+                compilerFiltered.Add(miss);
+                return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
             }
 
             foreach (var diagnostic in compilation.GetDiagnostics(ct))
             {
                 raw.Add(diagnostic);
-                if (MatchesFilter(diagnostic, fileFilter, minSeverity))
+                if (!MatchesFileFilter(diagnostic, fileFilter)) continue;
+                if (diagnostic.Severity == DiagnosticSeverity.Hidden) continue;
+
+                var dto = SymbolMapper.ToDiagnosticDto(diagnostic);
+                compilerAll.Add(dto);
+                if (minSeverity is null || diagnostic.Severity >= minSeverity.Value)
                 {
-                    compiler.Add(SymbolMapper.ToDiagnosticDto(diagnostic));
+                    compilerFiltered.Add(dto);
                 }
             }
 
@@ -86,19 +105,26 @@ public sealed class DiagnosticService : IDiagnosticService
                 foreach (var diagnostic in projectAnalyzerDiagnostics)
                 {
                     raw.Add(diagnostic);
-                    if (MatchesFilter(diagnostic, fileFilter, minSeverity))
+                    if (!MatchesFileFilter(diagnostic, fileFilter)) continue;
+                    if (diagnostic.Severity == DiagnosticSeverity.Hidden) continue;
+
+                    var dto = SymbolMapper.ToDiagnosticDto(diagnostic);
+                    analyzerAll.Add(dto);
+                    if (minSeverity is null || diagnostic.Severity >= minSeverity.Value)
                     {
-                        analyzer.Add(SymbolMapper.ToDiagnosticDto(diagnostic));
+                        analyzerFiltered.Add(dto);
                     }
                 }
             }
 
-            return (compiler, analyzer, raw);
+            return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
         });
 
         var results = await Task.WhenAll(projectTasks).ConfigureAwait(false);
-        var compilerDiagnostics = results.SelectMany(r => r.compiler).ToList();
-        var analyzerDiagnostics = results.SelectMany(r => r.analyzer).ToList();
+        var compilerDiagnostics = results.SelectMany(r => r.compilerFiltered).ToList();
+        var analyzerDiagnostics = results.SelectMany(r => r.analyzerFiltered).ToList();
+        var compilerAllDiagnostics = results.SelectMany(r => r.compilerAll).ToList();
+        var analyzerAllDiagnostics = results.SelectMany(r => r.analyzerAll).ToList();
 
         // Cache the unfiltered Diagnostic objects so the detail-lookup path (which is
         // almost always called next) can skip recompilation. Only cache when this call
@@ -110,68 +136,42 @@ public sealed class DiagnosticService : IDiagnosticService
             _diagnosticCache[workspaceId] = new DiagnosticCacheEntry(version, allRaw);
         }
 
-        var compilerErrors = compilerDiagnostics.Count(d => d.Severity == "Error");
-        var analyzerErrors = analyzerDiagnostics.Count(d => d.Severity == "Error");
-        var workspaceErrors = workspaceDiagnostics.Count(d => d.Severity == "Error");
+        // Counts are over the file-scoped (but severity-unfiltered) result so callers can see
+        // the full shape of the queried scope even when severityFilter narrows the returned set.
+        // BUG fix (project-diagnostics-filter-totals): previously these counts double-applied
+        // the severity filter, so `severity=Error` reported `totalWarnings=0` even when the
+        // same workspace had hundreds of warnings.
+        var compilerErrors = compilerAllDiagnostics.Count(d => d.Severity == "Error");
+        var analyzerErrors = analyzerAllDiagnostics.Count(d => d.Severity == "Error");
+        var workspaceErrors = workspaceMatchingFile.Count(d => d.Severity == "Error");
 
         return new DiagnosticsResultDto(
             workspaceDiagnostics,
             compilerDiagnostics,
             analyzerDiagnostics,
             TotalErrors: compilerErrors + analyzerErrors + workspaceErrors,
-            TotalWarnings: compilerDiagnostics.Count(d => d.Severity == "Warning")
-                + analyzerDiagnostics.Count(d => d.Severity == "Warning")
-                + workspaceDiagnostics.Count(d => d.Severity == "Warning"),
-            TotalInfo: compilerDiagnostics.Count(d => d.Severity == "Info")
-                + analyzerDiagnostics.Count(d => d.Severity == "Info")
-                + workspaceDiagnostics.Count(d => d.Severity == "Info"),
+            TotalWarnings: compilerAllDiagnostics.Count(d => d.Severity == "Warning")
+                + analyzerAllDiagnostics.Count(d => d.Severity == "Warning")
+                + workspaceMatchingFile.Count(d => d.Severity == "Warning"),
+            TotalInfo: compilerAllDiagnostics.Count(d => d.Severity == "Info")
+                + analyzerAllDiagnostics.Count(d => d.Severity == "Info")
+                + workspaceMatchingFile.Count(d => d.Severity == "Info"),
             CompilerErrors: compilerErrors,
             AnalyzerErrors: analyzerErrors,
             WorkspaceErrors: workspaceErrors);
     }
 
     /// <summary>
-    /// Downgrades known informational SDK/workspace messages that MSBuildWorkspace surfaces as failures.
+    /// Returns true when the diagnostic's source path matches the optional file filter.
+    /// In-memory diagnostics with no source location pass through unconditionally.
     /// </summary>
-    private static IReadOnlyList<DiagnosticDto> NormalizeWorkspaceDiagnostics(IReadOnlyList<DiagnosticDto> diagnostics)
+    private static bool MatchesFileFilter(Diagnostic diagnostic, string? fileFilter)
     {
-        if (diagnostics.Count == 0)
-        {
-            return diagnostics;
-        }
+        if (fileFilter is null) return true;
+        if (!diagnostic.Location.IsInSource) return false;
 
-        var list = new List<DiagnosticDto>(diagnostics.Count);
-        foreach (var d in diagnostics)
-        {
-            if (string.Equals(d.Severity, "Error", StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(d.Category, "Workspace", StringComparison.OrdinalIgnoreCase) &&
-                IsInformationalWorkspaceFailureMessage(d.Message))
-            {
-                list.Add(d with { Severity = "Warning" });
-            }
-            else
-            {
-                list.Add(d);
-            }
-        }
-
-        return list;
-    }
-
-    private static bool IsInformationalWorkspaceFailureMessage(string message)
-    {
-        if (string.IsNullOrEmpty(message))
-        {
-            return false;
-        }
-
-        // SDK package pruning hints (e.g. "PackageReference X will not be pruned...")
-        if (message.Contains("pruned", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return false;
+        var diagnosticPath = diagnostic.Location.GetLineSpan().Path;
+        return string.Equals(Path.GetFullPath(diagnosticPath), Path.GetFullPath(fileFilter), StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<DiagnosticDetailsDto?> GetDiagnosticDetailsAsync(
@@ -232,25 +232,12 @@ public sealed class DiagnosticService : IDiagnosticService
             _ => null
         };
 
-    private static bool MatchesFilter(Diagnostic diagnostic, string? fileFilter, DiagnosticSeverity? minSeverity)
-    {
-        if (minSeverity.HasValue && diagnostic.Severity < minSeverity.Value)
-        {
-            return false;
-        }
-
-        if (fileFilter is not null && diagnostic.Location.IsInSource)
-        {
-            var diagnosticPath = diagnostic.Location.GetLineSpan().Path;
-            if (!string.Equals(Path.GetFullPath(diagnosticPath), Path.GetFullPath(fileFilter), StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
+    /// <summary>
+    /// Returns the input list narrowed to diagnostics whose severity is at or above
+    /// <paramref name="minSeverity"/>. Used by the post-ingress filter on the workspace
+    /// diagnostic feed; the file filter is applied earlier so this method only handles
+    /// severity narrowing.
+    /// </summary>
     private static IReadOnlyList<DiagnosticDto> FilterDiagnostics(
         IReadOnlyList<DiagnosticDto> diagnostics,
         string? fileFilter,
