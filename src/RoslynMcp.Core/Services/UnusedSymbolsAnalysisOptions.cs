@@ -30,4 +30,15 @@ public sealed record UnusedSymbolsAnalysisOptions
 
     /// <summary>When <see langword="true"/>, symbols in test fixture types are excluded.</summary>
     public bool ExcludeTests { get; init; }
+
+    /// <summary>
+    /// When <see langword="true"/> (default), symbols recognized as convention-invoked
+    /// (EF Core <c>*ModelSnapshot</c>, xUnit/NUnit/MSTest fixtures, ASP.NET middleware,
+    /// SignalR <c>Hub</c> subclasses, FluentValidation <c>AbstractValidator&lt;T&gt;</c>
+    /// subclasses, Razor <c>PageModel</c> subclasses) are excluded. Detection is
+    /// name-shape based and intentionally does not require the corresponding NuGet
+    /// packages — a custom class literally named <c>Hub</c>/<c>PageModel</c>/etc. may
+    /// also be excluded.
+    /// </summary>
+    public bool ExcludeConventionInvoked { get; init; } = true;
 }

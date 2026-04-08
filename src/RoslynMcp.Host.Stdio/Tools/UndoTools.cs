@@ -9,7 +9,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class UndoTools
 {
     [McpServerTool(Name = "revert_last_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
-     Description("Revert the most recent apply operation for a workspace, restoring the previous solution state. Only Roslyn preview/apply operations (renames, code fixes, format, organize usings) register for undo. apply_text_edit and other disk-direct edits are not revertible here. workspaceId is required.")]
+     Description("Revert the most recent apply operation for a workspace, restoring the previous solution state. Roslyn preview/apply operations (renames, code fixes, format, organize usings) AND apply_text_edit / apply_multi_file_edit register for undo. File create/delete/move and project file mutations are not revertible. workspaceId is required.")]
     public static Task<string> RevertLastApply(
         IWorkspaceExecutionGate gate,
         IUndoService undoService,
@@ -32,8 +32,8 @@ public static class UndoTools
                     {
                         reverted = false,
                         message = "No operation to revert. Nothing has been applied in this session, " +
-                                  "or the last operation was a disk-direct change (file create/delete/move, " +
-                                  "project mutation) which is not revertible."
+                                  "or the last operation was an unrevertible change (file create/delete/move " +
+                                  "or project file mutation)."
                     };
                     return JsonSerializer.Serialize(nothingResult, JsonDefaults.Indented);
                 }

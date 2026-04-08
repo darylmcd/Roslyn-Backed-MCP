@@ -4,6 +4,31 @@ All notable changes to Roslyn-Backed MCP Server will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.7.0] - 2026-04-08
+
+### Fixed
+
+- **P1 / `rename_preview` accepts illegal C# identifiers** (`rename-preview-validate-identifier`). Calling `rename_preview newName="2foo"` (numeric prefix), `"class"` (reserved keyword), `"var"` (contextual keyword), or `""` (empty) previously produced a multi-file preview that, if applied, would break compilation across the entire solution. `PreviewRenameAsync` now calls a new `IdentifierValidation.ThrowIfInvalidIdentifier` helper that validates the new name against `SyntaxFacts.IsValidIdentifier`, rejects reserved and contextual C# keywords, and accepts verbatim identifiers (`@class`) by stripping the `@` and skipping the keyword guards. Throws `InvalidOperationException` with a descriptive message before any cross-file changes are computed.
+- **`rename_preview` no-op silently returns empty Changes** (`rename-preview-noop-warning`). Renaming a symbol to its current name now returns `Warnings: ["New name '...' matches the existing name; no changes were produced."]` so callers can distinguish "rename succeeded with no actual references" from "no-op rename". Comparison is case-sensitive (`Ordinal`) so `Foo → foo` is still treated as a real rename.
+- **`organize_usings_preview` and `move_type_to_file_preview` leave stray blank lines** (`organize-usings-and-move-type-trivia`). Both tools shared the same trivia bug: `organize_usings_preview` used `SyntaxRemoveOptions.KeepExteriorTrivia` which preserved the trailing newline of each removed `using`, leaving a blank line behind; `move_type_to_file_preview` used `NormalizeWhitespace()` which inserted artificial blank lines before the namespace. Both paths now route through a new shared `TriviaNormalizationHelper` (`NormalizeLeadingTrivia`, `NormalizeUsingToMemberSeparator`, `CollapseBlankLinesInUsingBlock`) that canonicalizes leading/trailing trivia after deletes and moves while preserving XML doc comments and other non-whitespace trivia. Same fix also applied to `TypeMoveService.RemoveUnusedUsingsAsync`.
+
+### Added
+
+- **`apply_text_edit` and `apply_multi_file_edit` are now revertible** (`apply-text-edit-undo-stack`). Both tools were previously documented as "DISK-DIRECT, NOT REVERTIBLE" — they did not enter the undo stack so `revert_last_apply` could not undo them. `EditService` now takes an optional `IUndoService` and captures a single pre-apply `Solution` snapshot before mutating. A new `IEditService.ApplyMultiFileTextEditsAsync` method captures **one** snapshot at the batch boundary so a multi-file batch is reverted atomically. Tool descriptions for `apply_text_edit`, `apply_multi_file_edit`, and `revert_last_apply` updated to reflect the new contract; only file create/delete/move and project file mutations remain unrevertible.
+- **`find_unused_symbols` is now convention-aware by default** (`find-unused-symbols-convention-aware`). New `excludeConventionInvoked` parameter (default `true`) skips symbols recognized as convention-invoked: EF Core `*ModelSnapshot`, xUnit/NUnit/MSTest fixtures, ASP.NET middleware (`Invoke`/`InvokeAsync(HttpContext)` shape), SignalR `Hub` subclasses, FluentValidation `AbstractValidator<T>` subclasses, and Razor `PageModel` subclasses. Detection is name-shape based via two new private helpers `IsConventionInvokedType` (walks the base-type chain by simple name plus method-shape detection) and `IsConventionInvokedMember` (delegates to type detection plus `[DbContext]`/`[Migration]` attribute checks). Set `excludeConventionInvoked=false` to opt out and see raw counts. No NuGet dependencies pulled — detection works against stub base types in user fixtures.
+- New shared helper `src/RoslynMcp.Roslyn/Helpers/IdentifierValidation.cs` for the rename validation path.
+- New shared helper `src/RoslynMcp.Roslyn/Helpers/TriviaNormalizationHelper.cs` for the trivia/blank-line fixes.
+- New sample fixture `samples/SampleSolution/SampleLib/ConventionFixtures.cs` with stub base types and 5 convention-shaped sample classes (`SampleValidator`, `ChatHub`, `IndexModel`, `MyDbContextModelSnapshot`, `LoggingMiddleware`) plus a control type that should still be reported.
+- New test class `tests/RoslynMcp.Tests/EditUndoIntegrationTests.cs` with 4 tests covering the text-edit undo path including single-slot snapshot semantics across rename → text edit → revert.
+- 6 new rename-validation tests in `RefactoringToolsIntegrationTests.cs`, 3 new convention-aware tests in `DeadCodeIntegrationTests.cs`, 3 new trivia tests across `RefactoringToolsIntegrationTests.cs` and `TypeMoveTests.cs`. Total new test count: 16. Suite is now 267/267 (was 251/251).
+
+### Refactored
+
+- **`ScriptingService.EvaluateAsync` complexity reduction.** Cyclomatic complexity 36 → 20, LOC 282 → 204, MaintainabilityIndex 19.5 → 26.3. Extracted `MarkAbandonedIfWorkerStillRunning`, `LogHardDeadlineCritical`, `BuildHardDeadlineDto`, and `BuildOutcomeDto` so the FLAG-5C concurrency race steps (cancel → deadline → outcome) are no longer buried under DTO boilerplate. Behavior preserved — verified by all 8 ScriptingService characterization tests including the abandoned-cap and outer-cancel paths.
+- **`MutationAnalysisService.ClassifyTypeUsageAfterWalk` complexity reduction.** Cyclomatic complexity 31 → 21, LOC 58 → 31, MaintainabilityIndex 40.1 → 49.7. Replaced an if-chain with a switch expression using type patterns and `when` guards.
+- **`CodeMetricsService.VisitControlFlowNesting` complexity reduction.** Original 109-LOC method (cyclomatic 28) decomposed into a small `VisitChildForNesting` dispatcher plus per-shape helpers `VisitForLoop` and `VisitTryStatement`. Single-body statement cases grouped under a comment band so multi-body cases stay visually distinct.
+- **`UnusedCodeAnalyzer.ShouldSkipSymbolForUnusedAnalysis` complexity reduction.** Cyclomatic complexity 24 → no longer in the hotspot list. Decomposed into 11 named predicate helpers (`IsTestFixtureFiltered`, `IsPublicFiltered`, `IsEnumMemberFiltered`, etc.) aggregated via `||`, making it trivial to add new convention exclusions in this release.
+
 ## [1.6.1] - 2026-04-07
 
 ### Added

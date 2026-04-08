@@ -257,101 +257,23 @@ public sealed class ScriptingService : IScriptingService
             // Outer cancellation: surface as OperationCanceledException; mark worker abandoned.
             if (raceOutcome.Kind == ScriptOutcomeKind.OuterCancelled)
             {
-                if (Interlocked.Read(ref workerFinished) == 0 &&
-                    Interlocked.Exchange(ref abandonedFlag, 1) == 0)
-                {
-                    Interlocked.Increment(ref _abandonedEvaluations);
-                    try { timeoutCts.Cancel(); } catch (ObjectDisposedException) { }
-                }
+                MarkAbandonedIfWorkerStillRunning(timeoutCts, ref workerFinished, ref abandonedFlag);
                 ct.ThrowIfCancellationRequested();
             }
 
             // Hard deadline path — Roslyn never finished. Mark thread abandoned and return.
             if (raceOutcome.Kind == ScriptOutcomeKind.HardDeadline)
             {
-                if (Interlocked.Read(ref workerFinished) == 0 &&
-                    Interlocked.Exchange(ref abandonedFlag, 1) == 0)
+                if (MarkAbandonedIfWorkerStillRunning(timeoutCts, ref workerFinished, ref abandonedFlag))
                 {
-                    Interlocked.Increment(ref _abandonedEvaluations);
-                    try { timeoutCts.Cancel(); } catch (ObjectDisposedException) { }
-                    _logger.LogCritical(
-                        "evaluate_csharp WATCHDOG: hard deadline ({HardDeadlineSeconds}s = budget {BudgetSeconds}s + grace {GraceSeconds}s) " +
-                        "elapsed; abandoning script worker thread '{ThreadName}'. The thread continues until it returns or the host exits. " +
-                        "Active evaluations: {Active}, abandoned: {Abandoned} (cap {AbandonedCap}).",
-                        hardDeadlineSeconds,
-                        effectiveTimeoutSeconds,
-                        graceSeconds,
-                        workerThread.Name,
-                        Interlocked.Read(ref _activeEvaluations),
-                        Interlocked.Read(ref _abandonedEvaluations),
-                        _options.MaxAbandonedEvaluations);
+                    LogHardDeadlineCritical(workerThread.Name, hardDeadlineSeconds, effectiveTimeoutSeconds, graceSeconds);
                 }
 
-                return new ScriptEvaluationDto(
-                    Success: false,
-                    ResultType: null,
-                    ResultValue: null,
-                    Error: $"Script execution was forcibly abandoned after {hardDeadlineSeconds} second(s) " +
-                           $"(script budget {effectiveTimeoutSeconds}s + ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS {graceSeconds}s). " +
-                           "Roslyn does not cancel tight infinite loops; the server no longer waits for cooperative cancellation. " +
-                           $"{Interlocked.Read(ref _abandonedEvaluations)}/{_options.MaxAbandonedEvaluations} abandoned worker thread(s) outstanding; " +
-                           "restart the MCP host if this happens repeatedly.",
-                    CompilationErrors: null,
-                    ElapsedMs: sw.ElapsedMilliseconds,
-                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
+                return BuildHardDeadlineDto(sw, heartbeatCount, hardDeadlineSeconds, effectiveTimeoutSeconds, graceSeconds);
             }
 
             // Worker finished first — translate the outcome.
-            return raceOutcome.Kind switch
-            {
-                ScriptOutcomeKind.Success => new ScriptEvaluationDto(
-                    Success: true,
-                    ResultType: raceOutcome.Result?.GetType().FullName,
-                    ResultValue: FormatResult(raceOutcome.Result),
-                    Error: null,
-                    CompilationErrors: null,
-                    ElapsedMs: sw.ElapsedMilliseconds,
-                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null),
-                ScriptOutcomeKind.CompilationFailure => new ScriptEvaluationDto(
-                    Success: false,
-                    ResultType: null,
-                    ResultValue: null,
-                    Error: raceOutcome.CompilationException!.Message,
-                    CompilationErrors: MapCompilationErrors(raceOutcome.CompilationException!),
-                    ElapsedMs: sw.ElapsedMilliseconds,
-                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null),
-                ScriptOutcomeKind.TimedOut => new ScriptEvaluationDto(
-                    Success: false,
-                    ResultType: null,
-                    ResultValue: null,
-                    Error: $"Script execution timed out after {effectiveTimeoutSeconds} seconds. " +
-                           "Pass timeoutSeconds on the call (UX-002) or set ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS to raise the default.",
-                    CompilationErrors: null,
-                    ElapsedMs: sw.ElapsedMilliseconds,
-                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null),
-                ScriptOutcomeKind.Runtime => new ScriptEvaluationDto(
-                    Success: false,
-                    ResultType: null,
-                    ResultValue: null,
-                    Error: $"Runtime error: {raceOutcome.RuntimeException!.GetType().Name}: {raceOutcome.RuntimeException!.Message}",
-                    CompilationErrors: null,
-                    ElapsedMs: sw.ElapsedMilliseconds,
-                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null),
-                _ => new ScriptEvaluationDto(
-                    Success: false,
-                    ResultType: null,
-                    ResultValue: null,
-                    Error: "Unknown script evaluation outcome (internal error).",
-                    CompilationErrors: null,
-                    ElapsedMs: sw.ElapsedMilliseconds,
-                    AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
-                    ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null),
-            };
+            return BuildOutcomeDto(raceOutcome, sw, heartbeatCount, effectiveTimeoutSeconds);
         }
         finally
         {
@@ -377,6 +299,122 @@ public sealed class ScriptingService : IScriptingService
             ElapsedMs: 0,
             AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
             ProgressHeartbeatCount: null);
+    }
+
+    /// <summary>
+    /// Atomically marks the worker thread as abandoned if it has not yet finished, and signals
+    /// inner-token cancellation. Returns <c>true</c> if this call is the one that flipped the
+    /// flag (so callers can perform once-only side-effects like critical logging).
+    /// </summary>
+    private bool MarkAbandonedIfWorkerStillRunning(
+        CancellationTokenSource timeoutCts,
+        ref long workerFinished,
+        ref long abandonedFlag)
+    {
+        if (Interlocked.Read(ref workerFinished) != 0) return false;
+        if (Interlocked.Exchange(ref abandonedFlag, 1) != 0) return false;
+
+        Interlocked.Increment(ref _abandonedEvaluations);
+        try { timeoutCts.Cancel(); } catch (ObjectDisposedException) { }
+        return true;
+    }
+
+    private void LogHardDeadlineCritical(
+        string? workerThreadName,
+        int hardDeadlineSeconds,
+        int effectiveTimeoutSeconds,
+        int graceSeconds)
+    {
+        _logger.LogCritical(
+            "evaluate_csharp WATCHDOG: hard deadline ({HardDeadlineSeconds}s = budget {BudgetSeconds}s + grace {GraceSeconds}s) " +
+            "elapsed; abandoning script worker thread '{ThreadName}'. The thread continues until it returns or the host exits. " +
+            "Active evaluations: {Active}, abandoned: {Abandoned} (cap {AbandonedCap}).",
+            hardDeadlineSeconds,
+            effectiveTimeoutSeconds,
+            graceSeconds,
+            workerThreadName,
+            Interlocked.Read(ref _activeEvaluations),
+            Interlocked.Read(ref _abandonedEvaluations),
+            _options.MaxAbandonedEvaluations);
+    }
+
+    private ScriptEvaluationDto BuildHardDeadlineDto(
+        Stopwatch sw,
+        int heartbeatCount,
+        int hardDeadlineSeconds,
+        int effectiveTimeoutSeconds,
+        int graceSeconds)
+    {
+        return new ScriptEvaluationDto(
+            Success: false,
+            ResultType: null,
+            ResultValue: null,
+            Error: $"Script execution was forcibly abandoned after {hardDeadlineSeconds} second(s) " +
+                   $"(script budget {effectiveTimeoutSeconds}s + ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS {graceSeconds}s). " +
+                   "Roslyn does not cancel tight infinite loops; the server no longer waits for cooperative cancellation. " +
+                   $"{Interlocked.Read(ref _abandonedEvaluations)}/{_options.MaxAbandonedEvaluations} abandoned worker thread(s) outstanding; " +
+                   "restart the MCP host if this happens repeatedly.",
+            CompilationErrors: null,
+            ElapsedMs: sw.ElapsedMilliseconds,
+            AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+            ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
+    }
+
+    /// <summary>
+    /// Translates a worker-thread <see cref="ScriptOutcome"/> into a <see cref="ScriptEvaluationDto"/>.
+    /// All branches share elapsed-time, applied-timeout, and heartbeat fields; only the success
+    /// flag, payload, and error message change per outcome kind.
+    /// </summary>
+    private static ScriptEvaluationDto BuildOutcomeDto(
+        ScriptOutcome outcome,
+        Stopwatch sw,
+        int heartbeatCount,
+        int effectiveTimeoutSeconds)
+    {
+        var (success, resultType, resultValue, error, compilationErrors) = outcome.Kind switch
+        {
+            ScriptOutcomeKind.Success => (
+                true,
+                outcome.Result?.GetType().FullName,
+                FormatResult(outcome.Result),
+                (string?)null,
+                (List<DiagnosticDto>?)null),
+            ScriptOutcomeKind.CompilationFailure => (
+                false,
+                (string?)null,
+                (string?)null,
+                outcome.CompilationException!.Message,
+                MapCompilationErrors(outcome.CompilationException!)),
+            ScriptOutcomeKind.TimedOut => (
+                false,
+                (string?)null,
+                (string?)null,
+                $"Script execution timed out after {effectiveTimeoutSeconds} seconds. " +
+                "Pass timeoutSeconds on the call (UX-002) or set ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS to raise the default.",
+                (List<DiagnosticDto>?)null),
+            ScriptOutcomeKind.Runtime => (
+                false,
+                (string?)null,
+                (string?)null,
+                $"Runtime error: {outcome.RuntimeException!.GetType().Name}: {outcome.RuntimeException!.Message}",
+                (List<DiagnosticDto>?)null),
+            _ => (
+                false,
+                (string?)null,
+                (string?)null,
+                "Unknown script evaluation outcome (internal error).",
+                (List<DiagnosticDto>?)null),
+        };
+
+        return new ScriptEvaluationDto(
+            Success: success,
+            ResultType: resultType,
+            ResultValue: resultValue,
+            Error: error,
+            CompilationErrors: compilationErrors,
+            ElapsedMs: sw.ElapsedMilliseconds,
+            AppliedScriptTimeoutSeconds: effectiveTimeoutSeconds,
+            ProgressHeartbeatCount: heartbeatCount > 0 ? heartbeatCount : null);
     }
 
     private ScriptOptions BuildScriptOptions(string[]? imports)

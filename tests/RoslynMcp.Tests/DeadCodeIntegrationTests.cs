@@ -114,4 +114,80 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
         Assert.IsFalse(unusedNames.Contains("GetAllAnimals_Returns_Dog_And_Cat"),
             "[TestMethod] entry point should be treated as framework-invoked and not reported as unused.");
     }
+
+    [TestMethod]
+    public async Task FindUnusedSymbols_Default_ExcludesConventionInvokedTypes()
+    {
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
+
+        var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
+            workspaceId,
+            new UnusedSymbolsAnalysisOptions { ProjectFilter = "SampleLib", IncludePublic = true, Limit = 500 },
+            CancellationToken.None);
+
+        var unusedNames = unusedSymbols.Select(s => s.SymbolName).ToHashSet(StringComparer.Ordinal);
+
+        // Convention shapes — none should be reported with the default excludeConventionInvoked=true.
+        Assert.IsFalse(unusedNames.Contains("SampleValidator"),
+            "FluentValidation AbstractValidator<T> subclass must be excluded under default excludeConventionInvoked.");
+        Assert.IsFalse(unusedNames.Contains("ChatHub"),
+            "SignalR Hub subclass must be excluded under default excludeConventionInvoked.");
+        Assert.IsFalse(unusedNames.Contains("IndexModel"),
+            "Razor PageModel subclass must be excluded under default excludeConventionInvoked.");
+        Assert.IsFalse(unusedNames.Contains("MyDbContextModelSnapshot"),
+            "EF *ModelSnapshot must be excluded under default excludeConventionInvoked.");
+        Assert.IsFalse(unusedNames.Contains("LoggingMiddleware"),
+            "ASP.NET middleware (Invoke/InvokeAsync(HttpContext) shape) must be excluded under default excludeConventionInvoked.");
+    }
+
+    [TestMethod]
+    public async Task FindUnusedSymbols_ExcludeConventionInvokedFalse_IncludesConventionTypes()
+    {
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
+
+        var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
+            workspaceId,
+            new UnusedSymbolsAnalysisOptions
+            {
+                ProjectFilter = "SampleLib",
+                IncludePublic = true,
+                Limit = 500,
+                ExcludeConventionInvoked = false,
+            },
+            CancellationToken.None);
+
+        var unusedNames = unusedSymbols.Select(s => s.SymbolName).ToHashSet(StringComparer.Ordinal);
+
+        // With the filter off, every convention shape should appear because none of them are
+        // referenced anywhere in the sample solution.
+        Assert.IsTrue(unusedNames.Contains("SampleValidator"),
+            "Convention exclusion off — SampleValidator should be reported as unused.");
+        Assert.IsTrue(unusedNames.Contains("ChatHub"),
+            "Convention exclusion off — ChatHub should be reported as unused.");
+        Assert.IsTrue(unusedNames.Contains("IndexModel"),
+            "Convention exclusion off — IndexModel should be reported as unused.");
+        Assert.IsTrue(unusedNames.Contains("MyDbContextModelSnapshot"),
+            "Convention exclusion off — MyDbContextModelSnapshot should be reported as unused.");
+        Assert.IsTrue(unusedNames.Contains("LoggingMiddleware"),
+            "Convention exclusion off — LoggingMiddleware should be reported as unused.");
+    }
+
+    [TestMethod]
+    public async Task FindUnusedSymbols_ControlType_StillReportedUnderConventionFilter()
+    {
+        // The convention filter must NOT swallow truly-unused types that don't match any
+        // convention shape. TrulyUnusedConcreteType is a plain internal class that nothing
+        // references anywhere in the sample solution.
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
+
+        var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
+            workspaceId,
+            new UnusedSymbolsAnalysisOptions { ProjectFilter = "SampleLib", IncludePublic = false, Limit = 500 },
+            CancellationToken.None);
+
+        var unusedNames = unusedSymbols.Select(s => s.SymbolName).ToHashSet(StringComparer.Ordinal);
+
+        Assert.IsTrue(unusedNames.Contains("TrulyUnusedConcreteType"),
+            "Plain internal type with no references must still be reported even with the convention filter on.");
+    }
 }

@@ -11,7 +11,7 @@ public static class MultiFileEditTools
 {
 
     [McpServerTool(Name = "apply_multi_file_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
-     Description("Apply text edits to multiple files in the workspace sequentially. Each file's edits are applied independently.")]
+     Description("Apply text edits to multiple files in the workspace sequentially. All edits share a single pre-apply snapshot — revert_last_apply rolls back the entire batch atomically. If a file validation or apply fails partway through, revert_last_apply restores the pre-call state for any files that were already written.")]
     public static Task<string> ApplyMultiFileEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -23,15 +23,13 @@ public static class MultiFileEditTools
         return ToolErrorHandler.ExecuteAsync("apply_multi_file_edit", () =>
             gate.RunWriteAsync(workspaceId, async c =>
             {
-                var results = new List<FileEditSummaryDto>();
+                // Validate ALL paths before snapshotting so a bad path does not leave a stale undo entry.
                 foreach (var fileEdit in fileEdits)
                 {
                     await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, fileEdit.FilePath, c).ConfigureAwait(false);
-                    var result = await editService.ApplyTextEditsAsync(workspaceId, fileEdit.FilePath, fileEdit.Edits, c);
-                    var diff = result.Changes.Count > 0 ? string.Join("\n", result.Changes.Select(ch => ch.UnifiedDiff)) : null;
-                    results.Add(new FileEditSummaryDto(fileEdit.FilePath, result.EditsApplied, diff));
                 }
-                var dto = new MultiFileEditResultDto(true, results.Count, results);
+
+                var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
             }, ct));
     }
