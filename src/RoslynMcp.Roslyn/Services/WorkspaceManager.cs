@@ -73,9 +73,47 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public bool ContainsWorkspace(string workspaceId) =>
         !string.IsNullOrWhiteSpace(workspaceId) && _sessions.ContainsKey(workspaceId);
 
+    /// <summary>
+    /// Returns the first live session whose <see cref="WorkspaceSession.LoadedPath"/> matches
+    /// the given full path (case-insensitive on Windows where paths are case-insensitive).
+    /// Used by <see cref="LoadAsync"/> to implement the
+    /// <c>workspace-session-deduplication</c> fix so repeat loads of the same path return
+    /// the existing session instead of spinning up a new <c>WorkspaceId</c>.
+    /// </summary>
+    private WorkspaceSession? FindSessionByLoadedPath(string fullPath)
+    {
+        foreach (var candidate in _sessions.Values)
+        {
+            if (!string.IsNullOrWhiteSpace(candidate.LoadedPath)
+                && string.Equals(candidate.LoadedPath, fullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
     public async Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct)
     {
         var fullPath = ValidateWorkspacePath(path);
+
+        // workspace-session-deduplication: if the caller is loading a path that is already
+        // tracked by a live session, return that session's status instead of spinning up a
+        // second WorkspaceId. Prevents the "one host, two distinct IDs for the same solution"
+        // pattern from the 2026-04-08 roslyn-backed-mcp audit and keeps workspace_list aligned
+        // with operator expectations. Matches the "idempotent for repeated loads" language
+        // already in the workspace_load tool description.
+        var existing = FindSessionByLoadedPath(fullPath);
+        if (existing is not null)
+        {
+            existing.TouchAccess();
+            _logger.LogInformation(
+                "workspace_load: returning existing workspace '{WorkspaceId}' for path '{Path}' (idempotent)",
+                existing.WorkspaceId,
+                fullPath);
+            return BuildStatus(existing);
+        }
+
         if (!await _workspaceSlots.WaitAsync(0, ct).ConfigureAwait(false))
         {
             throw new InvalidOperationException(
@@ -87,6 +125,24 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         try
         {
             await LoadIntoSessionAsync(session, fullPath, ct).ConfigureAwait(false);
+
+            // Second dedup check, this time for the race window between our scan above and
+            // another concurrent LoadAsync call that won the semaphore with the same path.
+            // Whichever caller lost the race returns the winner's session and releases its
+            // slot in the finally block so we do not leak a slot per racing caller.
+            var raceWinner = FindSessionByLoadedPath(fullPath);
+            if (raceWinner is not null)
+            {
+                _logger.LogInformation(
+                    "workspace_load: race lost; returning winner '{WorkspaceId}' for path '{Path}' instead of new '{NewId}'",
+                    raceWinner.WorkspaceId,
+                    fullPath,
+                    workspaceId);
+                session.Dispose();
+                raceWinner.TouchAccess();
+                return BuildStatus(raceWinner);
+            }
+
             if (!_sessions.TryAdd(workspaceId, session))
             {
                 throw new InvalidOperationException($"Workspace '{workspaceId}' already exists.");
