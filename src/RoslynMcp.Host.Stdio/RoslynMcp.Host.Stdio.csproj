@@ -24,7 +24,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <!-- The project-local README.md is the package consumer's view (install + use + config + safety).
+         The repo root README.md stays focused on contributors and is intentionally not packed. -->
+    <None Include="README.md" Pack="true" PackagePath="\" />
     <InternalsVisibleTo Include="RoslynMcp.Tests" />
   </ItemGroup>
 
