@@ -197,10 +197,27 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not INamedTypeSymbol namedType) return null;
 
+        // Get the compilation that defines the type so the side-effect classifier can read
+        // semantic models against the same compilation as the symbol.
+        Compilation? compilation = null;
+        foreach (var project in solution.Projects)
+        {
+            var projectCompilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (projectCompilation is null) continue;
+            if (SymbolEqualityComparer.Default.Equals(projectCompilation.Assembly, namedType.ContainingAssembly))
+            {
+                compilation = projectCompilation;
+                break;
+            }
+        }
+
         // Filter to mutating members up front so we can fan out the expensive
         // SymbolFinder.FindReferencesAsync calls in parallel while preserving declaration order.
+        // Each candidate carries its computed scope so we don't recompute it inside the parallel
+        // member tasks.
         var candidates = namedType.GetMembers()
-            .Where(m => IsMutatingMember(m, namedType))
+            .Select(m => (Member: m, Scope: ClassifyMutationScope(m, namedType, compilation)))
+            .Where(t => t.Scope is not null)
             .ToArray();
 
         if (candidates.Length == 0)
@@ -220,7 +237,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var parallelism = Math.Clamp(Environment.ProcessorCount, 4, 16);
         using var semaphore = new SemaphoreSlim(parallelism, parallelism);
 
-        async Task<MutatingMemberDto> ProcessMemberAsync(ISymbol member)
+        async Task<MutatingMemberDto> ProcessMemberAsync(ISymbol member, string mutationScope)
         {
             await semaphore.WaitAsync(ct).ConfigureAwait(false);
             try
@@ -283,7 +300,8 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                     Kind: member.Kind.ToString(),
                     FilePath: memberLoc?.GetLineSpan().Path,
                     Line: memberLoc?.GetLineSpan().StartLinePosition.Line + 1,
-                    ExternalCallers: callers);
+                    ExternalCallers: callers,
+                    MutationScope: mutationScope);
             }
             finally
             {
@@ -294,7 +312,8 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var memberTasks = new Task<MutatingMemberDto>[candidates.Length];
         for (var i = 0; i < candidates.Length; i++)
         {
-            memberTasks[i] = ProcessMemberAsync(candidates[i]);
+            // Scope is non-null because the .Where filter above kept only entries with a scope.
+            memberTasks[i] = ProcessMemberAsync(candidates[i].Member, candidates[i].Scope!);
         }
 
         var mutatingMembers = await Task.WhenAll(memberTasks).ConfigureAwait(false);
@@ -382,31 +401,72 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         };
     }
 
-    private static bool IsMutatingMember(ISymbol member, INamedTypeSymbol containingType)
+    /// <summary>
+    /// Classifies a member as mutating and returns the highest-severity scope of the mutation.
+    /// Returns <see langword="null"/> if the member does not mutate at all. The scope follows
+    /// <see cref="SideEffectClassifier.Scopes"/>: FieldWrite (settable property or instance-field
+    /// reassignment), CollectionWrite (Add/Remove/Clear-style call), IO/Network/Process/Database
+    /// (calls into the catalogued side-effect APIs).
+    ///
+    /// Side-effect detection requires a <see cref="SemanticModel"/> for the method body. When
+    /// none is available (e.g. method has no source location), only the field-write and
+    /// collection-write heuristics run.
+    /// </summary>
+    private static string? ClassifyMutationScope(ISymbol member, INamedTypeSymbol containingType, Compilation? compilation)
     {
-        if (member.IsStatic) return false;
-        if (member.DeclaredAccessibility == Accessibility.Private) return false;
+        if (member.IsStatic) return null;
+        if (member.DeclaredAccessibility == Accessibility.Private) return null;
 
         // Settable properties
         if (member is IPropertySymbol prop && prop.SetMethod is not null &&
             !prop.SetMethod.IsInitOnly && prop.SetMethod.DeclaredAccessibility != Accessibility.Private)
-            return true;
-
-        // Methods that write to instance fields/properties (simple heuristic: check method body)
-        if (member is IMethodSymbol method &&
-            method.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation)
         {
-            if (IsMutatingByName(method)) return true;
-
-            var location = method.Locations.FirstOrDefault(l => l.IsInSource);
-            if (location?.SourceTree is null) return false;
-
-            var methodNode = location.SourceTree.GetRoot().FindNode(location.SourceSpan);
-            return HasInstanceFieldAssignment(methodNode, containingType)
-                || HasMutatingCollectionCall(methodNode);
+            return SideEffectClassifier.Scopes.FieldWrite;
         }
 
-        return false;
+        if (member is not IMethodSymbol method ||
+            method.MethodKind is not (MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation))
+        {
+            return null;
+        }
+
+        // Naming convention is checked first because it doesn't require a syntax tree.
+        var byName = IsMutatingByName(method);
+
+        var location = method.Locations.FirstOrDefault(l => l.IsInSource);
+        if (location?.SourceTree is null)
+        {
+            return byName ? SideEffectClassifier.Scopes.FieldWrite : null;
+        }
+
+        var methodNode = location.SourceTree.GetRoot().FindNode(location.SourceSpan);
+
+        // Side-effect detection: highest severity wins. Requires the right SemanticModel
+        // for the syntax tree containing the method body — fall back to the field/collection
+        // heuristics when one is not available.
+        string? sideEffectScope = null;
+        if (compilation is not null && location.SourceTree is { } tree)
+        {
+            var model = compilation.GetSemanticModel(tree);
+            sideEffectScope = SideEffectClassifier.ClassifyMethodSideEffects(methodNode, model, CancellationToken.None);
+        }
+
+        if (sideEffectScope is not null)
+        {
+            return sideEffectScope;
+        }
+
+        if (HasInstanceFieldAssignment(methodNode, containingType))
+        {
+            return SideEffectClassifier.Scopes.FieldWrite;
+        }
+
+        if (HasMutatingCollectionCall(methodNode))
+        {
+            return SideEffectClassifier.Scopes.CollectionWrite;
+        }
+
+        return byName ? SideEffectClassifier.Scopes.FieldWrite : null;
     }
 
     /// <summary>
