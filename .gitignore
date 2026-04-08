@@ -484,3 +484,7 @@ $RECYCLE.BIN/
 # Local AI/MCP client configuration (developer machine specific)
 .claude/
 .mcp.json
+# ...except the plugin's own .mcp.json at the repo root, which is the
+# Claude Code plugin loader's canonical MCP-server descriptor and must
+# ship with the marketplace install.
+!/.mcp.json
