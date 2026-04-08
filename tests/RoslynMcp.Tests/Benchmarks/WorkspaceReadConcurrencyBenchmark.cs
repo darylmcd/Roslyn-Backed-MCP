@@ -5,10 +5,8 @@ using RoslynMcp.Roslyn.Services;
 namespace RoslynMcp.Tests.Benchmarks;
 
 /// <summary>
-/// Wall-clock benchmark proving the perf unlock the design note describes:
-/// under <c>UseReaderWriterLock = true</c>, N parallel reads against the same workspace
-/// complete in roughly the time of one. Under <c>UseReaderWriterLock = false</c> they
-/// serialize and take ~N times as long.
+/// Wall-clock benchmark proving the perf characteristic of the per-workspace RW lock:
+/// N parallel reads against the same workspace complete in roughly the time of one read.
 /// </summary>
 /// <remarks>
 /// Marked with <see cref="TestCategoryAttribute"/> = <c>"Benchmark"</c> so it does not run
@@ -28,36 +26,19 @@ public sealed class WorkspaceReadConcurrencyBenchmark
 
     [TestMethod]
     [TestCategory("Benchmark")]
-    public async Task ParallelReads_FlagOn_AreNearOneReadsWallTime()
+    public async Task ParallelReads_AreNearOneReadsWallTime()
     {
         var gate = new WorkspaceExecutionGate(
-            new ExecutionGateOptions { UseReaderWriterLock = true },
+            new ExecutionGateOptions(),
             new BenchmarkWorkspaceManager());
 
         var elapsed = await TimeParallelReadsAsync(gate, ParallelReaders, ReadDuration);
 
         var maxAllowed = TimeSpan.FromMilliseconds(ReadDuration.TotalMilliseconds * 1.5);
         Assert.IsTrue(elapsed <= maxAllowed,
-            $"With RW lock on, {ParallelReaders} parallel reads should overlap (elapsed={elapsed.TotalMilliseconds:F0}ms, " +
-            $"max={maxAllowed.TotalMilliseconds:F0}ms, single-read={ReadDuration.TotalMilliseconds:F0}ms).");
-    }
-
-    [TestMethod]
-    [TestCategory("Benchmark")]
-    public async Task ParallelReads_FlagOff_SerializeBehindLegacyMutex()
-    {
-        var gate = new WorkspaceExecutionGate(
-            new ExecutionGateOptions { UseReaderWriterLock = false },
-            new BenchmarkWorkspaceManager());
-
-        var elapsed = await TimeParallelReadsAsync(gate, ParallelReaders, ReadDuration);
-
-        // Under the legacy mutex, N parallel reads should take roughly N × single-read time.
-        // Use 0.7× as a generous lower bound to avoid CI flakiness.
-        var minExpected = TimeSpan.FromMilliseconds(ReadDuration.TotalMilliseconds * ParallelReaders * 0.7);
-        Assert.IsTrue(elapsed >= minExpected,
-            $"With RW lock off, {ParallelReaders} parallel reads should serialize (elapsed={elapsed.TotalMilliseconds:F0}ms, " +
-            $"min={minExpected.TotalMilliseconds:F0}ms).");
+            $"{ParallelReaders} parallel reads should overlap on the per-workspace RW lock " +
+            $"(elapsed={elapsed.TotalMilliseconds:F0}ms, max={maxAllowed.TotalMilliseconds:F0}ms, " +
+            $"single-read={ReadDuration.TotalMilliseconds:F0}ms).");
     }
 
     private static async Task<TimeSpan> TimeParallelReadsAsync(
@@ -65,8 +46,7 @@ public sealed class WorkspaceReadConcurrencyBenchmark
         int parallelism,
         TimeSpan readDuration)
     {
-        // Warm up the workspace lock entry under both code paths so the first read does not
-        // pay creation cost.
+        // Warm up the workspace lock entry so the first read does not pay creation cost.
         await gate.RunReadAsync("ws", _ => Task.FromResult(0), CancellationToken.None);
 
         var sw = Stopwatch.StartNew();

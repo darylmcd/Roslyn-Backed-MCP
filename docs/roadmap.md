@@ -59,10 +59,10 @@ Delivered after release-1 (in-process):
 - bounded-semaphore parallelism for `UnusedCodeAnalyzer` Phase 2 (`SymbolFinder.FindReferencesAsync` per candidate)
 - parallel `FindDiagnosticAsync` via `Task.WhenAll` over per-project compilations
 - parallel outer loop in `MutationAnalysisService.FindTypeMutationsAsync` (per mutating member) backed by `ConcurrentDictionary` document caches
+- per-workspace `Nito.AsyncEx.AsyncReaderWriterLock` so concurrent reads on the same workspace overlap (bounded only by the global throttle) while writes remain exclusive against in-flight reads
 
 Post-release candidates:
 
-- workspace reader/writer locking — design captured in `ai_docs/reports/2026-04-06-workspace-rw-lock-design-note.md` (would let concurrent reads on the same workspace overlap instead of serializing)
 - persistent (cross-session) symbol/index cache
 - incremental background indexing
 - opt-in warmup for enterprise solutions

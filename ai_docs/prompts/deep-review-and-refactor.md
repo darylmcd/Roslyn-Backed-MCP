@@ -6,8 +6,7 @@
      with the project's actual tool, resource, and prompt surface at all times.
      When tools, resources, or prompts are added, removed, or renamed,
      update the Tools Reference appendix accordingly.
-   Last surface audit: 2026-04-06 (catalog 2026.03; 123 tools = 56 stable / 67 experimental, 7 resources, 16 prompts).
-   Concurrency feature flags exercised: `ROSLYNMCP_WORKSPACE_RW_LOCK` (Phase 8b). -->
+   Last surface audit: 2026-04-06 (catalog 2026.03; 123 tools = 56 stable / 67 experimental, 7 resources, 16 prompts). -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** produce an MCP server audit (bugs, incorrect results, gaps). **Mechanism:** real refactoring plus tool calls that exercise the full surface.
@@ -60,13 +59,12 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 5. **Response contract consistency:** Across tool calls, note inconsistencies in response contracts: Are line numbers 0-based or 1-based consistently? Do related tools (`find_consumers`, `find_references`, `find_type_usages`) use the same field names for the same concepts? Are classification values always strings or sometimes numeric codes? Note inconsistencies in the report.
 6. **Parameter-path coverage:** Happy-path defaults are not enough. For each major family you exercise, probe at least one non-default path when the live schema exposes it: project/file filters, severity filters, offset/limit pagination, boolean flags, alternate `kind` values, or similar. If the running schema does not expose a parameter mentioned in this prompt, record that as `N/A` rather than inventing it.
 7. **Precondition discipline:** Distinguish server defects from repo/environment constraints. If a tool depends on tests, analyzers, network access, source generators, DI registrations, Central Package Management, or a multi-project graph, record whether the precondition is absent in the repo, blocked by the environment, or mishandled by the server. A clear, actionable dependency or not-applicable response is not the same as a server bug.
-8. **Lock mode tagging:** Every tool call must be associated with the **lock mode** the server was launched in for that call (`legacy-mutex` when `ROSLYNMCP_WORKSPACE_RW_LOCK` is unset/`false`, `rw-lock` when set to `true`). The flag is bound at process startup, so a single server session always has one mode. If the audit includes a dual-mode lane (Phase 8b), record the mode in every per-call evidence row so wall-clock and behavioral differences can be attributed correctly. `server_info` does **not** report this flag — track it via the launch config the operator used and confirm via the Phase 8b behavioral probes.
-9. **Debug log capture:** If the MCP client surfaces server-emitted `notifications/message` log entries (the `McpLoggingProvider` forwards .NET `ILogger` events with structured payloads, including a `correlationId`), keep that channel visible for the entire run and record any `Warning`/`Error`/`Critical` entry verbatim in the report. Record `Information` entries that mention workspace lifecycle (`workspace_load`, `workspace_close`, `workspace_reload`), gate acquisition, lock contention, rate-limit hits, or request timeouts. If the client cannot show these notifications, record that as a client limitation in the header rather than silently dropping the channel.
-10. **`evaluate_csharp` and "tens of minutes" stalls — neutral diagnosis only:** The server applies a **script timeout** (default 10 seconds via `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS`). A healthy `evaluate_csharp` call should finish or fail within that budget plus small overhead. If a call exceeds budget + watchdog grace **and you have not received any tool result**, treat the cause as **unknown** and stop. Do **not** speculate from inside the session about whether the stall is server-side, client-side, or transport-level — you cannot reliably distinguish these from inside the agent loop, and self-attributed diagnoses bias toward whatever exonerates the tools you're using. Persist findings to the draft, log the workspace state from the last known good tool call (`workspace_list`, last successful tool name and elapsed ms), and surface the stall in the report's **MCP server issues** section as `cause: unknown — operator must triage from MCP stderr + client logs`. Diagnostic attribution is for the operator, not the agent.
-11. **Always emit text per turn:** Every assistant turn must emit at least one line of natural-language text alongside any tool calls. A turn that issues only tool calls is a silent stall from the user's perspective even if internal work is in flight. Minimum acceptable text is one sentence describing what is being dispatched, e.g. *"Phase 5 dispatched: `analyze_snippet` ×3, `evaluate_csharp` ×1. Awaiting results."* Empty assistant turns are the visible symptom of context-pressure stalls and have to be treated as a contract violation, not an optimization.
-12. **Phases run sequentially — no cross-phase parallelism:** Within a phase, parallel tool calls are encouraged for independent reads. **Never start phase N+1 before phase N's findings are persisted to the draft file** (see Output Format § draft persistence). Cross-phase parallelism is the most common cause of context-pressure stalls — the model fans out, accumulates tool results from multiple phases at once, and then cannot serialize the report at the end. Sequential phasing lets each phase's results drain to the draft before the next phase begins.
-13. **Output budget per turn:** After cumulative tool-result size in a single turn exceeds **~250 KB**, persist current findings to the draft and start a new turn before issuing more tool calls. The usual culprits are `compile_check`, `project_diagnostics`, `list_analyzers`, `get_namespace_dependencies`, and `get_msbuild_properties` — each can return 50–700 KB on a real solution. Once a phase's tool results are recorded in the draft, drop them from active reasoning so they don't accumulate. Server v1.7+ exposes pagination (`offset`, `limit`, `severity`, `file`) on `compile_check` — use it.
-14. **Workspace heartbeat between phases:** Before starting a new phase, call `workspace_list`. If the workspace is missing (`count: 0`), the host process likely restarted between turns — reload from the recorded entrypoint, then resume from the last persisted phase in the draft. Do not silently continue against a dead workspace; the cascading `KeyNotFoundException` errors that follow waste a lot of agent context before the agent figures out what happened.
+8. **Debug log capture:** If the MCP client surfaces server-emitted `notifications/message` log entries (the `McpLoggingProvider` forwards .NET `ILogger` events with structured payloads, including a `correlationId`), keep that channel visible for the entire run and record any `Warning`/`Error`/`Critical` entry verbatim in the report. Record `Information` entries that mention workspace lifecycle (`workspace_load`, `workspace_close`, `workspace_reload`), gate acquisition, lock contention, rate-limit hits, or request timeouts. If the client cannot show these notifications, record that as a client limitation in the header rather than silently dropping the channel.
+9. **`evaluate_csharp` and "tens of minutes" stalls — neutral diagnosis only:** The server applies a **script timeout** (default 10 seconds via `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS`). A healthy `evaluate_csharp` call should finish or fail within that budget plus small overhead. If a call exceeds budget + watchdog grace **and you have not received any tool result**, treat the cause as **unknown** and stop. Do **not** speculate from inside the session about whether the stall is server-side, client-side, or transport-level — you cannot reliably distinguish these from inside the agent loop, and self-attributed diagnoses bias toward whatever exonerates the tools you're using. Persist findings to the draft, log the workspace state from the last known good tool call (`workspace_list`, last successful tool name and elapsed ms), and surface the stall in the report's **MCP server issues** section as `cause: unknown — operator must triage from MCP stderr + client logs`. Diagnostic attribution is for the operator, not the agent.
+10. **Always emit text per turn:** Every assistant turn must emit at least one line of natural-language text alongside any tool calls. A turn that issues only tool calls is a silent stall from the user's perspective even if internal work is in flight. Minimum acceptable text is one sentence describing what is being dispatched, e.g. *"Phase 5 dispatched: `analyze_snippet` ×3, `evaluate_csharp` ×1. Awaiting results."* Empty assistant turns are the visible symptom of context-pressure stalls and have to be treated as a contract violation, not an optimization.
+11. **Phases run sequentially — no cross-phase parallelism:** Within a phase, parallel tool calls are encouraged for independent reads. **Never start phase N+1 before phase N's findings are persisted to the draft file** (see Output Format § draft persistence). Cross-phase parallelism is the most common cause of context-pressure stalls — the model fans out, accumulates tool results from multiple phases at once, and then cannot serialize the report at the end. Sequential phasing lets each phase's results drain to the draft before the next phase begins.
+12. **Output budget per turn:** After cumulative tool-result size in a single turn exceeds **~250 KB**, persist current findings to the draft and start a new turn before issuing more tool calls. The usual culprits are `compile_check`, `project_diagnostics`, `list_analyzers`, `get_namespace_dependencies`, and `get_msbuild_properties` — each can return 50–700 KB on a real solution. Once a phase's tool results are recorded in the draft, drop them from active reasoning so they don't accumulate. Server v1.7+ exposes pagination (`offset`, `limit`, `severity`, `file`) on `compile_check` — use it.
+13. **Workspace heartbeat between phases:** Before starting a new phase, call `workspace_list`. If the workspace is missing (`count: 0`), the host process likely restarted between turns — reload from the recorded entrypoint, then resume from the last persisted phase in the draft. Do not silently continue against a dead workspace; the cascading `KeyNotFoundException` errors that follow waste a lot of agent context before the agent figures out what happened.
 
 ---
 
@@ -75,26 +73,19 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 1. Pick the entrypoint you will load: prefer a `.sln` or `.slnx`; fall back to a `.csproj` if needed.
 2. Record whether this session is running in the default `full-surface` mode or an explicitly opted-in `conservative` mode.
 3. If `full-surface`, record the disposable branch/worktree/clone path you will mutate and how audit-only changes will be cleaned up. If `conservative`, record why safe disposable isolation is unavailable.
-4. **Record the *expected* lock mode from the operator's launch config.** Read `ROSLYNMCP_WORKSPACE_RW_LOCK` from the launch environment (env var, shell variable, MCP client config) and record the expected mode (`rw-lock` when set to `true`/`1`, `legacy-mutex` otherwise). `server_info` does not surface this flag. The **canonical in-process read** via `evaluate_csharp` happens later in **Phase 8b** where the lock mode actually matters — front-loading it here is a footgun because `evaluate_csharp` is the very tool whose stall pattern principle **#10** warns about, and a stall here happens *before* the agent has any draft to recover from.
-5. **Debug log channel check.** Verify that the MCP client is actively surfacing server-emitted `notifications/message` log entries (the `McpLoggingProvider` forwards .NET `ILogger` events with a structured payload that includes `correlationId`, `level`, `logger`, `message`, `eventId`, `eventName`, and any exception). If the client cannot show those notifications, note the limitation in the header and proceed; the audit must still record any structured log entries it can see.
-6. Call `server_info` to record the server version, Roslyn version, catalog version, live stable/experimental counts, and `runtime` / `os` strings.
-7. Read `roslyn://server/catalog` to capture the authoritative live surface inventory.
-8. Read `roslyn://server/resource-templates` to capture all resource URI templates.
-9. Call `workspace_load` with the chosen entrypoint.
-10. Call `workspace_list` to confirm the session appears.
-11. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
-12. Call `project_graph` to understand the project dependency structure.
-13. From the loaded repo, record the repo-shape constraints that affect later phases (projects, tests, analyzers, DI, source generators, Central Package Management, multi-targeting, network limits).
-14. **Restore precheck (mandatory for any C# repo).** Before running any Phase-1 semantic-analysis tool, run `dotnet restore <entrypoint>` from the host shell. Unrestored package references put `UnresolvedAnalyzerReference` entries into `Project.AnalyzerReferences`, which historically crashed `find_unused_symbols`, `type_hierarchy`, `callers_callees`, and `impact_analysis` (FLAG-A). Server v1.7+ filters that subtype out, but the precheck remains a precondition discipline — without restore, `compile_check` and `project_diagnostics` flood with hundreds of CS0246 errors from missing types in unrestored packages, which alone is enough to push a single-turn tool result over the output budget (cross-cutting principle #13). If the host has no shell access, mark this step `blocked` and continue — note in the report header that semantic-analysis tools may degrade or surface package-not-restored errors.
-15. Seed or update the coverage ledger so every live tool/resource/prompt already has a planned phase or a provisional skip reason.
-16. **Auto-pair detection (run-1 vs run-2 of a dual-mode pair).** Before doing any other work, glob `ai_docs/audit-reports/*_<repo-id>_<oppositeMode>_mcp-server-audit.md` (where `<oppositeMode>` is the mode opposite to the one captured in step 4). If you find a recent partial (within the last 24 hours) whose **Concurrency mode matrix** has `skipped-pending-second-run` markers, this prompt invocation is **run 2 of a dual-mode pair**. Record:
-    - The path of the matched run-1 partial (will be reused in Phase 8b.6).
-    - The fact that this run is the "second half" (so the agent fills Session B columns when it reaches Phase 8b).
-    - If multiple partials match, pick the most recent one and note the others as `superseded` in the report header.
+4. **Debug log channel check.** Verify that the MCP client is actively surfacing server-emitted `notifications/message` log entries (the `McpLoggingProvider` forwards .NET `ILogger` events with a structured payload that includes `correlationId`, `level`, `logger`, `message`, `eventId`, `eventName`, and any exception). If the client cannot show those notifications, note the limitation in the header and proceed; the audit must still record any structured log entries it can see.
+5. Call `server_info` to record the server version, Roslyn version, catalog version, live stable/experimental counts, and `runtime` / `os` strings.
+6. Read `roslyn://server/catalog` to capture the authoritative live surface inventory.
+7. Read `roslyn://server/resource-templates` to capture all resource URI templates.
+8. Call `workspace_load` with the chosen entrypoint.
+9. Call `workspace_list` to confirm the session appears.
+10. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
+11. Call `project_graph` to understand the project dependency structure.
+12. From the loaded repo, record the repo-shape constraints that affect later phases (projects, tests, analyzers, DI, source generators, Central Package Management, multi-targeting, network limits).
+13. **Restore precheck (mandatory for any C# repo).** Before running any Phase-1 semantic-analysis tool, run `dotnet restore <entrypoint>` from the host shell. Unrestored package references put `UnresolvedAnalyzerReference` entries into `Project.AnalyzerReferences`, which historically crashed `find_unused_symbols`, `type_hierarchy`, `callers_callees`, and `impact_analysis` (FLAG-A). Server v1.7+ filters that subtype out, but the precheck remains a precondition discipline — without restore, `compile_check` and `project_diagnostics` flood with hundreds of CS0246 errors from missing types in unrestored packages, which alone is enough to push a single-turn tool result over the output budget (cross-cutting principle #12). If the host has no shell access, mark this step `blocked` and continue — note in the report header that semantic-analysis tools may degrade or surface package-not-restored errors.
+14. Seed or update the coverage ledger so every live tool/resource/prompt already has a planned phase or a provisional skip reason.
 
-    If no matching partial exists, this prompt invocation is **run 1** (or a single-mode lane). The audit file produced at the end will be saved with the lock mode embedded in the filename (`<timestamp>_<repo-id>_<lockMode>_mcp-server-audit.md`); the agent does this automatically based on step 4's result. No operator-supplied filename is needed.
-
-**MCP audit checkpoint:** Did `server_info` and `roslyn://server/catalog` agree on live counts and tiers? Did `workspace_load` succeed on the chosen entrypoint? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Did `dotnet restore` complete cleanly (or did you mark step 14 `blocked` with a reason)? Did you explicitly record the disposable isolation path / conservative rationale, the repo shape, the **expected lock mode from launch config**, the **debug log channel availability**, the **auto-pair detection result** (run 1 / run 2 / single-mode), and an initial coverage ledger with no silent omissions? If every candidate entrypoint failed to load, did you mark workspace-scoped rows `blocked` and continue only with workspace-independent families?
+**MCP audit checkpoint:** Did `server_info` and `roslyn://server/catalog` agree on live counts and tiers? Did `workspace_load` succeed on the chosen entrypoint? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Did `dotnet restore` complete cleanly (or did you mark step 13 `blocked` with a reason)? Did you explicitly record the disposable isolation path / conservative rationale, the repo shape, the **debug log channel availability**, and an initial coverage ledger with no silent omissions? If every candidate entrypoint failed to load, did you mark workspace-scoped rows `blocked` and continue only with workspace-independent families?
 
 ---
 
@@ -178,7 +169,7 @@ For each method with high complexity:
 
 ### Phase 5: Snippet & Script Validation
 
-This phase is another hotspot for the same **Evaluating C#** label as Phase 0 step 4. **`analyze_snippet`** and **`evaluate_csharp`** (steps 4–7) should still complete within the **script timeout** unless you raised `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS`. Multi-minute or multi–ten-minute freezes that **only clear when you message the agent** are covered by cross-cutting principle **#10** (usually not the MCP server). For the infinite-loop probe (step 7), expect at most **one** call lasting until the configured script timeout — not an unbounded hang.
+**`analyze_snippet`** and **`evaluate_csharp`** (steps 4–7) should complete within the **script timeout** unless you raised `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS`. Multi-minute or multi–ten-minute freezes that **only clear when you message the agent** are covered by cross-cutting principle **#9** (usually not the MCP server). For the infinite-loop probe (step 7), expect at most **one** call lasting until the configured script timeout — not an unbounded hang.
 
 1. Call `analyze_snippet` with `kind="expression"` using a simple expression like `1 + 2`. Verify it reports no errors.
 2. Call `analyze_snippet` with `kind="program"` using a small class definition. Verify declared symbols are listed.
@@ -308,38 +299,13 @@ If `test_discover` returns zero tests, still record that result. Then explicitly
 
 ---
 
-### Phase 8b: Concurrency / RW Lock Audit (`ROSLYNMCP_WORKSPACE_RW_LOCK`)
+### Phase 8b: Concurrency Audit (per-workspace RW lock)
 
-**Purpose:** Exercise the per-workspace reader/writer lock feature flag and produce a machine-readable concurrency matrix that downstream agents can compare across runs. The flag (`ROSLYNMCP_WORKSPACE_RW_LOCK`) replaces the legacy per-workspace `SemaphoreSlim` with a per-workspace `Nito.AsyncEx.AsyncReaderWriterLock`. Under the new mode, multiple reads against the same workspace overlap, writes are exclusive against in-flight reads, and `workspace_close` / `workspace_reload` block on the per-workspace write lock so they wait for in-flight readers.
-
-#### Operational model — auto-detected, four-step operator dance
-
-The flag is bound at server startup, so a single MCP server session can only test one lock mode. To populate both halves of the matrix the operator runs the prompt **twice**, with the lock mode flipped between runs by `eng/flip-rw-lock.ps1`. Everything else is auto-detected: the agent reads the actual lock mode from inside the running server via `evaluate_csharp` (Phase 0 step 4), names the audit file with the mode in it automatically, and decides whether this is run 1 or run 2 by globbing for an opposite-mode partial of the same `<repo-id>` (Phase 0 step 15).
-
-**The full operator dance is exactly four steps:**
-
-| # | Operator action |
-|---|-----------------|
-| 1 | Invoke the deep-review prompt against the target repo. The agent runs Phases 0–8 → 8b → 10 → 9 → 11 → 18 in whichever mode the server is currently in, auto-names the audit file `<timestamp>_<repo-id>_<lockMode>_mcp-server-audit.md`, and marks the Session B columns of the concurrency matrix `skipped-pending-second-run`. |
-| 2 | Run `./eng/flip-rw-lock.ps1`. The script reads the current User-scope env var, kills any running `roslynmcp.exe` / `RoslynMcp.Host.Stdio.exe` process, and writes the inverse value. No operator decision about which mode to set — the script flips. |
-| 3 | Fully close and reopen the MCP client so it spawns a fresh server subprocess that inherits the flipped env var. (Restarting just the chat tab is not enough; the client process must exit.) |
-| 4 | Invoke the deep-review prompt a second time against the **same disposable checkout** used in step 1. The agent again calls `evaluate_csharp` to detect the new mode, globs the audit-reports directory to find the run-1 partial of the opposite mode, recognises that this is run 2 of a dual-mode pair, re-runs Phase 8b sub-phases 8b.1, 8b.2, 8b.3, 8b.5 against the same probe slot ids it inherited from the run-1 partial, fills the Session B columns of the matrix, and writes the resulting audit as `<timestamp>_<repo-id>_<oppositeLockMode>_mcp-server-audit.md`. The run-2 audit file is self-contained and has both Session A (copied from the run-1 partial) and Session B (measured this run) columns populated — it is the canonical dual-mode raw audit. |
-
-That is the entire sequence. There is no operator decision about "which mode is this run", no manual filename, no manual matrix merge, no manual flag management. The only operator inputs are *invoke prompt*, *run script*, *restart client*, *invoke prompt*.
-
-**Single-mode lane** is what happens when the operator runs the prompt only once (skipping steps 2–4). The Session B columns remain `skipped-pending-second-run` in the saved file, and a future second run of the prompt (with the lock mode flipped) will pair with it via the auto-pair logic in Phase 0 step 15 to produce a complete dual-mode audit. Single-mode is acceptable for routine smoke runs; dual-mode is required for release candidates per `ai_docs/procedures/deep-review-program.md` → *Concurrency lock-mode lane*.
-
-**Mid-session server restart (formerly Path B) is not supported.** It was unreliable on every stdio MCP client (Claude Code, Cursor, Continue, etc.) because killing the server subprocess broke the client's stdio handshake. The four-step flow above is the only supported dance.
-
-#### Sessions vocabulary used in the sub-phases below
-- **Session A** = the run-1 server session (first prompt invocation, whichever mode the operator started with).
-- **Session B** = the run-2 server session (second prompt invocation, opposite mode after `flip-rw-lock.ps1`).
-
-In a single-mode lane, Session B is empty (`skipped-pending-second-run`) until a future run-2 fills it via auto-pair. In a complete dual-mode lane, the run-2 audit file holds both sessions' data.
+**Purpose:** Exercise the per-workspace `Nito.AsyncEx.AsyncReaderWriterLock` and produce a machine-readable concurrency matrix that downstream agents can compare across runs. Multiple reads against the same workspace overlap, writes are exclusive against in-flight reads, and `workspace_close` / `workspace_reload` block on the per-workspace write lock so they wait for in-flight readers.
 
 #### 8b.0 — Probe set definition (run before any timing)
 
-Pick a stable, repeatable probe set that exercises *reader* code paths and a small number of *writer* code paths against the workspace. The probes must be re-runnable byte-for-byte across both sessions. Record the chosen probes in the report under **Concurrency probe set** so the matrix is reproducible.
+Pick a stable, repeatable probe set that exercises *reader* code paths and a small number of *writer* code paths against the workspace. Record the chosen probes in the report under **Concurrency probe set** so the matrix is reproducible.
 
 | Slot | Suggested probe (substitute repo-specific equivalents) | Classification |
 |------|--------------------------------------------------------|----------------|
@@ -353,44 +319,41 @@ Pick a stable, repeatable probe set that exercises *reader* code paths and a sma
 
 If a probe is not applicable to the repo shape (e.g. no public-only dead-code surface), substitute the closest reader of equivalent cost and record the substitution.
 
-#### 8b.1 — Sequential baseline (Session A, current mode)
+#### 8b.1 — Sequential baseline
 
-1. Record `Session A` lock mode (`legacy-mutex` or `rw-lock`) from Phase 0 capture.
-2. For each reader R1–R5, call the tool **once sequentially** and record wall-clock in milliseconds. These are the **single-call baselines**.
-3. Record any structured log entries received from the MCP server during the calls (correlation IDs, gate-related warnings, rate-limit hits, request timeouts).
+1. For each reader R1–R5, call the tool **once sequentially** and record wall-clock in milliseconds. These are the **single-call baselines**.
+2. Record any structured log entries received from the MCP server during the calls (correlation IDs, gate-related warnings, rate-limit hits, request timeouts).
 
-#### 8b.2 — Parallel-read fan-out (Session A)
+#### 8b.2 — Parallel-read fan-out
 
-1. Determine the **fan-out N** = `min(4, max(2, Environment.ProcessorCount))`. The server's global throttle is `max(2, Environment.ProcessorCount)` (`src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs:35`), so on a 2-core CI host, parallel speedup is bounded above by 2× even under `rw-lock`. Record the host's logical core count and chosen N in the report so the speedup ratio is interpretable.
+1. Determine the **fan-out N** = `min(4, max(2, Environment.ProcessorCount))`. The server's global throttle is `max(2, Environment.ProcessorCount)` (`src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs:36`), so on a 2-core CI host, parallel speedup is bounded above by 2× even with the per-workspace RW lock. Record the host's logical core count and chosen N in the report so the speedup ratio is interpretable.
 2. Issue **R1 N times in parallel** against the same workspace id (N concurrent `find_references` calls). Record the wall-clock from request submission to last response.
-3. Compute the **parallel speedup** = `N × baseline(R1) / parallel_wall_clock`. Expected ranges, given the global throttle ceiling at N:
-   - `legacy-mutex`: ~1.0× (≤ 1.3×) — calls serialize behind the per-workspace `SemaphoreSlim`.
-   - `rw-lock`: between `0.7 × N` and `N` (≥ 2.5× when N=4; ≥ 1.6× when N=2). Anything below `0.7 × N` is a FLAG.
+3. Compute the **parallel speedup** = `N × baseline(R1) / parallel_wall_clock`. Expected range, given the global throttle ceiling at N: between `0.7 × N` and `N` (≥ 2.5× when N=4; ≥ 1.6× when N=2). Anything below `0.7 × N` is a FLAG.
 4. Repeat the fan-out for R2 (`project_diagnostics` ×N) and R3 (`symbol_search` ×N). Record each parallel wall-clock and speedup.
 5. If the client cannot issue concurrent tool calls (some clients serialize internally — that is itself a finding), mark this sub-phase `blocked` with the client limitation and continue.
 
-#### 8b.3 — Read/write exclusion behavioral probe (Session A)
+#### 8b.3 — Read/write exclusion behavioral probe
 
 1. Start a long-running reader: call R1 (`find_references` on the hot symbol) and immediately, while it is still in flight, issue W1 (`format_document_preview` followed by `format_document_apply` on a Phase 6-touched file).
-2. Record whether W1 **starts immediately** (legacy mode: writer is on a separate `__apply__:<ws>` semaphore today, so it overlaps with the reader) or **waits** for the reader (rw-lock mode: writer blocks until the reader releases). Capture the inter-call timing.
-3. **Inverse probe.** Start W1 first (begin `format_document_apply`) and immediately issue R1 against the same workspace. Under rw-lock, R1 must wait for W1 to complete; under legacy, it queues against the reader semaphore separately and does not wait for W1.
-4. Tag any deviation from the expected behavior as a FLAG (the lock-mode contract is the most observable correctness signal of this phase).
+2. Expected: W1 **waits** for the reader to release the per-workspace lock before it starts (the per-workspace write lock is exclusive against in-flight readers). Capture the inter-call timing.
+3. **Inverse probe.** Start W1 first (begin `format_document_apply`) and immediately issue R1 against the same workspace. Expected: R1 waits for W1 to complete.
+4. Tag any deviation from the expected behavior as a FLAG.
 
-#### 8b.4 — Lifecycle stress probe (Session A)
+#### 8b.4 — Lifecycle stress probe
 
-> Reference for expected behavior: under `rw-lock`, `workspace_reload` and `workspace_close` both wrap a per-workspace **write** lock acquire inside the global `__load__` gate (`src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:46-73`), so they wait for in-flight readers to release the per-workspace lock before proceeding. Under `legacy-mutex`, the writer is routed to a **separate** `__apply__:<wsId>` semaphore that is independent from the reader's `<wsId>` semaphore, so the writer and reader run concurrently.
+> Reference for expected behavior: `workspace_reload` and `workspace_close` both wrap a per-workspace **write** lock acquire inside the global load gate (`src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs`), so they wait for in-flight readers to release the per-workspace lock before proceeding.
 
 1. Start a long-running reader (R2 — `project_diagnostics`) and, while it is in flight, call `workspace_reload(workspaceId)`. Record the observed behavior with one of these labels:
-   - `waits-for-reader` — reload blocks until the reader returns (expected under `rw-lock`)
-   - `runs-concurrently` — reload completes while the reader is still in flight (expected under `legacy-mutex`)
-   - `errors` — reload raises an exception (FLAG candidate under either mode)
-2. Record whether the in-flight reader returns **stale** results, **fresh post-reload** results, or **errors** (the third is a FLAG candidate). Note the `correlationId` of both calls if available.
-3. Start a long-running reader (R3 — `symbol_search`) and call `workspace_close(workspaceId)`. Use the same labels as step 1. Under `rw-lock`, the reader should complete cleanly and the close should `waits-for-reader`. Under `legacy-mutex`, the close may `runs-concurrently` — and the reader may then throw `KeyNotFoundException` because of the post-acquire `EnsureWorkspaceStillExists` recheck inside `WorkspaceExecutionGate.RunPerWorkspaceAsync` (`src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs:244-251`). Record exactly which exception (if any) the reader raises and whether the message is actionable.
+   - `waits-for-reader` — reload blocks until the reader returns (expected)
+   - `runs-concurrently` — reload completes while the reader is still in flight (FLAG)
+   - `errors` — reload raises an exception (FLAG candidate)
+2. Record whether the in-flight reader returns **stale** results, **fresh post-reload** results, or **errors**. Note the `correlationId` of both calls if available.
+3. Start a long-running reader (R3 — `symbol_search`) and call `workspace_close(workspaceId)`. Expected: the reader completes cleanly and the close `waits-for-reader`. The post-acquire `EnsureWorkspaceStillExists` recheck inside `WorkspaceExecutionGate.RunPerWorkspaceAsync` is the backstop if a reader does manage to interleave with a close. Record exactly which exception (if any) the reader raises and whether the message is actionable.
 4. After the close, immediately call `workspace_load` again to re-establish a session for the remaining sub-phases. Record any errors.
 
-#### 8b.5 — Writer reclassification verification (Session A)
+#### 8b.5 — Writer reclassification verification
 
-The `perf/workspace-rw-lock` change reclassified six tools that were silently using the read gate while mutating workspace state. Verify each one still completes successfully and observably takes the writer code path. The point of this sub-phase is to catch a regression where one of these tools accidentally drops back to reader semantics (which would be a correctness FLAG under rw-lock).
+Six tools were historically using the read gate while mutating workspace state and were reclassified as writers. Verify each one still completes successfully and observably takes the writer code path.
 
 | # | Tool | Verification |
 |---|------|--------------|
@@ -401,43 +364,13 @@ The `perf/workspace-rw-lock` change reclassified six tools that were silently us
 | 5 | `set_diagnostic_severity` | Set `dotnet_diagnostic.<some-IDE-id>.severity = suggestion` and verify it appears in the relevant `.editorconfig`. |
 | 6 | `add_pragma_suppression` | Insert `#pragma warning disable <id>` before a known diagnostic line and verify `get_source_text` shows the pragma. |
 
-For each row, also record whether the tool returned in the same wall-clock budget as Session A's reader baseline (writers should be measurably slower because they actually mutate disk state).
+For each row, also record whether the tool returned in the same wall-clock budget as the reader baseline (writers should be measurably slower because they actually mutate disk state).
 
-#### 8b.6 — Auto-detect run-1 vs run-2 and act accordingly
+#### 8b.6 — Concurrency matrix output (mandatory)
 
-This sub-phase branches on the **auto-pair detection result** that Phase 0 step 15 already recorded. The agent does not ask the operator anything — Phase 0's glob result is the answer.
+Write the matrix into the report using the schema in **Output Format → Concurrency matrix** below. Every cell must have a value or `N/A`; do not leave blanks.
 
-**Case A — This is run 1 (no opposite-mode partial found in audit-reports):**
-
-1. Mark **all Session B columns** of the concurrency matrix with the literal string `skipped-pending-second-run` and a one-line note: `paired second run will fill these columns`.
-2. **Do not stop and wait.** Continue with the rest of this run (Phases 10 → 9 → 11 → 18) so this run produces a complete mode-1 raw audit. The audit file will be saved at the end of the prompt as `<timestamp>_<repo-id>_<currentLockMode>_mcp-server-audit.md`.
-3. At the end of the report, in **Report path note**, write: `This is the mode-1 partial of a deep-review pair. Run \`./eng/flip-rw-lock.ps1\`, restart the MCP client, and re-invoke the deep-review prompt to populate the Session B columns.` This gives the operator a single, unambiguous next instruction.
-
-**Case B — This is run 2 (Phase 0 found a recent opposite-mode partial for the same `<repo-id>`):**
-
-1. Read the run-1 partial file path that Phase 0 captured. Open it and extract:
-   - The **Concurrency probe set** table (so this run uses the exact same probe slot ids).
-   - The **Sequential baseline** Session A column values (so this run can carry them forward into the run-2 file's matrix).
-   - The **Parallel fan-out** Session A rows.
-   - The **Lifecycle stress** Session A rows.
-   - The **Writer reclassification verification** Session A column.
-   - The **Debug log capture** entries from run 1 (to be merged with run 2's debug entries in the run-2 file).
-2. Re-load the same workspace via `workspace_load` against the same disposable checkout used in Phase 0. Run sub-phase 8b.0 to confirm the inherited probe slot ids still resolve to valid symbols/files in this workspace; substitute and note any drift.
-3. Re-run sub-phases 8b.1 (sequential baseline), 8b.2 (parallel fan-out), 8b.3 (read/write exclusion), and 8b.5 (writer reclassification) against the **same probe slot ids** so the matrix can be diffed mechanically. Record the new wall-clocks and behavioral observations under the **Session B columns** of the matrix.
-4. Repeat 8b.4 (lifecycle stress) **only** if the disposable checkout is still clean and re-runnable. Otherwise carry forward run 1's lifecycle rows and mark the run-2 lifecycle column `inherited-from-run-1`.
-5. **Carry forward** the Session A column values from the run-1 partial into the run-2 matrix so the run-2 file is self-contained — when both Session A and Session B columns are populated in one file, that file is the canonical dual-mode raw audit.
-6. At the end of the report, in **Report path note**, write: `This is the canonical dual-mode raw audit. Paired with run-1 partial: <run-1 path>. Phase 8b.6 carried forward run 1's Session A columns and measured Session B in this run.`
-7. Continue with Phases 10 → 9 → 11 → 18 normally so the run-2 file also has full per-tool coverage.
-
-**Case C — Single-mode lane (operator does not plan a second run):**
-
-The agent cannot tell the difference between Case A and Case C from the audit-reports glob alone — both have no opposite-mode partial. To distinguish: if the operator told the agent at the start of the prompt invocation that this is a single-mode lane, mark Session B columns `skipped-single-mode-lane` with the operator's reason. Otherwise default to **Case A** (treat as run 1 of a pending pair). Either way, continue with Phases 10–18 normally; the only difference is the **Report path note** wording. Default-to-Case-A is the safer choice because it leaves the door open for a future run-2 to auto-pair.
-
-#### 8b.7 — Concurrency matrix output (mandatory)
-
-Write the matrix into the report using the schema in **Output Format → Concurrency mode matrix** below. Every cell must have a value or `N/A`; do not leave blanks. Include both Session A and Session B rows even if Session B was `skipped-safety` (with the reason in the cell).
-
-**MCP audit checkpoint:** Did parallel reads under `rw-lock` measurably overlap (speedup ≥ `0.7 × N` for N concurrent reads, where N is the host-bounded fan-out from sub-phase 8b.2.1)? Did parallel reads under `legacy-mutex` measurably serialize (speedup ≤ 1.3×)? Did the speedup signature on this host roughly match the 4-slot benchmark in `tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs` (recorded against `Math.Max(2, Environment.ProcessorCount)` as the expected ceiling)? Did the read/write exclusion probe (8b.3) match the documented contract under both modes? Did the lifecycle stress probe (8b.4) reveal any TOCTOU or stale-result issues? Did all six writer-reclassification tools (8b.5) return identical post-state under both modes? Were there any structured log entries that mentioned gate contention, rate-limit rejections, request timeouts, or deadlocks? Was the `parallel_speedup` field stable across two consecutive parallel runs in the same session (within ±15%), or did jitter make it unreliable?
+**MCP audit checkpoint:** Did parallel reads measurably overlap (speedup ≥ `0.7 × N` for N concurrent reads, where N is the host-bounded fan-out from sub-phase 8b.2.1)? Did the speedup signature on this host roughly match the 4-slot benchmark in `tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs` (recorded against `Math.Max(2, Environment.ProcessorCount)` as the expected ceiling)? Did the read/write exclusion probe (8b.3) match the documented contract? Did the lifecycle stress probe (8b.4) reveal any TOCTOU or stale-result issues? Did all six writer-reclassification tools (8b.5) complete cleanly? Were there any structured log entries that mentioned gate contention, rate-limit rejections, request timeouts, or deadlocks? Was the `parallel_speedup` field stable across two consecutive parallel runs in the same session (within ±15%), or did jitter make it unreliable?
 
 ---
 
@@ -617,7 +550,7 @@ Before writing the report, deliberately re-test 3–5 previously recorded issues
 3. If the live catalog exposed entries that had no natural place in the phased plan, record that as prompt drift in **Improvement suggestions** and still include the entries in the ledger.
 4. Confirm that all audit-only mutations from Phases **8b**, 9-13 were reverted or cleaned up. Only intentional Phase 6 product improvements should remain. (Phase 8b's writer-reclassification probes and the W2 `set_editorconfig_option` probe must each be reverted; the W1 `format_document_apply` probe is the audit-only apply that Phase 9 reverts.)
 5. Confirm that ledger totals match the live catalog totals and that the catalog summary matches `server_info`.
-6. Confirm the **Concurrency mode matrix** is fully populated when Phase 8b ran in any mode, with `N/A` (and a one-line reason) in cells the audit could not fill.
+6. Confirm the **Concurrency matrix** is fully populated when Phase 8b ran, with `N/A` (and a one-line reason) in cells the audit could not fill.
 7. Confirm the **Debug log capture** section either has at least one entry or explicitly states `client did not surface MCP log notifications`.
 
 ---
@@ -672,19 +605,19 @@ The report is consumed by **downstream agents**, not humans browsing prose. Pref
 
 **Mandatory sections:** 1 (Header), 2 (Coverage summary), 3 (Coverage ledger), 4 (Verified tools), 5 (Phase 6 refactor summary), 8 (Debug log capture), 9 (MCP server issues), 10 (Improvement suggestions). These must always appear in full.
 
-**Conditional sections:** 6 (Concurrency mode matrix), 7 (Writer reclassification), 11 (Performance observations), 12 (Regression check), 13 (Cross-check). Fill these with data when data exists; otherwise emit a single line `**N/A — <reason>**` instead of an empty table. The historical "audit incomplete if any section is missing" framing forced the agent to materialize 50-row N/A tables at the end of every run, which contributed to the final-flush stall described in cross-cutting principles #11–#13.
+**Conditional sections:** 6 (Concurrency matrix), 7 (Writer reclassification), 11 (Performance observations), 12 (Regression check), 13 (Cross-check). Fill these with data when data exists; otherwise emit a single line `**N/A — <reason>**` instead of an empty table. The historical "audit incomplete if any section is missing" framing forced the agent to materialize 50-row N/A tables at the end of every run, which contributed to the final-flush stall described in cross-cutting principles #10–#12.
 
-1. **Header (metadata)** — server version (from `server_info`), Roslyn / .NET versions if available, MCP client name/version if available, **audited** solution path and name, audited repo revision/branch if available, chosen entrypoint (`.sln` / `.slnx` / `.csproj`), audit mode (`full-surface` by default or explicitly opted-in `conservative`), disposable isolation path or conservative rationale, date, workspace id, approximate project count and document count from `workspace_load` / `project_graph`, repo-shape summary, the prior-issue source used for Phase 18, **lock mode at audit time** (`legacy-mutex` / `rw-lock` / `dual-mode`), and **debug log channel availability** (`yes` / `no` / `partial`).
+1. **Header (metadata)** — server version (from `server_info`), Roslyn / .NET versions if available, MCP client name/version if available, **audited** solution path and name, audited repo revision/branch if available, chosen entrypoint (`.sln` / `.slnx` / `.csproj`), audit mode (`full-surface` by default or explicitly opted-in `conservative`), disposable isolation path or conservative rationale, date, workspace id, approximate project count and document count from `workspace_load` / `project_graph`, repo-shape summary, the prior-issue source used for Phase 18, and **debug log channel availability** (`yes` / `no` / `partial`).
 2. **Coverage summary** — Group by the live catalog's `Kind` + `Category` values from `roslyn://server/catalog`. For each group, report counts for `exercised`, `exercised-apply`, `exercised-preview-only`, `skipped-repo-shape`, `skipped-safety`, and `blocked`.
 3. **Coverage ledger (required)** — One row for every live tool, resource, and prompt from `roslyn://server/catalog`. Columns: `kind`, `name`, `tier`, `status`, `phase`, `notes`. The audit is incomplete if the ledger row count does not match the live catalog total or if any entry is omitted. For `blocked` rows, say whether the blocker was a client limitation, workspace-load failure, or server/runtime fault.
 4. **Verified tools (working)** — Bullet list: tool name + one-line evidence (e.g. “`compile_check` — 0 errors after Phase 6”). This distinguishes “tested and fine” from “never called.”
 5. **Phase 6 refactor summary** — Concise record of **applied** Phase 6 work (not preview-only phases). Include: target repo identity (if different from Roslyn-Backed-MCP); **scope** (e.g. fix-all + rename + format — which sub-steps 6a–6i you actually applied); **notable symbols or files** touched; **MCP tools used** for each change (e.g. `rename_apply`, `fix_all_apply`); **verification** (`compile_check` / `test_run` / `build_workspace` outcomes). If Phase 6 had **no** applies (skipped or audit-only), state **N/A** with one line why. Optional: git commit hash or PR link if available.
-6. **Concurrency mode matrix (Phase 8b)** — Required when Phase 8b ran in either single-mode or dual-mode. Three sub-tables (probe set, sequential baseline, parallel fan-out + behavioral verification) using the schema in the markdown template below. Every cell filled or `N/A`. If Phase 8b was `blocked` for the entire run, write a one-line reason in this section instead of the tables and continue.
-7. **Writer reclassification verification (Phase 8b.5)** — One-row-per-tool table for the six writers (`apply_text_edit`, `apply_multi_file_edit`, `revert_last_apply`, `set_editorconfig_option`, `set_diagnostic_severity`, `add_pragma_suppression`). Columns: `tool`, `session-A status`, `session-B status`, `wall-clock A (ms)`, `wall-clock B (ms)`, `notes`. Use `skipped-safety` cells when only one session ran.
+6. **Concurrency matrix (Phase 8b)** — Required when Phase 8b ran. Sub-tables (probe set, sequential baseline, parallel fan-out + behavioral verification) using the schema in the markdown template below. Every cell filled or `N/A`. If Phase 8b was `blocked` for the entire run, write a one-line reason in this section instead of the tables and continue.
+7. **Writer reclassification verification (Phase 8b.5)** — One-row-per-tool table for the six writers (`apply_text_edit`, `apply_multi_file_edit`, `revert_last_apply`, `set_editorconfig_option`, `set_diagnostic_severity`, `add_pragma_suppression`). Columns: `tool`, `status`, `wall-clock (ms)`, `notes`.
 8. **Debug log capture** — Verbatim copy of every `Warning`/`Error`/`Critical` MCP log notification surfaced during the audit, plus any `Information` notification that mentions workspace lifecycle, gate acquisition, lock contention, rate-limit hits, or request timeouts. Each entry on its own line with `correlationId` (if present), `timestamp`, `level`, `logger`, and `message`. If the client did not surface log notifications, state `client did not surface MCP log notifications` here and in the header.
-9. **MCP server issues (bugs)** — For each issue: **Tool name**, **inputs**, **expected** vs **actual**, **severity** (crash / incorrect result / missing data / degraded performance / cosmetic / error-message-quality), **reproducibility** (always / sometimes / once), **lock mode** (`legacy-mutex` / `rw-lock` / `both`). Watch for: crashes, wrong or incomplete results, tool-vs-tool inconsistency, missing functionality, slow tools, bad JSON/truncation, bad line/position mapping, unhelpful error messages, **lock-mode-specific** misbehavior (different result under one mode but not the other).
+9. **MCP server issues (bugs)** — For each issue: **Tool name**, **inputs**, **expected** vs **actual**, **severity** (crash / incorrect result / missing data / degraded performance / cosmetic / error-message-quality), **reproducibility** (always / sometimes / once). Watch for: crashes, wrong or incomplete results, tool-vs-tool inconsistency, missing functionality, slow tools, bad JSON/truncation, bad line/position mapping, unhelpful error messages.
 10. **Improvement suggestions** — Things that work correctly but could work better. UX friction (confusing parameter names, unexpected defaults, verbose output). Missing convenience features (e.g., “I wished tool X also returned Y”). Workflow gaps (sequences of 3+ tool calls that could be a single composite tool). Output enrichment (e.g., numeric codes where string labels would be more useful). Schema/description mismatches (tool description says one thing, actual behavior does another). These are not bugs — they are actionable input for the next release.
-11. **Performance observations** — List any tools that were notably slow, with tool name, input scale, lock mode, and approximate wall-clock time. If all tools responded within expected bounds, state that.
+11. **Performance observations** — List any tools that were notably slow, with tool name, input scale, and approximate wall-clock time. If all tools responded within expected bounds, state that.
 12. **Known issue regression check** — For the 3–5 items re-tested in Phase 18, state: **still reproduces**, **partially fixed** (describe), or **candidate for closure** (no longer reproduces). Include the source id / issue id and one-line summary for each. If no prior source existed, state **N/A**.
 13. **Known issue cross-check** — List any *newly observed* issues that match the chosen prior source (for example a backlog id, issue number, or previous audit finding) with one line each; put **full write-ups only for new or different** behavior.
 
@@ -709,8 +642,6 @@ If there are **zero** new issues, still write all mandatory sections; in section
 - **Scale:** ~N projects, ~M documents
 - **Repo shape:**
 - **Prior issue source:**
-- **Lock mode at audit time:** (`legacy-mutex` / `rw-lock` / `dual-mode (legacy-mutex → rw-lock)` / `dual-mode (rw-lock → legacy-mutex)`)
-- **Lock mode source of truth:** (`launch-config` / `shell-env` / `behavioral-fingerprint`)
 - **Debug log channel:** (`yes` — MCP `notifications/message` surfaced; `partial` — only some levels; `no` — client did not surface log notifications)
 - **Report path note:** (if not saved under Roslyn-Backed-MCP, state intended copy destination)
 
@@ -743,7 +674,7 @@ If there are **zero** new issues, still write all mandatory sections; in section
 - **Verification:** `compile_check` / `test_run` / `build_workspace` — outcome
 - **Optional:** commit / PR reference
 
-## Concurrency mode matrix (Phase 8b)
+## Concurrency matrix (Phase 8b)
 
 > Required when Phase 8b ran. If Phase 8b was `blocked` for the entire run, replace these tables with one line: `Phase 8b blocked — <reason>`.
 
@@ -759,52 +690,47 @@ If there are **zero** new issues, still write all mandatory sections; in section
 | W2 | `set_editorconfig_option` (then revert) | key=…, value=… | writer (reclassified) | |
 
 ### Sequential baseline (single call wall-clock, ms)
-| Slot | Session A mode | Session A ms | Session B mode | Session B ms | Δ ms (B − A) | Notes |
-|------|----------------|---------------|----------------|---------------|---------------|-------|
-| R1 | | | | | | |
-| R2 | | | | | | |
-| R3 | | | | | | |
-| R4 | | | | | | |
-| R5 | | | | | | |
-| W1 | | | | | | |
-| W2 | | | | | | |
+| Slot | Wall-clock (ms) | Notes |
+|------|------------------|-------|
+| R1 | | |
+| R2 | | |
+| R3 | | |
+| R4 | | |
+| R5 | | |
+| W1 | | |
+| W2 | | |
 
 ### Parallel fan-out and behavioral verification
 - **Host logical cores:** _(record before filling the table — drives the chosen N)_
 - **Chosen N (fan-out):** _N = `min(4, max(2, logical_cores))`_
 
-| Slot | Mode | Parallel wall-clock (ms) | Speedup vs baseline | Expected (legacy ≤1.3× / rw-lock ≥`0.7 × N`) | Pass / FLAG / FAIL | Notes |
-|------|------|---------------------------|----------------------|------------------------------------------------|---------------------|-------|
-| R1 ×N | legacy-mutex | | | ≤1.3× | | |
-| R1 ×N | rw-lock | | | ≥`0.7 × N` | | |
-| R2 ×N | legacy-mutex | | | ≤1.3× | | |
-| R2 ×N | rw-lock | | | ≥`0.7 × N` | | |
-| R3 ×N | legacy-mutex | | | ≤1.3× | | |
-| R3 ×N | rw-lock | | | ≥`0.7 × N` | | |
+| Slot | Parallel wall-clock (ms) | Speedup vs baseline | Expected (≥`0.7 × N`) | Pass / FLAG / FAIL | Notes |
+|------|---------------------------|----------------------|------------------------|---------------------|-------|
+| R1 ×N | | | ≥`0.7 × N` | | |
+| R2 ×N | | | ≥`0.7 × N` | | |
+| R3 ×N | | | ≥`0.7 × N` | | |
 
 ### Read/write exclusion behavioral probe (Phase 8b.3)
-| Mode | Reader→Writer (`waits` / `does-not-wait`) | Writer→Reader (`waits` / `does-not-wait`) | Expected | Pass / FLAG / FAIL | Notes |
-|------|--------------------------------------------|--------------------------------------------|----------|---------------------|-------|
-| legacy-mutex | | | both `does-not-wait` (separate `<wsId>` and `__apply__:<wsId>` semaphores) | | |
-| rw-lock | | | both `waits` (single per-workspace `AsyncReaderWriterLock`) | | |
+| Probe | Observed (`waits` / `does-not-wait`) | Expected | Pass / FLAG / FAIL | Notes |
+|-------|---------------------------------------|----------|---------------------|-------|
+| Reader → Writer (start reader, then writer) | | both `waits` (per-workspace `AsyncReaderWriterLock`) | | |
+| Writer → Reader (start writer, then reader) | | both `waits` (per-workspace `AsyncReaderWriterLock`) | | |
 
 ### Lifecycle stress (Phase 8b.4)
-| Probe | Mode | Observed (`waits-for-reader` / `runs-concurrently` / `errors`) | Reader saw (`stale` / `fresh` / `error`) | Reader exception (if any) | `correlationId` | Expected | Pass / FLAG / FAIL | Notes |
-|-------|------|---------|---------|----------|-----------------|----------|---------------------|-------|
-| reader + `workspace_reload` | legacy-mutex | | | | | `runs-concurrently` (separate `__apply__:<wsId>` semaphore) | | |
-| reader + `workspace_reload` | rw-lock | | | | | `waits-for-reader` (per-workspace write lock) | | |
-| reader + `workspace_close` | legacy-mutex | | | | | `runs-concurrently`; reader may surface `KeyNotFoundException` via post-acquire recheck | | |
-| reader + `workspace_close` | rw-lock | | | | | `waits-for-reader`; reader completes cleanly | | |
+| Probe | Observed (`waits-for-reader` / `runs-concurrently` / `errors`) | Reader saw (`stale` / `fresh` / `error`) | Reader exception (if any) | `correlationId` | Expected | Pass / FLAG / FAIL | Notes |
+|-------|---------|---------|----------|-----------------|----------|---------------------|-------|
+| reader + `workspace_reload` | | | | | `waits-for-reader` (per-workspace write lock) | | |
+| reader + `workspace_close` | | | | | `waits-for-reader`; reader completes cleanly | | |
 
 ## Writer reclassification verification (Phase 8b.5)
-| # | Tool | Session A status | Session B status | Wall-clock A (ms) | Wall-clock B (ms) | Notes |
-|---|------|-------------------|-------------------|--------------------|--------------------|-------|
-| 1 | `apply_text_edit` | | | | | |
-| 2 | `apply_multi_file_edit` | | | | | |
-| 3 | `revert_last_apply` | | | | | shared with Phase 9 evidence |
-| 4 | `set_editorconfig_option` | | | | | |
-| 5 | `set_diagnostic_severity` | | | | | |
-| 6 | `add_pragma_suppression` | | | | | |
+| # | Tool | Status | Wall-clock (ms) | Notes |
+|---|------|--------|------------------|-------|
+| 1 | `apply_text_edit` | | | |
+| 2 | `apply_multi_file_edit` | | | |
+| 3 | `revert_last_apply` | | | shared with Phase 9 evidence |
+| 4 | `set_editorconfig_option` | | | |
+| 5 | `set_diagnostic_severity` | | | |
+| 6 | `add_pragma_suppression` | | | |
 
 ## Debug log capture
 > Verbatim copy of structured `notifications/message` log entries surfaced by the MCP client during the audit. Filter to: every `Warning`/`Error`/`Critical` entry, plus any `Information` entry that mentions workspace lifecycle, gate acquisition, lock contention, rate-limit hits, or request timeouts. If the client did not surface log notifications, write: `client did not surface MCP log notifications` and skip the table.
@@ -823,16 +749,15 @@ If there are **zero** new issues, still write all mandatory sections; in section
 | Actual | |
 | Severity | |
 | Reproducibility | |
-| Lock mode (legacy-mutex / rw-lock / both) | |
 
 ## Improvement suggestions
 - `tool_name` — suggestion (UX friction / missing feature / workflow gap / output enrichment / schema mismatch)
 - …
 
 ## Performance observations
-| Tool | Input scale | Lock mode | Wall-clock (ms) | Notes |
-|------|-------------|-----------|------------------|-------|
-| | | | | |
+| Tool | Input scale | Wall-clock (ms) | Notes |
+|------|-------------|------------------|-------|
+| | | | |
 
 (or state "All tools responded within expected bounds")
 

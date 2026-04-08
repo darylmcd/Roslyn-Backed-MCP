@@ -121,33 +121,17 @@ static ExecutionGateOptions BindExecutionGateOptions()
     var maxReqVal = 120;
     var winSecVal = 60;
     var reqSecVal = 120;
-    // Phase-2 flip: per-workspace AsyncReaderWriterLock is now the default. The legacy mutex
-    // path still exists behind ROSLYNMCP_WORKSPACE_RW_LOCK=false as an opt-out escape hatch; the
-    // legacy branch will be removed in a follow-up once phase-3 soak is complete.
-    // Evidence supporting the flip:
-    //   - Dual-mode ITChatBot audit pair (20260407T211317Z rw-lock + 20260407T213736Z legacy-mutex)
-    //     shows FLAG-021 (workspace_close ObjectDisposedException) is LEGACY-MUTEX-ONLY. rw-lock
-    //     uses AsyncReaderWriterLockRegistry.Remove which drops the dict entry without disposing
-    //     any SemaphoreSlim, so the flip mitigates an existing crash.
-    //   - FirewallAnalyzer rw-lock audit (20260407T164000Z) exercised ~70 tools under rw-lock with
-    //     no rw-lock-specific correctness bugs. The single rw-lock observation (FLAG-8b-A non-
-    //     deterministic parallel ordering) was fixed in PR #84.
-    //   - No audit in either mode has uncovered a behavioral difference that would break agents.
-    var useRwLock = true;
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS"), out var maxReq) && maxReq > 0)
         maxReqVal = maxReq;
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS"), out var winSec) && winSec > 0)
         winSecVal = winSec;
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_REQUEST_TIMEOUT_SECONDS"), out var reqSec) && reqSec > 0)
         reqSecVal = reqSec;
-    if (bool.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_WORKSPACE_RW_LOCK"), out var rwLock))
-        useRwLock = rwLock;
     return new ExecutionGateOptions
     {
         RateLimitMaxRequests = maxReqVal,
         RateLimitWindow = TimeSpan.FromSeconds(winSecVal),
-        RequestTimeout = TimeSpan.FromSeconds(reqSecVal),
-        UseReaderWriterLock = useRwLock
+        RequestTimeout = TimeSpan.FromSeconds(reqSecVal)
     };
 }
 
