@@ -164,7 +164,7 @@ do both after a substantive change.
 
 ## Related docs
 
-- [`README.md`](README.md) — primary install instructions and MCP client config
-- [`docs/setup.md`](docs/setup.md) — packaging, Docker, CI artifacts
-- [`ai_docs/runtime.md`](ai_docs/runtime.md) — runtime assumptions for AI
+- [`../README.md`](../README.md) — primary install instructions and MCP client config
+- [`setup.md`](setup.md) — packaging, Docker, CI artifacts
+- [`../ai_docs/runtime.md`](../ai_docs/runtime.md) — runtime assumptions for AI
   sessions, including Roslyn MCP client policy

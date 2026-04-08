@@ -196,14 +196,20 @@ For a reproducible release build and publish verification:
 
 ## Configuration
 
-The server reads optional environment variables at startup. When set, these override the built-in defaults.
+The server reads optional environment variables at startup. When set, these override the built-in defaults. See [`ai_docs/runtime.md`](ai_docs/runtime.md) for the full list of advanced overrides (path validation, scripting concurrency, abandoned-script caps, etc.).
 
 | Environment Variable | Default | Description |
 |---|---|---|
 | `ROSLYNMCP_MAX_WORKSPACES` | `8` | Maximum concurrent workspace sessions |
 | `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build operation timeout (seconds) |
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `600` | Test run timeout (seconds) |
-| `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `20` | Maximum preview store entries per store |
+| `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `120` | NuGet vulnerability scan timeout (seconds) |
+| `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `20` | Preview store entries per store |
+| `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `5` | Preview store entry lifetime (minutes) |
+| `ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS` | `120` | Maximum requests per rate-limit window |
+| `ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate-limit window (seconds) |
+| `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `120` | Per-request timeout (seconds) |
+| `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS` | `10` | `evaluate_csharp` script budget (seconds) |
 
 Example:
 
@@ -266,46 +272,49 @@ For privacy questions, open an issue at [github.com/darylmcd/Roslyn-Backed-MCP/i
 
 ## Supported Surface
 
-The server exposes a larger surface than earlier versions of the README documented. Support is now split into stable and experimental tiers.
+Catalog **`2026.04`** ships **123 tools** (62 stable / 61 experimental), **9 resources** (all stable), and **16 prompts** (all experimental). Use the `server_info` tool and the `roslyn://server/catalog` resource for the authoritative live surface — the categories below are a quick orientation.
 
-### Stable Tool Families
+### Stable tool families
 
 - workspace session management and inspection
-- source text and generated-document reads
-- semantic symbol navigation, relationships, references, completions, and type-usage tooling
-- diagnostics, impact analysis, and related semantic analysis tools
-- build/test discovery, execution, and related-test lookup
-- preview/apply refactoring workflows
+- source text and source-generated document reads
+- semantic symbol navigation, relationships, references, completions, type-usage and type-mutation tooling
+- diagnostics, `compile_check`, impact analysis, `list_analyzers`, and related semantic analysis tools (including `analyze_snippet`)
+- security tools (`security_diagnostics`, `security_analyzer_status`, `nuget_vulnerability_scan`)
+- read-only advanced-analysis tools (`find_unused_symbols`, `get_complexity_metrics`, `get_di_registrations`, `get_namespace_dependencies`, `get_nuget_dependencies`, `find_reflection_usages`)
+- build/test discovery, execution, related-test lookup, and coverage
+- preview/apply refactoring workflows for rename, organize-usings, format document, and curated code fixes
 - `server_info`
 
-### Experimental Tool Families
+### Experimental tool families
 
-- advanced-analysis tools
-- direct text-edit tools
-- workspace file operation tools
-- project mutation tools
-- scaffolding tools
-- dead-code removal tools
-- syntax-tree inspection
-- generic Roslyn code actions
-- coverage collection
+- `semantic_search`, flow analysis (`analyze_data_flow`, `analyze_control_flow`), `get_operations`, `get_syntax_tree`
+- direct text-edit tools (`apply_text_edit`, `apply_multi_file_edit`, `add_pragma_suppression`)
+- workspace file operations (create / move / delete preview + apply)
+- project file mutations (package, project, framework, conditional property, central package management) and MSBuild evaluators
+- scaffolding (type, test) preview + apply
+- dead-code removal preview + apply
+- generic Roslyn code actions (`get_code_actions`, `preview_code_action`, `apply_code_action`)
+- experimental refactoring (extract interface/type, move type to file, bulk replace type, fix-all, format range)
+- cross-project refactoring and orchestration (move type to project, dependency inversion, package migration, split class, extract+wire interface, composite apply)
+- editor configuration (`get_editorconfig_options`, `set_editorconfig_option`, `set_diagnostic_severity`)
+- scripting (`evaluate_csharp`)
+- undo (`revert_last_apply`)
 
-### Stable Resources
+### Stable resources
 
-- `server_catalog`
-- `workspaces`
-- `workspace_status`
-- `workspace_projects`
-- `workspace_diagnostics`
-- `source_file`
+- `roslyn://server/catalog`, `roslyn://server/resource-templates`
+- `roslyn://workspaces` and `roslyn://workspaces/verbose`
+- `roslyn://workspace/{workspaceId}/status` and `.../status/verbose`
+- `roslyn://workspace/{workspaceId}/projects`
+- `roslyn://workspace/{workspaceId}/diagnostics`
+- `roslyn://workspace/{workspaceId}/file/{filePath}`
 
-### Experimental Prompts
+The `verbose` siblings opt into the full per-project tree; the default summary keeps a status check at ~500 bytes instead of ~30 KB on large solutions.
 
-- `explain_error`
-- `suggest_refactoring`
-- `review_file`
-- `analyze_dependencies`
-- `debug_test_failure`
+### Experimental prompts (16)
+
+`explain_error`, `suggest_refactoring`, `review_file`, `analyze_dependencies`, `debug_test_failure`, `refactor_and_validate`, `fix_all_diagnostics`, `guided_package_migration`, `guided_extract_interface`, `security_review`, `discover_capabilities`, `dead_code_audit`, `review_test_coverage`, `review_complexity`, `cohesion_analysis`, `consumer_impact`.
 
 ### Product Boundaries
 
@@ -364,9 +373,9 @@ samples/
 
 ## Requirements
 
-- .NET 10 SDK
+- .NET 10 SDK (`10.0.100`+ per [`global.json`](global.json); `rollForward` is `latestFeature`)
 - No Visual Studio installation required (MSBuild is included in the SDK)
-- Windows (primary target for v1)
+- Windows is the primary v1 target; macOS and Linux are supported wherever the .NET 10 SDK runs (see *Cross-Platform Notes* above for known platform-specific behaviour)
 
 ## Validation
 

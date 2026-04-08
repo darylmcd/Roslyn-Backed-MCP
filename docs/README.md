@@ -7,6 +7,7 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | File | Purpose |
 |------|---------|
 | `setup.md` | Prerequisites, build/test/run, global tool and Docker, CI artifacts |
+| `reinstall.md` | Step-by-step Layer 1 (global tool) + Layer 2 (Claude Code plugin) reinstall workflow after a code change |
 | `product-contract.md` | Session operating contract, stable vs experimental surface tiers, supported tool families |
 | `release-policy.md` | Release gates, compatibility rules, deprecation policy, versioning |
 | `roadmap.md` | Strategic roadmap decisions and planned feature directions |
