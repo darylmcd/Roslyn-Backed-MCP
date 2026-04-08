@@ -62,6 +62,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         var excludeRecordProperties = options.ExcludeRecordProperties;
         var excludeTestProjects = options.ExcludeTestProjects;
         var excludeTests = options.ExcludeTests;
+        var excludeConventionInvoked = options.ExcludeConventionInvoked;
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<UnusedSymbolDto>();
@@ -101,7 +102,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                     if (!processedSymbols.Add(symbol)) continue;
 
                     if (ShouldSkipSymbolForUnusedAnalysis(
-                            symbol, includePublic, excludeEnums, excludeRecordProperties, excludeTests))
+                            symbol, includePublic, excludeEnums, excludeRecordProperties, excludeTests, excludeConventionInvoked))
                         continue;
 
                     candidates.Add(symbol);
@@ -188,51 +189,126 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         bool includePublic,
         bool excludeEnums,
         bool excludeRecordProperties,
-        bool excludeTests)
+        bool excludeTests,
+        bool excludeConventionInvoked)
     {
-        if (excludeTests && symbol is INamedTypeSymbol namedType && IsLikelyTestFixtureType(namedType))
+        return IsTestFixtureFiltered(symbol, excludeTests)
+            || IsConventionInvokedFiltered(symbol, excludeConventionInvoked)
+            || IsPublicFiltered(symbol, includePublic)
+            || IsEnumMemberFiltered(symbol, excludeEnums)
+            || IsRecordPropertyFiltered(symbol, excludeRecordProperties)
+            || IsExcludedMethodKind(symbol)
+            || IsInterfaceImplementation(symbol)
+            || IsOverrideMember(symbol)
+            || IsProgramEntryPoint(symbol)
+            || HasFrameworkInvokedAttribute(symbol)
+            || IsContainedInTestFixture(symbol, excludeTests)
+            || IsExtensionMethodHostType(symbol);
+    }
+
+    private static bool IsConventionInvokedFiltered(ISymbol symbol, bool excludeConventionInvoked)
+    {
+        if (!excludeConventionInvoked) return false;
+        if (symbol is INamedTypeSymbol type && IsConventionInvokedType(type)) return true;
+        return IsConventionInvokedMember(symbol);
+    }
+
+    /// <summary>
+    /// Detects types that are invoked by frameworks via reflection or convention rather than
+    /// direct C# call sites. Match by name shape and base-type chain so the analyzer doesn't
+    /// require the corresponding NuGet packages.
+    /// </summary>
+    private static bool IsConventionInvokedType(INamedTypeSymbol type)
+    {
+        // 1. EF Core migration snapshot — naming convention is enough.
+        if (type.Name.EndsWith("ModelSnapshot", StringComparison.Ordinal)) return true;
+
+        // 2. Walk base-type chain by simple name. Stop at System.Object to bound the walk.
+        for (var current = type.BaseType; current is not null; current = current.BaseType)
+        {
+            if (current.SpecialType == SpecialType.System_Object) break;
+            var baseName = current.Name;
+            if (baseName is "AbstractValidator" or "Hub" or "PageModel" or "Migration" or "ModelSnapshot")
+                return true;
+        }
+
+        // 3. ASP.NET middleware shape: public InvokeAsync(HttpContext) or Invoke(HttpContext).
+        //    Match the parameter type by simple name only so we don't pull Microsoft.AspNetCore.Http.
+        foreach (var member in type.GetMembers().OfType<IMethodSymbol>())
+        {
+            if (member.DeclaredAccessibility != Accessibility.Public) continue;
+            if (member.Name is not ("InvokeAsync" or "Invoke")) continue;
+            if (member.Parameters.Length < 1) continue;
+            if (member.Parameters[0].Type.Name == "HttpContext") return true;
+        }
+
+        // 4. Reuse the existing test-fixture detection so xUnit/MSTest/NUnit fixture types are
+        //    uniformly excluded under the convention-invoked umbrella.
+        return IsLikelyTestFixtureType(type);
+    }
+
+    private static bool IsConventionInvokedMember(ISymbol symbol)
+    {
+        if (symbol.ContainingType is { } containingType && IsConventionInvokedType(containingType))
             return true;
 
-        if (!includePublic && symbol.DeclaredAccessibility == Accessibility.Public)
-            return true;
-
-        if (excludeEnums && symbol is IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum })
-            return true;
-
-        if (excludeRecordProperties && symbol is IPropertySymbol prop &&
-            prop.ContainingType?.IsRecord == true)
-            return true;
-
-        if (symbol is IMethodSymbol method &&
-            (method.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor
-                or MethodKind.Destructor or MethodKind.UserDefinedOperator
-                or MethodKind.Conversion))
-            return true;
-
-        if (symbol.ContainingType is not null &&
-            symbol.ContainingType.AllInterfaces.Any(i =>
-                i.GetMembers().Any(m => SymbolEqualityComparer.Default.Equals(
-                    symbol.ContainingType!.FindImplementationForInterfaceMember(m), symbol))))
-            return true;
-
-        if (symbol is IMethodSymbol { IsOverride: true } or IPropertySymbol { IsOverride: true })
-            return true;
-
-        if (symbol is IMethodSymbol { Name: "Main" } && symbol.IsStatic)
-            return true;
-
-        if (HasFrameworkInvokedAttribute(symbol))
-            return true;
-
-        if (excludeTests && symbol.ContainingType is not null && IsLikelyTestFixtureType(symbol.ContainingType))
-            return true;
-
-        if (symbol is INamedTypeSymbol { IsStatic: true } staticType &&
-            staticType.GetMembers().OfType<IMethodSymbol>().Any(m => m.IsExtensionMethod))
-            return true;
+        foreach (var attribute in symbol.GetAttributes())
+        {
+            var name = attribute.AttributeClass?.Name;
+            if (name is "DbContextAttribute" or "MigrationAttribute") return true;
+        }
 
         return false;
     }
+
+    private static bool IsTestFixtureFiltered(ISymbol symbol, bool excludeTests) =>
+        excludeTests && symbol is INamedTypeSymbol namedType && IsLikelyTestFixtureType(namedType);
+
+    private static bool IsPublicFiltered(ISymbol symbol, bool includePublic) =>
+        !includePublic && symbol.DeclaredAccessibility == Accessibility.Public;
+
+    private static bool IsEnumMemberFiltered(ISymbol symbol, bool excludeEnums) =>
+        excludeEnums && symbol is IFieldSymbol { ContainingType.TypeKind: TypeKind.Enum };
+
+    private static bool IsRecordPropertyFiltered(ISymbol symbol, bool excludeRecordProperties) =>
+        excludeRecordProperties && symbol is IPropertySymbol { ContainingType.IsRecord: true };
+
+    private static bool IsExcludedMethodKind(ISymbol symbol) =>
+        symbol is IMethodSymbol method &&
+        method.MethodKind is MethodKind.Constructor or MethodKind.StaticConstructor
+            or MethodKind.Destructor or MethodKind.UserDefinedOperator
+            or MethodKind.Conversion;
+
+    private static bool IsInterfaceImplementation(ISymbol symbol)
+    {
+        if (symbol.ContainingType is null) return false;
+
+        foreach (var iface in symbol.ContainingType.AllInterfaces)
+        {
+            foreach (var ifaceMember in iface.GetMembers())
+            {
+                var impl = symbol.ContainingType.FindImplementationForInterfaceMember(ifaceMember);
+                if (SymbolEqualityComparer.Default.Equals(impl, symbol))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsOverrideMember(ISymbol symbol) =>
+        symbol is IMethodSymbol { IsOverride: true } or IPropertySymbol { IsOverride: true };
+
+    private static bool IsProgramEntryPoint(ISymbol symbol) =>
+        symbol is IMethodSymbol { Name: "Main", IsStatic: true };
+
+    private static bool IsContainedInTestFixture(ISymbol symbol, bool excludeTests) =>
+        excludeTests &&
+        symbol.ContainingType is not null &&
+        IsLikelyTestFixtureType(symbol.ContainingType);
+
+    private static bool IsExtensionMethodHostType(ISymbol symbol) =>
+        symbol is INamedTypeSymbol { IsStatic: true } staticType &&
+        staticType.GetMembers().OfType<IMethodSymbol>().Any(m => m.IsExtensionMethod);
 
     /// <summary>
     /// Determines whether a symbol is susceptible to cross-compilation identity

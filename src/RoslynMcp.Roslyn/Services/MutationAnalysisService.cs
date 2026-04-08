@@ -358,53 +358,26 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             return TypeUsageClassification.StaticMemberAccess;
         }
 
-        if (parent is TypeArgumentListSyntax)
-            return TypeUsageClassification.GenericArgument;
-
-        if (parent is MethodDeclarationSyntax methodDecl && methodDecl.ReturnType == typeNode)
-            return TypeUsageClassification.MethodReturnType;
-
-        if (parent is LocalFunctionStatementSyntax localFunc && localFunc.ReturnType == typeNode)
-            return TypeUsageClassification.MethodReturnType;
-
-        if (parent is ParameterSyntax param && param.Type == typeNode)
-            return TypeUsageClassification.MethodParameter;
-
-        if (parent is PropertyDeclarationSyntax propDecl && propDecl.Type == typeNode)
-            return TypeUsageClassification.PropertyType;
-
-        if (parent is VariableDeclarationSyntax varDecl && varDecl.Type == typeNode)
+        return parent switch
         {
-            var grandparent = varDecl.Parent;
-            return grandparent is FieldDeclarationSyntax
+            TypeArgumentListSyntax => TypeUsageClassification.GenericArgument,
+            MethodDeclarationSyntax methodDecl when methodDecl.ReturnType == typeNode => TypeUsageClassification.MethodReturnType,
+            LocalFunctionStatementSyntax localFunc when localFunc.ReturnType == typeNode => TypeUsageClassification.MethodReturnType,
+            ParameterSyntax param when param.Type == typeNode => TypeUsageClassification.MethodParameter,
+            PropertyDeclarationSyntax propDecl when propDecl.Type == typeNode => TypeUsageClassification.PropertyType,
+            VariableDeclarationSyntax varDecl when varDecl.Type == typeNode => varDecl.Parent is FieldDeclarationSyntax
                 ? TypeUsageClassification.FieldType
-                : TypeUsageClassification.LocalVariable;
-        }
-
-        if (parent is SimpleBaseTypeSyntax || parent is BaseListSyntax)
-            return TypeUsageClassification.BaseType;
-
-        if (parent is CastExpressionSyntax castExpr && castExpr.Type == typeNode)
-            return TypeUsageClassification.Cast;
-        if (parent is BinaryExpressionSyntax binaryAs &&
-            binaryAs.IsKind(SyntaxKind.AsExpression) &&
-            binaryAs.Right == typeNode)
-            return TypeUsageClassification.Cast;
-
-        if (parent is IsPatternExpressionSyntax)
-            return TypeUsageClassification.TypeCheck;
-        if (parent is BinaryExpressionSyntax binaryIs &&
-            binaryIs.IsKind(SyntaxKind.IsExpression))
-            return TypeUsageClassification.TypeCheck;
-        if (parent is TypePatternSyntax || parent is DeclarationPatternSyntax)
-            return TypeUsageClassification.TypeCheck;
-
-        if (parent is ObjectCreationExpressionSyntax objCreate && objCreate.Type == typeNode)
-            return TypeUsageClassification.ObjectCreation;
-        if (parent is ImplicitObjectCreationExpressionSyntax)
-            return TypeUsageClassification.ObjectCreation;
-
-        return TypeUsageClassification.Other;
+                : TypeUsageClassification.LocalVariable,
+            SimpleBaseTypeSyntax or BaseListSyntax => TypeUsageClassification.BaseType,
+            CastExpressionSyntax castExpr when castExpr.Type == typeNode => TypeUsageClassification.Cast,
+            BinaryExpressionSyntax binaryAs when binaryAs.IsKind(SyntaxKind.AsExpression) && binaryAs.Right == typeNode => TypeUsageClassification.Cast,
+            IsPatternExpressionSyntax => TypeUsageClassification.TypeCheck,
+            BinaryExpressionSyntax binaryIs when binaryIs.IsKind(SyntaxKind.IsExpression) => TypeUsageClassification.TypeCheck,
+            TypePatternSyntax or DeclarationPatternSyntax => TypeUsageClassification.TypeCheck,
+            ObjectCreationExpressionSyntax objCreate when objCreate.Type == typeNode => TypeUsageClassification.ObjectCreation,
+            ImplicitObjectCreationExpressionSyntax => TypeUsageClassification.ObjectCreation,
+            _ => TypeUsageClassification.Other,
+        };
     }
 
     private static bool IsMutatingMember(ISymbol member, INamedTypeSymbol containingType)

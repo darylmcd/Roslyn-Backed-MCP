@@ -10,7 +10,7 @@ public static class AdvancedAnalysisTools
 {
 
     [McpServerTool(Name = "find_unused_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Find symbols (types, methods, properties, fields) with zero references across the solution — helps identify dead code. Each hit includes Confidence: high (private/internal), medium (public API), low (enum members, record/serialization-shaped properties, interface members — often false positives).")]
+     Description("Find symbols (types, methods, properties, fields) with zero references across the solution — helps identify dead code. Each hit includes Confidence: high (private/internal), medium (public API), low (enum members, record/serialization-shaped properties, interface members — often false positives). By default skips convention-invoked shapes (EF ModelSnapshots, xUnit/NUnit/MSTest fixtures, ASP.NET middleware, SignalR Hubs, FluentValidation validators, Razor PageModels) — set excludeConventionInvoked=false to include them.")]
     public static Task<string> FindUnusedSymbols(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
@@ -22,6 +22,7 @@ public static class AdvancedAnalysisTools
         [Description("When true, skip properties declared on record types (often DTO/serialization shaped).")] bool excludeRecordProperties = false,
         [Description("When true, skip projects whose names look like test projects (*.Tests, *Tests).")] bool excludeTestProjects = false,
         [Description("When true, skip symbols in test fixture types (xUnit/NUnit/MSTest-shaped names and attributes).")] bool excludeTests = false,
+        [Description("When true (default), skip symbols matching convention-invoked shapes — EF ModelSnapshot, xUnit/MSTest/NUnit fixtures, ASP.NET middleware (Invoke/InvokeAsync(HttpContext)), SignalR Hubs, FluentValidation AbstractValidator<T>, Razor PageModel subclasses. Detection is name-shape based, so a custom class literally named 'Hub'/'PageModel'/etc. may also be excluded.")] bool excludeConventionInvoked = true,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("find_unused_symbols", () =>
@@ -37,7 +38,8 @@ public static class AdvancedAnalysisTools
                         ExcludeEnums = excludeEnums,
                         ExcludeRecordProperties = excludeRecordProperties,
                         ExcludeTestProjects = excludeTestProjects,
-                        ExcludeTests = excludeTests
+                        ExcludeTests = excludeTests,
+                        ExcludeConventionInvoked = excludeConventionInvoked
                     },
                     c);
                 return JsonSerializer.Serialize(new { count = results.Count, unusedSymbols = results }, JsonDefaults.Indented);

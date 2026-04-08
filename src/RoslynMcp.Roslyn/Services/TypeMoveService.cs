@@ -100,6 +100,12 @@ public sealed class TypeMoveService : ITypeMoveService
                 .NormalizeWhitespace();
         }
 
+        // NormalizeWhitespace() can introduce a stray leading blank line and may inflate the
+        // separator between the using block and the first member. Canonicalize both before
+        // serializing to disk.
+        newFileRoot = TriviaNormalizationHelper.NormalizeLeadingTrivia(newFileRoot);
+        newFileRoot = TriviaNormalizationHelper.NormalizeUsingToMemberSeparator(newFileRoot);
+
         // Remove the type from the source file
         var updatedSourceRoot = sourceRoot.RemoveNode(typeDecl, SyntaxRemoveOptions.KeepLeadingTrivia)!;
 
@@ -108,7 +114,7 @@ public sealed class TypeMoveService : ITypeMoveService
 
         // Add the new document
         var targetFileName = Path.GetFileName(resolvedTargetPath);
-        var newFileText = newFileRoot.ToFullString().TrimStart('\r', '\n');
+        var newFileText = newFileRoot.ToFullString();
         var newDocument = newSolution.GetProject(sourceDocument.Project.Id)!
             .AddDocument(targetFileName, newFileText, filePath: resolvedTargetPath);
         newSolution = newDocument.Project.Solution;
@@ -182,7 +188,13 @@ public sealed class TypeMoveService : ITypeMoveService
 
             if (unusedUsings.Count > 0)
             {
-                root = root.RemoveNodes(unusedUsings, SyntaxRemoveOptions.KeepExteriorTrivia) ?? root;
+                root = root.RemoveNodes(unusedUsings, SyntaxRemoveOptions.KeepNoTrivia) ?? root;
+                if (root is CompilationUnitSyntax cu)
+                {
+                    cu = TriviaNormalizationHelper.NormalizeLeadingTrivia(cu);
+                    cu = TriviaNormalizationHelper.CollapseBlankLinesInUsingBlock(cu);
+                    root = cu;
+                }
                 solution = solution.WithDocumentSyntaxRoot(documentId, root);
             }
         }

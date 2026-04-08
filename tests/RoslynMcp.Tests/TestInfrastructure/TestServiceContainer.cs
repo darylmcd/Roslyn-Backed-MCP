@@ -152,7 +152,8 @@ internal sealed class TestServiceContainer
                 NullLogger<CodePatternAnalyzer>.Instance),
             EditService = new EditService(
                 workspaceManager,
-                NullLogger<EditService>.Instance),
+                NullLogger<EditService>.Instance,
+                undoService),
             FileOperationService = fileOperationService,
             ProjectMutationService = new ProjectMutationService(
                 workspaceManager,

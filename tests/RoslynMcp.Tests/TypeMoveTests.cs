@@ -60,4 +60,62 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             TypeMoveService.PreviewMoveTypeToFileAsync(
                 wsId, doc.FilePath!, "NonExistentType", null, CancellationToken.None));
     }
+
+    [TestMethod]
+    public async Task MoveType_NewFile_HasNoLeadingBlankLine()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var catFile = workspace.GetPath("SampleLib", "Cat.cs");
+        File.AppendAllText(catFile, "\npublic class Kitten : IAnimal\n{\n    public string Name => \"Kitten\";\n    public string Speak() => \"Mew\";\n}\n");
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var doc = WorkspaceManager.GetCurrentSolution(wsId)
+            .Projects.SelectMany(p => p.Documents)
+            .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
+
+        var preview = await TypeMoveService.PreviewMoveTypeToFileAsync(
+            wsId, doc.FilePath!, "Kitten", null, CancellationToken.None);
+        Assert.IsNotNull(preview.PreviewToken);
+
+        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(apply.Success, apply.Error);
+
+        var newFilePath = workspace.GetPath("SampleLib", "Kitten.cs");
+        Assert.IsTrue(File.Exists(newFilePath), "Kitten.cs should have been created.");
+
+        var content = await File.ReadAllTextAsync(newFilePath, CancellationToken.None);
+        var normalized = content.Replace("\r\n", "\n");
+
+        Assert.IsFalse(normalized.StartsWith('\n'),
+            $"New file must not start with a blank line. Actual head: {normalized[..Math.Min(80, normalized.Length)]}");
+    }
+
+    [TestMethod]
+    public async Task MoveType_NewFile_NoStrayBlankLineRuns()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var catFile = workspace.GetPath("SampleLib", "Cat.cs");
+        File.AppendAllText(catFile, "\npublic class Kitten : IAnimal\n{\n    public string Name => \"Kitten\";\n    public string Speak() => \"Mew\";\n}\n");
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var doc = WorkspaceManager.GetCurrentSolution(wsId)
+            .Projects.SelectMany(p => p.Documents)
+            .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
+
+        var preview = await TypeMoveService.PreviewMoveTypeToFileAsync(
+            wsId, doc.FilePath!, "Kitten", null, CancellationToken.None);
+        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(apply.Success, apply.Error);
+
+        var content = await File.ReadAllTextAsync(workspace.GetPath("SampleLib", "Kitten.cs"), CancellationToken.None);
+        var normalized = content.Replace("\r\n", "\n");
+
+        // Two blank lines in a row would manifest as three consecutive newlines.
+        Assert.IsFalse(normalized.Contains("\n\n\n", StringComparison.Ordinal),
+            "New file should not contain runs of 2+ blank lines (three consecutive newlines).");
+    }
 }

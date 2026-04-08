@@ -180,104 +180,101 @@ public sealed class CodeMetricsService : ICodeMetricsService
 
         foreach (var child in node.ChildNodes())
         {
-            switch (child)
-            {
-                case IfStatementSyntax ifs:
-                    VisitControlFlowNesting(ifs.Condition, depth, ref maxDepth);
-                    VisitControlFlowNesting(ifs.Statement, depth + 1, ref maxDepth);
-                    if (ifs.Else is not null)
-                    {
-                        VisitControlFlowNesting(ifs.Else.Statement, depth + 1, ref maxDepth);
-                    }
-
-                    break;
-                case WhileStatementSyntax ws:
-                    VisitControlFlowNesting(ws.Statement, depth + 1, ref maxDepth);
-                    break;
-                case DoStatementSyntax ds:
-                    VisitControlFlowNesting(ds.Statement, depth + 1, ref maxDepth);
-                    break;
-                case ForStatementSyntax fs:
-                    if (fs.Declaration is not null)
-                    {
-                        VisitControlFlowNesting(fs.Declaration, depth, ref maxDepth);
-                    }
-
-                    foreach (var init in fs.Initializers)
-                    {
-                        VisitControlFlowNesting(init, depth, ref maxDepth);
-                    }
-
-                    if (fs.Condition is not null)
-                    {
-                        VisitControlFlowNesting(fs.Condition, depth, ref maxDepth);
-                    }
-
-                    VisitControlFlowNesting(fs.Statement, depth + 1, ref maxDepth);
-                    break;
-                case ForEachStatementSyntax fes:
-                    VisitControlFlowNesting(fes.Statement, depth + 1, ref maxDepth);
-                    break;
-                case SwitchStatementSyntax sw:
-                    foreach (var section in sw.Sections)
-                    {
-                        foreach (var stmt in section.Statements)
-                        {
-                            VisitControlFlowNesting(stmt, depth + 1, ref maxDepth);
-                        }
-                    }
-
-                    break;
-                case TryStatementSyntax tr:
-                    VisitControlFlowNesting(tr.Block, depth + 1, ref maxDepth);
-                    foreach (var c in tr.Catches)
-                    {
-                        VisitControlFlowNesting(c.Block, depth + 1, ref maxDepth);
-                    }
-
-                    if (tr.Finally is not null)
-                    {
-                        VisitControlFlowNesting(tr.Finally.Block, depth + 1, ref maxDepth);
-                    }
-
-                    break;
-                case LockStatementSyntax lk:
-                    VisitControlFlowNesting(lk.Statement, depth + 1, ref maxDepth);
-                    break;
-                case UsingStatementSyntax us:
-                    VisitControlFlowNesting(us.Statement, depth + 1, ref maxDepth);
-                    break;
-                case FixedStatementSyntax fx:
-                    VisitControlFlowNesting(fx.Statement, depth + 1, ref maxDepth);
-                    break;
-                case CheckedStatementSyntax chk:
-                    VisitControlFlowNesting(chk.Block, depth + 1, ref maxDepth);
-                    break;
-                case UnsafeStatementSyntax uns:
-                    VisitControlFlowNesting(uns.Block, depth + 1, ref maxDepth);
-                    break;
-                case SwitchExpressionSyntax se:
-                    foreach (var arm in se.Arms)
-                    {
-                        VisitControlFlowNesting(arm.Expression, depth + 1, ref maxDepth);
-                    }
-
-                    break;
-                case LocalFunctionStatementSyntax lf:
-                    if (lf.Body is not null)
-                    {
-                        VisitControlFlowNesting(lf.Body, depth, ref maxDepth);
-                    }
-                    else if (lf.ExpressionBody is not null)
-                    {
-                        VisitControlFlowNesting(lf.ExpressionBody.Expression, depth, ref maxDepth);
-                    }
-
-                    break;
-                default:
-                    VisitControlFlowNesting(child, depth, ref maxDepth);
-                    break;
-            }
+            VisitChildForNesting(child, depth, ref maxDepth);
         }
+    }
+
+    private static void VisitChildForNesting(SyntaxNode child, int depth, ref int maxDepth)
+    {
+        switch (child)
+        {
+            case IfStatementSyntax ifs:
+                VisitControlFlowNesting(ifs.Condition, depth, ref maxDepth);
+                VisitControlFlowNesting(ifs.Statement, depth + 1, ref maxDepth);
+                if (ifs.Else is not null)
+                    VisitControlFlowNesting(ifs.Else.Statement, depth + 1, ref maxDepth);
+                break;
+
+            case ForStatementSyntax fs:
+                VisitForLoop(fs, depth, ref maxDepth);
+                break;
+
+            case SwitchStatementSyntax sw:
+                foreach (var section in sw.Sections)
+                    foreach (var stmt in section.Statements)
+                        VisitControlFlowNesting(stmt, depth + 1, ref maxDepth);
+                break;
+
+            case TryStatementSyntax tr:
+                VisitTryStatement(tr, depth, ref maxDepth);
+                break;
+
+            case SwitchExpressionSyntax se:
+                foreach (var arm in se.Arms)
+                    VisitControlFlowNesting(arm.Expression, depth + 1, ref maxDepth);
+                break;
+
+            case LocalFunctionStatementSyntax lf:
+                if (lf.Body is not null)
+                    VisitControlFlowNesting(lf.Body, depth, ref maxDepth);
+                else if (lf.ExpressionBody is not null)
+                    VisitControlFlowNesting(lf.ExpressionBody.Expression, depth, ref maxDepth);
+                break;
+
+            // Statements that nest a single body at depth+1.
+            case WhileStatementSyntax ws:
+                VisitControlFlowNesting(ws.Statement, depth + 1, ref maxDepth);
+                break;
+            case DoStatementSyntax ds:
+                VisitControlFlowNesting(ds.Statement, depth + 1, ref maxDepth);
+                break;
+            case ForEachStatementSyntax fes:
+                VisitControlFlowNesting(fes.Statement, depth + 1, ref maxDepth);
+                break;
+            case LockStatementSyntax lk:
+                VisitControlFlowNesting(lk.Statement, depth + 1, ref maxDepth);
+                break;
+            case UsingStatementSyntax us:
+                VisitControlFlowNesting(us.Statement, depth + 1, ref maxDepth);
+                break;
+            case FixedStatementSyntax fx:
+                VisitControlFlowNesting(fx.Statement, depth + 1, ref maxDepth);
+                break;
+            case CheckedStatementSyntax chk:
+                VisitControlFlowNesting(chk.Block, depth + 1, ref maxDepth);
+                break;
+            case UnsafeStatementSyntax uns:
+                VisitControlFlowNesting(uns.Block, depth + 1, ref maxDepth);
+                break;
+
+            default:
+                VisitControlFlowNesting(child, depth, ref maxDepth);
+                break;
+        }
+    }
+
+    private static void VisitForLoop(ForStatementSyntax fs, int depth, ref int maxDepth)
+    {
+        if (fs.Declaration is not null)
+            VisitControlFlowNesting(fs.Declaration, depth, ref maxDepth);
+
+        foreach (var init in fs.Initializers)
+            VisitControlFlowNesting(init, depth, ref maxDepth);
+
+        if (fs.Condition is not null)
+            VisitControlFlowNesting(fs.Condition, depth, ref maxDepth);
+
+        VisitControlFlowNesting(fs.Statement, depth + 1, ref maxDepth);
+    }
+
+    private static void VisitTryStatement(TryStatementSyntax tr, int depth, ref int maxDepth)
+    {
+        VisitControlFlowNesting(tr.Block, depth + 1, ref maxDepth);
+
+        foreach (var c in tr.Catches)
+            VisitControlFlowNesting(c.Block, depth + 1, ref maxDepth);
+
+        if (tr.Finally is not null)
+            VisitControlFlowNesting(tr.Finally.Block, depth + 1, ref maxDepth);
     }
 }

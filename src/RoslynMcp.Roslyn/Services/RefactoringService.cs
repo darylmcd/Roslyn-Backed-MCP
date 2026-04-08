@@ -48,6 +48,10 @@ public sealed class RefactoringService : IRefactoringService
                 $"Cannot rename metadata or built-in symbol '{symbol.ToDisplayString()}' — renames require a source declaration.");
         }
 
+        // Reject illegal identifiers BEFORE invoking Renamer so we never produce a preview
+        // whose application would break compilation across the solution.
+        IdentifierValidation.ThrowIfInvalidIdentifier(newName);
+
         var newSolution = await Renamer.RenameSymbolAsync(
             solution, symbol, new SymbolRenameOptions(), newName, ct).ConfigureAwait(false);
 
@@ -55,7 +59,15 @@ public sealed class RefactoringService : IRefactoringService
         var description = $"Rename '{symbol.Name}' to '{newName}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
-        return new RefactoringPreviewDto(token, description, changes, null);
+        // No-op warning: caller asked to rename a symbol to its own current name. C# identifiers
+        // are case-sensitive, so a Foo→foo rename is real and must NOT be flagged.
+        IReadOnlyList<string>? warnings = null;
+        if (string.Equals(symbol.Name, newName, StringComparison.Ordinal))
+        {
+            warnings = new[] { $"New name '{newName}' matches the existing name; no changes were produced." };
+        }
+
+        return new RefactoringPreviewDto(token, description, changes, warnings);
     }
 
     /// <summary>
@@ -164,8 +176,13 @@ public sealed class RefactoringService : IRefactoringService
 
         if (unnecessaryUsings.Count > 0)
         {
-            root = root.RemoveNodes(unnecessaryUsings, SyntaxRemoveOptions.KeepExteriorTrivia)
-                ?? root;
+            root = root.RemoveNodes(unnecessaryUsings, SyntaxRemoveOptions.KeepNoTrivia) ?? root;
+            if (root is CompilationUnitSyntax cu)
+            {
+                cu = TriviaNormalizationHelper.NormalizeLeadingTrivia(cu);
+                cu = TriviaNormalizationHelper.CollapseBlankLinesInUsingBlock(cu);
+                root = cu;
+            }
             document = document.WithSyntaxRoot(root);
         }
 
