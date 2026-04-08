@@ -4,6 +4,13 @@ All notable changes to Roslyn-Backed MCP Server will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.8.1] - 2026-04-08
+
+### Changed
+
+- **Package release under the `Darylmcd.RoslynMcp` NuGet id.** Version bump from `1.8.0` to `1.8.1` so the first published artifact carries the renamed id from a clean version slot. No source/feature changes vs `1.8.0` — the bump exists purely to give the renamed package a fresh version slot.
+- **Package consumer README.** The NuGet package now ships a focused `src/RoslynMcp.Host.Stdio/README.md` aimed at consumers (install + use + MCP client config + security/privacy + configuration env vars + cross-platform notes). The previous behavior was to pack the repo root `README.md`, which is a much longer contributor-facing document. The repo root README stays unchanged — only the `<PackageReadmeFile>` source path changed.
+
 ## [1.8.0] - 2026-04-08
 
 ### Changed
