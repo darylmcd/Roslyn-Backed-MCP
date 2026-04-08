@@ -12,8 +12,23 @@ public interface IUndoService
     /// </summary>
     /// <param name="workspaceId">The workspace being mutated.</param>
     /// <param name="description">Human-readable description of the operation being applied.</param>
-    /// <param name="preApplySolution">The solution snapshot before mutation.</param>
-    void CaptureBeforeApply(string workspaceId, string description, object preApplySolution);
+    /// <param name="preApplySolution">
+    /// The solution snapshot before mutation. May be <see langword="null"/> for direct-apply
+    /// paths that mutate files outside the Roslyn workspace model (e.g., .editorconfig writes).
+    /// </param>
+    /// <param name="fileSnapshots">
+    /// Optional explicit list of <c>(filePath, originalText)</c> pairs captured before the
+    /// mutation. When populated, <see cref="RevertAsync"/> uses this authoritative list to
+    /// restore disk content directly — bypassing the fragile "did the Roslyn <c>Solution</c>
+    /// diff detect a change?" path that fails when <c>MSBuildWorkspace.TryApplyChanges</c>
+    /// silently no-ops (FLAG-9A). Direct-file callers such as <c>EditService</c> and
+    /// <c>EditorConfigService</c> should always populate this.
+    /// </param>
+    void CaptureBeforeApply(
+        string workspaceId,
+        string description,
+        object? preApplySolution,
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null);
 
     /// <summary>
     /// Returns metadata about the last undoable operation for the given workspace,
@@ -43,3 +58,12 @@ public sealed record UndoEntry(
     string WorkspaceId,
     string Description,
     DateTime AppliedAtUtc);
+
+/// <summary>
+/// An explicit pre-apply file snapshot passed to <see cref="IUndoService.CaptureBeforeApply"/>
+/// by direct-file callers. Used by <see cref="IUndoService.RevertAsync"/> to restore disk
+/// content even when the workspace <c>Solution</c> diff is empty (FLAG-9A).
+/// </summary>
+/// <param name="FilePath">The absolute path of the file about to be modified.</param>
+/// <param name="OriginalText">The full pre-mutation text of the file (null if it didn't exist yet).</param>
+public sealed record FileSnapshotDto(string FilePath, string? OriginalText);
