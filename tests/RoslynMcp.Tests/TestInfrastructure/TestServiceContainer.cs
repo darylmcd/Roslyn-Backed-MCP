@@ -225,7 +225,8 @@ internal sealed class TestServiceContainer
                 new ScriptingServiceOptions()),
             EditorConfigService = new EditorConfigService(
                 workspaceManager,
-                NullLogger<EditorConfigService>.Instance)
+                NullLogger<EditorConfigService>.Instance,
+                undoService)
         };
     }
 }

@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-08T22:00:00Z
+**updated_at:** 2026-04-08T22:30:00Z
 
 ## Agent contract
 
@@ -31,7 +31,6 @@ Ordered by severity: P2 (contract violations / real-world blockers) → P3 (refa
 | id | blocker | deps | do |
 |----|---------|------|-----|
 | `workspace-session-deduplication` | none | — | **P3 / session model.** Loading the same solution path twice in one host process can yield `workspace_list` with multiple distinct `WorkspaceId`s (2026-04-08 roslyn-backed-mcp audit 130615; not reproduced on a later pass — intermittent). Wastes workspace slots and confuses audits. Consider idempotent `workspace_load` or explicit dedup. |
-| `revert-last-apply-disk-consistency` | none | — | **P3 / undo.** `revert_last_apply` reported success while the on-disk file still contained the applied text until manual cleanup and `workspace_reload` (2026-04-08 NetworkDocumentation audit). Align workspace model with disk or document the edge case. |
 | `semantic-search-zero-results-verbose-query` | none | — | **P3 / UX.** `semantic_search` returned `count: 0` for a long natural-language query while a shorter query returned hits on the same repo (2026-04-08 FirewallAnalyzer audit). Add keyword/stem fallback or scoring/debug payload when the embedding ranker returns empty. |
 | `find-type-usages-cref-classification` | none | — | **P4 / cosmetic.** `find_type_usages` buckets `<see cref="X"/>` doc-comment references as `Other` instead of as a `Documentation` classification (observed against ITChatBot 2026-04-07). Enrich the classification enum so doc-comment refs are visually distinguishable from real consumers. |
 | `verify-release-test-output-policy` | none | — | **P4 / process.** `eng/verify-release.ps1` already sets `$ErrorActionPreference = 'Stop'`, but still runs `dotnet test` with default verbosity. Add `--logger "console;verbosity=normal"` so failing test names are not masked by tail/pipe operations in any wrapper script. |

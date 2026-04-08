@@ -11,11 +11,13 @@ public sealed class EditorConfigService : IEditorConfigService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<EditorConfigService> _logger;
+    private readonly IUndoService? _undoService;
 
-    public EditorConfigService(IWorkspaceManager workspace, ILogger<EditorConfigService> logger)
+    public EditorConfigService(IWorkspaceManager workspace, ILogger<EditorConfigService> logger, IUndoService? undoService = null)
     {
         _workspace = workspace;
         _logger = logger;
+        _undoService = undoService;
     }
 
     public async Task<EditorConfigOptionsDto> GetOptionsAsync(
@@ -210,7 +212,24 @@ public sealed class EditorConfigService : IEditorConfigService
             ?? Path.Combine(Path.GetDirectoryName(normalizedSource) ?? throw new InvalidOperationException("Invalid source path."), ".editorconfig");
 
         var created = !File.Exists(editorconfigPath);
+        var existingText = created ? null : File.ReadAllText(editorconfigPath);
         var lines = created ? new List<string>() : File.ReadAllLines(editorconfigPath).ToList();
+
+        // set-editorconfig-option-not-undoable: capture the pre-apply content so
+        // revert_last_apply can restore the .editorconfig file (or delete it if we created it).
+        // Uses the authoritative FileSnapshotDto path in UndoService (FLAG-9A).
+        if (_undoService is not null)
+        {
+            var snapshot = new[]
+            {
+                new FileSnapshotDto(editorconfigPath, existingText),
+            };
+            _undoService.CaptureBeforeApply(
+                workspaceId,
+                $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
+                preApplySolution: null,
+                fileSnapshots: snapshot);
+        }
 
         const string csharpSection = "[*.{cs,csx,cake}]";
         UpsertKeyInSection(lines, csharpSection, key.Trim(), value.Trim());
