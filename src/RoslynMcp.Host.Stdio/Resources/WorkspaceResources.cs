@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using ModelContextProtocol.Server;
@@ -11,8 +12,22 @@ public static class WorkspaceResources
 {
 
     [McpServerResource(UriTemplate = "roslyn://workspaces", Name = "workspaces", MimeType = "application/json")]
-    [Description("List all currently loaded workspace sessions with their status. Workspace-scoped resources (status, projects, diagnostics, source_file) use URI templates — if your MCP client only shows static resources from resources/list, read roslyn://server/resource-templates to discover those templates.")]
+    [Description("List all currently loaded workspace sessions with a lean summary per workspace (counts and load state, no per-project tree). For the verbose payload use roslyn://workspaces/verbose. Workspace-scoped resources (status, projects, diagnostics, source_file) use URI templates — if your MCP client only shows static resources from resources/list, read roslyn://server/resource-templates to discover those templates.")]
     public static string GetWorkspaces(IWorkspaceManager workspace)
+    {
+        try
+        {
+            var workspaces = workspace.ListWorkspaces();
+            var summaries = workspaces.Select(WorkspaceStatusSummaryDto.From).ToList();
+            return JsonSerializer.Serialize(new { count = summaries.Count, workspaces = summaries }, JsonDefaults.Indented);
+        }
+        catch (KeyNotFoundException ex) { throw new McpToolException($"Not found: {ex.Message}", ex); }
+        catch (InvalidOperationException ex) { throw new McpToolException($"Invalid operation: {ex.Message}", ex); }
+    }
+
+    [McpServerResource(UriTemplate = "roslyn://workspaces/verbose", Name = "workspaces_verbose", MimeType = "application/json")]
+    [Description("Verbose variant of roslyn://workspaces — returns the full per-project tree and workspace diagnostics for every loaded session. Can be large on multi-project solutions; prefer the summary resource at roslyn://workspaces unless you need the full payload.")]
+    public static string GetWorkspacesVerbose(IWorkspaceManager workspace)
     {
         try
         {
@@ -24,8 +39,23 @@ public static class WorkspaceResources
     }
 
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/status", Name = "workspace_status", MimeType = "application/json")]
-    [Description("Get the current status of a loaded workspace including projects and diagnostics. URI uses the workspace_status template; see roslyn://server/resource-templates if your client does not list template URIs.")]
+    [Description("Get a lean summary of a loaded workspace's status (counts and load state, no per-project tree). For the verbose payload use roslyn://workspace/{workspaceId}/status/verbose. URI uses the workspace_status template; see roslyn://server/resource-templates if your client does not list template URIs.")]
     public static string GetWorkspaceStatus(
+        IWorkspaceManager workspace,
+        [Description("The workspace session identifier")] string workspaceId)
+    {
+        try
+        {
+            var status = workspace.GetStatus(workspaceId);
+            return JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
+        }
+        catch (KeyNotFoundException ex) { throw new McpToolException($"Not found: {ex.Message}", ex); }
+        catch (InvalidOperationException ex) { throw new McpToolException($"Invalid operation: {ex.Message}", ex); }
+    }
+
+    [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/status/verbose", Name = "workspace_status_verbose", MimeType = "application/json")]
+    [Description("Verbose variant of roslyn://workspace/{workspaceId}/status — returns the full per-project tree and workspace diagnostics for the workspace. Prefer the summary resource at roslyn://workspace/{workspaceId}/status unless you need the full payload.")]
+    public static string GetWorkspaceStatusVerbose(
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId)
     {
