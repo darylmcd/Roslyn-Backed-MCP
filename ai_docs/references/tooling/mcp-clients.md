@@ -6,7 +6,7 @@
 
 | Mode | Command | When to use |
 |------|---------|-------------|
-| **Global tool** | `roslynmcp` (stdio) | Day-to-day; lowest startup overhead after `dotnet tool install -g RoslynMcp`. |
+| **Global tool** | `roslynmcp` (stdio) | Day-to-day; lowest startup overhead after `dotnet tool install -g Darylmcd.RoslynMcp`. |
 | **Repo dev** | `dotnet run --project src/RoslynMcp.Host.Stdio` | Working on the server itself; same stdio protocol. |
 | **Container** | `docker run` → `dotnet RoslynMcp.Host.Stdio.dll` | Isolated/untrusted workspaces — see `docs/setup.md`. |
 
@@ -42,7 +42,7 @@
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
-This installs the MCP server + 10 curated skills + safety hooks. Requires `roslynmcp` on PATH (`dotnet tool install -g RoslynMcp`).
+This installs the MCP server + 10 curated skills + safety hooks. Requires `roslynmcp` on PATH (`dotnet tool install -g Darylmcd.RoslynMcp`).
 
 **Manual MCP config (alternative):**
 
