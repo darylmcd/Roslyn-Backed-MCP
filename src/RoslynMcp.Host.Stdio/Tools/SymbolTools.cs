@@ -146,7 +146,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member")]
+    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member. Auto-promotes to the virtual/interface root: if the caret lands on an override site (e.g., `Device.Equals` that overrides `object.Equals`), the tool walks back through the `OverriddenMethod`/`OverriddenProperty`/`OverriddenEvent` chain before the search, so callers can anchor at either the virtual declaration or any leaf override and get the same (complete) result set.")]
     public static Task<string> FindOverrides(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,

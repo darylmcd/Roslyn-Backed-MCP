@@ -172,7 +172,12 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         {
             if (item.SyntaxRoot is null) continue;
 
-            var refNode = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan);
+            // find-type-usages-cref-classification: descend into structured trivia so that
+            // references inside <see cref="X"/> / <seealso cref="X"/> / <exception cref="X"/>
+            // doc-comment attributes resolve to the cref node, not the declaration the doc
+            // comment is attached to. Without descendIntoTrivia:true the classifier defaults
+            // to Other for every doc-comment cref reference.
+            var refNode = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan, findInsideTrivia: true);
             var classification = ClassifyTypeUsage(refNode, symbol);
 
             var lineSpan = item.Source.Location.GetLineSpan();
@@ -355,6 +360,16 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
 
     private static TypeUsageClassification ClassifyTypeUsage(SyntaxNode refNode, ISymbol referencedSymbol)
     {
+        // find-type-usages-cref-classification: doc-comment references (`<see cref="X"/>`,
+        // `<seealso cref="X"/>`, `<exception cref="X"/>`) live inside a CrefSyntax or
+        // XmlCrefAttributeSyntax ancestor. Detect that first so the reference is bucketed as
+        // Documentation instead of falling through to the code-context classifier and
+        // landing in Other.
+        if (IsInsideDocCommentCref(refNode))
+        {
+            return TypeUsageClassification.Documentation;
+        }
+
         var parent = refNode.Parent;
         if (parent is null) return TypeUsageClassification.Other;
 
@@ -367,6 +382,20 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         }
 
         return ClassifyTypeUsageAfterWalk(typeNode, parent, referencedSymbol);
+    }
+
+    private static bool IsInsideDocCommentCref(SyntaxNode refNode)
+    {
+        foreach (var ancestor in refNode.AncestorsAndSelf())
+        {
+            // `CrefSyntax` is the common base for all cref variants (NameMemberCref, TypeCref,
+            // QualifiedCref, ConversionOperatorMemberCref, IndexerMemberCref, OperatorMemberCref).
+            if (ancestor is CrefSyntax) return true;
+            if (ancestor is XmlCrefAttributeSyntax) return true;
+            // Stop walking once we leave the doc comment trivia boundary.
+            if (ancestor is DocumentationCommentTriviaSyntax) return true;
+        }
+        return false;
     }
 
     private static TypeUsageClassification ClassifyTypeUsageAfterWalk(SyntaxNode typeNode, SyntaxNode parent, ISymbol referencedSymbol)
