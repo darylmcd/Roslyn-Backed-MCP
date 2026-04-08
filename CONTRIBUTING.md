@@ -4,7 +4,7 @@ Thank you for your interest in contributing. This guide covers the essentials.
 
 ## Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) (10.0.104+)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) — `10.0.100` per [`global.json`](global.json) (`rollForward` is `latestFeature`; any compatible 10.0.x patch works)
 - Git
 
 ## Build and Test

@@ -50,8 +50,9 @@ If no repo matches a bucket, record that gap in the rollup rather than inventing
 |------|-------------|-----|
 | Full-surface client | Can read MCP resources and invoke prompts | Required for release candidates, support-tier changes, and any audit claiming prompt/resource coverage. |
 | Constrained client | Cannot invoke some prompt/resource families | Optional secondary lane to capture `blocked` rows and client UX gaps. |
+| Plugin-skills lane | Filesystem access to the Roslyn-Backed-MCP repo for Phase 16b | Required whenever skills change, a new skill ships, or a tool is renamed/removed. May be folded into the full-surface lane when that client is already running in the Roslyn-Backed-MCP workspace. |
 
-At least one full-surface client lane must run before treating prompt/resource families as adequately covered.
+At least one full-surface client lane must run before treating prompt/resource families as adequately covered. At least one plugin-skills lane must run whenever the `skills/` directory is modified or the live catalog's tool names change.
 
 ## Concurrency model
 
@@ -91,8 +92,13 @@ Each raw audit or batch manifest should capture these fields so rollups are comp
 | Client capability notes | Record prompt/resource availability or `blocked` limitations. |
 | Debug log channel | `yes` / `partial` / `no` — whether the client surfaced MCP `notifications/message` log entries. Drives whether the rollup can rely on captured server-side log evidence. |
 | Helper execution notes | Record whether subagents/background agents handled long-running validation and any related client/runtime limits. |
+| Plugin skills repo reachable | yes / blocked. If blocked, `docs/experimental-promotion-analysis.md` cannot treat the skills as exercised. |
 | Coverage counts by status | Compare exercised vs skipped vs blocked across runs. |
 | Concurrency probe wall-clocks | Required when Phase 8b ran. Pulled from the raw audit's *Concurrency matrix → Sequential baseline* and *Parallel fan-out* tables; needed by the rollup to compare wall-clocks across repos. |
+| Performance baseline snapshot | Pulled from the raw audit's *Performance baseline (`_meta.elapsedMs`)* table. Needed by rollups and by the promotion analysis to track p50/p90 across runs. |
+| Promotion scorecard counts | Per-run totals of `promote` / `keep-experimental` / `needs-more-evidence` / `deprecate` recommendations, broken down by kind (tool / resource / prompt). Feeds `docs/experimental-promotion-analysis.md` directly. |
+| Prompt verification counts | From the raw audit's *Prompt verification* table: exercised/blocked/hallucinated-tools counts. |
+| Skills audit counts | From the raw audit's *Skills audit* table: frontmatter_ok / tool_refs_valid / dry_run pass counts per skill. |
 | New issue count / candidate closure count | Support rollup triage. |
 
 Use these fields as the manifest schema for manual review, future automation, or the lightweight scaffold script.
@@ -114,6 +120,10 @@ Each batch rollup in `ai_docs/reports/` should include:
 | Repo coverage | Which repo-shape buckets ran and which were missing. |
 | Client coverage | Full-surface vs constrained lanes and `blocked` families. |
 | Concurrency matrix rollup | Aggregated `parallel_speedup` numbers per repo (pulled from the raw *Parallel fan-out* tables). Required when ≥2 input audits exercised Phase 8b. |
+| Performance baseline rollup | Aggregated p50/p90 `_meta.elapsedMs` per tool across repos. Drives "is tool X within budget on real-world solutions" decisions. |
+| Experimental promotion rollup | Per-experimental-entry recommendation aggregated across repos. When the same entry gets `promote` in ≥2 independent runs with no FAIL findings, it is a candidate for the next promotion pass (feeds `docs/experimental-promotion-analysis.md`). When any run returns `deprecate`, the rollup must capture the raw evidence and open a backlog row. |
+| Prompt verification rollup | Aggregated prompt-verification counts across repos: exercised, blocked, hallucinated tools, idempotency failures. |
+| Skills audit rollup | Required when any input audit ran Phase 16b. Aggregate `tool_refs_valid` failures — any invalid reference is a plugin ship blocker. |
 | Unique issues | Deduped findings table keyed by tool + symptom + catalog version + client family. |
 | Blocked-by-client summary | Prompt/resource or client-surface limitations that are not server defects by default. |
 | Candidate closures | Prior issues that no longer reproduce, with raw evidence links. |

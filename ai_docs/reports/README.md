@@ -27,6 +27,10 @@ Each rollup should include:
 | Repo matrix coverage | Covered buckets and missing buckets |
 | Client coverage | Full-surface vs constrained lanes and blocked families |
 | Concurrency matrix rollup | Aggregated `parallel_speedup` numbers per repo pulled from each raw audit's *Concurrency matrix → Parallel fan-out* table. Required when ≥2 input audits ran Phase 8b. |
+| Performance baseline rollup | Aggregated p50/p90 `_meta.elapsedMs` per tool across repos. Drives "is tool X within budget on real-world solutions" decisions. |
+| Experimental promotion rollup | Per-experimental-entry recommendation aggregated across repos. Feeds `docs/experimental-promotion-analysis.md`. Flag any entry with `deprecate` or repeated FAIL findings. |
+| Prompt verification rollup | Aggregated prompt-verification counts: exercised, blocked, hallucinated tools, idempotency failures. |
+| Skills audit rollup | Required when any input ran Phase 16b. Any invalid tool reference is a plugin ship blocker. |
 | Deduped issues | Unique defect key (`tool + symptom + catalog-version + client-family`) and linked evidence |
 | Candidate closures | Prior ids and current evidence |
 | Backlog actions | Rows to open, update, or intentionally leave out |
