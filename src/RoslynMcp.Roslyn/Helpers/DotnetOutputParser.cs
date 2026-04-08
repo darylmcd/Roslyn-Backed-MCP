@@ -12,6 +12,11 @@ internal static partial class DotnetOutputParser
     [GeneratedRegex(@"^(?<file>.+?)\((?<line>\d+),(?<column>\d+)(,(?<endLine>\d+),(?<endColumn>\d+))?\): (?<severity>error|warning) (?<id>[A-Z]{2,}\d+): (?<message>.+?)( \[(?<project>.+)\])?$", RegexOptions.Compiled)]
     private static partial Regex DiagnosticRegex();
 
+    [GeneratedRegex(@"MSB(3027|3021)", RegexOptions.Compiled)]
+    private static partial Regex MsBuildFileLockRegex();
+
+    private const int FailureTailMaxChars = 2000;
+
     /// <summary>
     /// Parses MSBuild-style diagnostic lines from <c>dotnet build</c> standard output.
     /// </summary>
@@ -56,7 +61,10 @@ internal static partial class DotnetOutputParser
 
     /// <summary>
     /// Parses one or more TRX files produced by <c>dotnet test</c> (solution runs may emit multiple TRX files)
-    /// into a single aggregated <see cref="TestRunResultDto"/>.
+    /// into a single aggregated <see cref="TestRunResultDto"/>. When no TRX files exist and the
+    /// underlying command failed, the result carries a populated <see cref="TestRunFailureEnvelopeDto"/>
+    /// so callers see a structured classification (file lock / build failure / unknown) instead of
+    /// a bare invocation error.
     /// </summary>
     public static TestRunResultDto ParseTestRun(
         CommandExecutionDto execution,
@@ -64,13 +72,18 @@ internal static partial class DotnetOutputParser
     {
         if (trxPaths.Count == 0)
         {
+            var envelope = execution.Succeeded
+                ? null
+                : ClassifyNoTrxFailure(execution);
+
             return new TestRunResultDto(
                 execution,
                 Total: 0,
                 Passed: 0,
                 Failed: execution.Succeeded ? 0 : 1,
                 Skipped: 0,
-                Failures: []);
+                Failures: [],
+                FailureEnvelope: envelope);
         }
 
         var total = 0;
@@ -90,6 +103,85 @@ internal static partial class DotnetOutputParser
         }
 
         return new TestRunResultDto(execution, total, passed, failed, skipped, failures);
+    }
+
+    /// <summary>
+    /// Builds a synthetic <see cref="TestRunResultDto"/> for the case where the test invocation
+    /// was cancelled by a timeout before <c>dotnet test</c> could produce any output. Callers
+    /// supply the truncated <see cref="CommandExecutionDto"/> shell and the timeout message.
+    /// </summary>
+    public static TestRunResultDto BuildTimeoutResult(CommandExecutionDto execution, string timeoutSummary)
+    {
+        var envelope = new TestRunFailureEnvelopeDto(
+            ErrorKind: "Timeout",
+            IsRetryable: false,
+            Summary: timeoutSummary,
+            StdOutTail: Tail(execution.StdOut),
+            StdErrTail: Tail(execution.StdErr));
+
+        return new TestRunResultDto(
+            execution,
+            Total: 0,
+            Passed: 0,
+            Failed: 1,
+            Skipped: 0,
+            Failures: [],
+            FailureEnvelope: envelope);
+    }
+
+    private static TestRunFailureEnvelopeDto ClassifyNoTrxFailure(CommandExecutionDto execution)
+    {
+        var stdOutTail = Tail(execution.StdOut);
+        var stdErrTail = Tail(execution.StdErr);
+
+        // MSB3027 / MSB3021: another process holds the test assembly. This is the
+        // Windows concurrent-testhost collision pattern documented in ai_docs/runtime.md
+        // § *Known issues*. Classify as retryable so callers (or an outer retry loop)
+        // can close the conflicting runner and try again without touching source.
+        var lockHit = MsBuildFileLockRegex().IsMatch(execution.StdErr)
+            || MsBuildFileLockRegex().IsMatch(execution.StdOut);
+        if (lockHit)
+        {
+            return new TestRunFailureEnvelopeDto(
+                ErrorKind: "FileLock",
+                IsRetryable: true,
+                Summary: $"dotnet test exited with code {execution.ExitCode} due to an MSBuild file lock (MSB3027/MSB3021). " +
+                         "Another process (testhost.exe, IDE test runner, or background build) is still holding the test assembly. " +
+                         "Close the conflicting runner and retry the same invocation.",
+                StdOutTail: stdOutTail,
+                StdErrTail: stdErrTail);
+        }
+
+        // Build failure: compilation errors prevented the test step from running.
+        // Not retryable — the caller must fix the source first.
+        var buildFailed = execution.StdOut.Contains("Build FAILED", StringComparison.OrdinalIgnoreCase)
+            || execution.StdErr.Contains("Build FAILED", StringComparison.OrdinalIgnoreCase);
+        if (buildFailed)
+        {
+            return new TestRunFailureEnvelopeDto(
+                ErrorKind: "BuildFailure",
+                IsRetryable: false,
+                Summary: $"dotnet test exited with code {execution.ExitCode} because the build step failed. " +
+                         "Inspect the build diagnostics and fix compilation errors before retrying.",
+                StdOutTail: stdOutTail,
+                StdErrTail: stdErrTail);
+        }
+
+        return new TestRunFailureEnvelopeDto(
+            ErrorKind: "Unknown",
+            IsRetryable: false,
+            Summary: $"dotnet test exited with code {execution.ExitCode} and produced no TRX output. " +
+                     "Inspect StdOutTail/StdErrTail for diagnosis.",
+            StdOutTail: stdOutTail,
+            StdErrTail: stdErrTail);
+    }
+
+    private static string? Tail(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return null;
+        return value.Length <= FailureTailMaxChars
+            ? value
+            : value[^FailureTailMaxChars..];
     }
 
     private static (int Total, int Passed, int Failed, int Skipped, List<TestFailureDto> Failures) ParseSingleTrxFile(string trxPath)

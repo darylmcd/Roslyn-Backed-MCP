@@ -28,4 +28,8 @@
     <ProjectReference Include="..\RoslynMcp.Core\RoslynMcp.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="RoslynMcp.Tests" />
+  </ItemGroup>
+
 </Project>
