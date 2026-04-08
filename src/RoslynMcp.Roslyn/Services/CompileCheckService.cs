@@ -3,6 +3,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Emit;
 using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -51,9 +52,18 @@ public sealed class CompileCheckService : ICompileCheckService
 
             if (emitValidation)
             {
-                // Full emit validation catches more issues (e.g., missing references at emit time)
+                // Full emit validation catches more issues than GetDiagnostics — primarily
+                // metadata reference resolution failures and IL-level errors that the
+                // declaration-phase analyzer never observes. Force a real PE emit (not
+                // metadata-only) so the diagnostics are produced by the same path that
+                // `dotnet build` would use. The audit-driven precondition is that the
+                // workspace must have its NuGet packages restored; without restored
+                // references, both `compilation.Emit` and `compilation.GetDiagnostics`
+                // surface the same metadata-resolution errors and the wall-clock cost
+                // appears identical because there is no IL phase to skip.
+                var emitOptions = new EmitOptions(metadataOnly: false);
                 using var stream = new MemoryStream();
-                var emitResult = compilation.Emit(stream, cancellationToken: ct);
+                var emitResult = compilation.Emit(stream, options: emitOptions, cancellationToken: ct);
                 diagnostics = emitResult.Diagnostics;
             }
             else
