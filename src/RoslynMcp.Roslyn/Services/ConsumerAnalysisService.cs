@@ -23,8 +23,9 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
         string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is null) return null;
+        // Throw on unresolved symbol so callers see a structured NotFound envelope
+        // (matches find_references contract).
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();

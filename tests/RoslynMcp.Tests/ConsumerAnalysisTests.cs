@@ -33,11 +33,15 @@ public sealed class ConsumerAnalysisTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task FindConsumers_NonExistentSymbol_ReturnsNull()
+    public async Task FindConsumers_NonExistentSymbol_ThrowsKeyNotFoundException()
     {
+        // After error-response-observability fix: unresolvable handles/metadata names throw
+        // KeyNotFoundException so the tool layer's ToolErrorHandler emits a structured
+        // NotFound envelope (instead of the old null/empty result that callers could not
+        // distinguish from a legitimate "valid symbol, zero consumers" outcome).
         var locator = SymbolLocator.ByMetadataName("SampleLib.NonExistentType");
-        var result = await ConsumerAnalysisService.FindConsumersAsync(WorkspaceId, locator, CancellationToken.None);
-        Assert.IsNull(result);
+        await Assert.ThrowsExceptionAsync<KeyNotFoundException>(
+            () => ConsumerAnalysisService.FindConsumersAsync(WorkspaceId, locator, CancellationToken.None));
     }
 
     [TestMethod]
