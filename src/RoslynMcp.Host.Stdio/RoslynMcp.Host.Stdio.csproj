@@ -4,10 +4,15 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>RoslynMcp.Host.Stdio</RootNamespace>
 
-    <!-- dotnet tool packaging -->
+    <!-- dotnet tool packaging.
+         Package id is `Darylmcd.RoslynMcp` because the unprefixed `RoslynMcp` id was
+         taken on nuget.org by another publisher (chrismo80, v1.1.1 published 2026-04-08)
+         shortly before our first publish attempt. The CLI command name stays `roslynmcp`
+         so existing user-config (`.mcp.json`, plugin manifests, docs that say
+         `roslynmcp` on PATH) continues to work — only the package id changed. -->
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>roslynmcp</ToolCommandName>
-    <PackageId>RoslynMcp</PackageId>
+    <PackageId>Darylmcd.RoslynMcp</PackageId>
     <PackageDescription>Roslyn-backed MCP server providing semantic C# analysis for AI coding agents</PackageDescription>
     <Authors>darylmcd</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -47,8 +52,11 @@
   <Target Name="PackAndReinstallGlobalTool" AfterTargets="Publish" Condition="'$(ReinstallTool)' == 'true'">
     <Exec Command="taskkill /F /IM roslynmcp.exe" IgnoreExitCode="true" />
     <Exec Command="dotnet pack &quot;$(MSBuildProjectFullPath)&quot; -c $(Configuration) -o &quot;$(LocalNupkgDir)&quot; --no-build" />
+    <!-- Uninstall both the new package id and the legacy `RoslynMcp` id so any leftover
+         pre-rename install is removed before re-installing under the new id. -->
+    <Exec Command="dotnet tool uninstall -g Darylmcd.RoslynMcp" IgnoreExitCode="true" />
     <Exec Command="dotnet tool uninstall -g RoslynMcp" IgnoreExitCode="true" />
-    <Exec Command="dotnet tool install -g RoslynMcp --add-source &quot;$(LocalNupkgDir)&quot; --version $(Version)" />
+    <Exec Command="dotnet tool install -g Darylmcd.RoslynMcp --add-source &quot;$(LocalNupkgDir)&quot; --version $(Version)" />
   </Target>
 
 </Project>

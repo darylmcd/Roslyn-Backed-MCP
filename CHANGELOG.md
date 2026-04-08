@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Changed
 
 - **Catalog `2026.04` — promote six read-only advanced-analysis tools to stable** (`find_unused_symbols`, `get_di_registrations`, `get_complexity_metrics`, `find_reflection_usages`, `get_namespace_dependencies`, `get_nuget_dependencies`). Evidence: 2026-04-08 multi-repo deep-review raw audits and rollup in `ai_docs/reports/`. `semantic_search` remains **experimental** (open ranking/UX backlog items). Updated `docs/product-contract.md` and `docs/experimental-promotion-analysis.md` accordingly.
+- **NuGet package id renamed `RoslynMcp` → `Darylmcd.RoslynMcp`.** The unprefixed `RoslynMcp` id was published by another author (`chrismo80`, v1.1.1) on 2026-04-08 shortly before our first publish attempt, so it is permanently unavailable. The CLI command name remains `roslynmcp` — `.mcp.json`, plugin manifests, and any user config that references the binary on `PATH` are unaffected. Install command becomes `dotnet tool install -g Darylmcd.RoslynMcp`. Existing local installs of the bare `RoslynMcp` package should be uninstalled (`dotnet tool uninstall -g RoslynMcp`) before installing the new id; the local-dev `PackAndReinstallGlobalTool` MSBuild target now uninstalls both ids before reinstalling.
 
 ## [1.7.0] - 2026-04-08
 

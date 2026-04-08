@@ -22,7 +22,7 @@ dotnet publish src/RoslynMcp.Host.Stdio -c Release -p:ReinstallTool=true
 This single command:
 
 1. Restores and builds `RoslynMcp.Host.Stdio` in `Release` configuration.
-2. Packs the NuGet package into `nupkg/RoslynMcp.<version>.nupkg`.
+2. Packs the NuGet package into `nupkg/Darylmcd.RoslynMcp.<version>.nupkg`.
 3. Kills any running `roslynmcp.exe` processes.
 4. Uninstalls the existing `roslynmcp` global tool (if any).
 5. Reinstalls the freshly built tool from the local `nupkg` source.
@@ -155,7 +155,9 @@ do both after a substantive change.
   roslyn-mcp-marketplace` first, then re-run `/plugin install`.
 - **`roslynmcp` command not found after Layer 1.** Confirm
   `%USERPROFILE%\.dotnet\tools` is on your `PATH`. Reinstall with
-  `dotnet tool install -g RoslynMcp` if the publish step skipped install.
+  `dotnet tool install -g Darylmcd.RoslynMcp` if the publish step skipped install.
+  (The unprefixed `RoslynMcp` package id is owned by another publisher on
+  nuget.org; the CLI command name remains `roslynmcp`.)
 - **Hooks block `*_apply` calls unexpectedly.** That's the pre-apply guard
   doing its job; you must call the matching `*_preview` first. This is
   documented in `README.md` § *Plugin Hooks*.

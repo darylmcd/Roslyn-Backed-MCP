@@ -73,7 +73,7 @@ The easiest way to use this server with Claude Code is as a plugin.
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) — **10.0.100** per [`global.json`](global.json)
-- Install the global tool: `dotnet tool install -g RoslynMcp`
+- Install the global tool: `dotnet tool install -g Darylmcd.RoslynMcp` (the unprefixed `RoslynMcp` package id is owned by another publisher; the CLI command remains `roslynmcp` after install)
 
 ### Install as Plugin
 
