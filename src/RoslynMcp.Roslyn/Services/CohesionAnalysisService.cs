@@ -85,7 +85,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         {
             if (!includeInterfaces) return null;
             var methodCount = typeSymbol.GetMembers().OfType<IMethodSymbol>()
-                .Count(m => m.MethodKind == MethodKind.Ordinary && !m.IsImplicitlyDeclared);
+                .Count(m => m.MethodKind == MethodKind.Ordinary && !m.IsImplicitlyDeclared && !IsSourceGenPartial(m));
             if (minMethods.HasValue && methodCount < minMethods.Value) return null;
             return new CohesionMetricsDto(
                 TypeName: typeSymbol.Name,
@@ -99,9 +99,13 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             { TypeKind = "Interface" };
         }
 
+        // Filter out source-generator partial methods (e.g., [LoggerMessage], [GeneratedRegex])
+        // BEFORE clustering. They have no real body to read fields from, so they would each be
+        // their own LCOM4 cluster and falsely inflate the score for classes that wrap a single
+        // real method around generated logging or regex partials.
         var instanceMethods = typeSymbol.GetMembers()
             .OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic && !m.IsImplicitlyDeclared)
+            .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic && !m.IsImplicitlyDeclared && !IsSourceGenPartial(m))
             .ToList();
 
         if (minMethods.HasValue && instanceMethods.Count < minMethods.Value) return null;
@@ -112,8 +116,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
                         (m is IPropertySymbol p && !p.IsStatic && !p.IsImplicitlyDeclared))
             .ToList();
 
-        var methodFieldMap = BuildMethodFieldMap(instanceMethods, typeSymbol, typeDecl, semanticModel, ct);
-        var clusters = ComputeClusters(methodFieldMap, typeSymbol);
+        var (methodFieldMap, methodCallMap) = BuildMethodAccessMaps(instanceMethods, typeSymbol, typeDecl, semanticModel, ct);
+        var clusters = ComputeClusters(methodFieldMap, methodCallMap);
 
         return new CohesionMetricsDto(
             TypeName: typeSymbol.Name,
@@ -127,16 +131,58 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         { TypeKind = typeSymbol.TypeKind.ToString() };
     }
 
-    private static Dictionary<string, HashSet<string>> BuildMethodFieldMap(
+    /// <summary>
+    /// For each method, build two maps:
+    /// - <c>methodFieldMap</c>: the field/property names the method accesses (used for SharedFields output).
+    /// - <c>methodCallMap</c>: the private helper method names the method calls (used for cluster connectivity).
+    /// Splitting these prevents BUG-N9 where a private helper showed up both as a method node AND
+    /// inside the SharedFields list of its caller's cluster.
+    /// </summary>
+    private static (Dictionary<string, HashSet<string>> Fields, Dictionary<string, HashSet<string>> Calls) BuildMethodAccessMaps(
         List<IMethodSymbol> methods, INamedTypeSymbol containingType,
         TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, CancellationToken ct)
     {
-        var map = new Dictionary<string, HashSet<string>>();
+        var fieldMap = new Dictionary<string, HashSet<string>>();
+        var callMap = new Dictionary<string, HashSet<string>>();
         foreach (var method in methods)
         {
-            map[method.Name] = FindAccessedFields(method, containingType, typeDecl, semanticModel, ct);
+            var (fields, calls) = FindAccessedMembers(method, containingType, semanticModel, ct);
+            fieldMap[method.Name] = fields;
+            callMap[method.Name] = calls;
         }
-        return map;
+        return (fieldMap, callMap);
+    }
+
+    /// <summary>
+    /// Returns true when the method is a source-generator partial (no real body) such as
+    /// <c>[LoggerMessage]</c> or <c>[GeneratedRegex]</c>. These would otherwise show up as
+    /// independent LCOM4 clusters because they don't access any fields, falsely inflating
+    /// the score for classes wrapping a single real method around several generated partials.
+    /// </summary>
+    private static bool IsSourceGenPartial(IMethodSymbol method)
+    {
+        if (method.IsPartialDefinition) return true;
+
+        // The implementation part may carry the attribute even when the definition does not.
+        var implPart = method.PartialImplementationPart;
+        var defPart = method.PartialDefinitionPart;
+        return HasSourceGenAttribute(method)
+            || (implPart is not null && HasSourceGenAttribute(implPart))
+            || (defPart is not null && HasSourceGenAttribute(defPart));
+    }
+
+    private static bool HasSourceGenAttribute(IMethodSymbol method)
+    {
+        foreach (var attribute in method.GetAttributes())
+        {
+            var name = attribute.AttributeClass?.ToDisplayString();
+            if (name is "Microsoft.Extensions.Logging.LoggerMessageAttribute"
+                or "System.Text.RegularExpressions.GeneratedRegexAttribute")
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     public async Task<IReadOnlyList<SharedMemberDto>> FindSharedMembersAsync(
@@ -195,13 +241,23 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         return results.OrderByDescending(r => r.CallingMethods.Count).ToList();
     }
 
-    private static HashSet<string> FindAccessedFields(
+    /// <summary>
+    /// Walks a method body and returns two disjoint sets:
+    /// - <c>fields</c>: instance/static fields and properties on the containing type that the method reads or writes.
+    /// - <c>calls</c>: private helper methods on the containing type that the method calls.
+    ///
+    /// Keeping these separated fixes BUG-N9 — previously private-helper names were merged into
+    /// the same set as field names, so the SharedFields output for an LCOM4 cluster ended up
+    /// containing helper-method names alongside real fields.
+    /// </summary>
+    private static (HashSet<string> Fields, HashSet<string> Calls) FindAccessedMembers(
         IMethodSymbol method, INamedTypeSymbol containingType,
-        TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, CancellationToken ct)
+        SemanticModel semanticModel, CancellationToken ct)
     {
-        var accessed = new HashSet<string>(StringComparer.Ordinal);
+        var fields = new HashSet<string>(StringComparer.Ordinal);
+        var calls = new HashSet<string>(StringComparer.Ordinal);
         var methodLocation = method.Locations.FirstOrDefault(l => l.IsInSource);
-        if (methodLocation?.SourceTree is null) return accessed;
+        if (methodLocation?.SourceTree is null) return (fields, calls);
 
         var root = methodLocation.SourceTree.GetRoot(ct);
         var methodNode = root.FindNode(methodLocation.SourceSpan);
@@ -216,13 +272,13 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
                 SymbolEqualityComparer.Default.Equals(field.ContainingType, containingType) &&
                 (containingType.IsStatic || !field.IsStatic))
             {
-                accessed.Add(field.Name);
+                fields.Add(field.Name);
             }
             else if (referencedSymbol is IPropertySymbol prop &&
                      SymbolEqualityComparer.Default.Equals(prop.ContainingType, containingType) &&
                      (containingType.IsStatic || !prop.IsStatic))
             {
-                accessed.Add(prop.Name);
+                fields.Add(prop.Name);
             }
             else if (referencedSymbol is IMethodSymbol calledMethod &&
                      SymbolEqualityComparer.Default.Equals(calledMethod.ContainingType, containingType) &&
@@ -230,12 +286,13 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
                      calledMethod.DeclaredAccessibility == Accessibility.Private &&
                      calledMethod.MethodKind == MethodKind.Ordinary)
             {
-                // Private method calls create transitive coupling
-                accessed.Add(calledMethod.Name);
+                // Private method calls create transitive coupling but should NOT appear as
+                // SharedFields. They live in the call map, used only for cluster connectivity.
+                calls.Add(calledMethod.Name);
             }
         }
 
-        return accessed;
+        return (fields, calls);
     }
 
     private static bool MethodAccessesMember(
@@ -260,9 +317,12 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
     private static List<MethodClusterDto> ComputeClusters(
         Dictionary<string, HashSet<string>> methodFieldMap,
-        INamedTypeSymbol containingType)
+        Dictionary<string, HashSet<string>> methodCallMap)
     {
-        // Build adjacency: two methods are connected if they share any field/private-method access
+        // Build adjacency: two methods are connected if they share any field/property access OR
+        // any private-helper-method call. The two relationships are kept in separate maps so
+        // that cluster connectivity considers both, while SharedFields output only contains
+        // real field/property names (BUG-N9).
         var methodNames = methodFieldMap.Keys.ToList();
         var parent = new Dictionary<string, string>();
         foreach (var name in methodNames)
@@ -285,12 +345,14 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             if (ra != rb) parent[ra] = rb;
         }
 
-        // Union methods that share at least one field
+        // Union methods that share at least one field/property OR a private-helper call.
         for (int i = 0; i < methodNames.Count; i++)
         {
             for (int j = i + 1; j < methodNames.Count; j++)
             {
-                if (methodFieldMap[methodNames[i]].Overlaps(methodFieldMap[methodNames[j]]))
+                var sharesField = methodFieldMap[methodNames[i]].Overlaps(methodFieldMap[methodNames[j]]);
+                var sharesCall = methodCallMap[methodNames[i]].Overlaps(methodCallMap[methodNames[j]]);
+                if (sharesField || sharesCall)
                 {
                     Union(methodNames[i], methodNames[j]);
                 }
@@ -303,11 +365,9 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         return groups.Select(g =>
         {
             var methods = g.OrderBy(m => m).ToList();
-            // BUG-N9: methodFieldMap values mix field/property names with private helper methods;
-            // only fields/properties belong in SharedFields for LCOM-style reporting.
+            // SharedFields is sourced from the field map only — never from the call map.
             var sharedFields = methods
                 .SelectMany(m => methodFieldMap[m])
-                .Where(name => containingType.GetMembers(name).Any(ms => ms is IFieldSymbol or IPropertySymbol))
                 .Distinct()
                 .OrderBy(f => f)
                 .ToList();
