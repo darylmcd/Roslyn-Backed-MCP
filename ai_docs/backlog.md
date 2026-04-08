@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-08T18:35:00Z
+**updated_at:** 2026-04-08T19:00:00Z
 
 ## Agent contract
 
@@ -31,7 +31,6 @@ Ordered by severity: P2 (contract violations / real-world blockers) → P3 (refa
 | id | blocker | deps | do |
 |----|---------|------|-----|
 | `test-run-failure-envelope` | none | — | **P2 / reliability.** 2026-04-08 audits: `test_run` failed with MSB3027/3021 file locks when `testhost` still holds Roslyn DLLs (roslyn-backed-mcp 130615), and with a generic MCP bridge error `An error occurred invoking 'test_run'` with no structured payload (131317). Surface exit code, stdout/stderr excerpts, and whether the failure is retryable; document Windows concurrent-test behavior in the tool description. |
-| `audit-feasibility-companion-cli` | none | `workspace-payload-summary-modes` | **P2 / tooling.** A complete walkthrough of `ai_docs/prompts/deep-review-and-refactor.md` against a 34-project / 751-document solution does not fit in a single Claude Code conversation today, primarily because workspace-payload bloat tools (`workspace_load`, `workspace_status`, `workspace_list`, `roslyn://workspaces`, `get_nuget_dependencies`, `list_analyzers`, `get_msbuild_properties`, `find_unused_symbols`) exhaust the per-turn ~250 KB output budget by mid-prompt — observed against the 34-project ITChatBot.sln in the 2026-04-07 rw-lock audit. Consider shipping a `roslyn-mcp-audit` companion CLI that drives the deep-review prompt headlessly and emits the canonical raw audit file as an artifact, freeing the LLM from having to render every tool result back through context. The payload-summary-modes fix alone may lift this ceiling enough that a CLI is unnecessary — re-evaluate after that lands. |
 | `workspace-session-deduplication` | none | — | **P3 / session model.** Loading the same solution path twice in one host process can yield `workspace_list` with multiple distinct `WorkspaceId`s (2026-04-08 roslyn-backed-mcp audit 130615; not reproduced on a later pass — intermittent). Wastes workspace slots and confuses audits. Consider idempotent `workspace_load` or explicit dedup. |
 | `revert-last-apply-disk-consistency` | none | — | **P3 / undo.** `revert_last_apply` reported success while the on-disk file still contained the applied text until manual cleanup and `workspace_reload` (2026-04-08 NetworkDocumentation audit). Align workspace model with disk or document the edge case. |
 | `semantic-search-zero-results-verbose-query` | none | — | **P3 / UX.** `semantic_search` returned `count: 0` for a long natural-language query while a shorter query returned hits on the same repo (2026-04-08 FirewallAnalyzer audit). Add keyword/stem fallback or scoring/debug payload when the embedding ranker returns empty. |
@@ -42,7 +41,7 @@ Ordered by severity: P2 (contract violations / real-world blockers) → P3 (refa
 | `tool-substring-matching-docs` | none | — | **P4 / docs.** `get_msbuild_properties`'s `propertyNameFilter` already documents "case-insensitive substring filter", but `symbol_search`'s `query` description only says "supports partial matching" — ambiguous about whether it's prefix, substring, or fuzzy. Update `symbol_search` to explicitly say "substring match (case-insensitive)" so callers know to pass bare fragments instead of wildcard patterns. |
 | `server-info-prompts-tier-doc` | none | — | **P4 / docs.** `server_info` reports `prompts: stable=0, experimental=16` but the live catalog only exposes 16 experimental prompts — it is unclear whether prompts have a stable tier at all. Confirm the tiering convention is intentional and document it in the `server_info` tool description (or rename the field if prompts don't have tiers). |
 | `analyze-snippet-cs0029-literal-span` | none | — | **P4 / diagnostics UX.** For embedded bad assignments in `analyze_snippet`, the CS0029 span may not highlight the string literal (2026-04-08 FirewallAnalyzer audit). Align highlighting with user-relative literal column expectations. |
-| `msbuild-tools-bad-argument-message` | none | — | **P4 / errors.** Passing wrong parameter names to `evaluate_msbuild_property` / `evaluate_msbuild_items` surfaces a generic MCP invocation error instead of listing required parameters such as `project` (2026-04-08 FirewallAnalyzer audit). |
+| `msbuild-tools-bad-argument-message` | none | — | **P4 / errors.** Passing wrong parameter names to `evaluate_msbuild_property` / `evaluate_msbuild_items` surfaces a generic MCP invocation error instead of listing required parameters such as `project`. (2026-04-08 FirewallAnalyzer audit.) |
 | `compile-check-vs-analyzers-doc` | none | — | **P4 / docs.** `compile_check` can report zero CS diagnostics while `project_diagnostics` lists many CA/IDE warnings on the same workspace — correct by design but confusing (2026-04-08 ITChatBot audit). Clarify CS-only vs analyzer-inclusive semantics in both tool descriptions. |
 
 ## Refs

@@ -6,7 +6,7 @@
      with the project's actual tool, resource, and prompt surface at all times.
      When tools, resources, or prompts are added, removed, or renamed,
      update the Tools Reference appendix accordingly.
-   Last surface audit: 2026-04-08 (catalog 2026.04; 123 tools = 62 stable / 61 experimental, 7 resources, 16 prompts). -->
+   Last surface audit: 2026-04-08 (catalog 2026.04; 123 tools = 62 stable / 61 experimental, 9 resources, 16 prompts). -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** produce an MCP server audit (bugs, incorrect results, gaps). **Mechanism:** real refactoring plus tool calls that exercise the full surface.
@@ -63,7 +63,7 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 9. **`evaluate_csharp` and "tens of minutes" stalls — neutral diagnosis only:** The server applies a **script timeout** (default 10 seconds via `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS`). A healthy `evaluate_csharp` call should finish or fail within that budget plus small overhead. If a call exceeds budget + watchdog grace **and you have not received any tool result**, treat the cause as **unknown** and stop. Do **not** speculate from inside the session about whether the stall is server-side, client-side, or transport-level — you cannot reliably distinguish these from inside the agent loop, and self-attributed diagnoses bias toward whatever exonerates the tools you're using. Persist findings to the draft, log the workspace state from the last known good tool call (`workspace_list`, last successful tool name and elapsed ms), and surface the stall in the report's **MCP server issues** section as `cause: unknown — operator must triage from MCP stderr + client logs`. Diagnostic attribution is for the operator, not the agent.
 10. **Always emit text per turn:** Every assistant turn must emit at least one line of natural-language text alongside any tool calls. A turn that issues only tool calls is a silent stall from the user's perspective even if internal work is in flight. Minimum acceptable text is one sentence describing what is being dispatched, e.g. *"Phase 5 dispatched: `analyze_snippet` ×3, `evaluate_csharp` ×1. Awaiting results."* Empty assistant turns are the visible symptom of context-pressure stalls and have to be treated as a contract violation, not an optimization.
 11. **Phases run sequentially — no cross-phase parallelism:** Within a phase, parallel tool calls are encouraged for independent reads. **Never start phase N+1 before phase N's findings are persisted to the draft file** (see Output Format § draft persistence). Cross-phase parallelism is the most common cause of context-pressure stalls — the model fans out, accumulates tool results from multiple phases at once, and then cannot serialize the report at the end. Sequential phasing lets each phase's results drain to the draft before the next phase begins.
-12. **Output budget per turn:** After cumulative tool-result size in a single turn exceeds **~250 KB**, persist current findings to the draft and start a new turn before issuing more tool calls. The usual culprits are `compile_check`, `project_diagnostics`, `list_analyzers`, `get_namespace_dependencies`, and `get_msbuild_properties` — each can return 50–700 KB on a real solution. Once a phase's tool results are recorded in the draft, drop them from active reasoning so they don't accumulate. Server v1.7+ exposes pagination (`offset`, `limit`, `severity`, `file`) on `compile_check` — use it.
+12. **Output budget per turn:** After cumulative tool-result size in a single turn exceeds **~250 KB**, persist current findings to the draft and start a new turn before issuing more tool calls. The usual culprits are `compile_check`, `project_diagnostics`, `list_analyzers`, `get_namespace_dependencies`, and `get_msbuild_properties` — each can return 50–700 KB on a real solution. Once a phase's tool results are recorded in the draft, drop them from active reasoning so they don't accumulate. Server v1.7+ exposes pagination (`offset`, `limit`, `severity`, `file`) on `compile_check` — use it. **Server v1.8+:** `workspace_load`, `workspace_status`, `workspace_list`, and the `roslyn://workspaces` resource now default to a lean **summary** payload (counts and load state, no per-project tree). The verbose payload is opt-in via `verbose=true` on the tools, or via the dedicated `roslyn://workspaces/verbose` and `roslyn://workspace/{id}/status/verbose` resources. Use `verbose=true` only when you actually need the per-project tree (e.g. cross-checking against `project_graph` or counting documents); the default summary keeps a status-check at ~500 bytes instead of ~30 KB on large solutions.
 13. **Workspace heartbeat between phases:** Before starting a new phase, call `workspace_list`. If the workspace is missing (`count: 0`), the host process likely restarted between turns — reload from the recorded entrypoint, then resume from the last persisted phase in the draft. Do not silently continue against a dead workspace; the cascading `KeyNotFoundException` errors that follow waste a lot of agent context before the agent figures out what happened.
 
 ---
@@ -77,9 +77,9 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 5. Call `server_info` to record the server version, Roslyn version, catalog version, live stable/experimental counts, and `runtime` / `os` strings.
 6. Read `roslyn://server/catalog` to capture the authoritative live surface inventory.
 7. Read `roslyn://server/resource-templates` to capture all resource URI templates.
-8. Call `workspace_load` with the chosen entrypoint.
-9. Call `workspace_list` to confirm the session appears.
-10. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors.
+8. Call `workspace_load` with the chosen entrypoint. Server v1.8+ returns a lean summary by default; pass `verbose=true` if you need the full per-project tree (typically not needed at load time — `project_graph` covers the same data more efficiently).
+9. Call `workspace_list` to confirm the session appears (default summary is fine).
+10. Call `workspace_status` to confirm the workspace loaded cleanly. Note any load errors. The default summary surfaces `WorkspaceDiagnosticCount` / `WorkspaceErrorCount` / `WorkspaceWarningCount` so you can detect load failures without paying for the full diagnostic array.
 11. Call `project_graph` to understand the project dependency structure.
 12. From the loaded repo, record the repo-shape constraints that affect later phases (projects, tests, analyzers, DI, source generators, Central Package Management, multi-targeting, network limits).
 13. **Restore precheck (mandatory for any C# repo).** Before running any Phase-1 semantic-analysis tool, run `dotnet restore <entrypoint>` from the host shell. Unrestored package references put `UnresolvedAnalyzerReference` entries into `Project.AnalyzerReferences`, which historically crashed `find_unused_symbols`, `type_hierarchy`, `callers_callees`, and `impact_analysis` (FLAG-A). Server v1.7+ filters that subtype out, but the precheck remains a precondition discipline — without restore, `compile_check` and `project_diagnostics` flood with hundreds of CS0246 errors from missing types in unrestored packages, which alone is enough to push a single-turn tool result over the output budget (cross-cutting principle #12). If the host has no shell access, mark this step `blocked` and continue — note in the report header that semantic-analysis tools may degrade or surface package-not-restored errors.
@@ -92,9 +92,9 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 ### Phase 1: Broad Diagnostics Scan
 
 1. Call `project_diagnostics` (no filters) to get all compiler errors and warnings across the solution.
-2. Call `project_diagnostics` again with at least one non-default selector exposed by the live schema (project, file, severity, and/or offset/limit pagination). Verify scoped results and paging boundaries are correct.
+2. Call `project_diagnostics` again with at least one non-default selector exposed by the live schema (project, file, severity, and/or offset/limit pagination). Verify scoped results and paging boundaries are correct. **Server v1.8+:** `TotalErrors` / `TotalWarnings` / `TotalInfo` are invariant under `severityFilter` — calling with `severity=Error` should report the same counts as calling with no filter, only the returned arrays are narrowed. If filtered totals collapse to zero, that is a regression.
 3. Call `compile_check` (default `offset=0, limit=50`) to get a paginated slice of in-memory compilation diagnostics. Compare the page contents with `project_diagnostics` for the same scope — they should be consistent but may differ in count or detail. Use `severity=Error` and `file=<path>` selectors to probe non-default parameter paths (cross-cutting principle #6).
-4. Call `compile_check` again with `emitValidation=true` (same pagination). Compare diagnostics, `TotalDiagnostics`, and wall-clock time with the default call. Note: when packages are unrestored, `emitValidation=true` may return byte-identical output to the default — investigate before flagging this as a regression (the precondition matters; see backlog `compile-check-emit-validation-regression-check`).
+4. Call `compile_check` again with `emitValidation=true` (same pagination). Compare diagnostics, `TotalDiagnostics`, and wall-clock time with the default call. Server v1.8+ passes an explicit `EmitOptions(metadataOnly: false)` to force the full PE-emit path, but the precondition is real: when NuGet packages are unrestored the emit phase short-circuits and the wall-clock cost matches GetDiagnostics. If you observe identical timing between true/false, run `dotnet restore` first before flagging it as a regression (the tool description spells this out).
 5. Call `security_diagnostics` to identify security-relevant findings with OWASP categorization.
 6. Call `security_analyzer_status` to check which analyzer packages are installed and what's missing.
 7. Call `nuget_vulnerability_scan` to scan NuGet references for known CVEs. Compare with `security_diagnostics` — vulnerability scan covers supply-chain CVEs while security diagnostics covers source-level patterns.
@@ -109,13 +109,13 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 ### Phase 2: Code Quality Metrics
 
 1. Call `get_complexity_metrics` with no filters to find the most complex methods across the solution. Note any with cyclomatic complexity > 10 or nesting depth > 4.
-2. Call `get_cohesion_metrics` with `minMethods=3` to find types with LCOM4 > 1 (SRP violations).
+2. Call `get_cohesion_metrics` with `minMethods=3` to find types with LCOM4 > 1 (SRP violations). Server v1.8+ ignores `[LoggerMessage]` / `[GeneratedRegex]` source-generator partial methods (they previously inflated the score by appearing as standalone clusters), and `SharedFields` only contains real field/property names — private helper methods used by multiple public methods still merge their callers into one cluster but don't show up as a "shared field".
 3. Call `find_unused_symbols` with `includePublic=false` to detect dead code.
 4. Call `find_unused_symbols` with `includePublic=true` and compare — are there public APIs with zero internal references?
 5. Call `get_namespace_dependencies` to check for circular namespace dependencies.
 6. Call `get_nuget_dependencies` to audit package references across projects.
 
-**MCP audit checkpoint:** Do complexity metrics make sense for the methods shown? Are LCOM4 scores reasonable (do types with score=1 actually look cohesive when you read them)? Does `find_unused_symbols` miss any obviously dead code or falsely flag used symbols?
+**MCP audit checkpoint:** Do complexity metrics make sense for the methods shown? Are LCOM4 scores reasonable (do types with score=1 actually look cohesive when you read them)? After v1.8+, are source-gen partial methods correctly excluded from the cluster count, and are `SharedFields` lists free of private-helper-method names? Does `find_unused_symbols` miss any obviously dead code or falsely flag used symbols?
 
 ---
 
@@ -131,7 +131,7 @@ For each key type in the solution:
 6. Call `find_references` to see how widely it's used.
 7. Call `find_consumers` to classify dependency kinds (constructor, field, parameter, etc.).
 8. Call `find_shared_members` to identify private members shared across public methods.
-9. Call `find_type_mutations` to find all mutating members and their external callers.
+9. Call `find_type_mutations` to find all mutating members and their external callers. Server v1.8+ classifies each mutating member by `MutationScope`: `FieldWrite` (settable property or instance-field reassignment), `CollectionWrite` (Add/Remove/Clear-style call), `IO` (System.IO.File / Directory / FileStream / StreamWriter), `Network` (HttpClient / TcpClient / UdpClient), `Process` (System.Diagnostics.Process), or `Database` (DbCommand.Execute*). A class like `FileSnapshotStore` whose whole purpose is disk IO will now report its `WriteAllText`/`Delete` methods with `MutationScope=IO` even though they don't reassign instance fields.
 10. Call `find_type_usages` to see how the type is used (return types, parameters, fields, casts, etc.).
 11. Call `callers_callees` on 2-3 of its methods to map call chains.
 12. Call `find_property_writes` on any settable properties to classify init vs post-construction writes.
@@ -153,10 +153,12 @@ For each method with high complexity:
    - Variables that flow in but are never read inside (unused parameters?)
    - Variables written inside but never read outside (dead assignments?)
    - Captured variables (closure risks)
+   - **Server v1.8+:** Expression-bodied members (`=> expr`) are now supported — point the line range at the arrow or its expression and the resolver will lift the expression for analysis. Previously these returned "No statements found in the line range".
 3. Call `analyze_control_flow` on the same range. Examine:
    - Is `EndPointIsReachable` false where it should be true (or vice versa)?
    - Are there unreachable exit points?
    - Do return statements cover all paths?
+   - **Server v1.8+:** For expression-bodied members the result is synthesized: `Succeeded=true`, `StartPointIsReachable=true`, `EndPointIsReachable=false`, exactly one synthetic implicit return at the arrow location, no entry/exit points. Roslyn does not expose an `AnalyzeControlFlow(ExpressionSyntax)` overload, so this is the semantically-correct alternative.
 4. Call `get_operations` on key expressions within the method (assignments, invocations, conditionals) to get the IOperation tree. Look for:
    - Implicit conversions that may lose data
    - Null-conditional chains that could be simplified
@@ -301,7 +303,7 @@ If `test_discover` returns zero tests, still record that result. Then explicitly
 
 ### Phase 8b: Concurrency Audit (per-workspace RW lock)
 
-**Stability note (repo-matrix audits, 2026-04):** Many AI agent hosts **serialize** MCP tool calls or cannot attribute wall-clock across truly parallel requests. That is expected. When true concurrency is unavailable, mark **8b.2** (parallel fan-out), **8b.3** (read/write interleaving), and timing-sensitive parts of **8b.4** as **`blocked`** — *client cannot issue concurrent tool calls* (or **`skipped-safety`** if parallel dispatch would be unsafe). Record that limitation once in the report header; **do not** force speedup ratios or benchmark comparisons against `tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs` in that case. Still run **8b.1** sequential baselines when possible using `_meta.heldMs` on responses that expose it, or external wall-clock; if reader tools lack timing fields, cite backlog `reader-tool-elapsed-ms` in the matrix. **8b.5**–**8b.6** add the most value when run in a host that supports parallel reads (benchmark harness, integration driver, or an MCP client with real concurrent requests).
+**Stability note (repo-matrix audits, 2026-04):** Many AI agent hosts **serialize** MCP tool calls or cannot attribute wall-clock across truly parallel requests. That is expected. When true concurrency is unavailable, mark **8b.2** (parallel fan-out), **8b.3** (read/write interleaving), and timing-sensitive parts of **8b.4** as **`blocked`** — *client cannot issue concurrent tool calls* (or **`skipped-safety`** if parallel dispatch would be unsafe). Record that limitation once in the report header; **do not** force speedup ratios or benchmark comparisons against `tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs` in that case. Still run **8b.1** sequential baselines when possible using **`_meta.elapsedMs`** (server v1.8+ — total wall-clock for every tool/resource response, no per-DTO instrumentation needed) and `_meta.heldMs` (per-workspace lock-hold). **8b.5**–**8b.6** add the most value when run in a host that supports parallel reads (benchmark harness, integration driver, or an MCP client with real concurrent requests).
 
 **Single lock model:** The server ships **one** per-workspace concurrency model (`Nito.AsyncEx.AsyncReaderWriterLock` via `WorkspaceExecutionGate`). There is **no** alternate mutex/legacy lock lane — treat `_rw-lock_` / `_legacy-mutex_` segments in old audit filenames as historical artifacts only (`ai_docs/audit-reports/README.md`).
 
@@ -325,7 +327,7 @@ If a probe is not applicable to the repo shape (e.g. no public-only dead-code su
 
 #### 8b.1 — Sequential baseline
 
-1. For each reader R1–R5, call the tool **once sequentially** and record wall-clock in milliseconds. These are the **single-call baselines**.
+1. For each reader R1–R5, call the tool **once sequentially** and record `_meta.elapsedMs` from the response (or external wall-clock if the client strips `_meta`). These are the **single-call baselines**. Server v1.8+ ships `_meta.elapsedMs` on every reader and writer response — no need for external instrumentation.
 2. Record any structured log entries received from the MCP server during the calls (correlation IDs, gate-related warnings, rate-limit hits, request timeouts).
 
 #### 8b.2 — Parallel-read fan-out
@@ -414,7 +416,7 @@ Write the matrix into the report using the schema in **Output Format → Concurr
 
 ### Phase 11: Semantic Search & Discovery
 
-1. Call `semantic_search` with a repo-relevant natural-language query like `"async methods returning Task<bool>"` or another pattern that should exist in the target repo.
+1. Call `semantic_search` with a repo-relevant natural-language query like `"async methods returning Task<bool>"` or another pattern that should exist in the target repo. Server v1.8+ HTML-decodes the query on ingress, so an over-eager JSON client that double-encodes angle brackets (`Task&lt;bool&gt;`) gets the same results as the unencoded version.
 2. Call `semantic_search` with a broader paraphrase of the same idea (for example `"methods returning Task<bool>"`) and compare the delta so modifier-sensitive matching is visible.
 3. Call `semantic_search` with `"classes implementing IDisposable"` or another interface-based query you can cross-check against `find_implementations`.
 4. Call `find_reflection_usages` to locate reflection-heavy code that may resist refactoring.
@@ -429,12 +431,12 @@ Write the matrix into the report using the schema in **Output Format → Concurr
 
 **Default behavior:** preview-only. In `full-surface` mode on a disposable checkout, apply one scaffold (`scaffold_type_apply` or `scaffold_test_apply`), verify it compiles or is discoverable, then clean it up with file-operation tools or version control. In `conservative` mode, mark the apply siblings `skipped-safety`.
 
-1. Call `scaffold_type_preview` to scaffold a new class in a project. Verify the generated file content and namespace in the preview payload.
-2. If the repo has or can support a test project/framework, call `scaffold_test_preview` to scaffold a test file for an existing type. Verify it targets the correct type and uses the right test framework in the preview.
+1. Call `scaffold_type_preview` to scaffold a new class in a project. Verify the generated file content and namespace in the preview payload. **Server v1.8+:** the default class scaffold emits `internal sealed class T`, not `public class T` (modern .NET convention). Records, interfaces, and enums stay `public`. The preview file lands at `{projectRoot}/{namespace-folders}/T.cs` even when the namespace does not start with the project name (e.g. `Acme.Domain` → `{project}/Acme/Domain/T.cs`).
+2. If the repo has or can support a test project/framework, call `scaffold_test_preview` to scaffold a test file for an existing type. Verify it targets the correct type and uses the right test framework in the preview. **Server v1.8+:** constructor argument expressions for empty collection interfaces (`IEnumerable<T>`, `ICollection<T>`, `IList<T>`, `IReadOnlyList<T>`, etc.) emit `System.Array.Empty<T>()`; dictionaries emit `new Dictionary<K,V>()`; `string` emits `string.Empty`. Previously every parameter was `default(T)`, which threw NRE on the first call when the parameter was a non-null collection interface.
 3. In `full-surface` mode on a disposable checkout, call the corresponding apply tool for one preview and verify the result with `compile_check`, `test_discover`, or both.
 4. Call `compile_check` if the server requires a fresh compilation for previews; otherwise skip (previews alone do not change disk).
 
-**MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace from the project structure? Does `scaffold_test_preview` generate valid test stubs when a test target exists? Are preview payloads complete and apply-able in principle? When you used an apply sibling, did the scaffolded file compile or show up in test discovery as expected?
+**MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace from the project structure and produce `internal sealed class` (v1.8+ default)? Does it land the file in a folder matching the namespace path? Does `scaffold_test_preview` generate valid test stubs that actually compile **and** run green when a test target exists? When you used an apply sibling, did the scaffolded file compile or show up in test discovery as expected?
 
 ---
 
@@ -462,7 +464,7 @@ Write the matrix into the report using the schema in **Output Format → Concurr
 1. Call `go_to_definition` on a symbol usage. Verify it navigates to the correct declaration.
 2. Call `goto_type_definition` on a variable. Verify it goes to the type, not the variable declaration.
 3. Call `enclosing_symbol` at a position inside a method. Verify it returns the method.
-4. Call `get_completions` at a position after a dot. Verify IntelliSense-style results.
+4. Call `get_completions` at a position after a dot. Verify IntelliSense-style results. **Server v1.8+:** results are ranked with locals/parameters first, then type members (methods/properties/fields), then types (classes/structs/interfaces/enums), then the long tail (namespaces, external symbols). For a query like `filterText="To"`, in-scope `ToString` should appear before namespace-qualified externals like `ToBase64Transform`.
 5. Call `find_references_bulk` with multiple symbol handles. Verify batch results match individual `find_references` calls.
 6. Call `find_overrides` on a virtual method. Verify all overriding members are found.
 7. Call `find_base_members` on an override. Verify it navigates back to the base declaration.
@@ -475,8 +477,8 @@ Write the matrix into the report using the schema in **Output Format → Concurr
 
 1. Read `roslyn://server/catalog` to get the machine-readable surface inventory.
 2. Read `roslyn://server/resource-templates` to list all resource URI templates and compare with the catalog.
-3. Read `roslyn://workspaces` to list active workspace sessions.
-4. Read `roslyn://workspace/{workspaceId}/status` and compare with `workspace_status` tool output.
+3. Read `roslyn://workspaces` to list active workspace sessions. **Server v1.8+:** this resource defaults to a lean summary (counts and load state per workspace, no per-project tree). For the verbose payload use the new `roslyn://workspaces/verbose` resource.
+4. Read `roslyn://workspace/{workspaceId}/status` and compare with `workspace_status` tool output. **Server v1.8+:** also defaults to a summary; use `roslyn://workspace/{workspaceId}/status/verbose` when you need the full project tree, and assert that both summary and verbose responses have matching `WorkspaceVersion` and `SnapshotToken`.
 5. Read `roslyn://workspace/{workspaceId}/projects` and compare with `project_graph` tool output.
 6. Read `roslyn://workspace/{workspaceId}/diagnostics` and compare with `project_diagnostics` tool output.
 7. Read `roslyn://workspace/{workspaceId}/file/{filePath}` for a source file and compare with `get_source_text`.
@@ -504,8 +506,8 @@ The live catalog is authoritative for prompt count. In `conservative` mode, exer
 Deliberately probe edge cases and error paths. The goal is to verify that the server validates inputs, returns helpful error messages, and does not crash on bad data.
 
 #### 17a. Invalid Identifiers
-1. Call a workspace-scoped tool (e.g. `workspace_status`) with a **non-existent workspace id**. Verify the error is actionable.
-2. Call `find_references` (or `symbol_info`) with a **fabricated symbol handle**. Verify it returns a clear error, not a crash or empty success.
+1. Call a workspace-scoped tool (e.g. `workspace_status`) with a **non-existent workspace id**. Verify the error is actionable. **Server v1.8+:** the error envelope's `tool` field carries the actual tool name (or resource URI for resource handlers), not `"unknown"`.
+2. Call `find_references` (or `symbol_info`) with a **fabricated symbol handle**. Verify it returns a clear error, not a crash or empty success. **Server v1.8+:** a structurally valid but unfindable handle (e.g. base64 of `{"MetadataName":"NonExistentNamespace.NonExistentType"}`) now produces a structured `category: NotFound` envelope. Pre-fix this returned `{count:0, totalCount:0, references:[]}` and callers couldn't tell junk handles from "valid handle, zero references". `find_consumers`, `find_type_usages`, `find_implementations`, `find_overrides`, `find_base_members`, `impact_analysis`, and `find_type_mutations` share the same contract.
 3. Call `rename_preview` with the same fabricated handle. Verify error handling.
 
 #### 17b. Out-of-Range Positions
@@ -786,7 +788,7 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 > The live catalog from Phase 0 is authoritative. Treat this appendix as a convenience snapshot; if it drifts from the running server, record prompt drift and trust the live catalog.
 > When tools, resources, or prompts change, update this section.
 > Client limitations do **not** change the appendix counts. If a client cannot invoke prompts or resources, record those entries as `blocked` in the audit ledger rather than editing them out of the documented surface.
-> Last verified: 2026-04-08 against catalog version 2026.04 — **123 tools (62 stable / 61 experimental) | 7 resources (7 stable) | 16 prompts (16 experimental)**
+> Last verified: 2026-04-08 against catalog version 2026.04 — **123 tools (62 stable / 61 experimental) | 9 resources (9 stable) | 16 prompts (16 experimental)**
 
 ### Tools by Category (123 total)
 
@@ -883,7 +885,7 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 #### Undo (1 tool)
 `revert_last_apply`
 
-### Resources (2026.04 snapshot: 7 total)
+### Resources (2026.04 snapshot: 9 total)
 
 If a client cannot list or read one of these resources, keep the resource in the audit ledger with status `blocked` and note the client limitation explicitly. Do not treat that as prompt drift or as a missing server surface entry.
 
@@ -891,8 +893,10 @@ If a client cannot list or read one of these resources, keep the resource in the
 |---|---|---|
 | `roslyn://server/catalog` | Machine-readable surface inventory and support policy | `application/json` |
 | `roslyn://server/resource-templates` | Lists all resource URI templates, including workspace-scoped templates | `application/json` |
-| `roslyn://workspaces` | List active workspace sessions | `application/json` |
-| `roslyn://workspace/{workspaceId}/status` | Workspace status and diagnostics | `application/json` |
+| `roslyn://workspaces` | List active workspace sessions (lean summary; counts and load state, no per-project tree) | `application/json` |
+| `roslyn://workspaces/verbose` | List active workspace sessions with full per-project tree and diagnostics | `application/json` |
+| `roslyn://workspace/{workspaceId}/status` | Workspace status (lean summary; counts and load state, no per-project tree) | `application/json` |
+| `roslyn://workspace/{workspaceId}/status/verbose` | Workspace status with full per-project tree and workspace diagnostics | `application/json` |
 | `roslyn://workspace/{workspaceId}/projects` | Project graph metadata | `application/json` |
 | `roslyn://workspace/{workspaceId}/diagnostics` | Compiler diagnostics | `application/json` |
 | `roslyn://workspace/{workspaceId}/file/{filePath}` | Source file content | `text/x-csharp` |
