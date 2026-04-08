@@ -6,7 +6,7 @@ namespace RoslynMcp.Host.Stdio.Catalog;
 /// </summary>
 public static class ServerSurfaceCatalog
 {
-    public const string CatalogVersion = "2026.03";
+    public const string CatalogVersion = "2026.04";
 
     public static IReadOnlyList<SurfaceEntry> Tools { get; } =
     [
@@ -62,12 +62,12 @@ public static class ServerSurfaceCatalog
         Tool("code_fix_preview", "refactoring", "stable", true, false, "Preview a curated diagnostic code fix."),
         Tool("code_fix_apply", "refactoring", "stable", false, true, "Apply a previously previewed curated code fix."),
 
-        Tool("find_unused_symbols", "advanced-analysis", "experimental", true, false, "Find likely unused symbols."),
-        Tool("get_di_registrations", "advanced-analysis", "experimental", true, false, "Inspect DI registration patterns in source."),
-        Tool("get_complexity_metrics", "advanced-analysis", "experimental", true, false, "Compute cyclomatic complexity and related metrics."),
-        Tool("find_reflection_usages", "advanced-analysis", "experimental", true, false, "Find reflection-heavy call sites."),
-        Tool("get_namespace_dependencies", "advanced-analysis", "experimental", true, false, "Build namespace dependency graphs."),
-        Tool("get_nuget_dependencies", "advanced-analysis", "experimental", true, false, "Inspect NuGet package references and versions."),
+        Tool("find_unused_symbols", "advanced-analysis", "stable", true, false, "Find likely unused symbols."),
+        Tool("get_di_registrations", "advanced-analysis", "stable", true, false, "Inspect DI registration patterns in source."),
+        Tool("get_complexity_metrics", "advanced-analysis", "stable", true, false, "Compute cyclomatic complexity and related metrics."),
+        Tool("find_reflection_usages", "advanced-analysis", "stable", true, false, "Find reflection-heavy call sites."),
+        Tool("get_namespace_dependencies", "advanced-analysis", "stable", true, false, "Build namespace dependency graphs."),
+        Tool("get_nuget_dependencies", "advanced-analysis", "stable", true, false, "Inspect NuGet package references and versions."),
         Tool("semantic_search", "advanced-analysis", "experimental", true, false, "Run semantic search over symbols and declarations."),
 
         Tool("apply_text_edit", "editing", "experimental", false, true, "Apply direct text edits to a single file."),

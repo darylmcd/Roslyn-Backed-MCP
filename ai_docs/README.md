@@ -42,9 +42,8 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | `prompts/standardize-backlog-hygiene.md` | Align backlog hygiene across repos with `backlog.md` and `workflow.md` |
 | `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive code review and MCP server audit (all 18 phases). Keep in sync with project surface. Do not delete. |
 | `prompts/test-suite-audit.md` | Audit tests for performance smells, workspace/init issues, SRP, and tight focus—suite should not introduce slowness or instability |
-| `audit-reports/README.md` | Where raw MCP deep-review audit outputs live; links baseline template and rollup handoff |
-| `audit-reports/deep-review-baseline-2026-04-04.md` | Baseline checklist for a full deep-review session (update when tool surface changes) |
-| `audit-reports/2026-04-04-post-1.5-surface-audit.md` | Example post-release surface audit snapshot |
+| `audit-reports/README.md` | Where raw MCP deep-review audit outputs live; links session worksheet and rollup handoff |
+| `audit-reports/deep-review-session-checklist.md` | Optional fill-in checklist for a deep-review session (aligned with the living prompt) |
 | `reports/README.md` | Where synthesized rollups and cross-cutting audit reports live |
 | `reports/2026-04-06-deep-review-rollup-example.md` | Concrete example of a synthesized deep-review rollup for multi-repo batches |
 | `reports/2026-04-06-test-suite-audit.md` | Example cross-cutting audit report for test-suite review |

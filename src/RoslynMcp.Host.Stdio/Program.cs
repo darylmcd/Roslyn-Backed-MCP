@@ -1,10 +1,10 @@
-using RoslynMcp.Host.Stdio;
-using RoslynMcp.Roslyn;
-using RoslynMcp.Roslyn.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio;
+using RoslynMcp.Roslyn;
+using RoslynMcp.Roslyn.Services;
 
 // MUST be called before any Microsoft.Build types are loaded
 MsBuildInitializer.EnsureInitialized();
