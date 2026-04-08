@@ -26,9 +26,8 @@ Each rollup should include:
 | Inputs | Raw audit file list from `../audit-reports/` |
 | Repo matrix coverage | Covered buckets and missing buckets |
 | Client coverage | Full-surface vs constrained lanes and blocked families |
-| Lock mode coverage | Which lock modes (`legacy-mutex` / `rw-lock` / dual-mode) the batch exercised, plus any single-mode-only raw audits. Required when at least one input audit reports a non-default lock mode or ran Phase 8b. |
-| Concurrency matrix rollup | Aggregated `parallel_speedup` numbers per repo per mode pulled from each raw audit's *Concurrency mode matrix → Parallel fan-out* table. Required when ≥2 input audits ran Phase 8b dual-mode. |
-| Deduped issues | Unique defect key (`tool + symptom + catalog-version + client-family`, plus `lock-mode` for plausibly mode-specific defects) and linked evidence |
+| Concurrency matrix rollup | Aggregated `parallel_speedup` numbers per repo pulled from each raw audit's *Concurrency matrix → Parallel fan-out* table. Required when ≥2 input audits ran Phase 8b. |
+| Deduped issues | Unique defect key (`tool + symptom + catalog-version + client-family`) and linked evidence |
 | Candidate closures | Prior ids and current evidence |
 | Backlog actions | Rows to open, update, or intentionally leave out |
 

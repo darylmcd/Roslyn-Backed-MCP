@@ -21,7 +21,7 @@ public static class WorkspaceTools
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("workspace_load", () =>
-            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, async c =>
+            gate.RunLoadGateAsync(async c =>
             {
                 ProgressHelper.Report(progress, 0, 1);
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
@@ -43,7 +43,7 @@ public static class WorkspaceTools
         // Reload acquires both the global load gate AND the per-workspace write lock so that
         // any in-flight readers on this workspace complete before the solution is replaced.
         return ToolErrorHandler.ExecuteAsync("workspace_reload", () =>
-            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, outerCt =>
+            gate.RunLoadGateAsync(outerCt =>
                 gate.RunWriteAsync(workspaceId, async innerCt =>
                 {
                     var status = await workspace.ReloadAsync(workspaceId, innerCt);
@@ -62,11 +62,10 @@ public static class WorkspaceTools
     {
         // Close acquires both the global load gate AND the per-workspace write lock so that
         // no reader is in flight when the workspace's lock entry is dropped from the registry.
-        // BUG-N2: RemoveGate must run after RunWriteAsync completes so the per-workspace semaphore
-        // is released before Dispose; disposing while the writer still holds the gate caused
-        // ObjectDisposedException in gate.Release().
+        // RemoveGate must run after RunWriteAsync completes so the per-workspace lock entry is
+        // released before being removed from the registry.
         return ToolErrorHandler.ExecuteAsync("workspace_close", () =>
-            gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, async outerCt =>
+            gate.RunLoadGateAsync(async outerCt =>
             {
                 var json = await gate.RunWriteAsync(workspaceId, async innerCt =>
                 {

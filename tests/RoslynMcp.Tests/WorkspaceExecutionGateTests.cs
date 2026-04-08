@@ -10,31 +10,17 @@ public class WorkspaceExecutionGateTests
     private const string WorkspaceA = "ws-a";
     private const string WorkspaceB = "ws-b";
 
-    private static WorkspaceExecutionGate CreateGate(bool useRwLock, FakeGateWorkspaceManager? manager = null)
+    private static WorkspaceExecutionGate CreateGate(FakeGateWorkspaceManager? manager = null)
     {
         return new WorkspaceExecutionGate(
-            new ExecutionGateOptions { UseReaderWriterLock = useRwLock },
+            new ExecutionGateOptions(),
             manager ?? new FakeGateWorkspaceManager());
     }
 
     [TestMethod]
-    public void ExecutionGateOptions_Default_UsesReaderWriterLock()
+    public async Task RunReadAsync_TwoConcurrentReads_RunInParallel()
     {
-        // Phase-2 flip (2026-04-07): the default ExecutionGateOptions now uses the RW lock.
-        // Pin this so a future refactor doesn't silently revert to legacy mutex.
-        var options = new ExecutionGateOptions();
-        Assert.IsTrue(options.UseReaderWriterLock,
-            "Phase-2 flip: default ExecutionGateOptions.UseReaderWriterLock must be true. " +
-            "Revert only as part of a deliberate rollback documented in backlog.md.");
-    }
-
-    [TestMethod]
-    public async Task RunReadAsync_DefaultGate_AllowsConcurrentReads()
-    {
-        // Behavioral pin: a gate constructed with default options (no useRwLock override)
-        // must allow two concurrent reads on the same workspace to overlap. This would fail
-        // if the default reverts to legacy mutex.
-        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), new FakeGateWorkspaceManager());
+        var gate = CreateGate();
         var tracker = new ConcurrencyTracker();
 
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -61,89 +47,16 @@ public class WorkspaceExecutionGateTests
         }, CancellationToken.None);
 
         await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.AreEqual(2, tracker.MaxConcurrent,
-            "Default gate must allow overlapping reads (phase-2 rw-lock default).");
+        Assert.AreEqual(2, tracker.MaxConcurrent, "Two concurrent reads should overlap under the per-workspace RW lock.");
 
         releaseFirst.SetResult();
         await Task.WhenAll(first, second);
-    }
-
-    [TestMethod]
-    public async Task RunReadAsync_TwoConcurrentReads_RunInParallel_WhenFlagOn()
-    {
-        var gate = CreateGate(useRwLock: true);
-        var tracker = new ConcurrencyTracker();
-
-        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var first = gate.RunReadAsync(WorkspaceA, async ct =>
-        {
-            tracker.Enter();
-            firstStarted.SetResult();
-            await releaseFirst.Task.WaitAsync(ct);
-            tracker.Leave();
-            return 1;
-        }, CancellationToken.None);
-
-        await firstStarted.Task;
-
-        var secondStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var second = gate.RunReadAsync(WorkspaceA, async ct =>
-        {
-            tracker.Enter();
-            secondStarted.SetResult();
-            tracker.Leave();
-            return 2;
-        }, CancellationToken.None);
-
-        await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.AreEqual(2, tracker.MaxConcurrent, "Two concurrent reads should overlap under the RW lock.");
-
-        releaseFirst.SetResult();
-        await Task.WhenAll(first, second);
-    }
-
-    [TestMethod]
-    public async Task RunReadAsync_TwoConcurrentReads_SerializeUnderLegacy()
-    {
-        var gate = CreateGate(useRwLock: false);
-        var tracker = new ConcurrencyTracker();
-
-        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var first = gate.RunReadAsync(WorkspaceA, async ct =>
-        {
-            tracker.Enter();
-            firstStarted.SetResult();
-            await releaseFirst.Task.WaitAsync(ct);
-            tracker.Leave();
-            return 1;
-        }, CancellationToken.None);
-
-        await firstStarted.Task;
-
-        var second = gate.RunReadAsync(WorkspaceA, ct =>
-        {
-            tracker.Enter();
-            tracker.Leave();
-            return Task.FromResult(2);
-        }, CancellationToken.None);
-
-        await Task.Delay(50);
-        Assert.IsFalse(second.IsCompleted, "Second read should be queued behind the first under the legacy mutex.");
-        Assert.AreEqual(1, tracker.MaxConcurrent);
-
-        releaseFirst.SetResult();
-        await Task.WhenAll(first, second);
-        Assert.AreEqual(1, tracker.MaxConcurrent);
     }
 
     [TestMethod]
     public async Task RunWriteAsync_BlocksReader()
     {
-        var gate = CreateGate(useRwLock: true);
+        var gate = CreateGate();
 
         var writerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseWriter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -175,7 +88,7 @@ public class WorkspaceExecutionGateTests
     [TestMethod]
     public async Task RunReadAsync_BlocksWriter()
     {
-        var gate = CreateGate(useRwLock: true);
+        var gate = CreateGate();
 
         var readerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseReader = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -207,7 +120,7 @@ public class WorkspaceExecutionGateTests
     [TestMethod]
     public async Task RunWriteAsync_TwoWritesSerialize()
     {
-        var gate = CreateGate(useRwLock: true);
+        var gate = CreateGate();
         var tracker = new ConcurrencyTracker();
 
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -243,7 +156,7 @@ public class WorkspaceExecutionGateTests
     [TestMethod]
     public async Task DifferentWorkspaces_RunIndependently()
     {
-        var gate = CreateGate(useRwLock: true);
+        var gate = CreateGate();
         var aTracker = new ConcurrencyTracker();
         var bTracker = new ConcurrencyTracker();
 
@@ -276,11 +189,11 @@ public class WorkspaceExecutionGateTests
     }
 
     [TestMethod]
-    public async Task QueuedWriter_RunsBeforeLaterReaders_WhenFlagOn()
+    public async Task QueuedWriter_RunsBeforeLaterReaders()
     {
         // FIFO fairness sanity: read → write → reads queued; first read releases;
         // writer must complete before any of the queued reads.
-        var gate = CreateGate(useRwLock: true);
+        var gate = CreateGate();
         var order = new List<string>();
         var orderLock = new object();
 
@@ -333,7 +246,7 @@ public class WorkspaceExecutionGateTests
     [TestMethod]
     public async Task RunReadAsync_ThrowsWhenWorkspaceMissing()
     {
-        var gate = CreateGate(useRwLock: true, manager: new FakeGateWorkspaceManager(containsAny: false));
+        var gate = CreateGate(new FakeGateWorkspaceManager(containsAny: false));
         await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
             gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
     }
@@ -341,7 +254,7 @@ public class WorkspaceExecutionGateTests
     [TestMethod]
     public async Task RunWriteAsync_ThrowsWhenWorkspaceMissing()
     {
-        var gate = CreateGate(useRwLock: true, manager: new FakeGateWorkspaceManager(containsAny: false));
+        var gate = CreateGate(new FakeGateWorkspaceManager(containsAny: false));
         await Assert.ThrowsExactlyAsync<KeyNotFoundException>(() =>
             gate.RunWriteAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
     }
@@ -350,7 +263,7 @@ public class WorkspaceExecutionGateTests
     public async Task RemoveGate_AfterWrite_BlocksFutureCalls()
     {
         var manager = new FakeGateWorkspaceManager();
-        var gate = CreateGate(useRwLock: true, manager: manager);
+        var gate = CreateGate(manager);
 
         await gate.RunWriteAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
 
@@ -364,10 +277,10 @@ public class WorkspaceExecutionGateTests
     [TestMethod]
     public async Task WorkspaceClose_DoubleAcquire_BlocksUntilReaderReleases()
     {
-        // Reproduces the workspace_close path: outer LoadGate + inner RunWriteAsync. The close
+        // Reproduces the workspace_close path: outer load gate + inner RunWriteAsync. The close
         // must wait for an in-flight reader before removing the workspace.
         var manager = new FakeGateWorkspaceManager();
-        var gate = CreateGate(useRwLock: true, manager: manager);
+        var gate = CreateGate(manager);
 
         var readerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseReader = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -382,7 +295,7 @@ public class WorkspaceExecutionGateTests
 
         await readerStarted.Task;
 
-        var close = gate.RunAsync(IWorkspaceExecutionGate.LoadGateKey, _ =>
+        var close = gate.RunLoadGateAsync(_ =>
             gate.RunWriteAsync(WorkspaceA, _ =>
             {
                 manager.RemoveWorkspace(WorkspaceA);
@@ -405,7 +318,6 @@ public class WorkspaceExecutionGateTests
         var gate = new WorkspaceExecutionGate(
             new ExecutionGateOptions
             {
-                UseReaderWriterLock = true,
                 RequestTimeout = TimeSpan.FromMilliseconds(150),
             },
             new FakeGateWorkspaceManager());
@@ -424,7 +336,6 @@ public class WorkspaceExecutionGateTests
         var gate = new WorkspaceExecutionGate(
             new ExecutionGateOptions
             {
-                UseReaderWriterLock = true,
                 RateLimitMaxRequests = 3,
                 RateLimitWindow = TimeSpan.FromSeconds(60),
             },
@@ -437,73 +348,6 @@ public class WorkspaceExecutionGateTests
 
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
-    }
-
-    [TestMethod]
-    public async Task RunAsyncShim_BareWorkspaceId_RoutesToRead()
-    {
-        var gate = CreateGate(useRwLock: true);
-        var tracker = new ConcurrencyTracker();
-
-        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        var first = gate.RunAsync(WorkspaceA, async ct =>
-        {
-            tracker.Enter();
-            firstStarted.SetResult();
-            await releaseFirst.Task.WaitAsync(ct);
-            tracker.Leave();
-            return 1;
-        }, CancellationToken.None);
-
-        await firstStarted.Task;
-
-        var second = gate.RunAsync(WorkspaceA, ct =>
-        {
-            tracker.Enter();
-            tracker.Leave();
-            return Task.FromResult(2);
-        }, CancellationToken.None);
-
-        await second.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.AreEqual(2, tracker.MaxConcurrent,
-            "Bare workspace id via the legacy RunAsync shim should route to RunReadAsync, allowing concurrency.");
-
-        releaseFirst.SetResult();
-        await first;
-    }
-
-    [TestMethod]
-    public async Task RunAsyncShim_ApplyKey_RoutesToWrite()
-    {
-        var gate = CreateGate(useRwLock: true);
-
-        var writerStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseWriter = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var readerStarted = false;
-
-        var writer = gate.RunAsync($"__apply__:{WorkspaceA}", async ct =>
-        {
-            writerStarted.SetResult();
-            await releaseWriter.Task.WaitAsync(ct);
-            return 0;
-        }, CancellationToken.None);
-
-        await writerStarted.Task;
-
-        var reader = gate.RunReadAsync(WorkspaceA, ct =>
-        {
-            readerStarted = true;
-            return Task.FromResult(0);
-        }, CancellationToken.None);
-
-        await Task.Delay(50);
-        Assert.IsFalse(readerStarted,
-            "An apply-keyed RunAsync call should be routed to RunWriteAsync and exclude readers on the same workspace.");
-
-        releaseWriter.SetResult();
-        await Task.WhenAll(writer, reader);
     }
 
     private sealed class ConcurrencyTracker

@@ -4,7 +4,7 @@ All notable changes to Roslyn-Backed MCP Server will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [1.6.1] - 2026-04-07
 
 ### Added
 
@@ -15,10 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Cross-tool compilation cache** (`ICompilationCache`): per-workspace, version-keyed cache that shares warm `Compilation` instances across diagnostics, unused-code analysis, and dependency analysis — eliminating redundant Roslyn compilation passes.
 - `eng/update-claude-plugin.ps1` utility to refresh the locally cached Claude Code plugin from the marketplace repository without opening the REPL.
 - `REINSTALL.md` consolidated installation and reinstall reference.
-- **Workspace reader/writer lock (opt-in)**: `IWorkspaceExecutionGate` gains explicit `RunReadAsync<T>` / `RunWriteAsync<T>` methods alongside the legacy `RunAsync` (now a thin compat shim). When `ROSLYNMCP_WORKSPACE_RW_LOCK=true` is set, each workspace is gated by a per-workspace `Nito.AsyncEx.AsyncReaderWriterLock` that allows N concurrent readers against the same workspace while keeping writers exclusive. Default is `false` (legacy mutex, bit-for-bit identical behavior). Drives the read-heavy unlock from the deep-review survey; tracked through phase 2 in `workspace-rw-lock-flag-flip` backlog row. Design note: `ai_docs/reports/2026-04-06-workspace-rw-lock-design-note.md`.
+- **Per-workspace reader/writer lock**: `IWorkspaceExecutionGate` exposes `RunReadAsync<T>` (concurrent reads against the same workspace), `RunWriteAsync<T>` (writes exclusive against all reads/writes on the same workspace), and `RunLoadGateAsync<T>` (the global load gate used by `workspace_load`/`reload`/`close`). Each workspace is gated by a `Nito.AsyncEx.AsyncReaderWriterLock` so reader fan-out is bounded only by the global throttle. There is no opt-out — this is the only lock model the gate ships.
 - `Nito.AsyncEx 5.1.2` dependency on `RoslynMcp.Roslyn` (transitive into the host).
-- `tests/RoslynMcp.Tests/WorkspaceExecutionGateTests.cs` — first dedicated unit-test class for the gate, with 15 tests covering read/read concurrency, read/write exclusion, write/write serialization, FIFO writer fairness, post-close `RunReadAsync` rejection, the workspace-close double-acquire race, the `RunAsync` shim's read/write routing, and rate-limit / request-timeout / global-throttle enforcement under the new code path.
-- `tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs` — `[TestCategory("Benchmark")]` proof-of-unlock that 4 parallel reads under flag-on complete in roughly 1× single-read wall time, while flag-off serializes at ~4×.
+- `tests/RoslynMcp.Tests/WorkspaceExecutionGateTests.cs` — dedicated unit-test class for the gate covering read/read concurrency, read/write exclusion, write/write serialization, FIFO writer fairness, post-close `RunReadAsync` rejection, the workspace-close double-acquire race, and rate-limit / request-timeout / global-throttle enforcement.
+- `tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs` — `[TestCategory("Benchmark")]` benchmark that 4 parallel reads against the same workspace complete in roughly 1× single-read wall time on the per-workspace RW lock.
 
 ### Performance
 
@@ -27,7 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Compilation cache lifecycle:** cache entries are eagerly invalidated when a workspace is closed via the new `IWorkspaceManager.WorkspaceClosed` event, preventing stale entry accumulation.
 - **Shared reference materializer:** `ReferenceLocationMaterializer` extracts the parallel preview-text + containing-symbol resolution pattern into a reusable helper consumed by reference, mutation, and consumer analysis services.
 - `CancellationToken` propagation to `SymbolSearchService.CollectSymbols` / `CollectMembers` for cancellable document-symbol walks on large files.
-- **Per-workspace concurrent reads (opt-in)**: under `ROSLYNMCP_WORKSPACE_RW_LOCK=true`, two parallel `find_references` / `project_diagnostics` / `symbol_search` calls against the same workspace now run truly in parallel, bounded only by the global throttle. Previously they queued behind one `SemaphoreSlim`. The benchmark `WorkspaceReadConcurrencyBenchmark` proves the unlock at 4 parallel reads.
+- **Per-workspace concurrent reads**: parallel `find_references` / `project_diagnostics` / `symbol_search` calls against the same workspace now run truly in parallel, bounded only by the global throttle. The benchmark `WorkspaceReadConcurrencyBenchmark` covers the 4-parallel-read shape.
 
 ### Fixed
 
@@ -41,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - Code action provider loading reliability.
 - Central Package Management (CPM) version resolution in dependency analysis.
 - `test_run` tool generates unique TRX paths per project and reports stderr on failure.
-- **Six mis-classified writers correctly take a write lock.** `apply_text_edit`, `apply_multi_file_edit`, `revert_last_apply`, `set_editorconfig_option`, `set_diagnostic_severity`, and `add_pragma_suppression` previously used the bare-`workspaceId` (read) gate while internally calling `WorkspaceManager.TryApplyChanges` or doing disk-direct file mutations. Latent and harmless under the legacy mutex (which serialized everything anyway), but a real correctness bug under the new RW lock model. All six now call `RunWriteAsync` explicitly.
+- **Six mis-classified writers correctly take a write lock.** `apply_text_edit`, `apply_multi_file_edit`, `revert_last_apply`, `set_editorconfig_option`, `set_diagnostic_severity`, and `add_pragma_suppression` previously used the bare-`workspaceId` (read) gate while internally calling `WorkspaceManager.TryApplyChanges` or doing disk-direct file mutations. All six now call `RunWriteAsync` explicitly so writes are exclusive against in-flight reads on the same workspace.
 - **`workspace_close` TOCTOU race closed.** Added a post-acquire `EnsureWorkspaceStillExists` recheck inside the per-workspace lock so a reader that passed the initial existence check while a concurrent close was queued cannot operate against a workspace that was removed while the reader was waiting for its read lock. The recheck throws `KeyNotFoundException` instead.
 - **Nested `LoadGate → RunWriteAsync` deadlock avoided.** `workspace_reload` and `workspace_close` now nest a per-workspace write-lock acquire inside the global load gate so in-flight readers complete before the solution is replaced or removed. To prevent the nested call from consuming two `_globalThrottle` slots (which can deadlock under saturation when `MaxGlobalConcurrency` is small), `WorkspaceExecutionGate` tracks throttle ownership via an `AsyncLocal<int>` re-entrance counter and skips the inner physical wait.
 
@@ -50,7 +50,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - `ValidationServiceOptions` is now a `record` (was `sealed class`), enabling `with` expression updates for cleaner option-binding code in `Program.cs`.
 - Test workspace cap raised to 64 (from production default of 8) since the shared `WorkspaceManager` now retains workspaces across the full assembly run instead of per-class disposal cycles.
 - Tool descriptions refined for `server_info`, security diagnostics, analyzer listing, undo, and edit tools.
-- **`RefactoringTools.ApplyGateKeyFor` helper deleted.** All 12 tool files (~19 sites) that previously composed the synthetic `__apply__:<wsId>` gate key now call `RunWriteAsync(wsId, …)` directly with an explicit `KeyNotFoundException` for stale preview tokens (clearer than the legacy "preview not found" service-layer error). The bare-`workspaceId` reader sites in 28 tool files (~91 calls) now call `RunReadAsync(workspaceId, …)`. `workspace_reload` and `workspace_close` (`WorkspaceTools`) nest an inner `RunWriteAsync(workspaceId, …)` inside the existing `RunAsync(LoadGateKey, …)`. The legacy `RunAsync(string gateKey, …)` shim remains for backward compatibility and routes by string prefix; a phase-2 follow-up will delete it once the RW lock default flips.
+- **`RefactoringTools.ApplyGateKeyFor` helper deleted.** All 12 tool files (~19 sites) that previously composed the synthetic `__apply__:<wsId>` gate key now call `RunWriteAsync(wsId, …)` directly with an explicit `KeyNotFoundException` for stale preview tokens. The bare-`workspaceId` reader sites in 28 tool files (~91 calls) now call `RunReadAsync(workspaceId, …)`. `workspace_load`, `workspace_reload`, and `workspace_close` (`WorkspaceTools`) call `RunLoadGateAsync(…)` for the global lifecycle gate; reload and close additionally nest an inner `RunWriteAsync(workspaceId, …)` so in-flight readers complete before the workspace state is replaced or removed.
+
+### Removed
+
+- **`ROSLYNMCP_WORKSPACE_RW_LOCK` environment variable, `ExecutionGateOptions.UseReaderWriterLock` property, and the legacy per-workspace `SemaphoreSlim` branch in `WorkspaceExecutionGate`.** The per-workspace `AsyncReaderWriterLock` is now the only lock model. The `eng/flip-rw-lock.ps1`, `eng/rw-lock-on.ps1`, `eng/rw-lock-off.ps1`, and `eng/rw-lock-common.ps1` PowerShell helpers used to flip the env var have been deleted along with `ai_docs/reports/2026-04-06-workspace-rw-lock-design-note.md`.
+- **`IWorkspaceExecutionGate.RunAsync<T>(string gateKey, …)` compat shim and `LoadGateKey` constant.** Replaced by the explicit `RunLoadGateAsync<T>` method on the interface; production callers (`WorkspaceTools`) and tests have been migrated.
 
 ## [1.6.0] - 2026-04-04
 

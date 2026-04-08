@@ -64,12 +64,11 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task RW_Lock_Allows_Parallel_Reads_For_Same_Workspace()
     {
-        // Two parallel RunReadAsync calls against the same workspace should overlap when the
-        // reader/writer lock feature flag is enabled. This is the unlock the design note
-        // describes — under the legacy mutex (flag off), the second call would queue.
+        // Two parallel RunReadAsync calls against the same workspace should overlap on the
+        // per-workspace AsyncReaderWriterLock.
         var manager = new FakeWorkspaceManager();
         var gate = new WorkspaceExecutionGate(
-            new ExecutionGateOptions { UseReaderWriterLock = true },
+            new ExecutionGateOptions(),
             manager);
 
         var maxConcurrent = 0;
@@ -101,7 +100,7 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
 
         await secondStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.AreEqual(2, maxConcurrent,
-            "Two reads on the same workspace must overlap when ROSLYNMCP_WORKSPACE_RW_LOCK is on.");
+            "Two reads on the same workspace must overlap on the per-workspace RW lock.");
 
         releaseFirst.SetResult();
         await Task.WhenAll(first, second);

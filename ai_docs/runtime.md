@@ -38,7 +38,6 @@ Optional overrides read at startup from `src/RoslynMcp.Host.Stdio/Program.cs`. V
 | `ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS` | `ExecutionGateOptions.RateLimitWindow` | 60 |
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `ExecutionGateOptions.RequestTimeout` | 120 |
 | `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `SecurityOptions.PathValidationFailOpen` | `false` (must parse as `true`/`false` to override) |
-| `ROSLYNMCP_WORKSPACE_RW_LOCK` | `ExecutionGateOptions.UseReaderWriterLock` | `true` (phase-2 default flip 2026-04-07; per-workspace `AsyncReaderWriterLock` allows concurrent reads on the same workspace. Set to `false` to opt out to the legacy mutex as an escape hatch; the legacy branch will be removed in phase-3.) |
 | `ROSLYNMCP_SCRIPT_MAX_CONCURRENT` | `ScriptingServiceOptions.MaxConcurrentEvaluations` | 4 (FLAG-5C: max in-flight `evaluate_csharp` calls racing their hard deadline) |
 | `ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS` | `ScriptingServiceOptions.ConcurrencySlotAcquireTimeoutSeconds` | 5 seconds |
 | `ROSLYNMCP_SCRIPT_MAX_ABANDONED` | `ScriptingServiceOptions.MaxAbandonedEvaluations` | 8 (FLAG-5C: abandoned-worker-thread cap; restart host when hit) |
