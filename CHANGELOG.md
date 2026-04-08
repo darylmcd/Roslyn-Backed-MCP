@@ -4,6 +4,12 @@ All notable changes to Roslyn-Backed MCP Server will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.8.0] - 2026-04-08
+
+### Changed
+
+- **Catalog `2026.04` — promote six read-only advanced-analysis tools to stable** (`find_unused_symbols`, `get_di_registrations`, `get_complexity_metrics`, `find_reflection_usages`, `get_namespace_dependencies`, `get_nuget_dependencies`). Evidence: 2026-04-08 multi-repo deep-review raw audits and rollup in `ai_docs/reports/`. `semantic_search` remains **experimental** (open ranking/UX backlog items). Updated `docs/product-contract.md` and `docs/experimental-promotion-analysis.md` accordingly.
+
 ## [1.7.0] - 2026-04-08
 
 ### Fixed
@@ -88,7 +94,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - Integration tests targeting P1/P2 coverage gaps: `HighValueCoverageIntegrationTests`, `BoundedStoreEvictionTests`, `ServiceCollectionExtensionsTests`.
 - Sample-solution profiling smoke record and methodology notes in `docs/large-solution-profiling-baseline.md`.
-- Post-1.5 surface audit summary in `ai_docs/audit-reports/2026-04-04-post-1.5-surface-audit.md`.
+- Post-1.5 surface checks aligned catalog, tier promotions, and integration coverage with CI (`verify-release.ps1`); evidence for later releases uses timestamped files under `ai_docs/audit-reports/`.
 
 ### Changed
 

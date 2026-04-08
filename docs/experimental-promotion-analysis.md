@@ -16,8 +16,8 @@ This document supports the post-release roadmap item **“promote experimental �
 
 | Tier | Tools | Resources | Prompts |
 |------|-------|-----------|---------|
-| Stable | 56 | 7 stable / 0 experimental | 0 stable / 16 experimental |
-| Experimental | 67 | — | — |
+| Stable | 62 | 7 stable / 0 experimental | 0 stable / 16 experimental |
+| Experimental | 61 | — | — |
 
 Authoritative counts: `ServerSurfaceCatalog.GetSummary()` / `server_info` / `roslyn://server/catalog`.
 
@@ -36,9 +36,22 @@ The following were promoted to **stable** in v1.6.0 per `docs/release-policy.md`
 | `find_shared_members` | analysis | Refactor planning; read-only. |
 | `analyze_snippet` | analysis | Ephemeral analysis without workspace; read-only. |
 
+## Tier 1 — promoted (v1.8.0)
+
+The following were promoted to **stable** in v1.8.0 (catalog `2026.04`): read-only advanced-analysis tools exercised across the 2026-04-08 repo-matrix deep-review batch. `semantic_search` was **not** promoted (ongoing relevance / empty-result UX work in `ai_docs/backlog.md`).
+
+| Tool | Category | Notes |
+|------|----------|-------|
+| `find_unused_symbols` | advanced-analysis | Dead-code signal; read-only. |
+| `get_di_registrations` | advanced-analysis | DI wiring scan; read-only. |
+| `get_complexity_metrics` | advanced-analysis | Hotspot metrics; read-only. |
+| `find_reflection_usages` | advanced-analysis | Reflection audit; read-only. |
+| `get_namespace_dependencies` | advanced-analysis | Namespace graph; read-only. |
+| `get_nuget_dependencies` | advanced-analysis | Package inventory; read-only. |
+
 ## Next promotion pass
 
-Repopulate Tier 1 candidates after the next repo-matrix audit rollup or when operational evidence justifies additional stable promotions.
+Repopulate Tier 1 candidates after the next repo-matrix audit rollup or when operational evidence justifies additional stable promotions. Likely candidates still experimental: `semantic_search` (after backlog clears), flow-analysis tools, scripting (`evaluate_csharp`), configuration/MSBuild helpers — each gated by `docs/release-policy.md`.
 
 ## Tier 2 — needs stronger evidence before promotion
 

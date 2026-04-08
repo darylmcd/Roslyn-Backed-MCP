@@ -1,6 +1,3 @@
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
 param(
     [Parameter(Mandatory = $true)]
     [string[]]$AuditFiles,
@@ -9,6 +6,9 @@ param(
 
     [string]$CampaignPurpose = 'Deep-review rollup'
 )
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 function Get-RepoRoot {
     return Split-Path -Parent $PSScriptRoot

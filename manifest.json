@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "roslyn-mcp",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "icon": "icon.png",
   "description": "A production-usable MCP server providing semantic C# analysis powered by Roslyn. Enables AI coding agents to navigate, analyze, and refactor real C# solutions without requiring Visual Studio.",
   "author": {

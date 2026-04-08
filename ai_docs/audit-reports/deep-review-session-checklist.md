@@ -1,17 +1,17 @@
-# Deep review & MCP audit — baseline session (2026-04-04)
+# Deep review & MCP audit — session checklist
 
-<!-- purpose: Baseline checklist template for full deep-review MCP sessions; update when surface changes. -->
+<!-- purpose: Fill-in worksheet for live deep-review runs; keep phase order aligned with prompts/deep-review-and-refactor.md. -->
 
-This file is a **baseline template** for executing [`ai_docs/prompts/deep-review-and-refactor.md`](../prompts/deep-review-and-refactor.md). A full PASS/FAIL matrix requires an **interactive MCP session** (Cursor or other client) with the server running (`dotnet run --project src/RoslynMcp.Host.Stdio` or global `roslynmcp`).
+Use with [`ai_docs/prompts/deep-review-and-refactor.md`](../prompts/deep-review-and-refactor.md). A full PASS/FAIL matrix needs an **interactive MCP session** (e.g. Cursor) with the server running (`dotnet run --project src/RoslynMcp.Host.Stdio` or global `roslynmcp`).
 
-Use this checklist to keep the audit aligned with the living prompt's stricter rules: explicit audit mode and isolation, parameter-path coverage, client-blocked prompt/resource handling, stale-token/version checks, and final ledger closure.
+**Canonical output:** raw evidence goes to `yyyyMMddTHHmmssZ_<repo-id>_mcp-server-audit.md` in this directory (see [`README.md`](README.md)). This file is only a **worksheet** — not a substitute for that report.
 
 ## Session parameters
 
 | Field | Value |
 |-------|--------|
-| Target solution | Default: `samples/SampleSolution/` — substitute a richer repo if needed |
-| Server version | Assembly version from `server_info` at session start |
+| Target solution | Default: `samples/SampleSolution/` — use a richer repo when needed |
+| Server version | From `server_info` at session start |
 | Host | stdio (`RoslynMcp.Host.Stdio`) |
 | Audit mode | `full-surface` by default; record reason if `conservative` |
 | Isolation | Disposable branch/worktree/clone path, or conservative rationale |
@@ -20,7 +20,7 @@ Use this checklist to keep the audit aligned with the living prompt's stricter r
 
 ## Automated pre-checks (repository)
 
-The following run in CI and locally without MCP:
+Runs without MCP:
 
 - `./eng/verify-ai-docs.ps1`
 - `./eng/verify-release.ps1 -Configuration Release` (build, tests with coverage, publish, manifests)
@@ -30,7 +30,7 @@ The following run in CI and locally without MCP:
 
 ### 1. Setup, repo shape, and client limits
 
-Capture the Phase 0 facts before the audit gets noisy.
+Capture Phase 0 facts before the audit gets noisy.
 
 | Item | Notes |
 |------|-------|
@@ -55,7 +55,7 @@ Track the live catalog, not the client UI.
 
 ### 3. Phase matrix
 
-For each phase in the deep-review prompt, record the families exercised, the status mix, and a **PASS / FLAG / FAIL** tag.
+Order matches the living prompt (**8b** after **8**; **9** after **10**). Record families exercised, status mix, and **PASS / FLAG / FAIL**.
 
 | Phase | Families exercised | PASS / FLAG / FAIL | Notes |
 |------|--------------------|--------------------|-------|
@@ -68,8 +68,9 @@ For each phase in the deep-review prompt, record the families exercised, the sta
 | 6 | | | |
 | 7 | | | |
 | 8 | | | |
+| 8b | | | Concurrency / RW lock |
 | 10 | | | |
-| 9 | | | |
+| 9 | | | Undo (after Phase 10) |
 | 11 | | | |
 | 12 | | | |
 | 13 | | | |
@@ -81,7 +82,7 @@ For each phase in the deep-review prompt, record the families exercised, the sta
 
 ### 4. Parameter-path coverage
 
-The stricter prompt expects at least one non-default selector/flag path for each major family when the live schema exposes it.
+At least one non-default selector/flag path per major family when the live schema exposes it.
 
 | Family / Tool | Non-default path tested | Result | Notes |
 |------|--------------------------|--------|-------|
@@ -109,7 +110,7 @@ The stricter prompt expects at least one non-default selector/flag path for each
 |------|-------------------------------|-------|
 | *(fill)* | | |
 
-Also confirm the dedicated mutation-safety and invalid-input checks:
+Mutation-safety and invalid-input checks:
 
 | Check | Status | Notes |
 |------|--------|-------|
@@ -124,12 +125,10 @@ Note 0-based vs 1-based lines, field naming across related tools, etc.
 
 ### 9. Phase 6 refactor summary and cleanup verification
 
-If refactors were applied in the **target** repo during the audit, list commits/files here.
-
 | Check | Status | Notes |
 |------|--------|-------|
 | Phase 6 applies summarized | | |
-| Audit-only mutations from Phases 9-13 cleaned up or reverted | | |
+| Audit-only mutations from Phases 8b, 9–13 cleaned up or reverted | | |
 | Only intentional Phase 6 product changes remain | | |
 
 ## Findings routed to backlog
@@ -138,6 +137,6 @@ If refactors were applied in the **target** repo during the audit, list commits/
 |----|---------|----------|
 | *(none yet)* | File new rows in `ai_docs/backlog.md` for FAIL-grade defects. | |
 
-## Safe refactors applied in **this** repo (roslyn-mcp)
+## Maintainer note (optional)
 
-During implementation of the release-hardening plan (same date), no separate deep-review MCP session was executed in this workspace; **integration tests** for `compile_check` were added in `ValidationToolsIntegrationTests.cs`, and **coverage** was wired into `verify-release.ps1`. Re-run this audit file with a live MCP session when validating a release candidate.
+If this repo gained integration tests or CI changes in the same effort as an audit, note them here briefly. **Raw per-run evidence** still belongs in a timestamped `*_mcp-server-audit.md` file.

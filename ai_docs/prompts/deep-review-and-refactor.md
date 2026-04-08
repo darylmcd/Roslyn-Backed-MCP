@@ -6,7 +6,7 @@
      with the project's actual tool, resource, and prompt surface at all times.
      When tools, resources, or prompts are added, removed, or renamed,
      update the Tools Reference appendix accordingly.
-   Last surface audit: 2026-04-06 (catalog 2026.03; 123 tools = 56 stable / 67 experimental, 7 resources, 16 prompts). -->
+   Last surface audit: 2026-04-08 (catalog 2026.04; 123 tools = 62 stable / 61 experimental, 7 resources, 16 prompts). -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** produce an MCP server audit (bugs, incorrect results, gaps). **Mechanism:** real refactoring plus tool calls that exercise the full surface.
@@ -301,7 +301,11 @@ If `test_discover` returns zero tests, still record that result. Then explicitly
 
 ### Phase 8b: Concurrency Audit (per-workspace RW lock)
 
-**Purpose:** Exercise the per-workspace `Nito.AsyncEx.AsyncReaderWriterLock` and produce a machine-readable concurrency matrix that downstream agents can compare across runs. Multiple reads against the same workspace overlap, writes are exclusive against in-flight reads, and `workspace_close` / `workspace_reload` block on the per-workspace write lock so they wait for in-flight readers.
+**Stability note (repo-matrix audits, 2026-04):** Many AI agent hosts **serialize** MCP tool calls or cannot attribute wall-clock across truly parallel requests. That is expected. When true concurrency is unavailable, mark **8b.2** (parallel fan-out), **8b.3** (read/write interleaving), and timing-sensitive parts of **8b.4** as **`blocked`** — *client cannot issue concurrent tool calls* (or **`skipped-safety`** if parallel dispatch would be unsafe). Record that limitation once in the report header; **do not** force speedup ratios or benchmark comparisons against `tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs` in that case. Still run **8b.1** sequential baselines when possible using `_meta.heldMs` on responses that expose it, or external wall-clock; if reader tools lack timing fields, cite backlog `reader-tool-elapsed-ms` in the matrix. **8b.5**–**8b.6** add the most value when run in a host that supports parallel reads (benchmark harness, integration driver, or an MCP client with real concurrent requests).
+
+**Single lock model:** The server ships **one** per-workspace concurrency model (`Nito.AsyncEx.AsyncReaderWriterLock` via `WorkspaceExecutionGate`). There is **no** alternate mutex/legacy lock lane — treat `_rw-lock_` / `_legacy-mutex_` segments in old audit filenames as historical artifacts only (`ai_docs/audit-reports/README.md`).
+
+**Purpose:** Exercise the per-workspace lock and produce a machine-readable concurrency matrix that downstream agents can compare across runs. Intended behavior: multiple reads against the same workspace may overlap subject to the global throttle; writes are exclusive against in-flight readers; `workspace_close` / `workspace_reload` acquire the per-workspace write lock and wait for in-flight readers.
 
 #### 8b.0 — Probe set definition (run before any timing)
 
@@ -353,7 +357,7 @@ If a probe is not applicable to the repo shape (e.g. no public-only dead-code su
 
 #### 8b.5 — Writer reclassification verification
 
-Six tools were historically using the read gate while mutating workspace state and were reclassified as writers. Verify each one still completes successfully and observably takes the writer code path.
+These six tools take the per-workspace **writer** gate (they mutate workspace or on-disk state, not the reader gate). When Phase 8b runs, verify each still completes successfully and observably uses the writer path.
 
 | # | Tool | Verification |
 |---|------|--------------|
@@ -370,7 +374,7 @@ For each row, also record whether the tool returned in the same wall-clock budge
 
 Write the matrix into the report using the schema in **Output Format → Concurrency matrix** below. Every cell must have a value or `N/A`; do not leave blanks.
 
-**MCP audit checkpoint:** Did parallel reads measurably overlap (speedup ≥ `0.7 × N` for N concurrent reads, where N is the host-bounded fan-out from sub-phase 8b.2.1)? Did the speedup signature on this host roughly match the 4-slot benchmark in `tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs` (recorded against `Math.Max(2, Environment.ProcessorCount)` as the expected ceiling)? Did the read/write exclusion probe (8b.3) match the documented contract? Did the lifecycle stress probe (8b.4) reveal any TOCTOU or stale-result issues? Did all six writer-reclassification tools (8b.5) complete cleanly? Were there any structured log entries that mentioned gate contention, rate-limit rejections, request timeouts, or deadlocks? Was the `parallel_speedup` field stable across two consecutive parallel runs in the same session (within ±15%), or did jitter make it unreliable?
+**MCP audit checkpoint:** If **8b.2 was client-blocked**, state that explicitly and **skip** parallel speedup, ±15% stability, and benchmark-comparison questions — answer **N/A — client serializes tool calls** for those bullets. Otherwise: did parallel reads measurably overlap (speedup ≥ `0.7 × N` for N concurrent reads, where N is the host-bounded fan-out from sub-phase 8b.2.1)? Did the speedup signature on this host roughly match the 4-slot benchmark in `tests/RoslynMcp.Tests/Benchmarks/WorkspaceReadConcurrencyBenchmark.cs` (recorded against `Math.Max(2, Environment.ProcessorCount)` as the expected ceiling)? Did the read/write exclusion probe (8b.3) match the documented contract? Did the lifecycle stress probe (8b.4) reveal any TOCTOU or stale-result issues? Did all six writer tools (8b.5) complete cleanly? Were there any structured log entries that mentioned gate contention, rate-limit rejections, request timeouts, or deadlocks? When two parallel runs were possible, was `parallel_speedup` stable across them (within ±15%), or did jitter make it unreliable?
 
 ---
 
@@ -782,7 +786,7 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 > The live catalog from Phase 0 is authoritative. Treat this appendix as a convenience snapshot; if it drifts from the running server, record prompt drift and trust the live catalog.
 > When tools, resources, or prompts change, update this section.
 > Client limitations do **not** change the appendix counts. If a client cannot invoke prompts or resources, record those entries as `blocked` in the audit ledger rather than editing them out of the documented surface.
-> Last verified: 2026-04-06 against catalog version 2026.03 — **123 tools (56 stable / 67 experimental) | 7 resources (7 stable) | 16 prompts (16 experimental)**
+> Last verified: 2026-04-08 against catalog version 2026.04 — **123 tools (62 stable / 61 experimental) | 7 resources (7 stable) | 16 prompts (16 experimental)**
 
 ### Tools by Category (123 total)
 
@@ -798,8 +802,8 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 #### Analysis (7 tools)
 `project_diagnostics` `diagnostic_details` `type_hierarchy` `callers_callees` `impact_analysis` `find_type_mutations` `find_type_usages`
 
-#### Advanced Analysis (7 tools)
-`find_unused_symbols` `get_di_registrations` `get_complexity_metrics` `find_reflection_usages` `get_namespace_dependencies` `get_nuget_dependencies` `semantic_search`
+#### Advanced Analysis (7 tools: 6 stable, 1 experimental)
+**Stable:** `find_unused_symbols` `get_di_registrations` `get_complexity_metrics` `find_reflection_usages` `get_namespace_dependencies` `get_nuget_dependencies` · **Experimental:** `semantic_search`
 
 #### Consumer & Cohesion Analysis (3 tools)
 `find_consumers` `get_cohesion_metrics` `find_shared_members`
@@ -879,7 +883,7 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 #### Undo (1 tool)
 `revert_last_apply`
 
-### Resources (2026.03 snapshot: 7 total)
+### Resources (2026.04 snapshot: 7 total)
 
 If a client cannot list or read one of these resources, keep the resource in the audit ledger with status `blocked` and note the client limitation explicitly. Do not treat that as prompt drift or as a missing server surface entry.
 
@@ -893,7 +897,7 @@ If a client cannot list or read one of these resources, keep the resource in the
 | `roslyn://workspace/{workspaceId}/diagnostics` | Compiler diagnostics | `application/json` |
 | `roslyn://workspace/{workspaceId}/file/{filePath}` | Source file content | `text/x-csharp` |
 
-### Prompts (2026.03 snapshot: 16 total)
+### Prompts (2026.04 snapshot: 16 total)
 
 If a client cannot enumerate or invoke prompts, keep the live prompt rows in the audit ledger with status `blocked` and name the client limitation. The live catalog, not the client UI, determines prompt presence.
 

@@ -30,16 +30,14 @@ Raw audits use `<timestamp>_<repo-id>_mcp-server-audit.md` (no lock-mode segment
 
 | File or pattern | Purpose |
 |-----------------|---------|
-| `deep-review-baseline-2026-04-04.md` | Structure and checklist for a full audit; update when the tool/resource/prompt surface changes. |
-| `2026-04-04-post-1.5-surface-audit.md` | Post-1.5 lightweight surface audit (catalog, promotions, tests, profiling notes). |
+| `deep-review-session-checklist.md` | Fill-in worksheet for a live session; phase order tracks the living prompt (including Phase 8b and Phase 9 after 10). |
 | `<timestamp>_<repo-id>_mcp-server-audit.md` | Raw evidence for one repo/client deep-review run. |
 
-## Baseline session template
+## Session worksheet
 
 | File | Purpose |
 |------|---------|
-| [`deep-review-baseline-2026-04-04.md`](deep-review-baseline-2026-04-04.md) | Structure and checklist for a full audit; update when the tool/resource/prompt surface changes. |
-| [`2026-04-04-post-1.5-surface-audit.md`](2026-04-04-post-1.5-surface-audit.md) | Post-1.5 lightweight surface audit (catalog, promotions, tests, profiling notes). |
+| [`deep-review-session-checklist.md`](deep-review-session-checklist.md) | Optional checklist to fill during an MCP session; canonical output is still a timestamped `*_mcp-server-audit.md`. |
 
 For multi-repo campaigns, start with [`../procedures/deep-review-program.md`](../procedures/deep-review-program.md), write raw files here, then synthesize the batch in [`../reports/README.md`](../reports/README.md).
 
