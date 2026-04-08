@@ -28,8 +28,9 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is null) return null;
+        // Throw on unresolved symbol so callers see a structured NotFound envelope
+        // (matches find_references contract).
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();
@@ -158,8 +159,9 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
     public async Task<IReadOnlyList<TypeUsageDto>> FindTypeUsagesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is null) return [];
+        // Throw on unresolved symbol so callers see a structured NotFound envelope
+        // (matches find_references contract).
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();

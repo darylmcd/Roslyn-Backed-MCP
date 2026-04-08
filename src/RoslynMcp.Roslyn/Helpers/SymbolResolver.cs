@@ -39,6 +39,31 @@ public static class SymbolResolver
     }
 
     /// <summary>
+    /// Same as <see cref="ResolveAsync"/> but throws <see cref="KeyNotFoundException"/> when the
+    /// locator does not resolve to a symbol. Used by reader tools (`find_references`,
+    /// `find_consumers`, `find_type_usages`, etc.) so callers see a structured NotFound envelope
+    /// from <see cref="RoslynMcp.Host.Stdio.Tools.ToolErrorHandler"/> instead of an empty result
+    /// that can't be distinguished from a legitimate "valid symbol, zero references" outcome.
+    /// </summary>
+    /// <exception cref="System.Collections.Generic.KeyNotFoundException">Thrown when the locator decodes correctly but no symbol can be found in the solution.</exception>
+    /// <exception cref="System.ArgumentException">Thrown when <paramref name="locator"/> does not contain a valid identification strategy.</exception>
+    public static async Task<ISymbol> ResolveOrThrowAsync(Solution solution, SymbolLocator locator, CancellationToken ct)
+    {
+        var symbol = await ResolveAsync(solution, locator, ct).ConfigureAwait(false);
+        if (symbol is not null) return symbol;
+
+        var detail = locator.HasHandle
+            ? "the supplied symbol handle"
+            : locator.HasMetadataName
+                ? $"metadata name '{locator.MetadataName}'"
+                : $"position {locator.FilePath}:{locator.Line}:{locator.Column}";
+
+        throw new KeyNotFoundException(
+            $"No symbol could be resolved for {detail}. The handle may be from a previous workspace " +
+            "version, the symbol may have been removed, or the position may not contain a symbol identifier.");
+    }
+
+    /// <summary>
     /// Resolves the symbol at the given 1-based <paramref name="line"/> and <paramref name="column"/> position
     /// in the specified source file.
     /// </summary>

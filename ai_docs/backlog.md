@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-08T15:25:00Z
+**updated_at:** 2026-04-08T15:50:00Z
 
 ## Agent contract
 
@@ -30,7 +30,6 @@ Ordered by severity: P2 (contract violations / real-world blockers) → P3 (refa
 
 | id | blocker | deps | do |
 |----|---------|------|-----|
-| `error-response-observability` | none | — | **P2 / observability.** Two related error-shape gaps surfaced in the 2026-04-07 ITChatBot rw-lock audit: (a) `find_references` (and likely `find_consumers`/`find_type_usages`) with an invalid `symbolHandle` (e.g. fabricated base64 of `{"MetadataName":"fake"}`) returns `{count:0, totalCount:0, references:[], hasMore:false}` instead of a structured NotFound error — callers cannot distinguish "valid handle, zero references" from "junk handle"; (b) error responses on workspace-scoped tools (`workspace_status` and likely siblings sharing the same wrapper) populate `tool: "unknown"` instead of the actual tool name. Fix both: emit a structured NotFound envelope from the symbol-handle tools (matching `workspace_status`'s NotFound shape), and have the error wrapper read the originating tool name from the dispatcher. |
 | `test-run-failure-envelope` | none | — | **P2 / reliability.** 2026-04-08 audits: `test_run` failed with MSB3027/3021 file locks when `testhost` still holds Roslyn DLLs (roslyn-backed-mcp 130615), and with a generic MCP bridge error `An error occurred invoking 'test_run'` with no structured payload (131317). Surface exit code, stdout/stderr excerpts, and whether the failure is retryable; document Windows concurrent-test behavior in the tool description. |
 | `audit-feasibility-companion-cli` | none | `workspace-payload-summary-modes` | **P2 / tooling.** A complete walkthrough of `ai_docs/prompts/deep-review-and-refactor.md` against a 34-project / 751-document solution does not fit in a single Claude Code conversation today, primarily because workspace-payload bloat tools (`workspace_load`, `workspace_status`, `workspace_list`, `roslyn://workspaces`, `get_nuget_dependencies`, `list_analyzers`, `get_msbuild_properties`, `find_unused_symbols`) exhaust the per-turn ~250 KB output budget by mid-prompt — observed against the 34-project ITChatBot.sln in the 2026-04-07 rw-lock audit. Consider shipping a `roslyn-mcp-audit` companion CLI that drives the deep-review prompt headlessly and emits the canonical raw audit file as an artifact, freeing the LLM from having to render every tool result back through context. The payload-summary-modes fix alone may lift this ceiling enough that a CLI is unnecessary — re-evaluate after that lands. |
 | `dependency-service-srp-split` | none | — | **P3 / refactor.** `DependencyAnalysisService` (now 610 LOC, up from 530) owns four responsibilities: namespace dependency graphs, DI registration scanning, NuGet package listing, and NuGet vulnerability scanning. Split into `NamespaceDependencyService`, `DiRegistrationService`, and `NuGetDependencyService`; `DependencyAnalysisService` becomes a façade or is deleted. Also covers `ParseNuGetVulnerabilityJson` (still inline, cyclomatic ~27, ~86 LOC with nested local function capturing outer variables) — extract `NuGetVulnerabilityJsonParser` static class and eliminate the nested function. Defer until a touch-the-class change is needed. |

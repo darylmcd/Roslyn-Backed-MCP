@@ -21,8 +21,9 @@ public sealed class ReferenceService : IReferenceService
     public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is null) return [];
+        // Throw on unresolved symbol so callers get a structured NotFound envelope
+        // instead of an empty list they cannot distinguish from "valid symbol, zero references".
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();
@@ -40,8 +41,7 @@ public sealed class ReferenceService : IReferenceService
     public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is null) return [];
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
         var implementations = await SymbolFinder.FindImplementationsAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
         var results = new List<LocationDto>();
@@ -62,11 +62,7 @@ public sealed class ReferenceService : IReferenceService
     public async Task<IReadOnlyList<LocationDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is null)
-        {
-            return [];
-        }
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
         var overrides = await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
         return await SymbolServiceHelpers.SymbolsToLocationsAsync(overrides, solution, ct).ConfigureAwait(false);
@@ -75,11 +71,7 @@ public sealed class ReferenceService : IReferenceService
     public async Task<IReadOnlyList<LocationDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is null)
-        {
-            return [];
-        }
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
         return await SymbolServiceHelpers.SymbolsToLocationsAsync(SymbolServiceHelpers.GetBaseMembers(symbol), solution, ct).ConfigureAwait(false);
     }

@@ -39,6 +39,56 @@ internal static class ToolErrorHandler
     };
 
     /// <summary>
+    /// Wraps a synchronous resource action with structured error handling, returning the same
+    /// error envelope shape as <see cref="ExecuteAsync"/> so JSON-MIME resources surface a
+    /// well-formed error document with the correct <c>tool</c> field instead of bubbling an
+    /// exception that the framework labels as <c>tool: "unknown"</c>. The <paramref name="source"/>
+    /// is the resource URI (or its template form) that originated the call.
+    /// </summary>
+    public static string ExecuteResource(string source, Func<string> action, ILogger? auditLogger = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(source);
+
+        try
+        {
+            return action();
+        }
+        catch (Exception ex)
+        {
+            var info = ClassifyError(ex, source);
+            auditLogger?.Log(
+                info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
+                ex, "Resource {Source} failed: {ErrorCategory}", source, info.Category);
+            return FormatErrorResponse(info, source, ex);
+        }
+    }
+
+    /// <summary>
+    /// Async variant of <see cref="ExecuteResource"/> for awaitable resource handlers.
+    /// </summary>
+    public static async Task<string> ExecuteResourceAsync(string source, Func<Task<string>> action, ILogger? auditLogger = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(source);
+
+        try
+        {
+            return await action().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var info = ClassifyError(ex, source);
+            auditLogger?.Log(
+                info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
+                ex, "Resource {Source} failed: {ErrorCategory}", source, info.Category);
+            return FormatErrorResponse(info, source, ex);
+        }
+    }
+
+    /// <summary>
     /// Wraps a tool action with structured error handling. Returns errors as structured JSON content
     /// so MCP clients always receive actionable error details, regardless of SDK exception handling.
     /// </summary>
@@ -194,6 +244,27 @@ internal static class ToolErrorHandler
 
 /// <summary>
 /// Exception type for tool errors. Can be used by resource handlers and other non-tool contexts
-/// where structured JSON error responses are not applicable.
+/// where structured JSON error responses are not applicable. The optional
+/// <see cref="OriginatingSource"/> property carries the originating tool name or resource URI
+/// so the MCP framework can label error envelopes with the actual originator instead of
+/// "unknown".
 /// </summary>
-public sealed class McpToolException(string message, Exception? inner = null) : Exception(message, inner);
+public sealed class McpToolException : Exception
+{
+    /// <summary>
+    /// Originating tool name or resource URI (e.g., <c>"workspace_status"</c>,
+    /// <c>"roslyn://workspaces"</c>). When null, defaults to "unknown" in the rendered envelope.
+    /// Named with the <c>Originating</c> prefix to avoid colliding with the inherited
+    /// <see cref="Exception.Source"/> property (which is the assembly name by default).
+    /// </summary>
+    public string? OriginatingSource { get; }
+
+    public McpToolException(string message, Exception? inner = null) : base(message, inner)
+    {
+    }
+
+    public McpToolException(string source, string message, Exception? inner = null) : base(message, inner)
+    {
+        OriginatingSource = source;
+    }
+}
