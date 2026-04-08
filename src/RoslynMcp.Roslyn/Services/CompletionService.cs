@@ -72,7 +72,15 @@ public sealed class CompletionService : ICompletionService
             });
         }
 
-        var filteredList = source.ToList();
+        // BUG fix (get-completions-ranking): boost in-scope candidates so locals/parameters
+        // beat type members, type members beat types, and types beat the long tail (namespaces,
+        // external symbols). Roslyn's CompletionItem.Tags carry the high-level kind which is
+        // enough to bucket without resolving the underlying ISymbol. Stable secondary sort
+        // by SortText preserves Roslyn's intra-bucket ordering.
+        var filteredList = source
+            .OrderBy(InScopeRank)
+            .ThenBy(item => item.SortText, StringComparer.Ordinal)
+            .ToList();
         var pagedItems = filteredList.Take(maxItems).ToList();
 
         var items = pagedItems
@@ -94,5 +102,38 @@ public sealed class CompletionService : ICompletionService
             return item.InlineDescription;
 
         return item.Properties.TryGetValue("Description", out var desc) ? desc : null;
+    }
+
+    /// <summary>
+    /// Buckets a completion candidate by how "in-scope" it is. Lower values rank first.
+    /// 0 = locals/parameters, 1 = type members (methods/properties/fields/events),
+    /// 2 = types (classes/structs/interfaces/enums/delegates), 3 = everything else
+    /// (namespaces, modules, the long tail of external symbols).
+    /// </summary>
+    private static int InScopeRank(CompletionItem item)
+    {
+        if (item.Tags.IsDefaultOrEmpty)
+        {
+            return 3;
+        }
+
+        if (item.Tags.Contains("Local") || item.Tags.Contains("Parameter") || item.Tags.Contains("RangeVariable"))
+        {
+            return 0;
+        }
+
+        if (item.Tags.Contains("Method") || item.Tags.Contains("Property") || item.Tags.Contains("Field")
+            || item.Tags.Contains("Event") || item.Tags.Contains("ExtensionMethod"))
+        {
+            return 1;
+        }
+
+        if (item.Tags.Contains("Class") || item.Tags.Contains("Structure") || item.Tags.Contains("Interface")
+            || item.Tags.Contains("Enum") || item.Tags.Contains("Delegate") || item.Tags.Contains("EnumMember"))
+        {
+            return 2;
+        }
+
+        return 3;
     }
 }

@@ -132,18 +132,25 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
     public async Task<SemanticSearchResponseDto> SemanticSearchAsync(
         string workspaceId, string query, string? projectFilter, int limit, CancellationToken ct)
     {
+        // BUG fix (semantic-search-html-decode): AI clients commonly double-encode angle
+        // brackets when constructing JSON queries, sending `Task&lt;bool&gt;` instead of
+        // `Task<bool>`. The downstream parser strips `<>,` to extract type fragments, so
+        // encoded entities silently broke matching. HTML-decode on ingress so callers
+        // don't have to know our encoding discipline.
+        var decodedQuery = System.Net.WebUtility.HtmlDecode(query ?? string.Empty);
+
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<SemanticSearchResultDto>();
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
-        var (predicates, usedImplicitNameOnly) = ParseSemanticQuery(query);
+        var (predicates, usedImplicitNameOnly) = ParseSemanticQuery(decodedQuery);
         bool Combined(ISymbol s) => predicates.All(p => p(s));
         await CollectSemanticSearchMatchesAsync(solution, projects, Combined, limit, results, ct).ConfigureAwait(false);
 
         string? warning = null;
-        if (results.Count == 0 && query.Trim().Length >= 2 && !usedImplicitNameOnly)
+        if (results.Count == 0 && decodedQuery.Trim().Length >= 2 && !usedImplicitNameOnly)
         {
-            var term = query.Trim();
+            var term = decodedQuery.Trim();
             bool NameMatch(ISymbol s) => s.Name.Contains(term, StringComparison.OrdinalIgnoreCase);
             await CollectSemanticSearchMatchesAsync(solution, projects, NameMatch, limit, results, ct)
                 .ConfigureAwait(false);

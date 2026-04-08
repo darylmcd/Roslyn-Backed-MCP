@@ -173,6 +173,50 @@ public class ServiceCoverageTests : SharedWorkspaceTestBase
             "Expected completion items at a valid position in AnimalService.cs");
     }
 
+    [TestMethod]
+    public async Task GetCompletions_Ranking_BoostsInScopeBeforeExternalTypes()
+    {
+        // BUG fix (get-completions-ranking): in-scope members and locals should outrank
+        // namespace-qualified external types for a given prefix. With filterText="To",
+        // ToString (an instance method on every System.Object) should appear before
+        // ToBase64Transform (a class in System.Security.Cryptography) and other type-tier
+        // candidates.
+        var animalServicePath = FindDocumentPath("AnimalService.cs");
+
+        var result = await CompletionService.GetCompletionsAsync(
+            WorkspaceId, animalServicePath, 20, 30, filterText: "To", maxItems: 100, CancellationToken.None);
+
+        Assert.IsTrue(result.Items.Count >= 2,
+            "Expected at least two completion candidates starting with 'To'.");
+
+        var toStringIndex = -1;
+        for (var i = 0; i < result.Items.Count; i++)
+        {
+            if (result.Items[i].DisplayText == "ToString")
+            {
+                toStringIndex = i;
+                break;
+            }
+        }
+        if (toStringIndex >= 0)
+        {
+            // For each Class/Struct/Interface/Enum candidate found in the list, ToString
+            // (a Method on the in-scope receiver) should appear before it.
+            for (var i = 0; i < result.Items.Count; i++)
+            {
+                if (i == toStringIndex) continue;
+                var item = result.Items[i];
+                var isType = item.Tags is not null && (item.Tags.Contains("Class") || item.Tags.Contains("Structure")
+                    || item.Tags.Contains("Interface") || item.Tags.Contains("Enum") || item.Tags.Contains("Delegate"));
+                if (isType)
+                {
+                    Assert.IsTrue(toStringIndex < i,
+                        $"In-scope ToString (rank=method) should appear before type-tier candidate '{item.DisplayText}' (rank=type).");
+                }
+            }
+        }
+    }
+
     // ── TestDiscoveryService ─────────────────────────────────────────
 
     [TestMethod]
