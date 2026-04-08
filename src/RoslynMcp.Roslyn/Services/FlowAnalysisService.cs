@@ -20,19 +20,25 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
     public async Task<DataFlowAnalysisDto> AnalyzeDataFlowAsync(
         string workspaceId, string filePath, int startLine, int endLine, CancellationToken ct)
     {
-        var (firstStatement, lastStatement, semanticModel) = await ResolveStatementRangeAsync(
+        var resolution = await ResolveAnalysisRegionAsync(
             workspaceId, filePath, startLine, endLine, ct).ConfigureAwait(false);
 
         DataFlowAnalysis result;
         try
         {
-            result = semanticModel.AnalyzeDataFlow(firstStatement, lastStatement);
+            // Lift `=> expr` (expression-bodied member) to a single-expression data-flow
+            // analysis. Roslyn's SemanticModel.AnalyzeDataFlow(ExpressionSyntax) handles the
+            // expression directly without needing a synthetic enclosing block, so we can
+            // satisfy the analysis without rewriting the syntax tree.
+            result = resolution.ExpressionBody is not null
+                ? resolution.Model.AnalyzeDataFlow(resolution.ExpressionBody)
+                : resolution.Model.AnalyzeDataFlow(resolution.FirstStatement!, resolution.LastStatement!);
         }
         catch (ArgumentException ex)
         {
             throw new InvalidOperationException(
                 $"Data flow analysis failed for lines {startLine}-{endLine}: {ex.Message}. " +
-                "Try narrowing the range to statements within a single block (avoid spanning try/catch/finally boundaries).", ex);
+                "Try widening the range to a complete expression-bodied member or to statements within a single block (avoid spanning try/catch/finally boundaries).", ex);
         }
 
         return new DataFlowAnalysisDto(
@@ -53,19 +59,41 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
     public async Task<ControlFlowAnalysisDto> AnalyzeControlFlowAsync(
         string workspaceId, string filePath, int startLine, int endLine, CancellationToken ct)
     {
-        var (firstStatement, lastStatement, semanticModel) = await ResolveStatementRangeAsync(
+        var resolution = await ResolveAnalysisRegionAsync(
             workspaceId, filePath, startLine, endLine, ct).ConfigureAwait(false);
+
+        // Roslyn does not expose an AnalyzeControlFlow overload for expression-bodied members.
+        // Synthesize the trivially-correct result for a `=> expr` body: no entry/exit points,
+        // no goto/break/continue, exactly one implicit return at the arrow location, end point
+        // not reachable (the implicit return exits the method).
+        if (resolution.ExpressionBody is not null)
+        {
+            var lineSpan = resolution.ExpressionBody.GetLocation().GetLineSpan();
+            var implicitReturn = new ReturnStatementDto(
+                lineSpan.StartLinePosition.Line + 1,
+                lineSpan.StartLinePosition.Character + 1,
+                resolution.ExpressionBody.ToString());
+
+            return new ControlFlowAnalysisDto(
+                Succeeded: true,
+                StartPointIsReachable: true,
+                EndPointIsReachable: false,
+                EntryPoints: [],
+                ExitPoints: [],
+                ReturnStatements: [implicitReturn],
+                Warning: "Synthesized from expression-bodied member: no statements to traverse, only the implicit return of the expression value.");
+        }
 
         ControlFlowAnalysis result;
         try
         {
-            result = semanticModel.AnalyzeControlFlow(firstStatement, lastStatement);
+            result = resolution.Model.AnalyzeControlFlow(resolution.FirstStatement!, resolution.LastStatement!);
         }
         catch (ArgumentException ex)
         {
             throw new InvalidOperationException(
                 $"Control flow analysis failed for lines {startLine}-{endLine}: {ex.Message}. " +
-                "Try narrowing the range to statements within a single block (avoid spanning try/catch/finally boundaries).", ex);
+                "Try widening the range to a complete expression-bodied member or to statements within a single block (avoid spanning try/catch/finally boundaries).", ex);
         }
 
         var entryPoints = result.EntryPoints
@@ -113,7 +141,19 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             Warning: warning);
     }
 
-    private async Task<(SyntaxNode First, SyntaxNode Last, SemanticModel Model)> ResolveStatementRangeAsync(
+    /// <summary>
+    /// Resolution result for a flow-analysis request: either a statement range
+    /// (<see cref="FirstStatement"/> + <see cref="LastStatement"/>) or an expression body
+    /// (<see cref="ExpressionBody"/>) lifted from a `=> expr` member. Exactly one of the
+    /// two cases is populated.
+    /// </summary>
+    private sealed record AnalysisRegion(
+        SyntaxNode? FirstStatement,
+        SyntaxNode? LastStatement,
+        ExpressionSyntax? ExpressionBody,
+        SemanticModel Model);
+
+    private async Task<AnalysisRegion> ResolveAnalysisRegionAsync(
         string workspaceId, string filePath, int startLine, int endLine, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -149,9 +189,31 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
 
         if (statements.Count == 0)
         {
+            // No statements found — fall back to the expression-bodied member lift before
+            // surfacing an error. Common case from the 2026-04-07 FirewallAnalyzer audit:
+            // a 14-line `=> expr` method like `DriftDetector.RulesEqual` that callers want
+            // to flow-analyze without rewriting the source.
+            var arrow = root.DescendantNodes()
+                .OfType<ArrowExpressionClauseSyntax>()
+                .FirstOrDefault(n =>
+                {
+                    var lineSpan = n.GetLocation().GetLineSpan();
+                    return lineSpan.StartLinePosition.Line >= startLine0 - 1 &&
+                           lineSpan.StartLinePosition.Line <= endLine0 + 1;
+                });
+
+            if (arrow is not null)
+            {
+                return new AnalysisRegion(
+                    FirstStatement: null,
+                    LastStatement: null,
+                    ExpressionBody: arrow.Expression,
+                    Model: semanticModel);
+            }
+
             throw new InvalidOperationException(
                 $"No statements found in the line range {startLine}-{endLine}. " +
-                "Ensure the range contains executable statements (not just declarations or braces).");
+                "Ensure the range contains executable statements or a `=> expr` expression body.");
         }
 
         // AnalyzeDataFlow/ControlFlow requires first and last to share the same BlockSyntax parent.
@@ -181,7 +243,11 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             last = blockStatements.Last();
         }
 
-        return (first, last, semanticModel);
+        return new AnalysisRegion(
+            FirstStatement: first,
+            LastStatement: last,
+            ExpressionBody: null,
+            Model: semanticModel);
     }
 
     private static bool ShareCommonBlock(SyntaxNode a, SyntaxNode b)
