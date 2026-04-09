@@ -4,6 +4,30 @@ All notable changes to Roslyn-Backed MCP Server will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [1.8.2] - 2026-04-09
+
+### Fixed
+
+- **Structured `test_run` failure envelope** (`test-run-failure-envelope`). When `dotnet test` exits without TRX output (MSB3027/3021 file locks, build failures, timeouts), the result now carries a `TestRunFailureEnvelopeDto` with `ErrorKind` (FileLock/BuildFailure/Timeout/Unknown), `IsRetryable`, `Summary`, and `StdOutTail`/`StdErrTail` instead of throwing a bare invocation error.
+- **`apply_text_edit` range validation** (`apply-text-edit-invalid-edit-corrupt-diff`). Malformed `TextEditDto` values (null `NewText`, non-positive line/column, out-of-bounds, reversed ranges) are now rejected with a structured `ArgumentException` before any disk write or diff generation.
+- **`revert_last_apply` disk consistency** (`revert-last-apply-disk-consistency`). `IUndoService` now accepts explicit `FileSnapshotDto` pairs; `RevertAsync` restores disk directly from these authoritative snapshots instead of relying on the fragile `Solution.GetChanges` path. Legacy solution-based path gains a disk-walk safety net.
+- **`set_editorconfig_option` undo retrofit** (`set-editorconfig-option-not-undoable`). Now participates in the undo stack via the file-snapshot path; `revert_last_apply` restores pre-write content or deletes the file if the set call created it. Tool description updated.
+- **`semantic_search` verbose-query fallback** (`semantic-search-zero-results-verbose-query`). Long natural-language queries that fail structured parsing decompose into stopword-filtered tokens; the token-OR fallback matches symbols whose names contain any token. New `SemanticSearchDebugDto` on the response shows parsed tokens, applied predicates, and fallback strategy.
+- **`workspace_load` idempotent by path** (`workspace-session-deduplication`). Repeat loads of the same solution path return the existing `WorkspaceId` instead of creating a duplicate. Includes a race-window check for concurrent callers.
+- **`find_overrides` auto-promotes to virtual root** (`find-overrides-virtual-declaration-site-doc`). Invoking at an override site now walks back to the original virtual/interface declaration before the search, producing the same complete result set as invoking at the virtual declaration.
+- **`find_type_usages` cref classification** (`find-type-usages-cref-classification`). New `TypeUsageClassification.Documentation` value; `<see cref="X"/>` doc-comment references are now classified as `Documentation` instead of `Other`.
+- **`find_references_bulk` schema error UX** (`find-references-bulk-schema-error-ux`). Invalid `BulkSymbolLocator` shapes now include an inline JSON example in the error message.
+- **MSBuild tools bad-argument message** (`msbuild-tools-bad-argument-message`). `ResolveRoslynProject` now lists loaded project names in the error when the caller passes an unknown project.
+- **`move_file_preview` truncation marker** (`move-file-preview-large-diff-truncation`). The FLAG-6A truncation marker now includes the paths of omitted files.
+- **`analyze_snippet` CS0029 span** (`analyze-snippet-cs0029-literal-span`). Regression test confirms the diagnostic span covers the string literal in user coordinates.
+
+### Changed
+
+- Tool description clarifications for `compile_check`, `project_diagnostics`, `workspace_load`, `evaluate_msbuild_items`, `evaluate_msbuild_property`, `add_package_reference_preview`, `semantic_search`, `symbol_search`, `server_info`, `set_editorconfig_option`, `find_overrides`, `test_run`.
+- `eng/verify-release.ps1` now passes `--logger "console;verbosity=normal"` so failing test names surface through wrapper scripts.
+- `eng/verify-version-drift.ps1` — new automated version-string drift check across all 5 version files; wired into `verify-release.ps1`.
+- Deep-review audit intake: 3 raw audit reports, 1 rollup, updated procedures and eng scripts.
+
 ## [1.8.1] - 2026-04-08
 
 ### Changed
