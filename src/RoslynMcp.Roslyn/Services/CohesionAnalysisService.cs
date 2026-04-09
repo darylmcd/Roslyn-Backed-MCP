@@ -195,10 +195,23 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         var typeDecl = await FindTypeDeclarationAsync(typeSymbol, solution, ct).ConfigureAwait(false);
         if (typeDecl is null) return [];
 
-        var doc = solution.GetDocument(typeDecl.SyntaxTree);
-        if (doc is null) return [];
-        var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
-        if (semanticModel is null) return [];
+        // dr-find-shared-members-locator-invalidargument: Build a semantic model map
+        // for all partial declarations so MethodAccessesMember can use the correct
+        // model for each method's syntax tree (prevents "Syntax node is not within
+        // syntax tree" when members span multiple partial files).
+        var semanticModelMap = new Dictionary<SyntaxTree, SemanticModel>();
+        foreach (var loc in typeSymbol.Locations.Where(l => l.IsInSource && l.SourceTree is not null))
+        {
+            var tree = loc.SourceTree!;
+            if (semanticModelMap.ContainsKey(tree)) continue;
+            var doc = solution.GetDocument(tree);
+            if (doc is null) continue;
+            var model = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (model is not null)
+                semanticModelMap[tree] = model;
+        }
+
+        if (semanticModelMap.Count == 0) return [];
 
         var publicMethods = typeSymbol.GetMembers()
             .OfType<IMethodSymbol>()
@@ -219,7 +232,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             var callers = new List<string>();
             foreach (var publicMethod in publicMethods)
             {
-                if (MethodAccessesMember(publicMethod, privateMember, typeDecl, semanticModel, ct))
+                if (MethodAccessesMember(publicMethod, privateMember, typeDecl, semanticModelMap, ct))
                 {
                     callers.Add(publicMethod.Name);
                 }
@@ -227,8 +240,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
             if (callers.Count >= 2)
             {
-                var loc = privateMember.Locations.FirstOrDefault(l => l.IsInSource);
-                var lineSpan = loc?.GetLineSpan();
+                var memberLoc = privateMember.Locations.FirstOrDefault(l => l.IsInSource);
+                var lineSpan = memberLoc?.GetLineSpan();
                 results.Add(new SharedMemberDto(
                     MemberName: privateMember.Name,
                     Kind: privateMember.Kind.ToString(),
@@ -297,10 +310,15 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
 
     private static bool MethodAccessesMember(
         IMethodSymbol method, ISymbol member,
-        TypeDeclarationSyntax typeDecl, SemanticModel semanticModel, CancellationToken ct)
+        TypeDeclarationSyntax typeDecl, Dictionary<SyntaxTree, SemanticModel> semanticModelMap, CancellationToken ct)
     {
         var methodLocation = method.Locations.FirstOrDefault(l => l.IsInSource);
         if (methodLocation?.SourceTree is null) return false;
+
+        // dr-find-shared-members-locator-invalidargument: Use the semantic model
+        // that matches the method's syntax tree to avoid cross-tree exceptions.
+        if (!semanticModelMap.TryGetValue(methodLocation.SourceTree, out var semanticModel))
+            return false;
 
         var root = methodLocation.SourceTree.GetRoot(ct);
         var methodNode = root.FindNode(methodLocation.SourceSpan);
