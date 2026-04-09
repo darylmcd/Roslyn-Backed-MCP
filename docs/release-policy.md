@@ -65,7 +65,7 @@ The grep is intentionally inclusive. When eyeballing the output:
 - **Must agree on the new version:** `Directory.Build.props:<line>`, `.claude-plugin/plugin.json:3`, `.claude-plugin/marketplace.json` plugin entry (the `plugins[].version` line, **not** line 9), `manifest.json:4`, and the **top** `CHANGELOG.md` `## [X.Y.Z]` header.
 - **Ignore:** `.claude-plugin/marketplace.json:9` is the marketplace catalog's own `metadata.version` schema version (`1.0.0`) — it does not track the plugin version. Older `## [X.Y.Z]` headers further down `CHANGELOG.md` are historical entries, not drift.
 
-If you ever automate this drift check, add it to `eng/verify-release.ps1` and remove this manual step from the checklist below.
+This drift check is now automated: `eng/verify-version-drift.ps1` runs at the top of `eng/verify-release.ps1` and exits non-zero if any of the five files disagree. The manual grep is still useful for quick eyeballing but is no longer the only gate.
 
 ## Release Checklist
 
