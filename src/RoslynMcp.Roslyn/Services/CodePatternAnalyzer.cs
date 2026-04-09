@@ -482,9 +482,12 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         if (string.IsNullOrEmpty(ifaceName)) return;
 
         var requireClass = Regex.IsMatch(q, @"\bclasses?\b");
+        // dr-semantic-search-idisposable-predicate-accuracy: Use exact match on
+        // ToDisplayString() instead of Contains() to prevent false positives (e.g.,
+        // "IDisposable" matching "IAsyncDisposable" via substring).
         predicates.Add(s => s is INamedTypeSymbol t &&
             (!requireClass || t.TypeKind == TypeKind.Class) &&
             t.AllInterfaces.Any(i => i.Name.Equals(ifaceName, StringComparison.OrdinalIgnoreCase) ||
-                i.ToDisplayString().Contains(ifaceName, StringComparison.OrdinalIgnoreCase)));
+                i.ToDisplayString().Equals(ifaceName, StringComparison.OrdinalIgnoreCase)));
     }
 }
