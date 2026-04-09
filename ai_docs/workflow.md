@@ -29,6 +29,7 @@ This document is the single owner for branch, worktree, pull-request, and merge-
 
 - When a change **closes** rows in `ai_docs/backlog.md`, update that file in the **same PR** (or an immediate follow-up).
 - **Implementation plans** must include a final todo such as `backlog: sync ai_docs/backlog.md` so the backlog stays aligned with shipped work.
+- **Multi-repo deep-review campaigns:** run `eng/new-deep-review-batch.ps1` from repo root (imports sibling audits, rollup, backlog merge). See `ai_docs/procedures/deep-review-backlog-intake.md` for switches.
 
 ## Post-Merge Cleanup
 

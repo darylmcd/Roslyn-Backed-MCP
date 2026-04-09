@@ -22,9 +22,8 @@ Raw audits use `<timestamp>_<repo-id>_mcp-server-audit.md` (no lock-mode segment
 ## Intake rule
 
 - Keep raw audit files immutable once written.
-- Do **not** open backlog rows directly from a multi-repo batch of raw audits.
-- First create a synthesized rollup in `ai_docs/reports/`, then open or update `ai_docs/backlog.md` from that rollup.
-- If a raw file was produced in another workspace, import it with `eng/import-deep-review-audit.ps1` before including it in a rollup.
+- **Standard path:** run **`eng/new-deep-review-batch.ps1`** from the Roslyn-Backed-MCP root (no args). It pulls the newest `*_mcp-server-audit.md` per repo-id from sibling folders under the same parent directory (e.g. `C:\Code-Repo\*`), copies into this tree, writes a rollup, and updates `ai_docs/backlog.md` unless `-SkipBacklogSync` is passed.
+- Manual import only if needed: `eng/import-deep-review-audit.ps1`.
 
 ## Static files and patterns
 

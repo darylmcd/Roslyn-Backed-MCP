@@ -35,13 +35,9 @@ Each rollup should include:
 | Candidate closures | Prior ids and current evidence |
 | Backlog actions | Rows to open, update, or intentionally leave out |
 
-Only the rollup should feed `ai_docs/backlog.md` during a multi-repo audit campaign.
+**Backlog intake:** by default, `eng/new-deep-review-batch.ps1` runs `eng/sync-deep-review-backlog.ps1` so new §14-style findings merge into `ai_docs/backlog.md`. Add rows by hand for narrative-only sources (e.g. test-suite audits) when needed — see [`../procedures/deep-review-backlog-intake.md`](../procedures/deep-review-backlog-intake.md).
 
-If some raw audits were produced outside this workspace, import them first with `eng/import-deep-review-audit.ps1` so the rollup references canonical local evidence paths.
-
-To scaffold a rollup from existing raw audit files, run `eng/new-deep-review-rollup.ps1 -AuditFiles <paths...>` from the repo root.
-
-For the common external-audit path, run `eng/new-deep-review-batch.ps1 -AuditFiles <paths...>` to import non-canonical raw audits and scaffold the rollup in one command.
+**Rollup-only:** `eng/new-deep-review-rollup.ps1 -AuditFiles <paths...>`
 
 ## Current files
 

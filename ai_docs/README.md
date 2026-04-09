@@ -37,7 +37,8 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 |------|---------|
 | `procedures/doc-migration-checklist.md` | Checklist for documentation migrations |
 | `procedures/deep-review-program.md` | Multi-repo deep-review matrix, raw-vs-rollup outputs, and backlog intake rules |
-| `procedures/deep-review-command-reference.md` | Example shell commands for import, rollup, and one-command batch deep-review workflows |
+| `procedures/deep-review-backlog-intake.md` | Campaign close: scan audits/rollups, dedupe, P2–P4, reindex `backlog.md` |
+| `procedures/deep-review-command-reference.md` | Example shell commands for import, rollup, compare, and one-command batch deep-review workflows |
 | `prompts/standardize-documentation.md` | Cross-repo prompt: run `/doc-audit` first, then align human + AI docs, packaging/install inventory, stale ref removal |
 | `prompts/standardize-backlog-hygiene.md` | Align backlog hygiene across repos with `backlog.md` and `workflow.md` |
 | `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive MCP server audit, experimental→stable promotion scoring, and plugin-skill verification (Phases 0–18 + 16b). Keep in sync with project surface. Do not delete. |
