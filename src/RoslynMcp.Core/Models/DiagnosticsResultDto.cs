@@ -21,4 +21,5 @@ public sealed record DiagnosticsResultDto(
     int TotalInfo,
     int CompilerErrors = 0,
     int AnalyzerErrors = 0,
-    int WorkspaceErrors = 0);
+    int WorkspaceErrors = 0,
+    string? SeverityHint = null);

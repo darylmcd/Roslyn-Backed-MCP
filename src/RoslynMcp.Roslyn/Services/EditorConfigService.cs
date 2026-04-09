@@ -52,6 +52,22 @@ public sealed class EditorConfigService : IEditorConfigService
         // Find the applicable .editorconfig path
         var editorconfigPath = FindEditorconfigPath(document.FilePath ?? filePath);
 
+        // dr-get-editorconfig-options-incomplete-after-set: Supplement Roslyn-enumerated
+        // keys with any keys present on disk that Roslyn's cached snapshot hasn't picked
+        // up yet (e.g., after set_editorconfig_option writes a new key).
+        if (editorconfigPath is not null && File.Exists(editorconfigPath))
+        {
+            var existingKeys = new HashSet<string>(options.Select(o => o.Key), StringComparer.OrdinalIgnoreCase);
+            foreach (var (key, value) in ParseEditorconfigCsKeys(editorconfigPath))
+            {
+                if (!existingKeys.Contains(key))
+                {
+                    options.Add(new EditorConfigEntryDto(key, value, "disk"));
+                    existingKeys.Add(key);
+                }
+            }
+        }
+
         return new EditorConfigOptionsDto(
             FilePath: filePath,
             ApplicableEditorConfigPath: editorconfigPath,
@@ -69,6 +85,40 @@ public sealed class EditorConfigService : IEditorConfigService
             dir = Path.GetDirectoryName(dir);
         }
         return null;
+    }
+
+    /// <summary>
+    /// Parses the .editorconfig file on disk and yields key-value pairs from
+    /// sections that apply to C# files (e.g., [*.cs], [*.{cs,csx,cake}], [*]).
+    /// </summary>
+    private static IEnumerable<(string Key, string Value)> ParseEditorconfigCsKeys(string editorconfigPath)
+    {
+        var inApplicableSection = false;
+        foreach (var rawLine in File.ReadLines(editorconfigPath))
+        {
+            var line = rawLine.Trim();
+            if (line.Length == 0 || line[0] == '#' || line[0] == ';')
+                continue;
+
+            if (line[0] == '[')
+            {
+                // Check if the section header matches C# files
+                inApplicableSection = line.Contains("*", StringComparison.Ordinal) &&
+                    (line.Contains(".cs", StringComparison.OrdinalIgnoreCase) ||
+                     !line.Contains('.'));  // [*] applies to all files
+                continue;
+            }
+
+            if (!inApplicableSection) continue;
+
+            var eqIndex = line.IndexOf('=');
+            if (eqIndex <= 0) continue;
+
+            var key = line[..eqIndex].Trim();
+            var value = line[(eqIndex + 1)..].Trim();
+            if (key.Length > 0 && value.Length > 0)
+                yield return (key, value);
+        }
     }
 
     private static IEnumerable<string> GetKnownOptionKeys()
