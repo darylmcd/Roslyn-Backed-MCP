@@ -279,12 +279,12 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_references_bulk", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find references for multiple symbols in a single call (max 50). Returns a list of results keyed by symbol handle, metadata name, or file:line:column")]
+    [McpServerTool(Name = "find_references_bulk", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find references for multiple symbols in a single call (max 50). Returns a list of results keyed by symbol handle, metadata name, or file:line:column. Each entry must populate ONE of the three locator strategies: symbolHandle, metadataName, or filePath/line/column")]
     public static Task<string> FindReferencesBulk(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Array of symbol locators (max 50). Each object may have symbolHandle, metadataName, or filePath/line/column")] BulkSymbolLocator[] symbols,
+        [Description("Array of symbol locators (max 50). Each object may have symbolHandle, metadataName, or filePath/line/column. Example: [{\"metadataName\": \"Namespace.TypeName\"}, {\"filePath\": \"/path/file.cs\", \"line\": 42, \"column\": 7}]")] BulkSymbolLocator[] symbols,
         [Description("Include the definition location in each result (default: false)")] bool includeDefinition = false,
         CancellationToken ct = default)
     {
