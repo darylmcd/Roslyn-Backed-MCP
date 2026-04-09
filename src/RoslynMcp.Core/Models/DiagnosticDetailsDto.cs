@@ -7,7 +7,8 @@ public sealed record DiagnosticDetailsDto(
     DiagnosticDto Diagnostic,
     string? Description,
     string? HelpLinkUri,
-    IReadOnlyList<CodeFixOptionDto> SupportedFixes);
+    IReadOnlyList<CodeFixOptionDto> SupportedFixes,
+    string? GuidanceMessage = null);
 
 /// <summary>
 /// Represents a code fix option available for a diagnostic.

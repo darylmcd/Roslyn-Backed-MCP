@@ -38,7 +38,7 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task Diagnostic_Details_For_CS0414_Includes_Curated_RemoveUnusedField_Fix()
+    public async Task Diagnostic_Details_For_CS0414_Returns_Guidance_Instead_Of_Curated_Fix()
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
         var probeFile = solution.Projects.SelectMany(project => project.Documents).First(document => document.Name == "DiagnosticsProbe.cs");
@@ -52,8 +52,14 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
             CancellationToken.None);
 
         Assert.IsNotNull(details);
-        Assert.AreEqual(1, details.SupportedFixes.Count);
-        Assert.AreEqual("remove_unused_field", details.SupportedFixes[0].FixId);
+        // dr-code-fix-preview-vs-diagnostic-details-curated-gap: CS0414 no longer
+        // advertises a curated fix (code_fix_preview cannot handle it). Instead,
+        // a guidance message directs users to get_code_actions + preview_code_action.
+        Assert.AreEqual(0, details.SupportedFixes.Count,
+            "CS0414 should not advertise curated fixes that code_fix_preview cannot handle.");
+        Assert.IsNotNull(details.GuidanceMessage,
+            "CS0414 should include guidance pointing to get_code_actions.");
+        StringAssert.Contains(details.GuidanceMessage, "get_code_actions");
     }
 
     [TestMethod]
