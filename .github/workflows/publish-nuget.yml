@@ -1,0 +1,76 @@
+name: publish-nuget
+
+# Triggered on GitHub Release creation (published) or manual dispatch.
+# Requires the NUGET_API_KEY repository secret (Push scope, from nuget.org/account/apikeys).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — validate and pack but do NOT push to NuGet'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Verify release build (version drift + build + test + publish)
+        shell: pwsh
+        run: ./eng/verify-release.ps1 -Configuration Release
+
+      - name: Pack NuGet package
+        shell: pwsh
+        run: |
+          dotnet pack src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj `
+            -c Release `
+            --no-build `
+            -o nupkg
+
+      - name: Verify package contents
+        shell: pwsh
+        run: |
+          $nupkg = Get-ChildItem -Path nupkg -Filter "*.nupkg" | Select-Object -First 1
+          $snupkg = Get-ChildItem -Path nupkg -Filter "*.snupkg" | Select-Object -First 1
+          if (-not $nupkg) { throw "No .nupkg found in nupkg/" }
+          if (-not $snupkg) { throw "No .snupkg found in nupkg/" }
+          Write-Host "Package: $($nupkg.Name) ($([math]::Round($nupkg.Length / 1MB, 2)) MB)"
+          Write-Host "Symbols: $($snupkg.Name) ($([math]::Round($snupkg.Length / 1MB, 2)) MB)"
+
+      - name: Push to NuGet
+        if: ${{ github.event_name == 'release' || inputs.dry_run != 'true' }}
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
+            throw "NUGET_API_KEY secret is not set. Add it in Settings > Secrets and variables > Actions."
+          }
+          $nupkg = Get-ChildItem -Path nupkg -Filter "*.nupkg" | Select-Object -First 1
+          dotnet nuget push $nupkg.FullName `
+            --source https://api.nuget.org/v3/index.json `
+            --api-key $env:NUGET_API_KEY `
+            --skip-duplicate
+
+      - name: Dry run notice
+        if: ${{ inputs.dry_run == 'true' && github.event_name == 'workflow_dispatch' }}
+        run: echo "Dry run — package was built and validated but NOT pushed to NuGet."
+
+      - name: Upload NuGet packages as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: nupkg/
