@@ -32,6 +32,17 @@ public sealed class CodeActionService : ICodeActionService
     public async Task<IReadOnlyList<CodeActionDto>> GetCodeActionsAsync(
         string workspaceId, string filePath, int startLine, int startColumn, int? endLine, int? endColumn, CancellationToken ct)
     {
+        // dr-get-code-actions-opaque-error-on-bad-contract: Validate 1-based parameters
+        // up front so callers get a clear error instead of a cryptic IndexOutOfRangeException.
+        if (startLine < 1)
+            throw new ArgumentException(
+                $"startLine must be >= 1 (1-based). Got {startLine}. Did you pass 'line' instead of 'startLine'?",
+                nameof(startLine));
+        if (startColumn < 1)
+            throw new ArgumentException(
+                $"startColumn must be >= 1 (1-based). Got {startColumn}. Did you pass 'column' instead of 'startColumn'?",
+                nameof(startColumn));
+
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null) return [];

@@ -145,20 +145,38 @@ public sealed class DiagnosticService : IDiagnosticService
         var analyzerErrors = analyzerAllDiagnostics.Count(d => d.Severity == "Error");
         var workspaceErrors = workspaceMatchingFile.Count(d => d.Severity == "Error");
 
+        var totalWarnings = compilerAllDiagnostics.Count(d => d.Severity == "Warning")
+            + analyzerAllDiagnostics.Count(d => d.Severity == "Warning")
+            + workspaceMatchingFile.Count(d => d.Severity == "Warning");
+        var totalInfo = compilerAllDiagnostics.Count(d => d.Severity == "Info")
+            + analyzerAllDiagnostics.Count(d => d.Severity == "Info")
+            + workspaceMatchingFile.Count(d => d.Severity == "Info");
+
+        // dr-project-diagnostics-info-only-empty-first-page: When the returned arrays
+        // are empty but lower-severity diagnostics exist, add a hint so callers know
+        // they need to pass an explicit severity filter to see them.
+        var allEmpty = workspaceDiagnostics.Count == 0 &&
+                       compilerDiagnostics.Count == 0 &&
+                       analyzerDiagnostics.Count == 0;
+        string? severityHint = null;
+        if (allEmpty && (totalWarnings > 0 || totalInfo > 0))
+        {
+            severityHint = severityFilter is null
+                ? $"No diagnostics at the default Warning severity. {totalInfo} Info and {totalWarnings} Warning diagnostics exist — pass severity='Info' to include them."
+                : $"No diagnostics at severity '{severityFilter}' or above. Lower-severity diagnostics may exist — try a less restrictive filter.";
+        }
+
         return new DiagnosticsResultDto(
             workspaceDiagnostics,
             compilerDiagnostics,
             analyzerDiagnostics,
             TotalErrors: compilerErrors + analyzerErrors + workspaceErrors,
-            TotalWarnings: compilerAllDiagnostics.Count(d => d.Severity == "Warning")
-                + analyzerAllDiagnostics.Count(d => d.Severity == "Warning")
-                + workspaceMatchingFile.Count(d => d.Severity == "Warning"),
-            TotalInfo: compilerAllDiagnostics.Count(d => d.Severity == "Info")
-                + analyzerAllDiagnostics.Count(d => d.Severity == "Info")
-                + workspaceMatchingFile.Count(d => d.Severity == "Info"),
+            TotalWarnings: totalWarnings,
+            TotalInfo: totalInfo,
             CompilerErrors: compilerErrors,
             AnalyzerErrors: analyzerErrors,
-            WorkspaceErrors: workspaceErrors);
+            WorkspaceErrors: workspaceErrors,
+            SeverityHint: severityHint);
     }
 
     /// <summary>
