@@ -207,7 +207,8 @@ public sealed class DiagnosticService : IDiagnosticService
         Diagnostic: SymbolMapper.ToDiagnosticDto(diagnostic),
         Description: BuildDiagnosticDescription(diagnostic),
         HelpLinkUri: BuildHelpLink(diagnostic.Id),
-        SupportedFixes: GetSupportedFixes(diagnostic.Id));
+        SupportedFixes: GetSupportedFixes(diagnostic.Id),
+        GuidanceMessage: GetFixGuidance(diagnostic.Id));
 
     private static string BuildDiagnosticDescription(Diagnostic diagnostic)
     {
@@ -269,6 +270,10 @@ public sealed class DiagnosticService : IDiagnosticService
     private static string BuildHelpLink(string diagnosticId) =>
         $"https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-messages/{diagnosticId.ToLowerInvariant()}";
 
+    // dr-code-fix-preview-vs-diagnostic-details-curated-gap: Only advertise
+    // diagnostics that code_fix_preview (PreviewCodeFixAsync) actually handles.
+    // Previously this map included CS0414, CS8600/8602/8603, CA2234 which were
+    // rejected at apply time — a contract violation surfaced by deep-review audits.
     private static IReadOnlyList<CodeFixOptionDto> GetSupportedFixes(string diagnosticId) =>
         diagnosticId.ToUpperInvariant() switch
         {
@@ -286,28 +291,20 @@ public sealed class DiagnosticService : IDiagnosticService
                     Title: "Remove unnecessary using directive",
                     Description: "IDE-style unused using removal (requires a matching code fix provider in the workspace).")
             ],
-            "CS0414" =>
-            [
-                new CodeFixOptionDto(
-                    FixId: "remove_unused_field",
-                    Title: "Remove unused field",
-                    Description: "Field is assigned but never read; remove or use the field.")
-            ],
-            "CS8600" or "CS8602" or "CS8603" =>
-            [
-                new CodeFixOptionDto(
-                    FixId: "nullable_fix",
-                    Title: "Address nullable reference warning",
-                    Description: "Add null check, use null-forgiving operator, or adjust annotations.")
-            ],
-            "CA2234" =>
-            [
-                new CodeFixOptionDto(
-                    FixId: "pass_system_uri",
-                    Title: "Pass System.Uri instead of string",
-                    Description: "CA2234: use Uri overload for HTTP client calls where applicable.")
-            ],
             _ => []
+        };
+
+    /// <summary>
+    /// Returns a guidance message for diagnostics that do not have curated code_fix_preview
+    /// support but can be addressed via get_code_actions + preview_code_action.
+    /// </summary>
+    private static string? GetFixGuidance(string diagnosticId) =>
+        diagnosticId.ToUpperInvariant() switch
+        {
+            "CS0414" or "CS8600" or "CS8602" or "CS8603" or "CA2234" or "CA1852" =>
+                "This diagnostic does not have a curated code_fix_preview fix. " +
+                "Use get_code_actions at the diagnostic location, then preview_code_action to apply a Roslyn-provided fix.",
+            _ => null
         };
 
     private static bool DiagnosticMatchesLocation(Diagnostic diagnostic, string diagnosticId, string filePath, int line, int column)
