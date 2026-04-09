@@ -4,6 +4,24 @@ All notable changes to Roslyn-Backed MCP Server will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Fixed
+
+- **`apply_text_edit` line-break preservation** (`dr-apply-text-edit-line-break-corruption`). When an edit span ends at column 1 of a line (swallowing the line break), and the replacement text does not end with a newline, the original line ending is now appended to prevent line collapse at method/declaration boundaries. (#121)
+- **`diagnostic_details` curated fix contract** (`dr-code-fix-preview-vs-diagnostic-details-curated-gap`). Removed false curated fix promises for CS0414, CS8600/8602/8603, CA2234, CA1852 from `GetSupportedFixes` — `code_fix_preview` only supports CS8019/IDE0005. Added `GuidanceMessage` field to `DiagnosticDetailsDto` directing users to `get_code_actions` + `preview_code_action`. (#122)
+- **`semantic_search` implementing predicate accuracy** (`dr-semantic-search-idisposable-predicate-accuracy`). Replaced `Contains()` with `Equals()` on `ToDisplayString()` in `AddImplementingPredicate` to prevent false positives where "IDisposable" matched "IAsyncDisposable" via substring. (#123)
+- **`find_shared_members` partial-class crash** (`dr-find-shared-members-locator-invalidargument`). Built a semantic model map for all partial declarations so `MethodAccessesMember` uses the correct model for each method's syntax tree, preventing "Syntax node is not within syntax tree" exceptions. (#124)
+- **`SecurityDiagnosticIntegrationTests` fixture** (`dr-security-integration-insecurelib-not-in-sln`). Added `EnableNETAnalyzers=true` and `AnalysisLevel=latest-all` to InsecureLib.csproj so CA5350/CA5351 fire in MSBuildWorkspace. Fixes 4 previously failing tests. (#125)
+- **`project_diagnostics` empty first page hint** (`dr-project-diagnostics-info-only-empty-first-page`). Added `SeverityHint` field when returned arrays are empty but lower-severity diagnostics exist. (#126)
+- **`get_editorconfig_options` completeness** (`dr-get-editorconfig-options-incomplete-after-set`). Supplemented Roslyn-enumerated keys with on-disk keys from `.editorconfig` after `set_editorconfig_option` writes. (#126)
+- **`get_code_actions` parameter validation** (`dr-get-code-actions-opaque-error-on-bad-contract`). Validates `startLine`/`startColumn` >= 1 with a helpful error when callers pass wrong parameter names. (#126)
+
+### Changed
+
+- **`project_diagnostics` tool description** updated with response JSON field names (`totalErrors`, `totalWarnings`, `totalInfo`, `compilerErrors`, `analyzerErrors`, `workspaceErrors`, `severityHint`) and default severity documentation. (#126)
+- **`find_references_bulk` tool description** now includes a concrete JSON parameter shape example to prevent first-invocation failures. (#127)
+
 ## [1.8.2] - 2026-04-09
 
 ### Fixed
