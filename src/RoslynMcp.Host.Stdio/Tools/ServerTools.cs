@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Services;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -14,7 +15,8 @@ public static class ServerTools
     [McpServerTool(Name = "server_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      Description("Get server version, capabilities, runtime information, and loaded workspace count. workspaceCount reflects sessions at call time and may briefly lag if invoked in parallel with or immediately after workspace_load; use workspace_list for authoritative session enumeration. Prompts tier note: the response carries prompts.stable and prompts.experimental counts to mirror the tool/resource tiering convention, but all currently-exposed prompts are experimental. A report like stable=0, experimental=16 is intentional and means 'no prompts have been promoted to the stable tier yet' — it is NOT a missing-surface bug.")]
     public static Task<string> GetServerInfo(
-        IWorkspaceManager workspace)
+        IWorkspaceManager workspace,
+        NuGetVersionChecker versionChecker)
     {
         return ToolErrorHandler.ExecuteAsync("server_info", () =>
         {
@@ -24,6 +26,13 @@ public static class ServerTools
 
             var catalogSummary = ServerSurfaceCatalog.GetSummary();
             var wsCount = workspace.ListWorkspaces().Count;
+
+            // Best-effort: returns cached latest version or null if pending/failed
+            var latestVersion = versionChecker.GetLatestVersion();
+            var currentSemver = version.Split('+')[0]; // strip git hash suffix
+            var updateAvailable = latestVersion is not null
+                                  && !string.Equals(currentSemver, latestVersion, StringComparison.OrdinalIgnoreCase);
+
             var info = new
             {
                 server = "roslyn-mcp",
@@ -68,7 +77,14 @@ public static class ServerTools
                     prompts = true,
                     logging = true,
                     progress = true
-                }
+                },
+                update = latestVersion is not null ? new
+                {
+                    current = currentSemver,
+                    latest = latestVersion,
+                    updateAvailable,
+                    command = updateAvailable ? "dotnet tool update -g Darylmcd.RoslynMcp" : (string?)null
+                } : null
             };
 
             return Task.FromResult(JsonSerializer.Serialize(info, JsonDefaults.Indented));

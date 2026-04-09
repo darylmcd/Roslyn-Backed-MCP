@@ -20,6 +20,15 @@ This document is the canonical runtime and execution-context reference for AI ag
   - `dotnet test RoslynMcp.slnx --nologo`
   - `dotnet run --project src/RoslynMcp.Host.Stdio`
 
+## Package Identity
+
+- **NuGet package ID:** `Darylmcd.RoslynMcp` (NOT `RoslynMcp` — that is a different publisher's package)
+- **CLI command after install:** `roslynmcp`
+- **Install:** `dotnet tool install -g Darylmcd.RoslynMcp`
+- **Update:** `dotnet tool update -g Darylmcd.RoslynMcp`
+
+The project name `RoslynMcp.Host.Stdio` is the .csproj assembly name, not the NuGet package ID. Always use `Darylmcd.RoslynMcp` in `dotnet tool` commands.
+
 ## Environment variables (stdio host)
 
 Optional overrides read at startup from `src/RoslynMcp.Host.Stdio/Program.cs`. Values must be positive integers unless noted.
