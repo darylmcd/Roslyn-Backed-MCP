@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using Microsoft.CodeAnalysis;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -34,7 +35,7 @@ public sealed class SurfaceCatalogTests
     [TestMethod]
     public async Task ServerInfo_IncludesSurfaceSupportSummary()
     {
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager());
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new NuGetVersionChecker(new HttpClient()));
         using var doc = JsonDocument.Parse(json);
 
         Assert.IsTrue(doc.RootElement.TryGetProperty("surface", out var surface));

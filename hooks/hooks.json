@@ -13,6 +13,15 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "mcp__roslyn__server_info",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Check the server_info response for the 'update' field. If 'update.updateAvailable' is true, briefly tell the user that a newer version of the Roslyn MCP plugin is available (mention the current and latest versions) and suggest running /roslyn-mcp:update. If update is null or updateAvailable is false, respond with 'ok' and do not mention updates."
+          }
+        ]
+      },
+      {
         "matcher": "mcp__roslyn__(rename_apply|extract_interface_apply|extract_type_apply|move_type_to_file_apply|bulk_replace_type_apply|remove_dead_code_apply|apply_composite_preview|move_file_apply|create_file_apply)",
         "hooks": [
           {

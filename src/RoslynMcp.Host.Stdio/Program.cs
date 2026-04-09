@@ -27,6 +27,9 @@ builder.Services.AddSingleton(BindExecutionGateOptions());
 builder.Services.AddSingleton(BindSecurityOptions());
 builder.Services.AddSingleton(BindScriptingServiceOptions());
 
+builder.Services.AddSingleton<HttpClient>();
+builder.Services.AddSingleton<RoslynMcp.Host.Stdio.Services.NuGetVersionChecker>();
+
 builder.Services.AddRoslynServices();
 builder.Services
     .AddMcpServer(options =>
