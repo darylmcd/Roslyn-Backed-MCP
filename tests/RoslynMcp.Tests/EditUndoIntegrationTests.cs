@@ -160,6 +160,62 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(entry.Description, "Dog.cs");
     }
 
+    /// <summary>
+    /// Regression test for dr-apply-text-edit-line-break-corruption: when an edit span
+    /// ends at column 1 of a subsequent line (swallowing the line break), and the
+    /// replacement text does not end with a newline, the original line break must be
+    /// preserved to prevent line collapse at method/declaration boundaries.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyTextEdit_PreservesLineBreak_WhenSpanEndsAtColumn1()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalText = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+
+        // Find "public string Speak() => \"Woof\";" — replace the entire line including
+        // the trailing newline (ending at column 1 of the NEXT line) with replacement
+        // text that does NOT end with a newline. Without the fix, this collapses the
+        // Speak line into the Fetch method declaration.
+        var lines = originalText.Split('\n');
+        int speakLineNumber = -1;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (lines[i].Contains("Speak", StringComparison.Ordinal))
+            {
+                speakLineNumber = i + 1; // 1-based
+                break;
+            }
+        }
+        Assert.IsTrue(speakLineNumber > 0, "Dog.cs must contain a Speak method.");
+
+        // Span: from start of the Speak line to column 1 of the next line (includes line break)
+        var edit = new TextEditDto(
+            speakLineNumber, 1,
+            speakLineNumber + 1, 1,
+            "    public string Speak() => \"Bark\";");
+
+        var result = await EditService.ApplyTextEditsAsync(
+            workspaceId, dogFilePath, new[] { edit }, CancellationToken.None);
+        Assert.IsTrue(result.Success);
+
+        var afterEdit = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        StringAssert.Contains(afterEdit, "\"Bark\"", "Replacement text should be present.");
+
+        // The critical assertion: the Fetch method must still start on its own line.
+        // Without the line-break preservation fix, "Bark\";" and "public void Fetch"
+        // would be on the same line.
+        var afterLines = afterEdit.Split('\n');
+        var barkLine = Array.FindIndex(afterLines, l => l.Contains("Bark", StringComparison.Ordinal));
+        var fetchLine = Array.FindIndex(afterLines, l => l.Contains("Fetch", StringComparison.Ordinal));
+        Assert.IsTrue(barkLine >= 0 && fetchLine >= 0, "Both Bark and Fetch lines must exist.");
+        Assert.IsTrue(fetchLine > barkLine,
+            "Fetch method must be on a separate line after the Speak replacement — " +
+            "line break at method boundary must be preserved.");
+    }
+
     private static TextEditDto AppendCommentEdit(string fileText, string commentLine)
     {
         var lines = fileText.Split('\n');

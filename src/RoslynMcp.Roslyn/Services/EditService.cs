@@ -221,7 +221,27 @@ public sealed class EditService : IEditService
             var startPosition = sourceText.Lines.GetPosition(new LinePosition(edit.StartLine - 1, edit.StartColumn - 1));
             var endPosition = sourceText.Lines.GetPosition(new LinePosition(edit.EndLine - 1, edit.EndColumn - 1));
             var span = TextSpan.FromBounds(startPosition, endPosition);
-            textChanges.Add(new TextChange(span, edit.NewText));
+
+            // dr-apply-text-edit-line-break-corruption: When the edit span ends at
+            // column 1 of a line (meaning it swallowed the line break of the previous
+            // line), and NewText does not end with a line break, append the original
+            // line ending to prevent line collapse at method/declaration boundaries.
+            var replacementText = edit.NewText;
+            if (edit.EndColumn == 1 && span.Length > 0 && replacementText.Length > 0)
+            {
+                var lastCharInSpan = sourceText[span.End - 1];
+                var endsWithNewline = replacementText[^1] is '\n' or '\r';
+                if (lastCharInSpan is '\n' or '\r' && !endsWithNewline)
+                {
+                    // Detect the original line ending sequence (CRLF vs LF vs CR)
+                    var lineBreak = (span.End >= 2 && sourceText[span.End - 2] == '\r' && lastCharInSpan == '\n')
+                        ? "\r\n"
+                        : lastCharInSpan == '\n' ? "\n" : "\r";
+                    replacementText += lineBreak;
+                }
+            }
+
+            textChanges.Add(new TextChange(span, replacementText));
         }
 
         var newSourceText = sourceText.WithChanges(textChanges);
