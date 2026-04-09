@@ -21,12 +21,15 @@
     <RepositoryUrl>https://github.com/darylmcd/Roslyn-Backed-MCP</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>mcp;roslyn;csharp;code-analysis;ai</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- The project-local README.md is the package consumer's view (install + use + config + safety).
          The repo root README.md stays focused on contributors and is intentionally not packed. -->
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <!-- Pack the repo root icon into the nupkg so NuGet gallery shows it. -->
+    <None Include="../../icon.png" Pack="true" PackagePath="\" />
     <InternalsVisibleTo Include="RoslynMcp.Tests" />
   </ItemGroup>
 
