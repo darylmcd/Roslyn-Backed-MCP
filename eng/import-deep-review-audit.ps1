@@ -1,12 +1,12 @@
-Set-StrictMode -Version Latest
-$ErrorActionPreference = 'Stop'
-
 param(
     [Parameter(Mandatory = $true)]
     [string[]]$AuditFiles,
 
     [switch]$Force
 )
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 function Get-RepoRoot {
     Split-Path -Parent $PSScriptRoot
@@ -31,8 +31,15 @@ function Test-AuditFileName {
 function Test-AuditFileContent {
     param([string]$Path)
 
-    $firstLines = Get-Content -Path $Path -TotalCount 20
-    return $firstLines -contains '# MCP Server Audit Report'
+    # Canonical template uses "# MCP Server Audit Report"; some repos use "# MCP server audit — …" (see deep-review prompt).
+    $firstLines = Get-Content -Path $Path -TotalCount 40
+    foreach ($line in $firstLines) {
+        if ($line -match '^\s*#\s+MCP\s+(Server\s+Audit(\s+Report)?|server\s+audit)\b') {
+            return $true
+        }
+    }
+
+    return $false
 }
 
 $repoRoot = Get-RepoRoot
