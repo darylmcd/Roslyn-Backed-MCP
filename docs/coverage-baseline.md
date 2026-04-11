@@ -20,7 +20,7 @@ CI uploads the **`code-coverage`** artifact (Cobertura + HTML summary when the w
 | Line coverage | **~60.7%** | `<coverage line-rate="…">` in Cobertura (e.g. ~0.607) |
 | Branch coverage | **~47.3%** | `<coverage branch-rate="…">` |
 
-**Updated:** 2026-04-04 — measured after v1.6.0 integration-test expansion (`verify-release.ps1`).
+**Updated:** 2026-04-11 — measured after v1.9.0 (329 tests via `verify-release.ps1`). Rates unchanged from v1.6.0 baseline despite 120 additional tests — new tests cover previously-exercised code paths rather than net-new coverage.
 
 Historical note: older docs cited ~50% line / ~34% branch from an earlier toolchain or partial collection; the **do not regress** rule applies to this **current** baseline.
 

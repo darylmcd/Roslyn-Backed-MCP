@@ -16,8 +16,8 @@ This document supports the post-release roadmap item **“promote experimental �
 
 | Tier | Tools | Resources | Prompts |
 |------|-------|-----------|---------|
-| Stable | 62 | 9 stable / 0 experimental | 0 stable / 16 experimental |
-| Experimental | 61 | — | — |
+| Stable | 66 | 9 stable / 0 experimental | 0 stable / 16 experimental |
+| Experimental | 57 | — | — |
 
 Authoritative counts: `ServerSurfaceCatalog.GetSummary()` / `server_info` / `roslyn://server/catalog`.
 
@@ -49,9 +49,20 @@ The following were promoted to **stable** in v1.8.0 (catalog `2026.04`): read-on
 | `get_namespace_dependencies` | advanced-analysis | Namespace graph; read-only. |
 | `get_nuget_dependencies` | advanced-analysis | Package inventory; read-only. |
 
+## Tier 1 — promoted (v1.9.0)
+
+The following were promoted to **stable** in v1.9.0: `semantic_search` (backlog UX work shipped in #110, #123), flow-analysis tools (read-only, expression-bodied member support tested), and `evaluate_csharp` (timeout/budget/abandoned-cap enforcement tested).
+
+| Tool | Category | Notes |
+|------|----------|-------|
+| `semantic_search` | advanced-analysis | Verbose-query fallback (#110), exact-match implementing predicate (#123). |
+| `analyze_data_flow` | advanced-analysis | Read-only flow analysis; expression-bodied member support. |
+| `analyze_control_flow` | advanced-analysis | Read-only flow analysis; expression-bodied member support. |
+| `evaluate_csharp` | scripting | Timeout budget, infinite-loop safety, abandoned-cap, cancellation — all integration-tested. |
+
 ## Next promotion pass
 
-Repopulate Tier 1 candidates after the next repo-matrix audit rollup or when operational evidence justifies additional stable promotions. Likely candidates still experimental: `semantic_search` (after backlog clears), flow-analysis tools, scripting (`evaluate_csharp`), configuration/MSBuild helpers — each gated by `docs/release-policy.md`.
+Repopulate Tier 1 candidates after the next repo-matrix audit rollup or when operational evidence justifies additional stable promotions. Likely candidates still experimental: `get_operations`, `get_syntax_tree`, configuration/MSBuild helpers (`get_editorconfig_options`, `evaluate_msbuild_property`, `evaluate_msbuild_items`, `get_msbuild_properties`) — each gated by `docs/release-policy.md`.
 
 ## Tier 2 — needs stronger evidence before promotion
 

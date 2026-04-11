@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-04-11
+
+### Added
+
+- **Stable promotions (4 tools):** `semantic_search`, `analyze_data_flow`, `analyze_control_flow`, `evaluate_csharp` promoted from experimental to stable. Catalog `2026.04` now ships 66 stable / 57 experimental tools (123 total).
+  - `semantic_search` — verbose-query fallback (#110) and exact-match implementing predicate (#123) shipped; backlog cleared.
+  - `analyze_data_flow` / `analyze_control_flow` — expression-bodied member support added; read-only, well-tested.
+  - `evaluate_csharp` — timeout budget, infinite-loop safety, abandoned-cap, and outer-cancellation all exercised in integration tests.
+
 ### Fixed
 
 - **`apply_text_edit` line-break preservation** (`dr-apply-text-edit-line-break-corruption`). When an edit span ends at column 1 of a line (swallowing the line break), and the replacement text does not end with a newline, the original line ending is now appended to prevent line collapse at method/declaration boundaries. (#121)
