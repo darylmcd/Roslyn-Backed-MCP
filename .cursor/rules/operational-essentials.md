@@ -4,13 +4,15 @@ Compact reminder layer aligned with `ai_docs/workflow.md`.
 
 ## Build / Test / Lint Commands
 
-| Action | Command |
-|--------|---------|
-| Build | `dotnet build RoslynMcp.slnx --nologo` |
-| Test | `dotnet test RoslynMcp.slnx --nologo` |
-| Full validation | `./eng/verify-release.ps1` |
-| AI-doc validation | `./eng/verify-ai-docs.ps1` |
-| Run host | `dotnet run --project src/RoslynMcp.Host.Stdio` |
+All commands are available as `just` recipes (`just --list` for the full menu).
+
+| Action | Recipe | Raw command |
+|--------|--------|-------------|
+| Build | `just build` | `dotnet build RoslynMcp.slnx --nologo` |
+| Test | `just test` | `dotnet test RoslynMcp.slnx --nologo` |
+| Full validation | `just ci` | `./eng/verify-release.ps1` + docs + vuln audit |
+| AI-doc validation | `just verify-docs` | `./eng/verify-ai-docs.ps1` |
+| Run host | `just run` | `dotnet run --project src/RoslynMcp.Host.Stdio` |
 
 ## Branching And Isolation
 
