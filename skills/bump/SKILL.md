@@ -12,9 +12,9 @@ You are a release engineer. Your job is to increment the project version across 
 ## Input
 
 `$ARGUMENTS` is the bump type: `patch`, `minor`, or `major`. If not provided, ask the user which type of bump to perform with a brief explanation:
-- **patch** (1.8.2 -> 1.8.3): bug fixes, doc changes, no new features
-- **minor** (1.8.2 -> 1.9.0): new features, new stable tools, backward-compatible changes
-- **major** (1.8.2 -> 2.0.0): breaking changes to stable tool contracts
+- **patch** (1.9.0 -> 1.9.1): bug fixes, doc changes, no new features
+- **minor** (1.9.0 -> 1.10.0): new features, new stable tools, backward-compatible changes
+- **major** (1.9.0 -> 2.0.0): breaking changes to stable tool contracts
 
 ## Version Files
 

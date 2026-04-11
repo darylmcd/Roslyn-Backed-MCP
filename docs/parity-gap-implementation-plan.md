@@ -33,6 +33,7 @@ This document walks **`docs/parity-gap-matrix.md`** and records **what is alread
 |------|--------|--------|
 | 2026-04-04 | `1f2e4fb8382666da0bf7f15b456ff2f72931eed3` | `./eng/verify-release.ps1 -Configuration Release` — build OK, **196** tests passed, publish + SHA-256 manifest written. |
 | 2026-04-04 | `f61adb629ef564edf4dc36b82b68ce285d52c56d` | `./eng/verify-release.ps1 -Configuration Release` — build OK, **209** tests passed, v1.6.0 stable promotions + coverage uplift; publish + SHA-256 manifest written. |
+| 2026-04-11 | (v1.9.0 promotion) | `just ci` — build OK, **329** tests passed, v1.9.0 stable promotions (`semantic_search`, `analyze_data_flow`, `analyze_control_flow`, `evaluate_csharp`); 66 stable / 57 experimental tools. |
 
 ---
 
