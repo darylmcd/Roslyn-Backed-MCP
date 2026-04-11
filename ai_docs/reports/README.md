@@ -45,5 +45,7 @@ Each rollup should include:
 |------|---------|
 | `2026-04-06-deep-review-rollup-example.md` | Concrete example of a synthesized deep-review rollup with deduped issues, blocked-client summary, and backlog actions. |
 | `2026-04-06-test-suite-audit.md` | Cross-cutting audit of the test suite's speed, SRP, and setup costs. |
+| `20260408T203300Z_deep-review-rollup.md` | Deep-review rollup for 2026-04-08 batch. |
+| `20260409T170235Z_deep-review-rollup.md` | Deep-review rollup for 2026-04-09 batch. |
 
 For the full deep-review workflow, start with `../procedures/deep-review-program.md`.
