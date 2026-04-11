@@ -10,15 +10,29 @@ This document is the canonical runtime and execution-context reference for AI ag
 - Workspace model: `MSBuildWorkspace` over on-disk files.
 - Unsaved editor buffers are not authoritative for semantic operations.
 
+## Task Runner
+
+All commands below are available as `just` recipes. Run `just --list` for the full menu, or `just ci` to run the complete local CI gate.
+
+| Recipe | What it does |
+|--------|-------------|
+| `just build` | Debug build |
+| `just test` | Full test suite |
+| `just validate` | Fast local check (build + test) |
+| `just ci` | Mirrors CI pipeline (docs + release validation + vuln audit) |
+| `just run` | Start the stdio host process |
+
+See `justfile` in the repo root for the complete recipe list including packaging, Docker, and security audit recipes.
+
 ## Platform And Tooling
 
 - .NET SDK: 10.0.100 (rollForward: latestFeature) — see `global.json`
 - Primary v1 operating system target: Windows. Cross-platform (macOS, Linux) supported wherever .NET 10 SDK is available.
-- Main local validation entry point: `./eng/verify-release.ps1`
+- Main local validation entry point: `just ci` (or `./eng/verify-release.ps1` directly)
 - Fast manual commands:
-  - `dotnet build RoslynMcp.slnx --nologo`
-  - `dotnet test RoslynMcp.slnx --nologo`
-  - `dotnet run --project src/RoslynMcp.Host.Stdio`
+  - `just build` / `dotnet build RoslynMcp.slnx --nologo`
+  - `just test` / `dotnet test RoslynMcp.slnx --nologo`
+  - `just run` / `dotnet run --project src/RoslynMcp.Host.Stdio`
 
 ## Package Identity
 

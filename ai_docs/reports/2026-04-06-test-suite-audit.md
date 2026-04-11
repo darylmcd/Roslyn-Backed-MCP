@@ -1,5 +1,7 @@
 # Test Suite Audit - 2026-04-06
 
+<!-- purpose: Cross-cutting test-suite audit covering performance smells, workspace/init issues, SRP, and tight focus. -->
+
 ## Scope
 
 - Reviewed the full test project under `tests/RoslynMcp.Tests/`.
