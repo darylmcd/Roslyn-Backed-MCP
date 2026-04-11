@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Selection-range code action tests** — verified which Roslyn refactoring providers work in MSBuildWorkspace with non-zero-length TextSpans. Introduce parameter and inline temporary variable work; extract method and introduce local variable do not (providers require internal IDE services). Updated `get_code_actions` tool description and added "Selection-Range Refactoring" workflow hint.
+- **`RefactoringProbe.cs`** sample fixture for selection-range refactoring tests.
+
 ## [1.9.0] - 2026-04-11
 
 ### Added

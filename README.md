@@ -364,7 +364,7 @@ samples/
 
 | Feature | Reason |
 |---------|--------|
-| `extract_method_preview` | Roslyn's extract-method support requires internal IDE service layers (`CodeRefactoringProvider`) that are not stable public APIs. Deferred until a clean public-API path exists. |
+| `extract_method_preview` | Roslyn's `ExtractMethodCodeRefactoringProvider` requires internal IDE workspace services absent from `MSBuildWorkspace`. Verified in v1.9.0. Other selection-range refactorings (introduce parameter, inline temporary variable) **do** work via `get_code_actions` with `endLine`/`endColumn`. |
 | HTTP/SSE transport | v1 focuses on local stdio. The architecture supports adding an ASP.NET Core host project later. |
 | Generic file read/write tools | Editors (Cursor, VS Code) already provide these. |
 | Memory/knowledge-base features | Out of scope for a semantic analysis server. |

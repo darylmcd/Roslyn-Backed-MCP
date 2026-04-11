@@ -104,7 +104,7 @@ public static class ServerSurfaceCatalog
         Tool("apply_composite_preview", "orchestration", "experimental", false, true, "Apply a previously previewed orchestration operation."),
         Tool("test_coverage", "validation", "stable", false, false, "Run coverage collection for test execution."),
         Tool("get_syntax_tree", "syntax", "experimental", true, false, "Return a structured syntax tree for a document or range."),
-        Tool("get_code_actions", "code-actions", "experimental", true, false, "List Roslyn code fixes and refactorings at a location."),
+        Tool("get_code_actions", "code-actions", "experimental", true, false, "List Roslyn code fixes and refactorings at a location or selection range. Selection-range refactorings include introduce parameter and inline temporary variable. Pass endLine/endColumn for selection-range actions."),
         Tool("preview_code_action", "code-actions", "experimental", true, false, "Preview a Roslyn code action before applying it."),
         Tool("apply_code_action", "code-actions", "experimental", false, true, "Apply a previously previewed Roslyn code action."),
 
@@ -209,7 +209,8 @@ public static class ServerSurfaceCatalog
         new("Type Organization", ["move_type_to_file_preview", "move_type_to_file_apply", "build_workspace"], "Move types from multi-type files into their own dedicated files for better code organization."),
         new("Batch Diagnostic Fix", ["list_analyzers", "project_diagnostics", "fix_all_preview", "fix_all_apply", "build_workspace"], "List available analyzers and rules, identify diagnostics, batch-fix all occurrences across the solution, then verify the build."),
         new("Flow Analysis for Refactoring", ["analyze_data_flow", "analyze_control_flow", "extract_type_preview", "extract_type_apply"], "Analyze data and control flow to understand variable dependencies and reachability before extracting code into new types or methods."),
-        new("Quick Validation", ["compile_check", "analyze_snippet", "evaluate_csharp"], "Use in-memory compilation, snippet analysis, or script evaluation for rapid feedback without full builds.")
+        new("Quick Validation", ["compile_check", "analyze_snippet", "evaluate_csharp"], "Use in-memory compilation, snippet analysis, or script evaluation for rapid feedback without full builds."),
+        new("Selection-Range Refactoring", ["get_code_actions", "preview_code_action", "apply_code_action", "compile_check"], "Pass startLine/startColumn/endLine/endColumn to get_code_actions for selection-based refactorings: introduce parameter (expression → method parameter with call-site updates) and inline temporary variable. Preview, apply, then verify compilation.")
     ];
 
     public static ServerCatalogDto CreateDocument()
