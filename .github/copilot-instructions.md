@@ -44,7 +44,7 @@ For session bootstrap and workflow, follow `AGENTS.md` first.
 
 ## Claude Code Plugin
 
-The server ships as a Claude Code plugin with 10 skills and safety hooks. When modifying plugin artifacts:
+The server ships as a Claude Code plugin with 11 skills and safety hooks. When modifying plugin artifacts:
 
 - **Skills** (`skills/*/SKILL.md`): Reference MCP tools by their tool names. Skills are orchestration prompts, not code — they compose existing tools into workflows.
 - **Hooks** (`hooks/hooks.json`): Matchers use regex against tool names prefixed with `mcp__roslyn__`. Keep matchers in sync when tools are renamed or added.

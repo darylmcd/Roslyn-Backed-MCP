@@ -526,7 +526,7 @@ For every exercised prompt, append one row to the **Prompt verification** table 
 
 **Input:** The Roslyn-Backed-MCP repo root. When the audit target is Roslyn-Backed-MCP itself, use the loaded workspace root. When the audit target is another repo, you MUST have filesystem access to a local Roslyn-Backed-MCP checkout; if you do not, mark this phase `blocked — plugin repo not accessible` and continue.
 
-**Expected skill count (2026.04 snapshot):** **10 skills** — `analyze`, `complexity`, `dead-code`, `document`, `explain-error`, `migrate-package`, `refactor`, `review`, `security`, `test-coverage`. If the live directory differs, trust the live directory and record skill drift.
+**Expected skill count (2026.04 snapshot):** **11 skills** — `analyze`, `complexity`, `dead-code`, `document`, `explain-error`, `extract-method`, `migrate-package`, `refactor`, `review`, `security`, `test-coverage`. If the live directory differs, trust the live directory and record skill drift.
 
 **Per-skill verification (run for each skill):**
 

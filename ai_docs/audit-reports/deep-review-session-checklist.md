@@ -145,7 +145,7 @@ Report section 10. One row per exercised prompt.
 
 ### 10. Plugin skills audit (Phase 16b)
 
-Report section 11. One row per live skill (2026.04 snapshot: 10 skills). Mark `blocked` with a reason if plugin repo not reachable.
+Report section 11. One row per live skill (2026.04 snapshot: 11 skills). Mark `blocked` with a reason if plugin repo not reachable.
 
 | Skill | frontmatter_ok | tool_refs_valid (invalid_count) | dry_run | safety_rules |
 |-------|----------------|----------------------------------|---------|--------------|
