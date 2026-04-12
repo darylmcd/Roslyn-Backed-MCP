@@ -65,6 +65,7 @@ public abstract class TestBase
     protected static ScriptingService ScriptingService { get; private set; } = null!;
     protected static EditorConfigService EditorConfigService { get; private set; } = null!;
     protected static MsBuildEvaluationService MsBuildEvaluationService { get; private set; } = null!;
+    protected static ExtractMethodService ExtractMethodService { get; private set; } = null!;
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -149,6 +150,7 @@ public abstract class TestBase
         ScriptingService = services.ScriptingService;
         EditorConfigService = services.EditorConfigService;
         MsBuildEvaluationService = services.MsBuildEvaluationService;
+        ExtractMethodService = services.ExtractMethodService;
 
         RepositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
         SampleSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");

@@ -125,6 +125,9 @@ public static class ServerSurfaceCatalog
         Tool("extract_type_preview", "refactoring", "experimental", true, false, "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
         Tool("extract_type_apply", "refactoring", "experimental", false, true, "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type."),
 
+        Tool("extract_method_preview", "refactoring", "experimental", true, false, "Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values."),
+        Tool("extract_method_apply", "refactoring", "experimental", false, true, "Apply a previously previewed extract method refactoring."),
+
         Tool("revert_last_apply", "undo", "experimental", false, true, "Revert the most recent Roslyn solution-level apply operation for a workspace."),
 
         Tool("analyze_data_flow", "advanced-analysis", "stable", true, false, "Analyze variable flow through a code region: reads, writes, captures, always-assigned."),

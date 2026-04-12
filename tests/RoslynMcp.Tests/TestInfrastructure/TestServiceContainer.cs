@@ -52,6 +52,7 @@ internal sealed class TestServiceContainer
     public required ScriptingService ScriptingService { get; init; }
     public required EditorConfigService EditorConfigService { get; init; }
     public required MsBuildEvaluationService MsBuildEvaluationService { get; init; }
+    public required ExtractMethodService ExtractMethodService { get; init; }
 
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
@@ -228,7 +229,11 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 NullLogger<EditorConfigService>.Instance,
                 undoService),
-            MsBuildEvaluationService = msBuildEvaluationService
+            MsBuildEvaluationService = msBuildEvaluationService,
+            ExtractMethodService = new ExtractMethodService(
+                workspaceManager,
+                previewStore,
+                NullLogger<ExtractMethodService>.Instance)
         };
     }
 }
