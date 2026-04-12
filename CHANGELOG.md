@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - **Selection-range code action tests** — verified which Roslyn refactoring providers work in MSBuildWorkspace with non-zero-length TextSpans. Introduce parameter and inline temporary variable work; extract method and introduce local variable do not (providers require internal IDE services). Updated `get_code_actions` tool description and added "Selection-Range Refactoring" workflow hint.
 - **`RefactoringProbe.cs`** sample fixture for selection-range refactoring tests.
+- **`extract_method_preview` / `extract_method_apply`** — custom extract-method refactoring tool pair using Roslyn's `DataFlowAnalysis` for parameter inference and `ControlFlowAnalysis` for single-exit validation. Supports void and single-return-value extraction with automatic call-site generation. 125 tools total (66 stable / 59 experimental).
 
 ## [1.9.0] - 2026-04-11
 

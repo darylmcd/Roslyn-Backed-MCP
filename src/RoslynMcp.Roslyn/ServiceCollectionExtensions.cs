@@ -89,6 +89,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISnippetAnalysisService, SnippetAnalysisService>();
         services.AddSingleton<IScriptingService, ScriptingService>();
         services.AddSingleton<IEditorConfigService, EditorConfigService>();
+        services.AddSingleton<IExtractMethodService, ExtractMethodService>();
         return services;
     }
 }
