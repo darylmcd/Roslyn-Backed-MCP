@@ -21,13 +21,15 @@ public sealed class RefactoringService : IRefactoringService
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
     private readonly IUndoService? _undoService;
+    private readonly IChangeTracker? _changeTracker;
     private readonly ILogger<RefactoringService> _logger;
 
-    public RefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<RefactoringService> logger, IUndoService? undoService = null)
+    public RefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<RefactoringService> logger, IUndoService? undoService = null, IChangeTracker? changeTracker = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
         _undoService = undoService;
+        _changeTracker = changeTracker;
         _logger = logger;
     }
 
@@ -146,6 +148,7 @@ public sealed class RefactoringService : IRefactoringService
             return new ApplyResultDto(false, [], "Failed to apply changes to the workspace.");
         }
 
+        _changeTracker?.RecordChange(workspaceId, description, appliedFiles, "refactoring_apply");
         _logger.LogInformation("Applied refactoring '{Description}' to {Count} file(s)", description, appliedFiles.Count);
         return new ApplyResultDto(true, appliedFiles, null);
     }

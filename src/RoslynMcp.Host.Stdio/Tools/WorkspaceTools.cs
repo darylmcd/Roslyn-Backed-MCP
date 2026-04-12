@@ -180,4 +180,20 @@ public static class WorkspaceTools
             // Notification failure should not affect the tool result
         }
     }
+
+    [McpServerTool(Name = "workspace_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("List all mutations applied to a workspace during this session. Returns an ordered list of changes with descriptions, affected files, tool names, and timestamps. Use to understand what has been modified since workspace_load.")]
+    public static Task<string> GetWorkspaceChanges(
+        IWorkspaceExecutionGate gate,
+        IChangeTracker changeTracker,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        CancellationToken ct = default)
+    {
+        return ToolErrorHandler.ExecuteAsync("workspace_changes", () =>
+            gate.RunReadAsync(workspaceId, _ =>
+            {
+                var changes = changeTracker.GetChanges(workspaceId);
+                return Task.FromResult(JsonSerializer.Serialize(new { count = changes.Count, changes }, JsonDefaults.Indented));
+            }, ct));
+    }
 }
