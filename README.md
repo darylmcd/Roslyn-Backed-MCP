@@ -105,6 +105,7 @@ claude --plugin-dir /path/to/Roslyn-Backed-MCP
 | `/roslyn-mcp:test-coverage` | Test coverage analysis and test scaffolding |
 | `/roslyn-mcp:migrate-package` | NuGet package migration across projects |
 | `/roslyn-mcp:explain-error` | Diagnostic explanation with auto-fix |
+| `/roslyn-mcp:extract-method` | Extract statements into a new method with parameter inference |
 | `/roslyn-mcp:complexity` | Complexity hotspot and god class analysis |
 
 ### Plugin Hooks
@@ -327,7 +328,7 @@ The `verbose` siblings opt into the full per-project tree; the default summary k
 
 ```
 .claude-plugin/              Claude Code plugin manifest + marketplace
-skills/                      10 plugin skills (orchestration prompts)
+skills/                      11 plugin skills (orchestration prompts)
 hooks/                       Plugin safety hooks (preview/apply guard)
 src/
   RoslynMcp.Host.Stdio/      MCP stdio host (thin tool wrappers)

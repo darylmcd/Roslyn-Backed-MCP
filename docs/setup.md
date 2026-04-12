@@ -41,7 +41,7 @@ The server is also packaged as a **Claude Code plugin** with 10 curated skills a
 
 | Form | Config or source | Command(s) | Notes |
 |------|------------------|------------|-------|
-| Plugin marketplace install | `.claude-plugin/marketplace.json` | `/plugin marketplace add darylmcd/Roslyn-Backed-MCP` then `/plugin install roslyn-mcp@roslyn-mcp-marketplace` | Installs MCP server + 10 skills + hooks. Requires `roslynmcp` on PATH. |
+| Plugin marketplace install | `.claude-plugin/marketplace.json` | `/plugin marketplace add darylmcd/Roslyn-Backed-MCP` then `/plugin install roslyn-mcp@roslyn-mcp-marketplace` | Installs MCP server + 11 skills + hooks. Requires `roslynmcp` on PATH. |
 | Plugin local dev | `.claude-plugin/plugin.json`, `skills/`, `hooks/` | `claude --plugin-dir /path/to/Roslyn-Backed-MCP` | Load plugin from local checkout for testing. |
 | Plugin validation | `.claude-plugin/` | `claude plugin validate .` | Validates plugin and marketplace manifests. |
 

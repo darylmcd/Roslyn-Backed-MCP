@@ -82,7 +82,7 @@ Reason:
 Delivered:
 
 - `.claude-plugin/plugin.json` and `marketplace.json` for distribution via GitHub
-- 10 skills: analyze, refactor, review, document, security, dead-code, test-coverage, migrate-package, explain-error, complexity
+- 11 skills: analyze, refactor, extract-method, review, document, security, dead-code, test-coverage, migrate-package, explain-error, complexity
 - Safety hooks: PreToolUse apply guard, PostToolUse compile-check reminder
 
 Future direction:
