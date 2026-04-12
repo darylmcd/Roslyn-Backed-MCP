@@ -15,12 +15,14 @@ public sealed class EditService : IEditService
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<EditService> _logger;
     private readonly IUndoService? _undoService;
+    private readonly IChangeTracker? _changeTracker;
 
-    public EditService(IWorkspaceManager workspace, ILogger<EditService> logger, IUndoService? undoService = null)
+    public EditService(IWorkspaceManager workspace, ILogger<EditService> logger, IUndoService? undoService = null, IChangeTracker? changeTracker = null)
     {
         _workspace = workspace;
         _logger = logger;
         _undoService = undoService;
+        _changeTracker = changeTracker;
     }
 
     public async Task<TextEditResultDto> ApplyTextEditsAsync(
@@ -279,6 +281,10 @@ public sealed class EditService : IEditService
         }
 
         var fileChange = new FileChangeDto(filePath, string.Join('\n', diffLines));
+
+        _changeTracker?.RecordChange(workspaceId,
+            $"Apply text edit to {Path.GetFileName(filePath)}",
+            [filePath], "apply_text_edit");
 
         return new TextEditResultDto(true, filePath, edits.Count, [fileChange]);
     }

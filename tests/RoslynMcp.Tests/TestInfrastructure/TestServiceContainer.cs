@@ -53,6 +53,7 @@ internal sealed class TestServiceContainer
     public required EditorConfigService EditorConfigService { get; init; }
     public required MsBuildEvaluationService MsBuildEvaluationService { get; init; }
     public required ExtractMethodService ExtractMethodService { get; init; }
+    public required ChangeTracker ChangeTracker { get; init; }
 
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
@@ -80,6 +81,7 @@ internal sealed class TestServiceContainer
             compilationCache,
             NullLogger<DiagnosticService>.Instance);
         var undoService = new UndoService(NullLogger<UndoService>.Instance);
+        var changeTracker = new ChangeTracker();
         var msBuildEvaluationService = new MsBuildEvaluationService(workspaceManager);
         var namespaceDependencyService = new NamespaceDependencyService(
             workspaceManager,
@@ -128,7 +130,8 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 previewStore,
                 NullLogger<RefactoringService>.Instance,
-                undoService),
+                undoService,
+                changeTracker),
             BuildService = new BuildService(
                 workspaceManager,
                 gatedCommandExecutor,
@@ -166,7 +169,8 @@ internal sealed class TestServiceContainer
             EditService = new EditService(
                 workspaceManager,
                 NullLogger<EditService>.Instance,
-                undoService),
+                undoService,
+                changeTracker),
             FileOperationService = fileOperationService,
             ProjectMutationService = new ProjectMutationService(
                 workspaceManager,
@@ -233,7 +237,8 @@ internal sealed class TestServiceContainer
             ExtractMethodService = new ExtractMethodService(
                 workspaceManager,
                 previewStore,
-                NullLogger<ExtractMethodService>.Instance)
+                NullLogger<ExtractMethodService>.Instance),
+            ChangeTracker = changeTracker
         };
     }
 }
