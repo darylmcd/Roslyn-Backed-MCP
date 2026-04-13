@@ -1,0 +1,9 @@
+# Banned APIs — dangerous patterns that should never appear in production code.
+# See https://github.com/dotnet/roslyn-analyzers/blob/main/src/Microsoft.CodeAnalysis.BannedApiAnalyzers/BannedApiAnalyzers.Help.md
+
+# BinaryFormatter is a known deserialization vulnerability (CVE-rich, deprecated in .NET 8+).
+T:System.Runtime.Serialization.Formatters.Binary.BinaryFormatter;Use System.Text.Json or MessagePack instead
+
+# Process.Start(string) with a single string argument is vulnerable to command injection.
+# Use the ProcessStartInfo overload with Arguments set explicitly.
+M:System.Diagnostics.Process.Start(System.String);Use Process.Start(ProcessStartInfo) to avoid command injection

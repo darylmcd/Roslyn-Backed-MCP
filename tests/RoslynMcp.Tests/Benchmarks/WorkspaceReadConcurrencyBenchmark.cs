@@ -80,6 +80,7 @@ public sealed class WorkspaceReadConcurrencyBenchmark
         public Task<IReadOnlyList<Core.Models.GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => Task.FromResult<string?>(null);
         public int GetCurrentVersion(string workspaceId) => 1;
+        public void RestoreVersion(string workspaceId, int version) { }
         public Microsoft.CodeAnalysis.Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
         public bool TryApplyChanges(string workspaceId, Microsoft.CodeAnalysis.Solution newSolution) => throw new NotSupportedException();
     }

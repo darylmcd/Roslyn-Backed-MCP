@@ -126,6 +126,12 @@ internal static class ClientRootPathValidator
         var current = Path.GetDirectoryName(fullPath);
         while (!string.IsNullOrEmpty(current))
         {
+            // Skip drive roots — ResolveLinkTarget throws on root directories (e.g., C:\).
+            if (Path.GetPathRoot(current) == current)
+            {
+                break;
+            }
+
             if (Directory.Exists(current))
             {
                 var resolved = new DirectoryInfo(current).ResolveLinkTarget(returnFinalTarget: true);

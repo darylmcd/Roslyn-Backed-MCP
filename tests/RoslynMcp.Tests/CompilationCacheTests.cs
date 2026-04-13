@@ -126,6 +126,7 @@ public sealed class CompilationCacheTests
         public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
 
         public int GetCurrentVersion(string workspaceId) => Version;
+        public void RestoreVersion(string workspaceId, int version) => Version = version;
 
         // ----- Unused by CompilationCache; throw to surface unexpected coupling -----
         public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();

@@ -171,7 +171,7 @@ public static class RoslynPrompts
                 return [CreatePromptMessage($"File not found in workspace: {filePath}")];
 
             var symbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
-            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, null, ct).ConfigureAwait(false);
+            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, null, null, ct).ConfigureAwait(false);
 
             var symbolsSummary = JsonSerializer.Serialize(symbols, JsonDefaults.Indented);
             var diagnosticsSummary = JsonSerializer.Serialize(diagnostics, JsonDefaults.Indented);
@@ -352,7 +352,7 @@ public static class RoslynPrompts
             }
 
             var codeActions = await codeActionService.GetCodeActionsAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, ct).ConfigureAwait(false);
-            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, null, ct).ConfigureAwait(false);
+            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, null, null, ct).ConfigureAwait(false);
 
             return
             [
@@ -403,7 +403,7 @@ public static class RoslynPrompts
     {
         try
         {
-            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, projectName, null, severityFilter, ct).ConfigureAwait(false);
+            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, projectName, null, severityFilter, null, ct).ConfigureAwait(false);
             var groupedDiagnostics = diagnostics.CompilerDiagnostics
                 .Concat(diagnostics.AnalyzerDiagnostics)
                 .GroupBy(diagnostic => diagnostic.Id, StringComparer.OrdinalIgnoreCase)

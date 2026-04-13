@@ -103,4 +103,14 @@ public interface IWorkspaceManager
     /// </summary>
     /// <returns><see langword="true"/> if the changes were accepted; <see langword="false"/> if the workspace rejected them.</returns>
     bool TryApplyChanges(string workspaceId, Solution newSolution);
+
+    /// <summary>
+    /// Restores the workspace version counter to a previously captured value.
+    /// Used after a revert/undo operation to allow preview tokens that were valid before
+    /// the reverted apply to remain valid, since the workspace state has been restored
+    /// to its pre-apply form.
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="version">The version to restore (typically captured before the apply being reverted).</param>
+    void RestoreVersion(string workspaceId, int version);
 }

@@ -72,7 +72,7 @@ public static class WorkspaceResources
         CancellationToken ct = default) =>
         ToolErrorHandler.ExecuteResourceAsync("roslyn://workspace/{workspaceId}/diagnostics", async () =>
         {
-            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, null, null, ct).ConfigureAwait(false);
+            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, null, null, null, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(diagnostics, JsonDefaults.Indented);
         });
 

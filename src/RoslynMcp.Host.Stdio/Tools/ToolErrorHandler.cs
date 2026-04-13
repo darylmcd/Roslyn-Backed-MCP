@@ -202,6 +202,22 @@ internal static class ToolErrorHandler
                 return handler(ex, toolName);
         }
 
+        // MCP SDK parameter binding failures: the framework wraps deserialization errors
+        // in a generic exception. Surface the inner JsonException or ArgumentException with
+        // actionable hints about the correct JSON property names.
+        if (ex.InnerException is System.Text.Json.JsonException jsonEx)
+        {
+            return new("InvalidArgument",
+                $"Parameter binding failed: {jsonEx.Message}. " +
+                "Check that JSON property names match the tool schema exactly (camelCase).");
+        }
+        if (ex.InnerException is ArgumentException argEx && ex.GetType().Name.Contains("Invocation", StringComparison.OrdinalIgnoreCase))
+        {
+            return new("InvalidArgument",
+                $"Parameter validation failed: {argEx.Message}. " +
+                "Check that all required parameters are provided and values match the expected types.");
+        }
+
         // Fallback: unexpected error — include inner exception chain for diagnosis
         var innerMessages = GetInnerExceptionChain(ex);
         var detail = string.IsNullOrEmpty(innerMessages)

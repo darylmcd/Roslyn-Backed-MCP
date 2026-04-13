@@ -226,7 +226,7 @@ public class IntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task Project_Diagnostics_Returns_Separated_Buckets()
     {
-        var diagnostics = await DiagnosticService.GetDiagnosticsAsync(WorkspaceId, "SampleLib", null, null, CancellationToken.None);
+        var diagnostics = await DiagnosticService.GetDiagnosticsAsync(WorkspaceId, "SampleLib", null, null, null, CancellationToken.None);
         // Should have at least some diagnostics (unused field, unused using, etc.)
         Assert.IsTrue(diagnostics.CompilerDiagnostics.Count > 0 || diagnostics.WorkspaceDiagnostics.Count > 0,
             "Expected some diagnostics from SampleLib");

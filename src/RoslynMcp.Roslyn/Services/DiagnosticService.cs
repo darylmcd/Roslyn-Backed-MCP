@@ -33,7 +33,7 @@ public sealed class DiagnosticService : IDiagnosticService
     }
 
     public async Task<DiagnosticsResultDto> GetDiagnosticsAsync(
-        string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, CancellationToken ct)
+        string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, string? diagnosticIdFilter, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         // Default to Warning severity when no filter specified to avoid multi-MB Hidden output
@@ -55,70 +55,8 @@ public sealed class DiagnosticService : IDiagnosticService
             .Where(p => projectFilter is null || string.Equals(p.Name, projectFilter, StringComparison.OrdinalIgnoreCase))
             .ToList();
 
-        var projectTasks = projects.Select(async project =>
-        {
-            // compilerAll/analyzerAll: every diagnostic in the queried scope (no severity filter)
-            //   used for TotalErrors/TotalWarnings/TotalInfo so callers can see the underlying
-            //   shape of the workspace even when the visible result was severity-narrowed.
-            // compilerFiltered/analyzerFiltered: the rows actually returned to the caller.
-            var compilerAll = new List<DiagnosticDto>();
-            var compilerFiltered = new List<DiagnosticDto>();
-            var analyzerAll = new List<DiagnosticDto>();
-            var analyzerFiltered = new List<DiagnosticDto>();
-            var raw = new List<Diagnostic>();
-
-            // Use the shared compilation cache so independent tools (and the diagnostic
-            // detail cold path) reuse the same warm Compilation across requests.
-            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
-            if (compilation is null)
-            {
-                var miss = new DiagnosticDto(
-                    "WORKSPACE001", $"Could not get compilation for project '{project.Name}'",
-                    "Error", "Workspace", project.FilePath, null, null, null, null);
-                compilerAll.Add(miss);
-                compilerFiltered.Add(miss);
-                return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
-            }
-
-            foreach (var diagnostic in compilation.GetDiagnostics(ct))
-            {
-                raw.Add(diagnostic);
-                if (!MatchesFileFilter(diagnostic, fileFilter)) continue;
-                if (diagnostic.Severity == DiagnosticSeverity.Hidden) continue;
-
-                var dto = SymbolMapper.ToDiagnosticDto(diagnostic);
-                compilerAll.Add(dto);
-                if (minSeverity is null || diagnostic.Severity >= minSeverity.Value)
-                {
-                    compilerFiltered.Add(dto);
-                }
-            }
-
-            // CompilationWithAnalyzers is also cached: subsequent diagnostic calls (and
-            // related tools that need analyzer diagnostics) reuse the same instance.
-            var compilationWithAnalyzers = await _compilationCache
-                .GetCompilationWithAnalyzersAsync(workspaceId, project, ct)
-                .ConfigureAwait(false);
-            if (compilationWithAnalyzers is not null)
-            {
-                var projectAnalyzerDiagnostics = await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync(ct).ConfigureAwait(false);
-                foreach (var diagnostic in projectAnalyzerDiagnostics)
-                {
-                    raw.Add(diagnostic);
-                    if (!MatchesFileFilter(diagnostic, fileFilter)) continue;
-                    if (diagnostic.Severity == DiagnosticSeverity.Hidden) continue;
-
-                    var dto = SymbolMapper.ToDiagnosticDto(diagnostic);
-                    analyzerAll.Add(dto);
-                    if (minSeverity is null || diagnostic.Severity >= minSeverity.Value)
-                    {
-                        analyzerFiltered.Add(dto);
-                    }
-                }
-            }
-
-            return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
-        });
+        var projectTasks = projects.Select(project =>
+            CollectProjectDiagnosticsAsync(workspaceId, project, fileFilter, diagnosticIdFilter, minSeverity, ct));
 
         var results = await Task.WhenAll(projectTasks).ConfigureAwait(false);
         var compilerDiagnostics = results.SelectMany(r => r.compilerFiltered).ToList();
@@ -177,6 +115,65 @@ public sealed class DiagnosticService : IDiagnosticService
             AnalyzerErrors: analyzerErrors,
             WorkspaceErrors: workspaceErrors,
             SeverityHint: severityHint);
+    }
+
+    private async Task<(List<DiagnosticDto> compilerAll, List<DiagnosticDto> compilerFiltered,
+        List<DiagnosticDto> analyzerAll, List<DiagnosticDto> analyzerFiltered, List<Diagnostic> raw)>
+        CollectProjectDiagnosticsAsync(
+            string workspaceId, Project project, string? fileFilter, string? diagnosticIdFilter,
+            DiagnosticSeverity? minSeverity, CancellationToken ct)
+    {
+        var compilerAll = new List<DiagnosticDto>();
+        var compilerFiltered = new List<DiagnosticDto>();
+        var analyzerAll = new List<DiagnosticDto>();
+        var analyzerFiltered = new List<DiagnosticDto>();
+        var raw = new List<Diagnostic>();
+
+        var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
+        if (compilation is null)
+        {
+            var miss = new DiagnosticDto(
+                "WORKSPACE001", $"Could not get compilation for project '{project.Name}'",
+                "Error", "Workspace", project.FilePath, null, null, null, null);
+            compilerAll.Add(miss);
+            compilerFiltered.Add(miss);
+            return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
+        }
+
+        CollectDiagnostics(compilation.GetDiagnostics(ct), fileFilter, diagnosticIdFilter, minSeverity,
+            raw, compilerAll, compilerFiltered);
+
+        var compilationWithAnalyzers = await _compilationCache
+            .GetCompilationWithAnalyzersAsync(workspaceId, project, ct)
+            .ConfigureAwait(false);
+        if (compilationWithAnalyzers is not null)
+        {
+            var analyzerDiags = await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync(ct).ConfigureAwait(false);
+            CollectDiagnostics(analyzerDiags, fileFilter, diagnosticIdFilter, minSeverity,
+                raw, analyzerAll, analyzerFiltered);
+        }
+
+        return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
+    }
+
+    private static void CollectDiagnostics(
+        IEnumerable<Diagnostic> diagnostics, string? fileFilter, string? diagnosticIdFilter,
+        DiagnosticSeverity? minSeverity,
+        List<Diagnostic> raw, List<DiagnosticDto> all, List<DiagnosticDto> filtered)
+    {
+        foreach (var diagnostic in diagnostics)
+        {
+            raw.Add(diagnostic);
+            if (!MatchesFileFilter(diagnostic, fileFilter)) continue;
+            if (diagnostic.Severity == DiagnosticSeverity.Hidden) continue;
+            if (diagnosticIdFilter is not null &&
+                !string.Equals(diagnostic.Id, diagnosticIdFilter, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var dto = SymbolMapper.ToDiagnosticDto(diagnostic);
+            all.Add(dto);
+            if (minSeverity is null || diagnostic.Severity >= minSeverity.Value)
+                filtered.Add(dto);
+        }
     }
 
     /// <summary>

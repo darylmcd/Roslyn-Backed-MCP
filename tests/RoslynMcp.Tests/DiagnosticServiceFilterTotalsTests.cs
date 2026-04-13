@@ -20,9 +20,9 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
     public async Task GetDiagnosticsAsync_TotalsAreInvariantUnderSeverityFilter()
     {
         var unfiltered = await DiagnosticService.GetDiagnosticsAsync(
-            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: null, CancellationToken.None);
+            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: null, diagnosticIdFilter: null, CancellationToken.None);
         var errorOnly = await DiagnosticService.GetDiagnosticsAsync(
-            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: "Error", CancellationToken.None);
+            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: "Error", diagnosticIdFilter: null, CancellationToken.None);
 
         // BUG fix (project-diagnostics-filter-totals): the unfiltered totals must be the
         // same regardless of severity filter. Previously errorOnly.TotalWarnings dropped to
@@ -39,7 +39,7 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
     public async Task GetDiagnosticsAsync_SeverityFilterStillNarrowsReturnedRows()
     {
         var errorOnly = await DiagnosticService.GetDiagnosticsAsync(
-            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: "Error", CancellationToken.None);
+            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: "Error", diagnosticIdFilter: null, CancellationToken.None);
 
         // The returned rows must respect the filter even though the totals do not.
         Assert.IsTrue(errorOnly.CompilerDiagnostics.All(d => d.Severity == "Error"),

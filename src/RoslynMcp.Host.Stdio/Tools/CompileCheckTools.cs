@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 
@@ -29,7 +30,9 @@ public static class CompileCheckTools
             return gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await compileCheckService.CheckAsync(
-                    workspaceId, project, emitValidation, severity, file, offset, limit, c);
+                    workspaceId,
+                    new CompileCheckOptions(project, emitValidation, severity, file, offset, limit),
+                    c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct);
         });

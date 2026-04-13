@@ -409,6 +409,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return GetRequiredSession(workspaceId).Version;
     }
 
+    public void RestoreVersion(string workspaceId, int version)
+    {
+        GetRequiredSession(workspaceId).SetVersion(version);
+    }
+
     public Solution GetCurrentSolution(string workspaceId)
     {
         var session = GetRequiredSession(workspaceId);
@@ -662,6 +667,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         public DateTimeOffset LastAccessedUtc { get; set; } = DateTimeOffset.UtcNow;
         public int Version => Volatile.Read(ref _version);
         public int IncrementVersion() => Interlocked.Increment(ref _version);
+        public void SetVersion(int value) => Interlocked.Exchange(ref _version, value);
 
         public void TouchAccess() => LastAccessedUtc = DateTimeOffset.UtcNow;
 

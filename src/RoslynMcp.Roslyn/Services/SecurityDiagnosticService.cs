@@ -60,7 +60,7 @@ public sealed class SecurityDiagnosticService : ISecurityDiagnosticService
     public async Task<SecurityDiagnosticsResultDto> GetSecurityDiagnosticsAsync(
         string workspaceId, string? projectFilter, string? fileFilter, CancellationToken ct)
     {
-        var diagnostics = await _diagnosticService.GetDiagnosticsAsync(workspaceId, projectFilter, fileFilter, null, ct)
+        var diagnostics = await _diagnosticService.GetDiagnosticsAsync(workspaceId, projectFilter, fileFilter, null, null, ct)
             .ConfigureAwait(false);
 
         var findings = new List<SecurityDiagnosticDto>();

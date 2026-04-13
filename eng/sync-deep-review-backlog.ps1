@@ -76,7 +76,21 @@ function Test-KeywordAlreadyTracked {
         [string]$Line,
         [array]$ExistingRows
     )
-    $tools = @('semantic_search', 'project_diagnostics', 'test_run', 'find_references_bulk', 'apply_text_edit', 'set_editorconfig_option', 'workspace_list', 'move_file_preview')
+    $tools = @(
+        'semantic_search', 'project_diagnostics', 'test_run',
+        'find_references_bulk', 'apply_text_edit', 'set_editorconfig_option',
+        'workspace_list', 'move_file_preview',
+        'scaffold_type_preview', 'scaffold_test_preview',
+        'revert_last_apply', 'dependency_inversion_preview',
+        'extract_interface_preview', 'extract_and_wire_interface_preview',
+        'migrate_package_preview', 'add_central_package_version_preview',
+        'move_type_to_project_preview', 'rename_preview',
+        'server_info', 'fix_all_preview', 'compile_check',
+        'extract_method_preview', 'split_class_preview',
+        'add_target_framework_preview', 'remove_target_framework_preview',
+        'find_base_members', 'find_overrides', 'test_coverage',
+        'test_discover', 'test_related', 'symbol_search'
+    )
     foreach ($t in $tools) {
         if ($Line -notmatch [regex]::Escape($t)) {
             continue
@@ -132,21 +146,22 @@ function Get-CandidatesFromMarkdown {
     $mode = 'none'
 
     foreach ($line in $lines) {
-        if ($line -match '^##\s+14\.') {
-            $mode = 'section14'
+        if ($line -match '^##\s+\d+\.\s+MCP server issues') {
+            $mode = 'bugs'
             continue
         }
         if ($line -match '^##\s+') {
-            if ($mode -eq 'section14') {
-                $mode = 'none'
-            }
+            $mode = 'none'
         }
 
-        if ($mode -eq 'section14') {
+        if ($mode -eq 'bugs') {
             if ($line -match '\*\*Backlog:\*\*\s*`') {
                 continue
             }
-            if ($line -match '^\|\s*[^|]+\|\s*[^|]*\b(FAIL|FLAG)\b' -and $line.Length -gt 45) {
+            if ($line -match '^###\s+\d+\.\d+\s+' -and $line.Length -gt 30) {
+                $candidates.Add($line.Trim())
+            }
+            elseif ($line -match '^\|\s*[^|]+\|\s*[^|]*\b(FAIL|FLAG)\b' -and $line.Length -gt 45) {
                 $candidates.Add($line.Trim())
             }
             elseif ($line -match '^\s*\d+\.\s+' -and $line.Length -gt 45 -and ($line -cmatch '\bFAIL\b|\bFLAG\b' -or $line -match 'corrupt diff|MCP bridge|invocation failed')) {

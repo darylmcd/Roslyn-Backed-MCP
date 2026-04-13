@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.13.0] - 2026-04-13
+
+### Fixed
+
+- **`extract_interface_preview`:** No longer adds duplicate base type (CS0528) when the source type already implements the named interface.
+- **`extract_and_wire_interface_preview`:** Generated interface files no longer include implementation-only usings (DiffPlex, Microsoft.Extensions, etc.); tightened non-System namespace filter to fully-qualified name match.
+- **`scaffold_type_preview`:** Rejects invalid C# identifiers (e.g. `2InvalidName`) via `IdentifierValidation` — previously generated uncompilable code.
+- **`scaffold_test_preview`:** Validates that the target project is a test project (`IsTestProject` or test framework packages); previously accepted non-test projects and generated non-compiling MSTest code.
+- **`add_central_package_version_preview`:** XML formatting fixed — `<PackageVersion>` elements now use `AddChildElementPreservingIndentation` instead of raw `Add()` that jammed elements against `</ItemGroup>`.
+- **`revert_last_apply`:** Preview tokens created before a reverted operation now remain valid. `UndoSnapshot` captures the pre-apply workspace version and `RestoreVersion` API restores it after revert, fixing the preview-store coupling bug.
+- **`ClientRootPathValidator.ResolvePath`:** Fixed crash when parent-directory symlink walk reached a drive root (e.g. `C:\`).
+- **`test_coverage`:** Returns structured `FailureEnvelope` (with `ErrorKind: "CoverletMissing"` or `"TestFailure"`) instead of `Success: true` with error text in body when coverage data is unavailable.
+- **`ToolErrorHandler`:** MCP SDK parameter binding failures (inner `JsonException`/`ArgumentException`) now surface schema-shaped hints instead of generic "error invoking" text.
+
+### Changed
+
+- **Complexity refactoring:** Extracted helpers from three worst complexity hotspots:
+  - `DiagnosticService.GetDiagnosticsAsync` (CC=25) → `CollectProjectDiagnosticsAsync` + `CollectDiagnostics`
+  - `ScriptingService.EvaluateAsync` (CC=20) → `TryAcquireCapacityAsync`
+  - `SymbolRelationshipService.GetCallersCalleesAsync` (CC=20) → `CollectCallersAsync` + `CollectCalleesAsync`
+- **`CompileCheckService.CheckAsync`:** 8-parameter signature replaced with `CompileCheckOptions` record. MCP tool parameters unchanged.
+- **`project_diagnostics`:** New `diagnosticId` filter parameter for server-side filtering by diagnostic ID (e.g. `CS8019`, `CA1000`).
+
+### Added
+
+- **Security analyzers:** `Microsoft.CodeAnalysis.NetAnalyzers` (10.0.100) and `Microsoft.CodeAnalysis.BannedApiAnalyzers` (4.14.0) added to `Directory.Build.props` with `BannedSymbols.txt` banning `BinaryFormatter` and shell-execute `Process.Start`.
+- **`IWorkspaceManager.RestoreVersion`:** New API for restoring workspace version counter after undo/revert operations.
+- **Tests:** 48 new tests — 8 `ClientRootPathValidator` tests (ResolvePath + ValidatePath), 12 `IdentifierValidation`, 7 `DiffGenerator`, 21 `ParameterValidation`.
+
 ## [1.12.1] - 2026-04-13
 
 ### Fixed

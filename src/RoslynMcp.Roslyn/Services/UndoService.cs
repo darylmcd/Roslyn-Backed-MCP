@@ -59,11 +59,13 @@ public sealed class UndoService : IUndoService, IDisposable
             solution = typed;
         }
 
+        var preApplyVersion = _workspaceManager.GetCurrentVersion(workspaceId);
         _snapshots[workspaceId] = new UndoSnapshot(
             workspaceId,
             description,
             solution,
             fileSnapshots,
+            preApplyVersion,
             DateTime.UtcNow);
     }
 
@@ -140,6 +142,10 @@ public sealed class UndoService : IUndoService, IDisposable
             try
             {
                 await workspace.ReloadAsync(workspaceId, cancellationToken).ConfigureAwait(false);
+                // Restore the workspace version to the pre-apply value so that preview tokens
+                // created before the reverted operation remain valid. The workspace state has
+                // been restored to its pre-apply form, so the pre-apply version is correct.
+                workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);
             }
             catch (Exception ex) when (ex is IOException or InvalidOperationException or KeyNotFoundException)
             {
@@ -276,6 +282,11 @@ public sealed class UndoService : IUndoService, IDisposable
             }
         }
 
+        // Restore the workspace version to the pre-apply value so that preview tokens
+        // created before the reverted operation remain valid. The workspace state has
+        // been restored to its pre-apply form, so the pre-apply version is correct.
+        workspace.RestoreVersion(workspaceId, snapshot.PreApplyWorkspaceVersion);
+
         return diskOk && (workspaceApplied || anyDiskWrite);
     }
 
@@ -289,5 +300,6 @@ public sealed class UndoService : IUndoService, IDisposable
         string Description,
         Solution? PreApplySolution,
         IReadOnlyList<FileSnapshotDto>? FileSnapshots,
+        int PreApplyWorkspaceVersion,
         DateTime AppliedAtUtc);
 }

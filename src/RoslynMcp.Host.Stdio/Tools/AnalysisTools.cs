@@ -25,6 +25,7 @@ public static class AnalysisTools
         [Description("Optional: filter by project name")] string? project = null,
         [Description("Optional: filter by file path")] string? file = null,
         [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden)")] string? severity = null,
+        [Description("Optional: filter to a specific diagnostic ID (e.g., CS8019, CA1000)")] string? diagnosticId = null,
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
         [Description("Maximum number of diagnostics to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
@@ -35,7 +36,7 @@ public static class AnalysisTools
             ParameterValidation.ValidatePagination(offset, limit);
             return gate.RunReadAsync(workspaceId, async c =>
             {
-                var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, project, file, severity, c);
+                var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, project, file, severity, diagnosticId, c);
 
                 var allDiagnostics = results.WorkspaceDiagnostics
                     .Select(diagnostic => (Bucket: DiagnosticBucket.Workspace, Diagnostic: diagnostic))

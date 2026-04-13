@@ -37,12 +37,21 @@ function Get-RepoIdFromAuditFileName {
     param([string]$FileName)
 
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
-    $match = [regex]::Match($baseName, '^\d{8}T\d{6}Z_(.+)_mcp-server-audit$')
+    $match = [regex]::Match($baseName, '^\d{8}T\d{6}Z_(.+)_(mcp-server-audit|experimental-promotion)$')
     if ($match.Success) {
         return $match.Groups[1].Value.ToLowerInvariant()
     }
 
     return ''
+}
+
+function Get-ReportType {
+    param([string]$FileName)
+
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
+    if ($baseName -match '_experimental-promotion$') { return 'experimental-promotion' }
+    if ($baseName -match '_mcp-server-audit$') { return 'mcp-server-audit' }
+    return 'unknown'
 }
 
 function Get-AuditTimestampPrefix {
@@ -89,37 +98,43 @@ if ($AuditFiles.Count -eq 0) {
         if (-not (Test-Path -LiteralPath $auditDir)) {
             continue
         }
-        Get-ChildItem -LiteralPath $auditDir -Filter '*_mcp-server-audit.md' -File -ErrorAction SilentlyContinue |
-            ForEach-Object { $discoveredFiles.Add($_) }
+        foreach ($pattern in @('*_mcp-server-audit.md', '*_experimental-promotion.md')) {
+            Get-ChildItem -LiteralPath $auditDir -Filter $pattern -File -ErrorAction SilentlyContinue |
+                ForEach-Object { $discoveredFiles.Add($_) }
+        }
     }
 
     $localAuditDir = Join-Path $repoRoot 'ai_docs/audit-reports'
     if (Test-Path -LiteralPath $localAuditDir) {
-        Get-ChildItem -LiteralPath $localAuditDir -Filter '*_mcp-server-audit.md' -File -ErrorAction SilentlyContinue |
-            ForEach-Object { $discoveredFiles.Add($_) }
+        foreach ($pattern in @('*_mcp-server-audit.md', '*_experimental-promotion.md')) {
+            Get-ChildItem -LiteralPath $localAuditDir -Filter $pattern -File -ErrorAction SilentlyContinue |
+                ForEach-Object { $discoveredFiles.Add($_) }
+        }
     }
 
     if ($discoveredFiles.Count -eq 0) {
-        throw "No *_mcp-server-audit.md files found under sibling repos in '$parent' or under '$localAuditDir'. Run deep-review in target repos first, or pass -AuditFiles."
+        throw "No audit or experimental-promotion files found under sibling repos in '$parent' or under '$localAuditDir'. Run deep-review in target repos first, or pass -AuditFiles."
     }
 
-    $byRepo = @{}
+    $byRepoType = @{}
     foreach ($f in $discoveredFiles) {
         $rid = Get-RepoIdFromAuditFileName -FileName $f.Name
         if ([string]::IsNullOrWhiteSpace($rid)) {
             continue
         }
+        $rtype = Get-ReportType -FileName $f.Name
+        $key = "${rid}_${rtype}"
         $ts = Get-AuditTimestampPrefix -FileName $f.Name
-        if (-not $byRepo.ContainsKey($rid) -or ($ts -gt (Get-AuditTimestampPrefix -FileName $byRepo[$rid].Name))) {
-            $byRepo[$rid] = $f
+        if (-not $byRepoType.ContainsKey($key) -or ($ts -gt (Get-AuditTimestampPrefix -FileName $byRepoType[$key].Name))) {
+            $byRepoType[$key] = $f
         }
     }
 
-    $resolvedAuditFiles = foreach ($k in ($byRepo.Keys | Sort-Object)) {
-        $byRepo[$k].FullName
+    $resolvedAuditFiles = foreach ($k in ($byRepoType.Keys | Sort-Object)) {
+        $byRepoType[$k].FullName
     }
 
-    Write-Host "new-deep-review-batch: auto-discovered $($resolvedAuditFiles.Count) audit(s) (latest per repo-id under '$parent')."
+    Write-Host "new-deep-review-batch: auto-discovered $($resolvedAuditFiles.Count) report(s) (latest per repo-id + report-type under '$parent')."
 }
 else {
     $resolvedAuditFiles = foreach ($auditFile in $AuditFiles) {
