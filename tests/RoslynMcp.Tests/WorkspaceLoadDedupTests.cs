@@ -77,6 +77,13 @@ public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
     {
         // Windows paths are case-insensitive. An upper-cased variant of the sample solution
         // path must still be recognized as the same workspace.
+        // Linux/macOS paths are case-sensitive, so the upper-cased path doesn't exist.
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Case-insensitive path dedup only applies on Windows.");
+            return;
+        }
+
         var copiedSolutionPath = CreateSampleSolutionCopy();
         var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
         try
