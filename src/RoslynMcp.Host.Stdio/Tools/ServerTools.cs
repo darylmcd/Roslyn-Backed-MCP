@@ -31,7 +31,9 @@ public static class ServerTools
             var latestVersion = versionChecker.GetLatestVersion();
             var currentSemver = version.Split('+')[0]; // strip git hash suffix
             var updateAvailable = latestVersion is not null
-                                  && !string.Equals(currentSemver, latestVersion, StringComparison.OrdinalIgnoreCase);
+                                  && Version.TryParse(currentSemver, out var currentParsed)
+                                  && Version.TryParse(latestVersion, out var latestParsed)
+                                  && latestParsed > currentParsed;
 
             var info = new
             {
