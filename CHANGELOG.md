@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.11.1] - 2026-04-13
+
+### Changed
+
+- **Refactored `ExtractMethodService.PreviewExtractMethodAsync`** — extracted 5 private helper methods (`ResolveDocumentAsync`, `FindEnclosingMethodAndStatements`, `AnalyzeFlowAndInferSignature`, `BuildMethodAndCallSite`, `ReplaceStatementsAndInsertMethod`) from the monolithic method (CC=31, MI=21.7). Orchestrator method now delegates to focused helpers. No behavior change.
+
+### Removed
+
+- **Dead code cleanup** — removed unused `ActiveEvaluations` and `AbandonedEvaluations` internal properties from `ScriptingService` (0 references confirmed via `find_references`). Backing fields retained — used by `EvaluateAsync` internals.
+
 ## [1.11.0] - 2026-04-13
 
 ### Added
