@@ -26,15 +26,18 @@ public sealed class ProjectMutationService : IProjectMutationService
     private readonly IWorkspaceManager _workspace;
     private readonly IProjectMutationPreviewStore _previewStore;
     private readonly ILogger<ProjectMutationService> _logger;
+    private readonly IChangeTracker? _changeTracker;
 
     public ProjectMutationService(
         IWorkspaceManager workspace,
         IProjectMutationPreviewStore previewStore,
-        ILogger<ProjectMutationService> logger)
+        ILogger<ProjectMutationService> logger,
+        IChangeTracker? changeTracker = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
         _logger = logger;
+        _changeTracker = changeTracker;
     }
 
     public Task<RefactoringPreviewDto> PreviewAddPackageReferenceAsync(string workspaceId, AddPackageReferenceDto request, CancellationToken ct)
@@ -314,6 +317,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             await File.WriteAllTextAsync(projectFilePath, updatedContent, ct).ConfigureAwait(false);
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
             _previewStore.Invalidate(previewToken);
+            _changeTracker?.RecordChange(workspaceId, $"Project mutation: {Path.GetFileName(projectFilePath)}", [projectFilePath], "apply_project_mutation");
             return new ApplyResultDto(true, [projectFilePath], null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)

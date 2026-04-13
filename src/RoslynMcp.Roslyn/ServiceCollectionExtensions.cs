@@ -91,6 +91,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IEditorConfigService, EditorConfigService>();
         services.AddSingleton<IExtractMethodService, ExtractMethodService>();
         services.AddSingleton<IChangeTracker, ChangeTracker>();
+        services.AddSingleton<IRefactoringSuggestionService, RefactoringSuggestionService>();
         return services;
     }
 }

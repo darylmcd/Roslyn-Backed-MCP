@@ -67,6 +67,7 @@ public abstract class TestBase
     protected static MsBuildEvaluationService MsBuildEvaluationService { get; private set; } = null!;
     protected static ExtractMethodService ExtractMethodService { get; private set; } = null!;
     protected static ChangeTracker ChangeTracker { get; private set; } = null!;
+    protected static RefactoringSuggestionService RefactoringSuggestionService { get; private set; } = null!;
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -153,6 +154,7 @@ public abstract class TestBase
         MsBuildEvaluationService = services.MsBuildEvaluationService;
         ExtractMethodService = services.ExtractMethodService;
         ChangeTracker = services.ChangeTracker;
+        RefactoringSuggestionService = services.RefactoringSuggestionService;
 
         RepositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
         SampleSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
