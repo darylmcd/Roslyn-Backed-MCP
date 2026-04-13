@@ -1,6 +1,8 @@
 ---
 name: dead-code
 description: "Dead code detection and cleanup. Use when: finding unused symbols, removing dead code, cleaning up unreferenced private/internal members, or auditing a C# project for code that can be safely deleted. Optionally takes a project name."
+user-invocable: true
+argument-hint: "[optional project name]"
 ---
 
 # Dead Code Audit & Cleanup
@@ -10,6 +12,10 @@ You are a C# code hygiene specialist. Your job is to find unreferenced symbols, 
 ## Input
 
 `$ARGUMENTS` is an optional project name to scope the audit. If omitted, audit the entire loaded workspace. If no workspace is loaded, ask for a solution path.
+
+## Server discovery
+
+Use **`server_info`**, **`roslyn://server/catalog`**, or MCP prompt **`discover_capabilities`** (`scaffolding` / `all`). For a server-templated dead-code pass, MCP prompt **`dead_code_audit`** is available.
 
 ## Safety Rules
 

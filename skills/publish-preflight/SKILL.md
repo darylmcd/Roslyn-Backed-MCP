@@ -9,6 +9,24 @@ argument-hint: ""
 
 You are a release gatekeeper. Your job is to run every validation step required before a NuGet publish and report a clear pass/fail summary.
 
+## Server discovery
+
+Roslyn MCP **`server_info`** / **`server_catalog`** describe the *running analyzer server*, not this repo's release scripts. This skill is about **repository** publish gates.
+
+## Repo shortcuts ([just](https://github.com/casey/just))
+
+From the repository root you can run:
+
+| Step | `just` recipe |
+|------|----------------|
+| Version drift | `just verify-version-drift` |
+| AI docs | `just verify-docs` |
+| Full release script (build, test, coverage, publish, manifest) | `just verify-release` |
+| Pack host nupkg | `just pack` |
+| Aggregate CI-like local run | `just ci` or `just full` |
+
+These wrap the same `eng/*.ps1` scripts below when you prefer a single entry point.
+
 ## Checklist Steps
 
 Execute ALL steps in order. Track pass/fail for each. Do NOT stop on the first failure — run the full checklist so the user sees everything that needs fixing.

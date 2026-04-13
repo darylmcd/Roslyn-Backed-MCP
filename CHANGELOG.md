@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.11.2] - 2026-04-13
+
+### Fixed
+
+- **Resource leak:** `UndoService` and `ChangeTracker` now subscribe to `IWorkspaceManager.WorkspaceClosed` and clear per-workspace state when workspaces close, following the `CompilationCache` pattern. Previously, undo snapshots and change records accumulated without cleanup.
+- **Dead code:** removed unused `MsBuildMetadataHelper.FindDirectoryBuildProps` (zero references) and `CorrelationContext.BeginScope()` + `CorrelationScope` class (zero call sites).
+
+### Added
+
+- **MCP prompts (3):** `guided_extract_method`, `msbuild_inspection`, `session_undo` (experimental), wired in `RoslynPrompts` and `ServerSurfaceCatalog`.
+- **Plugin skills (5):** `code-actions`, `test-triage`, `snippet-eval`, `project-inspection`, `session-undo`.
+- **Backlog:** 13 new findings from parallel review/dead-code/test-coverage/security audits added to `ai_docs/backlog.md` (21 total items, deduplicated and reprioritized).
+
+### Changed
+
+- **Plugin skills:** `user-invocable` / `argument-hint` on skills where helpful; **Server discovery** sections (`server_info`, `server_catalog`, `discover_capabilities`, related MCP prompts); expanded **`refactor`** with extract-method, code actions, fix-all, orchestration, and format-range rows; **`update`** documents `just tool-update` / `just tool-install-local`; **`publish-preflight`** documents `just` recipes; **`test-coverage`** uses `document_symbols` (replaces nonexistent `get_symbol_outline`).
+- **`guided_extract_interface` prompt:** apply step now references `extract_interface_apply` (not `rename_apply`).
+- **`server_info` tool description:** no longer hardcodes experimental prompt count (use live `surface.prompts`).
+
 ## [1.11.1] - 2026-04-13
 
 ### Changed

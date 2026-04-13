@@ -181,6 +181,12 @@ public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
             "review_test_coverage prompt not found in catalog");
         Assert.IsTrue(prompts.Any(p => p.Name == "review_complexity"),
             "review_complexity prompt not found in catalog");
+        Assert.IsTrue(prompts.Any(p => p.Name == "guided_extract_method"),
+            "guided_extract_method prompt not found in catalog");
+        Assert.IsTrue(prompts.Any(p => p.Name == "msbuild_inspection"),
+            "msbuild_inspection prompt not found in catalog");
+        Assert.IsTrue(prompts.Any(p => p.Name == "session_undo"),
+            "session_undo prompt not found in catalog");
     }
 
     [TestMethod]

@@ -183,7 +183,10 @@ public static class ServerSurfaceCatalog
         Prompt("review_test_coverage", "prompts", "experimental", true, false, "Generate a prompt for test coverage review and gap identification."),
         Prompt("review_complexity", "prompts", "experimental", true, false, "Generate a prompt for complexity review and refactoring opportunities."),
         Prompt("cohesion_analysis", "prompts", "experimental", true, false, "Generate a prompt for SRP analysis using LCOM4 cohesion metrics with guided type extraction workflow."),
-        Prompt("consumer_impact", "prompts", "experimental", true, false, "Generate a prompt analyzing the consumer/dependency graph for a type to assess refactoring impact.")
+        Prompt("consumer_impact", "prompts", "experimental", true, false, "Generate a prompt analyzing the consumer/dependency graph for a type to assess refactoring impact."),
+        Prompt("guided_extract_method", "prompts", "experimental", true, false, "Generate a prompt for extract-method refactoring with data-flow and control-flow checks."),
+        Prompt("msbuild_inspection", "prompts", "experimental", true, false, "Generate a prompt for evaluating MSBuild properties and items for a project file."),
+        Prompt("session_undo", "prompts", "experimental", true, false, "Generate a prompt for inspecting session mutations and undoing the last apply operation.")
     ];
 
     public static SurfaceSummary GetSummary()

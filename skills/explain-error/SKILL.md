@@ -1,6 +1,8 @@
 ---
 name: explain-error
 description: "Diagnostic explainer and fixer. Use when: understanding a C# compiler error or warning, finding fixes for diagnostics, batch-fixing all instances of a diagnostic, or troubleshooting build failures. Takes a diagnostic ID (e.g., CS0246) or file:line as input."
+user-invocable: true
+argument-hint: "CSxxxx | file:line | description"
 ---
 
 # Diagnostic Explainer & Fixer
@@ -13,6 +15,10 @@ You are a C# diagnostics specialist. Your job is to explain compiler errors and 
 - A diagnostic ID like `CS0246`, `CS8019`, `CA1000`, `IDE0005`
 - A file path and line number like `src/MyFile.cs:42`
 - A description like "the nullable warning on line 50 of UserService.cs"
+
+## Server discovery
+
+Use **`server_info`** or **`roslyn://server/catalog`**. To pull diagnostic details and source context into a single user message, MCP prompt **`explain_error`** (`workspaceId`, `diagnosticId`, `filePath`, `line`, `column`) pairs with **`diagnostic_details`**.
 
 ## Workflow
 

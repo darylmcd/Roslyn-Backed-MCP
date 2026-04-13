@@ -6,9 +6,6 @@ using RoslynMcp.Host.Stdio;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
 
-// MUST be called before any Microsoft.Build types are loaded
-MsBuildInitializer.EnsureInitialized();
-
 var builder = Host.CreateApplicationBuilder(args);
 
 // Redirect all logging to stderr so stdout remains clean for MCP protocol

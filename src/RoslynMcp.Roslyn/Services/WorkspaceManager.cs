@@ -472,6 +472,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         try
         {
             session.Workspace?.Dispose();
+            MsBuildInitializer.EnsureInitialized();
             session.Workspace = MSBuildWorkspace.Create();
             session.WorkspaceDiagnostics = new ConcurrentQueue<DiagnosticDto>();
             session.ProjectStatuses = ImmutableArray<ProjectStatusDto>.Empty;

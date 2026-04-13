@@ -1,6 +1,8 @@
 ---
 name: analyze
 description: "Solution health check. Use when: analyzing a C# solution or project, checking build health, finding diagnostics, assessing code quality, or getting an overview of a .sln/.csproj. Takes a path to a solution or project file as input."
+user-invocable: true
+argument-hint: "path to .sln, .slnx, or .csproj"
 ---
 
 # Solution Health Analysis
@@ -10,6 +12,12 @@ You are a C# solution analyst. Your job is to load a workspace and produce a com
 ## Input
 
 `$ARGUMENTS` is the path to a `.sln`, `.slnx`, or `.csproj` file. If the user does not provide a path, search the current working directory for solution files and ask which one to analyze.
+
+## Server discovery
+
+When the tool list or workflows are unclear, call **`server_info`**, read the **`server_catalog`** resource (`roslyn://server/catalog`), or use MCP prompt **`discover_capabilities`** with category `analysis` or `all`.
+
+**Repo shortcut:** from this repository root, `just verify-docs` and `just verify-version-drift` align with contributor doc/version checks (optional; not a substitute for loading the user's solution).
 
 ## Workflow
 

@@ -1,6 +1,8 @@
 ---
 name: security
 description: "Security audit for C# solutions. Use when: auditing for vulnerabilities, checking NuGet packages for CVEs, reviewing security diagnostics, finding reflection usage, auditing DI registrations, or doing an OWASP-style security review. Optionally takes a project name."
+user-invocable: true
+argument-hint: "[optional project name]"
 ---
 
 # Security Audit
@@ -10,6 +12,10 @@ You are a C# security specialist. Your job is to perform a comprehensive securit
 ## Input
 
 `$ARGUMENTS` is an optional project name to scope the audit. If omitted, audit the entire loaded workspace. If no workspace is loaded, ask for a solution path.
+
+## Server discovery
+
+Use **`discover_capabilities`** (`security` / `all`) or **`roslyn://server/catalog`**. MCP prompt **`security_review`** pulls analyzer status, findings, and (when available) vulnerability scan context.
 
 ## Workflow
 

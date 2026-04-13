@@ -1,6 +1,8 @@
 ---
 name: test-coverage
 description: "Test coverage analysis. Use when: checking test coverage, finding untested code, identifying gaps in test suites, scaffolding new tests, or auditing which public APIs have tests. Optionally takes a project name."
+user-invocable: true
+argument-hint: "[optional project or test project name]"
 ---
 
 # Test Coverage Analysis
@@ -10,6 +12,10 @@ You are a C# testing specialist. Your job is to analyze test coverage, identify 
 ## Input
 
 `$ARGUMENTS` is an optional project or test project name. If omitted, analyze the entire loaded workspace. If no workspace is loaded, ask for a solution path.
+
+## Server discovery
+
+Use **`discover_capabilities`** (`testing` / `all`) or MCP prompt **`review_test_coverage`**. For red CI focused on failing tests first, skill **`test-triage`** is a lighter entry point.
 
 ## Workflow
 
@@ -28,7 +34,7 @@ You are a C# testing specialist. Your job is to analyze test coverage, identify 
 ### Step 3: Identify Coverage Gaps
 
 1. From coverage data, find classes and methods with low coverage (< 50% line coverage).
-2. Call `get_symbol_outline` on source projects (non-test) to list all public types and methods.
+2. Call `document_symbols` on key source files (non-test) to list declared symbols.
 3. For key public APIs, call `test_related` to find associated tests.
 4. Identify public types/methods with zero related tests.
 

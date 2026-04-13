@@ -19,16 +19,6 @@ internal static class MsBuildMetadataHelper
     }
 
     /// <summary>
-    /// Searches the directory tree from <paramref name="loadedPath"/> upward for
-    /// the nearest <c>Directory.Build.props</c> file.
-    /// </summary>
-    /// <returns>The absolute path to the file, or <see langword="null"/> if not found.</returns>
-    public static string? FindDirectoryBuildProps(string? loadedPath)
-    {
-        return FindNearestFile(loadedPath, "Directory.Build.props");
-    }
-
-    /// <summary>
     /// Returns <see langword="true"/> if the given <c>Directory.Packages.props</c> file has
     /// <c>ManagePackageVersionsCentrally</c> set to <c>true</c>.
     /// </summary>
