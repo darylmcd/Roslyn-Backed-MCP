@@ -2,6 +2,7 @@
 name: update
 description: "Update the Roslyn MCP plugin. Use when: server_info shows an update is available, the user wants to update to the latest version, or the plugin reports an older version than NuGet. Handles both the global tool binary (Layer 1) and the Claude Code plugin metadata (Layer 2)."
 user-invocable: true
+argument-hint: ""
 ---
 
 # Update Roslyn MCP Plugin
@@ -14,10 +15,15 @@ The plugin has two layers that must be updated together:
 
 | Layer | Provides | Update command |
 |-------|----------|----------------|
-| 1 — Global tool | The `roslynmcp` MCP server binary | `dotnet tool update -g Darylmcd.RoslynMcp` |
+| 1 — Global tool | The `roslynmcp` MCP server binary | `dotnet tool update -g Darylmcd.RoslynMcp` (or `dotnet tool install -g Darylmcd.RoslynMcp` if not installed) |
+| 1b — Repo checkout (maintainers) | Same binary, from local `nupkg` | `just tool-update` (NuGet.org) or `just tool-install-local` after `just pack` |
 | 2 — Claude Code plugin | Skills, hooks, marketplace metadata | `/plugin marketplace update` + `/plugin install` |
 
 **Important:** The NuGet package ID is `Darylmcd.RoslynMcp` (NOT `RoslynMcp` — that is a different publisher's package).
+
+## Server discovery
+
+Call **`server_info`** on the running MCP host for semver + NuGet update hints. The full tool list lives in **`roslyn://server/catalog`**.
 
 ## Workflow
 
@@ -32,11 +38,13 @@ If `update` is `null`, the NuGet check hasn't completed yet. Tell the user the c
 
 ### Step 2: Update Layer 1 — Global Tool
 
-Run via Bash:
+**Preferred (any shell):**
 
 ```bash
-dotnet tool update -g Darylmcd.RoslynMcp
+dotnet tool update -g Darylmcd.RoslynMcp || dotnet tool install -g Darylmcd.RoslynMcp
 ```
+
+**If the user is developing in this repository and has [just](https://github.com/casey/just):** run `just tool-update` (updates or installs, then lists global tools). To install the **locally built** package after `just pack`, use `just tool-install-local` (Windows ends `roslynmcp.exe` first to avoid file locks).
 
 Report the result. If the tool reports "already up to date", note that and continue to Layer 2.
 

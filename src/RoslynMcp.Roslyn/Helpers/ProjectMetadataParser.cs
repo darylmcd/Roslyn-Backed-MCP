@@ -35,6 +35,7 @@ internal static class ProjectMetadataParser
             return [];
         }
 
+        MsBuildInitializer.EnsureInitialized();
         var projectCollection = new ProjectCollection();
 
         try

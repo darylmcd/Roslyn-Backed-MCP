@@ -1,6 +1,8 @@
 ---
 name: refactor
 description: "Guided semantic refactoring. Use when: renaming symbols, extracting interfaces, extracting types, moving types between files or projects, splitting classes, or performing bulk type replacements in C# code. Describe the desired refactoring as input."
+user-invocable: true
+argument-hint: "natural-language refactoring goal"
 ---
 
 # Guided Semantic Refactoring
@@ -16,6 +18,12 @@ You are a C# refactoring specialist. Your job is to interpret the user's refacto
 - "Split the GodClass into smaller types"
 
 If a workspace is not already loaded, ask the user for the solution path and load it first.
+
+## Server discovery
+
+Use **`server_info`**, resource **`roslyn://server/catalog`**, or MCP prompt **`discover_capabilities`** (`refactoring` or `all`) for the live tool list and **WorkflowHints** (preview/apply, code actions, interface extraction, etc.).
+
+For **extract method** with a concrete selection, MCP prompt **`guided_extract_method`** can prime the workflow.
 
 ## Safety Rules
 
@@ -36,6 +44,11 @@ Parse the user's request to determine the refactoring type:
 - **Move Type to Project**: move a type to a different project
 - **Split Class**: split a type into partial classes
 - **Bulk Type Replace**: replace all references to one type with another
+- **Extract Method**: pull a statement range into a new method (skill **`extract-method`**, or `extract_method_preview` / `extract_method_apply`)
+- **Roslyn code actions**: IDE-style fixes/refactorings at a cursor or **selection range** (`get_code_actions` → `preview_code_action` → `apply_code_action`) — skill **`code-actions`**
+- **Fix all instances** of one diagnostic: `fix_all_preview` → `fix_all_apply`
+- **Dependency inversion / DI wiring**: `dependency_inversion_preview`, `extract_and_wire_interface_preview` (orchestrated previews)
+- **Format a range**: `format_range_preview` / `format_range_apply` (when whole-document format is too broad)
 
 ### Step 2: Find the Target
 
@@ -63,6 +76,14 @@ Call the appropriate preview tool based on refactoring type:
 | Move to Project | `move_type_to_project_preview` with `typeName`, `targetProjectName` |
 | Split Class | `split_class_preview` with `typeName`, `memberNames`, `newFileName` |
 | Bulk Replace | `bulk_replace_type_preview` with `oldTypeName`, `newTypeName` |
+| Extract Method | `extract_method_preview` (after `analyze_data_flow` / `analyze_control_flow` on the span) |
+| Code actions (incl. selection) | `get_code_actions` with optional `endLine`/`endColumn` → `preview_code_action` → `apply_code_action` |
+| Fix all (diagnostic ID) | `fix_all_preview` → `fix_all_apply` |
+| Dependency inversion | `dependency_inversion_preview` → `apply_composite_preview` (preview token from the preview response) |
+| Extract interface + DI | `extract_and_wire_interface_preview` → `apply_composite_preview` |
+| Format range | `format_range_preview` → `format_range_apply` |
+
+For **project/file mutations** (add package, move file, etc.), use the corresponding `*_preview` / `apply_project_mutation` or file-operation tools listed in **`server_catalog`**.
 
 Show the user:
 - Number of files affected

@@ -100,18 +100,5 @@ public static class CorrelationContext
     /// <summary>Gets the current correlation ID, or generates one if none is set.</summary>
     public static string Current => _correlationId.Value ??= GenerateId();
 
-    /// <summary>Sets a new correlation ID for the current async context.</summary>
-    public static IDisposable BeginScope()
-    {
-        var previous = _correlationId.Value;
-        _correlationId.Value = GenerateId();
-        return new CorrelationScope(previous);
-    }
-
     private static string GenerateId() => Guid.NewGuid().ToString("N")[..12];
-
-    private sealed class CorrelationScope(string? previous) : IDisposable
-    {
-        public void Dispose() => _correlationId.Value = previous;
-    }
 }

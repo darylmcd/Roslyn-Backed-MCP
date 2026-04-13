@@ -1,6 +1,8 @@
 ---
 name: migrate-package
 description: "NuGet package migration. Use when: replacing one NuGet package with another across a solution, upgrading packages, or migrating from deprecated packages. Takes old package name, new package name, and new version as input."
+user-invocable: true
+argument-hint: "<old-package> <new-package> <version>"
 ---
 
 # NuGet Package Migration
@@ -17,6 +19,10 @@ Examples:
 - `Moq NSubstitute 5.0.0`
 
 If the user provides incomplete arguments, ask for the missing values.
+
+## Server discovery
+
+Use **`discover_capabilities`** (`project-mutation` / `all`) or **`guided_package_migration`** MCP prompt with the same package ids and version.
 
 ## Workflow
 

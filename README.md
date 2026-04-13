@@ -268,12 +268,12 @@ For privacy questions, open an issue at [github.com/darylmcd/Roslyn-Backed-MCP/i
 - `samples/`: fixture solutions used by tests for realistic workflows.
 - `eng/verify-release.ps1`: release verification path for publish and hashes.
 - `.claude-plugin/`: Claude Code plugin manifest and marketplace descriptor.
-- `skills/`: 10 Claude Code skill definitions composing MCP tools into guided workflows.
+- `skills/`: Claude Code skill definitions composing MCP tools into guided workflows (see `skills/*/SKILL.md`).
 - `hooks/`: plugin safety hooks enforcing preview/apply and compile-check patterns.
 
 ## Supported Surface
 
-Catalog **`2026.04`** ships **128 tools** (69 stable / 59 experimental), **9 resources** (all stable), and **16 prompts** (all experimental). Use the `server_info` tool and the `roslyn://server/catalog` resource for the authoritative live surface — the categories below are a quick orientation.
+Catalog **`2026.04`** ships **128 tools** (69 stable / 59 experimental), **9 resources** (all stable), and **19 prompts** (all experimental). Use the `server_info` tool and the `roslyn://server/catalog` resource for the authoritative live surface — the categories below are a quick orientation.
 
 ### Stable tool families
 
@@ -313,9 +313,9 @@ Catalog **`2026.04`** ships **128 tools** (69 stable / 59 experimental), **9 res
 
 The `verbose` siblings opt into the full per-project tree; the default summary keeps a status check at ~500 bytes instead of ~30 KB on large solutions.
 
-### Experimental prompts (16)
+### Experimental prompts (19)
 
-`explain_error`, `suggest_refactoring`, `review_file`, `analyze_dependencies`, `debug_test_failure`, `refactor_and_validate`, `fix_all_diagnostics`, `guided_package_migration`, `guided_extract_interface`, `security_review`, `discover_capabilities`, `dead_code_audit`, `review_test_coverage`, `review_complexity`, `cohesion_analysis`, `consumer_impact`.
+`explain_error`, `suggest_refactoring`, `review_file`, `analyze_dependencies`, `debug_test_failure`, `refactor_and_validate`, `fix_all_diagnostics`, `guided_package_migration`, `guided_extract_interface`, `security_review`, `discover_capabilities`, `dead_code_audit`, `review_test_coverage`, `review_complexity`, `cohesion_analysis`, `consumer_impact`, `guided_extract_method`, `msbuild_inspection`, `session_undo`.
 
 ### Product Boundaries
 
@@ -328,7 +328,7 @@ The `verbose` siblings opt into the full per-project tree; the default summary k
 
 ```
 .claude-plugin/              Claude Code plugin manifest + marketplace
-skills/                      11 plugin skills (orchestration prompts)
+skills/                      bundled plugin skills (workflows + discovery)
 hooks/                       Plugin safety hooks (preview/apply guard)
 src/
   RoslynMcp.Host.Stdio/      MCP stdio host (thin tool wrappers)

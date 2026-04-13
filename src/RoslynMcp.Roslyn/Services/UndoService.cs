@@ -27,14 +27,22 @@ namespace RoslynMcp.Roslyn.Services;
 /// (<c>RefactoringService</c>) keep the legacy path, which has been hardened with a
 /// snapshot-wide document walk so empty-<c>GetChanges</c> no longer silently wins.
 /// </summary>
-public sealed class UndoService : IUndoService
+public sealed class UndoService : IUndoService, IDisposable
 {
     private readonly ConcurrentDictionary<string, UndoSnapshot> _snapshots = new(StringComparer.Ordinal);
     private readonly ILogger<UndoService> _logger;
+    private readonly IWorkspaceManager _workspaceManager;
 
-    public UndoService(ILogger<UndoService> logger)
+    public UndoService(ILogger<UndoService> logger, IWorkspaceManager workspaceManager)
     {
         _logger = logger;
+        _workspaceManager = workspaceManager;
+        _workspaceManager.WorkspaceClosed += Clear;
+    }
+
+    public void Dispose()
+    {
+        _workspaceManager.WorkspaceClosed -= Clear;
     }
 
     public void CaptureBeforeApply(

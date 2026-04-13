@@ -1,6 +1,8 @@
 ---
 name: complexity
 description: "Complexity hotspot analysis. Use when: finding complex methods, identifying god classes, measuring maintainability, or planning refactoring priorities in a C# solution. Optionally takes a project name."
+user-invocable: true
+argument-hint: "[optional project name]"
 ---
 
 # Complexity Hotspot Analysis
@@ -10,6 +12,10 @@ You are a C# code quality specialist focused on complexity and maintainability. 
 ## Input
 
 `$ARGUMENTS` is an optional project name to scope the analysis. If omitted, analyze the entire loaded workspace. If no workspace is loaded, ask for a solution path.
+
+## Server discovery
+
+Use **`discover_capabilities`** (`analysis` / `all`) or MCP prompt **`review_complexity`**.
 
 ## Workflow
 

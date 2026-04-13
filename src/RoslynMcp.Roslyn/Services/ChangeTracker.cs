@@ -8,10 +8,22 @@ namespace RoslynMcp.Roslyn.Services;
 /// Records all mutations applied to workspaces during a session.
 /// Thread-safe. Clears per-workspace data on workspace close.
 /// </summary>
-public sealed class ChangeTracker : IChangeTracker
+public sealed class ChangeTracker : IChangeTracker, IDisposable
 {
     private readonly ConcurrentDictionary<string, List<WorkspaceChangeDto>> _changes = new();
+    private readonly IWorkspaceManager _workspaceManager;
     private int _globalSequence;
+
+    public ChangeTracker(IWorkspaceManager workspaceManager)
+    {
+        _workspaceManager = workspaceManager;
+        _workspaceManager.WorkspaceClosed += Clear;
+    }
+
+    public void Dispose()
+    {
+        _workspaceManager.WorkspaceClosed -= Clear;
+    }
 
     public void RecordChange(string workspaceId, string description,
         IReadOnlyList<string> affectedFiles, string toolName)

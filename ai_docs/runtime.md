@@ -107,7 +107,7 @@ The current stable/experimental tool, resource, and prompt counts are owned by t
 - Stable tools: 69
 - Experimental tools: 59
 - Stable resources: 9 (3 static + 6 workspace-scoped templates, including the verbose siblings of `roslyn://workspaces` and `roslyn://workspace/{id}/status` added in v1.8 for opt-in full payloads)
-- Experimental prompts: 16
+- Experimental prompts: 19
 
 Resource discovery for clients that only call `resources/list`: workspace-scoped resources are exposed as URI templates (`roslyn://workspace/{workspaceId}/...`). Read `roslyn://server/resource-templates` for the canonical list of supported URI patterns.
 

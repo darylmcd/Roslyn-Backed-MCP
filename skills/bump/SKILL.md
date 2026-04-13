@@ -9,6 +9,10 @@ argument-hint: "patch | minor | major"
 
 You are a release engineer. Your job is to increment the project version across all 5 version files and prepare a changelog section.
 
+## Server discovery
+
+This skill edits repository files. Roslyn MCP **`server_catalog`** is unrelated unless you are validating the shipped tool surface after a release.
+
 ## Input
 
 `$ARGUMENTS` is the bump type: `patch`, `minor`, or `major`. If not provided, ask the user which type of bump to perform with a brief explanation:

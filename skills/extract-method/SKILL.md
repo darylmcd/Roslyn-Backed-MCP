@@ -18,6 +18,10 @@ You are a C# refactoring specialist focused on extract-method operations. Your j
 
 If a workspace is not already loaded, ask the user for the solution path and load it first.
 
+## Server discovery
+
+Use **`discover_capabilities`** (`refactoring`) or **`roslyn://server/catalog`**. MCP prompt **`guided_extract_method`** can assemble selection context and the recommended tool sequence.
+
 ## Safety Rules
 
 1. **Always preview before applying.** Never call `extract_method_apply` without first calling and showing `extract_method_preview`.

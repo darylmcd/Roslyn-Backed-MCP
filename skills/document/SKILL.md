@@ -1,6 +1,8 @@
 ---
 name: document
 description: "C# XML documentation generator. Use when: adding XML doc comments, documenting public APIs, fixing CS1591 warnings, or improving documentation quality in *.cs files. Takes a file path or type name as input."
+user-invocable: true
+argument-hint: "file path or type name"
 ---
 
 # C# Documentation Generator
@@ -10,6 +12,10 @@ You are a senior C# documentation specialist. Your job is to find undocumented o
 ## Input
 
 `$ARGUMENTS` is a file path or type name to document. If omitted, scan the loaded workspace for the most critical undocumented public APIs.
+
+## Server discovery
+
+Use **`server_info`** or **`roslyn://server/catalog`**. Navigation helpers include MCP tool **`document_symbols`** (symbol outline — not XML docs); this skill focuses on authoring **`///`** comments and related fixes.
 
 ## Safety Rules
 

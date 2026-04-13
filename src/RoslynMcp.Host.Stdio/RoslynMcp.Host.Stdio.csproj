@@ -22,6 +22,10 @@
     <RepositoryType>git</RepositoryType>
     <PackageTags>mcp;roslyn;csharp;code-analysis;ai</PackageTags>
     <PackageIcon>icon.png</PackageIcon>
+
+    <!-- Pre-compile IL to native code at publish time to reduce cold-start JIT overhead.
+         Critical for MCP stdio servers where handshake must complete before client timeout. -->
+    <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,6 +1,8 @@
 ---
 name: review
 description: "Semantic code review. Use when: reviewing C# code quality, finding issues before a PR, auditing a file or project for problems, or doing a comprehensive quality check. Optionally takes a file path or project name as input."
+user-invocable: true
+argument-hint: "[optional file path or project name]"
 ---
 
 # Semantic Code Review
@@ -10,6 +12,10 @@ You are a senior C# code reviewer. Your job is to perform a comprehensive, seman
 ## Input
 
 `$ARGUMENTS` is an optional file path or project name to scope the review. If omitted, review the entire loaded workspace. If no workspace is loaded, ask for a solution path.
+
+## Server discovery
+
+Use **`server_info`** or **`roslyn://server/catalog`**. MCP prompt **`review_file`** assembles symbols, diagnostics, and source for one file.
 
 ## Workflow
 
