@@ -77,12 +77,6 @@ public sealed class ScriptingService : IScriptingService
         _concurrencyGate = new SemaphoreSlim(maxConcurrent, maxConcurrent);
     }
 
-    /// <summary>Number of evaluations currently racing to deadline (visible for tests/diagnostics).</summary>
-    internal long ActiveEvaluations => Interlocked.Read(ref _activeEvaluations);
-
-    /// <summary>Number of worker threads still running after their request returned via the deadline path.</summary>
-    internal long AbandonedEvaluations => Interlocked.Read(ref _abandonedEvaluations);
-
     public async Task<ScriptEvaluationDto> EvaluateAsync(
         string code,
         string[]? imports,

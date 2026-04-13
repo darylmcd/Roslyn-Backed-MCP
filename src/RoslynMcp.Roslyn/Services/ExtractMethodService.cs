@@ -39,6 +39,39 @@ public sealed class ExtractMethodService : IExtractMethodService
         if (startLine > endLine || (startLine == endLine && startColumn > endColumn))
             throw new ArgumentException("Start position must be before end position.");
 
+        var (root, semanticModel, text, document, solution) =
+            await ResolveDocumentAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+
+        var selectionSpan = BuildSelectionSpan(text, startLine, startColumn, endLine, endColumn);
+
+        var (enclosingMember, statementsInSelection, parentBlock) =
+            FindEnclosingMethodAndStatements(root, selectionSpan);
+
+        var (parameters, flowsOut, isStatic) =
+            AnalyzeFlowAndInferSignature(semanticModel, statementsInSelection, enclosingMember);
+
+        var (newMethod, callStatement) =
+            BuildMethodAndCallSite(methodName, parameters, flowsOut, isStatic, statementsInSelection);
+
+        var newRoot = ReplaceStatementsAndInsertMethod(
+            root, parentBlock, statementsInSelection, callStatement, newMethod, enclosingMember);
+
+        // Build new solution, compute diff, store preview
+        var newSolution = solution.WithDocumentSyntaxRoot(document.Id, newRoot);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var description = $"Extract {statementsInSelection.Count} statement(s) into method '{methodName}'";
+        var token = _previewStore.Store(
+            workspaceId, newSolution,
+            _workspace.GetCurrentVersion(workspaceId), description);
+
+        _logger.LogDebug("Extract method preview: {Description}", description);
+
+        return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    private async Task<(CompilationUnitSyntax Root, SemanticModel Model, Microsoft.CodeAnalysis.Text.SourceText Text, Document Document, Solution Solution)>
+        ResolveDocumentAsync(string workspaceId, string filePath, CancellationToken ct)
+    {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath)
             ?? throw new InvalidOperationException($"Document not found: {filePath}");
@@ -51,32 +84,46 @@ public sealed class ExtractMethodService : IExtractMethodService
 
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
 
-        // Build the selection span
+        return (root, semanticModel, text, document, solution);
+    }
+
+    private static Microsoft.CodeAnalysis.Text.TextSpan BuildSelectionSpan(
+        Microsoft.CodeAnalysis.Text.SourceText text,
+        int startLine, int startColumn, int endLine, int endColumn)
+    {
         var startPosition = text.Lines[startLine - 1].Start + (startColumn - 1);
         var endPosition = text.Lines[endLine - 1].Start + (endColumn - 1);
-        var selectionSpan = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(startPosition, endPosition);
+        return Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(startPosition, endPosition);
+    }
 
-        // Find the enclosing method
+    private static (MemberDeclarationSyntax EnclosingMember, List<StatementSyntax> Statements, BlockSyntax ParentBlock)
+        FindEnclosingMethodAndStatements(CompilationUnitSyntax root, Microsoft.CodeAnalysis.Text.TextSpan selectionSpan)
+    {
         var enclosingMember = root.FindNode(selectionSpan)
             .AncestorsAndSelf()
             .OfType<MemberDeclarationSyntax>()
             .FirstOrDefault(m => m is MethodDeclarationSyntax)
-            ?? throw new InvalidOperationException(
-                "Selection must be inside a method body.");
+            ?? throw new InvalidOperationException("Selection must be inside a method body.");
 
-        // Collect all statements that overlap the selection
         var statementsInSelection = FindStatementsInSelection(enclosingMember, selectionSpan);
         if (statementsInSelection.Count == 0)
             throw new InvalidOperationException(
                 "No complete statements found in selection. Select one or more complete statements.");
 
-        // Verify all statements share the same parent block
-        var parentBlock = statementsInSelection[0].Parent;
+        var parentBlock = statementsInSelection[0].Parent as BlockSyntax;
         if (parentBlock is null || statementsInSelection.Any(s => s.Parent != parentBlock))
             throw new InvalidOperationException(
                 "All selected statements must be in the same block scope.");
 
-        // Data flow analysis for parameter and return value inference
+        return (enclosingMember, statementsInSelection, parentBlock);
+    }
+
+    private static (List<(string Name, ITypeSymbol? Type)> Parameters, List<(string Name, ITypeSymbol? Type)> FlowsOut, bool IsStatic)
+        AnalyzeFlowAndInferSignature(
+            SemanticModel semanticModel,
+            List<StatementSyntax> statementsInSelection,
+            MemberDeclarationSyntax enclosingMember)
+    {
         var firstStatement = statementsInSelection[0];
         var lastStatement = statementsInSelection[^1];
 
@@ -93,28 +140,23 @@ public sealed class ExtractMethodService : IExtractMethodService
         }
 
         if (dataFlow is null || !dataFlow.Succeeded)
-            throw new InvalidOperationException(
-                "Data flow analysis did not succeed for the selected region.");
+            throw new InvalidOperationException("Data flow analysis did not succeed for the selected region.");
 
-        // Control flow analysis to validate single-exit
         var controlFlow = semanticModel.AnalyzeControlFlow(firstStatement, lastStatement);
         if (controlFlow is null || !controlFlow.Succeeded)
-            throw new InvalidOperationException(
-                "Control flow analysis did not succeed for the selected region.");
+            throw new InvalidOperationException("Control flow analysis did not succeed for the selected region.");
 
         if (controlFlow.ReturnStatements.Length > 0)
             throw new InvalidOperationException(
                 "Cannot extract: the selection contains return statements. " +
                 "Extract method requires a single-exit region without return statements.");
 
-        // Determine parameters: variables that flow in from outside
         var parameters = dataFlow.DataFlowsIn
             .Where(s => s is ILocalSymbol or IParameterSymbol)
             .Select(s => (s.Name, Type: GetSymbolType(s)))
             .Where(p => p.Type is not null)
             .ToList();
 
-        // Determine return: variables that flow out (used after the selection)
         var flowsOut = dataFlow.DataFlowsOut
             .Where(s => s is ILocalSymbol or IParameterSymbol)
             .Select(s => (s.Name, Type: GetSymbolType(s)))
@@ -127,18 +169,25 @@ public sealed class ExtractMethodService : IExtractMethodService
                 $"({string.Join(", ", flowsOut.Select(v => v.Name))}). " +
                 "Extract method supports at most one output variable as a return value.");
 
-        // Determine method return type
+        var isStatic = enclosingMember.Modifiers.Any(SyntaxKind.StaticKeyword);
+
+        return (parameters, flowsOut, isStatic);
+    }
+
+    private static (MethodDeclarationSyntax NewMethod, StatementSyntax CallStatement)
+        BuildMethodAndCallSite(
+            string methodName,
+            List<(string Name, ITypeSymbol? Type)> parameters,
+            List<(string Name, ITypeSymbol? Type)> flowsOut,
+            bool isStatic,
+            List<StatementSyntax> statementsInSelection)
+    {
         var returnType = flowsOut.Count == 1
             ? SyntaxFactory.ParseTypeName(flowsOut[0].Type!.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))
             : SyntaxFactory.PredefinedType(SyntaxFactory.Token(SyntaxKind.VoidKeyword));
 
-        // Determine the access modifier from the enclosing member
         var accessModifier = SyntaxFactory.Token(SyntaxKind.PrivateKeyword);
 
-        // Determine if static
-        var isStatic = enclosingMember.Modifiers.Any(SyntaxKind.StaticKeyword);
-
-        // Build the parameter list
         var parameterList = SyntaxFactory.ParameterList(
             SyntaxFactory.SeparatedList(
                 parameters.Select(p =>
@@ -147,10 +196,8 @@ public sealed class ExtractMethodService : IExtractMethodService
                             p.Type!.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))
                             .WithTrailingTrivia(SyntaxFactory.Space)))));
 
-        // Build the method body
+        // Build extracted method body
         var extractedStatements = new List<StatementSyntax>(statementsInSelection);
-
-        // If there's a return value, add a return statement at the end
         if (flowsOut.Count == 1)
         {
             extractedStatements.Add(
@@ -160,19 +207,16 @@ public sealed class ExtractMethodService : IExtractMethodService
                 .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed));
         }
 
-        var body = SyntaxFactory.Block(extractedStatements);
-
-        // Build the new method declaration
         var newMethod = SyntaxFactory.MethodDeclaration(returnType, SyntaxFactory.Identifier(methodName))
             .WithModifiers(SyntaxFactory.TokenList(
                 isStatic
                     ? [accessModifier, SyntaxFactory.Token(SyntaxKind.StaticKeyword)]
                     : [accessModifier]))
             .WithParameterList(parameterList)
-            .WithBody(body)
+            .WithBody(SyntaxFactory.Block(extractedStatements))
             .NormalizeWhitespace();
 
-        // Build the call expression
+        // Build call site
         var arguments = SyntaxFactory.ArgumentList(
             SyntaxFactory.SeparatedList(
                 parameters.Select(p =>
@@ -184,7 +228,6 @@ public sealed class ExtractMethodService : IExtractMethodService
         StatementSyntax callStatement;
         if (flowsOut.Count == 1)
         {
-            // var x = NewMethod(args);
             callStatement = SyntaxFactory.LocalDeclarationStatement(
                 SyntaxFactory.VariableDeclaration(
                     SyntaxFactory.IdentifierName("var").WithTrailingTrivia(SyntaxFactory.Space),
@@ -194,22 +237,29 @@ public sealed class ExtractMethodService : IExtractMethodService
         }
         else
         {
-            // NewMethod(args);
             callStatement = SyntaxFactory.ExpressionStatement(callExpression);
         }
 
-        // Preserve the leading trivia of the first statement on the call site
         callStatement = callStatement
-            .WithLeadingTrivia(firstStatement.GetLeadingTrivia())
+            .WithLeadingTrivia(statementsInSelection[0].GetLeadingTrivia())
             .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed);
 
-        // Replace the statements in the original code
+        return (newMethod, callStatement);
+    }
+
+    private static CompilationUnitSyntax ReplaceStatementsAndInsertMethod(
+        CompilationUnitSyntax root,
+        BlockSyntax parentBlock,
+        List<StatementSyntax> statementsInSelection,
+        StatementSyntax callStatement,
+        MethodDeclarationSyntax newMethod,
+        MemberDeclarationSyntax enclosingMember)
+    {
+        // Replace selected statements with call site
         var newStatements = new List<SyntaxNode>();
-        var parentBlockNode = (BlockSyntax)parentBlock!;
-        var inSelection = false;
         var replacedCallSite = false;
 
-        foreach (var statement in parentBlockNode.Statements)
+        foreach (var statement in parentBlock.Statements)
         {
             if (statementsInSelection.Contains(statement))
             {
@@ -218,19 +268,17 @@ public sealed class ExtractMethodService : IExtractMethodService
                     newStatements.Add(callStatement);
                     replacedCallSite = true;
                 }
-                inSelection = true;
             }
             else
             {
                 newStatements.Add(statement);
-                if (inSelection) inSelection = false;
             }
         }
 
-        var newBlock = parentBlockNode.WithStatements(
+        var newBlock = parentBlock.WithStatements(
             SyntaxFactory.List(newStatements.Cast<StatementSyntax>()));
 
-        // Insert the new method after the enclosing member
+        // Find the top-level member and enclosing type
         var topLevelMember = enclosingMember.AncestorsAndSelf()
             .OfType<MemberDeclarationSyntax>()
             .LastOrDefault(m => m.Parent is TypeDeclarationSyntax)
@@ -239,47 +287,28 @@ public sealed class ExtractMethodService : IExtractMethodService
         var typeDecl = topLevelMember.Parent as TypeDeclarationSyntax
             ?? throw new InvalidOperationException("Could not find the enclosing type declaration.");
 
-        // Apply changes to the syntax tree
-        var newRoot = root.ReplaceNode(parentBlockNode, newBlock);
+        // Apply block replacement
+        var newRoot = root.ReplaceNode(parentBlock, newBlock);
 
-        // Re-find the type declaration in the new tree
+        // Re-find type in modified tree and insert new method
         var newTypeDecl = newRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
             .First(t => t.Identifier.Text == typeDecl.Identifier.Text);
 
-        // Find the top-level member by position matching
         var topMemberIndex = typeDecl.Members.IndexOf(topLevelMember);
         if (topMemberIndex >= 0 && topMemberIndex < newTypeDecl.Members.Count)
         {
             var insertionPoint = newTypeDecl.Members[topMemberIndex];
             var memberIndex = newTypeDecl.Members.IndexOf(insertionPoint);
             var updatedMembers = newTypeDecl.Members.Insert(memberIndex + 1, newMethod);
-            var updatedTypeDecl = newTypeDecl.WithMembers(updatedMembers);
-            newRoot = newRoot.ReplaceNode(newTypeDecl, updatedTypeDecl);
+            newRoot = newRoot.ReplaceNode(newTypeDecl, newTypeDecl.WithMembers(updatedMembers));
         }
         else
         {
-            // Fallback: add at the end of the type
             var updatedMembers = newTypeDecl.Members.Add(newMethod);
-            var updatedTypeDecl = newTypeDecl.WithMembers(updatedMembers);
-            newRoot = newRoot.ReplaceNode(newTypeDecl, updatedTypeDecl);
+            newRoot = newRoot.ReplaceNode(newTypeDecl, newTypeDecl.WithMembers(updatedMembers));
         }
 
-        // Format the modified tree
-        newRoot = newRoot.NormalizeWhitespace();
-
-        // Build the new solution
-        var newSolution = solution.WithDocumentSyntaxRoot(document.Id, newRoot);
-
-        // Compute diff and store preview
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
-        var description = $"Extract {statementsInSelection.Count} statement(s) into method '{methodName}'";
-        var token = _previewStore.Store(
-            workspaceId, newSolution,
-            _workspace.GetCurrentVersion(workspaceId), description);
-
-        _logger.LogDebug("Extract method preview: {Description}", description);
-
-        return new RefactoringPreviewDto(token, description, changes, null);
+        return newRoot.NormalizeWhitespace();
     }
 
     private static List<StatementSyntax> FindStatementsInSelection(
