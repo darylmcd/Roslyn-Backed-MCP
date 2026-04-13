@@ -52,28 +52,43 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot);
 
-        // Add interface to type's base list. Use formatting-preserving syntax annotations so the
-        // existing source layout (modifiers, expression bodies, format specifiers) is not disturbed
-        // by a NormalizeWhitespace() pass over the entire compilation unit (BUG-004).
-        var interfaceTypeSyntax = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
-            .WithLeadingTrivia(SyntaxFactory.Space);
+        // Add interface to type's base list only if the type does not already implement it.
+        // Skipping this guard produced CS0528 (duplicate interface in base list).
+        var alreadyImplements = typeSymbol.AllInterfaces.Any(i =>
+            string.Equals(i.Name, interfaceName, StringComparison.Ordinal));
+
         TypeDeclarationSyntax updatedTypeDecl;
-        if (typeDecl.BaseList is not null)
+        if (alreadyImplements)
         {
-            var newBaseList = typeDecl.BaseList.AddTypes(interfaceTypeSyntax);
-            updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
+            updatedTypeDecl = typeDecl;
         }
         else
         {
-            // No existing base list. Attach `: IName` to the type declaration directly; Roslyn
-            // emits the leading colon token automatically.
-            var newBaseList = SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceTypeSyntax))
+            // Use formatting-preserving syntax annotations so the existing source layout
+            // (modifiers, expression bodies, format specifiers) is not disturbed
+            // by a NormalizeWhitespace() pass over the entire compilation unit (BUG-004).
+            var interfaceTypeSyntax = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
                 .WithLeadingTrivia(SyntaxFactory.Space);
-            updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
+            if (typeDecl.BaseList is not null)
+            {
+                var newBaseList = typeDecl.BaseList.AddTypes(interfaceTypeSyntax);
+                updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
+            }
+            else
+            {
+                // No existing base list. Attach `: IName` to the type declaration directly; Roslyn
+                // emits the leading colon token automatically.
+                var newBaseList = SyntaxFactory.BaseList(SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceTypeSyntax))
+                    .WithLeadingTrivia(SyntaxFactory.Space);
+                updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
+            }
         }
 
         // BUG-N12: avoid `: IName{` glued to the opening brace — keep `{` on its own line for readability.
-        updatedTypeDecl = EnsureOpeningBraceOnOwnLine(updatedTypeDecl);
+        if (!alreadyImplements)
+        {
+            updatedTypeDecl = EnsureOpeningBraceOnOwnLine(updatedTypeDecl);
+        }
 
         // BUG-004: Do NOT call NormalizeWhitespace() here — that re-flows the entire file and
         // produces unrelated formatting churn (collapses multi-line bodies, alters string format
@@ -267,9 +282,13 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                        text.Contains(ns, StringComparison.Ordinal);
             }
 
-            var shortName2 = ns.Split('.').Last();
-            return text.Contains(shortName2, StringComparison.Ordinal) ||
-                   text.Contains(ns, StringComparison.Ordinal);
+            // Non-System namespaces: only include if a type from the namespace is explicitly
+            // referenced in the interface text by its fully qualified name or contains a type
+            // token that exactly matches a member return type or parameter type.
+            // Previously the short-name heuristic was too permissive, pulling in implementation-
+            // only namespaces (DiffPlex, Microsoft.Extensions.Logging, etc.) that are never
+            // needed in a pure interface file.
+            return text.Contains(ns, StringComparison.Ordinal);
         });
 
         return SyntaxFactory.List(filtered);

@@ -25,7 +25,7 @@ function Resolve-InputPath {
 function Test-AuditFileName {
     param([string]$FileName)
 
-    return $FileName -match '^\d{8}T\d{6}Z_.+_mcp-server-audit\.md$'
+    return $FileName -match '^\d{8}T\d{6}Z_.+_(mcp-server-audit|experimental-promotion)\.md$'
 }
 
 function Get-RelativePathFromRepo {
@@ -49,10 +49,12 @@ function Get-RelativePathFromRepo {
 function Test-AuditFileContent {
     param([string]$Path)
 
-    # Canonical template uses "# MCP Server Audit Report"; some repos use "# MCP server audit — …" (see deep-review prompt).
     $firstLines = Get-Content -Path $Path -TotalCount 40
     foreach ($line in $firstLines) {
         if ($line -match '^\s*#\s+MCP\s+(Server\s+Audit(\s+Report)?|server\s+audit)\b') {
+            return $true
+        }
+        if ($line -match '^\s*#\s+Experimental\s+Promotion\s+Exercise\s+Report\b') {
             return $true
         }
     }

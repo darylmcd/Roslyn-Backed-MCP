@@ -270,10 +270,11 @@ public sealed class ProjectMutationService : IProjectMutationService
                 throw new InvalidOperationException($"Central package version '{request.PackageId}' already exists.");
             }
 
-            GetOrCreateItemGroup(document, "PackageVersion")
-                .Add(new XElement("PackageVersion",
-                    new XAttribute("Include", request.PackageId),
-                    new XAttribute("Version", request.Version)));
+            var itemGroup = GetOrCreateItemGroup(document, "PackageVersion");
+            var packageVersion = new XElement("PackageVersion",
+                new XAttribute("Include", request.PackageId),
+                new XAttribute("Version", request.Version));
+            AddChildElementPreservingIndentation(itemGroup, packageVersion);
         }, $"Add central package version '{request.PackageId}'", ct);
     }
 

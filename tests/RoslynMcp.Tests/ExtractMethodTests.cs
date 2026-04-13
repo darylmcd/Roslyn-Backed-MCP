@@ -1,3 +1,5 @@
+using RoslynMcp.Core.Models;
+
 namespace RoslynMcp.Tests;
 
 /// <summary>
@@ -66,9 +68,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
 
         // Verify compilation
         var compileResult = await CompileCheckService.CheckAsync(
-            workspace.WorkspaceId, projectFilter: null, emitValidation: false,
-            severityFilter: null, fileFilter: null, offset: 0, limit: 50,
-            CancellationToken.None);
+            workspace.WorkspaceId, new CompileCheckOptions(), CancellationToken.None);
 
         Assert.IsTrue(compileResult.Success,
             $"Compilation should succeed after extract method. Errors: " +

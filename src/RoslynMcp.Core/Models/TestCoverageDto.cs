@@ -8,7 +8,17 @@ public sealed record TestCoverageResultDto(
     string? Error,
     double? LineCoveragePercent,
     double? BranchCoveragePercent,
-    IReadOnlyList<ModuleCoverageDto> Modules);
+    IReadOnlyList<ModuleCoverageDto> Modules,
+    TestCoverageFailureEnvelopeDto? FailureEnvelope = null);
+
+/// <summary>
+/// Structured failure envelope for test coverage operations, enabling programmatic
+/// detection of failure conditions (e.g., missing coverlet package).
+/// </summary>
+public sealed record TestCoverageFailureEnvelopeDto(
+    string ErrorKind,
+    bool IsRetryable,
+    string Summary);
 
 /// <summary>
 /// Represents coverage information for a single module.

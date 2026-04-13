@@ -117,6 +117,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             project: "SampleLib",
             file: null,
             severity: null,
+            diagnosticId: null,
             offset: 0,
             limit: 1,
             CancellationToken.None);
@@ -140,6 +141,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             project: "SampleLib",
             file: null,
             severity: null,
+            diagnosticId: null,
             offset: 0,
             limit: 50,
             CancellationToken.None);

@@ -92,30 +92,8 @@ public sealed class ScriptingService : IScriptingService
         var hardDeadlineSeconds = effectiveTimeoutSeconds + graceSeconds;
         var heartbeatInterval = TimeSpan.FromMilliseconds(Math.Max(100, _options.HeartbeatIntervalMs));
 
-        // FLAG-5C: refuse if too many leaked worker threads have already accumulated.
-        var abandonedAtEntry = Interlocked.Read(ref _abandonedEvaluations);
-        if (abandonedAtEntry >= _options.MaxAbandonedEvaluations)
-        {
-            return CapacityFailure(
-                $"evaluate_csharp has {abandonedAtEntry} abandoned worker threads (cap {_options.MaxAbandonedEvaluations}). " +
-                "Likely caused by previous infinite-loop scripts that Roslyn could not cancel. " +
-                "Restart the MCP host to recover.",
-                effectiveTimeoutSeconds);
-        }
-
-        // FLAG-5C: cap concurrent in-flight evaluations so the dedicated-thread-per-evaluation
-        // model has a hard ceiling on simultaneous compilations as well. Slot is released as
-        // soon as the request completes (success, error, or hard deadline), so a runaway worker
-        // does NOT keep the slot occupied — it transitions into the abandoned-thread bookkeeping.
-        var slotAcquireTimeout = TimeSpan.FromSeconds(Math.Max(1, _options.ConcurrencySlotAcquireTimeoutSeconds));
-        if (!await _concurrencyGate.WaitAsync(slotAcquireTimeout, ct).ConfigureAwait(false))
-        {
-            var activeAtCap = Interlocked.Read(ref _activeEvaluations);
-            return CapacityFailure(
-                $"evaluate_csharp is at capacity ({_options.MaxConcurrentEvaluations} concurrent slots, {activeAtCap} in flight). " +
-                "Wait briefly or raise ROSLYNMCP_SCRIPT_MAX_CONCURRENT.",
-                effectiveTimeoutSeconds);
-        }
+        var capacityError = await TryAcquireCapacityAsync(effectiveTimeoutSeconds, ct).ConfigureAwait(false);
+        if (capacityError is not null) return capacityError;
 
         Interlocked.Increment(ref _activeEvaluations);
 
@@ -280,6 +258,31 @@ public sealed class ScriptingService : IScriptingService
             // will not consume a slot.
             ReleaseSlotOnce();
         }
+    }
+
+    private async Task<ScriptEvaluationDto?> TryAcquireCapacityAsync(int effectiveTimeoutSeconds, CancellationToken ct)
+    {
+        var abandonedAtEntry = Interlocked.Read(ref _abandonedEvaluations);
+        if (abandonedAtEntry >= _options.MaxAbandonedEvaluations)
+        {
+            return CapacityFailure(
+                $"evaluate_csharp has {abandonedAtEntry} abandoned worker threads (cap {_options.MaxAbandonedEvaluations}). " +
+                "Likely caused by previous infinite-loop scripts that Roslyn could not cancel. " +
+                "Restart the MCP host to recover.",
+                effectiveTimeoutSeconds);
+        }
+
+        var slotAcquireTimeout = TimeSpan.FromSeconds(Math.Max(1, _options.ConcurrencySlotAcquireTimeoutSeconds));
+        if (!await _concurrencyGate.WaitAsync(slotAcquireTimeout, ct).ConfigureAwait(false))
+        {
+            var activeAtCap = Interlocked.Read(ref _activeEvaluations);
+            return CapacityFailure(
+                $"evaluate_csharp is at capacity ({_options.MaxConcurrentEvaluations} concurrent slots, {activeAtCap} in flight). " +
+                "Wait briefly or raise ROSLYNMCP_SCRIPT_MAX_CONCURRENT.",
+                effectiveTimeoutSeconds);
+        }
+
+        return null; // capacity acquired successfully
     }
 
     private ScriptEvaluationDto CapacityFailure(string error, int effectiveTimeoutSeconds)

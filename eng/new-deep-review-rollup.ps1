@@ -66,7 +66,7 @@ function Get-RepoIdFromFileName {
     param([string]$FileName)
 
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($FileName)
-    $match = [regex]::Match($baseName, '^\d{8}T\d{6}Z_(.+)_mcp-server-audit$')
+    $match = [regex]::Match($baseName, '^\d{8}T\d{6}Z_(.+)_(mcp-server-audit|experimental-promotion)$')
     if ($match.Success) {
         return $match.Groups[1].Value
     }

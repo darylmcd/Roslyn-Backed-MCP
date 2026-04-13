@@ -206,62 +206,71 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
                 symbol = enclosingMethod;
         }
 
+        var callers = await CollectCallersAsync(symbol, solution, ct).ConfigureAwait(false);
+        var callees = symbol is IMethodSymbol methodSymbol
+            ? await CollectCalleesAsync(methodSymbol, solution, ct).ConfigureAwait(false)
+            : [];
+
+        return new CallerCalleeDto(
+            SymbolMapper.ToDto(symbol, solution),
+            callers,
+            callees);
+    }
+
+    private static async Task<List<LocationDto>> CollectCallersAsync(ISymbol symbol, Solution solution, CancellationToken ct)
+    {
         var callers = new List<LocationDto>();
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         foreach (var refSymbol in references)
         {
             foreach (var refLocation in refSymbol.Locations)
             {
-                var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
+                var containingSymbol = await SymbolServiceHelpers.GetContainingSymbolAsync(
+                    refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
                 if (containingSymbol is not null && !SymbolEqualityComparer.Default.Equals(containingSymbol, symbol))
                 {
-                    var preview = await SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
+                    var preview = await SymbolResolver.GetPreviewTextAsync(
+                        refLocation.Document, refLocation.Location, ct).ConfigureAwait(false);
                     callers.Add(SymbolMapper.ToLocationDto(refLocation.Location, containingSymbol, preview));
                 }
             }
         }
+        return callers;
+    }
 
+    private static async Task<List<LocationDto>> CollectCalleesAsync(IMethodSymbol methodSymbol, Solution solution, CancellationToken ct)
+    {
         var callees = new List<LocationDto>();
         var seenCalleeKeys = new HashSet<string>(StringComparer.Ordinal);
-        if (symbol is IMethodSymbol methodSymbol)
+        foreach (var location in methodSymbol.Locations.Where(l => l.IsInSource))
         {
-            foreach (var location in methodSymbol.Locations.Where(l => l.IsInSource))
+            var tree = location.SourceTree;
+            if (tree is null) continue;
+
+            var doc = solution.GetDocument(tree);
+            if (doc is null) continue;
+
+            var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (semanticModel is null) continue;
+
+            var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+            var methodNode = root.FindNode(location.SourceSpan);
+
+            foreach (var invocation in methodNode.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
-                var tree = location.SourceTree;
-                if (tree is null) continue;
+                var invokedSymbol = semanticModel.GetSymbolInfo(invocation, ct).Symbol;
+                if (invokedSymbol is null) continue;
 
-                var doc = solution.GetDocument(tree);
-                if (doc is null) continue;
+                var invokedLoc = invokedSymbol.Locations.FirstOrDefault(l => l.IsInSource) ?? invocation.GetLocation();
+                var lineSpan = invokedLoc.GetLineSpan();
+                var dedupeKey =
+                    $"{invokedSymbol.ToDisplayString()}|{lineSpan.Path}|{lineSpan.StartLinePosition.Line}|{lineSpan.StartLinePosition.Character}";
+                if (!seenCalleeKeys.Add(dedupeKey)) continue;
 
-                var semanticModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                if (semanticModel is null) continue;
-
-                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
-                var methodNode = root.FindNode(location.SourceSpan);
-
-                var invocations = methodNode.DescendantNodes().OfType<InvocationExpressionSyntax>();
-                foreach (var invocation in invocations)
-                {
-                    var invokedSymbol = semanticModel.GetSymbolInfo(invocation, ct).Symbol;
-                    if (invokedSymbol is not null)
-                    {
-                        var invokedLoc = invokedSymbol.Locations.FirstOrDefault(l => l.IsInSource) ?? invocation.GetLocation();
-                        var lineSpan = invokedLoc.GetLineSpan();
-                        var dedupeKey =
-                            $"{invokedSymbol.ToDisplayString()}|{lineSpan.Path}|{lineSpan.StartLinePosition.Line}|{lineSpan.StartLinePosition.Character}";
-                        if (!seenCalleeKeys.Add(dedupeKey))
-                            continue;
-
-                        callees.Add(SymbolMapper.ToLocationDto(invokedLoc, invokedSymbol));
-                    }
-                }
+                callees.Add(SymbolMapper.ToLocationDto(invokedLoc, invokedSymbol));
             }
         }
-
-        return new CallerCalleeDto(
-            SymbolMapper.ToDto(symbol, solution),
-            callers,
-            callees);
+        return callees;
     }
 
     /// <summary>

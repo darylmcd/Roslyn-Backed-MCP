@@ -56,12 +56,20 @@ public static class TestCoverageTools
                 if (coverageFiles.Length == 0)
                 {
                     ProgressHelper.Report(progress, 1, 1);
+                    var errorKind = !execution.Succeeded ? "TestFailure" : "CoverletMissing";
+                    var summary = !execution.Succeeded
+                        ? $"Tests failed (exit code {execution.ExitCode}). Coverage file not found."
+                        : "Coverage file not generated. Ensure coverlet.collector NuGet package is referenced in test projects.";
                     return JsonSerializer.Serialize(new TestCoverageResultDto(
-                        Success: execution.Succeeded,
-                        Error: !execution.Succeeded ? $"Tests failed (exit code {execution.ExitCode}). Coverage file not found." : "Coverage file not generated. Ensure coverlet.collector NuGet package is referenced in test projects.",
+                        Success: false,
+                        Error: summary,
                         LineCoveragePercent: null,
                         BranchCoveragePercent: null,
-                        Modules: []), JsonDefaults.Indented);
+                        Modules: [],
+                        FailureEnvelope: new TestCoverageFailureEnvelopeDto(
+                            ErrorKind: errorKind,
+                            IsRetryable: errorKind == "TestFailure",
+                            Summary: summary)), JsonDefaults.Indented);
                 }
 
                 var latestCoverage = coverageFiles.OrderByDescending(File.GetLastWriteTimeUtc).First();

@@ -21,14 +21,10 @@ public sealed class CompileCheckService : ICompileCheckService
 
     public async Task<CompileCheckDto> CheckAsync(
         string workspaceId,
-        string? projectFilter,
-        bool emitValidation,
-        string? severityFilter,
-        string? fileFilter,
-        int offset,
-        int limit,
+        CompileCheckOptions options,
         CancellationToken ct)
     {
+        var (projectFilter, emitValidation, severityFilter, fileFilter, offset, limit) = options;
         var sw = Stopwatch.StartNew();
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);

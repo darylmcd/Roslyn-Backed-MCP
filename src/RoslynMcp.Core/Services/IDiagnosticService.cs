@@ -14,9 +14,10 @@ public interface IDiagnosticService
     /// <param name="projectFilter">Restricts results to the named project, or <see langword="null"/> for all projects.</param>
     /// <param name="fileFilter">Restricts results to a specific file path, or <see langword="null"/> for all files.</param>
     /// <param name="severityFilter">Restricts results to a specific severity level (e.g., <c>Error</c>, <c>Warning</c>), or <see langword="null"/> for all severities.</param>
+    /// <param name="diagnosticIdFilter">Restricts results to a specific diagnostic ID (e.g., <c>CS0246</c>, <c>CA1000</c>), or <see langword="null"/> for all diagnostics.</param>
     /// <param name="ct">Cancellation token.</param>
     Task<DiagnosticsResultDto> GetDiagnosticsAsync(
-        string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, CancellationToken ct);
+        string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, string? diagnosticIdFilter, CancellationToken ct);
 
     /// <summary>
     /// Returns detailed information for a specific diagnostic at a source location, including available code fixes.

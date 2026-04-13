@@ -92,12 +92,7 @@ public sealed class AuditFixesTests : SharedWorkspaceTestBase
         // present and self-consistent regardless of how many diagnostics exist.
         var result = await CompileCheckService.CheckAsync(
             _workspaceId,
-            projectFilter: null,
-            emitValidation: false,
-            severityFilter: null,
-            fileFilter: null,
-            offset: 0,
-            limit: 1,
+            new CompileCheckOptions(Limit: 1),
             CancellationToken.None);
 
         Assert.AreEqual(0, result.Offset);
@@ -115,12 +110,7 @@ public sealed class AuditFixesTests : SharedWorkspaceTestBase
     {
         var result = await CompileCheckService.CheckAsync(
             _workspaceId,
-            projectFilter: null,
-            emitValidation: false,
-            severityFilter: "Error",
-            fileFilter: null,
-            offset: 0,
-            limit: 100,
+            new CompileCheckOptions(SeverityFilter: "Error", Limit: 100),
             CancellationToken.None);
 
         Assert.IsTrue(result.Diagnostics.All(d => d.Severity == "Error"),

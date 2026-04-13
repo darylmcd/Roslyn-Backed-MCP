@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
@@ -51,7 +52,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task CompileCheck_Service_GetDiagnostics_Succeeds_For_SampleSolution()
     {
-        var result = await CompileCheckService.CheckAsync(WorkspaceId, projectFilter: null, emitValidation: false, severityFilter: null, fileFilter: null, offset: 0, limit: 50, CancellationToken.None);
+        var result = await CompileCheckService.CheckAsync(WorkspaceId, new CompileCheckOptions(), CancellationToken.None);
         Assert.IsNotNull(result, "CompileCheck should return a result.");
         Assert.IsNotNull(result.Diagnostics);
         // On Linux CI, MSBuildWorkspace may have unresolved metadata references
@@ -67,7 +68,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task CompileCheck_Service_EmitValidation_Completes_For_SampleLib()
     {
-        var result = await CompileCheckService.CheckAsync(WorkspaceId, projectFilter: "SampleLib", emitValidation: true, severityFilter: null, fileFilter: null, offset: 0, limit: 50, CancellationToken.None);
+        var result = await CompileCheckService.CheckAsync(WorkspaceId, new CompileCheckOptions(ProjectFilter: "SampleLib", EmitValidation: true), CancellationToken.None);
         Assert.IsTrue(result.Success);
         Assert.IsTrue(result.ElapsedMs >= 0);
     }

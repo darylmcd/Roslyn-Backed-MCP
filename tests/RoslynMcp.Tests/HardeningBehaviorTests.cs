@@ -129,6 +129,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
         public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
         public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
     }

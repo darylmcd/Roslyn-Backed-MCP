@@ -2,6 +2,7 @@ using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -18,6 +19,7 @@ public sealed class ScaffoldingService : IScaffoldingService
 
     public Task<RefactoringPreviewDto> PreviewScaffoldTypeAsync(string workspaceId, ScaffoldTypeDto request, CancellationToken ct)
     {
+        IdentifierValidation.ThrowIfInvalidIdentifier(request.TypeName, "type name");
         var project = ResolveProject(workspaceId, request.ProjectName);
         var projectDirectory = Path.GetDirectoryName(project.FilePath)
             ?? throw new InvalidOperationException($"Project directory could not be resolved for '{project.FilePath}'.");
@@ -54,6 +56,7 @@ public sealed class ScaffoldingService : IScaffoldingService
     public async Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(string workspaceId, ScaffoldTestDto request, CancellationToken ct)
     {
         var project = ResolveProject(workspaceId, request.TestProjectName);
+        ValidateIsTestProject(project);
         var projectDirectory = Path.GetDirectoryName(project.FilePath)
             ?? throw new InvalidOperationException($"Project directory could not be resolved for '{project.FilePath}'.");
         var testFilePath = Path.Combine(projectDirectory, $"{request.TargetTypeName}GeneratedTests.cs");
@@ -266,6 +269,45 @@ public sealed class ScaffoldingService : IScaffoldingService
                    string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
                ?? throw new InvalidOperationException($"Project not found: {projectName}");
+    }
+
+    private static void ValidateIsTestProject(ProjectStatusDto project)
+    {
+        if (string.IsNullOrWhiteSpace(project.FilePath) || !File.Exists(project.FilePath))
+            return; // Can't validate — allow and let framework detection handle it
+
+        try
+        {
+            var doc = XDocument.Load(project.FilePath, LoadOptions.None);
+
+            // Check <IsTestProject>true</IsTestProject>
+            var isTestProject = doc.Descendants("IsTestProject")
+                .Any(e => string.Equals(e.Value.Trim(), "true", StringComparison.OrdinalIgnoreCase));
+            if (isTestProject) return;
+
+            // Check for test framework PackageReferences
+            var includes = doc.Descendants("PackageReference")
+                .Select(e => e.Attribute("Include")?.Value?.ToLowerInvariant())
+                .Where(i => !string.IsNullOrWhiteSpace(i))
+                .ToList();
+
+            var hasTestFramework = includes.Any(i =>
+                i!.Contains("mstest", StringComparison.Ordinal) ||
+                i!.Contains("xunit", StringComparison.Ordinal) ||
+                i!.Contains("nunit", StringComparison.Ordinal) ||
+                i!.Contains("microsoft.net.test.sdk", StringComparison.Ordinal));
+            if (hasTestFramework) return;
+
+            throw new InvalidOperationException(
+                $"Project '{project.Name}' does not appear to be a test project. " +
+                "It has no <IsTestProject>true</IsTestProject> property and no test framework package references (MSTest, xUnit, NUnit). " +
+                "Please specify a test project instead.");
+        }
+        catch (InvalidOperationException) { throw; }
+        catch
+        {
+            // If we can't parse the project file, allow and let downstream handle it
+        }
     }
 
     private static string BuildTypeContent(string typeNamespace, ScaffoldTypeDto request)
