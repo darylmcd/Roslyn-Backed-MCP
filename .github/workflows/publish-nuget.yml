@@ -1,8 +1,11 @@
 name: publish-nuget
 
-# Triggered on GitHub Release creation (published) or manual dispatch.
+# Triggered on version tag push, GitHub Release creation, or manual dispatch.
 # Requires the NUGET_API_KEY repository secret (Push scope, from nuget.org/account/apikeys).
 on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
   release:
     types: [published]
   workflow_dispatch:
@@ -51,7 +54,7 @@ jobs:
           Write-Host "Symbols: $($snupkg.Name) ($([math]::Round($snupkg.Length / 1MB, 2)) MB)"
 
       - name: Push to NuGet
-        if: ${{ github.event_name == 'release' || inputs.dry_run != 'true' }}
+        if: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.dry_run != 'true' }}
         shell: pwsh
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}

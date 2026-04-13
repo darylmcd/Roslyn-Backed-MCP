@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <LangVersion>latest</LangVersion>
-    <Version>1.12.0</Version>
+    <Version>1.12.1</Version>
 
     <!-- Profile-guided optimization: runtime collects profiling data at tier-0 and uses it
          for optimized tier-1 recompilation, improving steady-state performance. -->

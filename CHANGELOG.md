@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-04-13
+
+### Fixed
+
+- **`server_info`:** `update.updateAvailable` now uses proper semver comparison (`Version.TryParse`) instead of string inequality, so locally-built versions ahead of NuGet no longer falsely report an update is available.
+
+### Changed
+
+- **CI: publish-nuget workflow:** Added version tag push trigger (`v[0-9]+.[0-9]+.[0-9]+`) so pushing a `v*` tag automatically publishes to NuGet.org without requiring a GitHub Release.
+
 ## [1.12.0] - 2026-04-13
 
 ### Fixed
