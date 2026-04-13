@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-04-13
+
+### Fixed
+
+- **`fix_all_preview` / `fix_all_apply`:** Non-IDE diagnostic IDs (e.g. `SCS*`, `MA*`, other third-party prefixes) now run the same project analyzer pipeline as `CA*` when collecting occurrences, instead of falling back to compiler-only diagnostics (which never report analyzer rules).
+- **`roslyn://workspace/{workspaceId}/file/{filePath}` (`source_file`):** Decode percent-encoded paths, normalize `/` to the platform directory separator, and reject non-absolute paths with a clear error before document lookup.
+
+### Changed
+
+- **Stable promotions (7 tools):** `get_syntax_tree`, `workspace_changes`, `suggest_refactorings`, `get_operations`, `get_editorconfig_options`, `evaluate_msbuild_property`, `evaluate_msbuild_items` promoted from experimental to stable based on multi-repo deep-review audit evidence.
+- Deep-review audit intake: 3 new audit reports, 2 rollups, refreshed backlog (34 open items deduplicated and reprioritized), updated eng scripts and deep-review prompt.
+
+### Added
+
+- **`WorkspaceResources`** handler: dedicated MCP resource class for workspace-scoped resource endpoints, including workspace list/verbose, status/verbose, projects, diagnostics, and source file resources.
+- 3 new `WorkspaceResourceTests` covering URI-encoded paths, forward-slash normalization, and relative-path rejection for the `source_file` resource.
+
 ## [1.11.2] - 2026-04-13
 
 ### Fixed

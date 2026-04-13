@@ -29,6 +29,41 @@ public sealed class FixAllService : IFixAllService
         _analyzers = new Lazy<ImmutableArray<DiagnosticAnalyzer>>(LoadAnalyzers);
     }
 
+    /// <summary>
+    /// Chooses which analyzers feed <see cref="CollectDiagnosticsAsync"/> for fix-all.
+    /// IDE* rules merge Roslyn Features analyzers with project analyzers; all other IDs use
+    /// project analyzers when any support the diagnostic (e.g. SCS*, MA*, third-party), else none
+    /// (compiler-only fallback in collection).
+    /// </summary>
+    internal static ImmutableArray<DiagnosticAnalyzer> SelectAnalyzersForFixAllCollection(
+        string diagnosticId,
+        ImmutableArray<DiagnosticAnalyzer> ideFeaturesAnalyzers,
+        ImmutableArray<DiagnosticAnalyzer> projectAnalyzers)
+    {
+        if (diagnosticId.StartsWith("IDE", StringComparison.OrdinalIgnoreCase))
+        {
+            var merged = new HashSet<DiagnosticAnalyzer>(ReferenceEqualityComparer.Instance);
+            foreach (var a in ideFeaturesAnalyzers)
+            {
+                merged.Add(a);
+            }
+
+            foreach (var a in projectAnalyzers)
+            {
+                merged.Add(a);
+            }
+
+            return [..merged];
+        }
+
+        if (!projectAnalyzers.IsDefaultOrEmpty)
+        {
+            return projectAnalyzers;
+        }
+
+        return [];
+    }
+
     public async Task<FixAllPreviewDto> PreviewFixAllAsync(
         string workspaceId, string diagnosticId, string scope,
         string? filePath, string? projectName, CancellationToken ct)
@@ -74,21 +109,8 @@ public sealed class FixAllService : IFixAllService
         var (targetDocument, targetProject) = ResolveTargets(solution, fixAllScope, filePath, projectName);
 
         var projectAnalyzers = CollectProjectAnalyzersForDiagnosticId(solution, diagnosticId);
-        bool isIdeDiagnostic = diagnosticId.StartsWith("IDE", StringComparison.OrdinalIgnoreCase);
-        bool isCaDiagnostic = diagnosticId.StartsWith("CA", StringComparison.OrdinalIgnoreCase);
-
-        ImmutableArray<DiagnosticAnalyzer> analyzersForCollection;
-        if (isIdeDiagnostic)
-        {
-            var merged = new HashSet<DiagnosticAnalyzer>(ReferenceEqualityComparer.Instance);
-            foreach (var a in _analyzers.Value) merged.Add(a);
-            foreach (var a in projectAnalyzers) merged.Add(a);
-            analyzersForCollection = [..merged];
-        }
-        else if (isCaDiagnostic)
-            analyzersForCollection = projectAnalyzers;
-        else
-            analyzersForCollection = [];
+        var analyzersForCollection = SelectAnalyzersForFixAllCollection(
+            diagnosticId, _analyzers.Value, projectAnalyzers);
 
         var diagnosticsMap = await CollectDiagnosticsAsync(
             solution, diagnosticId, fixAllScope, targetDocument, targetProject,

@@ -28,6 +28,24 @@ function Test-AuditFileName {
     return $FileName -match '^\d{8}T\d{6}Z_.+_mcp-server-audit\.md$'
 }
 
+function Get-RelativePathFromRepo {
+    param(
+        [string]$BaseDirectory,
+        [string]$TargetPath
+    )
+
+    # Path.GetRelativePath requires .NET Core 2.1+; Windows PowerShell 5.1 lacks it.
+    $baseFull = [System.IO.Path]::GetFullPath($BaseDirectory).TrimEnd('\')
+    if (-not $baseFull.EndsWith([string][System.IO.Path]::DirectorySeparatorChar)) {
+        $baseFull += [System.IO.Path]::DirectorySeparatorChar
+    }
+    $targetFull = [System.IO.Path]::GetFullPath($TargetPath)
+    $baseUri = New-Object System.Uri($baseFull)
+    $targetUri = New-Object System.Uri($targetFull)
+    $rel = $baseUri.MakeRelativeUri($targetUri).ToString()
+    return ([System.Uri]::UnescapeDataString($rel) -replace '\\', '/')
+}
+
 function Test-AuditFileContent {
     param([string]$Path)
 
@@ -79,6 +97,6 @@ foreach ($auditFile in $AuditFiles) {
     }
 
     Copy-Item -Path $sourcePath -Destination $destinationPath -Force:$Force
-    $relativeDestination = [System.IO.Path]::GetRelativePath($repoRoot, $destinationPath).Replace('\\', '/')
+    $relativeDestination = Get-RelativePathFromRepo -BaseDirectory $repoRoot -TargetPath $destinationPath
     Write-Host "Imported audit: $relativeDestination"
 }

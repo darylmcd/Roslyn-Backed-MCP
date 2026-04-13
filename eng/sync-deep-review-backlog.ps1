@@ -212,7 +212,7 @@ foreach ($audit in $CanonicalAuditFiles) {
         if (Test-IsDuplicateOfExisting -Summary $c -ExistingRows $existing) {
             continue
         }
-        $summary = "**Auto (deep-review).** $fn — $c"
+        $summary = "**Auto (deep-review).** $fn - $c"
         if ($summary.Length -gt 1200) {
             $summary = $summary.Substring(0, 1197) + '...'
         }
@@ -252,7 +252,7 @@ foreach ($nr in $newRows) {
 }
 
 if ($WhatIf) {
-    Write-Host 'sync-deep-review-backlog: WhatIf — no changes written.'
+    Write-Host 'sync-deep-review-backlog: WhatIf - no changes written.'
     return
 }
 
@@ -274,7 +274,7 @@ $p4 = $all | Where-Object { $_.Priority -eq 'P4' } | Sort-Object Id
 $ordered = @($p2) + @($p3) + @($p4)
 
 $tableRows = foreach ($row in $ordered) {
-    "| ``$($row.Id)`` | none | — | $($row.Do) |"
+    "| ``$($row.Id)`` | none | - | $($row.Do) |"
 }
 
 $rx = [regex]::new('(?s)(\| id \|[^\r\n]+\r?\n\|[-| ]+\|\r?\n)(.*?)(\r?\n## Refs)', [System.Text.RegularExpressions.RegexOptions]::None)
