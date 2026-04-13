@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -89,9 +90,16 @@ public static class WorkspaceResources
         const string source = "roslyn://workspace/{workspaceId}/file/{filePath}";
         try
         {
-            var text = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+            var normalizedPath = Uri.UnescapeDataString(filePath).Replace('/', Path.DirectorySeparatorChar);
+            if (!Path.IsPathFullyQualified(normalizedPath))
+            {
+                throw new InvalidOperationException(
+                    $"filePath must be an absolute path after decoding. Received: {filePath}");
+            }
+
+            var text = await workspace.GetSourceTextAsync(workspaceId, normalizedPath, ct).ConfigureAwait(false);
             if (text is null)
-                throw new KeyNotFoundException($"Document not found in workspace: {filePath}");
+                throw new KeyNotFoundException($"Document not found in workspace: {normalizedPath}");
             return text;
         }
         catch (KeyNotFoundException ex) { throw new McpToolException(source, $"Not found: {ex.Message}", ex); }

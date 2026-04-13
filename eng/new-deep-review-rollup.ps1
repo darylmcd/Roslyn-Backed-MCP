@@ -27,6 +27,24 @@ function Resolve-InputPath {
     return [System.IO.Path]::GetFullPath((Join-Path $RepoRoot $Path))
 }
 
+function Get-RelativePathFromRepo {
+    param(
+        [string]$BaseDirectory,
+        [string]$TargetPath
+    )
+
+    # Path.GetRelativePath requires .NET Core 2.1+; Windows PowerShell 5.1 lacks it.
+    $baseFull = [System.IO.Path]::GetFullPath($BaseDirectory).TrimEnd('\')
+    if (-not $baseFull.EndsWith([string][System.IO.Path]::DirectorySeparatorChar)) {
+        $baseFull += [System.IO.Path]::DirectorySeparatorChar
+    }
+    $targetFull = [System.IO.Path]::GetFullPath($TargetPath)
+    $baseUri = New-Object System.Uri($baseFull)
+    $targetUri = New-Object System.Uri($targetFull)
+    $rel = $baseUri.MakeRelativeUri($targetUri).ToString()
+    return ([System.Uri]::UnescapeDataString($rel) -replace '\\', '/')
+}
+
 function Get-HeaderValue {
     param(
         [string[]]$Lines,
@@ -149,7 +167,7 @@ foreach ($auditFile in $AuditFiles) {
     }
 
     $lines = Get-Content -Path $resolvedPath
-    $relativePath = [System.IO.Path]::GetRelativePath($repoRoot, $resolvedPath).Replace('\\', '/')
+    $relativePath = Get-RelativePathFromRepo -BaseDirectory $repoRoot -TargetPath $resolvedPath
 
     $rows.Add([pscustomobject]@{
             RepoId = Get-RepoIdFromFileName -FileName $resolvedPath
@@ -161,7 +179,7 @@ foreach ($auditFile in $AuditFiles) {
         })
 }
 
-$markdown = New-RollupMarkdown -GeneratedAt $timestamp -Purpose $CampaignPurpose -OutputFile ([System.IO.Path]::GetRelativePath($repoRoot, $OutputPath).Replace('\\', '/')) -Rows $rows
+$markdown = New-RollupMarkdown -GeneratedAt $timestamp -Purpose $CampaignPurpose -OutputFile (Get-RelativePathFromRepo -BaseDirectory $repoRoot -TargetPath $OutputPath) -Rows $rows
 Set-Content -Path $OutputPath -Value $markdown -NoNewline
 
 Write-Host "Created rollup scaffold: $OutputPath"

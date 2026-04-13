@@ -1,4 +1,5 @@
 # MCP Server Audit Report
+<!-- purpose: 2026-04-09 Roslyn MCP audit with consolidation path note (fallback artifact). -->
 
 **Intended final path (if consolidating under Roslyn-Backed-MCP):** `<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/20260409T165300Z_networkdocumentation_mcp-server-audit.md` — copy this file there before rollup/backlog updates.
 

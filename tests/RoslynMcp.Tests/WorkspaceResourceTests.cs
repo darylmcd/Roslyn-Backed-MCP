@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Resources;
+using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
@@ -91,6 +92,39 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
         var path = FindDocumentPath("AnimalService.cs");
         var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, path, CancellationToken.None);
         StringAssert.Contains(text, "GetAllAnimals");
+    }
+
+    [TestMethod]
+    public async Task GetSourceFile_Resource_Accepts_Uri_Encoded_Absolute_Path()
+    {
+        var path = FindDocumentPath("AnimalService.cs");
+        var encoded = Uri.EscapeDataString(path);
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, encoded, CancellationToken.None);
+        StringAssert.Contains(text, "GetAllAnimals");
+    }
+
+    [TestMethod]
+    public async Task GetSourceFile_Resource_Accepts_Forward_Slashes_On_Windows()
+    {
+        var path = FindDocumentPath("AnimalService.cs");
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Forward-slash drive paths are Windows-specific.");
+            return;
+        }
+
+        var forward = path.Replace('\\', '/');
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, forward, CancellationToken.None);
+        StringAssert.Contains(text, "GetAllAnimals");
+    }
+
+    [TestMethod]
+    public async Task GetSourceFile_Resource_Rejects_Relative_Path()
+    {
+        var ex = await Assert.ThrowsExceptionAsync<McpToolException>(() =>
+            WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, "AnimalService.cs", CancellationToken.None));
+        StringAssert.Contains(ex.Message, "Invalid operation");
+        StringAssert.Contains(ex.Message, "absolute path");
     }
 
     private static string FindDocumentPath(string name)
