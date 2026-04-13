@@ -56,7 +56,7 @@ public sealed class ReferenceService : IReferenceService
             }
         }
 
-        return results;
+        return OrderLocations(results);
     }
 
     public async Task<IReadOnlyList<LocationDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
@@ -75,8 +75,16 @@ public sealed class ReferenceService : IReferenceService
         var promoted = PromoteToVirtualRoot(symbol);
 
         var overrides = await SymbolFinder.FindOverridesAsync(promoted, solution, cancellationToken: ct).ConfigureAwait(false);
-        return await SymbolServiceHelpers.SymbolsToLocationsAsync(overrides, solution, ct).ConfigureAwait(false);
+        var locations = await SymbolServiceHelpers.SymbolsToLocationsAsync(overrides, solution, ct).ConfigureAwait(false);
+        return OrderLocations(locations);
     }
+
+    private static IReadOnlyList<LocationDto> OrderLocations(IReadOnlyList<LocationDto> dtos) =>
+        dtos
+            .OrderBy(d => d.FilePath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(d => d.StartLine)
+            .ThenBy(d => d.StartColumn)
+            .ToList();
 
     /// <summary>
     /// Walks an override or interface-implementation symbol to its virtual/interface root so
@@ -114,9 +122,87 @@ public sealed class ReferenceService : IReferenceService
                 }
                 return current;
             }
+            case IMethodSymbol { ExplicitInterfaceImplementations.Length: > 0 } m:
+                return m.ExplicitInterfaceImplementations[0];
+            case IPropertySymbol { ExplicitInterfaceImplementations.Length: > 0 } p:
+                return p.ExplicitInterfaceImplementations[0];
+            case IEventSymbol { ExplicitInterfaceImplementations.Length: > 0 } e:
+                return e.ExplicitInterfaceImplementations[0];
+            case IMethodSymbol method:
+            {
+                var iface = TryFindImplicitlyImplementedInterfaceMember(method);
+                return iface ?? symbol;
+            }
+            case IPropertySymbol prop:
+            {
+                var iface = TryFindImplicitlyImplementedInterfaceMember(prop);
+                return iface ?? symbol;
+            }
+            case IEventSymbol evt:
+            {
+                var iface = TryFindImplicitlyImplementedInterfaceMember(evt);
+                return iface ?? symbol;
+            }
             default:
                 return symbol;
         }
+    }
+
+    private static IMethodSymbol? TryFindImplicitlyImplementedInterfaceMember(IMethodSymbol method)
+    {
+        var containing = method.ContainingType;
+        if (containing is null || containing.TypeKind == TypeKind.Interface)
+            return null;
+
+        foreach (var iface in containing.AllInterfaces)
+        {
+            foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
+            {
+                var impl = containing.FindImplementationForInterfaceMember(member);
+                if (SymbolEqualityComparer.Default.Equals(impl, method))
+                    return member;
+            }
+        }
+
+        return null;
+    }
+
+    private static IPropertySymbol? TryFindImplicitlyImplementedInterfaceMember(IPropertySymbol property)
+    {
+        var containing = property.ContainingType;
+        if (containing is null || containing.TypeKind == TypeKind.Interface)
+            return null;
+
+        foreach (var iface in containing.AllInterfaces)
+        {
+            foreach (var member in iface.GetMembers().OfType<IPropertySymbol>())
+            {
+                var impl = containing.FindImplementationForInterfaceMember(member);
+                if (SymbolEqualityComparer.Default.Equals(impl, property))
+                    return member;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEventSymbol? TryFindImplicitlyImplementedInterfaceMember(IEventSymbol ev)
+    {
+        var containing = ev.ContainingType;
+        if (containing is null || containing.TypeKind == TypeKind.Interface)
+            return null;
+
+        foreach (var iface in containing.AllInterfaces)
+        {
+            foreach (var member in iface.GetMembers().OfType<IEventSymbol>())
+            {
+                var impl = containing.FindImplementationForInterfaceMember(member);
+                if (SymbolEqualityComparer.Default.Equals(impl, ev))
+                    return member;
+            }
+        }
+
+        return null;
     }
 
     public async Task<IReadOnlyList<LocationDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
@@ -203,12 +289,14 @@ public sealed class ReferenceService : IReferenceService
         // locator objects). Surface a concrete JSON example so the first-try-fails cycle
         // becomes a first-try-succeeds cycle.
         throw new ArgumentException(
-            "BulkSymbolLocator requires at least one of: symbolHandle, metadataName, or filePath+line+column. " +
+            "BulkSymbolLocator requires at least one of: symbolHandle, metadataName, or filePath+line+column (all four coordinates required for source lookup). " +
+            "Common mistakes: using the wrong tool parameter name (must be `symbols` as an array of objects, not `symbolHandles`); " +
+            "passing a flat string array instead of locator objects; omitting line/column when using filePath. " +
             "Example payload: { \"symbols\": [" +
             "{ \"metadataName\": \"MyNamespace.MyType\" }, " +
-            "{ \"symbolHandle\": \"<handle from find_references>\" }, " +
+            "{ \"symbolHandle\": \"<base64 handle from enclosing_symbol or document_symbols>\" }, " +
             "{ \"filePath\": \"C:/src/Foo.cs\", \"line\": 42, \"column\": 7 }" +
             "] }. " +
-            "Every entry must populate ONE of the three locator strategies.");
+            "Every entry must populate exactly ONE of the three locator strategies.");
     }
 }

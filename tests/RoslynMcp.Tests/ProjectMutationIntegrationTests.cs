@@ -170,6 +170,50 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task Add_Target_Framework_When_Centralized_In_DirectoryBuildProps_Injects_Into_Csproj()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await File.WriteAllTextAsync(
+            Path.Combine(workspace.RootPath, "Directory.Build.props"),
+            """
+            <Project>
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """,
+            CancellationToken.None).ConfigureAwait(false);
+
+        var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        await File.WriteAllTextAsync(
+            projectFilePath,
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <Nullable>enable</Nullable>
+                <ImplicitUsings>enable</ImplicitUsings>
+              </PropertyGroup>
+            </Project>
+            """,
+            CancellationToken.None).ConfigureAwait(false);
+
+        await workspace.LoadAsync(CancellationToken.None).ConfigureAwait(false);
+
+        var addPreview = await ProjectMutationService.PreviewAddTargetFrameworkAsync(
+            workspace.WorkspaceId,
+            new AddTargetFrameworkDto("SampleLib", "net8.0"),
+            CancellationToken.None).ConfigureAwait(false);
+
+        var addResult = await ProjectMutationService.ApplyProjectMutationAsync(addPreview.PreviewToken, CancellationToken.None).ConfigureAwait(false);
+        Assert.IsTrue(addResult.Success, addResult.Error);
+
+        var projectXml = XDocument.Load(projectFilePath);
+        var tfs = projectXml.Descendants("TargetFrameworks").First().Value;
+        StringAssert.Contains(tfs, "net10.0");
+        StringAssert.Contains(tfs, "net8.0");
+    }
+
+    [TestMethod]
     public async Task Set_Conditional_Property_Preview_And_Apply_Adds_Conditional_Property_Group()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);

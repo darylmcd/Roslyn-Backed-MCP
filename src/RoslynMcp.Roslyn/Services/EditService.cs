@@ -5,6 +5,7 @@ using DiffPlex;
 using DiffPlex.DiffBuilder;
 using DiffPlex.DiffBuilder.Model;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
 
@@ -26,7 +27,7 @@ public sealed class EditService : IEditService
     }
 
     public async Task<TextEditResultDto> ApplyTextEditsAsync(
-        string workspaceId, string filePath, IReadOnlyList<TextEditDto> edits, CancellationToken ct)
+        string workspaceId, string filePath, IReadOnlyList<TextEditDto> edits, CancellationToken ct, bool skipSyntaxCheck = false)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var (document, sourceText) = await ResolveDocumentAndTextAsync(solution, filePath, ct).ConfigureAwait(false);
@@ -37,9 +38,21 @@ public sealed class EditService : IEditService
         // corrupt diff (ITChatBot audit I1, 2026-04-08).
         ValidateEdits(filePath, edits, sourceText);
 
+        var newSourceText = BuildPatchedSourceText(sourceText, edits);
+        if (!skipSyntaxCheck
+            && string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            var syntaxErrors = GetCSharpSyntaxErrors(newSourceText, filePath);
+            if (syntaxErrors.Count > 0)
+            {
+                return new TextEditResultDto(false, filePath, 0, [], syntaxErrors);
+            }
+        }
+
         // Capture pre-apply snapshot so revert_last_apply can roll back this edit. We
         // pass BOTH the solution (for the legacy path) AND an explicit file snapshot
         // (for the authoritative file-based restore path — see FLAG-9A in UndoService).
+        // Syntax check runs before capture so a rejected edit does not leave a no-op undo entry.
         var fileSnapshots = new[]
         {
             new FileSnapshotDto(Path.GetFullPath(filePath), sourceText.ToString()),
@@ -50,11 +63,11 @@ public sealed class EditService : IEditService
             solution,
             fileSnapshots);
 
-        return await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, ct).ConfigureAwait(false);
+        return await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, ct).ConfigureAwait(false);
     }
 
     public async Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
-        string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct)
+        string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false)
     {
         var initialSolution = _workspace.GetCurrentSolution(workspaceId);
 
@@ -89,8 +102,20 @@ public sealed class EditService : IEditService
             // (redundant) snapshot.
             var current = _workspace.GetCurrentSolution(workspaceId);
             var (document, sourceText) = await ResolveDocumentAndTextAsync(current, fileEdit.FilePath, ct).ConfigureAwait(false);
+            var merged = BuildPatchedSourceText(sourceText, fileEdit.Edits);
+            if (!skipSyntaxCheck
+                && string.Equals(Path.GetExtension(fileEdit.FilePath), ".cs", StringComparison.OrdinalIgnoreCase))
+            {
+                var syntaxErrors = GetCSharpSyntaxErrors(merged, fileEdit.FilePath);
+                if (syntaxErrors.Count > 0)
+                {
+                    results.Add(new FileEditSummaryDto(fileEdit.FilePath, 0, null));
+                    continue;
+                }
+            }
+
             var result = await ApplyTextEditsCoreAsync(
-                workspaceId, fileEdit.FilePath, fileEdit.Edits, current, document, sourceText, ct).ConfigureAwait(false);
+                workspaceId, fileEdit.FilePath, fileEdit.Edits, current, document, sourceText, merged, ct).ConfigureAwait(false);
             var diff = result.Changes.Count > 0
                 ? string.Join("\n", result.Changes.Select(ch => ch.UnifiedDiff))
                 : null;
@@ -195,6 +220,90 @@ public sealed class EditService : IEditService
                     nameof(edits));
             }
         }
+
+        ValidateNoOverlappingEdits(filePath, edits, sourceText);
+    }
+
+    /// <summary>
+    /// apply-text-edit-overlap: Overlapping spans passed to <see cref="SourceText.WithChanges"/>
+    /// produce undefined merge behavior. Reject before any mutation.
+    /// </summary>
+    private static void ValidateNoOverlappingEdits(string filePath, IReadOnlyList<TextEditDto> edits, SourceText sourceText)
+    {
+        if (edits.Count < 2)
+        {
+            return;
+        }
+
+        var spans = new List<(int Index, TextSpan Span)>(edits.Count);
+        for (var i = 0; i < edits.Count; i++)
+        {
+            spans.Add((i, GetSpanForEdit(edits[i], sourceText)));
+        }
+
+        spans.Sort((a, b) =>
+        {
+            var c = a.Span.Start.CompareTo(b.Span.Start);
+            return c != 0 ? c : a.Index.CompareTo(b.Index);
+        });
+
+        for (var i = 0; i < spans.Count - 1; i++)
+        {
+            var left = spans[i];
+            var right = spans[i + 1];
+            if (left.Span.Start < right.Span.End && right.Span.Start < left.Span.End)
+            {
+                var le = edits[left.Index];
+                var re = edits[right.Index];
+                throw new ArgumentException(
+                    $"Edits #{left.Index} and #{right.Index} for '{filePath}' have overlapping spans: " +
+                    $"({le.StartLine},{le.StartColumn})-({le.EndLine},{le.EndColumn}) vs " +
+                    $"({re.StartLine},{re.StartColumn})-({re.EndLine},{re.EndColumn}). " +
+                    "Merge edits into one range or apply them in separate calls.",
+                    nameof(edits));
+            }
+        }
+    }
+
+    private static TextSpan GetSpanForEdit(TextEditDto edit, SourceText sourceText)
+    {
+        var startPosition = sourceText.Lines.GetPosition(new LinePosition(edit.StartLine - 1, edit.StartColumn - 1));
+        var endPosition = sourceText.Lines.GetPosition(new LinePosition(edit.EndLine - 1, edit.EndColumn - 1));
+        return TextSpan.FromBounds(startPosition, endPosition);
+    }
+
+    /// <summary>
+    /// Applies <paramref name="edits"/> to <paramref name="sourceText"/> in memory (bottom-to-top),
+    /// including line-break preservation for spans that end at column 1.
+    /// </summary>
+    private static SourceText BuildPatchedSourceText(SourceText sourceText, IReadOnlyList<TextEditDto> edits)
+    {
+        var sortedEdits = edits.OrderByDescending(e => e.StartLine).ThenByDescending(e => e.StartColumn).ToList();
+        var textChanges = new List<TextChange>();
+        foreach (var edit in sortedEdits)
+        {
+            var startPosition = sourceText.Lines.GetPosition(new LinePosition(edit.StartLine - 1, edit.StartColumn - 1));
+            var endPosition = sourceText.Lines.GetPosition(new LinePosition(edit.EndLine - 1, edit.EndColumn - 1));
+            var span = TextSpan.FromBounds(startPosition, endPosition);
+
+            var replacementText = edit.NewText;
+            if (edit.EndColumn == 1 && span.Length > 0 && replacementText.Length > 0)
+            {
+                var lastCharInSpan = sourceText[span.End - 1];
+                var endsWithNewline = replacementText[^1] is '\n' or '\r';
+                if (lastCharInSpan is '\n' or '\r' && !endsWithNewline)
+                {
+                    var lineBreak = (span.End >= 2 && sourceText[span.End - 2] == '\r' && lastCharInSpan == '\n')
+                        ? "\r\n"
+                        : lastCharInSpan == '\n' ? "\n" : "\r";
+                    replacementText += lineBreak;
+                }
+            }
+
+            textChanges.Add(new TextChange(span, replacementText));
+        }
+
+        return sourceText.WithChanges(textChanges);
     }
 
     /// <summary>
@@ -209,58 +318,26 @@ public sealed class EditService : IEditService
         Solution solution,
         Document document,
         SourceText sourceText,
+        SourceText newSourceText,
         CancellationToken ct)
     {
         var normalizedPath = Path.GetFullPath(filePath);
         var originalText = sourceText.ToString();
 
-        // Sort edits in reverse order to apply from bottom to top (so offsets remain valid)
-        var sortedEdits = edits.OrderByDescending(e => e.StartLine).ThenByDescending(e => e.StartColumn).ToList();
-
-        var textChanges = new List<TextChange>();
-        foreach (var edit in sortedEdits)
-        {
-            var startPosition = sourceText.Lines.GetPosition(new LinePosition(edit.StartLine - 1, edit.StartColumn - 1));
-            var endPosition = sourceText.Lines.GetPosition(new LinePosition(edit.EndLine - 1, edit.EndColumn - 1));
-            var span = TextSpan.FromBounds(startPosition, endPosition);
-
-            // dr-apply-text-edit-line-break-corruption: When the edit span ends at
-            // column 1 of a line (meaning it swallowed the line break of the previous
-            // line), and NewText does not end with a line break, append the original
-            // line ending to prevent line collapse at method/declaration boundaries.
-            var replacementText = edit.NewText;
-            if (edit.EndColumn == 1 && span.Length > 0 && replacementText.Length > 0)
-            {
-                var lastCharInSpan = sourceText[span.End - 1];
-                var endsWithNewline = replacementText[^1] is '\n' or '\r';
-                if (lastCharInSpan is '\n' or '\r' && !endsWithNewline)
-                {
-                    // Detect the original line ending sequence (CRLF vs LF vs CR)
-                    var lineBreak = (span.End >= 2 && sourceText[span.End - 2] == '\r' && lastCharInSpan == '\n')
-                        ? "\r\n"
-                        : lastCharInSpan == '\n' ? "\n" : "\r";
-                    replacementText += lineBreak;
-                }
-            }
-
-            textChanges.Add(new TextChange(span, replacementText));
-        }
-
-        var newSourceText = sourceText.WithChanges(textChanges);
         var newDocument = document.WithText(newSourceText);
         var newSolution = newDocument.Project.Solution;
 
         var applied = _workspace.TryApplyChanges(workspaceId, newSolution);
         if (!applied)
         {
-            return new TextEditResultDto(false, filePath, 0, []);
+            return new TextEditResultDto(false, filePath, 0, [], null);
         }
 
         // BUG-N1: Mirror RefactoringService — MSBuildWorkspace may not flush text edits to disk.
         var persisted = await PersistDocumentTextToDiskAsync(workspaceId, normalizedPath, ct).ConfigureAwait(false);
         if (!persisted)
         {
-            return new TextEditResultDto(false, filePath, 0, []);
+            return new TextEditResultDto(false, filePath, 0, [], null);
         }
 
         // Compute diff
@@ -286,7 +363,25 @@ public sealed class EditService : IEditService
             $"Apply text edit to {Path.GetFileName(filePath)}",
             [filePath], "apply_text_edit");
 
-        return new TextEditResultDto(true, filePath, edits.Count, [fileChange]);
+        return new TextEditResultDto(true, filePath, edits.Count, [fileChange], null);
+    }
+
+    private static IReadOnlyList<TextEditSyntaxErrorDto> GetCSharpSyntaxErrors(SourceText newSourceText, string filePath)
+    {
+        var tree = CSharpSyntaxTree.ParseText(newSourceText, path: filePath);
+        var list = new List<TextEditSyntaxErrorDto>();
+        foreach (var d in tree.GetDiagnostics())
+        {
+            if (d.Severity != DiagnosticSeverity.Error)
+            {
+                continue;
+            }
+
+            var lineSpan = d.Location.GetLineSpan().StartLinePosition;
+            list.Add(new TextEditSyntaxErrorDto(lineSpan.Line + 1, lineSpan.Character + 1, d.GetMessage()));
+        }
+
+        return list;
     }
 
     private async Task<bool> PersistDocumentTextToDiskAsync(string workspaceId, string normalizedPath, CancellationToken ct)

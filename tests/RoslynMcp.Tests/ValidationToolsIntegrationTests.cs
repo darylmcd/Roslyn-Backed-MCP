@@ -80,7 +80,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             WorkspaceExecutionGate,
             CompileCheckService,
             WorkspaceId,
-            project: null,
+            projectName: null,
             emitValidation: false,
             severity: null,
             file: null,

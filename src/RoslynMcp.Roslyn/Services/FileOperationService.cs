@@ -113,7 +113,7 @@ public sealed class FileOperationService : IFileOperationService
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var sourcePath = Path.GetFullPath(request.SourceFilePath);
-        var destinationPath = Path.GetFullPath(request.DestinationFilePath);
+        var destinationPath = Path.GetFullPath(request.TargetFilePath);
         var sourceDocument = SymbolResolver.FindDocument(solution, sourcePath)
             ?? throw new InvalidOperationException($"Document not found: {request.SourceFilePath}");
 

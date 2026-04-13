@@ -18,8 +18,9 @@ public static class CrossProjectRefactoringTools
         [Description("Absolute path to the source file containing the type")] string sourceFilePath,
         [Description("Name of the type declaration to move")] string typeName,
         [Description("Target project name or project file path")] string targetProjectName,
-        [Description("Optional: explicit target namespace. Current implementation supports the original namespace only")] string? targetNamespace = null,
-        CancellationToken ct = default)
+        [Description("Optional: explicit namespace for the moved type. When null and preserveNamespace is false, uses the target project's default namespace.")] string? targetNamespace = null,
+        CancellationToken ct = default,
+        [Description("When true, keep the type's current namespace if targetNamespace is null (legacy). When false (default), use targetNamespace or the target project's default namespace.")] bool preserveNamespace = false)
     {
         return ToolErrorHandler.ExecuteAsync("move_type_to_project_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
@@ -30,7 +31,8 @@ public static class CrossProjectRefactoringTools
                     typeName,
                     targetProjectName,
                     targetNamespace,
-                    c).ConfigureAwait(false);
+                    c,
+                    preserveNamespace).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

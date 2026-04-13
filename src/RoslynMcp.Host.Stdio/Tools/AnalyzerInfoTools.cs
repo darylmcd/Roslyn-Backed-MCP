@@ -17,7 +17,7 @@ public static class AnalyzerInfoTools
         IWorkspaceExecutionGate gate,
         IAnalyzerInfoService analyzerInfoService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Number of analyzer rules to skip before returning results (default: 0)")] int offset = 0,
         [Description("Maximum number of analyzer rules to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
@@ -26,7 +26,7 @@ public static class AnalyzerInfoTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(offset, limit);
-                var results = await analyzerInfoService.ListAnalyzersAsync(workspaceId, project, c);
+                var results = await analyzerInfoService.ListAnalyzersAsync(workspaceId, projectName, c);
                 var totalRules = results.Sum(a => a.Rules.Count);
 
                 var pagedRules = results

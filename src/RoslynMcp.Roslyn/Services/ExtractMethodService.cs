@@ -308,7 +308,9 @@ public sealed class ExtractMethodService : IExtractMethodService
             newRoot = newRoot.ReplaceNode(newTypeDecl, newTypeDecl.WithMembers(updatedMembers));
         }
 
-        return newRoot.NormalizeWhitespace();
+        // dependency-inversion-noisy-diff: avoid reformatting the entire compilation unit;
+        // only the extracted method node was normalized earlier in the pipeline.
+        return newRoot;
     }
 
     private static List<StatementSyntax> FindStatementsInSelection(

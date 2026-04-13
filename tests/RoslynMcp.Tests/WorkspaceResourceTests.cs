@@ -20,17 +20,17 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     public static void ClassCleanup() => DisposeServices();
 
     [TestMethod]
-    public void GetWorkspaceStatus_Resource_Returns_Json()
+    public async Task GetWorkspaceStatus_Resource_Returns_Json()
     {
-        var json = WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, WorkspaceId);
+        var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.GetProperty("ProjectCount").GetInt32() >= 1);
     }
 
     [TestMethod]
-    public void GetWorkspaceStatus_Resource_Default_Is_Summary()
+    public async Task GetWorkspaceStatus_Resource_Default_Is_Summary()
     {
-        var json = WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, WorkspaceId);
+        var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsFalse(doc.RootElement.TryGetProperty("Projects", out _),
             "Default workspace_status resource must return the summary shape (no per-project tree).");
@@ -39,9 +39,9 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public void GetWorkspaceStatusVerbose_Resource_Includes_Projects()
+    public async Task GetWorkspaceStatusVerbose_Resource_Includes_Projects()
     {
-        var json = WorkspaceResources.GetWorkspaceStatusVerbose(WorkspaceManager, WorkspaceId);
+        var json = await WorkspaceResources.GetWorkspaceStatusVerbose(WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("Projects", out var projects),
             "Verbose workspace_status resource must include the per-project tree.");

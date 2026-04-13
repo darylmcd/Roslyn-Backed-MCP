@@ -111,18 +111,43 @@ public static class SymbolResolver
         return null;
     }
 
+    /// <summary>
+    /// rename-preview-caret-resolution: Walking <c>token.Parent</c> with
+    /// <see cref="SemanticModel.GetSymbolInfo"/> before <see cref="SemanticModel.GetDeclaredSymbol"/>
+    /// on every node lets a caret on a nested identifier (e.g. tuple element) climb to an enclosing
+    /// member or type. Prefer symbol-info on the immediate parent so return-type / usage tokens resolve
+    /// to types; prefer declared-symbol when deeper so locals and parameters win over outer scopes.
+    /// </summary>
     private static ISymbol? ResolveFromToken(SyntaxToken token, SemanticModel semanticModel, CancellationToken ct)
     {
-        var node = token.Parent;
-        while (node is not null)
-        {
-            var symbolInfo = semanticModel.GetSymbolInfo(node, ct);
-            if (symbolInfo.Symbol is not null)
-                return symbolInfo.Symbol;
+        SyntaxNode? node = token.Parent;
+        var depth = 0;
+        const int maxDepth = 24;
 
-            var declaredSymbol = semanticModel.GetDeclaredSymbol(node, ct);
-            if (declaredSymbol is not null)
-                return declaredSymbol;
+        while (node is not null && depth < maxDepth)
+        {
+            depth++;
+            var declared = semanticModel.GetDeclaredSymbol(node, ct);
+            var symbolInfo = semanticModel.GetSymbolInfo(node, ct);
+
+            if (depth == 1)
+            {
+                if (symbolInfo.Symbol is not null)
+                    return symbolInfo.Symbol;
+                if (symbolInfo.CandidateReason == CandidateReason.MemberGroup && symbolInfo.CandidateSymbols.Length > 0)
+                    return symbolInfo.CandidateSymbols[0];
+                if (declared is not null)
+                    return declared;
+            }
+            else
+            {
+                if (declared is not null)
+                    return declared;
+                if (symbolInfo.Symbol is not null)
+                    return symbolInfo.Symbol;
+                if (symbolInfo.CandidateReason == CandidateReason.MemberGroup && symbolInfo.CandidateSymbols.Length > 0)
+                    return symbolInfo.CandidateSymbols[0];
+            }
 
             node = node.Parent;
         }

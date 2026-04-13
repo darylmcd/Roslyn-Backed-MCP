@@ -52,7 +52,7 @@ public sealed class UndoIntegrationTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(undoEntry.Description, "Rename");
 
         // Revert
-        var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "Revert should succeed");
 
         // Verify original name is back
@@ -64,7 +64,7 @@ public sealed class UndoIntegrationTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task Revert_Without_Prior_Apply_Returns_False()
     {
-        var result = await UndoService.RevertAsync("nonexistent-workspace", WorkspaceManager, CancellationToken.None);
+        var result = await UndoService.RevertAsync("nonexistent-workspace", CancellationToken.None);
         Assert.IsFalse(result);
     }
 
@@ -101,7 +101,7 @@ public sealed class UndoIntegrationTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(afterRenameDisk, "ICreature");
 
         // Now revert and verify disk has the pre-rename text again.
-        var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "Revert should report success");
 
         var afterRevertDisk = await File.ReadAllTextAsync(iAnimalDocPath, CancellationToken.None);

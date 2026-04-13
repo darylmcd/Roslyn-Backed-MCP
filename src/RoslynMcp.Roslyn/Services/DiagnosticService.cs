@@ -36,8 +36,10 @@ public sealed class DiagnosticService : IDiagnosticService
         string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, string? diagnosticIdFilter, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        // Default to Warning severity when no filter specified to avoid multi-MB Hidden output
-        DiagnosticSeverity? minSeverity = ParseSeverity(severityFilter) ?? DiagnosticSeverity.Warning;
+        // Default to Info when no filter so totals align with the first page (Warning hid Info-only
+        // solutions). Hidden remains excluded in CollectDiagnostics. Payload size is capped by
+        // project_diagnostics limit (default 200), not by raising the severity floor.
+        DiagnosticSeverity? minSeverity = ParseSeverity(severityFilter) ?? DiagnosticSeverity.Info;
 
         // Workspace diagnostics already arrive normalized via WorkspaceDiagnosticSeverityClassifier
         // (applied in WorkspaceManager.LoadIntoSessionAsync at ingress).
@@ -90,20 +92,6 @@ public sealed class DiagnosticService : IDiagnosticService
             + analyzerAllDiagnostics.Count(d => d.Severity == "Info")
             + workspaceMatchingFile.Count(d => d.Severity == "Info");
 
-        // dr-project-diagnostics-info-only-empty-first-page: When the returned arrays
-        // are empty but lower-severity diagnostics exist, add a hint so callers know
-        // they need to pass an explicit severity filter to see them.
-        var allEmpty = workspaceDiagnostics.Count == 0 &&
-                       compilerDiagnostics.Count == 0 &&
-                       analyzerDiagnostics.Count == 0;
-        string? severityHint = null;
-        if (allEmpty && (totalWarnings > 0 || totalInfo > 0))
-        {
-            severityHint = severityFilter is null
-                ? $"No diagnostics at the default Warning severity. {totalInfo} Info and {totalWarnings} Warning diagnostics exist — pass severity='Info' to include them."
-                : $"No diagnostics at severity '{severityFilter}' or above. Lower-severity diagnostics may exist — try a less restrictive filter.";
-        }
-
         return new DiagnosticsResultDto(
             workspaceDiagnostics,
             compilerDiagnostics,
@@ -113,8 +101,7 @@ public sealed class DiagnosticService : IDiagnosticService
             TotalInfo: totalInfo,
             CompilerErrors: compilerErrors,
             AnalyzerErrors: analyzerErrors,
-            WorkspaceErrors: workspaceErrors,
-            SeverityHint: severityHint);
+            WorkspaceErrors: workspaceErrors);
     }
 
     private async Task<(List<DiagnosticDto> compilerAll, List<DiagnosticDto> compilerFiltered,

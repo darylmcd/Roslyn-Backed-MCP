@@ -178,19 +178,47 @@ function Parse-BacklogRows {
 
     $rows = New-Object System.Collections.Generic.List[object]
     foreach ($line in ($Content -split "`r?`n")) {
-        $m = [regex]::Match($line, '^\| `([^`]+)` \| ([^|]*) \| ([^|]*) \| (.*) \|?$')
-        if (-not $m.Success) {
+        $m5 = [regex]::Match($line, '^\| `([^`]+)` \| (P[234]) \| ([^|]*) \| ([^|]*) \| (.*) \|?\s*$')
+        if ($m5.Success) {
+            $id = $m5.Groups[1].Value.Trim()
+            if ($id -eq 'id') {
+                continue
+            }
+            $do = $m5.Groups[5].Value.Trim()
+            if ($do -match '\|-+$') {
+                continue
+            }
+            $rows.Add([pscustomobject]@{
+                    Id       = $id
+                    Priority = $m5.Groups[2].Value.Trim()
+                    Blocker  = $m5.Groups[3].Value.Trim()
+                    Deps     = $m5.Groups[4].Value.Trim()
+                    Do       = $do
+                })
             continue
         }
-        $id = $m.Groups[1].Value
+
+        # Legacy: | id | blocker | deps | do |
+        $m4 = [regex]::Match($line, '^\| `([^`]+)` \| ([^|]*) \| ([^|]*) \| (.*) \|?\s*$')
+        if (-not $m4.Success) {
+            continue
+        }
+        $id = $m4.Groups[1].Value.Trim()
         if ($id -eq 'id') {
             continue
         }
-        $do = $m.Groups[4].Value.Trim()
+        $do = $m4.Groups[4].Value.Trim()
         if ($do -match '\|-+$') {
             continue
         }
-        $rows.Add([pscustomobject]@{ Id = $id; Do = $do })
+        $pri = Get-PriorityFromDo -Do $do
+        $rows.Add([pscustomobject]@{
+                Id       = $id
+                Priority = $pri
+                Blocker  = $m4.Groups[2].Value.Trim()
+                Deps     = $m4.Groups[3].Value.Trim()
+                Do       = $do
+            })
     }
     return $rows
 }
@@ -202,6 +230,28 @@ function Get-PriorityFromDo {
         return $m.Groups[1].Value
     }
     return 'P4'
+}
+
+function Format-OpenWorkSection {
+    param(
+        [string]$Heading,
+        [string]$WithinLine,
+        [object[]]$Rows
+    )
+
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.AppendLine($Heading)
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine($WithinLine)
+    [void]$sb.AppendLine()
+    [void]$sb.AppendLine('| id | pri | blocker | deps | do |')
+    [void]$sb.AppendLine('|----|-----|---------|------|-----|')
+    foreach ($row in $Rows) {
+        $b = if ([string]::IsNullOrWhiteSpace($row.Blocker)) { '—' } else { $row.Blocker.Trim() }
+        $d = if ([string]::IsNullOrWhiteSpace($row.Deps)) { '—' } else { $row.Deps.Trim() }
+        [void]$sb.AppendLine("| ``$($row.Id)`` | $($row.Priority) | $b | $d | $($row.Do) |")
+    }
+    return $sb.ToString()
 }
 
 $repoRoot = Get-RepoRoot
@@ -252,7 +302,13 @@ foreach ($audit in $CanonicalAuditFiles) {
         [void]$existingIds.Add($id)
 
         $do = "**$pri / $area.** $summary"
-        $newRows.Add([pscustomobject]@{ Id = $id; Priority = $pri; Do = $do })
+        $newRows.Add([pscustomobject]@{
+                Id       = $id
+                Priority = $pri
+                Blocker  = '—'
+                Deps     = '—'
+                Do       = $do
+            })
     }
 }
 
@@ -276,30 +332,38 @@ $backlog = $backlog -replace '(\*\*updated_at:\*\*)\s*[^\r\n]+', "`$1 $utc"
 
 $all = New-Object System.Collections.Generic.List[object]
 foreach ($r in $existing) {
-    $pri = Get-PriorityFromDo -Do $r.Do
-    $all.Add([pscustomobject]@{ Id = $r.Id; Priority = $pri; Do = $r.Do })
+    $all.Add($r)
 }
 foreach ($nr in $newRows) {
     $all.Add($nr)
 }
 
-$p2 = $all | Where-Object { $_.Priority -eq 'P2' } | Sort-Object Id
-$p3 = $all | Where-Object { $_.Priority -eq 'P3' } | Sort-Object Id
-$p4 = $all | Where-Object { $_.Priority -eq 'P4' } | Sort-Object Id
-$ordered = @($p2) + @($p3) + @($p4)
+$p2 = @($all | Where-Object { $_.Priority -eq 'P2' } | Sort-Object Id)
+$p3 = @($all | Where-Object { $_.Priority -eq 'P3' } | Sort-Object Id)
+$p4 = @($all | Where-Object { $_.Priority -eq 'P4' } | Sort-Object Id)
 
-$tableRows = foreach ($row in $ordered) {
-    "| ``$($row.Id)`` | none | - | $($row.Do) |"
+$p2Block = ''
+if ($p2.Count -gt 0) {
+    $p2Block = (Format-OpenWorkSection -Heading '## P2 — open work' -WithinLine 'Within P2, rows are **alphabetical by `id`**.' -Rows $p2) + "`n"
 }
 
-$rx = [regex]::new('(?s)(\| id \|[^\r\n]+\r?\n\|[-| ]+\|\r?\n)(.*?)(\r?\n## Refs)', [System.Text.RegularExpressions.RegexOptions]::None)
-$m = $rx.Match($backlog)
-if (-not $m.Success) {
-    throw 'sync-deep-review-backlog: could not find open-work markdown table (expected | id | ... then ## Refs).'
-}
+$p3Block = Format-OpenWorkSection -Heading '## P3 — open work' -WithinLine 'Within P3, rows are **alphabetical by `id`**.' -Rows $p3
+$p4Block = Format-OpenWorkSection -Heading '## P4 — open work' -WithinLine 'Within P4, rows are **alphabetical by `id`**.' -Rows $p4
+$newOpenWork = ($p2Block + $p3Block + "`n" + $p4Block).TrimEnd()
 
-$newBody = ($tableRows -join "`n") + "`n"
-$backlog = $backlog.Substring(0, $m.Groups[2].Index) + $newBody + $backlog.Substring($m.Groups[2].Index + $m.Groups[2].Length)
+$endMarker = [regex]::new('\r?\n## Evidence and paths|\r?\n## Refs')
+$mEnd = $endMarker.Match($backlog)
+if (-not $mEnd.Success) {
+    throw 'sync-deep-review-backlog: could not find ## Evidence and paths or ## Refs (expected after P4 open-work table).'
+}
+$startP2 = $backlog.IndexOf('## P2 — open work', [StringComparison]::Ordinal)
+$startP3 = $backlog.IndexOf('## P3 — open work', [StringComparison]::Ordinal)
+if ($startP3 -lt 0) {
+    throw 'sync-deep-review-backlog: could not find ## P3 — open work.'
+}
+$start = if ($startP2 -ge 0) { $startP2 } else { $startP3 }
+
+$backlog = $backlog.Substring(0, $start) + $newOpenWork + "`r`n`r`n" + $backlog.Substring($mEnd.Index)
 
 Set-Content -LiteralPath $backlogPath -Value $backlog -NoNewline
 Write-Host 'sync-deep-review-backlog: updated ai_docs/backlog.md'

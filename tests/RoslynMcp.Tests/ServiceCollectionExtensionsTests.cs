@@ -28,5 +28,9 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.IsNotNull(sp.GetRequiredService<IPreviewStore>());
         Assert.IsNotNull(sp.GetRequiredService<IProjectMutationPreviewStore>());
         Assert.IsNotNull(sp.GetRequiredService<ICompositePreviewStore>());
+        Assert.IsNotNull(sp.GetRequiredService<IPackageMigrationOrchestrator>());
+        Assert.IsNotNull(sp.GetRequiredService<IClassSplitOrchestrator>());
+        Assert.IsNotNull(sp.GetRequiredService<IExtractAndWireOrchestrator>());
+        Assert.IsNotNull(sp.GetRequiredService<ICompositeApplyOrchestrator>());
     }
 }

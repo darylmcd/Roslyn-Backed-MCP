@@ -1,6 +1,8 @@
 using Microsoft.CodeAnalysis;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 
-namespace RoslynMcp.Core.Services;
+namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
 /// Thread-safe, TTL-bounded in-memory store for pending Roslyn <see cref="Solution"/> previews.

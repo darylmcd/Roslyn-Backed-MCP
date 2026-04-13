@@ -75,7 +75,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             WorkspaceExecutionGate,
             NamespaceDependencyService,
             WorkspaceId,
-            project: "SampleLib",
+            projectName: "SampleLib",
             circularOnly: false,
             CancellationToken.None);
         using var namespaceDoc = JsonDocument.Parse(namespaceJson);
@@ -86,7 +86,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             CodeMetricsService,
             WorkspaceId,
             filePath: null,
-            project: "SampleLib",
+            projectName: "SampleLib",
             minComplexity: 1,
             limit: 20,
             CancellationToken.None);
@@ -101,7 +101,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             WorkspaceExecutionGate,
             AnalyzerInfoService,
             WorkspaceId,
-            project: null,
+            projectName: null,
             offset: 0,
             limit: 2,
             CancellationToken.None);
@@ -114,7 +114,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             WorkspaceExecutionGate,
             DiagnosticService,
             WorkspaceId,
-            project: "SampleLib",
+            projectName: "SampleLib",
             file: null,
             severity: null,
             diagnosticId: null,
@@ -129,6 +129,12 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
 
         Assert.AreEqual(returnedDiagnostics, pagedCount);
         Assert.IsTrue(diagnosticsDoc.RootElement.GetProperty("totalDiagnostics").GetInt32() >= returnedDiagnostics);
+        if (diagnosticsDoc.RootElement.GetProperty("hasMore").GetBoolean())
+        {
+            Assert.IsTrue(
+                diagnosticsDoc.RootElement.GetProperty("paginationNote").GetString()?.Length > 0,
+                "hasMore should surface paginationNote for follow-up paging.");
+        }
     }
 
     [TestMethod]
@@ -138,7 +144,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             WorkspaceExecutionGate,
             DiagnosticService,
             WorkspaceId,
-            project: "SampleLib",
+            projectName: "SampleLib",
             file: null,
             severity: null,
             diagnosticId: null,
@@ -219,7 +225,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             CohesionAnalysisService,
             WorkspaceId,
             filePath: null,
-            project: "SampleLib",
+            projectName: "SampleLib",
             minMethods: 1,
             limit: 50,
             includeInterfaces: true,

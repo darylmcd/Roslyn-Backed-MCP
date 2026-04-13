@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 
-namespace RoslynMcp.Core.Services;
+namespace RoslynMcp.Roslyn.Contracts;
 
 /// <summary>
 /// Per-workspace, version-keyed cache for Roslyn <see cref="Compilation"/> and

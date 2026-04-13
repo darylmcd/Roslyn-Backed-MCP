@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.14.0] - 2026-04-14
+
+### Changed
+
+- **`project_diagnostics`:** Default minimum severity is **Info** (was Warning); default page size **`limit`** is **200** (was 50); added `paginationNote` when more diagnostics exist; removed `severityHint` from `DiagnosticsResultDto` (defaults now align with totals).
+- **`find_references` / `find_implementations` / `find_overrides`:** Responses use a **`items`** array (`find_references` keeps pagination metadata); stable sort for implementations and overrides.
+- **`find_references_bulk`:** Clearer tool/docs text for the `symbols` parameter and improved `BulkSymbolLocator` error messages (common mistakes + schema).
+- **`workspace_status`:** Summary DTO adds **`isReady`**, **`restoreHint`**, **`solutionFileName`**; new **`workspace_health`** tool alias (same lean summary).
+- **MSBuild / moves:** `project` parameters unified to **`projectName`** where applicable; **`targetFilePath`** for file moves; target-framework preview uses MSBuild evaluation when TF is only in imports.
+- **Cross-project move:** Default namespace follows target project; file-scoped namespace trivia fixed after removing whole-file normalize.
+- **Core / Roslyn boundary:** Moved workspace and compilation surface that depends on Roslyn into `RoslynMcp.Roslyn` — `IWorkspaceManager`, `ICompilationCache`, `IPreviewStore`, and `PreviewStore` now live under `RoslynMcp.Roslyn.Contracts` / Roslyn services. `RoslynMcp.Core` stays free of Roslyn workspace types so hosts reference the Roslyn assembly for those APIs.
+- **Orchestration:** Replaced `IOrchestrationService` / `OrchestrationService` with focused orchestrators (`IPackageMigrationOrchestrator`, `IClassSplitOrchestrator`, `IExtractAndWireOrchestrator`, `ICompositeApplyOrchestrator`) plus shared `OrchestrationMsBuildXml`. `OrchestrationTools` and DI registrations use the new interfaces.
+- **Prompts:** Split `RoslynPrompts` into partials (`RoslynPrompts.RefactoringWorkflows`, `.AnalysisWorkflows`, `.GuidedWorkflows`) and centralized prompt construction in `PromptMessageBuilder`.
+- **DI:** Preview stores (`IPreviewStore`, `IProjectMutationPreviewStore`, `ICompositePreviewStore`) share one `ResolvePreviewStoreConfiguration` path in `ServiceCollectionExtensions`.
+- **Workspace status:** `IWorkspaceManager` exposes `GetStatusAsync`; MCP workspace status resources and call sites that need load-lock semantics use the async path.
+
+### Removed
+
+- **`IOrchestrationService` / `OrchestrationService`** (superseded by the orchestrator split above).
+
+### Added
+
+- **Tests:** `SymbolMapperTests`, `FixAllServiceIntegrationTests`, and `SuppressionServiceTests`; test host/container updates for the new orchestrator and workspace contracts.
+
+### Fixed
+
+- **Tests / resources:** Workspace resource and observability tests updated for async workspace status; undo/edit integration tests aligned with moved preview/workspace types.
+
+### Maintenance
+
+- **`eng/sync-deep-review-backlog.ps1`:** Merges deep-review candidates into the agentic backlog layout (P2/P3/P4 tables with `pri | blocker | deps | do`); splices open-work sections before `## Evidence and paths` or `## Refs`.
+- **`ai_docs/backlog.md`:** Reorganized for agent-first use (thematic index, dependency edges, split P3/P4 tables, evidence section); closed Top-10 backlog remediation items (text-edit safety, rename caret, move-type namespace, noisy diffs, MSBuild param alignment, centralized TF, diagnostics defaults, find-overrides, bulk refs schema, workspace readiness).
+
 ## [1.13.0] - 2026-04-13
 
 ### Fixed
@@ -97,7 +130,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - **`suggest_refactorings`** — read-only tool combining complexity metrics, LCOM4 cohesion analysis, and unused symbol detection into ranked refactoring suggestions with recommended tool sequences. Each suggestion includes severity (high/medium/low), category, target symbol location, and the tools to use.
 - **Stable promotions (3 tools):** `get_code_actions`, `preview_code_action`, `apply_code_action` promoted from experimental to stable. Selection-range refactorings (introduce parameter, inline temporary) verified working in v1.10.0.
-- **Change tracker coverage expansion:** `ProjectMutationService.ApplyProjectMutationAsync` and `OrchestrationService.ApplyCompositeAsync` now record changes via `IChangeTracker`, closing the blind spot for project mutations and composite operations.
+- **Change tracker coverage expansion:** `ProjectMutationService.ApplyProjectMutationAsync` and `CompositeApplyOrchestrator.ApplyCompositeAsync` now record changes via `IChangeTracker`, closing the blind spot for project mutations and composite operations.
 - 128 tools (69 stable / 59 experimental).
 
 ## [1.10.0] - 2026-04-12

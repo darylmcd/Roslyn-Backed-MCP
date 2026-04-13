@@ -26,7 +26,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         string typeName,
         string targetProjectName,
         string? targetNamespace,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool preserveNamespace = false)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var sourceDocument = SymbolResolver.FindDocument(solution, sourceFilePath)
@@ -51,10 +52,18 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             ?? throw new InvalidOperationException("Target project must have a file path on disk.");
 
         var currentNamespace = GetContainingNamespace(typeSymbol);
-        var resolvedTargetNamespace = string.IsNullOrWhiteSpace(targetNamespace) ? currentNamespace : targetNamespace;
-        if (!string.Equals(currentNamespace, resolvedTargetNamespace, StringComparison.Ordinal))
+        string resolvedTargetNamespace;
+        if (!string.IsNullOrWhiteSpace(targetNamespace))
         {
-            throw new InvalidOperationException("Changing the namespace during move-type-to-project is not supported in the current implementation.");
+            resolvedTargetNamespace = targetNamespace.Trim();
+        }
+        else if (preserveNamespace)
+        {
+            resolvedTargetNamespace = currentNamespace;
+        }
+        else
+        {
+            resolvedTargetNamespace = DeriveTargetNamespace(targetProject);
         }
 
         var targetFilePath = Path.Combine(targetProjectDirectory, Path.GetFileName(sourceDocumentFilePath));
@@ -369,9 +378,12 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         MemberDeclarationSyntax namespacedMember = string.IsNullOrWhiteSpace(namespaceName)
             ? member
             : SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
+                .WithNamespaceKeyword(SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Whitespace(" ")))
+                .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed))
                 .WithMembers(SyntaxFactory.SingletonList(member));
 
-        return compilationUnit.WithMembers(SyntaxFactory.SingletonList(namespacedMember)).NormalizeWhitespace();
+        // dependency-inversion-noisy-diff: avoid whole-file whitespace normalization; callers rely on Roslyn's structured edits for readable diffs.
+        return compilationUnit.WithMembers(SyntaxFactory.SingletonList(namespacedMember));
     }
 
     private static SyntaxList<UsingDirectiveSyntax> FilterUsingsForMember(

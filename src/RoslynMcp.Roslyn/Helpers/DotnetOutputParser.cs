@@ -190,37 +190,48 @@ internal static partial class DotnetOutputParser
             return (0, 0, 0, 0, []);
 
         var document = XDocument.Load(trxPath);
-        XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
 
-        var counters = document.Descendants(ns + "Counters").FirstOrDefault();
+        // TeamTest TRX uses the 2010 namespace, but some hosts emit the same local names under
+        // a different default namespace. Match by local element name so failed tests are not
+        // dropped while <Counters> still reports failed > 0 (integration: ValidationIntegrationTests).
+        var counters = document.Descendants()
+            .FirstOrDefault(e => string.Equals(e.Name.LocalName, "Counters", StringComparison.Ordinal));
         var total = ParseCounter(counters, "total");
         var passed = ParseCounter(counters, "passed");
         var failed = ParseCounter(counters, "failed");
         var skipped = ParseCounter(counters, "notExecuted");
 
+        var unitResults = document.Descendants()
+            .Where(e => string.Equals(e.Name.LocalName, "UnitTestResult", StringComparison.Ordinal))
+            .ToList();
+
         if (skipped == 0)
         {
-            skipped = document.Descendants(ns + "UnitTestResult")
-                .Count(r =>
-                {
-                    var outcome = (string?)r.Attribute("outcome");
-                    return string.Equals(outcome, "NotExecuted", StringComparison.OrdinalIgnoreCase) ||
-                           string.Equals(outcome, "Inconclusive", StringComparison.OrdinalIgnoreCase);
-                });
+            skipped = unitResults.Count(r =>
+            {
+                var outcome = (string?)r.Attribute("outcome");
+                return string.Equals(outcome, "NotExecuted", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(outcome, "Inconclusive", StringComparison.OrdinalIgnoreCase);
+            });
         }
 
-        var failures = document.Descendants(ns + "UnitTestResult")
+        var failures = unitResults
             .Where(result => string.Equals((string?)result.Attribute("outcome"), "Failed", StringComparison.OrdinalIgnoreCase))
             .Select(result =>
             {
                 var fullyQualifiedName = (string?)result.Attribute("testName");
-                var output = result.Element(ns + "Output");
-                var errorInfo = output?.Element(ns + "ErrorInfo");
+                var output = result.Elements().FirstOrDefault(e => string.Equals(e.Name.LocalName, "Output", StringComparison.Ordinal));
+                var errorInfo = output?.Elements()
+                    .FirstOrDefault(e => string.Equals(e.Name.LocalName, "ErrorInfo", StringComparison.Ordinal));
+                var messageEl = errorInfo?.Elements()
+                    .FirstOrDefault(e => string.Equals(e.Name.LocalName, "Message", StringComparison.Ordinal));
+                var stackEl = errorInfo?.Elements()
+                    .FirstOrDefault(e => string.Equals(e.Name.LocalName, "StackTrace", StringComparison.Ordinal));
                 return new TestFailureDto(
                     DisplayName: GetDisplayName(fullyQualifiedName),
                     FullyQualifiedName: fullyQualifiedName,
-                    Message: errorInfo?.Element(ns + "Message")?.Value ?? "Test failed",
-                    StackTrace: errorInfo?.Element(ns + "StackTrace")?.Value);
+                    Message: messageEl?.Value ?? "Test failed",
+                    StackTrace: stackEl?.Value);
             })
             .ToList();
 

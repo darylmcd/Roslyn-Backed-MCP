@@ -102,6 +102,31 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
             "The override set must be identical regardless of caret position.");
     }
 
+    [TestMethod]
+    public async Task FindOverrides_FromImplicitInterfaceImpl_PromotesToInterfaceMember()
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var dogFile = solution.Projects.SelectMany(p => p.Documents).First(d => d.Name == "Dog.cs");
+        var animalFile = solution.Projects.SelectMany(p => p.Documents).First(d => d.Name == "IAnimal.cs");
+
+        var fromImpl = await ReferenceService.FindOverridesAsync(
+            WorkspaceId,
+            SymbolLocator.BySource(dogFile.FilePath!, 7, 21),
+            CancellationToken.None);
+
+        var fromIface = await ReferenceService.FindOverridesAsync(
+            WorkspaceId,
+            SymbolLocator.BySource(animalFile.FilePath!, 6, 13),
+            CancellationToken.None);
+
+        Assert.AreEqual(fromIface.Count, fromImpl.Count,
+            "Implicit interface implementation site should promote to the interface member and match the interface declaration query.");
+        CollectionAssert.AreEquivalent(
+            fromIface.Select(l => (l.FilePath, l.StartLine, l.StartColumn)).OrderBy(t => t.FilePath).ToList(),
+            fromImpl.Select(l => (l.FilePath, l.StartLine, l.StartColumn)).OrderBy(t => t.FilePath).ToList(),
+            "Override/implementation locations should match after promotion.");
+    }
+
     // ── find-references-bulk-schema-error-ux ──
 
     [TestMethod]

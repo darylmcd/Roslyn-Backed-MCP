@@ -15,7 +15,7 @@ public static class AdvancedAnalysisTools
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Include public symbols in the search (default: false, since public APIs may be consumed externally)")] bool includePublic = false,
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         [Description("When true, skip enum members (often referenced indirectly).")] bool excludeEnums = false,
@@ -32,7 +32,7 @@ public static class AdvancedAnalysisTools
                     workspaceId,
                     new UnusedSymbolsAnalysisOptions
                     {
-                        ProjectFilter = project,
+                        ProjectFilter = projectName,
                         IncludePublic = includePublic,
                         Limit = limit,
                         ExcludeEnums = excludeEnums,
@@ -52,13 +52,13 @@ public static class AdvancedAnalysisTools
         IWorkspaceExecutionGate gate,
         IDiRegistrationService diRegistrationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("get_di_registrations", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var results = await diRegistrationService.GetDiRegistrationsAsync(workspaceId, project, c);
+                var results = await diRegistrationService.GetDiRegistrationsAsync(workspaceId, projectName, c);
                 return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
             }, ct));
     }
@@ -70,7 +70,7 @@ public static class AdvancedAnalysisTools
         ICodeMetricsService codeMetricsService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by source file path")] string? filePath = null,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: minimum cyclomatic complexity threshold (default: return all)")] int? minComplexity = null,
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
@@ -78,7 +78,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync("get_complexity_metrics", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, project, minComplexity, limit, c);
+                var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, projectName, minComplexity, limit, c);
                 return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
             }, ct));
     }
@@ -89,13 +89,13 @@ public static class AdvancedAnalysisTools
         IWorkspaceExecutionGate gate,
         ICodePatternAnalyzer codePatternAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("find_reflection_usages", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, project, c);
+                var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, projectName, c);
                 var grouped = results.GroupBy(r => r.UsageKind)
                     .ToDictionary(g => g.Key, g => g.ToList());
                 return JsonSerializer.Serialize(new { count = results.Count, usagesByKind = grouped }, JsonDefaults.Indented);
@@ -108,14 +108,14 @@ public static class AdvancedAnalysisTools
         IWorkspaceExecutionGate gate,
         INamespaceDependencyService namespaceDependencyService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("When true, return only namespaces and edges involved in circular dependencies")] bool circularOnly = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("get_namespace_dependencies", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, project, c);
+                var result = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, projectName, c);
 
                 if (circularOnly && result.CircularDependencies.Count > 0)
                 {
@@ -161,14 +161,14 @@ public static class AdvancedAnalysisTools
         ICodePatternAnalyzer codePatternAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Semantic search query, e.g. 'async methods returning Task<bool>', 'classes implementing IDisposable', 'public static methods'")] string query,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("semantic_search", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var response = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, project, limit, c);
+                var response = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, projectName, limit, c);
                 return JsonSerializer.Serialize(new
                 {
                     count = response.Results.Count,

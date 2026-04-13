@@ -17,7 +17,7 @@ public static class SymbolTools
         ISymbolSearchService symbolSearchService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Search query — substring match (case-insensitive). Pass bare fragments, not wildcards or regex.")] string query,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: filter by symbol kind (Class, Method, Property, Field, Interface, etc.)")] string? kind = null,
         [Description("Optional: filter by namespace")] string? @namespace = null,
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
@@ -26,7 +26,7 @@ public static class SymbolTools
         return ToolErrorHandler.ExecuteAsync("symbol_search", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var results = await symbolSearchService.SearchSymbolsAsync(workspaceId, query, project, kind, @namespace, limit, c);
+                var results = await symbolSearchService.SearchSymbolsAsync(workspaceId, query, projectName, kind, @namespace, limit, c);
                 return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
@@ -74,7 +74,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution")]
+    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution. Response shape: { count, totalCount, hasMore, offset, limit, items } where items is the paged LocationDto list.")]
     public static Task<string> FindReferences(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -102,12 +102,12 @@ public static class SymbolTools
                     hasMore,
                     offset,
                     limit,
-                    references = paged
+                    items = paged
                 }, JsonDefaults.Indented);
             }, ct));
     }
 
-    [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all implementations of an interface or abstract member at the given position. IMPORTANT: when using filePath/line/column, the column must point at the symbol identifier token (e.g., the interface name 'IMyService'), not the start of the line — otherwise no symbol can be resolved and the result is empty. For interface lookups, prefer metadataName (fully qualified) when you do not have an exact cursor position.")]
+    [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all implementations of an interface or abstract member at the given position. Response shape: { count, items }. IMPORTANT: when using filePath/line/column, the column must point at the symbol identifier token (e.g., the interface name 'IMyService'), not the start of the line — otherwise no symbol can be resolved and the result is empty. For interface lookups, prefer metadataName (fully qualified) when you do not have an exact cursor position.")]
     public static Task<string> FindImplementations(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -124,7 +124,7 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await referenceService.FindImplementationsAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(new { count = results.Count, implementations = results }, JsonDefaults.Indented);
+                return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -146,7 +146,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member. Auto-promotes to the virtual/interface root: if the caret lands on an override site (e.g., `Device.Equals` that overrides `object.Equals`), the tool walks back through the `OverriddenMethod`/`OverriddenProperty`/`OverriddenEvent` chain before the search, so callers can anchor at either the virtual declaration or any leaf override and get the same (complete) result set.")]
+    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member. Response shape: { count, items }. Auto-promotes to the virtual/interface root: override chains, explicit interface implementations, and implicit interface implementations are normalized before the search so callers can anchor at the implementation or declaration site and get the same result set.")]
     public static Task<string> FindOverrides(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -162,7 +162,7 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await referenceService.FindOverridesAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
+                return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -279,12 +279,15 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_references_bulk", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find references for multiple symbols in a single call (max 50). Returns a list of results keyed by symbol handle, metadata name, or file:line:column. Each entry must populate ONE of the three locator strategies: symbolHandle, metadataName, or filePath/line/column")]
+    [McpServerTool(Name = "find_references_bulk", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Find references for multiple symbols in one call (max 50). Returns { count, results } where each result has key, referenceCount, references, and optional error. " +
+        "Parameter name must be `symbols` (array of objects). Do NOT pass symbolHandles or a JSON string array. " +
+        "Each element must set exactly one of: symbolHandle, metadataName, or filePath+line+column.")]
     public static Task<string> FindReferencesBulk(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Array of symbol locators (max 50). Each object may have symbolHandle, metadataName, or filePath/line/column. Example: [{\"metadataName\": \"Namespace.TypeName\"}, {\"filePath\": \"/path/file.cs\", \"line\": 42, \"column\": 7}]")] BulkSymbolLocator[] symbols,
+        [Description("Array of locator objects (max 50). Example shape: symbols: [ { metadataName: \"SampleLib.IAnimal\" }, { filePath: \"C:/src/x.cs\", line: 10, column: 5 } ]")] BulkSymbolLocator[] symbols,
         [Description("Include the definition location in each result (default: false)")] bool includeDefinition = false,
         CancellationToken ct = default)
     {

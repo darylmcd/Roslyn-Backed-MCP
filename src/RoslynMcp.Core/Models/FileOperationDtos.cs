@@ -19,6 +19,6 @@ public sealed record DeleteFileDto(
 /// </summary>
 public sealed record MoveFileDto(
     string SourceFilePath,
-    string DestinationFilePath,
+    string TargetFilePath,
     string? DestinationProjectName,
     bool UpdateNamespace);

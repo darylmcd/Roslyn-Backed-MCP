@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -5,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
-public sealed class TestRunnerService : ITestRunnerService
+public sealed partial class TestRunnerService : ITestRunnerService
 {
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IGatedCommandExecutor _executor;
@@ -93,11 +94,11 @@ public sealed class TestRunnerService : ITestRunnerService
                 // rather than letting the exception escape to ToolErrorHandler as a bare
                 // invocation error. The caller still gets exit code, working directory,
                 // and the configured timeout in the DTO.
-                var workingDirectory = Path.GetDirectoryName(targetPath) ?? Environment.CurrentDirectory;
+                var timeoutWorkingDirectory = Path.GetDirectoryName(targetPath) ?? Environment.CurrentDirectory;
                 var shell = new CommandExecutionDto(
                     Command: "dotnet",
                     Arguments: arguments,
-                    WorkingDirectory: workingDirectory,
+                    WorkingDirectory: timeoutWorkingDirectory,
                     TargetPath: targetPath,
                     ExitCode: -1,
                     Succeeded: false,
@@ -107,7 +108,8 @@ public sealed class TestRunnerService : ITestRunnerService
                 return DotnetOutputParser.BuildTimeoutResult(shell, ex.Message);
             }
 
-            var trxFiles = Directory.GetFiles(resultsDirectory, "*.trx", SearchOption.TopDirectoryOnly);
+            var dotnetWorkingDirectory = GatedCommandExecutor.GetWorkingDirectory(targetPath);
+            var trxFiles = CollectTrxFiles(resultsDirectory, dotnetWorkingDirectory, execution);
             // FLAG-N1: always pass through to the parser — it handles the no-TRX failure case
             // by emitting a structured TestRunFailureEnvelopeDto instead of throwing. See
             // test-run-failure-envelope backlog row (2026-04-08 MSB3027 Windows file-lock audits).
@@ -121,4 +123,65 @@ public sealed class TestRunnerService : ITestRunnerService
             }
         }
     }
+
+    /// <summary>
+    /// Some vstest versions ignore <c>--results-directory</c> for the TRX logger and emit under
+    /// <c>TestResults</c> next to the project instead. Collect TRX from the explicit directory first,
+    /// then fall back to the dotnet working directory (and its <c>TestResults</c> subtree).
+    /// </summary>
+    private static string[] CollectTrxFiles(string resultsDirectory, string workingDirectory, CommandExecutionDto execution)
+    {
+        var fromExplicit = Directory.Exists(resultsDirectory)
+            ? Directory.GetFiles(resultsDirectory, "*.trx", SearchOption.AllDirectories)
+            : [];
+
+        if (fromExplicit.Length > 0)
+            return fromExplicit;
+
+        var runDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void AddDir(string? p)
+        {
+            if (!string.IsNullOrWhiteSpace(p))
+                runDirs.Add(p);
+        }
+        AddDir(workingDirectory);
+        AddDir(execution.WorkingDirectory);
+        AddDir(Path.Combine(workingDirectory, "TestResults"));
+        if (!string.IsNullOrWhiteSpace(execution.WorkingDirectory))
+            AddDir(Path.Combine(execution.WorkingDirectory, "TestResults"));
+
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var dir in runDirs)
+        {
+            if (!Directory.Exists(dir))
+                continue;
+            foreach (var p in Directory.GetFiles(dir, "*.trx", SearchOption.AllDirectories))
+                set.Add(p);
+        }
+
+        if (set.Count > 0)
+            return [.. set];
+
+        return TryTrxFromStdOut(execution.StdOut);
+    }
+
+    /// <summary>
+    /// When TRX lands outside our results directory (host-specific vstest layout), dotnet still prints
+    /// <c>Results File: &lt;path&gt;</c> to stdout — use it as a last-resort discovery path.
+    /// </summary>
+    private static string[] TryTrxFromStdOut(string? stdOut)
+    {
+        if (string.IsNullOrEmpty(stdOut))
+            return [];
+
+        var match = ResultsFileRegex().Match(stdOut);
+        if (!match.Success)
+            return [];
+
+        var path = match.Groups[1].Value.Trim();
+        return File.Exists(path) ? [path] : [];
+    }
+
+    [GeneratedRegex(@"Results\s+File:\s*(.+?)\s*(?:\r|\n|$)", RegexOptions.IgnoreCase | RegexOptions.Multiline)]
+    private static partial Regex ResultsFileRegex();
 }

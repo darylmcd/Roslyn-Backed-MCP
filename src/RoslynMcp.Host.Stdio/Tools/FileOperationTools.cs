@@ -100,7 +100,7 @@ public static class FileOperationTools
         IFileOperationService fileOperationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the existing source file")] string sourceFilePath,
-        [Description("Absolute path to the destination source file")] string destinationFilePath,
+        [Description("Absolute path to the destination source file")] string targetFilePath,
         [Description("Optional: destination project name or project file path; defaults to the source project")] string? destinationProjectName = null,
         [Description("When true, updates the namespace declaration in the moved file to match the destination folder")] bool updateNamespace = false,
         CancellationToken ct = default)
@@ -109,10 +109,10 @@ public static class FileOperationTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, sourceFilePath, c).ConfigureAwait(false);
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, destinationFilePath, c).ConfigureAwait(false);
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, targetFilePath, c).ConfigureAwait(false);
                 var result = await fileOperationService.PreviewMoveFileAsync(
                     workspaceId,
-                    new MoveFileDto(sourceFilePath, destinationFilePath, destinationProjectName, updateNamespace),
+                    new MoveFileDto(sourceFilePath, targetFilePath, destinationProjectName, updateNamespace),
                     c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));

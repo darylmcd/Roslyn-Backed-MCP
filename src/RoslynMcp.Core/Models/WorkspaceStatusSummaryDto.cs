@@ -19,7 +19,10 @@ public sealed record WorkspaceStatusSummaryDto(
     bool IsStale,
     int WorkspaceDiagnosticCount,
     int WorkspaceErrorCount,
-    int WorkspaceWarningCount)
+    int WorkspaceWarningCount,
+    bool IsReady,
+    string? RestoreHint,
+    string? SolutionFileName)
 {
     /// <summary>
     /// Projects the verbose <see cref="WorkspaceStatusDto"/> down to its summary fields.
@@ -44,6 +47,10 @@ public sealed record WorkspaceStatusSummaryDto(
             }
         }
 
+        var restoreHint = BuildRestoreHint(status.WorkspaceDiagnostics);
+        var solutionFileName = GetSolutionOrProjectFileName(status.LoadedPath);
+        var isReady = status.IsLoaded && !status.IsStale && errors == 0;
+
         return new WorkspaceStatusSummaryDto(
             WorkspaceId: status.WorkspaceId,
             LoadedPath: status.LoadedPath,
@@ -56,6 +63,50 @@ public sealed record WorkspaceStatusSummaryDto(
             IsStale: status.IsStale,
             WorkspaceDiagnosticCount: status.WorkspaceDiagnostics.Count,
             WorkspaceErrorCount: errors,
-            WorkspaceWarningCount: warnings);
+            WorkspaceWarningCount: warnings,
+            IsReady: isReady,
+            RestoreHint: restoreHint,
+            SolutionFileName: solutionFileName);
+    }
+
+    /// <summary>
+    /// Heuristic: several missing-metadata / namespace style workspace failures often mean
+    /// packages were not restored before opening the workspace.
+    /// </summary>
+    private static string? BuildRestoreHint(IReadOnlyList<DiagnosticDto> workspaceDiagnostics)
+    {
+        var suspicious = 0;
+        foreach (var d in workspaceDiagnostics)
+        {
+            if (string.Equals(d.Id, "CS0234", StringComparison.OrdinalIgnoreCase))
+            {
+                suspicious++;
+                continue;
+            }
+
+            var msg = d.Message;
+            if (msg is null) continue;
+            if (msg.Contains("could not be found", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("does not exist in the namespace", StringComparison.OrdinalIgnoreCase) ||
+                msg.Contains("could not load file or assembly", StringComparison.OrdinalIgnoreCase))
+            {
+                suspicious++;
+            }
+        }
+
+        return suspicious >= 3
+            ? "Workspace diagnostics suggest missing NuGet assets or references. Run `dotnet restore` on the solution or project, then `workspace_reload`."
+            : null;
+    }
+
+    private static string? GetSolutionOrProjectFileName(string? loadedPath)
+    {
+        if (string.IsNullOrWhiteSpace(loadedPath)) return null;
+        var file = Path.GetFileName(loadedPath);
+        if (file.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
+            file.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase) ||
+            file.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            return file;
+        return file;
     }
 }

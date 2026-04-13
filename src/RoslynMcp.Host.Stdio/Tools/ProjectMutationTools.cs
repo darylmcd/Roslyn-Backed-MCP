@@ -11,7 +11,7 @@ public static class ProjectMutationTools
 {
 
     [McpServerTool(Name = "add_package_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
-     Description("Preview adding a PackageReference to a project file in the loaded workspace. Parameter naming note: Roslyn-layer mutation tools (this one, remove_package_reference_preview, add_project_reference_preview, scaffold_type_preview, etc.) take 'projectName' — while MSBuild-layer evaluation tools (evaluate_msbuild_property, evaluate_msbuild_items, get_msbuild_properties) take 'project'. The asymmetry is intentional (different layers) but the parameter name must match the tool.")]
+     Description("Preview adding a PackageReference to a project file in the loaded workspace.")]
     public static Task<string> PreviewAddPackageReference(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,

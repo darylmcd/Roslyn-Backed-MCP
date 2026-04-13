@@ -90,7 +90,7 @@ internal static class TestFixtureFileSystem
 
     private static void CopyRepositorySupportFiles(string repositoryRootPath, string destinationRoot)
     {
-        foreach (var fileName in new[] { "Directory.Build.props", "Directory.Packages.props", "global.json" })
+        foreach (var fileName in new[] { "Directory.Build.props", "Directory.Packages.props", "global.json", "BannedSymbols.txt" })
         {
             var sourcePath = Path.Combine(repositoryRootPath, fileName);
             if (File.Exists(sourcePath))

@@ -30,7 +30,10 @@ internal sealed class TestServiceContainer
     public required FileOperationService FileOperationService { get; init; }
     public required ProjectMutationService ProjectMutationService { get; init; }
     public required CrossProjectRefactoringService CrossProjectRefactoringService { get; init; }
-    public required OrchestrationService OrchestrationService { get; init; }
+    public required PackageMigrationOrchestrator PackageMigrationOrchestrator { get; init; }
+    public required ClassSplitOrchestrator ClassSplitOrchestrator { get; init; }
+    public required ExtractAndWireOrchestrator ExtractAndWireOrchestrator { get; init; }
+    public required CompositeApplyOrchestrator CompositeApplyOrchestrator { get; init; }
     public required ScaffoldingService ScaffoldingService { get; init; }
     public required DeadCodeService DeadCodeService { get; init; }
     public required SyntaxService SyntaxService { get; init; }
@@ -105,6 +108,7 @@ internal sealed class TestServiceContainer
         var crossProjectRefactoringService = new CrossProjectRefactoringService(
             workspaceManager,
             previewStore);
+        var compositePreviewStore = new CompositePreviewStore();
 
         return new TestServiceContainer
         {
@@ -176,14 +180,18 @@ internal sealed class TestServiceContainer
             ProjectMutationService = new ProjectMutationService(
                 workspaceManager,
                 new ProjectMutationPreviewStore(),
+                msBuildEvaluationService,
                 NullLogger<ProjectMutationService>.Instance),
             CrossProjectRefactoringService = crossProjectRefactoringService,
-            OrchestrationService = new OrchestrationService(
+            PackageMigrationOrchestrator = new PackageMigrationOrchestrator(workspaceManager, compositePreviewStore),
+            ClassSplitOrchestrator = new ClassSplitOrchestrator(workspaceManager, compositePreviewStore),
+            ExtractAndWireOrchestrator = new ExtractAndWireOrchestrator(
                 workspaceManager,
-                new CompositePreviewStore(),
+                compositePreviewStore,
                 previewStore,
                 crossProjectRefactoringService,
                 diRegistrationService),
+            CompositeApplyOrchestrator = new CompositeApplyOrchestrator(workspaceManager, compositePreviewStore, changeTracker),
             ScaffoldingService = new ScaffoldingService(
                 workspaceManager,
                 fileOperationService),

@@ -43,7 +43,10 @@ public abstract class TestBase
     protected static FileOperationService FileOperationService { get; private set; } = null!;
     protected static ProjectMutationService ProjectMutationService { get; private set; } = null!;
     protected static CrossProjectRefactoringService CrossProjectRefactoringService { get; private set; } = null!;
-    protected static OrchestrationService OrchestrationService { get; private set; } = null!;
+    protected static PackageMigrationOrchestrator PackageMigrationOrchestrator { get; private set; } = null!;
+    protected static ClassSplitOrchestrator ClassSplitOrchestrator { get; private set; } = null!;
+    protected static ExtractAndWireOrchestrator ExtractAndWireOrchestrator { get; private set; } = null!;
+    protected static CompositeApplyOrchestrator CompositeApplyOrchestrator { get; private set; } = null!;
     protected static ScaffoldingService ScaffoldingService { get; private set; } = null!;
     protected static DeadCodeService DeadCodeService { get; private set; } = null!;
     protected static SyntaxService SyntaxService { get; private set; } = null!;
@@ -130,7 +133,10 @@ public abstract class TestBase
         FileOperationService = services.FileOperationService;
         ProjectMutationService = services.ProjectMutationService;
         CrossProjectRefactoringService = services.CrossProjectRefactoringService;
-        OrchestrationService = services.OrchestrationService;
+        PackageMigrationOrchestrator = services.PackageMigrationOrchestrator;
+        ClassSplitOrchestrator = services.ClassSplitOrchestrator;
+        ExtractAndWireOrchestrator = services.ExtractAndWireOrchestrator;
+        CompositeApplyOrchestrator = services.CompositeApplyOrchestrator;
         ScaffoldingService = services.ScaffoldingService;
         DeadCodeService = services.DeadCodeService;
         SyntaxService = services.SyntaxService;

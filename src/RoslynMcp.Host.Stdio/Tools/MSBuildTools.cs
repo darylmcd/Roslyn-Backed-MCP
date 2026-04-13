@@ -9,37 +9,37 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class MSBuildTools
 {
     [McpServerTool(Name = "evaluate_msbuild_property", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("Evaluate a single MSBuild property for a project (e.g. TargetFramework, Nullable) using Microsoft.Build.Evaluation. Parameter naming note: MSBuild-layer tools (this one, evaluate_msbuild_items, get_msbuild_properties) take 'project' — while Roslyn-layer mutation tools such as add_package_reference_preview take 'projectName'. The asymmetry is intentional (different layers) but the parameter name must match the tool.")]
+     Description("Evaluate a single MSBuild property for a project (e.g. TargetFramework, Nullable) using Microsoft.Build.Evaluation.")]
     public static Task<string> EvaluateMsbuildProperty(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Project name as loaded in the workspace")] string project,
+        [Description("Project name as loaded in the workspace")] string projectName,
         [Description("Property name (e.g. TargetFramework)")] string propertyName,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("evaluate_msbuild_property", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await msbuildEvaluation.EvaluatePropertyAsync(workspaceId, project, propertyName, c);
+                var result = await msbuildEvaluation.EvaluatePropertyAsync(workspaceId, projectName, propertyName, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
 
     [McpServerTool(Name = "evaluate_msbuild_items", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
-     Description("List MSBuild items of a given type (e.g. Compile, PackageReference) with evaluated includes and metadata. Parameter naming note: MSBuild-layer tools take 'project'; Roslyn-layer mutation tools take 'projectName'. DocumentCount discrepancy note: when comparing 'evaluate_msbuild_items Compile' count N to workspace_load's DocumentCount, the latter may be N+3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that are not in the explicit <Compile> item list.")]
+     Description("List MSBuild items of a given type (e.g. Compile, PackageReference) with evaluated includes and metadata. DocumentCount discrepancy note: when comparing 'evaluate_msbuild_items Compile' count N to workspace_load's DocumentCount, the latter may be N+3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that are not in the explicit <Compile> item list.")]
     public static Task<string> EvaluateMsbuildItems(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Project name as loaded in the workspace")] string project,
+        [Description("Project name as loaded in the workspace")] string projectName,
         [Description("Item type (e.g. Compile, PackageReference)")] string itemType,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("evaluate_msbuild_items", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await msbuildEvaluation.EvaluateItemsAsync(workspaceId, project, itemType, c);
+                var result = await msbuildEvaluation.EvaluateItemsAsync(workspaceId, projectName, itemType, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
@@ -50,7 +50,7 @@ public static class MSBuildTools
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Project name as loaded in the workspace")] string project,
+        [Description("Project name as loaded in the workspace")] string projectName,
         [Description("Optional: case-insensitive substring filter applied to property names (e.g., 'Nullable', 'Target')")] string? propertyNameFilter = null,
         [Description("Optional: explicit allowlist of property names to return. Takes precedence over propertyNameFilter when supplied.")] string[]? includedNames = null,
         CancellationToken ct = default)
@@ -59,7 +59,7 @@ public static class MSBuildTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var result = await msbuildEvaluation.GetEvaluatedPropertiesAsync(
-                    workspaceId, project, propertyNameFilter, includedNames, c);
+                    workspaceId, projectName, propertyNameFilter, includedNames, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

@@ -47,6 +47,23 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
         Assert.IsTrue(errorOnly.AnalyzerDiagnostics.All(d => d.Severity == "Error"),
             "Severity filter must still narrow AnalyzerDiagnostics to Error rows.");
     }
+
+    [TestMethod]
+    public async Task GetDiagnosticsAsync_DefaultSeverityFloorIncludesInfoRowsWhenPresent()
+    {
+        var result = await DiagnosticService.GetDiagnosticsAsync(
+            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: null, diagnosticIdFilter: null, CancellationToken.None);
+
+        if (result.TotalInfo > 0)
+        {
+            var infoReturned =
+                result.CompilerDiagnostics.Count(d => string.Equals(d.Severity, "Info", StringComparison.OrdinalIgnoreCase))
+                + result.AnalyzerDiagnostics.Count(d => string.Equals(d.Severity, "Info", StringComparison.OrdinalIgnoreCase))
+                + result.WorkspaceDiagnostics.Count(d => string.Equals(d.Severity, "Info", StringComparison.OrdinalIgnoreCase));
+            Assert.IsTrue(infoReturned > 0,
+                "When totals report Info diagnostics, default (null) severity filter must include Info rows in returned lists.");
+        }
+    }
 }
 
 [TestClass]

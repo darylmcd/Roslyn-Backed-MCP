@@ -18,7 +18,8 @@ public static class MultiFileEditTools
         IEditService editService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Array of file edits. Each has filePath (string) and edits (array of TextEditDto with startLine, startColumn, endLine, endColumn, newText)")] FileEditsDto[] fileEdits,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("When false (default), each C# file is parsed after edits; parser errors block that file's apply.")] bool skipSyntaxCheck = false)
     {
         return ToolErrorHandler.ExecuteAsync("apply_multi_file_edit", () =>
             gate.RunWriteAsync(workspaceId, async c =>
@@ -29,7 +30,7 @@ public static class MultiFileEditTools
                     await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, fileEdit.FilePath, c).ConfigureAwait(false);
                 }
 
-                var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, c).ConfigureAwait(false);
+                var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, c, skipSyntaxCheck).ConfigureAwait(false);
                 return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
             }, ct));
     }
