@@ -154,6 +154,7 @@ Report section 11. One row per live skill (2026.04 snapshot: 11 skills). Mark `b
 | `dead-code` | | | | |
 | `document` | | | | |
 | `explain-error` | | | | |
+| `extract-method` | | | | |
 | `migrate-package` | | | | |
 | `refactor` | | | | |
 | `review` | | | | na |
