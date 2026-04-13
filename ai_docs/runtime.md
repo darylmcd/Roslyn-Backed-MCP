@@ -21,6 +21,9 @@ All commands below are available as `just` recipes. Run `just --list` for the fu
 | `just validate` | Fast local check (build + test) |
 | `just ci` | Mirrors CI pipeline (docs + release validation + vuln audit) |
 | `just run` | Start the stdio host process |
+| `just reinstall` | Full reinstall: Layer 1 (global tool) + Layer 2 (Claude Code plugin) |
+| `just tool-install-local` | Layer 1 only: pack + install global tool from local build |
+| `just plugin-reload` | Layer 2 only: reload Claude Code plugin from local repo |
 
 See `justfile` in the repo root for the complete recipe list including packaging, Docker, and security audit recipes.
 

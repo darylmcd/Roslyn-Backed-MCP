@@ -81,6 +81,33 @@ clean-all: clean
 pack:
     dotnet pack {{ host-project }} -c Release -o {{ nupkg-dir }}
 
+# Update or install global `roslynmcp` from nuget.org (package id Darylmcd.RoslynMcp)
+tool-update:
+    dotnet tool update -g Darylmcd.RoslynMcp || dotnet tool install -g Darylmcd.RoslynMcp
+    dotnet tool list -g
+
+# Pack Release nupkg, then install that build as the global tool (maintainer / dogfood).
+# Uninstalls legacy package id RoslynMcp if present, then installs Darylmcd.RoslynMcp from nupkg/.
+# Windows: one line so Version is read in the same pwsh invocation as install (each recipe line is a new shell).
+# Windows also ends roslynmcp.exe first so the global tool folder is not locked (same idea as ReinstallTool in the csproj).
+[unix]
+tool-install-local: pack
+    ver="$(dotnet msbuild -nologo {{ host-project }} -getProperty:Version)"
+    dotnet tool uninstall -g Darylmcd.RoslynMcp || true
+    dotnet tool uninstall -g RoslynMcp || true
+    dotnet tool install -g Darylmcd.RoslynMcp --add-source "{{ nupkg-dir }}" --version "$ver"
+
+[windows]
+tool-install-local: pack
+    $ver = (dotnet msbuild -nologo {{ host-project }} -getProperty:Version).Trim(); cmd /c "taskkill /F /IM roslynmcp.exe 1>nul 2>nul & dotnet tool uninstall -g Darylmcd.RoslynMcp 1>nul 2>nul & dotnet tool uninstall -g RoslynMcp 1>nul 2>nul & dotnet tool install -g Darylmcd.RoslynMcp --add-source {{ nupkg-dir }} --version $ver"
+
+# Reload the Claude Code plugin from the local repo (Layer 2)
+plugin-reload:
+    pwsh ./eng/update-claude-plugin.ps1
+
+# Full reinstall: Layer 1 (global tool) + Layer 2 (Claude Code plugin)
+reinstall: tool-install-local plugin-reload
+
 # Publish the host project (Release)
 publish-host:
     dotnet publish {{ host-project }} -c Release -o artifacts/publish/host-stdio
