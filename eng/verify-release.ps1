@@ -27,7 +27,10 @@ dotnet test $solutionPath -c $Configuration --no-build --nologo `
     --collect:"XPlat Code Coverage" `
     --results-directory $coverageDir `
     --logger "console;verbosity=normal"
-dotnet publish $hostProject -c $Configuration --no-build -o $publishDir
+# PublishReadyToRun (CrossGen) can fail on CI runners when the SDK's crossgen2
+# tooling has platform-specific issues. Disable for the verification publish step;
+# the NuGet pack step produces the distributable package independently.
+dotnet publish $hostProject -c $Configuration --no-build -o $publishDir -p:PublishReadyToRun=false
 
 $hashLines = Get-ChildItem -Path $publishDir -File -Recurse |
     Sort-Object FullName |
