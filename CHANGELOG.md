@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-04-13
+
+### Added
+
+- **`suggest_refactorings`** — read-only tool combining complexity metrics, LCOM4 cohesion analysis, and unused symbol detection into ranked refactoring suggestions with recommended tool sequences. Each suggestion includes severity (high/medium/low), category, target symbol location, and the tools to use.
+- **Stable promotions (3 tools):** `get_code_actions`, `preview_code_action`, `apply_code_action` promoted from experimental to stable. Selection-range refactorings (introduce parameter, inline temporary) verified working in v1.10.0.
+- **Change tracker coverage expansion:** `ProjectMutationService.ApplyProjectMutationAsync` and `OrchestrationService.ApplyCompositeAsync` now record changes via `IChangeTracker`, closing the blind spot for project mutations and composite operations.
+- 128 tools (69 stable / 59 experimental).
+
 ## [1.10.0] - 2026-04-12
 
 ### Added

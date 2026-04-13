@@ -54,6 +54,7 @@ internal sealed class TestServiceContainer
     public required MsBuildEvaluationService MsBuildEvaluationService { get; init; }
     public required ExtractMethodService ExtractMethodService { get; init; }
     public required ChangeTracker ChangeTracker { get; init; }
+    public required RefactoringSuggestionService RefactoringSuggestionService { get; init; }
 
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
@@ -238,7 +239,12 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 previewStore,
                 NullLogger<ExtractMethodService>.Instance),
-            ChangeTracker = changeTracker
+            ChangeTracker = changeTracker,
+            RefactoringSuggestionService = new RefactoringSuggestionService(
+                new CodeMetricsService(workspaceManager, NullLogger<CodeMetricsService>.Instance),
+                new CohesionAnalysisService(workspaceManager, NullLogger<CohesionAnalysisService>.Instance),
+                new UnusedCodeAnalyzer(workspaceManager, compilationCache, NullLogger<UnusedCodeAnalyzer>.Instance),
+                NullLogger<RefactoringSuggestionService>.Instance)
         };
     }
 }

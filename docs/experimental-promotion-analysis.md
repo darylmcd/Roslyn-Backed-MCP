@@ -16,8 +16,8 @@ This document supports the post-release roadmap item **“promote experimental �
 
 | Tier | Tools | Resources | Prompts |
 |------|-------|-----------|---------|
-| Stable | 66 | 9 stable / 0 experimental | 0 stable / 16 experimental |
-| Experimental | 57 | — | — |
+| Stable | 69 | 9 stable / 0 experimental | 0 stable / 16 experimental |
+| Experimental | 59 | — | — |
 
 Authoritative counts: `ServerSurfaceCatalog.GetSummary()` / `server_info` / `roslyn://server/catalog`.
 

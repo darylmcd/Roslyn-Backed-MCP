@@ -37,6 +37,7 @@ Supported stable tool families:
 - read-only analysis helpers promoted in v1.6.0: `compile_check`, `list_analyzers`, `find_consumers`, `get_cohesion_metrics`, `find_shared_members`, `analyze_snippet`
 - read-only advanced-analysis helpers promoted in v1.8.0: `find_unused_symbols`, `get_di_registrations`, `get_complexity_metrics`, `find_reflection_usages`, `get_namespace_dependencies`, `get_nuget_dependencies`
 - promoted in v1.9.0: `semantic_search`, `analyze_data_flow`, `analyze_control_flow`, `evaluate_csharp`
+- promoted in v1.11.0: `get_code_actions`, `preview_code_action`, `apply_code_action`
 - preview/apply refactoring tools
 
 Stable resources:

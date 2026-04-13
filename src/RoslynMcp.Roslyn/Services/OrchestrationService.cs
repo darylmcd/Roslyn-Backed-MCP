@@ -15,19 +15,22 @@ public sealed class OrchestrationService : IOrchestrationService
     private readonly IPreviewStore _previewStore;
     private readonly ICrossProjectRefactoringService _crossProjectRefactoringService;
     private readonly IDiRegistrationService _diRegistrationService;
+    private readonly IChangeTracker? _changeTracker;
 
     public OrchestrationService(
         IWorkspaceManager workspace,
         ICompositePreviewStore compositePreviewStore,
         IPreviewStore previewStore,
         ICrossProjectRefactoringService crossProjectRefactoringService,
-        IDiRegistrationService diRegistrationService)
+        IDiRegistrationService diRegistrationService,
+        IChangeTracker? changeTracker = null)
     {
         _workspace = workspace;
         _compositePreviewStore = compositePreviewStore;
         _previewStore = previewStore;
         _crossProjectRefactoringService = crossProjectRefactoringService;
         _diRegistrationService = diRegistrationService;
+        _changeTracker = changeTracker;
     }
 
     public async Task<RefactoringPreviewDto> PreviewMigratePackageAsync(
@@ -371,7 +374,9 @@ public sealed class OrchestrationService : IOrchestrationService
 
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
             _compositePreviewStore.Invalidate(previewToken);
-            return new ApplyResultDto(true, appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), null);
+            var distinctFiles = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            _changeTracker?.RecordChange(workspaceId, $"Composite operation ({distinctFiles.Count} files)", distinctFiles, "apply_composite_preview");
+            return new ApplyResultDto(true, distinctFiles, null);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {

@@ -104,9 +104,9 @@ public static class ServerSurfaceCatalog
         Tool("apply_composite_preview", "orchestration", "experimental", false, true, "Apply a previously previewed orchestration operation."),
         Tool("test_coverage", "validation", "stable", false, false, "Run coverage collection for test execution."),
         Tool("get_syntax_tree", "syntax", "experimental", true, false, "Return a structured syntax tree for a document or range."),
-        Tool("get_code_actions", "code-actions", "experimental", true, false, "List Roslyn code fixes and refactorings at a location or selection range. Selection-range refactorings include introduce parameter and inline temporary variable. Pass endLine/endColumn for selection-range actions."),
-        Tool("preview_code_action", "code-actions", "experimental", true, false, "Preview a Roslyn code action before applying it."),
-        Tool("apply_code_action", "code-actions", "experimental", false, true, "Apply a previously previewed Roslyn code action."),
+        Tool("get_code_actions", "code-actions", "stable", true, false, "List Roslyn code fixes and refactorings at a location or selection range. Selection-range refactorings include introduce parameter and inline temporary variable. Pass endLine/endColumn for selection-range actions."),
+        Tool("preview_code_action", "code-actions", "stable", true, false, "Preview a Roslyn code action before applying it."),
+        Tool("apply_code_action", "code-actions", "stable", false, true, "Apply a previously previewed Roslyn code action."),
 
         Tool("security_diagnostics", "security", "stable", true, false, "Return security-relevant diagnostics with OWASP categorization and fix hints."),
         Tool("security_analyzer_status", "security", "stable", true, false, "Check which security analyzer packages are present and recommend missing ones."),
@@ -126,6 +126,7 @@ public static class ServerSurfaceCatalog
         Tool("extract_type_apply", "refactoring", "experimental", false, true, "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type."),
 
         Tool("workspace_changes", "workspace", "experimental", true, false, "List all mutations applied to a workspace during this session, with descriptions, affected files, tool names, and timestamps."),
+        Tool("suggest_refactorings", "advanced-analysis", "experimental", true, false, "Analyze the workspace and return ranked refactoring suggestions based on complexity, cohesion (LCOM4), and unused symbol detection. Each suggestion includes severity, target, and recommended tool sequence."),
 
         Tool("extract_method_preview", "refactoring", "experimental", true, false, "Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values."),
         Tool("extract_method_apply", "refactoring", "experimental", false, true, "Apply a previously previewed extract method refactoring."),
