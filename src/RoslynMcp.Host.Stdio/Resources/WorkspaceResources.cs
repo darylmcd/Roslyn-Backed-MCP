@@ -33,23 +33,25 @@ public static class WorkspaceResources
 
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/status", Name = "workspace_status", MimeType = "application/json")]
     [Description("Get a lean summary of a loaded workspace's status (counts and load state, no per-project tree). For the verbose payload use roslyn://workspace/{workspaceId}/status/verbose. URI uses the workspace_status template; see roslyn://server/resource-templates if your client does not list template URIs.")]
-    public static string GetWorkspaceStatus(
+    public static Task<string> GetWorkspaceStatus(
         IWorkspaceManager workspace,
-        [Description("The workspace session identifier")] string workspaceId) =>
-        ToolErrorHandler.ExecuteResource("roslyn://workspace/{workspaceId}/status", () =>
+        [Description("The workspace session identifier")] string workspaceId,
+        CancellationToken ct = default) =>
+        ToolErrorHandler.ExecuteResourceAsync("roslyn://workspace/{workspaceId}/status", async () =>
         {
-            var status = workspace.GetStatus(workspaceId);
+            var status = await workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
         });
 
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/status/verbose", Name = "workspace_status_verbose", MimeType = "application/json")]
     [Description("Verbose variant of roslyn://workspace/{workspaceId}/status — returns the full per-project tree and workspace diagnostics for the workspace. Prefer the summary resource at roslyn://workspace/{workspaceId}/status unless you need the full payload.")]
-    public static string GetWorkspaceStatusVerbose(
+    public static Task<string> GetWorkspaceStatusVerbose(
         IWorkspaceManager workspace,
-        [Description("The workspace session identifier")] string workspaceId) =>
-        ToolErrorHandler.ExecuteResource("roslyn://workspace/{workspaceId}/status/verbose", () =>
+        [Description("The workspace session identifier")] string workspaceId,
+        CancellationToken ct = default) =>
+        ToolErrorHandler.ExecuteResourceAsync("roslyn://workspace/{workspaceId}/status/verbose", async () =>
         {
-            var status = workspace.GetStatus(workspaceId);
+            var status = await workspace.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
             return JsonSerializer.Serialize(status, JsonDefaults.Indented);
         });
 

@@ -19,13 +19,14 @@ public static class EditTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file to edit")] string filePath,
         [Description("Array of text edits. Each edit has startLine, startColumn, endLine, endColumn (1-based), and newText")] TextEditDto[] edits,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [Description("When false (default), C# files are parsed after edits and lexer/parser errors block the apply. Set true only for intentional intermediate invalid states.")] bool skipSyntaxCheck = false)
     {
         return ToolErrorHandler.ExecuteAsync("apply_text_edit", () =>
             gate.RunWriteAsync(workspaceId, async c =>
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-                var result = await editService.ApplyTextEditsAsync(workspaceId, filePath, edits, c);
+                var result = await editService.ApplyTextEditsAsync(workspaceId, filePath, edits, c, skipSyntaxCheck);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

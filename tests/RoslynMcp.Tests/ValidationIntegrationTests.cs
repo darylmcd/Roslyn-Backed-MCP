@@ -1,3 +1,5 @@
+using RoslynMcp.Core.Models;
+
 namespace RoslynMcp.Tests;
 
 [TestClass]
@@ -100,7 +102,13 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
 
             Assert.IsFalse(result.Execution.Succeeded, "Test run should report failure for the modified fixture.");
             Assert.AreEqual(1, result.Failed);
-            Assert.IsTrue(result.Failures.Any(failure => failure.DisplayName == "CountAnimals_Returns_Total_Count"));
+            Assert.IsTrue(
+                result.Failures.Any(IsCountAnimalsFailure),
+                $"Expected failing test CountAnimals_Returns_Total_Count in failures. Got: {string.Join("; ", result.Failures.Select(f => $"{f.DisplayName} | {f.FullyQualifiedName}"))}");
+
+            static bool IsCountAnimalsFailure(TestFailureDto failure) =>
+                string.Equals(failure.DisplayName, "CountAnimals_Returns_Total_Count", StringComparison.Ordinal)
+                || (failure.FullyQualifiedName?.Contains("CountAnimals_Returns_Total_Count", StringComparison.Ordinal) ?? false);
         }
         finally
         {

@@ -17,17 +17,22 @@ public static class AnalysisTools
         Analyzer,
     }
 
-    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get diagnostics (errors, warnings, infos, hints) for the workspace, optionally filtered by project, file, or severity. Includes BOTH compiler diagnostics (CS*) AND analyzer diagnostics (CA*, IDE*) — contrast with compile_check which is CS-only. Severity filter behavior: totalError/totalWarning/totalInfo in the response reflect counts across the WHOLE unfiltered result set; the severity parameter filters the returned page, so it is possible to see totalInfo > 0 with an empty page when severity=Error or when Info-severity diagnostics are paged past by offset. Full-solution scans on large graphs can take 30–40s — narrow by project or file when possible, and raise offset/limit to page. Response JSON fields: totalErrors, totalWarnings, totalInfo (severity-filter invariant totals), compilerErrors, analyzerErrors, workspaceErrors (source-specific error counts), severityHint (present when the page is empty but lower-severity diagnostics exist). Default severity is Warning — pass severity='Info' to include Info-level diagnostics.")]
+    [McpServerTool(Name = "project_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Get diagnostics for the workspace (compiler CS*, analyzers CA*/IDE*, and workspace load issues). " +
+        "Contrast with compile_check (CS-only). Totals totalErrors/totalWarnings/totalInfo count the full queried scope and ignore the severity filter; " +
+        "the severity parameter only narrows which rows are collected (default minimum severity is Info when omitted — Hidden is still excluded). " +
+        "Use offset/limit to page; limit defaults to 200 to cap payload size. When hasMore is true, increase offset or narrow project/file filters. " +
+        "Large solutions can take tens of seconds — prefer projectName or file filters.")]
     public static Task<string> GetProjectDiagnostics(
         IWorkspaceExecutionGate gate,
         IDiagnosticService diagnosticService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: filter by file path")] string? file = null,
-        [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden)")] string? severity = null,
+        [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden). Omit for Info floor.")] string? severity = null,
         [Description("Optional: filter to a specific diagnostic ID (e.g., CS8019, CA1000)")] string? diagnosticId = null,
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
-        [Description("Maximum number of diagnostics to return (default: 50)")] int limit = 50,
+        [Description("Maximum diagnostics to return per call (default: 200); primary payload cap.")] int limit = 200,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("project_diagnostics", () =>
@@ -36,7 +41,7 @@ public static class AnalysisTools
             ParameterValidation.ValidatePagination(offset, limit);
             return gate.RunReadAsync(workspaceId, async c =>
             {
-                var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, project, file, severity, diagnosticId, c);
+                var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, projectName, file, severity, diagnosticId, c);
 
                 var allDiagnostics = results.WorkspaceDiagnostics
                     .Select(diagnostic => (Bucket: DiagnosticBucket.Workspace, Diagnostic: diagnostic))
@@ -48,6 +53,8 @@ public static class AnalysisTools
                     .Skip(offset)
                     .Take(limit)
                     .ToList();
+
+                var hasMore = offset + pagedDiagnostics.Count < allDiagnostics.Count;
 
                 var restoreHint = allDiagnostics.Any(entry =>
                     entry.Bucket == DiagnosticBucket.Compiler &&
@@ -67,7 +74,10 @@ public static class AnalysisTools
                     offset,
                     limit,
                     returnedDiagnostics = pagedDiagnostics.Count,
-                    hasMore = offset + pagedDiagnostics.Count < allDiagnostics.Count,
+                    hasMore,
+                    paginationNote = hasMore
+                        ? "More diagnostics exist in this scope; increase offset, raise limit, or narrow project/file/diagnosticId filters."
+                        : null,
                     restoreHint = restoreHint
                         ? "Many missing-type errors often mean NuGet restore has not been run. Run `dotnet restore` on the solution, then `workspace_reload`."
                         : null,

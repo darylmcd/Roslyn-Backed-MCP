@@ -44,7 +44,7 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(entry.Description, "Apply text edit");
 
         // Revert and verify byte-for-byte restore.
-        var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "Revert should succeed.");
 
         var afterRevert = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
@@ -87,7 +87,7 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsNotNull(entry);
         StringAssert.Contains(entry.Description, "2 file(s)");
 
-        var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "Multi-file revert should succeed.");
 
         var revertedDog = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
@@ -128,7 +128,7 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(editResult.Success);
 
         // Revert: should restore the post-rename state (rename is preserved).
-        var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted);
 
         var afterRevert = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);

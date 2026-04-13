@@ -16,7 +16,7 @@ public static class CohesionAnalysisTools
         ICohesionAnalysisService cohesionAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by source file path")] string? filePath = null,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: minimum instance method count threshold (default: 2)")] int? minMethods = null,
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         [Description("When true, include interface types in results and mark them with TypeKind=Interface")] bool includeInterfaces = false,
@@ -28,7 +28,7 @@ public static class CohesionAnalysisTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await cohesionAnalysisService.GetCohesionMetricsAsync(
-                    workspaceId, filePath, project, minMethods, limit, includeInterfaces, excludeTestProjects, c);
+                    workspaceId, filePath, projectName, minMethods, limit, includeInterfaces, excludeTestProjects, c);
 
                 if (excludeTests)
                 {

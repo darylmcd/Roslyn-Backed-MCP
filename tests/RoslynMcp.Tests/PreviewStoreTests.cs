@@ -1,4 +1,4 @@
-using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
 using Microsoft.CodeAnalysis;
 
 namespace RoslynMcp.Tests;

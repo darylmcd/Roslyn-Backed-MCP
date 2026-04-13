@@ -13,7 +13,6 @@ public static class UndoTools
     public static Task<string> RevertLastApply(
         IWorkspaceExecutionGate gate,
         IUndoService undoService,
-        IWorkspaceManager workspace,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
@@ -38,7 +37,7 @@ public static class UndoTools
                     return JsonSerializer.Serialize(nothingResult, JsonDefaults.Indented);
                 }
 
-                var success = await undoService.RevertAsync(workspaceId, workspace, c).ConfigureAwait(false);
+                var success = await undoService.RevertAsync(workspaceId, c).ConfigureAwait(false);
                 if (!success)
                 {
                     var failResult = new

@@ -14,14 +14,14 @@ public static class SecurityTools
         IWorkspaceExecutionGate gate,
         ISecurityDiagnosticService securityService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: filter by file path")] string? file = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("security_diagnostics", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var results = await securityService.GetSecurityDiagnosticsAsync(workspaceId, project, file, c);
+                var results = await securityService.GetSecurityDiagnosticsAsync(workspaceId, projectName, file, c);
                 return JsonSerializer.Serialize(results, JsonDefaults.Indented);
             }, ct));
     }
@@ -47,14 +47,14 @@ public static class SecurityTools
         IWorkspaceExecutionGate gate,
         INuGetDependencyService nuGetDependencyService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: restrict scan to a specific project name")] string? project = null,
+        [Description("Optional: restrict scan to a specific project name")] string? projectName = null,
         [Description("Include transitive (indirect) dependencies in the scan. Default: false")] bool includeTransitive = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("nuget_vulnerability_scan", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, project, includeTransitive, c);
+                var result = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, projectName, includeTransitive, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

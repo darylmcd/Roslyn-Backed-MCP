@@ -13,7 +13,7 @@ public interface IDiagnosticService
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="projectFilter">Restricts results to the named project, or <see langword="null"/> for all projects.</param>
     /// <param name="fileFilter">Restricts results to a specific file path, or <see langword="null"/> for all files.</param>
-    /// <param name="severityFilter">Restricts results to a specific severity level (e.g., <c>Error</c>, <c>Warning</c>), or <see langword="null"/> for all severities.</param>
+    /// <param name="severityFilter">Minimum severity for returned rows (e.g., <c>Error</c>, <c>Warning</c>, <c>Info</c>). <see langword="null"/> defaults to <c>Info</c> (Hidden is still excluded at collection time).</param>
     /// <param name="diagnosticIdFilter">Restricts results to a specific diagnostic ID (e.g., <c>CS0246</c>, <c>CA1000</c>), or <see langword="null"/> for all diagnostics.</param>
     /// <param name="ct">Cancellation token.</param>
     Task<DiagnosticsResultDto> GetDiagnosticsAsync(

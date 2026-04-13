@@ -100,7 +100,10 @@ public static class WorkspaceTools
         });
     }
 
-    [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the current status of the loaded workspace. Returns a lean summary by default — pass verbose=true for the full per-project tree and workspace diagnostics.")]
+    [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Cheap health check after workspace_load — call this first before compile_check or heavy tools. " +
+        "Default (verbose=false) returns summary JSON: isReady, isStale, workspaceErrorCount, restoreHint, solutionFileName, counts. " +
+        "Pass verbose=true for the full per-project tree and workspace diagnostics.")]
     public static Task<string> GetWorkspaceStatus(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -117,6 +120,15 @@ public static class WorkspaceTools
                     : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
             }, ct));
     }
+
+    [McpServerTool(Name = "workspace_health", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Alias for workspace_status with verbose=false — same summary JSON (isReady, restoreHint, solutionFileName, error counts). Use for agent bootstrap right after workspace_load.")]
+    public static Task<string> GetWorkspaceHealth(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        CancellationToken ct = default) =>
+        GetWorkspaceStatus(gate, workspace, workspaceId, verbose: false, ct);
 
     [McpServerTool(Name = "project_graph", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the project dependency graph and project metadata for a loaded workspace")]
     public static Task<string> GetProjectGraph(

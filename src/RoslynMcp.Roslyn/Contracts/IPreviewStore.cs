@@ -1,6 +1,6 @@
 using Microsoft.CodeAnalysis;
 
-namespace RoslynMcp.Core.Services;
+namespace RoslynMcp.Roslyn.Contracts;
 
 /// <summary>
 /// Stores and retrieves pending Roslyn <see cref="Solution"/> previews between a preview call and its

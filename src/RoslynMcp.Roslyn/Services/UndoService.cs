@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using Microsoft.Extensions.Logging;
@@ -77,10 +78,12 @@ public sealed class UndoService : IUndoService, IDisposable
         return new UndoEntry(snapshot.WorkspaceId, snapshot.Description, snapshot.AppliedAtUtc);
     }
 
-    public async Task<bool> RevertAsync(string workspaceId, IWorkspaceManager workspace, CancellationToken cancellationToken = default)
+    public async Task<bool> RevertAsync(string workspaceId, CancellationToken cancellationToken = default)
     {
         if (!_snapshots.TryRemove(workspaceId, out var snapshot))
             return false;
+
+        var workspace = _workspaceManager;
 
         // Fast path: the caller provided an explicit file-snapshot list. Restore those
         // files directly — authoritative, independent of the workspace solution state.

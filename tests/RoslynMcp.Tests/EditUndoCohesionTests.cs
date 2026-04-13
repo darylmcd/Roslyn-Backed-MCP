@@ -108,6 +108,54 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
             "A rejected edit must not leave disk in a mutated state.");
     }
 
+    [TestMethod]
+    public async Task ApplyTextEdit_OverlappingSpans_ThrowsArgumentException()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        // Two edits on line 5 whose spans overlap (apply-text-edit-overlap).
+        var e1 = new TextEditDto(5, 5, 5, 12, "x");
+        var e2 = new TextEditDto(5, 6, 5, 20, "y");
+
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { e1, e2 }, CancellationToken.None));
+        StringAssert.Contains(ex.Message, "overlapping");
+    }
+
+    [TestMethod]
+    public async Task ApplyTextEdit_CSharpSyntaxError_BlocksApply_ReturnsSyntaxErrors()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var originalText = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+
+        // Remove the closing brace of the class (line 13: `}`).
+        var edit = new TextEditDto(13, 1, 13, 2, "");
+        var result = await EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, CancellationToken.None);
+
+        Assert.IsFalse(result.Success);
+        Assert.IsNotNull(result.SyntaxErrors);
+        Assert.IsTrue(result.SyntaxErrors!.Count > 0, "Parser should report at least one error.");
+
+        var after = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        Assert.AreEqual(originalText, after, "Syntax check must block disk write.");
+    }
+
+    [TestMethod]
+    public async Task ApplyTextEdit_SkipSyntaxCheck_AllowsInvalidCSharp()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        var edit = new TextEditDto(13, 1, 13, 2, "");
+        var result = await EditService.ApplyTextEditsAsync(
+            workspace.WorkspaceId, dogFilePath, new[] { edit }, CancellationToken.None, skipSyntaxCheck: true);
+
+        Assert.IsTrue(result.Success);
+        Assert.IsNull(result.SyntaxErrors);
+    }
+
     // ------------------------------------------------------------------
     // revert-last-apply-disk-consistency
     // ------------------------------------------------------------------
@@ -136,7 +184,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
 
         // Revert must restore the original byte-for-byte — the file-snapshot fast path
         // writes the pre-apply text regardless of any out-of-band drift.
-        var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted, "Revert must report success.");
 
         var afterRevert = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
@@ -172,7 +220,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         Assert.IsNotNull(undoEntry, "set_editorconfig_option must register an undo entry.");
         StringAssert.Contains(undoEntry.Description, ".editorconfig");
 
-        var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted);
 
         var afterRevert = await File.ReadAllTextAsync(editorconfigPath, CancellationToken.None);
@@ -203,7 +251,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
 
         Assert.IsTrue(File.Exists(setResult.EditorConfigPath), "Set should have created the .editorconfig file.");
 
-        var reverted = await UndoService.RevertAsync(workspaceId, WorkspaceManager, CancellationToken.None);
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
         Assert.IsTrue(reverted);
 
         Assert.IsFalse(File.Exists(setResult.EditorConfigPath),

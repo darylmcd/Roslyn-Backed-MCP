@@ -9,7 +9,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class RefactoringTools
 {
 
-    [McpServerTool(Name = "rename_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol")]
+    [McpServerTool(Name = "rename_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol. Prefer symbolHandle from enclosing_symbol or document_symbols for precise targeting — line/column can resolve an adjacent symbol on busy lines (tuple deconstruction, multiple declarations).")]
     public static Task<string> PreviewRename(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,

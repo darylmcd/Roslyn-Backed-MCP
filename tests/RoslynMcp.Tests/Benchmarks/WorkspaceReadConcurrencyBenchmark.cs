@@ -64,7 +64,7 @@ public sealed class WorkspaceReadConcurrencyBenchmark
         return sw.Elapsed;
     }
 
-    private sealed class BenchmarkWorkspaceManager : Core.Services.IWorkspaceManager
+    private sealed class BenchmarkWorkspaceManager : IWorkspaceManager
     {
         public event Action<string>? WorkspaceClosed { add { } remove { } }
 

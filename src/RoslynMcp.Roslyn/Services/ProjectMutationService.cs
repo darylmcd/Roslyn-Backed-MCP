@@ -25,17 +25,20 @@ public sealed class ProjectMutationService : IProjectMutationService
 
     private readonly IWorkspaceManager _workspace;
     private readonly IProjectMutationPreviewStore _previewStore;
+    private readonly IMsBuildEvaluationService _msbuildEvaluation;
     private readonly ILogger<ProjectMutationService> _logger;
     private readonly IChangeTracker? _changeTracker;
 
     public ProjectMutationService(
         IWorkspaceManager workspace,
         IProjectMutationPreviewStore previewStore,
+        IMsBuildEvaluationService msbuildEvaluation,
         ILogger<ProjectMutationService> logger,
         IChangeTracker? changeTracker = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
+        _msbuildEvaluation = msbuildEvaluation;
         _logger = logger;
         _changeTracker = changeTracker;
     }
@@ -167,9 +170,21 @@ public sealed class ProjectMutationService : IProjectMutationService
         }, $"Set project property '{request.PropertyName}'", ct);
     }
 
-    public Task<RefactoringPreviewDto> PreviewAddTargetFrameworkAsync(string workspaceId, AddTargetFrameworkDto request, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewAddTargetFrameworkAsync(string workspaceId, AddTargetFrameworkDto request, CancellationToken ct)
     {
-        return PreviewProjectMutationAsync(workspaceId, request.ProjectName, document =>
+        var project = ResolveProject(workspaceId, request.ProjectName);
+        string? evalTf = null;
+        string? evalTfs = null;
+        var projectPath = project.FilePath!;
+        var sniffText = await File.ReadAllTextAsync(projectPath, ct).ConfigureAwait(false);
+        var sniffDoc = XDocument.Parse(sniffText, LoadOptions.PreserveWhitespace);
+        if (!sniffDoc.Descendants("TargetFramework").Any() && !sniffDoc.Descendants("TargetFrameworks").Any())
+        {
+            evalTf = (await _msbuildEvaluation.EvaluatePropertyAsync(workspaceId, request.ProjectName, "TargetFramework", ct).ConfigureAwait(false)).EvaluatedValue;
+            evalTfs = (await _msbuildEvaluation.EvaluatePropertyAsync(workspaceId, request.ProjectName, "TargetFrameworks", ct).ConfigureAwait(false)).EvaluatedValue;
+        }
+
+        return await PreviewProjectMutationAsync(workspaceId, project, document =>
         {
             var frameworksElement = document.Descendants("TargetFrameworks").FirstOrDefault();
             if (frameworksElement is not null)
@@ -185,22 +200,56 @@ public sealed class ProjectMutationService : IProjectMutationService
                 return;
             }
 
-            var targetFrameworkElement = document.Descendants("TargetFramework").FirstOrDefault()
-                ?? throw new InvalidOperationException("Project file does not declare TargetFramework or TargetFrameworks.");
+            var targetFrameworkElement = document.Descendants("TargetFramework").FirstOrDefault();
+            if (targetFrameworkElement is not null)
+            {
+                if (string.Equals(targetFrameworkElement.Value, request.TargetFramework, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException($"Target framework '{request.TargetFramework}' already exists.");
+                }
 
-            if (string.Equals(targetFrameworkElement.Value, request.TargetFramework, StringComparison.OrdinalIgnoreCase))
+                targetFrameworkElement.Name = "TargetFrameworks";
+                targetFrameworkElement.Value = string.Join(";", new[] { targetFrameworkElement.Value, request.TargetFramework });
+                return;
+            }
+
+            // No explicit TF in the .csproj — resolve via MSBuild (Directory.Build.props / SDK imports).
+            var baseline = !string.IsNullOrWhiteSpace(evalTfs) ? evalTfs : evalTf;
+            if (string.IsNullOrWhiteSpace(baseline))
+            {
+                throw new InvalidOperationException(
+                    "Project file does not declare <TargetFramework> or <TargetFrameworks>, and MSBuild evaluation did not return a value. " +
+                    "Ensure the project loads in the workspace and that imports define TargetFramework, or add an explicit element to the .csproj.");
+            }
+
+            var list = ParseTargetFrameworks(baseline);
+            if (list.Contains(request.TargetFramework, StringComparer.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException($"Target framework '{request.TargetFramework}' already exists.");
             }
 
-            targetFrameworkElement.Name = "TargetFrameworks";
-            targetFrameworkElement.Value = string.Join(";", new[] { targetFrameworkElement.Value, request.TargetFramework });
-        }, $"Add target framework '{request.TargetFramework}'", ct);
+            list.Add(request.TargetFramework);
+            var propertyGroup = new XElement("PropertyGroup");
+            propertyGroup.Add(new XElement("TargetFrameworks", string.Join(";", list)));
+            InsertFirstElementChildWithFormatting(document, propertyGroup);
+        }, $"Add target framework '{request.TargetFramework}'", ct).ConfigureAwait(false);
     }
 
-    public Task<RefactoringPreviewDto> PreviewRemoveTargetFrameworkAsync(string workspaceId, RemoveTargetFrameworkDto request, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewRemoveTargetFrameworkAsync(string workspaceId, RemoveTargetFrameworkDto request, CancellationToken ct)
     {
-        return PreviewProjectMutationAsync(workspaceId, request.ProjectName, document =>
+        var project = ResolveProject(workspaceId, request.ProjectName);
+        string? evalTf = null;
+        string? evalTfs = null;
+        var projectPath = project.FilePath!;
+        var sniffText = await File.ReadAllTextAsync(projectPath, ct).ConfigureAwait(false);
+        var sniffDoc = XDocument.Parse(sniffText, LoadOptions.PreserveWhitespace);
+        if (!sniffDoc.Descendants("TargetFramework").Any() && !sniffDoc.Descendants("TargetFrameworks").Any())
+        {
+            evalTf = (await _msbuildEvaluation.EvaluatePropertyAsync(workspaceId, request.ProjectName, "TargetFramework", ct).ConfigureAwait(false)).EvaluatedValue;
+            evalTfs = (await _msbuildEvaluation.EvaluatePropertyAsync(workspaceId, request.ProjectName, "TargetFrameworks", ct).ConfigureAwait(false)).EvaluatedValue;
+        }
+
+        return await PreviewProjectMutationAsync(workspaceId, project, document =>
         {
             var frameworksElement = document.Descendants("TargetFrameworks").FirstOrDefault();
             if (frameworksElement is not null)
@@ -228,16 +277,50 @@ public sealed class ProjectMutationService : IProjectMutationService
                 return;
             }
 
-            var targetFrameworkElement = document.Descendants("TargetFramework").FirstOrDefault()
-                ?? throw new InvalidOperationException("Project file does not declare TargetFramework or TargetFrameworks.");
+            var targetFrameworkElement = document.Descendants("TargetFramework").FirstOrDefault();
+            if (targetFrameworkElement is not null)
+            {
+                if (!string.Equals(targetFrameworkElement.Value, request.TargetFramework, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException($"Target framework '{request.TargetFramework}' was not found.");
+                }
 
-            if (!string.Equals(targetFrameworkElement.Value, request.TargetFramework, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Cannot remove the only target framework from a project.");
+            }
+
+            var baseline = !string.IsNullOrWhiteSpace(evalTfs) ? evalTfs : evalTf;
+            if (string.IsNullOrWhiteSpace(baseline))
+            {
+                throw new InvalidOperationException(
+                    "Project file does not declare <TargetFramework> or <TargetFrameworks>, and MSBuild evaluation did not return a value.");
+            }
+
+            var list = ParseTargetFrameworks(baseline);
+            var removedImplicit = list.RemoveAll(value => string.Equals(value, request.TargetFramework, StringComparison.OrdinalIgnoreCase));
+            if (removedImplicit == 0)
             {
                 throw new InvalidOperationException($"Target framework '{request.TargetFramework}' was not found.");
             }
 
-            throw new InvalidOperationException("Cannot remove the only target framework from a project.");
-        }, $"Remove target framework '{request.TargetFramework}'", ct);
+            if (list.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Removing this target framework would leave the project with none. The value currently comes from MSBuild imports (e.g. Directory.Build.props). " +
+                    "Edit that file or add an explicit <TargetFramework> override in this .csproj.");
+            }
+
+            var propertyGroup = new XElement("PropertyGroup");
+            if (list.Count == 1)
+            {
+                propertyGroup.Add(new XElement("TargetFramework", list[0]));
+            }
+            else
+            {
+                propertyGroup.Add(new XElement("TargetFrameworks", string.Join(";", list)));
+            }
+
+            InsertFirstElementChildWithFormatting(document, propertyGroup);
+        }, $"Remove target framework '{request.TargetFramework}'", ct).ConfigureAwait(false);
     }
 
     public Task<RefactoringPreviewDto> PreviewSetConditionalPropertyAsync(string workspaceId, SetConditionalPropertyDto request, CancellationToken ct)

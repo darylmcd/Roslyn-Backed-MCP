@@ -28,14 +28,14 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         InjectCentralPackageVersion(workspace.GetPath("Directory.Packages.props"), "Legacy.Package", "1.0.0");
         await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await OrchestrationService.PreviewMigratePackageAsync(
+        var preview = await PackageMigrationOrchestrator.PreviewMigratePackageAsync(
             workspace.WorkspaceId,
             "Legacy.Package",
             "Modern.Package",
             "2.5.0",
             CancellationToken.None);
 
-        var applyResult = await OrchestrationService.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var libXml = XDocument.Load(sampleLibProject);
@@ -57,7 +57,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
         var newFilePath = workspace.GetPath("SampleLib", "Dog.Behavior.cs");
 
-        var preview = await OrchestrationService.PreviewSplitClassAsync(
+        var preview = await ClassSplitOrchestrator.PreviewSplitClassAsync(
             workspace.WorkspaceId,
             dogFilePath,
             "Dog",
@@ -65,7 +65,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             "Dog.Behavior.cs",
             CancellationToken.None);
 
-        var applyResult = await OrchestrationService.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(newFilePath));
 
@@ -92,7 +92,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
         await workspace.LoadAsync(CancellationToken.None);
 
-        var preview = await OrchestrationService.PreviewExtractAndWireInterfaceAsync(
+        var preview = await ExtractAndWireOrchestrator.PreviewExtractAndWireInterfaceAsync(
             workspace.WorkspaceId,
             sourceFilePath,
             "AnimalService",
@@ -101,7 +101,7 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
             updateDiRegistrations: true,
             CancellationToken.None);
 
-        var applyResult = await OrchestrationService.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
 

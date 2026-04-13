@@ -54,7 +54,7 @@ mcpLoggingProvider.SetServer(server);
 // proactively after a transparent subprocess restart instead of discovering the missing
 // workspace tool-by-tool through cascading KeyNotFoundException errors.
 var startupLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
-var startupWorkspaceManager = host.Services.GetRequiredService<RoslynMcp.Core.Services.IWorkspaceManager>();
+var startupWorkspaceManager = host.Services.GetRequiredService<IWorkspaceManager>();
 if (startupWorkspaceManager.ListWorkspaces().Count == 0)
 {
     startupLogger.LogInformation(
@@ -68,7 +68,7 @@ lifetime.ApplicationStopping.Register(() =>
 {
     var logger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Shutdown");
     logger.LogInformation("Shutting down — disposing all workspace sessions");
-    var workspaceManager = host.Services.GetRequiredService<RoslynMcp.Core.Services.IWorkspaceManager>();
+    var workspaceManager = host.Services.GetRequiredService<IWorkspaceManager>();
     if (workspaceManager is IDisposable disposable)
     {
         disposable.Dispose();

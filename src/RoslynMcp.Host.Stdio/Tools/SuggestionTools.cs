@@ -14,7 +14,7 @@ public static class SuggestionTools
         IWorkspaceExecutionGate gate,
         IRefactoringSuggestionService suggestionService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Maximum number of suggestions to return (default: 20)")] int limit = 20,
         CancellationToken ct = default)
     {
@@ -22,7 +22,7 @@ public static class SuggestionTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var suggestions = await suggestionService.SuggestRefactoringsAsync(
-                    workspaceId, project, limit, c);
+                    workspaceId, projectName, limit, c);
                 return JsonSerializer.Serialize(new { count = suggestions.Count, suggestions }, JsonDefaults.Indented);
             }, ct));
     }

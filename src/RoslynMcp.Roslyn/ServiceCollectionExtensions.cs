@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,23 +27,20 @@ public static class ServiceCollectionExtensions
         });
         services.AddSingleton<IDotnetCommandRunner, DotnetCommandRunner>();
         services.AddSingleton<IGatedCommandExecutor, GatedCommandExecutor>();
-        services.AddSingleton<IPreviewStore>(sp =>
+               services.AddSingleton<IPreviewStore>(sp =>
         {
-            var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
-            var ttl = TimeSpan.FromMinutes(opts.TtlMinutes > 0 ? opts.TtlMinutes : 5);
-            return new PreviewStore(opts.MaxEntries, ttl);
+            var (maxEntries, ttl) = ResolvePreviewStoreConfiguration(sp);
+            return new PreviewStore(maxEntries, ttl);
         });
         services.AddSingleton<IProjectMutationPreviewStore>(sp =>
         {
-            var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
-            var ttl = TimeSpan.FromMinutes(opts.TtlMinutes > 0 ? opts.TtlMinutes : 5);
-            return new ProjectMutationPreviewStore(opts.MaxEntries, ttl);
+            var (maxEntries, ttl) = ResolvePreviewStoreConfiguration(sp);
+            return new ProjectMutationPreviewStore(maxEntries, ttl);
         });
         services.AddSingleton<ICompositePreviewStore>(sp =>
         {
-            var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
-            var ttl = TimeSpan.FromMinutes(opts.TtlMinutes > 0 ? opts.TtlMinutes : 5);
-            return new CompositePreviewStore(opts.MaxEntries, ttl);
+            var (maxEntries, ttl) = ResolvePreviewStoreConfiguration(sp);
+            return new CompositePreviewStore(maxEntries, ttl);
         });
         services.AddSingleton<ISymbolNavigationService, SymbolNavigationService>();
         services.AddSingleton<ISymbolSearchService, SymbolSearchService>();
@@ -68,7 +66,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFileOperationService, FileOperationService>();
         services.AddSingleton<IProjectMutationService, ProjectMutationService>();
         services.AddSingleton<ICrossProjectRefactoringService, CrossProjectRefactoringService>();
-        services.AddSingleton<IOrchestrationService, OrchestrationService>();
+        services.AddSingleton<IPackageMigrationOrchestrator, PackageMigrationOrchestrator>();
+        services.AddSingleton<IClassSplitOrchestrator, ClassSplitOrchestrator>();
+        services.AddSingleton<IExtractAndWireOrchestrator, ExtractAndWireOrchestrator>();
+        services.AddSingleton<ICompositeApplyOrchestrator, CompositeApplyOrchestrator>();
         services.AddSingleton<IScaffoldingService, ScaffoldingService>();
         services.AddSingleton<IDeadCodeService, DeadCodeService>();
         services.AddSingleton<ISyntaxService, SyntaxService>();
@@ -93,5 +94,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IChangeTracker, ChangeTracker>();
         services.AddSingleton<IRefactoringSuggestionService, RefactoringSuggestionService>();
         return services;
+    }
+
+    private static (int MaxEntries, TimeSpan Ttl) ResolvePreviewStoreConfiguration(IServiceProvider serviceProvider)
+    {
+        var opts = serviceProvider.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
+        var ttlMinutes = opts.TtlMinutes > 0 ? opts.TtlMinutes : 5;
+        return (opts.MaxEntries, TimeSpan.FromMinutes(ttlMinutes));
     }
 }

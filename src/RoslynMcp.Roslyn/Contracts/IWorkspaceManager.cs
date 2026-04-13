@@ -1,7 +1,7 @@
 using RoslynMcp.Core.Models;
 using Microsoft.CodeAnalysis;
 
-namespace RoslynMcp.Core.Services;
+namespace RoslynMcp.Roslyn.Contracts;
 
 /// <summary>
 /// Manages the lifecycle of Roslyn <c>MSBuildWorkspace</c> sessions, providing load, reload,
@@ -51,6 +51,10 @@ public interface IWorkspaceManager
     /// <summary>
     /// Returns the current status for the specified workspace session.
     /// </summary>
+    /// <remarks>
+    /// Prefer <see cref="GetStatusAsync"/> when the call site can await — it uses the workspace load lock asynchronously
+    /// instead of blocking a thread while the lock is held.
+    /// </remarks>
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <exception cref="System.Collections.Generic.KeyNotFoundException">Thrown when no session with <paramref name="workspaceId"/> exists.</exception>
     WorkspaceStatusDto GetStatus(string workspaceId);

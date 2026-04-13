@@ -14,15 +14,17 @@ public interface ICrossProjectRefactoringService
     /// <param name="sourceFilePath">The absolute path to the file that declares the type.</param>
     /// <param name="typeName">The simple name of the type to move.</param>
     /// <param name="targetProjectName">The name of the destination project.</param>
-    /// <param name="targetNamespace">The namespace to assign in the destination project, or <see langword="null"/> to infer from the target project.</param>
+    /// <param name="targetNamespace">Explicit namespace for the moved type. When <see langword="null"/>, the namespace is inferred from <paramref name="preserveNamespace"/> (see below).</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="preserveNamespace">When <see langword="true"/>, keep the type's current namespace if <paramref name="targetNamespace"/> is <see langword="null"/> (legacy behavior). When <see langword="false"/> (default), use <paramref name="targetNamespace"/> if set, otherwise the target project's default namespace.</param>
     Task<RefactoringPreviewDto> PreviewMoveTypeToProjectAsync(
         string workspaceId,
         string sourceFilePath,
         string typeName,
         string targetProjectName,
         string? targetNamespace,
-        CancellationToken ct);
+        CancellationToken ct,
+        bool preserveNamespace = false);
 
     /// <summary>
     /// Previews extracting an interface from a concrete type, optionally placing it in a different project.

@@ -13,7 +13,7 @@ public static class OrchestrationTools
      Description("Preview migrating one package dependency to another across all affected projects in the loaded workspace.")]
     public static Task<string> PreviewMigratePackage(
         IWorkspaceExecutionGate gate,
-        IOrchestrationService orchestrationService,
+        IPackageMigrationOrchestrator packageMigrationOrchestrator,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Existing package id to replace")] string oldPackageId,
         [Description("Replacement package id")] string newPackageId,
@@ -23,7 +23,7 @@ public static class OrchestrationTools
         return ToolErrorHandler.ExecuteAsync("migrate_package_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await orchestrationService.PreviewMigratePackageAsync(workspaceId, oldPackageId, newPackageId, newVersion, c).ConfigureAwait(false);
+                var result = await packageMigrationOrchestrator.PreviewMigratePackageAsync(workspaceId, oldPackageId, newPackageId, newVersion, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
@@ -32,7 +32,7 @@ public static class OrchestrationTools
      Description("Preview splitting a type into a new partial class file by moving selected members.")]
     public static Task<string> PreviewSplitClass(
         IWorkspaceExecutionGate gate,
-        IOrchestrationService orchestrationService,
+        IClassSplitOrchestrator classSplitOrchestrator,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file containing the type")] string filePath,
         [Description("Type name to split")] string typeName,
@@ -43,7 +43,7 @@ public static class OrchestrationTools
         return ToolErrorHandler.ExecuteAsync("split_class_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await orchestrationService.PreviewSplitClassAsync(workspaceId, filePath, typeName, memberNames, newFileName, c).ConfigureAwait(false);
+                var result = await classSplitOrchestrator.PreviewSplitClassAsync(workspaceId, filePath, typeName, memberNames, newFileName, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }
@@ -52,7 +52,7 @@ public static class OrchestrationTools
      Description("Preview extracting an interface and optionally rewriting DI registrations to use it.")]
     public static Task<string> PreviewExtractAndWireInterface(
         IWorkspaceExecutionGate gate,
-        IOrchestrationService orchestrationService,
+        IExtractAndWireOrchestrator extractAndWireOrchestrator,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file containing the concrete type")] string filePath,
         [Description("Name of the concrete type to extract from")] string typeName,
@@ -64,7 +64,7 @@ public static class OrchestrationTools
         return ToolErrorHandler.ExecuteAsync("extract_and_wire_interface_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await orchestrationService.PreviewExtractAndWireInterfaceAsync(
+                var result = await extractAndWireOrchestrator.PreviewExtractAndWireInterfaceAsync(
                     workspaceId,
                     filePath,
                     typeName,
@@ -80,7 +80,7 @@ public static class OrchestrationTools
      Description("Apply a previously previewed orchestration operation using its preview token.")]
     public static Task<string> ApplyCompositePreview(
         IWorkspaceExecutionGate gate,
-        IOrchestrationService orchestrationService,
+        ICompositeApplyOrchestrator compositeApplyOrchestrator,
         ICompositePreviewStore compositePreviewStore,
         [Description("The preview token returned by an orchestration preview tool")] string previewToken,
         CancellationToken ct = default)
@@ -91,7 +91,7 @@ public static class OrchestrationTools
                 ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
             return gate.RunWriteAsync(wsId, async c =>
             {
-                var result = await orchestrationService.ApplyCompositeAsync(previewToken, c).ConfigureAwait(false);
+                var result = await compositeApplyOrchestrator.ApplyCompositeAsync(previewToken, c).ConfigureAwait(false);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct);
         });

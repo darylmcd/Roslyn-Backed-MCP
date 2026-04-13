@@ -15,7 +15,7 @@ public static class CompileCheckTools
         IWorkspaceExecutionGate gate,
         ICompileCheckService compileCheckService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name")] string? project = null,
+        [Description("Optional: filter by project name")] string? projectName = null,
         [Description("When true, performs full PE-emit validation (catches more issues like missing references at emit time). Default: false (faster, uses GetDiagnostics only). Requires restored NuGet packages for the perf delta to materialize — see the tool description.")] bool emitValidation = false,
         [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden)")] string? severity = null,
         [Description("Optional: only return diagnostics whose file path matches this absolute path")] string? file = null,
@@ -31,7 +31,7 @@ public static class CompileCheckTools
             {
                 var result = await compileCheckService.CheckAsync(
                     workspaceId,
-                    new CompileCheckOptions(project, emitValidation, severity, file, offset, limit),
+                    new CompileCheckOptions(projectName, emitValidation, severity, file, offset, limit),
                     c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct);

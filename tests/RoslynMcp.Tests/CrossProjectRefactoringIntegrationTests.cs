@@ -63,16 +63,44 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Dog",
             "AnimalsShared",
             null,
-            CancellationToken.None);
+            CancellationToken.None,
+            preserveNamespace: false);
 
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsFalse(File.Exists(sourceFilePath));
         Assert.IsTrue(File.Exists(targetFilePath));
 
+        var movedText = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
+        StringAssert.Contains(movedText, "namespace AnimalsShared");
+
         var projectXml = XDocument.Load(sourceProjectFilePath);
         Assert.IsTrue(projectXml.Descendants("ProjectReference").Any(element =>
             string.Equals(Path.GetFileName((string?)element.Attribute("Include")), "AnimalsShared.csproj", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public async Task Move_Type_To_Project_PreserveNamespace_Keeps_Source_Namespace()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "AnimalsShared", "net10.0");
+        var sourceFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var targetFilePath = workspace.GetPath("AnimalsShared", "Dog.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "Dog",
+            "AnimalsShared",
+            null,
+            CancellationToken.None,
+            preserveNamespace: true);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var movedText = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
+        StringAssert.Contains(movedText, "namespace SampleLib");
     }
 
     [TestMethod]

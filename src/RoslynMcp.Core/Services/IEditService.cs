@@ -16,8 +16,9 @@ public interface IEditService
     /// <param name="filePath">The absolute path to the file to edit.</param>
     /// <param name="edits">The text edits to apply. Edits are applied in document order.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="skipSyntaxCheck">When <c>false</c> (default), <c>.cs</c> files are parsed after edits; parser errors block apply. Set <c>true</c> for intentional non-compilable intermediate states.</param>
     Task<TextEditResultDto> ApplyTextEditsAsync(
-        string workspaceId, string filePath, IReadOnlyList<TextEditDto> edits, CancellationToken ct);
+        string workspaceId, string filePath, IReadOnlyList<TextEditDto> edits, CancellationToken ct, bool skipSyntaxCheck = false);
 
     /// <summary>
     /// Applies text edits to multiple files atomically from an undo perspective: a single
@@ -27,6 +28,7 @@ public interface IEditService
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="fileEdits">The per-file edit batches to apply, in order.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="skipSyntaxCheck">When <c>false</c> (default), each <c>.cs</c> file is parsed after edits; parser errors block that file's apply.</param>
     Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
-        string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct);
+        string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false);
 }

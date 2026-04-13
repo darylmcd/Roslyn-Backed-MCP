@@ -17,4 +17,5 @@ public sealed record TextEditResultDto(
     bool Success,
     string FilePath,
     int EditsApplied,
-    IReadOnlyList<FileChangeDto> Changes);
+    IReadOnlyList<FileChangeDto> Changes,
+    IReadOnlyList<TextEditSyntaxErrorDto>? SyntaxErrors = null);
