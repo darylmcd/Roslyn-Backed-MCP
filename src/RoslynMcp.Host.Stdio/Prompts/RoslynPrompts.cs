@@ -13,7 +13,7 @@ public static partial class RoslynPrompts
 {
 
     [McpServerPrompt(Name = "explain_error")]
-    [Description("Generate a prompt to explain a compiler diagnostic error and suggest fixes")]
+    [Description("Generate a prompt to explain a compiler diagnostic error and suggest fixes. Uses a 20 s soft cap on the diagnostic-detail lookup so a slow analyzer pass aborts cleanly with an actionable message instead of hanging through the framework's default timeout.")]
     public static async Task<IEnumerable<PromptMessage>> ExplainError(
         IDiagnosticService diagnosticService,
         IWorkspaceManager workspace,
@@ -24,10 +24,32 @@ public static partial class RoslynPrompts
         [Description("1-based column number")] int column,
         CancellationToken ct = default)
     {
+        // prompt-timeout-explain-refactor: cap the diagnostic-detail step at 20 s so the
+        // prompt aborts cleanly with an actionable message instead of hitting the framework's
+        // 25 s timeout. Pre-warm the cache via a Warning-floor scan first so the analyzer
+        // pipeline runs once and the detail lookup hits the warm path.
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        linkedCts.CancelAfter(TimeSpan.FromSeconds(20));
+        var promptCt = linkedCts.Token;
+
         try
         {
-            var details = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
-            var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+            // Warm the diagnostic cache with a Warning-floor scan scoped to the file. PR #150's
+            // result cache will memoize this and the detail-lookup will hit the warm path.
+            try
+            {
+                await diagnosticService.GetDiagnosticsAsync(
+                    workspaceId, projectFilter: null, fileFilter: filePath,
+                    severityFilter: "Warning", diagnosticIdFilter: null, promptCt).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (promptCt.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                return [PromptMessageBuilder.CreatePromptMessage(
+                    "explain_error: aborted because the diagnostics scan exceeded 20 s. Re-run with a smaller scope (file is large or the analyzer pipeline is cold).")];
+            }
+
+            var details = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, promptCt).ConfigureAwait(false);
+            var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, promptCt).ConfigureAwait(false);
 
             var contextLines = "";
             if (sourceText is not null)

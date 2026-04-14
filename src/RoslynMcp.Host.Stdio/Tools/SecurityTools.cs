@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -49,12 +50,15 @@ public static class SecurityTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: restrict scan to a specific project name")] string? projectName = null,
         [Description("Include transitive (indirect) dependencies in the scan. Default: false")] bool includeTransitive = false,
+        IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("nuget_vulnerability_scan", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
+                ProgressHelper.Report(progress, 0, 1);
                 var result = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, projectName, includeTransitive, c);
+                ProgressHelper.Report(progress, 1, 1);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

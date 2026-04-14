@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -59,11 +60,13 @@ public static class OrchestrationTools
         [Description("Target project name or project file path for the interface")] string targetProjectName,
         [Description("Optional: explicit interface name. Defaults to I + type name")] string? interfaceName = null,
         [Description("Whether to rewrite matching DI registrations to use the extracted interface")] bool updateDiRegistrations = true,
+        IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("extract_and_wire_interface_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
+                ProgressHelper.Report(progress, 0, 1);
                 var result = await extractAndWireOrchestrator.PreviewExtractAndWireInterfaceAsync(
                     workspaceId,
                     filePath,
@@ -72,6 +75,7 @@ public static class OrchestrationTools
                     targetProjectName,
                     updateDiRegistrations,
                     c).ConfigureAwait(false);
+                ProgressHelper.Report(progress, 1, 1);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

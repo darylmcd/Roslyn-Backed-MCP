@@ -401,5 +401,6 @@ public class WorkspaceExecutionGateTests
         public void RestoreVersion(string workspaceId, int version) { }
         public Microsoft.CodeAnalysis.Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
         public bool TryApplyChanges(string workspaceId, Microsoft.CodeAnalysis.Solution newSolution) => throw new NotSupportedException();
+        public Microsoft.CodeAnalysis.Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 }

@@ -145,7 +145,7 @@ public static class WorkspaceResources
     // Throwing McpToolException with the OriginatingSource keeps the framework's default
     // exception path; the MCP client will see a generic error rather than a structured envelope.
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/file/{filePath}", Name = "source_file", MimeType = "text/x-csharp")]
-    [Description("Read the source text of a file in the loaded workspace. filePath must be URL-encoded; see roslyn://server/resource-templates.")]
+    [Description("Read the source text of a file in the loaded workspace. filePath must be URL-encoded; see roslyn://server/resource-templates. For a line range, use the sibling template roslyn://workspace/{workspaceId}/file/{filePath}/lines/{startLine}-{endLine}.")]
     public static async Task<string> GetSourceFile(
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId,
@@ -169,5 +169,87 @@ public static class WorkspaceResources
         }
         catch (KeyNotFoundException ex) { throw new McpToolException(source, $"Not found: {ex.Message}", ex); }
         catch (InvalidOperationException ex) { throw new McpToolException(source, $"Invalid operation: {ex.Message}", ex); }
+    }
+
+    /// <summary>
+    /// source-file-resource-line-range-parity: sibling resource template that returns a
+    /// 1-based inclusive line range from the file. The {lineRange} segment is decoded as
+    /// "{startLine}-{endLine}" — e.g. "/lines/2021-3021" returns lines 2021..3021. Mirrors
+    /// the get_source_text tool's startLine/endLine slicing for callers using the resource
+    /// surface. The returned text is prefixed with a `// roslyn://… lines N..M of T` marker
+    /// so agents can tell the slice apart from a whole-file read.
+    /// </summary>
+    [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}", Name = "source_file_lines", MimeType = "text/x-csharp")]
+    [Description("Read a 1-based inclusive line range from a file in the loaded workspace. filePath must be URL-encoded. lineRange is \"startLine-endLine\" (e.g. /lines/100-200). The response is prefixed with a comment marker noting the slice. For the whole file, use the sibling template without /lines/.")]
+    public static async Task<string> GetSourceFileLines(
+        IWorkspaceManager workspace,
+        [Description("The workspace session identifier")] string workspaceId,
+        [Description("Absolute path to the source file (URL-encoded)")] string filePath,
+        [Description("Line range as \"startLine-endLine\" (1-based, inclusive). E.g. \"100-200\".")] string lineRange,
+        CancellationToken ct = default)
+    {
+        const string source = "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}";
+        try
+        {
+            var normalizedPath = Uri.UnescapeDataString(filePath).Replace('/', Path.DirectorySeparatorChar);
+            if (!Path.IsPathFullyQualified(normalizedPath))
+            {
+                throw new InvalidOperationException(
+                    $"filePath must be an absolute path after decoding. Received: {filePath}");
+            }
+
+            var (startLine, endLine) = ParseLineRange(lineRange);
+
+            var text = await workspace.GetSourceTextAsync(workspaceId, normalizedPath, ct).ConfigureAwait(false);
+            if (text is null)
+                throw new KeyNotFoundException($"Document not found in workspace: {normalizedPath}");
+
+            var totalLineCount = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.CountLines(text);
+            if (startLine > totalLineCount)
+            {
+                throw new InvalidOperationException(
+                    $"startLine ({startLine}) is past the end of the file ({totalLineCount} lines).");
+            }
+            // Clamp end to file end for graceful behavior on over-shoot ranges.
+            var clampedEnd = Math.Min(endLine, totalLineCount);
+
+            var slice = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.SliceLines(text, startLine, clampedEnd);
+            var marker = $"// roslyn://workspace/{workspaceId}/file/.../lines/{startLine}-{clampedEnd} of {totalLineCount}{Environment.NewLine}";
+            return marker + slice;
+        }
+        catch (KeyNotFoundException ex) { throw new McpToolException(source, $"Not found: {ex.Message}", ex); }
+        catch (InvalidOperationException ex) { throw new McpToolException(source, $"Invalid operation: {ex.Message}", ex); }
+        catch (ArgumentException ex) { throw new McpToolException(source, $"Invalid argument: {ex.Message}", ex); }
+    }
+
+    private static (int StartLine, int EndLine) ParseLineRange(string lineRange)
+    {
+        if (string.IsNullOrWhiteSpace(lineRange))
+        {
+            throw new ArgumentException("lineRange must be in the format \"startLine-endLine\" (1-based).", nameof(lineRange));
+        }
+
+        var dash = lineRange.IndexOf('-');
+        if (dash < 1 || dash == lineRange.Length - 1)
+        {
+            throw new ArgumentException(
+                $"lineRange must be in the format \"startLine-endLine\" (e.g. \"100-200\"). Got: {lineRange}",
+                nameof(lineRange));
+        }
+
+        if (!int.TryParse(lineRange[..dash], out var start) || start < 1)
+        {
+            throw new ArgumentException($"startLine must be a positive integer. Got: {lineRange[..dash]}", nameof(lineRange));
+        }
+        if (!int.TryParse(lineRange[(dash + 1)..], out var end) || end < 1)
+        {
+            throw new ArgumentException($"endLine must be a positive integer. Got: {lineRange[(dash + 1)..]}", nameof(lineRange));
+        }
+        if (end < start)
+        {
+            throw new ArgumentException($"endLine ({end}) must be >= startLine ({start}).", nameof(lineRange));
+        }
+
+        return (start, end);
     }
 }

@@ -422,6 +422,57 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             ?? throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
     }
 
+    /// <summary>
+    /// solution-project-index-by-name: per-(workspaceId, version) index from project name and
+    /// absolute file path → Project, lazily built on first lookup. Older entries for the same
+    /// workspace are pruned automatically when the version bumps.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, ProjectIndexEntry> _projectIndex = new(StringComparer.Ordinal);
+
+    private sealed record ProjectIndexEntry(int Version, IReadOnlyDictionary<string, Project> ByName);
+
+    public Project? GetProject(string workspaceId, string projectNameOrPath)
+    {
+        if (string.IsNullOrWhiteSpace(projectNameOrPath)) return null;
+
+        var session = GetRequiredSession(workspaceId);
+        var solution = session.Workspace?.CurrentSolution;
+        if (solution is null) return null;
+
+        var version = session.Version;
+        var entry = _projectIndex.AddOrUpdate(
+            workspaceId,
+            _ => BuildProjectIndex(version, solution),
+            (_, existing) => existing.Version == version ? existing : BuildProjectIndex(version, solution));
+
+        return entry.ByName.TryGetValue(projectNameOrPath, out var hit) ? hit : null;
+    }
+
+    private static ProjectIndexEntry BuildProjectIndex(int version, Solution solution)
+    {
+        var dict = new Dictionary<string, Project>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in solution.Projects)
+        {
+            if (!string.IsNullOrEmpty(project.Name) && !dict.ContainsKey(project.Name))
+            {
+                dict[project.Name] = project;
+            }
+            if (!string.IsNullOrEmpty(project.FilePath))
+            {
+                var fullPath = Path.GetFullPath(project.FilePath);
+                if (!dict.ContainsKey(fullPath))
+                {
+                    dict[fullPath] = project;
+                }
+                if (!dict.ContainsKey(project.FilePath))
+                {
+                    dict[project.FilePath] = project;
+                }
+            }
+        }
+        return new ProjectIndexEntry(version, dict);
+    }
+
     public bool TryApplyChanges(string workspaceId, Solution newSolution)
     {
         var session = GetRequiredSession(workspaceId);

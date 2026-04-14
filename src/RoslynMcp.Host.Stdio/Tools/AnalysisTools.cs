@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using McpServer = ModelContextProtocol.Server.McpServer;
 
@@ -34,6 +35,7 @@ public static class AnalysisTools
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
         [Description("Maximum diagnostics to return per call (default: 200); primary payload cap.")] int limit = 200,
         [Description("When true, return only per-project summary counts (no individual diagnostics). 10-100x smaller payload.")] bool summary = false,
+        IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("project_diagnostics", () =>
@@ -42,7 +44,9 @@ public static class AnalysisTools
             ParameterValidation.ValidatePagination(offset, limit);
             return gate.RunReadAsync(workspaceId, async c =>
             {
+                ProgressHelper.Report(progress, 0);
                 var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, projectName, file, severity, diagnosticId, c);
+                ProgressHelper.Report(progress, 1, 1);
 
                 var allDiagnostics = results.WorkspaceDiagnostics
                     .Select(diagnostic => (Bucket: DiagnosticBucket.Workspace, Diagnostic: diagnostic))

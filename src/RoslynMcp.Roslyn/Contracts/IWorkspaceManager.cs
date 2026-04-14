@@ -103,6 +103,15 @@ public interface IWorkspaceManager
     Solution GetCurrentSolution(string workspaceId);
 
     /// <summary>
+    /// Resolves a project by name or absolute file path within the workspace, using a
+    /// per-<c>workspaceVersion</c> index so every callsite (services, helpers) shares one
+    /// O(1) lookup instead of scanning <see cref="Solution.Projects"/> each call. Lookup is
+    /// case-insensitive on both name and file path. Returns <see langword="null"/> when the
+    /// project is not found — callers should wrap with their own throw to keep error context.
+    /// </summary>
+    Project? GetProject(string workspaceId, string projectNameOrPath);
+
+    /// <summary>
     /// Attempts to apply a modified <see cref="Solution"/> back to the workspace.
     /// </summary>
     /// <returns><see langword="true"/> if the changes were accepted; <see langword="false"/> if the workspace rejected them.</returns>

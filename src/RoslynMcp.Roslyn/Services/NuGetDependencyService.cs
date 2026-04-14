@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -23,6 +26,22 @@ public sealed class NuGetDependencyService : INuGetDependencyService
     private readonly ILogger<NuGetDependencyService> _logger;
     private readonly ValidationServiceOptions _options;
 
+    /// <summary>
+    /// nuget-vuln-scan-caching: vulnerability scans shell out to <c>dotnet list package
+    /// --vulnerable</c>, which makes a network call and runs ~11 s on Jellyfin. Package
+    /// references rarely change between calls in a session, so cache results keyed on
+    /// (workspaceVersion, projectFilter, includeTransitive, lockfileHash). The lockfile hash
+    /// catches cases where Directory.Packages.props or per-project lock files changed without
+    /// the workspace version bumping (e.g. external edits without workspace_reload).
+    /// </summary>
+    private readonly ConcurrentDictionary<string, VulnCacheEntry> _vulnCache = new(StringComparer.Ordinal);
+
+    private sealed record VulnCacheEntry(int Version, ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto> ByKey);
+
+    private sealed record VulnCacheKey(string ProjectFilter, bool IncludeTransitive, string LockfileHash);
+
+    private const int MaxVulnCacheEntriesPerWorkspace = 4;
+
     public NuGetDependencyService(
         IWorkspaceManager workspace,
         IGatedCommandExecutor executor,
@@ -35,6 +54,7 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         _msBuildEvaluation = msBuildEvaluation;
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
+        _workspace.WorkspaceClosed += workspaceId => _vulnCache.TryRemove(workspaceId, out _);
     }
 
     public async Task<NuGetDependencyResultDto> GetNuGetDependenciesAsync(
@@ -133,6 +153,25 @@ public sealed class NuGetDependencyService : INuGetDependencyService
             ? status.LoadedPath
             : _executor.ResolveProject(workspaceId, projectFilter).FilePath;
 
+        // nuget-vuln-scan-caching: build the cache key from workspaceVersion + lockfile hash
+        // so external edits to Directory.Packages.props or packages.lock.json invalidate
+        // cleanly even if the workspace version didn't tick.
+        var version = _workspace.GetCurrentVersion(workspaceId);
+        var lockfileHash = ComputeLockfileHash(status.LoadedPath, projectFilter);
+        var cacheKey = new VulnCacheKey(projectFilter ?? "<all>", includeTransitive, lockfileHash);
+
+        var entry = _vulnCache.AddOrUpdate(
+            workspaceId,
+            _ => new VulnCacheEntry(version, new ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto>()),
+            (_, existing) => existing.Version == version
+                ? existing
+                : new VulnCacheEntry(version, new ConcurrentDictionary<VulnCacheKey, NuGetVulnerabilityScanResultDto>()));
+
+        if (entry.ByKey.TryGetValue(cacheKey, out var cached))
+        {
+            return cached;
+        }
+
         var args = new List<string> { "list", targetPath, "package", "--vulnerable", "--format", "json" };
         if (includeTransitive)
         {
@@ -161,7 +200,7 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         var medium = vulnerabilities.Count(v => string.Equals(v.Severity, "Medium", StringComparison.OrdinalIgnoreCase));
         var low = vulnerabilities.Count(v => string.Equals(v.Severity, "Low", StringComparison.OrdinalIgnoreCase));
 
-        return new NuGetVulnerabilityScanResultDto(
+        var result = new NuGetVulnerabilityScanResultDto(
             vulnerabilities,
             scannedProjects,
             vulnerabilities.Count,
@@ -171,5 +210,57 @@ public sealed class NuGetDependencyService : INuGetDependencyService
             low,
             includeTransitive,
             sw.ElapsedMilliseconds);
+
+        // nuget-vuln-scan-caching: store under the existing per-workspace entry. Cap at 4
+        // entries so memory stays bounded for chatty (projectFilter, includeTransitive) combos.
+        if (entry.ByKey.Count >= MaxVulnCacheEntriesPerWorkspace)
+        {
+            var someKey = entry.ByKey.Keys.FirstOrDefault();
+            if (someKey is not null) entry.ByKey.TryRemove(someKey, out _);
+        }
+        entry.ByKey[cacheKey] = result;
+        return result;
+    }
+
+    /// <summary>
+    /// Hashes the lockfile-equivalent inputs (Directory.Packages.props and per-project
+    /// packages.lock.json) so cache entries invalidate when package references change without
+    /// a workspace version bump. Conservative — when the relevant files don't exist or can't
+    /// be read, returns "<unknown>" which still keys the cache (just less precisely).
+    /// </summary>
+    private static string ComputeLockfileHash(string solutionOrProjectPath, string? projectFilter)
+    {
+        try
+        {
+            var rootDir = Path.GetDirectoryName(solutionOrProjectPath);
+            if (string.IsNullOrEmpty(rootDir)) return "<unknown>";
+
+            var inputs = new List<string>();
+
+            // Directory.Packages.props (CPM) — solution-level
+            var packagesProps = Path.Combine(rootDir, "Directory.Packages.props");
+            if (File.Exists(packagesProps))
+            {
+                inputs.Add(File.ReadAllText(packagesProps));
+            }
+
+            // Per-project packages.lock.json files. For project filter, narrow to that subtree;
+            // otherwise scan the solution root for all lock files.
+            var lockFileSearchRoot = string.IsNullOrWhiteSpace(projectFilter) ? rootDir : rootDir;
+            foreach (var lockFile in Directory.EnumerateFiles(lockFileSearchRoot, "packages.lock.json", SearchOption.AllDirectories))
+            {
+                inputs.Add(lockFile);
+                inputs.Add(File.ReadAllText(lockFile));
+            }
+
+            if (inputs.Count == 0) return "<no-lockfiles>";
+
+            var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(string.Join("\u0000", inputs)));
+            return Convert.ToHexString(bytes);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return "<unreadable>";
+        }
     }
 }

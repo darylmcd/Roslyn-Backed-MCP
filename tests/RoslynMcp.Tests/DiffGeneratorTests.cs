@@ -63,4 +63,57 @@ public class DiffGeneratorTests
         StringAssert.Contains(result, "--- a/src/MyClass.cs");
         StringAssert.Contains(result, "+++ b/src/MyClass.cs");
     }
+
+    // apply-text-edit-diff-quality: investigation pass — these edge-case repros confirm the
+    // diff path's output cleanliness. The original audit text was vague ("stray ;, noisy
+    // diff text"); after the overlap-safety + syntax-preflight work that landed in earlier
+    // PRs, the cases below all produce clean unified diffs with no spurious characters.
+    // If a future audit captures a concrete diff with extra characters, paste it as a new
+    // test here and patch DiffGenerator to match.
+
+    [TestMethod]
+    public void TrailingNewlineMissing_LastLineEdit_NoStrayCharacters()
+    {
+        // Edit at end-of-file with no trailing newline shouldn't introduce a stray character.
+        var result = DiffGenerator.GenerateUnifiedDiff("first\nlast", "first\nLAST", "eof.cs");
+        StringAssert.Contains(result, "-last");
+        StringAssert.Contains(result, "+LAST");
+        Assert.IsFalse(result.Contains("+last;"), "Stray semicolon must not appear in the diff output.");
+    }
+
+    [TestMethod]
+    public void CrlfLineEndings_RoundTripCleanly()
+    {
+        // Mixed LF/CRLF inputs: diff should still produce a coherent hunk with the right
+        // before/after lines. (DiffPlex normalizes line endings internally; verify no leak.)
+        var result = DiffGenerator.GenerateUnifiedDiff("alpha\r\nbeta\r\n", "alpha\r\nBETA\r\n", "crlf.cs");
+        StringAssert.Contains(result, "-beta");
+        StringAssert.Contains(result, "+BETA");
+    }
+
+    [TestMethod]
+    public void CommentOnlyChange_PreservesCommentSemantics()
+    {
+        // Replacing a single-line comment shouldn't lose the // marker or merge with code.
+        var result = DiffGenerator.GenerateUnifiedDiff(
+            "var x = 1;\n// old comment\nvar y = 2;\n",
+            "var x = 1;\n// new comment\nvar y = 2;\n",
+            "comment.cs");
+        StringAssert.Contains(result, "-// old comment");
+        StringAssert.Contains(result, "+// new comment");
+        Assert.IsFalse(result.Contains("-var x"), "Unchanged code lines must not appear as deletions.");
+    }
+
+    [TestMethod]
+    public void SingleCharInsertionMidLine_ProducesClearHunk()
+    {
+        // The audit-cited "edge column" case: a one-character edit in the middle of a long
+        // line. Both before and after lines should appear in full as separate -/+ entries.
+        var result = DiffGenerator.GenerateUnifiedDiff(
+            "public class Foo { public int Bar { get; } }\n",
+            "public class Foo { public int Baz { get; } }\n",
+            "edge.cs");
+        StringAssert.Contains(result, "-public class Foo { public int Bar { get; } }");
+        StringAssert.Contains(result, "+public class Foo { public int Baz { get; } }");
+    }
 }

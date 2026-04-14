@@ -133,6 +133,8 @@ public static class ServerSurfaceCatalog
         Tool("extract_method_apply", "refactoring", "experimental", false, true, "Apply a previously previewed extract method refactoring."),
 
         Tool("revert_last_apply", "undo", "experimental", false, true, "Revert the most recent Roslyn solution-level apply operation for a workspace."),
+        Tool("apply_with_verify", "undo", "experimental", false, true, "Apply a preview AND immediately verify via compile_check; auto-revert on new errors."),
+        Tool("remove_interface_member_preview", "dead-code", "experimental", true, false, "Composite preview removing a dead interface member and every implementation in one shot. Refuses if any external caller exists."),
 
         Tool("analyze_data_flow", "advanced-analysis", "stable", true, false, "Analyze variable flow through a code region: reads, writes, captures, always-assigned."),
         Tool("analyze_control_flow", "advanced-analysis", "stable", true, false, "Analyze control flow: entry/exit points, reachability, return statements."),
@@ -164,7 +166,8 @@ public static class ServerSurfaceCatalog
         Resource("workspace_status_verbose", "workspace", "stable", true, false, "Inspect workspace status with full per-project tree and workspace diagnostics.", "roslyn://workspace/{workspaceId}/status/verbose"),
         Resource("workspace_projects", "workspace", "stable", true, false, "Read project graph metadata for a workspace.", "roslyn://workspace/{workspaceId}/projects"),
         Resource("workspace_diagnostics", "analysis", "stable", true, false, "Read all compiler diagnostics for a workspace.", "roslyn://workspace/{workspaceId}/diagnostics"),
-        Resource("source_file", "workspace", "stable", true, false, "Read a source file from the loaded workspace.", "roslyn://workspace/{workspaceId}/file/{filePath}")
+        Resource("source_file", "workspace", "stable", true, false, "Read a source file from the loaded workspace.", "roslyn://workspace/{workspaceId}/file/{filePath}"),
+        Resource("source_file_lines", "workspace", "experimental", true, false, "Read a 1-based inclusive line range from a source file in the loaded workspace.", "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}")
     ];
 
     public static IReadOnlyList<SurfaceEntry> Prompts { get; } =

@@ -87,6 +87,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IAnalyzerInfoService, AnalyzerInfoService>();
         services.AddSingleton<ICodeFixProviderRegistry, CodeFixProviderRegistry>();
         services.AddSingleton<IFixAllService, FixAllService>();
+        services.AddSingleton<IInterfaceMemberRemovalOrchestrator, InterfaceMemberRemovalOrchestrator>();
         services.AddSingleton<IOperationService, OperationService>();
         services.AddSingleton<ISnippetAnalysisService, SnippetAnalysisService>();
         services.AddSingleton<IScriptingService, ScriptingService>();

@@ -141,5 +141,6 @@ public sealed class CompilationCacheTests
         public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
         public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 }

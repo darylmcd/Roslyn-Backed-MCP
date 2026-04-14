@@ -193,6 +193,8 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
         public Microsoft.CodeAnalysis.Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
 
         public bool TryApplyChanges(string workspaceId, Microsoft.CodeAnalysis.Solution newSolution) => throw new NotSupportedException();
+
+        public Microsoft.CodeAnalysis.Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 
     private sealed class BlockingDotnetCommandRunner : IDotnetCommandRunner
