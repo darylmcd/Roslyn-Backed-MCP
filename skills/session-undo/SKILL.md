@@ -24,6 +24,14 @@ MCP prompt **`session_undo`** summarizes this workflow. Full inventory: **`rosly
 3. **`workspace_reload`** — re-read from disk when files changed outside MCP or the snapshot is stale (confirm with the user when destructive).
 4. **`workspace_close`** — tear down the session when finished.
 
+## Atomic apply + verify (v1.15+)
+
+**`apply_with_verify(previewToken, rollbackOnError=true)`** wraps the three-step pattern (apply → `compile_check` → `revert_last_apply` on new errors) in a single atomic call. Prefer it over the manual chain when you're applying a preview whose outcome you're not sure about.
+
+- On a clean apply: returns `{status: "applied", appliedFiles: [...]}`.
+- On new compile errors with `rollbackOnError=true` (default): returns `{status: "rolled_back", introducedErrors: [...]}` and the workspace is back to the pre-apply state.
+- Pass `rollbackOnError=false` to preserve the broken state for manual inspection (returns `{status: "applied_with_errors"}`).
+
 ## Limits
 
 - **`revert_last_apply`** is **one step** — not arbitrary history.

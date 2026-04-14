@@ -5,7 +5,7 @@
      This is a companion to deep-review-and-refactor.md. It should be maintained
      whenever experimental tools are promoted or added. When the deep-review appendix
      updates, verify the experimental-only subset in this prompt still matches.
-   Last surface audit: 2026-04-13 (catalog 2026.04; 52 experimental tools, 19 experimental prompts, 0 experimental resources). -->
+   Last surface audit: 2026-04-14 (catalog 2026.04; 53 experimental tools, 19 experimental prompts, 1 experimental resource). v1.15.0 added `apply_with_verify`, `remove_interface_member_preview`, and the `source_file_lines` resource template; check the Phase sections below for updated counts. -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** systematically exercise every experimental tool and prompt to produce an **experimental promotion scorecard** with evidence for promote / keep-experimental / needs-more-evidence / deprecate decisions. Also produces a minimal coverage ledger for the experimental surface.
@@ -212,7 +212,7 @@ Exercise each project mutation preview, then apply at least one reversible mutat
 
 ---
 
-### Phase 5: Dead code, editing, configuration, undo (11 experimental tools)
+### Phase 5: Dead code, editing, configuration, undo (13 experimental tools)
 
 #### 5a. Dead code removal (`remove_dead_code_preview`, `remove_dead_code_apply`)
 1. Call `find_unused_symbols` to find confirmed dead symbols.
@@ -237,12 +237,19 @@ Exercise each project mutation preview, then apply at least one reversible mutat
 3. Call `set_diagnostic_severity` to set a diagnostic severity (e.g. `dotnet_diagnostic.IDE0005.severity = suggestion`).
 4. Verify the `.editorconfig` reflects the change.
 
-#### 5e. Undo (`revert_last_apply`)
+#### 5e. Undo (`revert_last_apply`, `apply_with_verify`)
 1. Call `revert_last_apply` to revert the most recent Roslyn apply.
 2. Call `compile_check` to verify workspace consistency.
 3. Call `revert_last_apply` again — verify it returns a clear "nothing to revert" message (negative probe).
+4. Exercise `apply_with_verify` (v1.15+ atomic apply → compile_check → auto-revert): produce a known-good preview via `organize_usings_preview`, pass its token to `apply_with_verify(previewToken, rollbackOnError: true)`, assert `status=applied`. Then produce a known-bad preview (e.g. `extract_method_preview` over a region that reassigns an existing local on an older extract path) — on post-v1.15 repos the fix landed and this yields `status=applied`; on upstream regressions expect `status=rolled_back` with `introducedErrors` populated.
 
-**Checkpoint:** All 11 tools exercised? Text edit undo worked? Configuration writes verified? `revert_last_apply` negative path tested?
+#### 5f. Composite dead interface removal (`remove_interface_member_preview`)
+v1.15+ composite that wraps `find_unused_symbols` → `find_implementations` → `remove_dead_code_preview` in one call.
+1. Find a dead interface member via `find_unused_symbols` (filter to interface members if the repo has any).
+2. Call `remove_interface_member_preview(workspaceId, interfaceMemberHandle)` with its handle. Assert the response includes `previewToken`, `status=previewed`, `implementationCount`, and the list of implementations. If the response is `status=refused` with `externalCallers` populated, the member isn't dead — pick another.
+3. Apply via `remove_dead_code_apply` with the returned preview token and verify compilation.
+
+**Checkpoint:** All 13 tools exercised (11 legacy + `apply_with_verify` + `remove_interface_member_preview`)? Text edit undo worked? Configuration writes verified? `revert_last_apply` negative path tested? Composite dead interface removal atomically removed the interface member + every implementation?
 
 ---
 
@@ -270,6 +277,16 @@ These are preview-only tools (no apply counterparts).
 5. Call `compile_check` after any apply.
 
 **Checkpoint:** All 4 orchestration tools exercised or marked with a reason? `apply_composite_preview` exercised or `skipped-safety`?
+
+---
+
+### Phase 7b: Experimental resources (1 template)
+
+v1.15+ ships one experimental resource template:
+
+1. `roslyn://workspace/{workspaceId}/file/{filePath}/lines/{startLine}-{endLine}` — inclusive 1-based line-range slice over `source_file`. Exercise by requesting a known small range (e.g. `lines/1-10`) on a file in the workspace; verify the response is prefixed with a `// roslyn://…/lines/N-M of T` marker comment and that the body is only the requested lines. Exercise an invalid range (`lines/10-5`) and verify it returns a clear error (not a hang).
+
+**Checkpoint:** Line-range marker comment present? Invalid range rejected with a structured error?
 
 ---
 
