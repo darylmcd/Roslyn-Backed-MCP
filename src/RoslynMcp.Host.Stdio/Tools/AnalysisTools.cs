@@ -33,6 +33,7 @@ public static class AnalysisTools
         [Description("Optional: filter to a specific diagnostic ID (e.g., CS8019, CA1000)")] string? diagnosticId = null,
         [Description("Number of diagnostics to skip before returning results (default: 0)")] int offset = 0,
         [Description("Maximum diagnostics to return per call (default: 200); primary payload cap.")] int limit = 200,
+        [Description("When true, return only per-project summary counts (no individual diagnostics). 10-100x smaller payload.")] bool summary = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("project_diagnostics", () =>
@@ -62,6 +63,40 @@ public static class AnalysisTools
                      (entry.Diagnostic.Message?.Contains("could not be found", StringComparison.OrdinalIgnoreCase) == true) ||
                      (entry.Diagnostic.Message?.Contains("does not exist in the namespace", StringComparison.OrdinalIgnoreCase) == true)));
 
+                var restoreHintText = restoreHint
+                    ? "Many missing-type errors often mean NuGet restore has not been run. Run `dotnet restore` on the solution, then `workspace_reload`."
+                    : (string?)null;
+
+                // Summary mode: counts by diagnostic ID, no individual diagnostic rows.
+                // 10-100x smaller payload for large solutions.
+                if (summary)
+                {
+                    var diagnosticGroups = allDiagnostics
+                        .GroupBy(entry => entry.Diagnostic.Id)
+                        .Select(group => new
+                        {
+                            id = group.Key,
+                            count = group.Count(),
+                            severity = group.First().Diagnostic.Severity,
+                            category = group.First().Diagnostic.Category,
+                        })
+                        .OrderByDescending(g => g.severity == "Error" ? 0 : g.severity == "Warning" ? 1 : 2)
+                        .ThenByDescending(g => g.count)
+                        .ToList();
+
+                    return JsonSerializer.Serialize(new
+                    {
+                        summary = true,
+                        totalErrors = results.TotalErrors,
+                        totalWarnings = results.TotalWarnings,
+                        totalInfo = results.TotalInfo,
+                        totalDiagnostics = allDiagnostics.Count,
+                        distinctDiagnosticIds = diagnosticGroups.Count,
+                        restoreHint = restoreHintText,
+                        diagnosticGroups,
+                    }, JsonDefaults.Indented);
+                }
+
                 return JsonSerializer.Serialize(new
                 {
                     totalErrors = results.TotalErrors,
@@ -78,9 +113,7 @@ public static class AnalysisTools
                     paginationNote = hasMore
                         ? "More diagnostics exist in this scope; increase offset, raise limit, or narrow project/file/diagnosticId filters."
                         : null,
-                    restoreHint = restoreHint
-                        ? "Many missing-type errors often mean NuGet restore has not been run. Run `dotnet restore` on the solution, then `workspace_reload`."
-                        : null,
+                    restoreHint = restoreHintText,
                     workspaceDiagnostics = pagedDiagnostics
                         .Where(entry => entry.Bucket == DiagnosticBucket.Workspace)
                         .Select(entry => entry.Diagnostic)

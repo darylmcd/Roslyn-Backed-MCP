@@ -341,7 +341,11 @@ public sealed class ProjectMutationService : IProjectMutationService
     public Task<RefactoringPreviewDto> PreviewAddCentralPackageVersionAsync(string workspaceId, AddCentralPackageVersionDto request, CancellationToken ct)
     {
         var packagesPropsPath = ResolveDirectoryPackagesPropsPath(workspaceId)
-            ?? throw new InvalidOperationException("Directory.Packages.props was not found for the loaded workspace.");
+            ?? throw new FileNotFoundException(
+                $"Directory.Packages.props was not found for the loaded workspace " +
+                $"(searched from '{_workspace.GetStatus(workspaceId).LoadedPath}'). " +
+                "To use central package management, create a Directory.Packages.props file at the solution root " +
+                "with <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>.");
 
         return PreviewXmlFileMutationAsync(workspaceId, packagesPropsPath, document =>
         {
@@ -364,7 +368,11 @@ public sealed class ProjectMutationService : IProjectMutationService
     public Task<RefactoringPreviewDto> PreviewRemoveCentralPackageVersionAsync(string workspaceId, RemoveCentralPackageVersionDto request, CancellationToken ct)
     {
         var packagesPropsPath = ResolveDirectoryPackagesPropsPath(workspaceId)
-            ?? throw new InvalidOperationException("Directory.Packages.props was not found for the loaded workspace.");
+            ?? throw new FileNotFoundException(
+                $"Directory.Packages.props was not found for the loaded workspace " +
+                $"(searched from '{_workspace.GetStatus(workspaceId).LoadedPath}'). " +
+                "To use central package management, create a Directory.Packages.props file at the solution root " +
+                "with <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>.");
 
         return PreviewXmlFileMutationAsync(workspaceId, packagesPropsPath, document =>
         {

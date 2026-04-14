@@ -27,7 +27,9 @@ public static class ServerTools
             var catalogSummary = ServerSurfaceCatalog.GetSummary();
             var wsCount = workspace.ListWorkspaces().Count;
 
-            // Best-effort: returns cached latest version or null if pending/failed
+            // Best-effort: returns cached latest version or null if pending/failed.
+            // Sanity guard: never report "update available" when the reported latest is
+            // older than the running version (can happen with stale NuGet CDN cache).
             var latestVersion = versionChecker.GetLatestVersion();
             var currentSemver = version.Split('+')[0]; // strip git hash suffix
             var updateAvailable = latestVersion is not null

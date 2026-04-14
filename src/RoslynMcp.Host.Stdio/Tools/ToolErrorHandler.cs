@@ -59,7 +59,7 @@ internal static class ToolErrorHandler
             {
                 metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
             }
-            return InjectMetaIfPossible(result);
+            return InjectMetaIfPossible(result, source);
         }
         catch (Exception ex)
         {
@@ -72,7 +72,7 @@ internal static class ToolErrorHandler
             auditLogger?.Log(
                 info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
                 ex, "Resource {Source} failed: {ErrorCategory}", source, info.Category);
-            return InjectMetaIfPossible(FormatErrorResponse(info, source, ex));
+            return InjectMetaIfPossible(FormatErrorResponse(info, source, ex), source);
         }
     }
 
@@ -93,7 +93,7 @@ internal static class ToolErrorHandler
             {
                 metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
             }
-            return InjectMetaIfPossible(result);
+            return InjectMetaIfPossible(result, source);
         }
         catch (OperationCanceledException)
         {
@@ -110,7 +110,7 @@ internal static class ToolErrorHandler
             auditLogger?.Log(
                 info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
                 ex, "Resource {Source} failed: {ErrorCategory}", source, info.Category);
-            return InjectMetaIfPossible(FormatErrorResponse(info, source, ex));
+            return InjectMetaIfPossible(FormatErrorResponse(info, source, ex), source);
         }
     }
 
@@ -140,7 +140,7 @@ internal static class ToolErrorHandler
                 metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
             }
             auditLogger?.LogInformation("Tool {ToolName} completed successfully", toolName);
-            return InjectMetaIfPossible(result);
+            return InjectMetaIfPossible(result, toolName);
         }
         catch (OperationCanceledException)
         {
@@ -159,7 +159,7 @@ internal static class ToolErrorHandler
                 info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
                 ex, "Tool {ToolName} failed: {ErrorCategory}", toolName, info.Category);
 
-            return InjectMetaIfPossible(FormatErrorResponse(info, toolName, ex));
+            return InjectMetaIfPossible(FormatErrorResponse(info, toolName, ex), toolName);
         }
     }
 
@@ -170,15 +170,25 @@ internal static class ToolErrorHandler
     /// specific shape. On any parse failure the original string is returned unchanged so this
     /// never breaks a well-formed response.
     /// </summary>
-    private static string InjectMetaIfPossible(string json)
+    private static string InjectMetaIfPossible(string json, string? source = null)
     {
         var snapshot = AmbientGateMetrics.Snapshot();
-        if (snapshot is null) return json;
+        if (snapshot is null)
+        {
+            System.Diagnostics.Trace.TraceWarning(
+                "_meta injection skipped for {0}: no ambient metrics scope", source ?? "unknown");
+            return json;
+        }
 
         try
         {
             var node = JsonNode.Parse(json);
-            if (node is not JsonObject obj) return json;
+            if (node is not JsonObject obj)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "_meta injection skipped for {0}: response root is not a JSON object", source ?? "unknown");
+                return json;
+            }
 
             var metaNode = JsonSerializer.SerializeToNode(snapshot, MetaSerializer.CamelCase);
             if (metaNode is null) return json;

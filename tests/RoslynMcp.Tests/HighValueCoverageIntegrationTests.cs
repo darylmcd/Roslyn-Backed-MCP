@@ -47,12 +47,15 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task CompileCheck_SampleSolution_Cancellation_Throws()
+    public async Task CompileCheck_SampleSolution_Cancellation_Returns_Partial_Results()
     {
         var cts = new CancellationTokenSource();
         cts.Cancel();
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
-            CompileCheckService.CheckAsync(SampleWorkspaceId, new CompileCheckOptions(), cts.Token));
+        var result = await CompileCheckService.CheckAsync(SampleWorkspaceId, new CompileCheckOptions(), cts.Token);
+        Assert.IsTrue(result.Cancelled, "Expected Cancelled to be true when token is pre-cancelled.");
+        Assert.IsFalse(result.Success, "Success must be false when cancelled.");
+        Assert.IsNotNull(result.CompletedProjects);
+        Assert.IsNotNull(result.TotalProjects);
     }
 
     [TestMethod]

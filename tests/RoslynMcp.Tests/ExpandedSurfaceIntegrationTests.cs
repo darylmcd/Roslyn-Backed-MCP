@@ -42,9 +42,9 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
-        var items = doc.RootElement.GetProperty("Items");
+        var items = doc.RootElement.GetProperty("items");
         Assert.IsTrue(items.GetArrayLength() > 0, "Expected completion items.");
-        Assert.IsTrue(items.EnumerateArray().Any(item => item.GetProperty("DisplayText").GetString() == "MakeThemSpeak"));
+        Assert.IsTrue(items.EnumerateArray().Any(item => item.GetProperty("displayText").GetString() == "MakeThemSpeak"));
     }
 
     [TestMethod]
@@ -64,8 +64,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
-        Assert.AreEqual("CompilationUnit", doc.RootElement.GetProperty("Kind").GetString());
-        Assert.IsTrue(doc.RootElement.GetProperty("Children").GetArrayLength() > 0);
+        Assert.AreEqual("CompilationUnit", doc.RootElement.GetProperty("kind").GetString());
+        Assert.IsTrue(doc.RootElement.GetProperty("children").GetArrayLength() > 0);
     }
 
     [TestMethod]
@@ -79,7 +79,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             circularOnly: false,
             CancellationToken.None);
         using var namespaceDoc = JsonDocument.Parse(namespaceJson);
-        Assert.IsTrue(namespaceDoc.RootElement.GetProperty("Nodes").GetArrayLength() > 0);
+        Assert.IsTrue(namespaceDoc.RootElement.GetProperty("nodes").GetArrayLength() > 0);
 
         var complexityJson = await AdvancedAnalysisTools.GetComplexityMetrics(
             WorkspaceExecutionGate,
@@ -120,6 +120,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             diagnosticId: null,
             offset: 0,
             limit: 1,
+            summary: false,
             CancellationToken.None);
         using var diagnosticsDoc = JsonDocument.Parse(diagnosticsJson);
         var returnedDiagnostics = diagnosticsDoc.RootElement.GetProperty("returnedDiagnostics").GetInt32();
@@ -150,6 +151,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             diagnosticId: null,
             offset: 0,
             limit: 50,
+            summary: false,
             CancellationToken.None);
         using var diagnosticsDoc = JsonDocument.Parse(diagnosticsJson);
         Assert.IsTrue(diagnosticsDoc.RootElement.TryGetProperty("compilerErrors", out var ce));
@@ -236,7 +238,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         using var cohesionDoc = JsonDocument.Parse(cohesionJson);
         var metrics = cohesionDoc.RootElement.GetProperty("metrics").EnumerateArray().ToList();
         Assert.IsTrue(metrics.Any(m =>
-            m.TryGetProperty("TypeKind", out var typeKind) &&
+            m.TryGetProperty("typeKind", out var typeKind) &&
             typeKind.GetString() == "Interface"),
             "Expected at least one interface metric when includeInterfaces=true.");
     }
@@ -273,15 +275,15 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     public void Resources_Return_Machine_Readable_Contracts()
     {
         using var catalogDoc = JsonDocument.Parse(ServerResources.GetServerCatalog());
-        Assert.AreEqual("local-first", catalogDoc.RootElement.GetProperty("ProductShape").GetString());
-        Assert.IsTrue(catalogDoc.RootElement.GetProperty("Tools").GetArrayLength() > 0);
+        Assert.AreEqual("local-first", catalogDoc.RootElement.GetProperty("productShape").GetString());
+        Assert.IsTrue(catalogDoc.RootElement.GetProperty("tools").GetArrayLength() > 0);
 
         using var templatesDoc = JsonDocument.Parse(ServerResources.GetResourceTemplates());
         Assert.IsTrue(templatesDoc.RootElement.GetProperty("count").GetInt32() >= 1);
         Assert.IsTrue(templatesDoc.RootElement.GetProperty("resources")
             .EnumerateArray()
             .Any(resource => string.Equals(
-                resource.GetProperty("UriTemplate").GetString(),
+                resource.GetProperty("uriTemplate").GetString(),
                 "roslyn://workspace/{workspaceId}/status",
                 StringComparison.Ordinal)));
 
@@ -352,8 +354,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             CancellationToken.None);
 
         using var doc = JsonDocument.Parse(previewJson);
-        Assert.AreEqual("preview-token", doc.RootElement.GetProperty("PreviewToken").GetString());
-        Assert.IsTrue(doc.RootElement.GetProperty("Changes").GetArrayLength() == 1);
+        Assert.AreEqual("preview-token", doc.RootElement.GetProperty("previewToken").GetString());
+        Assert.IsTrue(doc.RootElement.GetProperty("changes").GetArrayLength() == 1);
     }
 
     [TestMethod]
@@ -376,7 +378,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 CancellationToken.None);
 
             using var singleEditDoc = JsonDocument.Parse(singleEditJson);
-            Assert.IsTrue(singleEditDoc.RootElement.GetProperty("EditsApplied").GetInt32() == 1);
+            Assert.IsTrue(singleEditDoc.RootElement.GetProperty("editsApplied").GetInt32() == 1);
             StringAssert.Contains(await File.ReadAllTextAsync(programFile), "// edited");
 
             var animalFile = FindDocumentPath(tempWorkspaceId, "AnimalService.cs");
@@ -392,7 +394,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
                 CancellationToken.None);
 
             using var multiEditDoc = JsonDocument.Parse(multiEditJson);
-            Assert.IsTrue(multiEditDoc.RootElement.GetProperty("FilesModified").GetInt32() == 2);
+            Assert.IsTrue(multiEditDoc.RootElement.GetProperty("filesModified").GetInt32() == 2);
             StringAssert.Contains(await File.ReadAllTextAsync(animalFile), "// animal edit");
         }
         finally
@@ -415,8 +417,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("Success", out _));
-        Assert.IsTrue(doc.RootElement.TryGetProperty("Error", out _));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("success", out _));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out _));
     }
 
     private static string FindDocumentPath(string name) => FindDocumentPath(WorkspaceId, name);
