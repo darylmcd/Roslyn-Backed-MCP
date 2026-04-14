@@ -47,11 +47,11 @@ public sealed class ExtractMethodService : IExtractMethodService
         var (enclosingMember, statementsInSelection, parentBlock) =
             FindEnclosingMethodAndStatements(root, selectionSpan);
 
-        var (parameters, flowsOut, isStatic) =
+        var (parameters, flowsOut, variablesDeclaredInRegion, isStatic) =
             AnalyzeFlowAndInferSignature(semanticModel, statementsInSelection, enclosingMember);
 
         var (newMethod, callStatement) =
-            BuildMethodAndCallSite(methodName, parameters, flowsOut, isStatic, statementsInSelection);
+            BuildMethodAndCallSite(methodName, parameters, flowsOut, variablesDeclaredInRegion, isStatic, statementsInSelection);
 
         var newRoot = ReplaceStatementsAndInsertMethod(
             root, parentBlock, statementsInSelection, callStatement, newMethod, enclosingMember);
@@ -118,7 +118,7 @@ public sealed class ExtractMethodService : IExtractMethodService
         return (enclosingMember, statementsInSelection, parentBlock);
     }
 
-    private static (List<(string Name, ITypeSymbol? Type)> Parameters, List<(string Name, ITypeSymbol? Type)> FlowsOut, bool IsStatic)
+    private static (List<(string Name, ITypeSymbol? Type)> Parameters, List<(string Name, ITypeSymbol? Type)> FlowsOut, HashSet<string> VariablesDeclaredInRegion, bool IsStatic)
         AnalyzeFlowAndInferSignature(
             SemanticModel semanticModel,
             List<StatementSyntax> statementsInSelection,
@@ -169,9 +169,37 @@ public sealed class ExtractMethodService : IExtractMethodService
                 $"({string.Join(", ", flowsOut.Select(v => v.Name))}). " +
                 "Extract method supports at most one output variable as a return value.");
 
+        // extract-method-apply-var-redeclaration: VariablesDeclared lists symbols whose declaration
+        // is INSIDE the extracted region. If the single flowsOut variable is in this set the call
+        // site needs `var x = M(...)` to introduce it; if it's NOT in this set the variable was
+        // declared in an enclosing scope and we must emit a plain assignment `x = M(...)` —
+        // otherwise we shadow the existing local and produce CS0136 + CS0841.
+        var variablesDeclaredInRegion = dataFlow.VariablesDeclared
+            .Where(s => s is ILocalSymbol)
+            .Select(s => s.Name)
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (flowsOut.Count == 1)
+        {
+            var outName = flowsOut[0].Name;
+            var declaredInside = variablesDeclaredInRegion.Contains(outName);
+            var alwaysAssigned = dataFlow.AlwaysAssigned.Any(s => s.Name == outName);
+
+            // For an existing local that flows out, we must be sure the region writes a complete
+            // value rather than mutating part of one (e.g., `x +=`). DataFlowsOut + AlwaysAssigned
+            // tells us whether the region unconditionally produces a definite assignment for x.
+            // Without AlwaysAssigned, generating `x = M(...)` could mask compound updates.
+            if (!declaredInside && !alwaysAssigned)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot extract: variable '{outName}' flows out of the selection but is not always assigned. " +
+                    "This typically indicates a compound write (e.g. `x +=`) that cannot be safely replaced with a plain assignment from the extracted method.");
+            }
+        }
+
         var isStatic = enclosingMember.Modifiers.Any(SyntaxKind.StaticKeyword);
 
-        return (parameters, flowsOut, isStatic);
+        return (parameters, flowsOut, variablesDeclaredInRegion, isStatic);
     }
 
     private static (MethodDeclarationSyntax NewMethod, StatementSyntax CallStatement)
@@ -179,6 +207,7 @@ public sealed class ExtractMethodService : IExtractMethodService
             string methodName,
             List<(string Name, ITypeSymbol? Type)> parameters,
             List<(string Name, ITypeSymbol? Type)> flowsOut,
+            HashSet<string> variablesDeclaredInRegion,
             bool isStatic,
             List<StatementSyntax> statementsInSelection)
     {
@@ -228,12 +257,28 @@ public sealed class ExtractMethodService : IExtractMethodService
         StatementSyntax callStatement;
         if (flowsOut.Count == 1)
         {
-            callStatement = SyntaxFactory.LocalDeclarationStatement(
-                SyntaxFactory.VariableDeclaration(
-                    SyntaxFactory.IdentifierName("var").WithTrailingTrivia(SyntaxFactory.Space),
-                    SyntaxFactory.SingletonSeparatedList(
-                        SyntaxFactory.VariableDeclarator(flowsOut[0].Name)
-                            .WithInitializer(SyntaxFactory.EqualsValueClause(callExpression)))));
+            var outName = flowsOut[0].Name;
+            // extract-method-apply-var-redeclaration: if the variable was declared OUTSIDE the
+            // extracted region (not in dataFlow.VariablesDeclared), emit a plain assignment to
+            // avoid CS0136 (variable shadowing) + CS0841 (use before declaration). Only synthesize
+            // `var x = M(...)` when x is genuinely a new local introduced by the extracted region.
+            if (variablesDeclaredInRegion.Contains(outName))
+            {
+                callStatement = SyntaxFactory.LocalDeclarationStatement(
+                    SyntaxFactory.VariableDeclaration(
+                        SyntaxFactory.IdentifierName("var").WithTrailingTrivia(SyntaxFactory.Space),
+                        SyntaxFactory.SingletonSeparatedList(
+                            SyntaxFactory.VariableDeclarator(outName)
+                                .WithInitializer(SyntaxFactory.EqualsValueClause(callExpression)))));
+            }
+            else
+            {
+                callStatement = SyntaxFactory.ExpressionStatement(
+                    SyntaxFactory.AssignmentExpression(
+                        SyntaxKind.SimpleAssignmentExpression,
+                        SyntaxFactory.IdentifierName(outName),
+                        callExpression));
+            }
         }
         else
         {

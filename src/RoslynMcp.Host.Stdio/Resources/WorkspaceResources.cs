@@ -66,17 +66,80 @@ public static class WorkspaceResources
             return JsonSerializer.Serialize(graph, JsonDefaults.Indented);
         });
 
+    /// <summary>
+    /// Maximum diagnostics returned by the diagnostics resource. The companion
+    /// `project_diagnostics` tool exposes offset/limit; resources cannot accept query
+    /// parameters in MCP, so the resource enforces a hard cap. Pre-fix this resource
+    /// returned every diagnostic and timed out on solutions like Jellyfin (3433 entries).
+    /// </summary>
+    private const int DiagnosticsResourceCap = 500;
+
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/diagnostics", Name = "workspace_diagnostics", MimeType = "application/json")]
-    [Description("Get all compiler diagnostics for a loaded workspace. Workspace-scoped URI; see roslyn://server/resource-templates.")]
+    [Description("Get diagnostics for a loaded workspace, capped at 500 entries (Warning floor by default — Info diagnostics are excluded). For full pagination control or to include Info, use the project_diagnostics tool. Workspace-scoped URI; see roslyn://server/resource-templates.")]
     public static Task<string> GetDiagnostics(
         IDiagnosticService diagnosticService,
         [Description("The workspace session identifier")] string workspaceId,
         CancellationToken ct = default) =>
         ToolErrorHandler.ExecuteResourceAsync("roslyn://workspace/{workspaceId}/diagnostics", async () =>
         {
-            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, null, null, null, ct).ConfigureAwait(false);
-            return JsonSerializer.Serialize(diagnostics, JsonDefaults.Indented);
+            // diagnostics-resource-timeout: the resource has no pagination affordance, so apply
+            // a Warning floor (skip Info, which dominates large solutions) and cap the returned
+            // rows. Total* fields still reflect the full unfiltered result so callers can see
+            // the real solution health and decide whether to switch to project_diagnostics for
+            // deeper filtering.
+            var diagnostics = await diagnosticService.GetDiagnosticsAsync(
+                workspaceId, projectFilter: null, fileFilter: null,
+                severityFilter: "Warning", diagnosticIdFilter: null, ct).ConfigureAwait(false);
+
+            var workspaceList = diagnostics.WorkspaceDiagnostics.ToList();
+            var compilerList = diagnostics.CompilerDiagnostics.ToList();
+            var analyzerList = diagnostics.AnalyzerDiagnostics.ToList();
+
+            var totalReturned = workspaceList.Count + compilerList.Count + analyzerList.Count;
+            var hasMore = totalReturned > DiagnosticsResourceCap;
+
+            // Cap each bucket proportionally so workspace-load failures (highest signal-to-noise)
+            // are always visible. Workspace bucket fits in full first, then compiler, then
+            // analyzer; the analyzer bucket is the loudest and gets truncated last.
+            var remaining = DiagnosticsResourceCap;
+            var pagedWorkspace = TakeAndDecrement(workspaceList, ref remaining);
+            var pagedCompiler = TakeAndDecrement(compilerList, ref remaining);
+            var pagedAnalyzer = TakeAndDecrement(analyzerList, ref remaining);
+
+            return JsonSerializer.Serialize(new
+            {
+                totalErrors = diagnostics.TotalErrors,
+                totalWarnings = diagnostics.TotalWarnings,
+                totalInfo = diagnostics.TotalInfo,
+                compilerErrors = diagnostics.CompilerErrors,
+                analyzerErrors = diagnostics.AnalyzerErrors,
+                workspaceErrors = diagnostics.WorkspaceErrors,
+                returnedDiagnostics = pagedWorkspace.Count + pagedCompiler.Count + pagedAnalyzer.Count,
+                cap = DiagnosticsResourceCap,
+                hasMore,
+                paginationNote = hasMore
+                    ? "More diagnostics exist than the resource cap (500). Use the project_diagnostics tool with offset/limit/filters to page through the full result, or to include Info severity."
+                    : null,
+                severityFloor = "Warning",
+                severityNote = "Resource omits Info-severity diagnostics by default. Use project_diagnostics with severity=\"Info\" or omit the filter for full coverage.",
+                workspaceDiagnostics = pagedWorkspace,
+                compilerDiagnostics = pagedCompiler,
+                analyzerDiagnostics = pagedAnalyzer
+            }, JsonDefaults.Indented);
         });
+
+    private static List<T> TakeAndDecrement<T>(List<T> source, ref int remaining)
+    {
+        if (remaining <= 0) return [];
+        if (source.Count <= remaining)
+        {
+            remaining -= source.Count;
+            return source;
+        }
+        var taken = source.Take(remaining).ToList();
+        remaining = 0;
+        return taken;
+    }
 
     // source_file is text/x-csharp, not JSON, so we cannot return a JSON envelope on error.
     // Throwing McpToolException with the OriginatingSource keeps the framework's default

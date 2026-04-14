@@ -87,6 +87,29 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task GetDiagnostics_Resource_AppliesSeverityFloorAndCap()
+    {
+        // diagnostics-resource-timeout: the resource caps at 500 entries and applies a Warning
+        // floor by default. Verify the new envelope includes severityFloor + cap + hasMore so
+        // callers know to switch to project_diagnostics for fuller scopes.
+        var json = await WorkspaceResources.GetDiagnostics(DiagnosticService, WorkspaceId, CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+
+        Assert.IsTrue(doc.RootElement.TryGetProperty("severityFloor", out var floor));
+        Assert.AreEqual("Warning", floor.GetString());
+
+        Assert.IsTrue(doc.RootElement.TryGetProperty("cap", out var cap));
+        Assert.AreEqual(500, cap.GetInt32());
+
+        Assert.IsTrue(doc.RootElement.TryGetProperty("hasMore", out var hasMore));
+        Assert.IsTrue(hasMore.ValueKind == JsonValueKind.True || hasMore.ValueKind == JsonValueKind.False,
+            "hasMore must be a boolean.");
+
+        Assert.IsTrue(doc.RootElement.TryGetProperty("returnedDiagnostics", out var returned));
+        Assert.IsTrue(returned.GetInt32() <= 500, "Resource must enforce the 500-row cap.");
+    }
+
+    [TestMethod]
     public async Task GetSourceFile_Resource_Returns_Text()
     {
         var path = FindDocumentPath("AnimalService.cs");

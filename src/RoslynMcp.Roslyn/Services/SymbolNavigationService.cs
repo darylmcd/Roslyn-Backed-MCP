@@ -45,37 +45,86 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return [];
 
-        INamedTypeSymbol? typeSymbol = symbol switch
+        // goto-type-definition-local-vars: extract ITypeSymbol (not just INamedTypeSymbol) so
+        // arrays, type parameters, and pointers carry through. Empty result for primitives is
+        // still handled by the SpecialType guard below.
+        ITypeSymbol? typeSymbol = symbol switch
         {
-            ILocalSymbol local => local.Type as INamedTypeSymbol,
-            IParameterSymbol param => param.Type as INamedTypeSymbol,
-            IFieldSymbol field => field.Type as INamedTypeSymbol,
-            IPropertySymbol prop => prop.Type as INamedTypeSymbol,
-            IEventSymbol evt => evt.Type as INamedTypeSymbol,
-            IMethodSymbol method => method.ReturnType as INamedTypeSymbol,
-            INamedTypeSymbol namedType => namedType,
+            ILocalSymbol local => local.Type,
+            IParameterSymbol param => param.Type,
+            IFieldSymbol field => field.Type,
+            IPropertySymbol prop => prop.Type,
+            IEventSymbol evt => evt.Type,
+            IMethodSymbol method => method.ReturnType,
+            ITypeSymbol type => type,
             _ => null
         };
 
         if (typeSymbol is null) return [];
 
-        // Provide descriptive message for built-in/primitive types that have no source locations
-        if (!typeSymbol.Locations.Any(l => l.IsInSource) && typeSymbol.SpecialType != SpecialType.None)
-        {
-            throw new InvalidOperationException(
-                $"Cannot navigate to type definition for built-in type '{typeSymbol.ToDisplayString()}' — " +
-                "it is defined in the .NET runtime, not in source code.");
-        }
-
         var results = new List<LocationDto>();
-        foreach (var location in typeSymbol.Locations.Where(l => l.IsInSource))
+        var seenLocations = new HashSet<Location>();
+
+        // goto-type-definition-local-vars: walk constructed-generic type arguments when the
+        // outer type is in metadata (e.g. IEnumerable<UserDto> → UserDto). Also unwrap arrays
+        // and pointers to their element type so `var users = new UserDto[]{}` navigates to
+        // UserDto.
+        foreach (var candidate in EnumerateTypeCandidates(typeSymbol))
         {
-            var doc = solution.GetDocument(location.SourceTree!);
-            var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct).ConfigureAwait(false) : null;
-            results.Add(SymbolMapper.ToLocationDto(location, typeSymbol, preview, "Definition"));
+            foreach (var location in candidate.Locations.Where(l => l.IsInSource))
+            {
+                if (!seenLocations.Add(location)) continue;
+                var doc = solution.GetDocument(location.SourceTree!);
+                var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct).ConfigureAwait(false) : null;
+                results.Add(SymbolMapper.ToLocationDto(location, candidate, preview, "Definition"));
+            }
         }
 
-        return results;
+        if (results.Count > 0)
+        {
+            return results;
+        }
+
+        // Provide descriptive message when nothing in the type's hierarchy has a source location
+        // (built-in/primitive types, BCL generics whose arguments are also in metadata, etc.).
+        throw new InvalidOperationException(
+            $"Cannot navigate to type definition for '{typeSymbol.ToDisplayString()}' — " +
+            "neither the type nor any of its type arguments are defined in source. " +
+            "This typically means the type is defined in the .NET runtime or an external assembly.");
+    }
+
+    /// <summary>
+    /// Yields the type itself, then peels off layers Roslyn does NOT collapse via
+    /// <see cref="ISymbol.Locations"/> — array element type, pointer pointed-at type, and
+    /// constructed generic type arguments — so callers can navigate from a variable typed
+    /// <c>UserDto[]</c> or <c>IEnumerable&lt;UserDto&gt;</c> to <c>UserDto</c>'s source.
+    /// </summary>
+    private static IEnumerable<ITypeSymbol> EnumerateTypeCandidates(ITypeSymbol root)
+    {
+        var queue = new Queue<ITypeSymbol>();
+        var seen = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
+        queue.Enqueue(root);
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!seen.Add(current)) continue;
+            yield return current;
+
+            switch (current)
+            {
+                case IArrayTypeSymbol array:
+                    queue.Enqueue(array.ElementType);
+                    break;
+                case IPointerTypeSymbol pointer:
+                    queue.Enqueue(pointer.PointedAtType);
+                    break;
+                case INamedTypeSymbol named when named.IsGenericType:
+                    foreach (var arg in named.TypeArguments)
+                        queue.Enqueue(arg);
+                    break;
+            }
+        }
     }
 
     public async Task<SymbolDto?> GetEnclosingSymbolAsync(string workspaceId, string filePath, int line, int column, CancellationToken ct)

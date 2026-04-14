@@ -161,21 +161,107 @@ public static class WorkspaceTools
             }, ct));
     }
 
-    [McpServerTool(Name = "get_source_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Read the source text of a document in the loaded workspace. Returns the full text content of the file as known to the Roslyn workspace.")]
+    [McpServerTool(Name = "get_source_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Read source text of a document in the loaded workspace. By default returns the full file. Pass startLine/endLine (1-based, inclusive) to slice. Output is capped at maxChars (default 65536); set Truncated=true marker indicates the response was clipped — re-request a narrower line range. Always returns RequestedStartLine/RequestedEndLine, ReturnedStartLine/ReturnedEndLine, TotalLineCount so callers can verify the slice.")]
     public static Task<string> GetSourceText(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file")] string filePath,
+        [Description("Optional: 1-based first line to return (inclusive). Defaults to 1.")] int? startLine = null,
+        [Description("Optional: 1-based last line to return (inclusive). Defaults to the last line of the file.")] int? endLine = null,
+        [Description("Maximum characters to return (default 65536). Truncates with a marker if the requested range exceeds the cap.")] int maxChars = 65536,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("get_source_text", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
+                if (maxChars <= 0)
+                    throw new ArgumentException($"maxChars must be greater than 0 (got {maxChars}).", nameof(maxChars));
+                if (startLine is < 1)
+                    throw new ArgumentException($"startLine must be >= 1 (got {startLine.Value}).", nameof(startLine));
+                if (endLine is < 1)
+                    throw new ArgumentException($"endLine must be >= 1 (got {endLine.Value}).", nameof(endLine));
+                if (startLine.HasValue && endLine.HasValue && startLine.Value > endLine.Value)
+                    throw new ArgumentException(
+                        $"startLine ({startLine.Value}) must be <= endLine ({endLine.Value}).",
+                        nameof(startLine));
+
                 var text = await workspace.GetSourceTextAsync(workspaceId, filePath, c);
                 if (text is null) throw new KeyNotFoundException($"Document not found: {filePath}");
-                return JsonSerializer.Serialize(new { filePath, lineCount = text.Count(ch => ch == '\n') + 1, text }, JsonDefaults.Indented);
+
+                var totalLineCount = text.Count(ch => ch == '\n') + 1;
+                var requestedStart = startLine ?? 1;
+                var requestedEnd = endLine ?? totalLineCount;
+
+                if (requestedStart > totalLineCount)
+                    throw new ArgumentException(
+                        $"startLine ({requestedStart}) is past the end of the file ({totalLineCount} lines).",
+                        nameof(startLine));
+
+                // Clamp endLine to the file end so callers asking for "lines 100..1000" on a
+                // 200-line file get lines 100..200 instead of an error.
+                var returnedEnd = Math.Min(requestedEnd, totalLineCount);
+                var returnedStart = requestedStart;
+
+                var slice = SliceLines(text, returnedStart, returnedEnd);
+
+                var truncated = false;
+                if (slice.Length > maxChars)
+                {
+                    slice = slice.Substring(0, maxChars) + $"\n[TRUNCATED at {maxChars} characters — re-request a narrower line range to see the rest]";
+                    truncated = true;
+                }
+
+                return JsonSerializer.Serialize(new
+                {
+                    filePath,
+                    totalLineCount,
+                    requestedStartLine = requestedStart,
+                    requestedEndLine = requestedEnd,
+                    returnedStartLine = returnedStart,
+                    returnedEndLine = returnedEnd,
+                    truncated,
+                    text = slice
+                }, JsonDefaults.Indented);
             }, ct));
+    }
+
+    /// <summary>
+    /// Returns the inclusive substring of <paramref name="text"/> covering lines
+    /// <paramref name="startLine"/>..<paramref name="endLine"/> (1-based). Includes the trailing
+    /// line break of the last line so concatenated slices reassemble cleanly.
+    /// </summary>
+    private static string SliceLines(string text, int startLine, int endLine)
+    {
+        // Scan once; cheaper than allocating a string-array via Split when the slice is small.
+        var startCharIndex = 0;
+        var currentLine = 1;
+        for (var i = 0; i < text.Length && currentLine < startLine; i++)
+        {
+            if (text[i] == '\n')
+            {
+                currentLine++;
+                startCharIndex = i + 1;
+            }
+        }
+        if (currentLine < startLine) return string.Empty;
+
+        var endCharIndex = text.Length;
+        var lineCounter = currentLine;
+        for (var i = startCharIndex; i < text.Length; i++)
+        {
+            if (text[i] == '\n')
+            {
+                if (lineCounter == endLine)
+                {
+                    endCharIndex = i + 1;
+                    break;
+                }
+                lineCounter++;
+            }
+        }
+
+        return text.Substring(startCharIndex, endCharIndex - startCharIndex);
     }
 
     /// <summary>

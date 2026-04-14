@@ -85,6 +85,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IFlowAnalysisService, FlowAnalysisService>();
         services.AddSingleton<ICompileCheckService, CompileCheckService>();
         services.AddSingleton<IAnalyzerInfoService, AnalyzerInfoService>();
+        services.AddSingleton<ICodeFixProviderRegistry, CodeFixProviderRegistry>();
         services.AddSingleton<IFixAllService, FixAllService>();
         services.AddSingleton<IOperationService, OperationService>();
         services.AddSingleton<ISnippetAnalysisService, SnippetAnalysisService>();

@@ -156,6 +156,17 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
     private async Task<AnalysisRegion> ResolveAnalysisRegionAsync(
         string workspaceId, string filePath, int startLine, int endLine, CancellationToken ct)
     {
+        // analyze-data-flow-inverted-range: validate range orientation upfront so callers get
+        // a structured InvalidArgument error instead of the misleading "No statements found in
+        // the line range N-M" InvalidOperation message that resulted from the inverted predicate.
+        if (startLine < 1)
+            throw new ArgumentException($"startLine ({startLine}) must be >= 1.", nameof(startLine));
+        if (endLine < 1)
+            throw new ArgumentException($"endLine ({endLine}) must be >= 1.", nameof(endLine));
+        if (startLine > endLine)
+            throw new ArgumentException(
+                $"startLine ({startLine}) must be <= endLine ({endLine}).", nameof(startLine));
+
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var normalizedPath = Path.GetFullPath(filePath);
 

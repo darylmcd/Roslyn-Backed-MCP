@@ -28,4 +28,16 @@ public class RefactoringProbe
         var greeting = $"Hello, {name}!";
         return greeting;
     }
+
+    // Lines 35-39: extract a region that REASSIGNS an existing local. The previous extract
+    // method implementation always emitted `var result = M(...)` at the call site, producing
+    // CS0136+CS0841. Post-fix it must emit `result = M(...)` (plain assignment) so the
+    // extracted method can be applied without breaking compilation.
+    public int ReassignedLocalScenario(int input)
+    {
+        int result = input;
+        result = result * 2;
+        result = result + 5;
+        return result;
+    }
 }

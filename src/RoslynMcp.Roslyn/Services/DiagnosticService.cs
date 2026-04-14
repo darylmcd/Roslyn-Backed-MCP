@@ -25,16 +25,47 @@ public sealed class DiagnosticService : IDiagnosticService
 
     private sealed record DiagnosticCacheEntry(int Version, IReadOnlyList<Diagnostic> Diagnostics);
 
+    /// <summary>
+    /// project-diagnostics-large-solution-perf: per-workspace cache of the full result DTO
+    /// keyed on the (version, projectFilter, fileFilter, severityFilter, diagnosticIdFilter)
+    /// tuple so repeat full-scan callers (e.g. polling agents, dashboards) don't re-run
+    /// analyzers every time. Cap at 8 entries per workspace (LRU-ish — last write wins on
+    /// the same key, oldest entries trimmed when the workspace version bumps).
+    /// </summary>
+    private readonly ConcurrentDictionary<string, ResultCacheEntry> _resultCache = new();
+
+    private sealed record ResultCacheEntry(int Version, ConcurrentDictionary<ResultCacheKey, DiagnosticsResultDto> Results);
+
+    private sealed record ResultCacheKey(string? ProjectFilter, string? FileFilter, string? SeverityFilter, string? DiagnosticIdFilter);
+
+    private const int MaxResultCacheEntriesPerWorkspace = 8;
+
     public DiagnosticService(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<DiagnosticService> logger)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
+        _workspace.WorkspaceClosed += workspaceId =>
+        {
+            _resultCache.TryRemove(workspaceId, out _);
+            _diagnosticCache.TryRemove(workspaceId, out _);
+        };
     }
 
     public async Task<DiagnosticsResultDto> GetDiagnosticsAsync(
         string workspaceId, string? projectFilter, string? fileFilter, string? severityFilter, string? diagnosticIdFilter, CancellationToken ct)
     {
+        // project-diagnostics-large-solution-perf: per-(version, filters) result cache so
+        // repeat callers don't pay the analyzer cost twice. Invalidates on workspace version
+        // bump (LoadIntoSessionAsync, ReloadAsync) and on workspace close.
+        var version = _workspace.GetCurrentVersion(workspaceId);
+        var cacheKey = new ResultCacheKey(projectFilter, fileFilter, severityFilter, diagnosticIdFilter);
+        if (_resultCache.TryGetValue(workspaceId, out var entry) && entry.Version == version
+            && entry.Results.TryGetValue(cacheKey, out var cachedResult))
+        {
+            return cachedResult;
+        }
+
         var solution = _workspace.GetCurrentSolution(workspaceId);
         // Default to Info when no filter so totals align with the first page (Warning hid Info-only
         // solutions). Hidden remains excluded in CollectDiagnostics. Payload size is capped by
@@ -71,7 +102,6 @@ public sealed class DiagnosticService : IDiagnosticService
         // covered the whole solution; partial filters would produce a misleading cache.
         if (projectFilter is null && fileFilter is null)
         {
-            var version = _workspace.GetCurrentVersion(workspaceId);
             var allRaw = results.SelectMany(r => r.raw).ToList();
             _diagnosticCache[workspaceId] = new DiagnosticCacheEntry(version, allRaw);
         }
@@ -92,7 +122,7 @@ public sealed class DiagnosticService : IDiagnosticService
             + analyzerAllDiagnostics.Count(d => d.Severity == "Info")
             + workspaceMatchingFile.Count(d => d.Severity == "Info");
 
-        return new DiagnosticsResultDto(
+        var result = new DiagnosticsResultDto(
             workspaceDiagnostics,
             compilerDiagnostics,
             analyzerDiagnostics,
@@ -102,6 +132,25 @@ public sealed class DiagnosticService : IDiagnosticService
             CompilerErrors: compilerErrors,
             AnalyzerErrors: analyzerErrors,
             WorkspaceErrors: workspaceErrors);
+
+        // project-diagnostics-large-solution-perf: store in result cache for repeat callers.
+        // Bound entries per workspace to avoid memory growth on chatty filter combinations.
+        var workspaceEntry = _resultCache.AddOrUpdate(
+            workspaceId,
+            _ => new ResultCacheEntry(version, new ConcurrentDictionary<ResultCacheKey, DiagnosticsResultDto>()),
+            (_, existing) => existing.Version == version
+                ? existing
+                : new ResultCacheEntry(version, new ConcurrentDictionary<ResultCacheKey, DiagnosticsResultDto>()));
+        if (workspaceEntry.Results.Count >= MaxResultCacheEntriesPerWorkspace)
+        {
+            // Simple LRU-ish: drop one arbitrary entry. Full LRU isn't worth a list here —
+            // typical agent usage hits 1-3 distinct filter combos per session.
+            var someKey = workspaceEntry.Results.Keys.FirstOrDefault();
+            if (someKey is not null) workspaceEntry.Results.TryRemove(someKey, out _);
+        }
+        workspaceEntry.Results[cacheKey] = result;
+
+        return result;
     }
 
     private async Task<(List<DiagnosticDto> compilerAll, List<DiagnosticDto> compilerFiltered,
@@ -130,6 +179,16 @@ public sealed class DiagnosticService : IDiagnosticService
         CollectDiagnostics(compilation.GetDiagnostics(ct), fileFilter, diagnosticIdFilter, minSeverity,
             raw, compilerAll, compilerFiltered);
 
+        // project-diagnostics-large-solution-perf: when severity floor == Error, skip the
+        // analyzer pass entirely if no loaded descriptor on this project has DefaultSeverity ==
+        // Error. Most CA*/IDE* analyzers default to Warning, so this short-circuits the most
+        // expensive call (CompilationWithAnalyzers.GetAnalyzerDiagnosticsAsync) on a strict
+        // severity=Error scope, dropping ~25 s of Jellyfin's 35 s call.
+        if (minSeverity == DiagnosticSeverity.Error && !ProjectHasErrorDefaultAnalyzer(project))
+        {
+            return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
+        }
+
         var compilationWithAnalyzers = await _compilationCache
             .GetCompilationWithAnalyzersAsync(workspaceId, project, ct)
             .ConfigureAwait(false);
@@ -141,6 +200,29 @@ public sealed class DiagnosticService : IDiagnosticService
         }
 
         return (compilerAll, compilerFiltered, analyzerAll, analyzerFiltered, raw);
+    }
+
+    /// <summary>
+    /// Returns true if the project loads any analyzer descriptor whose DefaultSeverity is
+    /// Error. When false and the caller asked for severity=Error only, the analyzer pass can
+    /// be skipped entirely. Conservative: any descriptor with default-Error keeps the pass on.
+    /// .editorconfig overrides could still escalate Warning→Error, but that's a corner case
+    /// not yet visible to this method without running each analyzer.
+    /// </summary>
+    private static bool ProjectHasErrorDefaultAnalyzer(Project project)
+    {
+        foreach (var reference in project.AnalyzerReferences)
+        {
+            foreach (var analyzer in reference.GetAnalyzers(project.Language))
+            {
+                foreach (var descriptor in analyzer.SupportedDiagnostics)
+                {
+                    if (descriptor.DefaultSeverity == DiagnosticSeverity.Error)
+                        return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static void CollectDiagnostics(

@@ -141,4 +141,70 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
                 "",
                 CancellationToken.None));
     }
+
+    /// <summary>
+    /// extract-method-apply-var-redeclaration: when the single flowsOut variable is declared
+    /// OUTSIDE the extracted region (only reassigned inside), the call site must emit a plain
+    /// assignment `result = M(...)` rather than `var result = M(...)` to avoid CS0136 + CS0841.
+    /// Apply must succeed and the resulting solution must compile.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractMethod_ReassignsExistingLocal_EmitsAssignmentNotVarDecl()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
+
+        // ReassignedLocalScenario: lines 39-40 reassign the existing `result` local (declared on
+        // line 38, OUTSIDE the selection). `result` flows IN and flows OUT, but it is NOT in
+        // VariablesDeclared, so the call site must use plain assignment.
+        var preview = await ExtractMethodService.PreviewExtractMethodAsync(
+            workspace.WorkspaceId,
+            filePath,
+            startLine: 39, startColumn: 9,
+            endLine: 40, endColumn: 30,
+            "TransformResult",
+            CancellationToken.None);
+
+        var diff = preview.Changes[0].UnifiedDiff;
+        Assert.IsTrue(diff.Contains("result=TransformResult") || diff.Contains("result = TransformResult"),
+            $"Expected plain assignment 'result = TransformResult(...)' at the call site. Diff:\n{diff}");
+        Assert.IsFalse(diff.Contains("var result=TransformResult") || diff.Contains("var result = TransformResult"),
+            $"Must NOT emit `var result = TransformResult(...)` — that re-declares the existing local. Diff:\n{diff}");
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+            preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, "Apply must succeed.");
+
+        var compileResult = await CompileCheckService.CheckAsync(
+            workspace.WorkspaceId, new CompileCheckOptions(), CancellationToken.None);
+        Assert.IsTrue(compileResult.Success,
+            $"Compilation must succeed after extract; before fix it produced CS0136 + CS0841. Errors: " +
+            $"{string.Join("; ", compileResult.Diagnostics?.Select(d => $"{d.Id}: {d.Message}") ?? [])}");
+    }
+
+    /// <summary>
+    /// Sanity: when the flowsOut variable IS declared inside the region (the original test case
+    /// at lines 13-14 with `var doubled = sum * 2;`), the call site still uses `var x = M(...)`
+    /// so we can introduce the new local. Guards against an over-correction in the previous test.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractMethod_DeclaredAndFlowsOut_StillEmitsVarDecl()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
+
+        // Lines 13-14: var sum = a + b; var doubled = sum * 2;
+        // `doubled` is declared inside AND flows out (used on line 15 + return).
+        var preview = await ExtractMethodService.PreviewExtractMethodAsync(
+            workspace.WorkspaceId,
+            filePath,
+            startLine: 13, startColumn: 9,
+            endLine: 14, endColumn: 34,
+            "ComputeDoubled",
+            CancellationToken.None);
+
+        var diff = preview.Changes[0].UnifiedDiff;
+        Assert.IsTrue(diff.Contains("var doubled=ComputeDoubled") || diff.Contains("var doubled = ComputeDoubled"),
+            $"Expected `var doubled = ComputeDoubled(...)` since the local is introduced by the region. Diff:\n{diff}");
+    }
 }

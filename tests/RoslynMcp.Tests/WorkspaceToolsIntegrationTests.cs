@@ -117,10 +117,105 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
             WorkspaceManager,
             WorkspaceId,
             programPath,
-            CancellationToken.None);
+            startLine: null,
+            endLine: null,
+            ct: CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.GetProperty("lineCount").GetInt32() >= 1);
+        Assert.IsTrue(doc.RootElement.GetProperty("totalLineCount").GetInt32() >= 1);
         Assert.IsTrue(doc.RootElement.TryGetProperty("text", out _));
+    }
+
+    [TestMethod]
+    public async Task WorkspaceTools_GetSourceText_LineRange_ReturnsOnlyRequestedLines()
+    {
+        var programPath = FindProgramPath();
+        // Slice the first 2 lines
+        var json = await WorkspaceTools.GetSourceText(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            programPath,
+            startLine: 1,
+            endLine: 2,
+            ct: CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        var text = doc.RootElement.GetProperty("text").GetString() ?? "";
+        Assert.AreEqual(1, doc.RootElement.GetProperty("returnedStartLine").GetInt32());
+        Assert.AreEqual(2, doc.RootElement.GetProperty("returnedEndLine").GetInt32());
+        var lineCount = text.Split('\n').Length - (text.EndsWith('\n') ? 1 : 0);
+        Assert.IsTrue(lineCount <= 2, $"Expected <=2 lines, got {lineCount}: {text}");
+    }
+
+    [TestMethod]
+    public async Task WorkspaceTools_GetSourceText_EndPastEof_ClampsToFileEnd()
+    {
+        var programPath = FindProgramPath();
+        var json = await WorkspaceTools.GetSourceText(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            programPath,
+            startLine: 1,
+            endLine: 99999,
+            ct: CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        var total = doc.RootElement.GetProperty("totalLineCount").GetInt32();
+        var returnedEnd = doc.RootElement.GetProperty("returnedEndLine").GetInt32();
+        Assert.AreEqual(total, returnedEnd, "endLine should clamp to total line count, not error.");
+        Assert.AreEqual(99999, doc.RootElement.GetProperty("requestedEndLine").GetInt32());
+    }
+
+    [TestMethod]
+    public async Task WorkspaceTools_GetSourceText_InvertedRange_ReturnsInvalidArgument()
+    {
+        var programPath = FindProgramPath();
+        var json = await WorkspaceTools.GetSourceText(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            programPath,
+            startLine: 5,
+            endLine: 2,
+            ct: CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString()!, "<=");
+    }
+
+    [TestMethod]
+    public async Task WorkspaceTools_GetSourceText_StartPastEof_ReturnsInvalidArgument()
+    {
+        var programPath = FindProgramPath();
+        var json = await WorkspaceTools.GetSourceText(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            programPath,
+            startLine: 99999,
+            endLine: 99999,
+            ct: CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+    }
+
+    [TestMethod]
+    public async Task WorkspaceTools_GetSourceText_MaxCharsCap_TruncatesWithMarker()
+    {
+        var programPath = FindProgramPath();
+        var json = await WorkspaceTools.GetSourceText(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            programPath,
+            startLine: null,
+            endLine: null,
+            maxChars: 16,
+            ct: CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.GetProperty("truncated").GetBoolean(),
+            "Should be truncated since maxChars=16 is well below file size.");
+        var text = doc.RootElement.GetProperty("text").GetString() ?? "";
+        StringAssert.Contains(text, "[TRUNCATED");
     }
 
     [TestMethod]
