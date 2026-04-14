@@ -203,7 +203,7 @@ public static class WorkspaceTools
                 var returnedEnd = Math.Min(requestedEnd, totalLineCount);
                 var returnedStart = requestedStart;
 
-                var slice = SliceLines(text, returnedStart, returnedEnd);
+                var slice = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.SliceLines(text, returnedStart, returnedEnd);
 
                 var truncated = false;
                 if (slice.Length > maxChars)
@@ -224,44 +224,6 @@ public static class WorkspaceTools
                     text = slice
                 }, JsonDefaults.Indented);
             }, ct));
-    }
-
-    /// <summary>
-    /// Returns the inclusive substring of <paramref name="text"/> covering lines
-    /// <paramref name="startLine"/>..<paramref name="endLine"/> (1-based). Includes the trailing
-    /// line break of the last line so concatenated slices reassemble cleanly.
-    /// </summary>
-    private static string SliceLines(string text, int startLine, int endLine)
-    {
-        // Scan once; cheaper than allocating a string-array via Split when the slice is small.
-        var startCharIndex = 0;
-        var currentLine = 1;
-        for (var i = 0; i < text.Length && currentLine < startLine; i++)
-        {
-            if (text[i] == '\n')
-            {
-                currentLine++;
-                startCharIndex = i + 1;
-            }
-        }
-        if (currentLine < startLine) return string.Empty;
-
-        var endCharIndex = text.Length;
-        var lineCounter = currentLine;
-        for (var i = startCharIndex; i < text.Length; i++)
-        {
-            if (text[i] == '\n')
-            {
-                if (lineCounter == endLine)
-                {
-                    endCharIndex = i + 1;
-                    break;
-                }
-                lineCounter++;
-            }
-        }
-
-        return text.Substring(startCharIndex, endCharIndex - startCharIndex);
     }
 
     /// <summary>

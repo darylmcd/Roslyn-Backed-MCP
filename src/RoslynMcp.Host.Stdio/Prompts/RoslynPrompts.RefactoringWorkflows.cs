@@ -60,7 +60,7 @@ public static partial class RoslynPrompts
     }
 
     [McpServerPrompt(Name = "refactor_and_validate")]
-    [Description("Generate a prompt that composes code-action preview/apply with validation steps for a focused refactoring.")]
+    [Description("Generate a prompt that composes code-action preview/apply with validation steps for a focused refactoring. Uses a 20 s soft cap and a Warning severity floor so a slow analyzer pass aborts cleanly with an actionable message instead of hanging through the framework's default timeout.")]
     public static async Task<IEnumerable<PromptMessage>> RefactorAndValidate(
         IWorkspaceManager workspace,
         ICodeActionService codeActionService,
@@ -73,16 +73,22 @@ public static partial class RoslynPrompts
         [Description("Optional: 1-based end column number for a selection range")] int? endColumn = null,
         CancellationToken ct = default)
     {
+        // prompt-timeout-explain-refactor: cap at 20 s, pass severityFilter=Warning so PR #150's
+        // analyzer-skip short-circuit fires when no Error-default analyzer is loaded.
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        linkedCts.CancelAfter(TimeSpan.FromSeconds(20));
+        var promptCt = linkedCts.Token;
+
         try
         {
-            var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, ct).ConfigureAwait(false);
+            var sourceText = await workspace.GetSourceTextAsync(workspaceId, filePath, promptCt).ConfigureAwait(false);
             if (sourceText is null)
             {
                 return [PromptMessageBuilder.CreatePromptMessage($"File not found in workspace: {filePath}")];
             }
 
-            var codeActions = await codeActionService.GetCodeActionsAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, ct).ConfigureAwait(false);
-            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, null, null, ct).ConfigureAwait(false);
+            var codeActions = await codeActionService.GetCodeActionsAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, promptCt).ConfigureAwait(false);
+            var diagnostics = await diagnosticService.GetDiagnosticsAsync(workspaceId, null, filePath, "Warning", null, promptCt).ConfigureAwait(false);
 
             return
             [
@@ -115,6 +121,11 @@ public static partial class RoslynPrompts
                     Prefer minimal diffs and explain why you chose the selected code action over the alternatives.
                     """)
             ];
+        }
+        catch (OperationCanceledException) when (promptCt.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            return [PromptMessageBuilder.CreatePromptMessage(
+                "refactor_and_validate: aborted because the analysis exceeded 20 s. Re-run on a narrower selection or warm the workspace first via project_diagnostics(severityFilter=\"Warning\").")];
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

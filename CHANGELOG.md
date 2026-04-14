@@ -6,27 +6,62 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Fixed
+## [1.15.0] - 2026-04-15
+
+Two top-10 backlog remediation passes plus the post-1.14 cleanup batch.
+
+### Fixed (P2 unblockers from remediation pass 1)
+
+- **`unresolved-analyzer-reference-crash`:** `WorkspaceManager.LoadIntoSessionAsync` now strips `UnresolvedAnalyzerReference` entries from every project at load time via `Solution.RemoveAnalyzerReference` + `Workspace.TryApplyChanges`, surfacing a `WORKSPACE_UNRESOLVED_ANALYZER` warning through `workspace_status` so callers can still see what was filtered. Removes the per-service FLAG-A guards in `CompilationCache` and `FixAllService` now that the strip is centralized. Unblocks `find_unused_symbols`, `type_hierarchy`, `find_implementations`, `member_hierarchy`, `impact_analysis`, and `suggest_refactorings` on repos with netstandard2.0 analyzer references (e.g. Jellyfin).
+- **`extract-method-apply-var-redeclaration`:** `ExtractMethodService` now consults `dataFlow.VariablesDeclared`. When the single flowsOut variable is declared OUTSIDE the extracted region the call site emits a plain assignment (`x = M(...)`) instead of `var x = M(...)`, eliminating CS0136 + CS0841 on apply. Compound writes (DataFlowsOut without AlwaysAssigned) are now rejected with a clear error.
+
+### Fixed (P3 from remediation pass 1)
+
+- **`get-source-text-line-range-ignored`:** `get_source_text` gains optional `startLine` / `endLine` / `maxChars` parameters with full validation; response envelope now includes `totalLineCount`, `requestedStartLine/EndLine`, `returnedStartLine/EndLine`, and `truncated` so callers can verify the slice. Pre-fix the parameters were silently dropped by the MCP framework.
+- **`format-range-preview-nonfunctional`:** Added upfront parameter validation, end-position clamping, and disambiguated the `Formatter.FormatAsync` overload with `IEnumerable<TextSpan>` so the tool produces actual previews instead of erroring on every input.
+- **`goto-type-definition-local-vars`:** `SymbolNavigationService` now walks constructed-generic type arguments, array element types, and pointer pointed-at types so navigating from a local of `IEnumerable<UserDto>` lands on `UserDto`'s source instead of returning empty.
+- **`diagnostics-resource-timeout`:** `roslyn://workspace/{id}/diagnostics` enforces a 500-row cap and a Warning-severity floor by default; envelope adds `hasMore`, `cap`, `severityFloor`, `paginationNote`. Resource no longer hangs on multi-thousand-diagnostic solutions.
+- **`project-diagnostics-large-solution-perf`:** `DiagnosticService` adds a per-(workspaceVersion, filters) result cache (LRU-ish, 8 entries per workspace, invalidates on `WorkspaceClosed`); analyzer pass is skipped when `severity=Error` and no loaded descriptor defaults to Error.
+- **`code-fix-providers-missing-ca`:** Extracted `CodeFixProviderRegistry` that loads providers from `Microsoft.CodeAnalysis.CSharp.Features` and per-project analyzer references; `RefactoringService.PreviewCodeFixAsync` now dispatches via the registry, with the CS8019 fast path retained as fallback. CA*/IDE* fixes that previously errored now resolve when the analyzer assemblies are in the workspace.
+
+### Fixed (P4 from remediation pass 1)
+
+- **`apply-project-mutation-whitespace`:** `ProjectMutationService.RemoveElementCleanly` drops one whitespace neighbour (preferring leading text) and prunes empty parents so an add → remove round-trip no longer leaves a blank line or empty `<ItemGroup />`.
+- **`analyze-data-flow-inverted-range`:** `FlowAnalysisService.ResolveAnalysisRegionAsync` rejects `startLine > endLine`, `startLine < 1`, `endLine < 1` upfront with a structured `ArgumentException` instead of falling through to "No statements found in the line range N-M".
+
+### Fixed (post-1.14 cleanup batch)
 
 - **Response key casing:** Added `PropertyNamingPolicy = CamelCase` to `JsonDefaults.Indented` so all tool and resource responses use camelCase keys, matching input parameter casing. **Breaking:** external clients parsing PascalCase keys (e.g. `PreviewToken`, `WorkspaceId`, `ErrorCount`) must update to camelCase (`previewToken`, `workspaceId`, `errorCount`).
 - **`server_info` version comparison:** `NuGetVersionChecker` now compares NuGet versions semantically (`Version.TryParse`) instead of taking the last array element; prevents stale NuGet CDN data from reporting an older version as "latest" with `updateAvailable: true`.
 - **Stdio flush on exit:** Added `Console.Out.Flush()` in the `ApplicationStopping` handler and after `host.RunAsync()` to prevent buffered MCP JSON responses from being lost on process exit.
-- **`add_central_package_version_preview` / `remove_central_package_version_preview`:** Now throws `FileNotFoundException` (instead of generic `InvalidOperationException`) with actionable message including searched directory path and CPM setup instructions when `Directory.Packages.props` is missing.
+- **`add_central_package_version_preview` / `remove_central_package_version_preview`:** Throws `FileNotFoundException` with an actionable message (searched directory path + CPM setup instructions) when `Directory.Packages.props` is missing.
 - **`fix_all_preview` IDE diagnostics:** Added `GetAlternativeToolHint()` mapping for common IDE diagnostics (IDE0005, IDE0007/8, IDE0055, IDE0160/1, IDE0290) that lack FixAll providers, directing agents to the correct alternative tool. Startup logging now reports skipped provider count.
 
-### Added
+### Performance (remediation pass 2)
 
-- **`compile_check` restore hint:** `CompileCheckDto` includes `RestoreHint` field; heuristic detects 10+ CS0234 errors and suggests `dotnet restore` + `workspace_reload`.
-- **`compile_check` partial results on cancellation:** `CompileCheckDto` adds `Cancelled`, `CompletedProjects`, and `TotalProjects` fields; cancellation returns diagnostics collected so far instead of throwing `OperationCanceledException`.
-- **`project_diagnostics` summary mode:** New `summary` parameter (bool, default false); when true, returns per-diagnostic-ID counts grouped by severity instead of individual diagnostic rows (10-100x smaller payload).
-- **`_meta` injection logging:** `ToolErrorHandler.InjectMetaIfPossible` now emits `Trace.TraceWarning` when meta injection is skipped (null snapshot or non-object response root), aiding observability audits.
-- **Tests:** `SolutionDiffHelperTests` (6 tests) and `TriviaNormalizationHelperTests` (7 tests) for previously untested infrastructure helpers.
+- **`scaffold-type-apply-perf`:** `RefactoringService.PersistDocumentSetChangesAsync` now attempts `Workspace.TryApplyChanges` first and only falls back to `ReloadAsync` when MSBuildWorkspace rejects the change. Eliminates the unconditional ~10 s reload on every `scaffold_type_apply` and `create_file_apply`.
+- **`di-registrations-scan-caching`:** `DiRegistrationService` adds a per-(workspaceVersion, projectFilter) result cache (LRU-ish, 8 entries per workspace, invalidates on `WorkspaceClosed`). Repeat callers no longer pay the ~12 s solution scan twice.
+- **`nuget-vuln-scan-caching`:** `NuGetDependencyService.ScanNuGetVulnerabilitiesAsync` caches results by `(workspaceVersion, projectFilter, includeTransitive, lockfileHash)`. Lockfile hash is computed from `Directory.Packages.props` and per-project `packages.lock.json` so external edits invalidate cleanly without a workspace bump. Repeat scans drop from ~11 s to <50 ms.
+- **`solution-project-index-by-name`:** New `IWorkspaceManager.GetProject(workspaceId, projectNameOrPath)` API backed by a per-`workspaceVersion` `Dictionary<string, Project>` index. Single source of truth for project name / file path lookups across services.
+- **`prompt-timeout-explain-refactor`:** Both `explain_error` and `refactor_and_validate` prompts now run the diagnostics step at `severityFilter="Warning"` so the analyzer-skip short-circuit fires; both wrap their bodies in a 20 s linked `CancellationTokenSource` that returns a clear "aborted at the diagnostics step" message instead of hanging through the framework's 25 s default timeout.
+
+### Added (remediation pass 2)
+
+- **`apply_with_verify` (new tool):** Atomic apply → `compile_check` → revert primitive. Applies the preview, captures pre/post error fingerprints, and rolls back via `revert_last_apply` when new compile errors appear. Pass `rollbackOnError=false` to keep the broken state for inspection.
+- **`remove_interface_member_preview` (new tool):** Composite preview that resolves an interface member, gathers every implementation via `SymbolFinder.FindImplementationsAsync`, refuses if any non-implementation caller exists, and produces a single `dead_code_preview` token spanning the interface declaration plus every implementation. Apply via `remove_dead_code_apply`.
+- **`source_file_lines` resource template:** `roslyn://workspace/{workspaceId}/file/{filePath}/lines/{startLine}-{endLine}` returns a 1-based inclusive line slice (mirrors the `get_source_text` tool's slicing). Response is prefixed with a `// roslyn://… lines N..M of T` comment marker.
+- **Long-running tool progress:** `project_diagnostics`, `nuget_vulnerability_scan`, and `extract_and_wire_interface_preview` now accept `IProgress<ProgressNotificationValue>` and emit start/finish progress events so agents can distinguish "still working" from "actually hung".
+- **Shared `SourceTextSlicer` helper:** Extracted from `WorkspaceTools.SliceLines` into `RoslynMcp.Roslyn.Helpers.SourceTextSlicer` so the tool and the new resource template use the same code path.
 
 ### Maintenance
 
-- **Backlog cleanup:** Removed 10 implemented rows + 3 stale rows (`test-fixall-service`, `test-symbol-mapper`, `project-graph-missing-fields` — all already had test coverage or were non-issues).
-- **Jellyfin audit backlog:** Added 18 new items from Jellyfin stress test + full-surface audit (40-project, 2065-doc solution). 2 P2 (`unresolved-analyzer-reference-crash`, `extract-method-apply-var-redeclaration`), 11 P3 (schema drift, tool bugs, perf budgets), 5 P4 (perf caching opportunities, cosmetic issues). Raw reports: `ai_docs/audit-reports/20260413T120000Z_jellyfin_mcp-server-audit.md`, `ai_docs/audit-reports/20260414T120000Z_jellyfin_stress-test.md`.
-- **New prompt:** `ai_docs/prompts/stress-test-external-repo.md` — performance-focused prompt for running tool-level stress tests against large external C# repos, with results persisted to `ai_docs/audit-reports/`.
+- **Backlog:** Closed 19 rows across the two remediation passes (10 + 9 — `cohesion-metrics-null-lcom4` was demoted to P4 with a "needs fresh repro" note rather than closed). Added 2 follow-up rows from observations during the work: `solution-project-index-by-name` (subsequently closed in pass 2) and `source-file-resource-line-range-parity` (closed in pass 2). `apply-text-edit-diff-quality` closed via investigation pass — added 4 edge-case repro tests to `DiffGeneratorTests`; no concrete bug reproduces after the overlap-safety + syntax-preflight work shipped in earlier PRs.
+- **`compile_check` restore hint:** `CompileCheckDto` includes `RestoreHint` field; heuristic detects 10+ CS0234 errors and suggests `dotnet restore` + `workspace_reload`.
+- **`compile_check` partial results on cancellation:** `CompileCheckDto` adds `Cancelled`, `CompletedProjects`, and `TotalProjects` fields; cancellation returns diagnostics collected so far instead of throwing `OperationCanceledException`.
+- **`project_diagnostics` summary mode:** New `summary` parameter (bool, default false); when true, returns per-diagnostic-ID counts grouped by severity instead of individual diagnostic rows (10-100x smaller payload).
+- **`_meta` injection logging:** `ToolErrorHandler.InjectMetaIfPossible` emits `Trace.TraceWarning` when meta injection is skipped (null snapshot or non-object response root), aiding observability audits.
+- **Tests:** Added regression coverage for every remediation item; full suite now 478 tests (up from 466) with no regressions. New test files: `UnresolvedAnalyzerReferenceTests`, `FormatRangeServiceTests`, `GoToTypeDefinitionTests`, `CodeFixProviderRegistryTests`, `Top10V2RegressionTests`. Plus extensions to existing test files for extract-method, project-mutation, flow-analysis, diagnostic-service, workspace-tools, workspace-resource, and diff-generator coverage.
+- **Plans:** Implementation plans archived under `ai_docs/reports/20260414T220000Z_top10-remediation-plan.md` and `20260414T231900Z_top10-remediation-plan-v2.md`.
 
 ## [1.14.0] - 2026-04-14
 

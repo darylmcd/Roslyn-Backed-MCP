@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -18,6 +19,19 @@ public sealed class DiRegistrationService : IDiRegistrationService
     private readonly ICompilationCache _compilationCache;
     private readonly ILogger<DiRegistrationService> _logger;
 
+    /// <summary>
+    /// di-registrations-scan-caching: full scan is ~12 s on Jellyfin (40 projects, 187
+    /// registrations). Cache scan results per (workspaceId, version, projectFilter) so repeat
+    /// callers don't re-walk every syntax tree. Invalidated on workspace close via
+    /// <see cref="IWorkspaceManager.WorkspaceClosed"/> and on workspace version bump.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, DiCacheEntry> _scanCache = new(StringComparer.Ordinal);
+
+    private sealed record DiCacheEntry(int Version, ConcurrentDictionary<string, IReadOnlyList<DiRegistrationDto>> ByFilter);
+
+    private const string UnfilteredKey = "<all>";
+    private const int MaxFilterEntriesPerWorkspace = 8;
+
     public DiRegistrationService(
         IWorkspaceManager workspace,
         ICompilationCache compilationCache,
@@ -26,14 +40,46 @@ public sealed class DiRegistrationService : IDiRegistrationService
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
+        _workspace.WorkspaceClosed += workspaceId => _scanCache.TryRemove(workspaceId, out _);
     }
 
     public async Task<IReadOnlyList<DiRegistrationDto>> GetDiRegistrationsAsync(
         string workspaceId, string? projectFilter, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution(workspaceId);
-        var results = new List<DiRegistrationDto>();
+        // di-registrations-scan-caching: serve from cache if present and the workspace hasn't
+        // bumped its version. Cap entries per workspace to avoid unbounded growth on chatty
+        // filter combinations.
+        var version = _workspace.GetCurrentVersion(workspaceId);
+        var key = projectFilter ?? UnfilteredKey;
 
+        var entry = _scanCache.AddOrUpdate(
+            workspaceId,
+            _ => new DiCacheEntry(version, new ConcurrentDictionary<string, IReadOnlyList<DiRegistrationDto>>(StringComparer.OrdinalIgnoreCase)),
+            (_, existing) => existing.Version == version
+                ? existing
+                : new DiCacheEntry(version, new ConcurrentDictionary<string, IReadOnlyList<DiRegistrationDto>>(StringComparer.OrdinalIgnoreCase)));
+
+        if (entry.ByFilter.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var results = await ScanProjectsAsync(workspaceId, solution, projectFilter, ct).ConfigureAwait(false);
+
+        if (entry.ByFilter.Count >= MaxFilterEntriesPerWorkspace)
+        {
+            var someKey = entry.ByFilter.Keys.FirstOrDefault();
+            if (someKey is not null) entry.ByFilter.TryRemove(someKey, out _);
+        }
+        entry.ByFilter[key] = results;
+        return results;
+    }
+
+    private async Task<IReadOnlyList<DiRegistrationDto>> ScanProjectsAsync(
+        string workspaceId, Solution solution, string? projectFilter, CancellationToken ct)
+    {
+        var results = new List<DiRegistrationDto>();
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
         foreach (var project in projects)

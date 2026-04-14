@@ -121,7 +121,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             offset: 0,
             limit: 1,
             summary: false,
-            CancellationToken.None);
+            progress: null,
+            ct: CancellationToken.None);
         using var diagnosticsDoc = JsonDocument.Parse(diagnosticsJson);
         var returnedDiagnostics = diagnosticsDoc.RootElement.GetProperty("returnedDiagnostics").GetInt32();
         var pagedCount = diagnosticsDoc.RootElement.GetProperty("workspaceDiagnostics").GetArrayLength()
@@ -152,7 +153,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             offset: 0,
             limit: 50,
             summary: false,
-            CancellationToken.None);
+            progress: null,
+            ct: CancellationToken.None);
         using var diagnosticsDoc = JsonDocument.Parse(diagnosticsJson);
         Assert.IsTrue(diagnosticsDoc.RootElement.TryGetProperty("compilerErrors", out var ce));
         Assert.IsTrue(diagnosticsDoc.RootElement.TryGetProperty("analyzerErrors", out var ae));

@@ -525,7 +525,18 @@ public sealed class RefactoringService : IRefactoringService
                 }
             }
 
-            await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
+            // scaffold-type-apply-perf: previously every document add/remove triggered a full
+            // workspace reload (~10 s on Jellyfin). Try the in-memory TryApplyChanges path
+            // first — MSBuildWorkspace supports added/removed/changed documents — and only
+            // fall back to ReloadAsync if the workspace rejects the change. TryApplyChanges
+            // bumps WorkspaceSession.Version so per-version caches invalidate correctly.
+            if (!_workspace.TryApplyChanges(workspaceId, modifiedSolution))
+            {
+                _logger.LogInformation(
+                    "TryApplyChanges rejected document-set changes for {WorkspaceId}; falling back to full ReloadAsync.",
+                    workspaceId);
+                await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
+            }
             return (true, appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)

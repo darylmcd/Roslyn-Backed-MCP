@@ -132,5 +132,6 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
         public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
         public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 }
