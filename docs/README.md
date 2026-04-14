@@ -10,6 +10,7 @@ Human-facing documentation for the Roslyn-Backed MCP Server.
 | `reinstall.md` | Step-by-step Layer 1 (global tool) + Layer 2 (Claude Code plugin) reinstall workflow after a code change |
 | `product-contract.md` | Session operating contract, stable vs experimental surface tiers, supported tool families |
 | `release-policy.md` | Release gates, compatibility rules, deprecation policy, versioning |
+| `upgrade-matrix.md` | SDK, Roslyn, MSBuild, analyzers, and related dependency coupling; what to bump together |
 | `roadmap.md` | Strategic roadmap decisions and planned feature directions |
 | `parity-gap-matrix.md` | Hard boundaries vs roadmap opportunities; what agents should treat as known gaps |
 | `parity-gap-implementation-plan.md` | Status and next steps for matrix “must-have” items; release verify vs roadmap |

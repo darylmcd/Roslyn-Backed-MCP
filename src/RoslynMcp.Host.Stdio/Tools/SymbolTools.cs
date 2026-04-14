@@ -27,7 +27,7 @@ public static class SymbolTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var results = await symbolSearchService.SearchSymbolsAsync(workspaceId, query, projectName, kind, @namespace, limit, c);
-                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
+                return JsonSerializer.Serialize(new { count = results.Count, symbols = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -70,7 +70,7 @@ public static class SymbolTools
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await symbolNavigationService.GoToDefinitionAsync(workspaceId, locator, c);
                 if (results.Count == 0) throw new KeyNotFoundException("No definition found for the symbol at the specified location");
-                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
+                return JsonSerializer.Serialize(new { count = results.Count, locations = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -142,7 +142,7 @@ public static class SymbolTools
             {
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
                 var results = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, c);
-                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
+                return JsonSerializer.Serialize(new { count = results.Count, symbols = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -182,7 +182,7 @@ public static class SymbolTools
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await referenceService.FindBaseMembersAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
+                return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
             }, ct));
     }
 
@@ -368,7 +368,7 @@ public static class SymbolTools
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
                 var results = await symbolNavigationService.GoToTypeDefinitionAsync(workspaceId, locator, c);
                 if (results.Count == 0) throw new KeyNotFoundException("No type definition found for the symbol at the specified location");
-                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
+                return JsonSerializer.Serialize(new { count = results.Count, locations = results }, JsonDefaults.Indented);
             }, ct));
     }
 

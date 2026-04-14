@@ -20,18 +20,34 @@ public sealed class CodeMetricsService : ICodeMetricsService
     }
 
     public async Task<IReadOnlyList<ComplexityMetricsDto>> GetComplexityMetricsAsync(
-        string workspaceId, string? filePath, string? projectFilter, int? minComplexity, int limit, CancellationToken ct)
+        string workspaceId, string? filePath, IReadOnlyList<string>? filePaths, string? projectFilter, int? minComplexity, int limit, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<ComplexityMetricsDto>();
 
-        IEnumerable<Document> documents;
+        // roslyn-mcp-complexity-subset-rerun: build a set of normalized target paths from both
+        // the singular `filePath` legacy parameter and the newer `filePaths` list; union (OR)
+        // them. Empty list is treated as "no filter" (same as null).
+        var targetPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (!string.IsNullOrWhiteSpace(filePath))
         {
-            var normalizedPath = Path.GetFullPath(filePath);
+            targetPaths.Add(Path.GetFullPath(filePath));
+        }
+        if (filePaths is not null)
+        {
+            foreach (var p in filePaths)
+            {
+                if (!string.IsNullOrWhiteSpace(p))
+                    targetPaths.Add(Path.GetFullPath(p));
+            }
+        }
+
+        IEnumerable<Document> documents;
+        if (targetPaths.Count > 0)
+        {
             documents = solution.Projects
                 .SelectMany(p => p.Documents)
-                .Where(d => d.FilePath is not null && Path.GetFullPath(d.FilePath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
+                .Where(d => d.FilePath is not null && targetPaths.Contains(Path.GetFullPath(d.FilePath)));
         }
         else
         {

@@ -18,7 +18,7 @@ public static class EditTools
         IEditService editService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file to edit")] string filePath,
-        [Description("Array of text edits. Each edit has startLine, startColumn, endLine, endColumn (1-based), and newText")] TextEditDto[] edits,
+        [Description("Array of text edits. Each edit has startLine, startColumn, endLine, endColumn (1-based), and newText. Example: [{\"startLine\":10,\"startColumn\":5,\"endLine\":10,\"endColumn\":15,\"newText\":\"newValue\"}]. All positions are 1-based inclusive; non-overlapping edits are applied in the order given.")] TextEditDto[] edits,
         CancellationToken ct = default,
         [Description("When false (default), C# files are parsed after edits and lexer/parser errors block the apply. Set true only for intentional intermediate invalid states.")] bool skipSyntaxCheck = false)
     {

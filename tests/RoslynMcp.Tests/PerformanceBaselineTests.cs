@@ -60,7 +60,7 @@ public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
     {
         var sw = Stopwatch.StartNew();
         var results = await CodeMetricsService.GetComplexityMetricsAsync(
-            WorkspaceId, null, null, null, 100, CancellationToken.None);
+            WorkspaceId, filePath: null, filePaths: null, projectFilter: null, minComplexity: null, limit: 100, CancellationToken.None);
         sw.Stop();
 
         Assert.IsTrue(results.Count > 0, "Expected metrics");

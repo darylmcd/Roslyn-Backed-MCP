@@ -79,4 +79,52 @@ public sealed class SymbolResolverRenameCaretTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(SymbolKind.Method, sym!.Kind);
         Assert.AreEqual("MyMethod", sym.Name);
     }
+
+    // schema-drift-jellyfin-audit (metadata-name member lookup sub-item): before this fix,
+    // `ResolveByMetadataNameAsync` only called `Compilation.GetTypeByMetadataName`, so an agent
+    // passing `SampleLib.AnimalService.GetAllAnimals` (a METHOD metadata name) got null because
+    // the full path doesn't resolve as a type. Post-fix the resolver splits at the last dot and
+    // tries the member.
+
+    [TestMethod]
+    public async Task ResolveByMetadataName_ResolvesMethodOnType_AfterTypeLookupFails()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+
+        var member = await SymbolResolver.ResolveByMetadataNameAsync(
+            solution, "SampleLib.AnimalService.GetAllAnimals", CancellationToken.None);
+
+        Assert.IsNotNull(member, "GetAllAnimals should resolve as a method on SampleLib.AnimalService after type lookup fallback.");
+        Assert.AreEqual(SymbolKind.Method, member!.Kind);
+        Assert.AreEqual("GetAllAnimals", member.Name);
+        Assert.AreEqual("AnimalService", member.ContainingType?.Name);
+    }
+
+    [TestMethod]
+    public async Task ResolveByMetadataName_TypeTakesPriorityOverMemberPath()
+    {
+        // Control test: calling with a full type metadata name still returns the type, not
+        // some namespace-member ambiguity.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+
+        var type = await SymbolResolver.ResolveByMetadataNameAsync(
+            solution, "SampleLib.AnimalService", CancellationToken.None);
+
+        Assert.IsNotNull(type);
+        Assert.AreEqual(SymbolKind.NamedType, type!.Kind);
+    }
+
+    [TestMethod]
+    public async Task ResolveByMetadataName_UnknownMember_ReturnsNull()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+
+        var sym = await SymbolResolver.ResolveByMetadataNameAsync(
+            solution, "SampleLib.AnimalService.NoSuchMember", CancellationToken.None);
+
+        Assert.IsNull(sym);
+    }
 }

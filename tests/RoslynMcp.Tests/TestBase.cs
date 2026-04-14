@@ -71,6 +71,7 @@ public abstract class TestBase
     protected static ExtractMethodService ExtractMethodService { get; private set; } = null!;
     protected static ChangeTracker ChangeTracker { get; private set; } = null!;
     protected static RefactoringSuggestionService RefactoringSuggestionService { get; private set; } = null!;
+    protected static FormatVerifyService FormatVerifyService { get; private set; } = null!;
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -161,6 +162,7 @@ public abstract class TestBase
         ExtractMethodService = services.ExtractMethodService;
         ChangeTracker = services.ChangeTracker;
         RefactoringSuggestionService = services.RefactoringSuggestionService;
+        FormatVerifyService = services.FormatVerifyService;
 
         RepositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
         SampleSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
