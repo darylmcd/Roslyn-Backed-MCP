@@ -290,4 +290,51 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
 
         Assert.IsNull(packageReference.Attribute("Version"));
     }
+
+    [TestMethod]
+    public async Task Add_Then_Remove_PackageReference_LeavesNoOrphanBlankLines()
+    {
+        // apply-project-mutation-whitespace: pre-fix, removing a `<PackageReference>` left a
+        // blank line where the element used to live AND an empty `<ItemGroup />` if that
+        // element was the only child. Post-fix, neither artifact appears in the round-tripped
+        // file. We don't require byte-identical round-trip because XmlWriter's `Indent = true`
+        // serialization can normalize whitespace differently from the source — the bug-relevant
+        // check is "no orphan blank lines / empty groups".
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+
+        var addPreview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+            workspace.WorkspaceId,
+            new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
+            CancellationToken.None);
+        var addResult = await ProjectMutationService.ApplyProjectMutationAsync(
+            addPreview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(addResult.Success, addResult.Error);
+
+        var removePreview = await ProjectMutationService.PreviewRemovePackageReferenceAsync(
+            workspace.WorkspaceId,
+            new RemovePackageReferenceDto("SampleLib", "Humanizer.Core"),
+            CancellationToken.None);
+        var removeResult = await ProjectMutationService.ApplyProjectMutationAsync(
+            removePreview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(removeResult.Success, removeResult.Error);
+
+        var roundTrippedContent = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
+        var normalized = roundTrippedContent.Replace("\r\n", "\n");
+
+        // The pre-fix bug: a stray `\n  \n` (blank line containing only indentation) between
+        // `</PropertyGroup>` and `</Project>` after the round-trip.
+        Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch(normalized, @"\n[ \t]+\n"),
+            $"Round-tripped file must not contain a blank line with stray indentation. Got:\n{normalized}");
+
+        // The pre-fix bug also left an empty `<ItemGroup />` after the last reference was removed.
+        var roundtripDoc = XDocument.Parse(roundTrippedContent);
+        Assert.IsFalse(roundtripDoc.Descendants("ItemGroup").Any(g => !g.Elements().Any()),
+            "Round-tripped file must not contain empty <ItemGroup /> after the last reference is removed.");
+
+        // Sanity: the PackageReference is gone.
+        Assert.IsFalse(roundtripDoc.Descendants("PackageReference").Any(r =>
+            string.Equals((string?)r.Attribute("Include"), "Humanizer.Core", StringComparison.OrdinalIgnoreCase)),
+            "PackageReference must be absent after remove.");
+    }
 }

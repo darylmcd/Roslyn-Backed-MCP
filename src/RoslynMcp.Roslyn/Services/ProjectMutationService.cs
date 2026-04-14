@@ -90,7 +90,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 throw new InvalidOperationException($"Package reference '{request.PackageId}' was not found.");
             }
 
-            element.Remove();
+            RemoveElementCleanly(element);
         }, $"Remove package reference '{request.PackageId}'", ct);
     }
 
@@ -139,7 +139,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 throw new InvalidOperationException($"Project reference '{request.ReferencedProjectName}' was not found.");
             }
 
-            element.Remove();
+            RemoveElementCleanly(element);
         }, $"Remove project reference '{request.ReferencedProjectName}'", ct);
     }
 
@@ -385,7 +385,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 throw new InvalidOperationException($"Central package version '{request.PackageId}' was not found.");
             }
 
-            element.Remove();
+            RemoveElementCleanly(element);
         }, $"Remove central package version '{request.PackageId}'", ct);
     }
 
@@ -499,6 +499,55 @@ public sealed class ProjectMutationService : IProjectMutationService
                    string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
                ?? throw new InvalidOperationException($"Project not found: {projectName}");
+    }
+
+    /// <summary>
+    /// apply-project-mutation-whitespace: removes <paramref name="element"/> together with the
+    /// preceding whitespace text node so an add→remove round-trip leaves the file byte-identical
+    /// instead of leaving a blank line where the element used to be. If the element was the only
+    /// real child of its parent <see cref="XElement"/> (typical: a single <c>PackageReference</c>
+    /// inside an <c>ItemGroup</c>), the parent is removed too along with its surrounding
+    /// whitespace, keeping a clean csproj.
+    /// </summary>
+    private static void RemoveElementCleanly(XElement element)
+    {
+        var parent = element.Parent;
+        RemoveNodeAndAdjacentWhitespace(element);
+
+        // If the parent is now empty, prune it too. Otherwise the project file accumulates
+        // `<ItemGroup />` orphans after the last reference is removed.
+        if (parent is not null
+            && parent != parent.Document?.Root
+            && !parent.Elements().Any())
+        {
+            foreach (var ws in parent.Nodes().OfType<XText>().ToList())
+            {
+                ws.Remove();
+            }
+            RemoveNodeAndAdjacentWhitespace(parent);
+        }
+    }
+
+    /// <summary>
+    /// Removes <paramref name="node"/> together with one whitespace text neighbor so an
+    /// add → remove round-trip leaves the document layout intact. Prefers the leading text
+    /// node (typical indent that visually accompanied the element); falls back to the trailing
+    /// text node when the element was inserted via <see cref="XContainer.AddAfterSelf(object)"/>
+    /// (which produces <c>[previous-element][element][trailing-whitespace]</c> rather than
+    /// <c>[previous-element][leading-whitespace][element]</c>). Only pure-whitespace XText nodes
+    /// are touched; comments and other significant nodes are preserved.
+    /// </summary>
+    private static void RemoveNodeAndAdjacentWhitespace(XNode node)
+    {
+        if (node.PreviousNode is XText leading && string.IsNullOrWhiteSpace(leading.Value))
+        {
+            leading.Remove();
+        }
+        else if (node.NextNode is XText trailing && string.IsNullOrWhiteSpace(trailing.Value))
+        {
+            trailing.Remove();
+        }
+        node.Remove();
     }
 
     private static XElement GetOrCreateItemGroup(XDocument document, string itemName)

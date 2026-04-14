@@ -2,11 +2,15 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.CodeAnalysis.Rename;
 using Microsoft.CodeAnalysis.Simplification;
 using Microsoft.Extensions.Logging;
+using System.Collections.Immutable;
 using System.Xml.Linq;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -22,14 +26,16 @@ public sealed class RefactoringService : IRefactoringService
     private readonly IPreviewStore _previewStore;
     private readonly IUndoService? _undoService;
     private readonly IChangeTracker? _changeTracker;
+    private readonly ICodeFixProviderRegistry? _codeFixRegistry;
     private readonly ILogger<RefactoringService> _logger;
 
-    public RefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<RefactoringService> logger, IUndoService? undoService = null, IChangeTracker? changeTracker = null)
+    public RefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<RefactoringService> logger, IUndoService? undoService = null, IChangeTracker? changeTracker = null, ICodeFixProviderRegistry? codeFixRegistry = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
         _undoService = undoService;
         _changeTracker = changeTracker;
+        _codeFixRegistry = codeFixRegistry;
         _logger = logger;
     }
 
@@ -228,11 +234,38 @@ public sealed class RefactoringService : IRefactoringService
             throw new InvalidOperationException($"Document not found: {filePath}");
 
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
+
+        // format-range-preview-nonfunctional: validate parameters upfront so callers get a
+        // structured error instead of an uninterpreted ArgumentOutOfRangeException from
+        // TextSpan.FromBounds(-1, …) or text.Lines[-1].
+        if (startLine < 1) throw new ArgumentException($"startLine must be >= 1 (got {startLine}).", nameof(startLine));
+        if (endLine < 1) throw new ArgumentException($"endLine must be >= 1 (got {endLine}).", nameof(endLine));
+        if (startColumn < 1) throw new ArgumentException($"startColumn must be >= 1 (got {startColumn}).", nameof(startColumn));
+        if (endColumn < 1) throw new ArgumentException($"endColumn must be >= 1 (got {endColumn}).", nameof(endColumn));
+        if (endLine < startLine)
+            throw new ArgumentException($"endLine ({endLine}) must be >= startLine ({startLine}).", nameof(endLine));
+        if (startLine > text.Lines.Count)
+            throw new ArgumentException($"startLine ({startLine}) is past the end of the file ({text.Lines.Count} lines).", nameof(startLine));
+        if (endLine > text.Lines.Count)
+            throw new ArgumentException($"endLine ({endLine}) is past the end of the file ({text.Lines.Count} lines).", nameof(endLine));
+        if (startLine == endLine && startColumn > endColumn)
+            throw new ArgumentException($"startColumn ({startColumn}) must be <= endColumn ({endColumn}) when both are on the same line.", nameof(startColumn));
+
         var startPosition = text.Lines[startLine - 1].Start + (startColumn - 1);
         var endPosition = text.Lines[endLine - 1].Start + (endColumn - 1);
+        // Clamp endPosition to the end of the file so a column past the end of the last line
+        // doesn't cause TextSpan.FromBounds to throw.
+        if (endPosition > text.Length) endPosition = text.Length;
+        if (startPosition > endPosition) startPosition = endPosition;
+
         var span = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(startPosition, endPosition);
 
-        var formattedDoc = await Formatter.FormatAsync(document, span, cancellationToken: ct).ConfigureAwait(false);
+        // format-range-preview-nonfunctional: pass an explicit IEnumerable<TextSpan> overload to
+        // avoid a runtime overload-binding ambiguity between
+        // FormatAsync(Document, TextSpan, OptionSet?, CancellationToken) and the newer
+        // FormatAsync(Document, TextSpan, SyntaxFormattingOptions?, CancellationToken).
+        Microsoft.CodeAnalysis.Text.TextSpan[] spans = [span];
+        var formattedDoc = await Formatter.FormatAsync(document, spans, options: null, cancellationToken: ct).ConfigureAwait(false);
         var newSolution = formattedDoc.Project.Solution;
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
@@ -251,14 +284,6 @@ public sealed class RefactoringService : IRefactoringService
         string? fixId,
         CancellationToken ct)
     {
-        var normalizedFixId = string.IsNullOrWhiteSpace(fixId) ? GetDefaultFixId(diagnosticId) : fixId;
-        if (!string.Equals(diagnosticId, "CS8019", StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(normalizedFixId, "remove_unused_using", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                $"Diagnostic '{diagnosticId}' does not have a supported curated code fix.");
-        }
-
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null)
@@ -268,24 +293,65 @@ public sealed class RefactoringService : IRefactoringService
 
         var syntaxTree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not get syntax tree for '{filePath}'.");
-        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"Could not get syntax root for '{filePath}'.");
-        var compilation = await document.Project.GetCompilationAsync(ct).ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"Could not compile project for '{filePath}'.");
 
-        var diagnostic = compilation.GetDiagnostics(ct)
-            .FirstOrDefault(candidate =>
-                string.Equals(candidate.Id, diagnosticId, StringComparison.OrdinalIgnoreCase) &&
-                candidate.Location.IsInSource &&
-                candidate.Location.SourceTree == syntaxTree &&
-                candidate.Location.GetLineSpan().StartLinePosition.Line + 1 == line &&
-                candidate.Location.GetLineSpan().StartLinePosition.Character + 1 == column);
+        // code-fix-providers-missing-ca: locate the diagnostic via the registry-aware path so we
+        // can match analyzer diagnostics (CA*/IDE*) too, not only compiler diagnostics. Falls
+        // back to compiler-only when no registry is wired (legacy callers / unit tests).
+        var diagnostic = await FindDiagnosticAtPositionAsync(
+            document, syntaxTree, diagnosticId, line, column, ct).ConfigureAwait(false);
 
         if (diagnostic is null)
         {
             throw new InvalidOperationException(
-                $"Diagnostic '{diagnosticId}' was not found at {filePath}:{line}:{column}.");
+                $"Diagnostic '{diagnosticId}' was not found at {filePath}:{line}:{column}. " +
+                "Run project_diagnostics first and copy an exact (id, line, column) tuple from a real entry.");
         }
+
+        // Try the provider registry first — covers CA*/IDE*/SCS* and any third-party analyzers.
+        var provider = _codeFixRegistry?.FirstProviderFor(diagnosticId, solution);
+        if (provider is not null)
+        {
+            var registeredAction = await CaptureFirstActionAsync(provider, document, diagnostic, fixId, ct)
+                .ConfigureAwait(false);
+            if (registeredAction is not null)
+            {
+                var operations = await registeredAction.GetOperationsAsync(ct).ConfigureAwait(false);
+                var applyOp = operations.OfType<ApplyChangesOperation>().FirstOrDefault();
+                if (applyOp is not null)
+                {
+                    var newSol = applyOp.ChangedSolution;
+                    var diff = await SolutionDiffHelper.ComputeChangesAsync(solution, newSol, ct).ConfigureAwait(false);
+                    var actionId = registeredAction.EquivalenceKey ?? registeredAction.Title ?? provider.GetType().Name;
+                    var desc = $"Apply code fix '{actionId}' for {diagnosticId} in '{Path.GetFileName(filePath)}'";
+                    var tk = _previewStore.Store(workspaceId, newSol, _workspace.GetCurrentVersion(workspaceId), desc);
+                    return new RefactoringPreviewDto(tk, desc, diff, null);
+                }
+            }
+        }
+
+        // Fallback: the legacy CS8019 / remove_unused_using path stays for callers that do not
+        // wire a CodeFixProviderRegistry (notably some unit tests). Anything else now produces
+        // a clearer error than the historic "no supported curated code fix" message.
+        var normalizedFixId = string.IsNullOrWhiteSpace(fixId) ? GetDefaultFixId(diagnosticId) : fixId;
+        if (string.Equals(diagnosticId, "CS8019", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(normalizedFixId, "remove_unused_using", StringComparison.OrdinalIgnoreCase))
+        {
+            return await PreviewRemoveUnusedUsingFallbackAsync(
+                workspaceId, solution, document, syntaxTree, diagnostic, normalizedFixId, ct)
+                .ConfigureAwait(false);
+        }
+
+        throw new InvalidOperationException(
+            $"No code fix provider is loaded for diagnostic '{diagnosticId}'. " +
+            "Run list_analyzers to see which analyzers are loaded, or restore analyzer NuGet packages.");
+    }
+
+    private async Task<RefactoringPreviewDto> PreviewRemoveUnusedUsingFallbackAsync(
+        string workspaceId, Solution solution, Document document, SyntaxTree syntaxTree,
+        Diagnostic diagnostic, string normalizedFixId, CancellationToken ct)
+    {
+        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Could not get syntax root for '{document.FilePath}'.");
 
         var usingDirective = root.FindNode(diagnostic.Location.SourceSpan).FirstAncestorOrSelf<UsingDirectiveSyntax>()
             ?? root.FindNode(diagnostic.Location.SourceSpan) as UsingDirectiveSyntax;
@@ -298,10 +364,80 @@ public sealed class RefactoringService : IRefactoringService
             ?? throw new InvalidOperationException("Failed to remove the unused using directive.");
         var newSolution = document.WithSyntaxRoot(newRoot).Project.Solution;
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
-        var description = $"Apply code fix '{normalizedFixId}' for {diagnosticId} in '{Path.GetFileName(filePath)}'";
+        var description = $"Apply code fix '{normalizedFixId}' for CS8019 in '{Path.GetFileName(document.FilePath)}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
         return new RefactoringPreviewDto(token, description, changes, null);
+    }
+
+    /// <summary>
+    /// Locates a diagnostic at the requested position using compiler diagnostics first
+    /// (cheapest), then falling back to the analyzer pipeline when the diagnostic id starts
+    /// with a non-CS prefix. Avoids running analyzers when callers asked for a CS* diagnostic.
+    /// </summary>
+    private static async Task<Diagnostic?> FindDiagnosticAtPositionAsync(
+        Document document, SyntaxTree syntaxTree, string diagnosticId, int line, int column, CancellationToken ct)
+    {
+        var compilation = await document.Project.GetCompilationAsync(ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException($"Could not compile project for '{document.FilePath}'.");
+
+        bool MatchesPosition(Diagnostic candidate) =>
+            string.Equals(candidate.Id, diagnosticId, StringComparison.OrdinalIgnoreCase) &&
+            candidate.Location.IsInSource &&
+            candidate.Location.SourceTree == syntaxTree &&
+            candidate.Location.GetLineSpan().StartLinePosition.Line + 1 == line &&
+            candidate.Location.GetLineSpan().StartLinePosition.Character + 1 == column;
+
+        var compilerHit = compilation.GetDiagnostics(ct).FirstOrDefault(MatchesPosition);
+        if (compilerHit is not null) return compilerHit;
+
+        // Only run analyzers when the id is non-CS; the GetAnalyzerDiagnosticsAsync path is
+        // expensive on large projects and we already know CS* ids are compiler-only.
+        if (diagnosticId.StartsWith("CS", StringComparison.OrdinalIgnoreCase)) return null;
+
+        var analyzers = document.Project.AnalyzerReferences
+            .SelectMany(r => r.GetAnalyzers(document.Project.Language))
+            .Where(a => a.SupportedDiagnostics.Any(d =>
+                string.Equals(d.Id, diagnosticId, StringComparison.OrdinalIgnoreCase)))
+            .ToImmutableArray();
+        if (analyzers.IsEmpty) return null;
+
+        var withAnalyzers = compilation.WithAnalyzers(analyzers);
+        var analyzerDiags = await withAnalyzers.GetAnalyzerDiagnosticsAsync(ct).ConfigureAwait(false);
+        return analyzerDiags.FirstOrDefault(MatchesPosition);
+    }
+
+    /// <summary>
+    /// Invokes <paramref name="provider"/> for the given <paramref name="diagnostic"/> and
+    /// returns the first <see cref="CodeAction"/> registered. When <paramref name="fixId"/>
+    /// is supplied, prefers the action whose <see cref="CodeAction.EquivalenceKey"/> matches.
+    /// </summary>
+    private static async Task<CodeAction?> CaptureFirstActionAsync(
+        CodeFixProvider provider, Document document, Diagnostic diagnostic, string? fixId, CancellationToken ct)
+    {
+        CodeAction? first = null;
+        CodeAction? matchingFixId = null;
+
+        var context = new CodeFixContext(document, diagnostic, (action, _) =>
+        {
+            first ??= action;
+            if (matchingFixId is null && fixId is not null &&
+                string.Equals(action.EquivalenceKey, fixId, StringComparison.Ordinal))
+            {
+                matchingFixId = action;
+            }
+        }, ct);
+
+        try
+        {
+            await provider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
+
+        return matchingFixId ?? first;
     }
 
     private static async Task PersistChangedDocumentsFromSolutionAsync(

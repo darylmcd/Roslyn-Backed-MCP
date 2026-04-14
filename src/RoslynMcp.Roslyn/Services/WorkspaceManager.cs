@@ -2,6 +2,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
@@ -527,6 +528,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 throw new ArgumentException($"Path must end with .sln, .slnx, or .csproj: {path}");
             }
 
+            // unresolved-analyzer-reference-crash: strip UnresolvedAnalyzerReference entries
+            // from every project before any downstream caller can see them. SymbolFinder,
+            // Compilation.GetDiagnostics, and Roslyn-internal switches over AnalyzerReference
+            // subtypes throw "Unexpected value 'UnresolvedAnalyzerReference'" otherwise. The
+            // earlier per-service guards in CompilationCache/FixAllService are now unnecessary.
+            StripUnresolvedAnalyzerReferences(session);
+
             session.ProjectStatuses = BuildProjectStatuses(session.Workspace.CurrentSolution);
             session.LoadedPath = fullPath;
             session.LoadedAtUtc = DateTimeOffset.UtcNow;
@@ -539,6 +547,83 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         {
             session.LoadLock.Release();
         }
+    }
+
+    /// <summary>
+    /// Removes <see cref="UnresolvedAnalyzerReference"/> entries from every project in the
+    /// loaded workspace. These entries are produced when an analyzer file referenced by the
+    /// project cannot be located (typical for analyzer projects targeting netstandard2.0 whose
+    /// build output is not yet on disk). Leaving them in place causes Roslyn-internal switches
+    /// over AnalyzerReference subtypes to throw
+    /// <c>InvalidOperationException("Unexpected value 'UnresolvedAnalyzerReference'")</c>
+    /// from SymbolFinder, Compilation.GetDiagnostics, and similar APIs. Each strip emits a
+    /// <c>WORKSPACE_UNRESOLVED_ANALYZER</c> warning (severity Warning, not Error) so callers
+    /// can still discover that something was filtered.
+    /// </summary>
+    private void StripUnresolvedAnalyzerReferences(WorkspaceSession session)
+    {
+        if (session.Workspace is null) return;
+
+        var originalSolution = session.Workspace.CurrentSolution;
+        var solution = originalSolution;
+        var strippedCount = 0;
+        var newDiagnostics = new List<DiagnosticDto>();
+
+        foreach (var project in originalSolution.Projects)
+        {
+            var unresolved = project.AnalyzerReferences
+                .OfType<UnresolvedAnalyzerReference>()
+                .ToList();
+
+            if (unresolved.Count == 0) continue;
+
+            foreach (var reference in unresolved)
+            {
+                solution = solution.RemoveAnalyzerReference(project.Id, reference);
+                strippedCount++;
+
+                var displayName = reference.Display ?? reference.FullPath ?? "<unknown>";
+                newDiagnostics.Add(new DiagnosticDto(
+                    Id: "WORKSPACE_UNRESOLVED_ANALYZER",
+                    Message: $"Unresolved analyzer reference removed from project '{project.Name}': {displayName}. " +
+                             "This typically indicates a missing analyzer build output (netstandard2.0 analyzer project) " +
+                             "or an unresolved package path. Run `dotnet build` on the analyzer project, then `workspace_reload`.",
+                    Severity: WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Warning, ""),
+                    Category: "Workspace",
+                    FilePath: project.FilePath,
+                    StartLine: null,
+                    StartColumn: null,
+                    EndLine: null,
+                    EndColumn: null));
+            }
+        }
+
+        if (strippedCount == 0) return;
+
+        if (!session.Workspace.TryApplyChanges(solution))
+        {
+            // Should be impossible — analyzer reference removal is supported by every workspace
+            // implementation. Log and leave the unresolved entries in place; the per-service
+            // guards in CompilationCache/FixAllService were removed as part of this change so
+            // surface the failure loudly.
+            _logger.LogWarning(
+                "Workspace {WorkspaceId}: TryApplyChanges failed when stripping {Count} UnresolvedAnalyzerReference entries; downstream tools may still crash on them.",
+                session.WorkspaceId, strippedCount);
+            return;
+        }
+
+        foreach (var dto in newDiagnostics)
+        {
+            session.WorkspaceDiagnostics.Enqueue(dto);
+            while (session.WorkspaceDiagnostics.Count > MaxDiagnosticsPerWorkspace)
+            {
+                session.WorkspaceDiagnostics.TryDequeue(out _);
+            }
+        }
+
+        _logger.LogInformation(
+            "Workspace {WorkspaceId}: stripped {Count} UnresolvedAnalyzerReference entries to prevent downstream crashes.",
+            session.WorkspaceId, strippedCount);
     }
 
     private WorkspaceStatusDto BuildStatus(WorkspaceSession session)

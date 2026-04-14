@@ -110,4 +110,33 @@ public class ExpressionBodiedSamples
         Assert.AreEqual(1, result.ReturnStatements.Count);
         // Statement-bodied path's synthesized warning is null when EndPointIsReachable is consistent.
     }
+
+    [TestMethod]
+    public async Task AnalyzeDataFlow_InvertedRange_ThrowsArgumentException()
+    {
+        // analyze-data-flow-inverted-range: pre-fix, inverted ranges fell through to the
+        // misleading "No statements found in the line range 200-100" InvalidOperation. Post-fix,
+        // the service rejects the input upfront with a structured ArgumentException.
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            FlowAnalysisService.AnalyzeDataFlowAsync(
+                WorkspaceId, TargetFilePath, startLine: 200, endLine: 100, CancellationToken.None));
+        StringAssert.Contains(ex.Message, "<=");
+    }
+
+    [TestMethod]
+    public async Task AnalyzeControlFlow_InvertedRange_ThrowsArgumentException()
+    {
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            FlowAnalysisService.AnalyzeControlFlowAsync(
+                WorkspaceId, TargetFilePath, startLine: 200, endLine: 100, CancellationToken.None));
+        StringAssert.Contains(ex.Message, "<=");
+    }
+
+    [TestMethod]
+    public async Task AnalyzeDataFlow_NegativeLine_ThrowsArgumentException()
+    {
+        await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+            FlowAnalysisService.AnalyzeDataFlowAsync(
+                WorkspaceId, TargetFilePath, startLine: 0, endLine: 5, CancellationToken.None));
+    }
 }

@@ -64,6 +64,36 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
                 "When totals report Info diagnostics, default (null) severity filter must include Info rows in returned lists.");
         }
     }
+
+    [TestMethod]
+    public async Task GetDiagnosticsAsync_RepeatCallSameVersion_ReturnsCachedReference()
+    {
+        // project-diagnostics-large-solution-perf: identical (version, filters) calls hit the
+        // result cache on the second invocation. Reference equality is the simplest signal.
+        var first = await DiagnosticService.GetDiagnosticsAsync(
+            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: "Warning",
+            diagnosticIdFilter: null, CancellationToken.None);
+        var second = await DiagnosticService.GetDiagnosticsAsync(
+            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: "Warning",
+            diagnosticIdFilter: null, CancellationToken.None);
+
+        Assert.AreSame(first, second,
+            "Second call with the same filter set on the same workspace version must return the cached DiagnosticsResultDto.");
+    }
+
+    [TestMethod]
+    public async Task GetDiagnosticsAsync_DifferentFilters_ReturnsSeparateCachedResults()
+    {
+        var warningResult = await DiagnosticService.GetDiagnosticsAsync(
+            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: "Warning",
+            diagnosticIdFilter: null, CancellationToken.None);
+        var errorResult = await DiagnosticService.GetDiagnosticsAsync(
+            WorkspaceId, projectFilter: null, fileFilter: null, severityFilter: "Error",
+            diagnosticIdFilter: null, CancellationToken.None);
+
+        Assert.AreNotSame(warningResult, errorResult,
+            "Different severity filters must produce distinct cache entries (and distinct DTOs).");
+    }
 }
 
 [TestClass]
