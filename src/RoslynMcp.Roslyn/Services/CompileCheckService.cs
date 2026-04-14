@@ -37,71 +37,87 @@ public sealed class CompileCheckService : ICompileCheckService
             ? null
             : Path.GetFullPath(fileFilter);
 
-        foreach (var project in projects)
+        var projectList = projects.ToList();
+        int completedProjects = 0;
+        bool cancelled = false;
+
+        try
         {
-            ct.ThrowIfCancellationRequested();
-
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
-            if (compilation is null) continue;
-
-            IEnumerable<Diagnostic> diagnostics;
-
-            if (emitValidation)
+            foreach (var project in projectList)
             {
-                // Full emit validation catches more issues than GetDiagnostics — primarily
-                // metadata reference resolution failures and IL-level errors that the
-                // declaration-phase analyzer never observes. Force a real PE emit (not
-                // metadata-only) so the diagnostics are produced by the same path that
-                // `dotnet build` would use. The audit-driven precondition is that the
-                // workspace must have its NuGet packages restored; without restored
-                // references, both `compilation.Emit` and `compilation.GetDiagnostics`
-                // surface the same metadata-resolution errors and the wall-clock cost
-                // appears identical because there is no IL phase to skip.
-                var emitOptions = new EmitOptions(metadataOnly: false);
-                using var stream = new MemoryStream();
-                var emitResult = compilation.Emit(stream, options: emitOptions, cancellationToken: ct);
-                diagnostics = emitResult.Diagnostics;
-            }
-            else
-            {
-                diagnostics = compilation.GetDiagnostics(ct);
-            }
+                ct.ThrowIfCancellationRequested();
 
-            foreach (var diag in diagnostics)
-            {
-                if (diag.Severity == DiagnosticSeverity.Hidden) continue;
-                if (minSeverity is not null && diag.Severity < minSeverity) continue;
+                var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+                if (compilation is null) { completedProjects++; continue; }
 
-                var lineSpan = diag.Location.GetMappedLineSpan();
-                if (normalizedFileFilter is not null)
+                IEnumerable<Diagnostic> diagnostics;
+
+                if (emitValidation)
                 {
-                    var diagPath = lineSpan.Path;
-                    if (string.IsNullOrEmpty(diagPath)) continue;
-                    if (!Path.GetFullPath(diagPath).Equals(normalizedFileFilter, StringComparison.OrdinalIgnoreCase))
-                        continue;
+                    var emitOptions = new EmitOptions(metadataOnly: false);
+                    using var stream = new MemoryStream();
+                    var emitResult = compilation.Emit(stream, options: emitOptions, cancellationToken: ct);
+                    diagnostics = emitResult.Diagnostics;
+                }
+                else
+                {
+                    diagnostics = compilation.GetDiagnostics(ct);
                 }
 
-                if (diag.Severity == DiagnosticSeverity.Error) errorCount++;
-                else if (diag.Severity == DiagnosticSeverity.Warning) warningCount++;
+                foreach (var diag in diagnostics)
+                {
+                    if (diag.Severity == DiagnosticSeverity.Hidden) continue;
+                    if (minSeverity is not null && diag.Severity < minSeverity) continue;
 
-                allDiagnostics.Add(new DiagnosticDto(
-                    Id: diag.Id,
-                    Message: diag.GetMessage(),
-                    Severity: diag.Severity.ToString(),
-                    Category: diag.Descriptor.Category,
-                    FilePath: lineSpan.Path,
-                    StartLine: lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
-                    StartColumn: lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
-                    EndLine: lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
-                    EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null));
+                    var lineSpan = diag.Location.GetMappedLineSpan();
+                    if (normalizedFileFilter is not null)
+                    {
+                        var diagPath = lineSpan.Path;
+                        if (string.IsNullOrEmpty(diagPath)) continue;
+                        if (!Path.GetFullPath(diagPath).Equals(normalizedFileFilter, StringComparison.OrdinalIgnoreCase))
+                            continue;
+                    }
+
+                    if (diag.Severity == DiagnosticSeverity.Error) errorCount++;
+                    else if (diag.Severity == DiagnosticSeverity.Warning) warningCount++;
+
+                    allDiagnostics.Add(new DiagnosticDto(
+                        Id: diag.Id,
+                        Message: diag.GetMessage(),
+                        Severity: diag.Severity.ToString(),
+                        Category: diag.Descriptor.Category,
+                        FilePath: lineSpan.Path,
+                        StartLine: lineSpan.IsValid ? lineSpan.StartLinePosition.Line + 1 : null,
+                        StartColumn: lineSpan.IsValid ? lineSpan.StartLinePosition.Character + 1 : null,
+                        EndLine: lineSpan.IsValid ? lineSpan.EndLinePosition.Line + 1 : null,
+                        EndColumn: lineSpan.IsValid ? lineSpan.EndLinePosition.Character + 1 : null));
+                }
+
+                completedProjects++;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            cancelled = true;
+            _logger.LogWarning(
+                "compile_check cancelled after {Completed}/{Total} projects",
+                completedProjects, projectList.Count);
         }
 
         var pagedDiagnostics = allDiagnostics.Skip(offset).Take(limit).ToList();
         sw.Stop();
 
+        // Heuristic: many CS0234 ("type or namespace not found") errors across the solution
+        // usually indicate NuGet packages haven't been restored.
+        var cs0234Count = allDiagnostics.Count(d => d.Id == "CS0234");
+        var restoreHint = cs0234Count >= 10
+            ? $"Detected {cs0234Count} CS0234 (type or namespace not found) errors. " +
+              "This usually means NuGet packages are not restored. " +
+              "Run 'dotnet restore' on the solution, then call workspace_reload."
+            : null;
+
         return new CompileCheckDto(
-            Success: errorCount == 0,
+            Success: errorCount == 0 && !cancelled,
             ErrorCount: errorCount,
             WarningCount: warningCount,
             TotalDiagnostics: allDiagnostics.Count,
@@ -110,7 +126,11 @@ public sealed class CompileCheckService : ICompileCheckService
             Limit: limit,
             HasMore: offset + pagedDiagnostics.Count < allDiagnostics.Count,
             Diagnostics: pagedDiagnostics,
-            ElapsedMs: sw.ElapsedMilliseconds);
+            ElapsedMs: sw.ElapsedMilliseconds,
+            RestoreHint: restoreHint,
+            Cancelled: cancelled,
+            CompletedProjects: completedProjects,
+            TotalProjects: projectList.Count);
     }
 
     private static DiagnosticSeverity? ParseMinimumSeverity(string? severityFilter)

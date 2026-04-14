@@ -30,7 +30,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
             filePath,
             CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("PreviewToken", out _));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("previewToken", out _));
     }
 
     [TestMethod]
@@ -44,7 +44,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
             filePath,
             CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("PreviewToken", out _));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("previewToken", out _));
     }
 
     [TestMethod]
@@ -62,7 +62,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
             symbolHandle: null,
             CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("PreviewToken", out _));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("previewToken", out _));
     }
 
     [TestMethod]

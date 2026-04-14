@@ -77,6 +77,7 @@ public sealed class FixAllService : IFixAllService
             ?? FindCodeFixProvider(analyzerAssemblyProviders, diagnosticId);
         if (provider is null)
         {
+            var alternativeHint = GetAlternativeToolHint(diagnosticId);
             return new FixAllPreviewDto(
                 PreviewToken: "",
                 DiagnosticId: diagnosticId,
@@ -85,8 +86,7 @@ public sealed class FixAllService : IFixAllService
                 Changes: [],
                 GuidanceMessage:
                     $"No code fix provider is loaded for diagnostic '{diagnosticId}'. " +
-                    "Restore analyzer packages (IDE/CA rules) or use organize_usings_preview / organize_usings_apply for unused usings (IDE0005). " +
-                    "Use list_analyzers to see loaded diagnostic IDs.");
+                    (alternativeHint ?? "Restore analyzer packages (IDE/CA rules). Use list_analyzers to see loaded diagnostic IDs."));
         }
 
         var fixAllProvider = provider.GetFixAllProvider();
@@ -469,8 +469,11 @@ public sealed class FixAllService : IFixAllService
                 return [];
             }
 
-            var providers = featuresAssembly.GetTypes()
+            var candidateTypes = featuresAssembly.GetTypes()
                 .Where(t => !t.IsAbstract && typeof(CodeFixProvider).IsAssignableFrom(t))
+                .ToList();
+
+            var providers = candidateTypes
                 .Select(t =>
                 {
                     try { return (CodeFixProvider?)Activator.CreateInstance(t); }
@@ -480,7 +483,10 @@ public sealed class FixAllService : IFixAllService
                 .Cast<CodeFixProvider>()
                 .ToImmutableArray();
 
-            _logger.LogInformation("FixAllService loaded {Count} code fix providers from CSharp Features", providers.Length);
+            var skipped = candidateTypes.Count - providers.Length;
+            _logger.LogInformation(
+                "FixAllService loaded {Loaded} code fix providers from CSharp Features ({Skipped} skipped — no parameterless constructor)",
+                providers.Length, skipped);
             return providers;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -517,6 +523,26 @@ public sealed class FixAllService : IFixAllService
             return [];
         }
     }
+
+    /// <summary>
+    /// Returns an alternative tool suggestion for known IDE diagnostics that lack FixAll providers.
+    /// Many IDE code fix providers require constructor parameters that cannot be satisfied via
+    /// reflection instantiation, so they are silently skipped. This mapping directs agents to
+    /// the correct alternative tool or manual workaround.
+    /// </summary>
+    private static string? GetAlternativeToolHint(string diagnosticId) =>
+        diagnosticId.ToUpperInvariant() switch
+        {
+            "IDE0005" => "Use organize_usings_preview / organize_usings_apply to remove unused usings.",
+            "IDE0007" or "IDE0008" => "Use 'var' vs explicit type preferences are code style settings. Apply manually or use code_fix_preview on individual instances.",
+            "IDE0055" => "Use format_document_preview / format_document_apply for formatting fixes.",
+            "IDE0160" or "IDE0161" => "Block-scoped vs file-scoped namespace preferences must be applied manually or with code_fix_preview on individual instances.",
+            "IDE0290" => "Primary constructor conversion must be applied manually or with code_fix_preview on individual instances.",
+            _ when diagnosticId.StartsWith("IDE", StringComparison.OrdinalIgnoreCase) =>
+                $"The IDE code fix provider for '{diagnosticId}' could not be loaded (constructor requirements). " +
+                "Try code_fix_preview on individual instances, or use list_analyzers to check if the diagnostic is present.",
+            _ => null
+        };
 
     /// <summary>
     /// Provides pre-computed diagnostics to the FixAllContext.

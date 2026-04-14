@@ -23,4 +23,8 @@ public sealed record CompileCheckDto(
     int Limit,
     bool HasMore,
     IReadOnlyList<DiagnosticDto> Diagnostics,
-    long ElapsedMs);
+    long ElapsedMs,
+    string? RestoreHint = null,
+    bool Cancelled = false,
+    int? CompletedProjects = null,
+    int? TotalProjects = null);

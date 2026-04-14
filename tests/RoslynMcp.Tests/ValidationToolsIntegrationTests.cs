@@ -32,7 +32,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             limit: 50,
             CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("testProjects", out var tp) || doc.RootElement.TryGetProperty("TestProjects", out tp));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("testProjects", out var tp));
     }
 
     [TestMethod]
@@ -45,8 +45,8 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             "SampleLib",
             CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("Execution", out var exec));
-        Assert.IsTrue(exec.TryGetProperty("Succeeded", out var ok) && ok.GetBoolean());
+        Assert.IsTrue(doc.RootElement.TryGetProperty("execution", out var exec));
+        Assert.IsTrue(exec.TryGetProperty("succeeded", out var ok) && ok.GetBoolean());
     }
 
     [TestMethod]
@@ -90,7 +90,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
         Assert.IsTrue(
-            root.TryGetProperty("Success", out _) || root.TryGetProperty("success", out _),
+            root.TryGetProperty("success", out _),
             "Expected Success in JSON output.");
     }
 

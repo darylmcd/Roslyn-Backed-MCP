@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Response key casing:** Added `PropertyNamingPolicy = CamelCase` to `JsonDefaults.Indented` so all tool and resource responses use camelCase keys, matching input parameter casing. **Breaking:** external clients parsing PascalCase keys (e.g. `PreviewToken`, `WorkspaceId`, `ErrorCount`) must update to camelCase (`previewToken`, `workspaceId`, `errorCount`).
+- **`server_info` version comparison:** `NuGetVersionChecker` now compares NuGet versions semantically (`Version.TryParse`) instead of taking the last array element; prevents stale NuGet CDN data from reporting an older version as "latest" with `updateAvailable: true`.
+- **Stdio flush on exit:** Added `Console.Out.Flush()` in the `ApplicationStopping` handler and after `host.RunAsync()` to prevent buffered MCP JSON responses from being lost on process exit.
+- **`add_central_package_version_preview` / `remove_central_package_version_preview`:** Now throws `FileNotFoundException` (instead of generic `InvalidOperationException`) with actionable message including searched directory path and CPM setup instructions when `Directory.Packages.props` is missing.
+- **`fix_all_preview` IDE diagnostics:** Added `GetAlternativeToolHint()` mapping for common IDE diagnostics (IDE0005, IDE0007/8, IDE0055, IDE0160/1, IDE0290) that lack FixAll providers, directing agents to the correct alternative tool. Startup logging now reports skipped provider count.
+
+### Added
+
+- **`compile_check` restore hint:** `CompileCheckDto` includes `RestoreHint` field; heuristic detects 10+ CS0234 errors and suggests `dotnet restore` + `workspace_reload`.
+- **`compile_check` partial results on cancellation:** `CompileCheckDto` adds `Cancelled`, `CompletedProjects`, and `TotalProjects` fields; cancellation returns diagnostics collected so far instead of throwing `OperationCanceledException`.
+- **`project_diagnostics` summary mode:** New `summary` parameter (bool, default false); when true, returns per-diagnostic-ID counts grouped by severity instead of individual diagnostic rows (10-100x smaller payload).
+- **`_meta` injection logging:** `ToolErrorHandler.InjectMetaIfPossible` now emits `Trace.TraceWarning` when meta injection is skipped (null snapshot or non-object response root), aiding observability audits.
+- **Tests:** `SolutionDiffHelperTests` (6 tests) and `TriviaNormalizationHelperTests` (7 tests) for previously untested infrastructure helpers.
+
+### Maintenance
+
+- **Backlog cleanup:** Removed 10 implemented rows + 3 stale rows (`test-fixall-service`, `test-symbol-mapper`, `project-graph-missing-fields` — all already had test coverage or were non-issues).
+- **Jellyfin audit backlog:** Added 18 new items from Jellyfin stress test + full-surface audit (40-project, 2065-doc solution). 2 P2 (`unresolved-analyzer-reference-crash`, `extract-method-apply-var-redeclaration`), 11 P3 (schema drift, tool bugs, perf budgets), 5 P4 (perf caching opportunities, cosmetic issues). Raw reports: `ai_docs/audit-reports/20260413T120000Z_jellyfin_mcp-server-audit.md`, `ai_docs/audit-reports/20260414T120000Z_jellyfin_stress-test.md`.
+- **New prompt:** `ai_docs/prompts/stress-test-external-repo.md` — performance-focused prompt for running tool-level stress tests against large external C# repos, with results persisted to `ai_docs/audit-reports/`.
+
 ## [1.14.0] - 2026-04-14
 
 ### Changed

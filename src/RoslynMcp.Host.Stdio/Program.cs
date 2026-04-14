@@ -73,9 +73,16 @@ lifetime.ApplicationStopping.Register(() =>
     {
         disposable.Dispose();
     }
+    // Flush stdout so buffered MCP JSON responses are delivered before the process exits.
+    // Without this, non-SDK clients using bash pipes may receive 0 bytes on stdout.
+    Console.Out.Flush();
 });
 
 await host.RunAsync();
+
+// Belt-and-suspenders: flush stdout after the host stops in case the
+// ApplicationStopping handler didn't run (e.g., on abrupt shutdown).
+await Console.Out.FlushAsync();
 
 static WorkspaceManagerOptions BindWorkspaceManagerOptions()
 {

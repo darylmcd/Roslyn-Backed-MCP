@@ -60,13 +60,22 @@ public sealed class NuGetVersionChecker
             if (!doc.RootElement.TryGetProperty("versions", out var versions))
                 return;
 
-            // Walk backwards to find the latest stable version (no '-' prerelease tag)
+            // Find the latest stable version (no '-' prerelease tag) by semantic comparison.
+            // NuGet flat container returns versions in ascending order, but we use explicit
+            // Version comparison rather than relying on array ordering for robustness.
+            Version? bestParsed = null;
             string? latest = null;
             foreach (var v in versions.EnumerateArray())
             {
                 var ver = v.GetString();
-                if (ver is not null && !ver.Contains('-'))
-                    latest = ver;
+                if (ver is not null && !ver.Contains('-') && Version.TryParse(ver, out var parsed))
+                {
+                    if (bestParsed is null || parsed > bestParsed)
+                    {
+                        bestParsed = parsed;
+                        latest = ver;
+                    }
+                }
             }
 
             if (latest is not null)

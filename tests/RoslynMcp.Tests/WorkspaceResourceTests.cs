@@ -24,7 +24,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     {
         var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.GetProperty("ProjectCount").GetInt32() >= 1);
+        Assert.IsTrue(doc.RootElement.GetProperty("projectCount").GetInt32() >= 1);
     }
 
     [TestMethod]
@@ -32,9 +32,9 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     {
         var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsFalse(doc.RootElement.TryGetProperty("Projects", out _),
+        Assert.IsFalse(doc.RootElement.TryGetProperty("projects", out _),
             "Default workspace_status resource must return the summary shape (no per-project tree).");
-        Assert.IsTrue(doc.RootElement.TryGetProperty("WorkspaceDiagnosticCount", out _),
+        Assert.IsTrue(doc.RootElement.TryGetProperty("workspaceDiagnosticCount", out _),
             "Summary shape must include WorkspaceDiagnosticCount.");
     }
 
@@ -43,7 +43,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     {
         var json = await WorkspaceResources.GetWorkspaceStatusVerbose(WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("Projects", out var projects),
+        Assert.IsTrue(doc.RootElement.TryGetProperty("projects", out var projects),
             "Verbose workspace_status resource must include the per-project tree.");
         Assert.IsTrue(projects.GetArrayLength() >= 1);
     }
@@ -55,7 +55,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
         using var doc = JsonDocument.Parse(json);
         var workspaces = doc.RootElement.GetProperty("workspaces").EnumerateArray().ToList();
         Assert.IsTrue(workspaces.Count >= 1);
-        Assert.IsFalse(workspaces[0].TryGetProperty("Projects", out _),
+        Assert.IsFalse(workspaces[0].TryGetProperty("projects", out _),
             "Default workspaces resource must return summary shape per workspace.");
     }
 
@@ -66,7 +66,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
         using var doc = JsonDocument.Parse(json);
         var workspaces = doc.RootElement.GetProperty("workspaces").EnumerateArray().ToList();
         Assert.IsTrue(workspaces.Count >= 1);
-        Assert.IsTrue(workspaces[0].TryGetProperty("Projects", out _),
+        Assert.IsTrue(workspaces[0].TryGetProperty("projects", out _),
             "Verbose workspaces resource must include per-project trees.");
     }
 
@@ -75,7 +75,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     {
         var json = WorkspaceResources.GetProjects(WorkspaceManager, WorkspaceId);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.GetProperty("Projects").GetArrayLength() >= 1);
+        Assert.IsTrue(doc.RootElement.GetProperty("projects").GetArrayLength() >= 1);
     }
 
     [TestMethod]
@@ -83,7 +83,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     {
         var json = await WorkspaceResources.GetDiagnostics(DiagnosticService, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
-        Assert.IsTrue(doc.RootElement.TryGetProperty("compilerDiagnostics", out _) || doc.RootElement.TryGetProperty("CompilerDiagnostics", out _));
+        Assert.IsTrue(doc.RootElement.TryGetProperty("compilerDiagnostics", out _));
     }
 
     [TestMethod]
