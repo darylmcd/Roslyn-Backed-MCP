@@ -84,6 +84,19 @@ Only proceed if the user explicitly asks to remove dead code.
 5. Call `compile_check` to verify no errors.
 6. If errors occur, call `revert_last_apply` and report the issue.
 
+**Tip:** on v1.15+, use `apply_with_verify(previewToken, rollbackOnError=true)` to collapse steps 4-6 into a single atomic call that auto-reverts if new compile errors appear.
+
+### Step 4b: Dead interface members (v1.15+)
+
+For dead methods/properties/events declared on an **interface**, the removal needs to span the interface declaration AND every concrete implementation. Use the composite tool:
+
+1. Call `remove_interface_member_preview(workspaceId, interfaceMemberHandle)` with the handle from `find_unused_symbols`.
+2. Inspect the response:
+   - `status: "refused"` means the member has external callers — the `externalCallers` list identifies them. Refuse to remove; flag the callers for the user to address first.
+   - `status: "previewed"` means zero external callers and the preview spans the interface + all `implementationCount` impls. The `changes` array shows the files affected.
+3. After user confirmation, apply via `remove_dead_code_apply` with the returned `previewToken`.
+4. Call `compile_check`.
+
 ### Step 5: Post-Cleanup
 
 After successful removal:

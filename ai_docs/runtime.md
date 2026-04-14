@@ -104,9 +104,10 @@ For tool selection and workflows, see `domains/tool-usage-guide.md`.
 
 The current stable/experimental tool, resource, and prompt counts are owned by the live `server_info` tool and the `roslyn://server/catalog` resource — query those for an authoritative answer rather than relying on this document. As of catalog `2026.04`:
 
-- Stable tools: 69
-- Experimental tools: 59
+- Stable tools: 77
+- Experimental tools: 53
 - Stable resources: 9 (3 static + 6 workspace-scoped templates, including the verbose siblings of `roslyn://workspaces` and `roslyn://workspace/{id}/status` added in v1.8 for opt-in full payloads)
+- Experimental resources: 1 (`roslyn://workspace/{id}/file/{path}/lines/{N-M}` line-range slice added in v1.15)
 - Experimental prompts: 19
 
 Resource discovery for clients that only call `resources/list`: workspace-scoped resources are exposed as URI templates (`roslyn://workspace/{workspaceId}/...`). Read `roslyn://server/resource-templates` for the canonical list of supported URI patterns.
