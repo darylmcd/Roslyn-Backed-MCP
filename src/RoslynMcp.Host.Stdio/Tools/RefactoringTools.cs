@@ -203,4 +203,20 @@ public static class RefactoringTools
         });
     }
 
+    [McpServerTool(Name = "format_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     Description("Report documents in the workspace that would change under Roslyn's formatter without applying any edits. Analogous to `dotnet format --verify-no-changes` but in-memory via Formatter.FormatAsync. Response: { checkedDocuments, violationCount, violations: [{ filePath, changeCount }], elapsedMs }. Optionally scoped to a single project via projectName.")]
+    public static Task<string> FormatCheck(
+        IWorkspaceExecutionGate gate,
+        IFormatVerifyService formatVerifyService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: restrict the check to a specific project name. Defaults to all projects.")] string? projectName = null,
+        CancellationToken ct = default)
+    {
+        return ToolErrorHandler.ExecuteAsync("format_check", () =>
+            gate.RunReadAsync(workspaceId, async c =>
+            {
+                var result = await formatVerifyService.CheckAsync(workspaceId, projectName, c);
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }, ct));
+    }
 }

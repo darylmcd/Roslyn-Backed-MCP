@@ -84,6 +84,7 @@ Install via: `/plugin marketplace add darylmcd/Roslyn-Backed-MCP` then `/plugin 
 
 - `stdout` is reserved for MCP protocol traffic.
 - Operational logging should go to `stderr`.
+- For custom stdio clients (not Cursor / Claude Code), see [`docs/stdio-client-integration.md`](../docs/stdio-client-integration.md) — covers NDJSON framing, init handshake, and minimal Python / C# client examples.
 
 ## Roslyn MCP client policy (AI sessions)
 
@@ -104,8 +105,8 @@ For tool selection and workflows, see `domains/tool-usage-guide.md`.
 
 The current stable/experimental tool, resource, and prompt counts are owned by the live `server_info` tool and the `roslyn://server/catalog` resource — query those for an authoritative answer rather than relying on this document. As of catalog `2026.04`:
 
-- Stable tools: 77
-- Experimental tools: 53
+- Stable tools: 102
+- Experimental tools: 29
 - Stable resources: 9 (3 static + 6 workspace-scoped templates, including the verbose siblings of `roslyn://workspaces` and `roslyn://workspace/{id}/status` added in v1.8 for opt-in full payloads)
 - Experimental resources: 1 (`roslyn://workspace/{id}/file/{path}/lines/{N-M}` line-range slice added in v1.15)
 - Experimental prompts: 19

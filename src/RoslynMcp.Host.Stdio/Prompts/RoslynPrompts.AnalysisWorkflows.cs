@@ -273,7 +273,7 @@ public static partial class RoslynPrompts
     {
         try
         {
-            var metrics = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath: null, projectFilter: projectName, minComplexity: 5, limit: 50, ct).ConfigureAwait(false);
+            var metrics = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath: null, filePaths: null, projectFilter: projectName, minComplexity: 5, limit: 50, ct).ConfigureAwait(false);
             var metricsJson = JsonSerializer.Serialize(metrics, JsonDefaults.Indented);
 
             return

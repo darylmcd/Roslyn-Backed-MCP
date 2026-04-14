@@ -86,10 +86,11 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             CodeMetricsService,
             WorkspaceId,
             filePath: null,
+            filePaths: null,
             projectName: "SampleLib",
             minComplexity: 1,
             limit: 20,
-            CancellationToken.None);
+            ct: CancellationToken.None);
         using var complexityDoc = JsonDocument.Parse(complexityJson);
         Assert.IsTrue(complexityDoc.RootElement.GetProperty("metrics").GetArrayLength() > 0);
     }

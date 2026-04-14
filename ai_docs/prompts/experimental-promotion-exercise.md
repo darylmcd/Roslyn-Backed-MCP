@@ -5,7 +5,7 @@
      This is a companion to deep-review-and-refactor.md. It should be maintained
      whenever experimental tools are promoted or added. When the deep-review appendix
      updates, verify the experimental-only subset in this prompt still matches.
-   Last surface audit: 2026-04-14 (catalog 2026.04; 53 experimental tools, 19 experimental prompts, 1 experimental resource). v1.15.0 added `apply_with_verify`, `remove_interface_member_preview`, and the `source_file_lines` resource template; check the Phase sections below for updated counts. -->
+   Last surface audit: 2026-04-14 (catalog 2026.04; 29 experimental tools, 19 experimental prompts, 1 experimental resource after the v1.16.0 25-tool promotion batch). v1.15.0 added `apply_with_verify`, `remove_interface_member_preview`, and the `source_file_lines` resource template; v1.16.0 added `format_check` (experimental) and promoted 25 experimental tools to stable. Check the Phase sections below for updated counts. -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** systematically exercise every experimental tool and prompt to produce an **experimental promotion scorecard** with evidence for promote / keep-experimental / needs-more-evidence / deprecate decisions. Also produces a minimal coverage ledger for the experimental surface.
@@ -73,7 +73,7 @@ These rules apply to **every** experimental tool call. Capture findings in real 
 
 ---
 
-### Phase 1: Refactoring family — preview/apply pairs (14 experimental tools)
+### Phase 1: Refactoring family — preview/apply pairs (10 experimental tools after v1.16.0 promotion batch)
 
 Exercise each refactoring preview/apply pair. For each pair: preview → inspect diff → apply → `compile_check` → verify with a cross-tool probe → revert (if needed to keep workspace clean for the next pair).
 
@@ -131,7 +131,7 @@ Exercise each refactoring preview/apply pair. For each pair: preview → inspect
 
 ---
 
-### Phase 2: File operations family (6 experimental tools)
+### Phase 2: File operations family (3 experimental tools after v1.16.0 promotion batch — apply siblings only)
 
 Exercise each file operation preview/apply pair on a disposable checkout. Clean up after each to keep the workspace stable.
 
@@ -157,7 +157,7 @@ Exercise each file operation preview/apply pair on a disposable checkout. Clean 
 
 ---
 
-### Phase 3: Project mutation family (12 experimental tools)
+### Phase 3: Project mutation family (2 experimental tools after v1.16.0 promotion batch — `add_central_package_version_preview` + `apply_project_mutation`)
 
 Exercise each project mutation preview, then apply at least one reversible mutation round-trip.
 
@@ -194,7 +194,7 @@ Exercise each project mutation preview, then apply at least one reversible mutat
 
 ---
 
-### Phase 4: Scaffolding family (4 experimental tools)
+### Phase 4: Scaffolding family (3 experimental tools after v1.16.0 promotion batch — `scaffold_test_preview` promoted)
 
 #### 4a. Scaffold Type (`scaffold_type_preview`, `scaffold_type_apply`)
 1. Call `scaffold_type_preview` to scaffold a new class. Verify `internal sealed class` default (v1.8+).
@@ -212,7 +212,7 @@ Exercise each project mutation preview, then apply at least one reversible mutat
 
 ---
 
-### Phase 5: Dead code, editing, configuration, undo (13 experimental tools)
+### Phase 5: Dead code, editing, configuration, undo (5 experimental tools after v1.16.0 promotion batch — `apply_text_edit`, `add_pragma_suppression`, `set_editorconfig_option`, `set_diagnostic_severity`, and `revert_last_apply` promoted)
 
 #### 5a. Dead code removal (`remove_dead_code_preview`, `remove_dead_code_apply`)
 1. Call `find_unused_symbols` to find confirmed dead symbols.
@@ -547,85 +547,63 @@ The file must exist at the canonical path. The task is **incomplete** without th
 ## Appendix — Experimental surface reference (2026.04)
 
 > **Maintenance note:** This appendix mirrors the experimental entries from the live catalog. The live catalog from Phase 0 is authoritative. Treat this as a convenience snapshot.
-> Last verified: 2026-04-13 against catalog version 2026.04 — **52 experimental tools, 19 experimental prompts**.
+> Last verified: 2026-04-14 against catalog version 2026.04 — **29 experimental tools, 19 experimental prompts** (v1.16.0 25-tool promotion batch + new `format_check`).
 
 ### Experimental tools by category
 
-#### `refactoring` (14 experimental)
+#### `refactoring` (10 experimental — `format_range_preview`, `extract_type_preview`, `move_type_to_file_preview`, `bulk_replace_type_preview`, `extract_method_preview` promoted in v1.16.0)
 | Tool | RO/D | Pair | Phase |
 |------|------|------|-------|
 | `fix_all_preview` | RO | — | 1a |
 | `fix_all_apply` | D | `fix_all_preview` | 1a |
-| `format_range_preview` | RO | — | 1b |
-| `format_range_apply` | D | `format_range_preview` | 1b |
+| `format_range_apply` | D | `format_range_preview` (now stable) | 1b |
 | `extract_interface_preview` | RO | — | 1c |
 | `extract_interface_apply` | D | `extract_interface_preview` | 1c |
-| `extract_type_preview` | RO | — | 1d |
-| `extract_type_apply` | D | `extract_type_preview` | 1d |
-| `move_type_to_file_preview` | RO | — | 1e |
-| `move_type_to_file_apply` | D | `move_type_to_file_preview` | 1e |
-| `bulk_replace_type_preview` | RO | — | 1f |
-| `bulk_replace_type_apply` | D | `bulk_replace_type_preview` | 1f |
-| `extract_method_preview` | RO | — | 1g |
-| `extract_method_apply` | D | `extract_method_preview` | 1g |
+| `extract_type_apply` | D | `extract_type_preview` (now stable) | 1d |
+| `move_type_to_file_apply` | D | `move_type_to_file_preview` (now stable) | 1e |
+| `bulk_replace_type_apply` | D | `bulk_replace_type_preview` (now stable) | 1f |
+| `extract_method_apply` | D | `extract_method_preview` (now stable) | 1g |
+| `format_check` | RO | — | 1h (new v1.16.0; solution-wide format verification) |
 
-#### `file-operations` (6 experimental)
+#### `file-operations` (3 experimental — all `*_preview` siblings promoted in v1.16.0)
 | Tool | RO/D | Pair | Phase |
 |------|------|------|-------|
-| `create_file_preview` | RO | — | 2a |
-| `create_file_apply` | D | `create_file_preview` | 2a |
-| `move_file_preview` | RO | — | 2b |
-| `move_file_apply` | D | `move_file_preview` | 2b |
-| `delete_file_preview` | RO | — | 2c |
-| `delete_file_apply` | D | `delete_file_preview` | 2c |
+| `create_file_apply` | D | `create_file_preview` (now stable) | 2a |
+| `move_file_apply` | D | `move_file_preview` (now stable) | 2b |
+| `delete_file_apply` | D | `delete_file_preview` (now stable) | 2c |
 
-#### `project-mutation` (12 experimental)
+#### `project-mutation` (2 experimental — `add_central_package_version_preview` and `apply_project_mutation` only after v1.16.0 promotion batch)
 | Tool | RO/D | Phase |
 |------|------|-------|
-| `add_package_reference_preview` | RO | 3a |
-| `remove_package_reference_preview` | RO | 3a |
-| `add_project_reference_preview` | RO | 3b |
-| `remove_project_reference_preview` | RO | 3b |
-| `set_project_property_preview` | RO | 3c |
-| `set_conditional_property_preview` | RO | 3c |
-| `add_target_framework_preview` | RO | 3d |
-| `remove_target_framework_preview` | RO | 3d |
 | `add_central_package_version_preview` | RO | 3e |
-| `remove_central_package_version_preview` | RO | 3e |
 | `apply_project_mutation` | D | 3a–3d |
-| `get_msbuild_properties` | RO | 3f |
 
-#### `scaffolding` (4 experimental)
+#### `scaffolding` (3 experimental — `scaffold_test_preview` promoted in v1.16.0)
 | Tool | RO/D | Pair | Phase |
 |------|------|------|-------|
 | `scaffold_type_preview` | RO | — | 4a |
 | `scaffold_type_apply` | D | `scaffold_type_preview` | 4a |
-| `scaffold_test_preview` | RO | — | 4b |
-| `scaffold_test_apply` | D | `scaffold_test_preview` | 4b |
+| `scaffold_test_apply` | D | `scaffold_test_preview` (now stable) | 4b |
 
-#### `dead-code` (2 experimental)
+#### `dead-code` (2 experimental — `remove_dead_code_preview` promoted in v1.16.0; `remove_interface_member_preview` added v1.15.0)
 | Tool | RO/D | Pair | Phase |
 |------|------|------|-------|
-| `remove_dead_code_preview` | RO | — | 5a |
-| `remove_dead_code_apply` | D | `remove_dead_code_preview` | 5a |
+| `remove_dead_code_apply` | D | `remove_dead_code_preview` (now stable) | 5a |
+| `remove_interface_member_preview` | RO | — | 5a (v1.15.0; preview-only sweep for unused interface members) |
 
-#### `editing` (3 experimental)
+#### `editing` (1 experimental — `apply_text_edit` and `add_pragma_suppression` promoted in v1.16.0)
 | Tool | RO/D | Phase |
 |------|------|-------|
-| `apply_text_edit` | D | 5b |
 | `apply_multi_file_edit` | D | 5b |
-| `add_pragma_suppression` | D | 5c |
 
-#### `configuration` (2 experimental)
+#### `configuration` (0 experimental — all promoted in v1.16.0)
+
+The configuration family is fully stable as of v1.16.0; no experimental rows remain. Skip Phase 5d unless the catalog reintroduces an experimental configuration tool.
+
+#### `undo` (1 experimental — `revert_last_apply` promoted in v1.16.0; `apply_with_verify` added v1.15.0)
 | Tool | RO/D | Phase |
 |------|------|-------|
-| `set_editorconfig_option` | D | 5d |
-| `set_diagnostic_severity` | D | 5d |
-
-#### `undo` (1 experimental)
-| Tool | RO/D | Phase |
-|------|------|-------|
-| `revert_last_apply` | D | 5e |
+| `apply_with_verify` | D | 5e (v1.15.0; apply preview + auto-verify via compile_check, auto-revert on new errors) |
 
 #### `cross-project-refactoring` (3 experimental)
 | Tool | RO/D | Phase |

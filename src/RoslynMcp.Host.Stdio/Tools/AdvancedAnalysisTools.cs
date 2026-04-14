@@ -70,6 +70,7 @@ public static class AdvancedAnalysisTools
         ICodeMetricsService codeMetricsService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by source file path")] string? filePath = null,
+        [Description("Optional: list of source file paths to include (union with filePath). Empty list means no filter. Useful for re-running complexity on a changed-file set after a refactor.")] IReadOnlyList<string>? filePaths = null,
         [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: minimum cyclomatic complexity threshold (default: return all)")] int? minComplexity = null,
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
@@ -78,7 +79,7 @@ public static class AdvancedAnalysisTools
         return ToolErrorHandler.ExecuteAsync("get_complexity_metrics", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, projectName, minComplexity, limit, c);
+                var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, filePaths, projectName, minComplexity, limit, c);
                 return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
             }, ct));
     }

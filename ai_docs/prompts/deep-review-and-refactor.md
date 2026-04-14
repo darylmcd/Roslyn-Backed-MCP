@@ -6,7 +6,7 @@
      with the project's actual tool, resource, prompt, and plugin-skill surface at all times.
      When tools, resources, prompts, or skills are added, removed, or renamed,
      update the Tools Reference appendix (tier + category) and re-run `./eng/verify-ai-docs.ps1`.
-   Last surface audit: 2026-04-13 (catalog 2026.04; 127 tools = 75 stable / 52 experimental, 9 resources (all stable), 19 prompts (all experimental), 19 plugin skills). -->
+   Last surface audit: 2026-04-14 (catalog 2026.04; 131 tools = 102 stable / 29 experimental, 10 resources (9 stable / 1 experimental), 19 prompts (all experimental), 19 plugin skills). -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** produce an MCP server audit (bugs, incorrect results, gaps) **plus** an experimental-tier promotion scorecard and a plugin-skill health report. **Mechanism:** real refactoring plus tool calls that exercise the full surface.
@@ -90,7 +90,7 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 12. From the loaded repo, record the repo-shape constraints that affect later phases (projects, tests, analyzers, DI, source generators, Central Package Management, multi-targeting, network limits).
 13. **Restore precheck (mandatory for any C# repo).** Before running any Phase-1 semantic-analysis tool, run `dotnet restore <entrypoint>` from the host shell. Unrestored package references put `UnresolvedAnalyzerReference` entries into `Project.AnalyzerReferences`, which historically crashed `find_unused_symbols`, `type_hierarchy`, `callers_callees`, and `impact_analysis` (FLAG-A). Server v1.7+ filters that subtype out, but the precheck remains a precondition discipline — without restore, `compile_check` and `project_diagnostics` flood with hundreds of CS0246 errors from missing types in unrestored packages, which alone is enough to push a single-turn tool result over the output budget (cross-cutting principle #12). If the host has no shell access, mark this step `blocked` and continue — note in the report header that semantic-analysis tools may degrade or surface package-not-restored errors.
 14. Seed or update the coverage ledger so every live tool/resource/prompt already has a planned phase or a provisional skip reason. Ledger columns: `kind`, `name`, `tier`, `category` (live catalog value), `status`, `phase`, `lastElapsedMs`, `notes`.
-15. Seed the **Experimental promotion scorecard** with one row per experimental tool, resource, and prompt. Pre-fill `tier=experimental`; leave `recommendation` blank until the Final surface closure step. Count: 53 experimental tools + 1 experimental resource + 19 experimental prompts = **73 rows** when the live catalog matches the 2026.04 snapshot (prompt count may grow — always use `server_info` / `roslyn://server/catalog` for the exact total).
+15. Seed the **Experimental promotion scorecard** with one row per experimental tool, resource, and prompt. Pre-fill `tier=experimental`; leave `recommendation` blank until the Final surface closure step. Count: 29 experimental tools + 1 experimental resource + 19 experimental prompts = **49 rows** when the live catalog matches the 2026.04 snapshot (prompt count may grow — always use `server_info` / `roslyn://server/catalog` for the exact total).
 16. Seed the **Performance baseline** table. Every exercised read/reader surface contributes one row; writer surfaces contribute a row in Phase 8b.5. The table is machine-readable (see Output Format → Performance baseline).
 
 **MCP audit checkpoint:** Did `server_info` and `roslyn://server/catalog` agree on live counts and tiers? Did `workspace_load` succeed on the chosen entrypoint? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Did `dotnet restore` complete cleanly (or did you mark step 13 `blocked` with a reason)? Did you explicitly record the disposable isolation path / conservative rationale, the repo shape, the **debug log channel availability**, the initial coverage ledger with no silent omissions, the seeded promotion scorecard row count, and the seeded performance baseline table? If every candidate entrypoint failed to load, did you mark workspace-scoped rows `blocked` and continue only with workspace-independent families?
@@ -992,9 +992,9 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 > **Maintenance note:** This appendix **mirrors** the live catalog categories (`Category`) and tier (`SupportTier`) values emitted by `roslyn://server/catalog`. The live catalog from Phase 0 is authoritative. Treat this appendix as a convenience snapshot; if it drifts from the running server, record prompt drift in *Improvement suggestions* and trust the live catalog.
 > When tools, resources, prompts, or skills change, update this section **and** `eng/verify-ai-docs.ps1` passes.
 > Client limitations do **not** change appendix counts. If a client cannot invoke prompts or resources, record those entries as `blocked` in the audit ledger rather than editing them out.
-> Last verified: 2026-04-13 against catalog version 2026.04 — **127 tools (75 stable / 52 experimental) | 9 resources (all stable) | 19 prompts (all experimental) | 19 plugin skills** (skills are repo files under `skills/`, not catalog rows).
+> Last verified: 2026-04-14 against catalog version 2026.04 — **131 tools (102 stable / 29 experimental) | 10 resources (9 stable / 1 experimental) | 19 prompts (all experimental) | 19 plugin skills** (skills are repo files under `skills/`, not catalog rows).
 
-### Tools by live catalog category (128 total)
+### Tools by live catalog category (131 total)
 
 The `Category` column below is the exact value emitted by `roslyn://server/catalog` — use these strings in the coverage summary, not the legacy convenience groupings. Tools with a preview/apply pairing are kept together and their pair is noted in the *Pair* column.
 
@@ -1005,7 +1005,7 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 |------|------|------|-------|
 | `server_info` | S | RO | Surface inventory, tiers, runtime. |
 
-#### `workspace` (9 stable, 0 experimental)
+#### `workspace` (10 stable, 0 experimental)
 | Tool | Tier | RO/D | Notes |
 |------|------|------|-------|
 | `workspace_load` | S | RO | Lean summary default; `verbose=true` for project tree. |
@@ -1088,7 +1088,7 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `test_coverage` | S | RO | Requires coverlet.collector. |
 | `compile_check` | S | RO | Paginated v1.7+; `emitValidation=true` forces PE emit. |
 
-#### `refactoring` (8 stable, 14 experimental)
+#### `refactoring` (13 stable, 10 experimental)
 | Tool | Tier | RO/D | Pair | Notes |
 |------|------|------|------|-------|
 | `rename_preview` | S | RO | — | |
@@ -1101,18 +1101,19 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `code_fix_apply` | S | D | `code_fix_preview` | Revertible. |
 | `fix_all_preview` | E | RO | — | |
 | `fix_all_apply` | E | D | `fix_all_preview` | Revertible. |
-| `format_range_preview` | E | RO | — | |
+| `format_range_preview` | S | RO | — | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `format_range_apply` | E | D | `format_range_preview` | Revertible. |
 | `extract_interface_preview` | E | RO | — | |
 | `extract_interface_apply` | E | D | `extract_interface_preview` | Revertible. |
-| `extract_type_preview` | E | RO | — | |
+| `extract_type_preview` | S | RO | — | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `extract_type_apply` | E | D | `extract_type_preview` | Revertible. |
-| `move_type_to_file_preview` | E | RO | — | |
+| `move_type_to_file_preview` | S | RO | — | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `move_type_to_file_apply` | E | D | `move_type_to_file_preview` | Revertible. |
-| `bulk_replace_type_preview` | E | RO | — | |
+| `bulk_replace_type_preview` | S | RO | — | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `bulk_replace_type_apply` | E | D | `bulk_replace_type_preview` | Revertible. |
-| `extract_method_preview` | E | RO | — | Custom DataFlowAnalysis-based extraction (v1.10.0+). |
+| `extract_method_preview` | S | RO | — | Promoted v1.16.0; custom DataFlowAnalysis-based extraction (v1.10.0+). |
 | `extract_method_apply` | E | D | `extract_method_preview` | Revertible. |
+| `format_check` | E | RO | — | New v1.16.0 — solution-wide format verification (no apply). |
 
 #### `cross-project-refactoring` (0 stable, 3 experimental)
 | Tool | Tier | RO/D | Notes |
@@ -1129,61 +1130,62 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `extract_and_wire_interface_preview` | E | RO | |
 | `apply_composite_preview` | E | D | **Destructive despite the name** — driver for composite apply. |
 
-#### `file-operations` (0 stable, 6 experimental)
+#### `file-operations` (3 stable, 3 experimental)
 | Tool | Tier | RO/D | Pair | Notes |
 |------|------|------|------|-------|
-| `create_file_preview` | E | RO | — | |
+| `create_file_preview` | S | RO | — | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `create_file_apply` | E | D | `create_file_preview` | Not revertible. |
-| `delete_file_preview` | E | RO | — | |
+| `delete_file_preview` | S | RO | — | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `delete_file_apply` | E | D | `delete_file_preview` | Not revertible. |
-| `move_file_preview` | E | RO | — | |
+| `move_file_preview` | S | RO | — | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `move_file_apply` | E | D | `move_file_preview` | Not revertible. |
 
-#### `project-mutation` (2 stable, 12 experimental — includes MSBuild evaluators)
+#### `project-mutation` (12 stable, 2 experimental — includes MSBuild evaluators)
 | Tool | Tier | RO/D | Notes |
 |------|------|------|-------|
-| `add_package_reference_preview` | E | RO | |
-| `remove_package_reference_preview` | E | RO | |
-| `add_project_reference_preview` | E | RO | |
-| `remove_project_reference_preview` | E | RO | |
-| `set_project_property_preview` | E | RO | |
-| `set_conditional_property_preview` | E | RO | |
-| `add_target_framework_preview` | E | RO | |
-| `remove_target_framework_preview` | E | RO | |
+| `add_package_reference_preview` | S | RO | Promoted v1.16.0 (2026-04-14 promotion batch). |
+| `remove_package_reference_preview` | S | RO | Promoted v1.16.0 (2026-04-14 promotion batch). |
+| `add_project_reference_preview` | S | RO | Promoted v1.16.0 (2026-04-14 promotion batch). |
+| `remove_project_reference_preview` | S | RO | Promoted v1.16.0 (2026-04-14 promotion batch). |
+| `set_project_property_preview` | S | RO | Promoted v1.16.0 (2026-04-14 promotion batch). |
+| `set_conditional_property_preview` | S | RO | Promoted v1.16.0 (2026-04-14 promotion batch). |
+| `add_target_framework_preview` | S | RO | Promoted v1.16.0 (2026-04-14 promotion batch). |
+| `remove_target_framework_preview` | S | RO | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `add_central_package_version_preview` | E | RO | |
-| `remove_central_package_version_preview` | E | RO | |
+| `remove_central_package_version_preview` | S | RO | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `apply_project_mutation` | E | D | Composite apply for project-file previews. |
 | `evaluate_msbuild_property` | S | RO | Note: lives under `project-mutation`, not a dedicated `msbuild` category. Promoted after 3/4 audit exercises with zero failures. |
 | `evaluate_msbuild_items` | S | RO | Promoted after 3/4 audit exercises with zero failures. |
-| `get_msbuild_properties` | E | RO | Filter with `propertyNameFilter` / `includedNames`. |
+| `get_msbuild_properties` | S | RO | Promoted v1.16.0; filter with `propertyNameFilter` / `includedNames`. |
 
-#### `scaffolding` (0 stable, 4 experimental)
+#### `scaffolding` (1 stable, 3 experimental)
 | Tool | Tier | RO/D | Pair | Notes |
 |------|------|------|------|-------|
 | `scaffold_type_preview` | E | RO | — | v1.8+ emits `internal sealed class T`. |
 | `scaffold_type_apply` | E | D | `scaffold_type_preview` | Not revertible. |
-| `scaffold_test_preview` | E | RO | — | Auto-detects test framework. |
+| `scaffold_test_preview` | S | RO | — | Promoted v1.16.0; auto-detects test framework. |
 | `scaffold_test_apply` | E | D | `scaffold_test_preview` | Not revertible. |
 
-#### `dead-code` (0 stable, 2 experimental)
+#### `dead-code` (1 stable, 2 experimental)
 | Tool | Tier | RO/D | Pair | Notes |
 |------|------|------|------|-------|
-| `remove_dead_code_preview` | E | RO | — | |
+| `remove_dead_code_preview` | S | RO | — | Promoted v1.16.0 (2026-04-14 promotion batch). |
 | `remove_dead_code_apply` | E | D | `remove_dead_code_preview` | Revertible. |
+| `remove_interface_member_preview` | E | RO | — | Specialized dead-code preview for interface methods. |
 
-#### `editing` (0 stable, 3 experimental)
+#### `editing` (2 stable, 1 experimental)
 | Tool | Tier | RO/D | Notes |
 |------|------|------|-------|
-| `apply_text_edit` | E | D | Revertible via single-slot undo. |
+| `apply_text_edit` | S | D | Promoted v1.16.0; revertible via single-slot undo. |
 | `apply_multi_file_edit` | E | D | Revertible; batched snapshot. |
-| `add_pragma_suppression` | E | D | Direct write; not a preview-based flow. |
+| `add_pragma_suppression` | S | D | Promoted v1.16.0; direct write; not a preview-based flow. |
 
-#### `configuration` (1 stable, 2 experimental)
+#### `configuration` (3 stable, 0 experimental)
 | Tool | Tier | RO/D | Notes |
 |------|------|------|-------|
 | `get_editorconfig_options` | S | RO | Promoted after 4/4 audit exercises with zero failures. |
-| `set_editorconfig_option` | E | RO+D | Revertible via `revert_last_apply` (undo retrofit v1.8.2). |
-| `set_diagnostic_severity` | E | RO+D | Writes `.editorconfig`; not undoable via `revert_last_apply`. |
+| `set_editorconfig_option` | S | RO+D | Promoted v1.16.0; revertible via `revert_last_apply` (undo retrofit v1.8.2). |
+| `set_diagnostic_severity` | S | RO+D | Promoted v1.16.0; writes `.editorconfig`; not undoable via `revert_last_apply`. |
 
 #### `code-actions` (3 stable, 0 experimental)
 | Tool | Tier | RO/D | Pair | Notes |
@@ -1202,12 +1204,13 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 |------|------|------|-------|
 | `get_syntax_tree` | S | RO | Promoted after 2/4 audit exercises with zero failures. |
 
-#### `undo` (0 stable, 1 experimental)
+#### `undo` (1 stable, 1 experimental)
 | Tool | Tier | RO/D | Notes |
 |------|------|------|-------|
-| `revert_last_apply` | E | D | Single-slot per workspace; see backlog `revert-last-apply-disk-consistency`. |
+| `revert_last_apply` | S | D | Promoted v1.16.0; single-slot per workspace; see backlog `revert-last-apply-disk-consistency`. |
+| `apply_with_verify` | E | D | Apply preview + auto-verify via compile_check; auto-revert on new errors. |
 
-### Resources (9 stable)
+### Resources (9 stable, 1 experimental)
 
 If a client cannot list or read one of these resources, keep the resource in the audit ledger with status `blocked` and note the client limitation. Do not treat that as prompt drift.
 
@@ -1222,6 +1225,7 @@ If a client cannot list or read one of these resources, keep the resource in the
 | `roslyn://workspace/{workspaceId}/projects` | S | Project graph metadata |
 | `roslyn://workspace/{workspaceId}/diagnostics` | S | Compiler diagnostics |
 | `roslyn://workspace/{workspaceId}/file/{filePath}` | S | Source file content |
+| `roslyn://workspace/{workspaceId}/file/{filePath}/lines/{N-M}` | E | Line-range slice of a source file (v1.15+) |
 
 ### Prompts (19 experimental)
 

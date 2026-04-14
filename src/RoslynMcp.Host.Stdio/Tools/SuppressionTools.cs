@@ -16,7 +16,7 @@ public static class SuppressionTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Diagnostic id (e.g. CA1000, CS8602)")] string diagnosticId,
         [Description("Severity: error, warning, suggestion, silent, or none")] string severity,
-        [Description("Absolute path to any C# file used to locate the applicable .editorconfig")] string filePath,
+        [Description("(required) Absolute path to any C# file used to locate the applicable .editorconfig. Without this the server can't pick which .editorconfig to mutate.")] string filePath,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("set_diagnostic_severity", () =>

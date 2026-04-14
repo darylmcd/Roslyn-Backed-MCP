@@ -117,6 +117,10 @@ The plugin includes safety hooks that enforce the preview/apply pattern:
 
 ## MCP Client Configuration
 
+### Custom stdio clients
+
+If you're building your own harness that spawns `roslynmcp` and speaks MCP directly, read [`docs/stdio-client-integration.md`](docs/stdio-client-integration.md). It covers NDJSON framing (not LSP `Content-Length`), the `initialize` + `notifications/initialized` handshake order, and includes minimal Python and C# client examples. If you're using Cursor / Claude Code with a pre-configured integration, skip it — the configs below are all you need.
+
 ### Cursor
 
 Add to `.cursor/mcp.json`:
@@ -273,7 +277,7 @@ For privacy questions, open an issue at [github.com/darylmcd/Roslyn-Backed-MCP/i
 
 ## Supported Surface
 
-Catalog **`2026.04`** ships **130 tools** (77 stable / 53 experimental), **10 resources** (9 stable / 1 experimental), and **19 prompts** (all experimental). Use the `server_info` tool and the `roslyn://server/catalog` resource for the authoritative live surface — the categories below are a quick orientation.
+Catalog **`2026.04`** ships **131 tools** (102 stable / 29 experimental), **10 resources** (9 stable / 1 experimental), and **19 prompts** (all experimental). Use the `server_info` tool and the `roslyn://server/catalog` resource for the authoritative live surface — the categories below are a quick orientation.
 
 ### Stable tool families
 

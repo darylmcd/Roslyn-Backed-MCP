@@ -156,7 +156,13 @@ public static class SymbolResolver
     }
 
     /// <summary>
-    /// Searches all projects in <paramref name="solution"/> for a named type with the given metadata name.
+    /// Searches all projects in <paramref name="solution"/> for a symbol matching the given
+    /// metadata name. Resolves TYPES via <see cref="Compilation.GetTypeByMetadataName"/> first
+    /// (fast path). If the input is dotted like <c>Namespace.Type.Member</c> and no type with
+    /// that full name exists, splits on the last dot and resolves the final segment as a member
+    /// of the type before it — so <c>SampleLib.AnimalService.GetAllAnimals</c> resolves to the
+    /// method even though no type has that exact name. Returns the first match; generic method
+    /// overloads return the first arity match.
     /// </summary>
     /// <returns>The first matching symbol, or <see langword="null"/> if not found.</returns>
     public static async Task<ISymbol?> ResolveByMetadataNameAsync(Solution solution, string metadataName, CancellationToken ct)
@@ -169,10 +175,27 @@ public static class SymbolResolver
                 continue;
             }
 
-            var symbol = compilation.GetTypeByMetadataName(metadataName);
-            if (symbol is not null)
+            // Fast path: full metadata name resolves directly to a type.
+            var typeSymbol = compilation.GetTypeByMetadataName(metadataName);
+            if (typeSymbol is not null)
             {
-                return symbol;
+                return typeSymbol;
+            }
+
+            // Fallback: resolve as a member by splitting at the last '.'
+            // (Namespace.Type.Member — the containing type is everything before the last dot).
+            var lastDot = metadataName.LastIndexOf('.');
+            if (lastDot <= 0 || lastDot == metadataName.Length - 1) continue;
+
+            var containingTypeName = metadataName[..lastDot];
+            var memberName = metadataName[(lastDot + 1)..];
+            var containingType = compilation.GetTypeByMetadataName(containingTypeName);
+            if (containingType is null) continue;
+
+            var member = containingType.GetMembers(memberName).FirstOrDefault();
+            if (member is not null)
+            {
+                return member;
             }
         }
 

@@ -34,7 +34,7 @@ public sealed class RefactoringSuggestionService : IRefactoringSuggestionService
 
         // Run all analyses in parallel
         var complexityTask = _metricsService.GetComplexityMetricsAsync(
-            workspaceId, filePath: null, projectFilter, minComplexity: 10, limit: 100, ct);
+            workspaceId, filePath: null, filePaths: null, projectFilter, minComplexity: 10, limit: 100, ct);
         var cohesionTask = _cohesionService.GetCohesionMetricsAsync(
             workspaceId, filePath: null, projectFilter, minMethods: 3, limit: 100,
             includeInterfaces: false, excludeTestProjects: true, ct);

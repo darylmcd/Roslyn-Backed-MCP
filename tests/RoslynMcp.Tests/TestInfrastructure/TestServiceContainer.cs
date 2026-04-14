@@ -58,6 +58,7 @@ internal sealed class TestServiceContainer
     public required ExtractMethodService ExtractMethodService { get; init; }
     public required ChangeTracker ChangeTracker { get; init; }
     public required RefactoringSuggestionService RefactoringSuggestionService { get; init; }
+    public required FormatVerifyService FormatVerifyService { get; init; }
 
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
@@ -253,7 +254,8 @@ internal sealed class TestServiceContainer
                 new CodeMetricsService(workspaceManager, NullLogger<CodeMetricsService>.Instance),
                 new CohesionAnalysisService(workspaceManager, NullLogger<CohesionAnalysisService>.Instance),
                 new UnusedCodeAnalyzer(workspaceManager, compilationCache, NullLogger<UnusedCodeAnalyzer>.Instance),
-                NullLogger<RefactoringSuggestionService>.Instance)
+                NullLogger<RefactoringSuggestionService>.Instance),
+            FormatVerifyService = new FormatVerifyService(workspaceManager, NullLogger<FormatVerifyService>.Instance)
         };
     }
 }

@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-04-14
+
+Top-10 backlog remediation pass v3 plus the **25-tool experimental → stable promotion batch** that lifts stable surface from 77 → 102 tools.
+
+### Changed (experimental → stable promotion batch)
+
+- **25 experimental tools promoted to stable** based on `ai_docs/audit-reports/20260413T174024Z_roslyn-backed-mcp_experimental-promotion.md` §12 evidence (round-trip OK, schema accurate, p50 within budget). Catalog tier flips in `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs`. **No behavior change** — these tools have been stable for several releases and the promotion only updates `supportTier` discovery metadata. Promoted tools by category:
+  - **`refactoring`:** `format_range_preview`, `extract_method_preview`, `extract_type_preview`, `move_type_to_file_preview`, `bulk_replace_type_preview`
+  - **`file-operations`:** `create_file_preview`, `delete_file_preview`, `move_file_preview`
+  - **`project-mutation`:** `add_package_reference_preview`, `remove_package_reference_preview`, `add_project_reference_preview`, `remove_project_reference_preview`, `set_project_property_preview`, `set_conditional_property_preview`, `add_target_framework_preview`, `remove_target_framework_preview`, `remove_central_package_version_preview`, `get_msbuild_properties`
+  - **`scaffolding`:** `scaffold_test_preview`
+  - **`editing`:** `apply_text_edit`, `add_pragma_suppression`
+  - **`configuration`:** `set_editorconfig_option`, `set_diagnostic_severity`
+  - **`undo`:** `revert_last_apply`
+
+### Added
+
+- **`format_check` (new experimental tool):** Solution-wide format verification. Iterates documents in the workspace (optionally filtered by `projectName`), runs `Formatter.FormatAsync` in-memory per document, compares via `SourceText.ContentEquals`, and returns `{ checkedDocuments, violationCount, violations: [{ filePath, lineCount }], elapsedMs }`. Does NOT apply changes — pair with `format_document_apply` to fix violations. Closes backlog `format-verify-solution-wide`.
+- **`docs/stdio-client-integration.md` (new):** One-page custom stdio client integration guide covering NDJSON framing, init handshake, parameter naming, and minimal Python + C# client examples (~30 LOC each). Linked from `README.md` Getting Started and cross-referenced from `ai_docs/runtime.md`. Closes backlog `mcp-stdio-protocol-onboarding-docs`.
+
+### Fixed
+
+- **`schema-drift-jellyfin-audit` (split + fix):** Bundled audit row split into per-sub-item fixes:
+  - **`SymbolResolver.ResolveByMetadataNameAsync` member fallback:** Fully-qualified names like `SampleLib.AnimalService.GetAllAnimals` now resolve to the **member** when the type lookup fails. The resolver splits on the last dot and falls back to `containingType.GetMembers(memberName).FirstOrDefault()`. Previously every member-level metadata-name lookup returned null, breaking `find_references` / `find_implementations` callers that pass member names. Regression coverage in `SymbolResolverRenameCaretTests` (3 new tests for member, type, and unknown).
+  - **`set_diagnostic_severity` description:** `filePath` now prefixed with `(required)` so MCP clients render the requirement clearly.
+  - **`apply_text_edit` description:** Includes a JSON example of the `edits` array shape for clarity.
+  - Cleaned drift in prose docs that referenced phantom `RiskLevel` / `ChangeRisk` fields on `ImpactAnalysisDto`.
+- **`symbol-search-payload-meta`:** Five tools that previously serialized bare `IReadOnlyList<>` arrays as the JSON root now wrap responses in `{ count, <name> }` envelopes so `_meta` injection (which requires a JSON object root in `ToolErrorHandler.InjectMetaIfPossible`) works. Affected tools: `symbol_search`, `go_to_definition`, `document_symbols`, `find_base_members`, `goto_type_definition`. **Breaking** — clients parsing these responses as bare arrays must now read `.symbols` / `.locations` / `.symbols` / `.members` / `.locations` respectively.
+- **`claude-plugin-marketplace-version`:** `eng/update-claude-plugin.ps1` now reads the plugin version from the marketplace clone's `plugin.json` (not from Claude Code's pinned `installed_plugins.json`), updates `installed_plugins.json` to point at the current `installPath`, and prunes stale per-version cache directories so `~/.claude/plugins/cache/...` no longer accumulates dangling old plugin folders.
+
+### Changed
+
+- **`get_complexity_metrics` `filePaths` parameter (`roslyn-mcp-complexity-subset-rerun`):** New `filePaths: IReadOnlyList<string>?` parameter on `ICodeMetricsService.GetComplexityMetricsAsync` and the `get_complexity_metrics` tool. When supplied, results are filtered to methods declared in **any** of the given file paths (union semantics with the existing `filePath` single-file filter). Empty list and `null` both mean "no filter." Closes backlog `roslyn-mcp-complexity-subset-rerun`.
+- **`test_related` description:** Clarifies that empty results mean no test name contains the source symbol's name as a substring (heuristic limitation), not that no related tests exist. Closes backlog `test-related-empty-docs`.
+
+### Maintenance
+
+- **Backlog:** Closed 10 rows in this pass (`schema-drift-jellyfin-audit`, `symbol-search-payload-meta`, `cohesion-metrics-null-lcom4`, `test-discover-pagination-ux`, `claude-plugin-marketplace-version`, `roslyn-mcp-complexity-subset-rerun`, `format-verify-solution-wide`, `test-related-empty-docs`, `mcp-stdio-protocol-onboarding-docs`, `experimental-promotion-batch-2026-04`). `cohesion-metrics-null-lcom4` and `test-discover-pagination-ux` closed as "verified already shipped / not reproducible" rather than new code.
+- **Tests:** Added regression coverage for the v3 items: `SymbolResolverRenameCaretTests` (+3 metadata-name fallback tests), `Top10V3RegressionTests` (+4 tests covering items 2/6/7), `FormatVerifyTests`. Test count moves from 478 → 485 with no regressions.
+- **Docs:** `ai_docs/runtime.md`, `README.md`, `ai_docs/prompts/deep-review-and-refactor.md`, and `ai_docs/prompts/experimental-promotion-exercise.md` updated to reflect new tier counts (102 stable / 29 experimental tools, 9 stable + 1 experimental resources).
+- **Plan:** Implementation plan archived under `ai_docs/reports/20260414T171024Z_top10-remediation-plan-v3.md`.
+
 ## [1.15.0] - 2026-04-15
 
 Two top-10 backlog remediation passes plus the post-1.14 cleanup batch.
