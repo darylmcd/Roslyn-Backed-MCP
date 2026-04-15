@@ -87,9 +87,9 @@ await Console.Out.FlushAsync();
 static WorkspaceManagerOptions BindWorkspaceManagerOptions()
 {
     var opts = new WorkspaceManagerOptions();
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_MAX_WORKSPACES"), out var maxWs) && maxWs > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_MAX_WORKSPACES"), out var maxWs) && maxWs > 0)
         opts = opts with { MaxConcurrentWorkspaces = maxWs };
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_MAX_SOURCE_GENERATED_DOCS"), out var maxGen) && maxGen > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_MAX_SOURCE_GENERATED_DOCS"), out var maxGen) && maxGen > 0)
         opts = opts with { MaxSourceGeneratedDocuments = maxGen };
     return opts;
 }
@@ -97,15 +97,15 @@ static WorkspaceManagerOptions BindWorkspaceManagerOptions()
 static ValidationServiceOptions BindValidationServiceOptions()
 {
     var opts = new ValidationServiceOptions();
-    var buildSec = Environment.GetEnvironmentVariable("ROSLYNMCP_BUILD_TIMEOUT_SECONDS");
-    var testSec = Environment.GetEnvironmentVariable("ROSLYNMCP_TEST_TIMEOUT_SECONDS");
-    var vulnSec = Environment.GetEnvironmentVariable("ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS");
+    var buildSec = ReadEnv("ROSLYNMCP_BUILD_TIMEOUT_SECONDS");
+    var testSec = ReadEnv("ROSLYNMCP_TEST_TIMEOUT_SECONDS");
+    var vulnSec = ReadEnv("ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS");
 
     if (int.TryParse(buildSec, out var bs) && bs > 0)
         opts = opts with { BuildTimeout = TimeSpan.FromSeconds(bs) };
     if (int.TryParse(testSec, out var ts) && ts > 0)
         opts = opts with { TestTimeout = TimeSpan.FromSeconds(ts) };
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_MAX_RELATED_FILES"), out var mrf) && mrf > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_MAX_RELATED_FILES"), out var mrf) && mrf > 0)
         opts = opts with { MaxRelatedFiles = mrf };
     if (int.TryParse(vulnSec, out var vs) && vs > 0)
         opts = opts with { VulnerabilityScanTimeout = TimeSpan.FromSeconds(vs) };
@@ -116,11 +116,11 @@ static ValidationServiceOptions BindValidationServiceOptions()
 static PreviewStoreOptions BindPreviewStoreOptions()
 {
     var opts = new PreviewStoreOptions();
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_MAX_ENTRIES"), out var max) && max > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_PREVIEW_MAX_ENTRIES"), out var max) && max > 0)
         opts = opts with { MaxEntries = max };
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_TTL_MINUTES"), out var ttl) && ttl > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_PREVIEW_TTL_MINUTES"), out var ttl) && ttl > 0)
         opts = opts with { TtlMinutes = ttl };
-    var persistDir = Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_PERSIST_DIR");
+    var persistDir = ReadEnv("ROSLYNMCP_PREVIEW_PERSIST_DIR");
     if (!string.IsNullOrWhiteSpace(persistDir))
         opts = opts with { PersistDirectory = persistDir };
     return opts;
@@ -131,14 +131,14 @@ static ExecutionGateOptions BindExecutionGateOptions()
     var maxReqVal = 120;
     var winSecVal = 60;
     var reqSecVal = 120;
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS"), out var maxReq) && maxReq > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS"), out var maxReq) && maxReq > 0)
         maxReqVal = maxReq;
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS"), out var winSec) && winSec > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS"), out var winSec) && winSec > 0)
         winSecVal = winSec;
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_REQUEST_TIMEOUT_SECONDS"), out var reqSec) && reqSec > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_REQUEST_TIMEOUT_SECONDS"), out var reqSec) && reqSec > 0)
         reqSecVal = reqSec;
     var onStale = StalenessPolicy.AutoReload;
-    var onStaleRaw = Environment.GetEnvironmentVariable("ROSLYNMCP_ON_STALE");
+    var onStaleRaw = ReadEnv("ROSLYNMCP_ON_STALE");
     if (!string.IsNullOrWhiteSpace(onStaleRaw))
     {
         onStale = onStaleRaw.Trim().ToLowerInvariant() switch
@@ -160,7 +160,7 @@ static ExecutionGateOptions BindExecutionGateOptions()
 
 static SecurityOptions BindSecurityOptions()
 {
-    var raw = Environment.GetEnvironmentVariable("ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN");
+    var raw = ReadEnv("ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN");
     if (bool.TryParse(raw, out var failOpen))
         return new SecurityOptions { PathValidationFailOpen = failOpen };
     return new SecurityOptions();
@@ -169,22 +169,44 @@ static SecurityOptions BindSecurityOptions()
 static ScriptingServiceOptions BindScriptingServiceOptions()
 {
     var opts = new ScriptingServiceOptions();
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS"), out var t) && t > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS"), out var t) && t > 0)
         opts = opts with { TimeoutSeconds = t };
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_HEARTBEAT_MS"), out var hb) && hb > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_HEARTBEAT_MS"), out var hb) && hb > 0)
         opts = opts with { HeartbeatIntervalMs = hb };
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_STUCK_WARNING_SECONDS"), out var sw) && sw > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_STUCK_WARNING_SECONDS"), out var sw) && sw > 0)
         opts = opts with { StuckWarningSeconds = sw };
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS"), out var wg) && wg >= 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS"), out var wg) && wg >= 0)
         opts = opts with { WatchdogGraceSeconds = wg };
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_WATCHDOG_REPEAT_SECONDS"), out var wr) && wr > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_WATCHDOG_REPEAT_SECONDS"), out var wr) && wr > 0)
         opts = opts with { WatchdogRepeatSeconds = wr };
     // FLAG-5C: bound concurrent script evaluations so leaked infinite loops cannot accumulate.
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_MAX_CONCURRENT"), out var mc) && mc > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_MAX_CONCURRENT"), out var mc) && mc > 0)
         opts = opts with { MaxConcurrentEvaluations = mc };
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS"), out var sl) && sl > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS"), out var sl) && sl > 0)
         opts = opts with { ConcurrencySlotAcquireTimeoutSeconds = sl };
-    if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_SCRIPT_MAX_ABANDONED"), out var ma) && ma > 0)
+    if (int.TryParse(ReadEnv("ROSLYNMCP_SCRIPT_MAX_ABANDONED"), out var ma) && ma > 0)
         opts = opts with { MaxAbandonedEvaluations = ma };
     return opts;
+}
+
+// Reads a ROSLYNMCP_* environment variable, but treats unresolved Claude Code
+// `${user_config.KEY}` placeholders as "unset" so the in-source default applies.
+// Claude Code substitutes placeholders before spawning the server when the user has
+// configured the matching key; if the user never set it, the raw `${user_config.KEY}`
+// string arrives as the env value and would otherwise poison every int.TryParse /
+// bool.TryParse call with no log signal. We log once per unresolved key to stderr.
+static string? ReadEnv(string name)
+{
+    var value = Environment.GetEnvironmentVariable(name);
+    if (!string.IsNullOrEmpty(value)
+        && value.StartsWith("${user_config.", StringComparison.Ordinal)
+        && value.EndsWith("}", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine(
+            $"[roslyn-mcp] Ignoring unresolved Claude Code user-config placeholder for {name} " +
+            $"(received literal '{value}'). Using the in-source default for this session; " +
+            $"set the value in the plugin's user config to enable the override.");
+        return null;
+    }
+    return value;
 }

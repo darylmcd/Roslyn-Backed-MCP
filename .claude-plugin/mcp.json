@@ -1,0 +1,13 @@
+{
+  "roslyn": {
+    "type": "stdio",
+    "command": "roslynmcp",
+    "env": {
+      "ROSLYNMCP_MAX_WORKSPACES": "${user_config.ROSLYNMCP_MAX_WORKSPACES}",
+      "ROSLYNMCP_BUILD_TIMEOUT_SECONDS": "${user_config.ROSLYNMCP_BUILD_TIMEOUT_SECONDS}",
+      "ROSLYNMCP_TEST_TIMEOUT_SECONDS": "${user_config.ROSLYNMCP_TEST_TIMEOUT_SECONDS}",
+      "ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS": "${user_config.ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS}",
+      "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS": "${user_config.ROSLYNMCP_REQUEST_TIMEOUT_SECONDS}"
+    }
+  }
+}

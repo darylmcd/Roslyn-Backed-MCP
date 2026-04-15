@@ -1,6 +1,6 @@
 {
   "name": "roslyn-mcp",
-  "version": "1.18.0",
+  "version": "1.18.1",
   "description": "Semantic C# analysis and refactoring for AI agents, powered by Roslyn. Load .sln/.csproj files and get 142 tools (102 stable / 40 experimental) plus 20 MCP prompts; 20 bundled agent skills cover analysis, refactor, tests, MSBuild inspection, session undo, and release workflows.",
   "author": {
     "name": "darylmcd",
@@ -9,7 +9,7 @@
   "repository": "https://github.com/darylmcd/Roslyn-Backed-MCP",
   "license": "MIT",
   "keywords": ["csharp", "dotnet", "roslyn", "refactoring", "analysis", "mcp"],
-  "mcpServers": "./.mcp.json",
+  "mcpServers": "./.claude-plugin/mcp.json",
   "skills": "./skills/",
   "userConfig": {
     "ROSLYNMCP_MAX_WORKSPACES": {

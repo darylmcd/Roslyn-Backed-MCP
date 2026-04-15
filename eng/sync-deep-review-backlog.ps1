@@ -109,8 +109,13 @@ function Test-IsDuplicateOfExisting {
         [string]$Summary,
         [array]$ExistingRows
     )
-    if (Test-KeywordAlreadyTracked -Line $Summary -ExistingRows $ExistingRows) {
-        return $true
+    # Do not treat MCP issue headings (`### 9.x …`) as duplicates just because they name a tool
+    # that already appears in another row's prose — otherwise unrelated findings (e.g. §9.5 vs
+    # `compile-check-stale-assembly-refs-post-reload`) are dropped and never reach the backlog.
+    if ($Summary -notmatch '^\s*###\s+\d+\.\d+\s+') {
+        if (Test-KeywordAlreadyTracked -Line $Summary -ExistingRows $ExistingRows) {
+            return $true
+        }
     }
     $n = Normalize-ForDedup -Text $Summary
     if ($n.Length -lt 24) {
@@ -358,10 +363,11 @@ if (-not $mEnd.Success) {
 }
 $startP2 = $backlog.IndexOf('## P2 — open work', [StringComparison]::Ordinal)
 $startP3 = $backlog.IndexOf('## P3 — open work', [StringComparison]::Ordinal)
-if ($startP3 -lt 0) {
-    throw 'sync-deep-review-backlog: could not find ## P3 — open work.'
+$startOpen = $backlog.IndexOf('## Open work', [StringComparison]::Ordinal)
+if ($startP2 -lt 0 -and $startP3 -lt 0 -and $startOpen -lt 0) {
+    throw 'sync-deep-review-backlog: could not find ## P2 — open work, ## P3 — open work, or ## Open work.'
 }
-$start = if ($startP2 -ge 0) { $startP2 } else { $startP3 }
+$start = if ($startP2 -ge 0) { $startP2 } elseif ($startP3 -ge 0) { $startP3 } else { $startOpen }
 
 $backlog = $backlog.Substring(0, $start) + $newOpenWork + "`r`n`r`n" + $backlog.Substring($mEnd.Index)
 
