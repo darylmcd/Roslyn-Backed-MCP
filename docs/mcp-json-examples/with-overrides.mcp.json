@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "roslyn": {
+      "type": "stdio",
+      "command": "roslynmcp",
+      "env": {
+        "ROSLYNMCP_MAX_WORKSPACES": "4",
+        "ROSLYNMCP_BUILD_TIMEOUT_SECONDS": "900",
+        "ROSLYNMCP_TEST_TIMEOUT_SECONDS": "1800",
+        "ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS": "240",
+        "ROSLYNMCP_REQUEST_TIMEOUT_SECONDS": "240"
+      }
+    }
+  }
+}

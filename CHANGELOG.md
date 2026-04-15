@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.18.2] - 2026-04-15
+
+Plugin install path finally works on a default Claude Code install.
+
+**This release supersedes v1.18.1, which shipped with the wrong diagnosis.** v1.18.1 split the plugin-shipped `.mcp.json` into wrapper / no-wrapper variants and added a defensive `ReadEnv` helper — both were no-ops. Binary disassembly of Claude Code 2.1.101 (`claude.exe` offset `125626186`, `app.asar` function `fRe` offset ~`2682541`) shows:
+
+1. The desktop-app plugin loader accepts **both** `.mcp.json` shapes via `p = f.mcpServers ?? f`, so the format split was never the bug.
+2. The CLI SDK's `${user_config.*}` resolver is a REQUIRED-mode function that **throws** `Missing required user configuration value: {K}` during plugin-config resolution — **before** the server process is spawned. On any install flow that skips the enable-time user-config prompt (automation, `--allow-dangerously-skip-permissions`, pre-existing installs, `bypassPermissions` mode — i.e. most default installs), none of the `${user_config.ROSLYNMCP_*}` references in the plugin's `.mcp.json` resolve. The SDK throws, no server starts, no error surfaces.
+3. The v1.18.1 `ReadEnv` defensive helper sits inside the server process and is therefore unreachable in this failure mode. (It's kept as defense-in-depth — harmless, clear intent.)
+
+### Fixed
+
+- **Plugin-scope MCP registration now works on a default install.** Dropped the `env` block from both plugin-shipped `.mcp.json` files (`.claude-plugin/mcp.json` and the repo-root `.mcp.json`). The server uses the compiled-in defaults already declared in `Program.cs`'s `Options` initializers (Max Workspaces = 8, Build Timeout = 300s, Test Timeout = 600s, Rate Limit = 120/60s, Request Timeout = 120s, etc.). No `${user_config.*}` substitution runs, so `QkH` has nothing to throw on. Fresh install + fresh cwd + no project-scope `.mcp.json` now registers the `mcp__roslyn__*` tools correctly. Closes `dr-9-1-high-roslyn-plugin-mcp-does-not-connect-in-audit`.
+
+### Changed — BREAKING
+
+- **Removed `userConfig` block from `.claude-plugin/plugin.json`.** The five `ROSLYNMCP_*` entries previously exposed to Claude Code's plugin enable-time prompt are gone. The right abstraction for these values is project-scope (per-repo) `.mcp.json`, not global per-user user-config — different repos need different timeouts and workspace limits, and the enable-time prompt was unreliable in the first place. Users who had values configured via plugin user-config should migrate them to a project-scope `.mcp.json` (template: [`docs/mcp-json-examples/with-overrides.mcp.json`](docs/mcp-json-examples/with-overrides.mcp.json)).
+- **Removed `user_config` block from `manifest.json` (DXT manifest).** Same reasoning. The compiled-in defaults cover every published `ROSLYNMCP_*` knob.
+
+### Added
+
+- **`docs/mcp-json-examples/`** — three files documenting the project-scope override pattern: `README.md` (explains when to use which), `minimal.mcp.json` (just the command), and `with-overrides.mcp.json` (full `env` block with literal values for every documented `ROSLYNMCP_*` knob). This is the canonical template for tuning users.
+- **README updates** — both `README.md` and `src/RoslynMcp.Host.Stdio/README.md` (the NuGet `PackageReadmeFile` rendered on nuget.org) now explicitly say "no further configuration is required" after `/plugin install` and link to the examples directory.
+
+### Migration
+
+- **Fresh install, no prior `.mcp.json`:** no action. Works out of the box.
+- **Project-scope `.mcp.json` with literal `env` values:** no action. Project-scope loader does straight string pass-through; `${user_config.*}` is not involved.
+- **Project-scope `.mcp.json` copied from this repo's v1.18.1 or earlier source with `${user_config.*}` references:** strip the `env` block or replace the `${user_config.*}` values with literals. Those substitutions were never resolving in end-user installs — pretending they worked was the bug this release fixes.
+- **Plugin user-config values set via an enable-time prompt:** those are now ignored at plugin scope. Set them via project-scope `.mcp.json` instead.
+
+### Maintenance
+
+- **Backlog:** closed `dr-9-1-high-roslyn-plugin-mcp-does-not-connect-in-audit` (root cause shipped). Updated `mcp-connection-session-resilience` to remove the `${user_config.*}` substitution narrative (now known to be a definitionally broken API surface, not a resolution-pipeline gap).
+- **Jellyfin audit report:** added a third supersede banner. The first banner said the fix was the format split; the second was shipped in v1.18.1. The third correctly names the root cause (SDK-level `QkH` throw on unresolved `${user_config.*}`) and points at v1.18.2 as the real fix.
+- **Retired task brief.** The binary-disassembly evidence in the retired `ai_docs/tasks/fix-plugin-mcp-json-format.md` is preserved in git history per archive policy.
+
 ## [1.18.1] - 2026-04-15
 
 Plugin-packaging fix — the marketplace install path now loads `roslyn-mcp` correctly on any repo. Zero server behaviour change; this is a pure plugin-loader / env-resolution hardening pass.

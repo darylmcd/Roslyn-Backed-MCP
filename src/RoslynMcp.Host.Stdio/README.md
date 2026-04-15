@@ -63,6 +63,8 @@ Claude Code also supports installing this server as a **plugin** with curated sk
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
+No further configuration is required; the server starts with the defaults listed in [Configuration](#configuration). To tune any `ROSLYNMCP_*` value, drop a project-scope `.mcp.json` at your repo root with literal `env` values — see [`docs/mcp-json-examples/`](https://github.com/darylmcd/Roslyn-Backed-MCP/tree/main/docs/mcp-json-examples) for copy-ready templates.
+
 The plugin adds 10 guided slash commands (`/roslyn-mcp:analyze`, `/roslyn-mcp:refactor`, `/roslyn-mcp:review`, `/roslyn-mcp:security`, `/roslyn-mcp:dead-code`, `/roslyn-mcp:test-coverage`, `/roslyn-mcp:migrate-package`, `/roslyn-mcp:explain-error`, `/roslyn-mcp:complexity`, `/roslyn-mcp:document`) and pre-apply safety hooks that block `*_apply` calls without a matching `*_preview`. See the [GitHub README](https://github.com/darylmcd/Roslyn-Backed-MCP#claude-code-plugin-installation) for the full skill documentation.
 
 ### VS Code (and other stdio MCP clients)
@@ -99,7 +101,7 @@ Every reader and writer response carries `_meta.elapsedMs`, `_meta.queuedMs`, an
 
 ## Configuration
 
-Optional environment variables (override built-in defaults):
+All variables below are **optional**. The server starts with the defaults listed when no value is set — no per-user or per-install configuration step is required. Override by adding an `env` block to a project-scope `.mcp.json` at your repo root (see [`docs/mcp-json-examples/with-overrides.mcp.json`](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/docs/mcp-json-examples/with-overrides.mcp.json) for a copy-ready template) or to your MCP client's server config.
 
 | Variable | Default | Purpose |
 |---|---|---|
