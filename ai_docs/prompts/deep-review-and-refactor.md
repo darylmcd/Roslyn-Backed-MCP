@@ -6,7 +6,7 @@
      with the project's actual tool, resource, prompt, and plugin-skill surface at all times.
      When tools, resources, prompts, or skills are added, removed, or renamed,
      update the Tools Reference appendix (tier + category) and re-run `./eng/verify-ai-docs.ps1`.
-   Last surface audit: 2026-04-14 (catalog 2026.04; 131 tools = 102 stable / 29 experimental, 10 resources (9 stable / 1 experimental), 19 prompts (all experimental), 19 plugin skills). -->
+   Last surface audit: 2026-04-14 (catalog 2026.04; 142 tools = 102 stable / 40 experimental, 10 resources (9 stable / 1 experimental), 20 prompts (all experimental), 20 plugin skills). Post-v1.18.0 — v1.17 added 7 experimental tools (`preview_multi_file_edit`, `preview_multi_file_edit_apply`, `restructure_preview`, `replace_string_literals_preview`, `scaffold_test_batch_preview`, `symbol_impact_sweep`, `test_reference_map`); v1.18 added 4 experimental tools (`change_signature_preview`, `symbol_refactor_preview`, `validate_workspace`, `get_prompt_text`), one experimental prompt (`refactor_loop`), and one skill (`refactor-loop`). -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** produce an MCP server audit (bugs, incorrect results, gaps) **plus** an experimental-tier promotion scorecard and a plugin-skill health report. **Mechanism:** real refactoring plus tool calls that exercise the full surface.
@@ -90,7 +90,7 @@ These standing rules apply to **every** tool call across all phases. Do not wait
 12. From the loaded repo, record the repo-shape constraints that affect later phases (projects, tests, analyzers, DI, source generators, Central Package Management, multi-targeting, network limits).
 13. **Restore precheck (mandatory for any C# repo).** Before running any Phase-1 semantic-analysis tool, run `dotnet restore <entrypoint>` from the host shell. Unrestored package references put `UnresolvedAnalyzerReference` entries into `Project.AnalyzerReferences`, which historically crashed `find_unused_symbols`, `type_hierarchy`, `callers_callees`, and `impact_analysis` (FLAG-A). Server v1.7+ filters that subtype out, but the precheck remains a precondition discipline — without restore, `compile_check` and `project_diagnostics` flood with hundreds of CS0246 errors from missing types in unrestored packages, which alone is enough to push a single-turn tool result over the output budget (cross-cutting principle #12). If the host has no shell access, mark this step `blocked` and continue — note in the report header that semantic-analysis tools may degrade or surface package-not-restored errors.
 14. Seed or update the coverage ledger so every live tool/resource/prompt already has a planned phase or a provisional skip reason. Ledger columns: `kind`, `name`, `tier`, `category` (live catalog value), `status`, `phase`, `lastElapsedMs`, `notes`.
-15. Seed the **Experimental promotion scorecard** with one row per experimental tool, resource, and prompt. Pre-fill `tier=experimental`; leave `recommendation` blank until the Final surface closure step. Count: 29 experimental tools + 1 experimental resource + 19 experimental prompts = **49 rows** when the live catalog matches the 2026.04 snapshot (prompt count may grow — always use `server_info` / `roslyn://server/catalog` for the exact total).
+15. Seed the **Experimental promotion scorecard** with one row per experimental tool, resource, and prompt. Pre-fill `tier=experimental`; leave `recommendation` blank until the Final surface closure step. Count: 40 experimental tools + 1 experimental resource + 20 experimental prompts = **61 rows** when the live catalog matches the 2026.04 post-v1.18.0 snapshot (prompt count may grow — always use `server_info` / `roslyn://server/catalog` for the exact total).
 16. Seed the **Performance baseline** table. Every exercised read/reader surface contributes one row; writer surfaces contribute a row in Phase 8b.5. The table is machine-readable (see Output Format → Performance baseline).
 
 **MCP audit checkpoint:** Did `server_info` and `roslyn://server/catalog` agree on live counts and tiers? Did `workspace_load` succeed on the chosen entrypoint? Does `workspace_list` show the new session? Did `workspace_status` report any stale documents or missing projects? Did `dotnet restore` complete cleanly (or did you mark step 13 `blocked` with a reason)? Did you explicitly record the disposable isolation path / conservative rationale, the repo shape, the **debug log channel availability**, the initial coverage ledger with no silent omissions, the seeded promotion scorecard row count, and the seeded performance baseline table? If every candidate entrypoint failed to load, did you mark workspace-scoped rows `blocked` and continue only with workspace-independent families?
@@ -526,7 +526,7 @@ The live catalog is authoritative for prompt count. In `conservative` mode, exer
 2. Call `suggest_refactoring` on a symbol or region you analyzed in Phase 3. Verify the suggestions reference real tools and produce sensible guidance.
 3. Call `review_file` on a file modified in Phase 6. Verify the review references actual code and produces useful observations.
 4. Call `discover_capabilities` with a task category (e.g. "refactoring", "testing", "security"). Verify it returns relevant tools for the category and **no hallucinated tool names**.
-5. Cover the remaining live prompt surface as applicable (current snapshot also includes `analyze_dependencies`, `debug_test_failure`, `refactor_and_validate`, `fix_all_diagnostics`, `guided_package_migration`, `guided_extract_interface`, `security_review`, `dead_code_audit`, `review_test_coverage`, `review_complexity`, `cohesion_analysis`, `consumer_impact`, `guided_extract_method`, `msbuild_inspection`, `session_undo`). If the live catalog differs, trust the catalog and record prompt drift in the report's *Improvement suggestions* section.
+5. Cover the remaining live prompt surface as applicable (current snapshot also includes `analyze_dependencies`, `debug_test_failure`, `refactor_and_validate`, `fix_all_diagnostics`, `guided_package_migration`, `guided_extract_interface`, `security_review`, `dead_code_audit`, `review_test_coverage`, `review_complexity`, `cohesion_analysis`, `consumer_impact`, `guided_extract_method`, `msbuild_inspection`, `session_undo`, `refactor_loop`). If the live catalog differs, trust the catalog and record prompt drift in the report's *Improvement suggestions* section.
 
 For every exercised prompt, append one row to the **Prompt verification** table in the report with columns `prompt`, `schema_ok` (yes/no), `actionable` (yes/no/partial), `hallucinated_tools` (count), `idempotent` (yes/no), `elapsedMs`, and `notes`.
 
@@ -540,7 +540,7 @@ For every exercised prompt, append one row to the **Prompt verification** table 
 
 **Input:** The Roslyn-Backed-MCP repo root. When the audit target is Roslyn-Backed-MCP itself, use the loaded workspace root. When the audit target is another repo, you MUST have filesystem access to a local Roslyn-Backed-MCP checkout; if you do not, mark this phase `blocked — plugin repo not accessible` and continue.
 
-**Expected skill count (2026.04 snapshot):** **19 skills** — `analyze`, `bump`, `code-actions`, `complexity`, `dead-code`, `document`, `explain-error`, `extract-method`, `migrate-package`, `project-inspection`, `publish-preflight`, `refactor`, `review`, `security`, `session-undo`, `snippet-eval`, `test-coverage`, `test-triage`, `update`. If the live `skills/` tree differs, trust the live directory and record skill drift (this list is a convenience snapshot, not a second source of truth).
+**Expected skill count (2026.04 snapshot, post-v1.18.0):** **20 skills** — `analyze`, `bump`, `code-actions`, `complexity`, `dead-code`, `document`, `explain-error`, `extract-method`, `migrate-package`, `project-inspection`, `publish-preflight`, `refactor`, `refactor-loop`, `review`, `security`, `session-undo`, `snippet-eval`, `test-coverage`, `test-triage`, `update`. If the live `skills/` tree differs, trust the live directory and record skill drift (this list is a convenience snapshot, not a second source of truth).
 
 **Per-skill verification (run for each skill):**
 
@@ -842,6 +842,10 @@ The historical "audit incomplete if any section is missing" framing forced the a
 | `review_complexity` | | | | | | | |
 | `cohesion_analysis` | | | | | | | |
 | `consumer_impact` | | | | | | | |
+| `guided_extract_method` | | | | | | | |
+| `msbuild_inspection` | | | | | | | |
+| `session_undo` | | | | | | | |
+| `refactor_loop` | | | | | | | |
 
 ## 11. Skills audit (Phase 16b)
 
@@ -856,6 +860,7 @@ The historical "audit incomplete if any section is missing" framing forced the a
 | `explain-error` | | | | na | |
 | `migrate-package` | | | | | |
 | `refactor` | | | | | |
+| `refactor-loop` | | | | | |
 | `review` | | | | na | |
 | `security` | | | | na | |
 | `test-coverage` | | | | na | |
@@ -992,9 +997,9 @@ The file must exist at the canonical path above (or the documented fallback). Cr
 > **Maintenance note:** This appendix **mirrors** the live catalog categories (`Category`) and tier (`SupportTier`) values emitted by `roslyn://server/catalog`. The live catalog from Phase 0 is authoritative. Treat this appendix as a convenience snapshot; if it drifts from the running server, record prompt drift in *Improvement suggestions* and trust the live catalog.
 > When tools, resources, prompts, or skills change, update this section **and** `eng/verify-ai-docs.ps1` passes.
 > Client limitations do **not** change appendix counts. If a client cannot invoke prompts or resources, record those entries as `blocked` in the audit ledger rather than editing them out.
-> Last verified: 2026-04-14 against catalog version 2026.04 — **131 tools (102 stable / 29 experimental) | 10 resources (9 stable / 1 experimental) | 19 prompts (all experimental) | 19 plugin skills** (skills are repo files under `skills/`, not catalog rows).
+> Last verified: 2026-04-14 against catalog version 2026.04 (post-v1.18.0) — **142 tools (102 stable / 40 experimental) | 10 resources (9 stable / 1 experimental) | 20 prompts (all experimental) | 20 plugin skills** (skills are repo files under `skills/`, not catalog rows).
 
-### Tools by live catalog category (131 total)
+### Tools by live catalog category (142 total)
 
 The `Category` column below is the exact value emitted by `roslyn://server/catalog` — use these strings in the coverage summary, not the legacy convenience groupings. Tools with a preview/apply pairing are kept together and their pair is noted in the *Pair* column.
 
@@ -1076,19 +1081,20 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `security_analyzer_status` | S | RO | |
 | `nuget_vulnerability_scan` | S | RO | Requires .NET 8+ SDK. |
 
-#### `validation` (8 stable, 0 experimental)
+#### `validation` (8 stable, 1 experimental — +1 experimental via v1.18)
 | Tool | Tier | RO/D | Notes |
 |------|------|------|-------|
 | `build_workspace` | S | RO | dotnet build wrapper. |
 | `build_project` | S | RO | |
 | `test_discover` | S | RO | Paginated (BUG-007). |
-| `test_run` | S | RO | Backlog: `test-run-failure-envelope`. |
+| `test_run` | S | RO | v1.17+ fast-fails on MSB3027/MSB3021 file lock (opt out via `ROSLYNMCP_FAST_FAIL_FILE_LOCK=false`). Backlog: `test-run-failure-envelope`. |
 | `test_related` | S | RO | |
 | `test_related_files` | S | RO | |
 | `test_coverage` | S | RO | Requires coverlet.collector. |
 | `compile_check` | S | RO | Paginated v1.7+; `emitValidation=true` forces PE emit. |
+| `validate_workspace` | E | RO | New v1.18.0 — one-call composite: `compile_check` + error-severity diagnostics + `test_related_files` (+ optional `test_run`). Emits `overallStatus = clean / compile-error / analyzer-error / test-failure`. |
 
-#### `refactoring` (13 stable, 10 experimental)
+#### `refactoring` (13 stable, 14 experimental — +4 experimental via v1.17/v1.18)
 | Tool | Tier | RO/D | Pair | Notes |
 |------|------|------|------|-------|
 | `rename_preview` | S | RO | — | |
@@ -1114,6 +1120,10 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `extract_method_preview` | S | RO | — | Promoted v1.16.0; custom DataFlowAnalysis-based extraction (v1.10.0+). |
 | `extract_method_apply` | E | D | `extract_method_preview` | Revertible. |
 | `format_check` | E | RO | — | New v1.16.0 — solution-wide format verification (no apply). |
+| `restructure_preview` | E | RO | — | New v1.17.0 — syntax-tree pattern-based find-and-replace using `__name__` placeholder captures. |
+| `replace_string_literals_preview` | E | RO | — | New v1.17.0 — rewrites string literals in argument/initializer/attribute-argument/return positions to a constant; skips XML doc, interpolated-string holes, `nameof()`. |
+| `change_signature_preview` | E | RO | — | New v1.18.0 — add/remove/rename parameter with callsite rewrite (`op=reorder` reserved for a future release). |
+| `symbol_refactor_preview` | E | RO | — | New v1.18.0 — composite preview chaining `rename` + `edit` + `restructure` operations in order; max 25 ops / 500 affected files per token. |
 
 #### `cross-project-refactoring` (0 stable, 3 experimental)
 | Tool | Tier | RO/D | Notes |
@@ -1158,13 +1168,14 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `evaluate_msbuild_items` | S | RO | Promoted after 3/4 audit exercises with zero failures. |
 | `get_msbuild_properties` | S | RO | Promoted v1.16.0; filter with `propertyNameFilter` / `includedNames`. |
 
-#### `scaffolding` (1 stable, 3 experimental)
+#### `scaffolding` (1 stable, 4 experimental — +1 experimental via v1.17)
 | Tool | Tier | RO/D | Pair | Notes |
 |------|------|------|------|-------|
-| `scaffold_type_preview` | E | RO | — | v1.8+ emits `internal sealed class T`. |
+| `scaffold_type_preview` | E | RO | — | v1.8+ emits `internal sealed class T`. v1.17+ auto-implements interface members as `NotImplementedException` stubs when `baseType`/`interfaces` resolve to an interface (opt out via `implementInterface: false`). |
 | `scaffold_type_apply` | E | D | `scaffold_type_preview` | Not revertible. |
 | `scaffold_test_preview` | S | RO | — | Promoted v1.16.0; auto-detects test framework. |
 | `scaffold_test_apply` | E | D | `scaffold_test_preview` | Not revertible. |
+| `scaffold_test_batch_preview` | E | RO | — | New v1.17.0 — batch wrapper around `scaffold_test_preview`, reuses one compilation cache across N targets; one composite preview token covers every generated file. |
 
 #### `dead-code` (1 stable, 2 experimental)
 | Tool | Tier | RO/D | Pair | Notes |
@@ -1173,12 +1184,14 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `remove_dead_code_apply` | E | D | `remove_dead_code_preview` | Revertible. |
 | `remove_interface_member_preview` | E | RO | — | Specialized dead-code preview for interface methods. |
 
-#### `editing` (2 stable, 1 experimental)
+#### `editing` (2 stable, 3 experimental — +2 experimental via v1.17)
 | Tool | Tier | RO/D | Notes |
 |------|------|------|-------|
 | `apply_text_edit` | S | D | Promoted v1.16.0; revertible via single-slot undo. |
 | `apply_multi_file_edit` | E | D | Revertible; batched snapshot. |
 | `add_pragma_suppression` | S | D | Promoted v1.16.0; direct write; not a preview-based flow. |
+| `preview_multi_file_edit` | E | RO | New v1.17.0 — simulates multi-file edits against a single Solution snapshot, returns per-file unified diffs + preview token. |
+| `preview_multi_file_edit_apply` | E | D | New v1.17.0 — redeems the `preview_multi_file_edit` token; rejects stale tokens if workspace moved. |
 
 #### `configuration` (3 stable, 0 experimental)
 | Tool | Tier | RO/D | Notes |
