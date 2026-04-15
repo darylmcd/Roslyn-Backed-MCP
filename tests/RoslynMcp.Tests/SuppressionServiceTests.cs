@@ -92,5 +92,9 @@ public sealed class SuppressionServiceTests
         public Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
             string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false) =>
             throw new NotSupportedException();
+
+        public Task<RefactoringPreviewDto> PreviewMultiFileTextEditsAsync(
+            string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false) =>
+            throw new NotSupportedException();
     }
 }

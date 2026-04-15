@@ -37,6 +37,15 @@ public interface IWorkspaceManager
     bool ContainsWorkspace(string workspaceId);
 
     /// <summary>
+    /// Returns whether the specified workspace has observed on-disk changes since its
+    /// last load or reload. Used by <see cref="Services.WorkspaceExecutionGate"/> to gate
+    /// tool calls against stale workspace state (see <c>ROSLYNMCP_ON_STALE</c>).
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <returns><see langword="true"/> when the underlying file watcher has flagged stale; <see langword="false"/> otherwise (including when the workspace does not exist).</returns>
+    bool IsStale(string workspaceId);
+
+    /// <summary>
     /// Closes the specified workspace session and releases its resources.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier to close.</param>

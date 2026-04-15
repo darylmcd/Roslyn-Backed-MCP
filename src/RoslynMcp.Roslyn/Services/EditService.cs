@@ -17,13 +17,20 @@ public sealed class EditService : IEditService
     private readonly ILogger<EditService> _logger;
     private readonly IUndoService? _undoService;
     private readonly IChangeTracker? _changeTracker;
+    private readonly Contracts.IPreviewStore? _previewStore;
 
-    public EditService(IWorkspaceManager workspace, ILogger<EditService> logger, IUndoService? undoService = null, IChangeTracker? changeTracker = null)
+    public EditService(
+        IWorkspaceManager workspace,
+        ILogger<EditService> logger,
+        IUndoService? undoService = null,
+        IChangeTracker? changeTracker = null,
+        Contracts.IPreviewStore? previewStore = null)
     {
         _workspace = workspace;
         _logger = logger;
         _undoService = undoService;
         _changeTracker = changeTracker;
+        _previewStore = previewStore;
     }
 
     public async Task<TextEditResultDto> ApplyTextEditsAsync(
@@ -123,6 +130,101 @@ public sealed class EditService : IEditService
         }
 
         return new MultiFileEditResultDto(true, results.Count, results);
+    }
+
+    /// <summary>
+    /// Item 5: preview a multi-file edit batch without writing to disk. Simulates every file's
+    /// edits against a single Roslyn <c>Solution</c> snapshot, stores the mutated snapshot in
+    /// <see cref="Contracts.IPreviewStore"/>, and returns per-file unified diffs plus a
+    /// composite preview token. Callers redeem via <c>apply_composite_preview</c>.
+    /// </summary>
+    public async Task<RefactoringPreviewDto> PreviewMultiFileTextEditsAsync(
+        string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false)
+    {
+        if (_previewStore is null)
+        {
+            throw new InvalidOperationException(
+                "preview_multi_file_edit requires IPreviewStore to be registered. Ensure RoslynMcp.Roslyn DI is configured.");
+        }
+        if (fileEdits is null || fileEdits.Count == 0)
+        {
+            throw new InvalidOperationException("preview_multi_file_edit requires at least one file edit.");
+        }
+
+        var initialSolution = _workspace.GetCurrentSolution(workspaceId);
+
+        // Pre-validate every file's edits BEFORE issuing any preview token. A malformed edit
+        // aborts the whole preview so callers see the error without a dangling token.
+        var perFile = new List<(Document Document, SourceText SourceText, string FilePath, IReadOnlyList<TextEditDto> Edits)>();
+        foreach (var fileEdit in fileEdits)
+        {
+            var (document, sourceText) = await ResolveDocumentAndTextAsync(initialSolution, fileEdit.FilePath, ct).ConfigureAwait(false);
+            ValidateEdits(fileEdit.FilePath, fileEdit.Edits, sourceText);
+            perFile.Add((document, sourceText, fileEdit.FilePath, fileEdit.Edits));
+        }
+
+        // Simulate edits on a running Solution snapshot so the stored preview matches what
+        // apply_composite_preview will redeem.
+        var accumulator = initialSolution;
+        var changes = new List<FileChangeDto>();
+        var warnings = new List<string>();
+
+        foreach (var (document, sourceText, filePath, edits) in perFile)
+        {
+            var merged = BuildPatchedSourceText(sourceText, edits);
+            if (!skipSyntaxCheck
+                && string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase))
+            {
+                var syntaxErrors = GetCSharpSyntaxErrors(merged, filePath);
+                if (syntaxErrors.Count > 0)
+                {
+                    throw new InvalidOperationException(
+                        $"preview_multi_file_edit: simulated edits for '{filePath}' produce {syntaxErrors.Count} syntax error(s). " +
+                        "Pass skipSyntaxCheck=true if the intermediate state is intentional.");
+                }
+            }
+
+            // Find the document in the accumulating solution so its updated text flows into the
+            // next file's diff comparison.
+            var docInAccum = accumulator.GetDocument(document.Id);
+            if (docInAccum is null)
+            {
+                // Document was removed by a prior edit in the batch — skip with a warning.
+                warnings.Add($"Skipped '{filePath}': document no longer present in the working solution.");
+                continue;
+            }
+            accumulator = accumulator.WithDocumentText(docInAccum.Id, merged);
+
+            var unified = BuildUnifiedDiff(filePath, sourceText.ToString(), merged.ToString());
+            changes.Add(new FileChangeDto(filePath, unified));
+        }
+
+        if (changes.Count == 0)
+        {
+            throw new InvalidOperationException("preview_multi_file_edit produced no diffs. See Warnings for per-file reasons.");
+        }
+
+        var description = $"Preview multi-file edit across {changes.Count} file(s)";
+        var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+        return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
+    }
+
+    private static string BuildUnifiedDiff(string filePath, string before, string after)
+    {
+        var diff = InlineDiffBuilder.Diff(before, after);
+        var sb = new System.Text.StringBuilder();
+        sb.Append("--- ").Append(filePath).Append('\n');
+        sb.Append("+++ ").Append(filePath).Append('\n');
+        foreach (var line in diff.Lines)
+        {
+            switch (line.Type)
+            {
+                case ChangeType.Inserted: sb.Append('+').Append(line.Text).Append('\n'); break;
+                case ChangeType.Deleted: sb.Append('-').Append(line.Text).Append('\n'); break;
+                default: sb.Append(' ').Append(line.Text).Append('\n'); break;
+            }
+        }
+        return sb.ToString();
     }
 
     private static async Task<(Document Document, SourceText SourceText)> ResolveDocumentAndTextAsync(

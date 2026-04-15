@@ -69,6 +69,7 @@ public sealed class WorkspaceReadConcurrencyBenchmark
         public event Action<string>? WorkspaceClosed { add { } remove { } }
 
         public bool ContainsWorkspace(string workspaceId) => true;
+        public bool IsStale(string workspaceId) => false;
 
         public Task<Core.Models.WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
         public Task<Core.Models.WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();

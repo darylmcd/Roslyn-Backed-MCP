@@ -96,6 +96,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExtractMethodService, ExtractMethodService>();
         services.AddSingleton<IChangeTracker, ChangeTracker>();
         services.AddSingleton<IRefactoringSuggestionService, RefactoringSuggestionService>();
+        services.AddSingleton<IRestructureService, RestructureService>();
+        services.AddSingleton<IStringLiteralReplaceService, StringLiteralReplaceService>();
+        services.AddSingleton<IImpactSweepService, ImpactSweepService>();
+        services.AddSingleton<ITestReferenceMapService, TestReferenceMapService>();
         return services;
     }
 

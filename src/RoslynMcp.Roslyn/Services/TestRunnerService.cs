@@ -8,6 +8,22 @@ namespace RoslynMcp.Roslyn.Services;
 
 public sealed partial class TestRunnerService : ITestRunnerService
 {
+    // Item 4: MSBuild retries MSB3027/MSB3021 internally 10 times with a 1s delay. Fast-fail
+    // the child dotnet process as soon as the first retry line appears so callers see the
+    // FailureEnvelope within 200ms instead of ~10s. The opt-out env var restores the legacy
+    // behavior by skipping pattern construction.
+    [GeneratedRegex(@"MSB(3027|3021)", RegexOptions.Compiled)]
+    private static partial Regex FileLockFastFailRegex();
+
+    private static readonly bool FastFailFileLockEnabled = !string.Equals(
+        Environment.GetEnvironmentVariable("ROSLYNMCP_FAST_FAIL_FILE_LOCK"),
+        "false",
+        StringComparison.OrdinalIgnoreCase);
+
+    private static IReadOnlyList<EarlyKillPattern>? FastFailPatterns { get; } = FastFailFileLockEnabled
+        ? [new EarlyKillPattern(FileLockFastFailRegex(), "MSBuild file lock (MSB3027/MSB3021)")]
+        : null;
+
     private readonly IWorkspaceManager _workspaceManager;
     private readonly IGatedCommandExecutor _executor;
     private readonly ILogger<TestRunnerService> _logger;
@@ -86,6 +102,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
                     targetPath,
                     arguments,
                     _options.TestTimeout,
+                    FastFailPatterns,
                     ct).ConfigureAwait(false);
             }
             catch (TimeoutException ex)

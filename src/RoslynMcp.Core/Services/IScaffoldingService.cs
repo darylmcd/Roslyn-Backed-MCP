@@ -22,4 +22,13 @@ public interface IScaffoldingService
     /// <param name="request">The scaffolding parameters, including the test project name and target type.</param>
     /// <param name="ct">Cancellation token.</param>
     Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(string workspaceId, ScaffoldTestDto request, CancellationToken ct);
+
+    /// <summary>
+    /// Previews scaffolding test files for multiple target types in a single composite preview.
+    /// Reuses one workspace snapshot across targets to avoid per-target compilation cost.
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="request">The batch scaffolding parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<RefactoringPreviewDto> PreviewScaffoldTestBatchAsync(string workspaceId, ScaffoldTestBatchDto request, CancellationToken ct);
 }

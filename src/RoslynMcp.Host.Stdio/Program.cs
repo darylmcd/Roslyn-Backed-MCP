@@ -134,11 +134,24 @@ static ExecutionGateOptions BindExecutionGateOptions()
         winSecVal = winSec;
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_REQUEST_TIMEOUT_SECONDS"), out var reqSec) && reqSec > 0)
         reqSecVal = reqSec;
+    var onStale = StalenessPolicy.AutoReload;
+    var onStaleRaw = Environment.GetEnvironmentVariable("ROSLYNMCP_ON_STALE");
+    if (!string.IsNullOrWhiteSpace(onStaleRaw))
+    {
+        onStale = onStaleRaw.Trim().ToLowerInvariant() switch
+        {
+            "auto-reload" or "autoreload" => StalenessPolicy.AutoReload,
+            "warn" => StalenessPolicy.Warn,
+            "off" or "none" or "disabled" => StalenessPolicy.Off,
+            _ => StalenessPolicy.AutoReload,
+        };
+    }
     return new ExecutionGateOptions
     {
         RateLimitMaxRequests = maxReqVal,
         RateLimitWindow = TimeSpan.FromSeconds(winSecVal),
-        RequestTimeout = TimeSpan.FromSeconds(reqSecVal)
+        RequestTimeout = TimeSpan.FromSeconds(reqSecVal),
+        OnStale = onStale,
     };
 }
 

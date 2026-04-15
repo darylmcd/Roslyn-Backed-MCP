@@ -36,11 +36,20 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
         _globalCommandGate = new SemaphoreSlim(globalLimit, globalLimit);
     }
 
+    public Task<CommandExecutionDto> ExecuteAsync(
+        string workspaceId,
+        string targetPath,
+        IReadOnlyList<string> arguments,
+        TimeSpan timeout,
+        CancellationToken ct)
+        => ExecuteAsync(workspaceId, targetPath, arguments, timeout, earlyKillPatterns: null, ct);
+
     public async Task<CommandExecutionDto> ExecuteAsync(
         string workspaceId,
         string targetPath,
         IReadOnlyList<string> arguments,
         TimeSpan timeout,
+        IReadOnlyList<EarlyKillPattern>? earlyKillPatterns,
         CancellationToken ct)
     {
         var workspaceGate = _workspaceCommandGates.GetOrAdd(workspaceId, static _ => new SemaphoreSlim(1, 1));
@@ -59,7 +68,9 @@ public sealed class GatedCommandExecutor : IGatedCommandExecutor
                 CommandExecutionDto execution;
                 try
                 {
-                    execution = await _commandRunner.RunAsync(workingDirectory, targetPath, arguments, timeoutCts.Token).ConfigureAwait(false);
+                    execution = await _commandRunner
+                        .RunAsync(workingDirectory, targetPath, arguments, earlyKillPatterns, timeoutCts.Token)
+                        .ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
                 {

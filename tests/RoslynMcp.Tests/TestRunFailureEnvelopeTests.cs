@@ -13,7 +13,7 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class TestRunFailureEnvelopeTests
 {
-    private static CommandExecutionDto FakeExecution(int exitCode, string stdOut, string stdErr) =>
+    private static CommandExecutionDto FakeExecution(int exitCode, string stdOut, string stdErr, string? earlyKillReason = null) =>
         new(
             Command: "dotnet",
             Arguments: ["test", "sample.csproj", "--nologo"],
@@ -23,7 +23,8 @@ public sealed class TestRunFailureEnvelopeTests
             Succeeded: exitCode == 0,
             DurationMs: 1234,
             StdOut: stdOut,
-            StdErr: stdErr);
+            StdErr: stdErr,
+            EarlyKillReason: earlyKillReason);
 
     [TestMethod]
     public void ParseTestRun_SuccessWithNoTrx_LeavesEnvelopeNull()
@@ -113,6 +114,28 @@ public sealed class TestRunFailureEnvelopeTests
             "StdErr tail should be capped at 2000 characters.");
         StringAssert.EndsWith(result.FailureEnvelope.StdErrTail, "MSB3027",
             "The tail must include the end of the StdErr stream, not the beginning.");
+    }
+
+    [TestMethod]
+    public void ParseTestRun_EarlyKillReasonForFileLock_EmitsTerminatedEarlySummary()
+    {
+        // Item 4: simulate the runner killing dotnet test after the first MSB3027 line and
+        // surfacing EarlyKillReason. The parser should classify as FileLock + retryable AND
+        // surface the short-duration summary so callers see the fast-fail path, not the
+        // ~10s exhausted-retry path.
+        var execution = FakeExecution(
+            exitCode: -1,
+            stdOut: "Build started",
+            stdErr: "error MSB3027: Could not copy ...",
+            earlyKillReason: "MSBuild file lock (MSB3027/MSB3021)");
+
+        var result = DotnetOutputParser.ParseTestRun(execution, []);
+
+        Assert.IsNotNull(result.FailureEnvelope);
+        Assert.AreEqual("FileLock", result.FailureEnvelope!.ErrorKind);
+        Assert.IsTrue(result.FailureEnvelope.IsRetryable);
+        StringAssert.Contains(result.FailureEnvelope.Summary, "terminated early");
+        StringAssert.Contains(result.FailureEnvelope.Summary, "MSB3027/MSB3021");
     }
 
     [TestMethod]
