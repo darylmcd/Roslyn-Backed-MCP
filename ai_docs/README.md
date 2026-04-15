@@ -43,12 +43,11 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | `prompts/standardize-documentation.md` | Cross-repo prompt: run `/doc-audit` first, then align human + AI docs, packaging/install inventory, stale ref removal |
 | `prompts/standardize-backlog-hygiene.md` | Align backlog hygiene across repos with `backlog.md` and `workflow.md` |
 | `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive MCP server audit, experimental→stable promotion scoring, and plugin-skill verification (Phases 0–18 + 16b). Keep in sync with project surface. Do not delete. |
+| `prompts/experimental-promotion-exercise.md` | Structured exercise for scoring experimental tools against stable-promotion criteria across sample workspaces |
+| `prompts/stress-test-external-repo.md` | Performance + correctness stress-test protocol for running the server against a large external solution |
 | `prompts/test-suite-audit.md` | Audit tests for performance smells, workspace/init issues, SRP, and tight focus—suite should not introduce slowness or instability |
-| `audit-reports/README.md` | Where raw MCP deep-review audit outputs live; links session worksheet and rollup handoff |
-| `audit-reports/deep-review-session-checklist.md` | Optional fill-in checklist for a deep-review session (aligned with the living prompt, including promotion scorecard + plugin skills lane) |
-| `reports/README.md` | Where synthesized rollups and cross-cutting audit reports live |
-| `reports/2026-04-06-deep-review-rollup-example.md` | Concrete example of a synthesized deep-review rollup for multi-repo batches |
-| `reports/2026-04-06-test-suite-audit.md` | Example cross-cutting audit report for test-suite review |
+| `audit-reports/` | Raw MCP deep-review audit outputs (retention: latest 3). See `audit-reports/README.md` + `audit-reports/deep-review-session-checklist.md` |
+| `reports/` | Synthesized rollups and cross-cutting audit reports. See `reports/README.md`; examples: `2026-04-06-deep-review-rollup-example.md`, `2026-04-06-test-suite-audit.md` |
 
 ## Archive
 
