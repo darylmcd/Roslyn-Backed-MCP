@@ -277,7 +277,7 @@ For privacy questions, open an issue at [github.com/darylmcd/Roslyn-Backed-MCP/i
 
 ## Supported Surface
 
-Catalog **`2026.04`** ships **131 tools** (102 stable / 29 experimental), **10 resources** (9 stable / 1 experimental), and **19 prompts** (all experimental). Use the `server_info` tool and the `roslyn://server/catalog` resource for the authoritative live surface — the categories below are a quick orientation.
+Catalog **`2026.04`** ships **142 tools** (102 stable / 40 experimental), **10 resources** (9 stable / 1 experimental), and **20 prompts** (all experimental). Use the `server_info` tool and the `roslyn://server/catalog` resource for the authoritative live surface — the categories below are a quick orientation.
 
 ### Stable tool families
 
