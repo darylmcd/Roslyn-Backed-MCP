@@ -138,7 +138,16 @@ Run each of these against the full solution (or largest project where solution-w
 7. `get_nuget_dependencies` — record timing and package count.
 8. `list_analyzers` — limit=50. Record analyzer count and timing.
 
-**Persist Phase 4 results.**
+### Phase 4b (optional — composites added in v1.17/v1.18)
+
+These composite tools dispatch multiple sub-queries internally; record their end-to-end timing against the sum of their constituents.
+
+9. `symbol_impact_sweep` (v1.17+) — pick a high-fan-out symbol from Phase 2. Composite of references + switch-exhaustiveness diagnostics + mapper callsites. Compare `_meta.elapsedMs` against `find_references` + `project_diagnostics` called separately.
+10. `test_reference_map` (v1.17+) — if the repo has test projects, record timing and `coveragePercent`. Compare against `test_coverage` duration for reference.
+11. `validate_workspace` (v1.18+) — run with `runTests=false` and compare end-to-end timing against the sum of `compile_check` + `project_diagnostics(severity=Error)` + `test_related_files`. Budget: the composite should be ≤1.2× the sum of the parts (minor gate/serialization overhead is expected).
+12. `format_check` (v1.16+) — solution-wide format verification. Record timing and `violationCount`.
+
+**Persist Phase 4 results (including Phase 4b where applicable).**
 
 ---
 
@@ -157,7 +166,14 @@ Pick targets from Phase 2/3 findings:
 7. `format_document_preview` — on the largest file. Record timing.
 8. `organize_usings_preview` — on 3 different files. Record average timing.
 
-**Persist Phase 5 results.**
+### Phase 5b (optional — v1.17/v1.18 preview surfaces)
+
+9. `preview_multi_file_edit` (v1.17+) — simulate a small cross-file edit spanning 3+ files. Compare timing against running `apply_text_edit` serially on the same files (preview should be faster, single-snapshot validation).
+10. `restructure_preview` (v1.17+) — run a simple pattern (e.g. `__x__?.ToString() ?? ""` → `__x__ as string ?? ""`) project-wide. Record match count and timing.
+11. `change_signature_preview` (v1.18+) — pick a method with 10+ callsites, run `op=add` with a default value. Record timing.
+12. `symbol_refactor_preview` (v1.18+) — compose 3 operations (rename + edit + restructure). Record timing and confirm the 25-op / 500-file cap is enforced.
+
+**Persist Phase 5 results (including Phase 5b where applicable).**
 
 ---
 

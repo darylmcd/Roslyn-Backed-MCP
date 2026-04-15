@@ -1,9 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
-using DiffPlex;
-using DiffPlex.DiffBuilder;
-using DiffPlex.DiffBuilder.Model;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -195,7 +192,7 @@ public sealed class EditService : IEditService
             }
             accumulator = accumulator.WithDocumentText(docInAccum.Id, merged);
 
-            var unified = BuildUnifiedDiff(filePath, sourceText.ToString(), merged.ToString());
+            var unified = DiffGenerator.GenerateUnifiedDiff(sourceText.ToString(), merged.ToString(), filePath);
             changes.Add(new FileChangeDto(filePath, unified));
         }
 
@@ -207,24 +204,6 @@ public sealed class EditService : IEditService
         var description = $"Preview multi-file edit across {changes.Count} file(s)";
         var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
         return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
-    }
-
-    private static string BuildUnifiedDiff(string filePath, string before, string after)
-    {
-        var diff = InlineDiffBuilder.Diff(before, after);
-        var sb = new System.Text.StringBuilder();
-        sb.Append("--- ").Append(filePath).Append('\n');
-        sb.Append("+++ ").Append(filePath).Append('\n');
-        foreach (var line in diff.Lines)
-        {
-            switch (line.Type)
-            {
-                case ChangeType.Inserted: sb.Append('+').Append(line.Text).Append('\n'); break;
-                case ChangeType.Deleted: sb.Append('-').Append(line.Text).Append('\n'); break;
-                default: sb.Append(' ').Append(line.Text).Append('\n'); break;
-            }
-        }
-        return sb.ToString();
     }
 
     private static async Task<(Document Document, SourceText SourceText)> ResolveDocumentAndTextAsync(
@@ -442,24 +421,12 @@ public sealed class EditService : IEditService
             return new TextEditResultDto(false, filePath, 0, [], null);
         }
 
-        // Compute diff
+        // Compute bounded unified diff (hunk-based, 16 KB cap, truncation marker on overflow).
+        // Previously emitted every line with "+ " / "- " / "  " prefixes — produced unbounded
+        // output for large files and a format that was "unified-diff-like" rather than valid.
         var newText = newSourceText.ToString();
-        var differ = new Differ();
-        var diffResult = InlineDiffBuilder.Diff(originalText, newText);
-
-        var diffLines = new List<string>();
-        foreach (var line in diffResult.Lines)
-        {
-            var prefix = line.Type switch
-            {
-                ChangeType.Inserted => "+ ",
-                ChangeType.Deleted => "- ",
-                _ => "  "
-            };
-            diffLines.Add(prefix + line.Text);
-        }
-
-        var fileChange = new FileChangeDto(filePath, string.Join('\n', diffLines));
+        var unified = DiffGenerator.GenerateUnifiedDiff(originalText, newText, filePath);
+        var fileChange = new FileChangeDto(filePath, unified);
 
         _changeTracker?.RecordChange(workspaceId,
             $"Apply text edit to {Path.GetFileName(filePath)}",

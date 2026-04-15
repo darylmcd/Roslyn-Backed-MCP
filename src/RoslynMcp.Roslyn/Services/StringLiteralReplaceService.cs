@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -83,9 +84,10 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
                 var oldText = compilationUnit.ToFullString();
                 var newText = newRoot.ToFullString();
                 accumulator = accumulator.WithDocumentText(document.Id, SourceText.From(newText));
+                var docPath = document.FilePath ?? document.Name;
                 changes.Add(new FileChangeDto(
-                    FilePath: document.FilePath ?? document.Name,
-                    UnifiedDiff: BuildMinimalUnifiedDiff(document.FilePath ?? document.Name, oldText, newText)));
+                    FilePath: docPath,
+                    UnifiedDiff: DiffGenerator.GenerateUnifiedDiff(oldText, newText, docPath)));
             }
         }
 
@@ -136,20 +138,6 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
         return project.Documents.Where(d =>
             !string.IsNullOrEmpty(d.FilePath) &&
             string.Equals(Path.GetExtension(d.FilePath), ".cs", StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string BuildMinimalUnifiedDiff(string filePath, string before, string after)
-    {
-        // Same compact format used by RestructureService so clients can uniformly re-diff.
-        var sb = new System.Text.StringBuilder();
-        sb.Append("--- ").Append(filePath).Append('\n');
-        sb.Append("+++ ").Append(filePath).Append('\n');
-        sb.Append("@@ (literal replacement) @@\n");
-        foreach (var line in before.Split('\n'))
-            sb.Append('-').Append(line).Append('\n');
-        foreach (var line in after.Split('\n'))
-            sb.Append('+').Append(line).Append('\n');
-        return sb.ToString();
     }
 
     private sealed class LiteralRewriter : CSharpSyntaxRewriter

@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -76,9 +77,10 @@ public sealed class RestructureService : IRestructureService
                 var oldText = root.ToFullString();
 
                 accumulator = accumulator.WithDocumentText(document.Id, Microsoft.CodeAnalysis.Text.SourceText.From(newText));
+                var docPath = document.FilePath ?? document.Name;
                 changes.Add(new FileChangeDto(
-                    FilePath: document.FilePath ?? document.Name,
-                    UnifiedDiff: BuildMinimalUnifiedDiff(document.FilePath ?? document.Name, oldText, newText)));
+                    FilePath: docPath,
+                    UnifiedDiff: DiffGenerator.GenerateUnifiedDiff(oldText, newText, docPath)));
             }
         }
 
@@ -157,24 +159,6 @@ public sealed class RestructureService : IRestructureService
         return project.Documents.Where(d =>
             !string.IsNullOrEmpty(d.FilePath) &&
             string.Equals(Path.GetExtension(d.FilePath), ".cs", StringComparison.OrdinalIgnoreCase));
-    }
-
-    /// <summary>
-    /// Compact unified-diff generator. Keeps the preview payload small by emitting only the
-    /// files-level markers + one combined hunk covering the full file. Clients that need
-    /// fine-grained hunks can re-diff client-side from the before/after texts.
-    /// </summary>
-    private static string BuildMinimalUnifiedDiff(string filePath, string before, string after)
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.Append("--- ").Append(filePath).Append('\n');
-        sb.Append("+++ ").Append(filePath).Append('\n');
-        sb.Append("@@ (structural rewrite) @@\n");
-        foreach (var line in before.Split('\n'))
-            sb.Append('-').Append(line).Append('\n');
-        foreach (var line in after.Split('\n'))
-            sb.Append('+').Append(line).Append('\n');
-        return sb.ToString();
     }
 
     /// <summary>

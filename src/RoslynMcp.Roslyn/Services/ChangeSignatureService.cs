@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -13,8 +14,8 @@ namespace RoslynMcp.Roslyn.Services;
 /// <summary>
 /// Item 3 implementation. Supports <c>add</c>, <c>remove</c>, and <c>rename</c> ops by
 /// rewriting both the method declaration and every callsite in one atomic preview.
-/// <c>reorder</c> is reserved for a follow-up PR — this release surfaces the surface but
-/// errors with a clear message when invoked.
+/// Reordering parameters is not supported — callers that need it should stage a
+/// remove + add pair via <c>symbol_refactor_preview</c>.
 /// </summary>
 public sealed class ChangeSignatureService : IChangeSignatureService
 {
@@ -50,11 +51,11 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             "add" => await PreviewAddParameterAsync(workspaceId, solution, method, request, ct).ConfigureAwait(false),
             "remove" => await PreviewRemoveParameterAsync(workspaceId, solution, method, request, ct).ConfigureAwait(false),
             "rename" => await PreviewRenameParameterAsync(workspaceId, method, request, ct).ConfigureAwait(false),
-            "reorder" => throw new NotSupportedException(
-                "change_signature_preview op='reorder' is not yet implemented. " +
-                "Use op='add' / 'remove' / 'rename' or fall back to manual edits via preview_multi_file_edit."),
             _ => throw new ArgumentException(
-                $"Unsupported op '{request.Op}'. Valid values: add, remove, rename, reorder.", nameof(request)),
+                $"Unsupported op '{request.Op}'. Valid values: add, remove, rename. " +
+                "Parameter reordering is not supported — stage a remove + add pair via symbol_refactor_preview " +
+                "or fall back to preview_multi_file_edit.",
+                nameof(request)),
         };
     }
 
@@ -174,12 +175,28 @@ public sealed class ChangeSignatureService : IChangeSignatureService
     private async Task<(Solution Accumulator, List<FileChangeDto> Changes)> ApplyAddRemoveAsync(
         Solution solution,
         IMethodSymbol method,
-        Func<System.Collections.Immutable.ImmutableArray<Microsoft.CodeAnalysis.CSharp.Syntax.ParameterSyntax>, ParameterListSyntax> updateDeclaration,
-        Func<Microsoft.CodeAnalysis.SeparatedSyntaxList<ArgumentSyntax>, bool, Microsoft.CodeAnalysis.SeparatedSyntaxList<ArgumentSyntax>> updateCallsite,
+        Func<ImmutableArray<ParameterSyntax>, ParameterListSyntax> updateDeclaration,
+        Func<SeparatedSyntaxList<ArgumentSyntax>, bool, SeparatedSyntaxList<ArgumentSyntax>> updateCallsite,
         CancellationToken ct)
     {
         var accumulator = solution;
-        var changes = new List<FileChangeDto>();
+
+        // Track original (pre-mutation) text per document so the final unified diff is computed
+        // from original-to-final — not from whatever intermediate state the previous iteration
+        // left behind. Earlier implementations recomputed a per-iteration "before/after" which
+        // made multi-callsite files surface only the last callsite change, and mutated-state
+        // reads as "before" on subsequent iterations.
+        var originalTexts = new Dictionary<DocumentId, string>();
+
+        async Task<string> CaptureOriginalAsync(DocumentId docId)
+        {
+            if (originalTexts.TryGetValue(docId, out var cached)) return cached;
+            var doc = solution.GetDocument(docId);
+            if (doc is null) return string.Empty;
+            var text = (await doc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+            originalTexts[docId] = text;
+            return text;
+        }
 
         // 1. Update the declaration(s). Most methods have one source declaration; partial methods
         //    can have two (definition + implementation) — both need updating.
@@ -187,20 +204,19 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         {
             var node = await declRef.GetSyntaxAsync(ct).ConfigureAwait(false);
             if (node is not BaseMethodDeclarationSyntax mds) continue;
-            var existing = System.Collections.Immutable.ImmutableArray.CreateRange(mds.ParameterList.Parameters);
+            var existing = ImmutableArray.CreateRange(mds.ParameterList.Parameters);
             var newParamList = updateDeclaration(existing);
             var doc = accumulator.GetDocument(node.SyntaxTree);
             if (doc is null) continue;
+            await CaptureOriginalAsync(doc.Id).ConfigureAwait(false);
             var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
             if (oldRoot is null) continue;
             var newRoot = oldRoot.ReplaceNode(mds.ParameterList, newParamList);
-            var newText = newRoot.ToFullString();
-            var oldText = oldRoot.ToFullString();
-            accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newText));
-            changes.Add(new FileChangeDto(doc.FilePath ?? doc.Name, BuildMinimalDiff(doc.FilePath ?? doc.Name, oldText, newText)));
+            accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newRoot.ToFullString()));
         }
 
-        // 2. Walk every caller and update its argument list.
+        // 2. Walk every caller and update its argument list. Capture the original text on first
+        //    visit per document so the end-of-pass diff is against the untouched baseline.
         var callers = await SymbolFinder.FindCallersAsync(method, accumulator, ct).ConfigureAwait(false);
         foreach (var caller in callers)
         {
@@ -210,6 +226,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 if (!location.IsInSource) continue;
                 var doc = accumulator.GetDocument(location.SourceTree);
                 if (doc is null) continue;
+                await CaptureOriginalAsync(doc.Id).ConfigureAwait(false);
                 var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (oldRoot is null) continue;
 
@@ -223,41 +240,29 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 if (newArgs.Equals(args)) continue;
                 var newInvocation = invocation.WithArgumentList(invocation.ArgumentList.WithArguments(newArgs));
                 var newRoot = oldRoot.ReplaceNode(invocation, newInvocation);
-                var newText = newRoot.ToFullString();
-                var oldText = oldRoot.ToFullString();
-                accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newText));
-
-                // Aggregate per-file (avoid duplicate diffs when multiple callsites in the same file).
-                var existing = changes.FirstOrDefault(c => string.Equals(c.FilePath, doc.FilePath, StringComparison.OrdinalIgnoreCase));
-                if (existing is null)
-                {
-                    changes.Add(new FileChangeDto(doc.FilePath ?? doc.Name, BuildMinimalDiff(doc.FilePath ?? doc.Name, oldText, newText)));
-                }
-                else
-                {
-                    var idx = changes.IndexOf(existing);
-                    changes[idx] = existing with { UnifiedDiff = BuildMinimalDiff(doc.FilePath ?? doc.Name, oldText, newText) };
-                }
+                accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newRoot.ToFullString()));
             }
+        }
+
+        // 3. Emit ONE unified diff per touched file, original → final. DiffGenerator applies a
+        //    16 KB cap with a truncation marker so the preview never blows past MCP payload budgets.
+        var changes = new List<FileChangeDto>(originalTexts.Count);
+        foreach (var (docId, originalText) in originalTexts)
+        {
+            var finalDoc = accumulator.GetDocument(docId);
+            if (finalDoc is null) continue;
+            var finalText = (await finalDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+            if (string.Equals(finalText, originalText, StringComparison.Ordinal)) continue;
+            var filePath = finalDoc.FilePath ?? finalDoc.Name;
+            changes.Add(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(originalText, finalText, filePath)));
         }
 
         return (accumulator, changes);
     }
 
-    private static ParameterListSyntax ParameterListFromText(System.Collections.Immutable.ImmutableArray<ParameterSyntax> parameters)
+    private static ParameterListSyntax ParameterListFromText(ImmutableArray<ParameterSyntax> parameters)
     {
         return SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(parameters));
-    }
-
-    private static string BuildMinimalDiff(string filePath, string before, string after)
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.Append("--- ").Append(filePath).Append('\n');
-        sb.Append("+++ ").Append(filePath).Append('\n');
-        sb.Append("@@ (change_signature) @@\n");
-        foreach (var line in before.Split('\n')) sb.Append('-').Append(line).Append('\n');
-        foreach (var line in after.Split('\n')) sb.Append('+').Append(line).Append('\n');
-        return sb.ToString();
     }
 
     private RefactoringPreviewDto BuildPreviewDto(string workspaceId, Solution accumulator, List<FileChangeDto> changes, string description)

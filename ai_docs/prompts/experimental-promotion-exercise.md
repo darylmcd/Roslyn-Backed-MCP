@@ -5,7 +5,7 @@
      This is a companion to deep-review-and-refactor.md. It should be maintained
      whenever experimental tools are promoted or added. When the deep-review appendix
      updates, verify the experimental-only subset in this prompt still matches.
-   Last surface audit: 2026-04-14 (catalog 2026.04; 29 experimental tools, 19 experimental prompts, 1 experimental resource after the v1.16.0 25-tool promotion batch). v1.15.0 added `apply_with_verify`, `remove_interface_member_preview`, and the `source_file_lines` resource template; v1.16.0 added `format_check` (experimental) and promoted 25 experimental tools to stable. Check the Phase sections below for updated counts. -->
+   Last surface audit: 2026-04-14 (catalog 2026.04, post-v1.18.0; 40 experimental tools, 20 experimental prompts, 1 experimental resource). v1.15.0 added `apply_with_verify`, `remove_interface_member_preview`, and the `source_file_lines` resource template; v1.16.0 added `format_check` (experimental) and promoted 25 experimental tools to stable; v1.17.0 added 7 experimental tools (`preview_multi_file_edit`, `preview_multi_file_edit_apply`, `restructure_preview`, `replace_string_literals_preview`, `scaffold_test_batch_preview`, `symbol_impact_sweep`, `test_reference_map`); v1.18.0 added 4 experimental tools (`change_signature_preview`, `symbol_refactor_preview`, `validate_workspace`, `get_prompt_text`) and the `refactor_loop` experimental prompt. Check the Phase sections below for updated counts. -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** systematically exercise every experimental tool and prompt to produce an **experimental promotion scorecard** with evidence for promote / keep-experimental / needs-more-evidence / deprecate decisions. Also produces a minimal coverage ledger for the experimental surface.
@@ -22,7 +22,7 @@ You are a senior .NET architect. You have **one mission:**
 
 **Known issues / prior findings:** If you have access to the server backlog at [`ai_docs/backlog.md`](../backlog.md), cross-check open MCP issues and cite matching ids. If no prior source exists, mark the regression section **N/A**.
 
-**Phase order:** Run phases in this order: **0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10 → 11**.
+**Phase order:** Run phases in this order: **0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 7b → 7c → 8 → 9 → 10 → 11**.
 
 **Portability and completeness contract:**
 
@@ -73,9 +73,15 @@ These rules apply to **every** experimental tool call. Capture findings in real 
 
 ---
 
-### Phase 1: Refactoring family — preview/apply pairs (10 experimental tools after v1.16.0 promotion batch)
+### Phase 1: Refactoring family — preview/apply pairs + v1.17/v1.18 additions (14 experimental tools after v1.18.0)
 
 Exercise each refactoring preview/apply pair. For each pair: preview → inspect diff → apply → `compile_check` → verify with a cross-tool probe → revert (if needed to keep workspace clean for the next pair).
+
+v1.17/v1.18 additions (preview-only — no apply siblings yet):
+- `restructure_preview` (v1.17) — syntax-tree pattern rewrite with `__name__` placeholders (use `preview_multi_file_edit_apply` to commit).
+- `replace_string_literals_preview` (v1.17) — string-literal → named constant.
+- `change_signature_preview` (v1.18) — add/remove/rename parameter with callsite rewrite (reordering is not supported — agents should stage remove + add via `symbol_refactor_preview`).
+- `symbol_refactor_preview` (v1.18) — composite chain of `rename` + `edit` + `restructure` operations; commit via `apply_composite_preview`.
 
 #### 1a. Fix All (`fix_all_preview`, `fix_all_apply`)
 1. Call `project_diagnostics` to find a diagnostic ID with multiple occurrences (e.g. IDE0005, CS8600).
@@ -127,7 +133,34 @@ Exercise each refactoring preview/apply pair. For each pair: preview → inspect
 6. Call `find_references` on the new method — at least one call site?
 7. Call `compile_check`.
 
-**Checkpoint:** All 14 refactoring tools exercised? Each preview/apply pair round-tripped cleanly? `compile_check` passed after each apply? At least one non-default parameter path probed per family?
+#### 1h. Structural Rewrite (`restructure_preview`, v1.17+)
+1. Pick a small idiom you want to normalize (e.g. `Task.Run(() => __expr__)` → `await __expr__`). Build pattern + goal as C# fragments with `__name__` placeholders.
+2. Call `restructure_preview(workspaceId, pattern, goal, filePath=…)` on a single file first, then project-wide.
+3. Inspect the returned per-file edits; apply via `preview_multi_file_edit_apply` on the returned token.
+4. Call `compile_check` after apply.
+
+#### 1i. String Literal Replacement (`replace_string_literals_preview`, v1.17+)
+1. Find a magic string that appears in argument/initializer positions (avoid XML doc / nameof / interpolated holes).
+2. Call `replace_string_literals_preview` with `replacements=[{literalValue, replacementExpression, usingNamespace?}]`.
+3. Apply via `preview_multi_file_edit_apply`.
+4. Call `compile_check`.
+
+#### 1j. Change Signature (`change_signature_preview`, v1.18+)
+1. Pick a method with multiple callsites (use `callers_callees` or `find_references`).
+2. Exercise `op=add`, `op=remove`, and `op=rename` in separate preview calls. For `op=add` verify the default value is spliced at every callsite (and named-arg callers got a named argument).
+3. Apply the preview via `apply_multi_file_edit` (or `preview_multi_file_edit_apply` on the returned token).
+4. Call `compile_check`.
+5. Call `find_references` on the renamed parameter — stale references? (Parameter rename updates callsites only when the caller uses named args; positional callers need no rewrite.)
+6. Negative probe: call with `op=reorder` — verify the error lists the valid ops (`add`, `remove`, `rename`) and points at `symbol_refactor_preview` for reorder workflows (FAIL if it silently succeeds).
+
+#### 1k. Composite Symbol Refactor (`symbol_refactor_preview`, v1.18+)
+1. Pick a symbol change that legitimately needs multiple op kinds (e.g. rename + structural rewrite on the renamed symbol's callsites + a multi-file edit patching a companion DTO).
+2. Build an `operations` array with at most 25 entries — each entry sets exactly one of `kind=rename`/`edit`/`restructure`. Max 500 affected files per token.
+3. Call `symbol_refactor_preview`. Verify each operation sees the rewritten state from earlier ops in the returned diff.
+4. Commit via `apply_composite_preview` (destructive apply despite the name).
+5. Call `compile_check`.
+
+**Checkpoint:** All 14 experimental refactoring tools (10 legacy + 4 v1.17/v1.18) exercised? Each preview/apply pair round-tripped cleanly? `compile_check` passed after each apply? `change_signature_preview` `op=reorder` returns a clear unsupported-op error that points at `symbol_refactor_preview`? `symbol_refactor_preview` enforces the 25-op / 500-file cap?
 
 ---
 
@@ -194,13 +227,14 @@ Exercise each project mutation preview, then apply at least one reversible mutat
 
 ---
 
-### Phase 4: Scaffolding family (3 experimental tools after v1.16.0 promotion batch — `scaffold_test_preview` promoted)
+### Phase 4: Scaffolding family (4 experimental tools after v1.17.0 — `scaffold_test_batch_preview` added)
 
 #### 4a. Scaffold Type (`scaffold_type_preview`, `scaffold_type_apply`)
 1. Call `scaffold_type_preview` to scaffold a new class. Verify `internal sealed class` default (v1.8+).
-2. Call `scaffold_type_apply`.
-3. Call `compile_check`.
-4. Clean up (delete the scaffolded file or leave for later deletion).
+2. Probe the v1.17 interface-stub path: scaffold a class whose `baseType` or `interfaces` resolves to an interface with at least one method, property, and event. Assert the preview body contains `throw new NotImplementedException()` stubs (plus required `using` directives) — opt out with `implementInterface: false` and assert the body becomes empty.
+3. Call `scaffold_type_apply`.
+4. Call `compile_check`.
+5. Clean up (delete the scaffolded file or leave for later deletion).
 
 #### 4b. Scaffold Test (`scaffold_test_preview`, `scaffold_test_apply`)
 1. If the repo has a test project, call `scaffold_test_preview` for an existing type. Verify framework detection and constructor expressions.
@@ -208,7 +242,14 @@ Exercise each project mutation preview, then apply at least one reversible mutat
 3. Call `test_discover` to verify the new test is discoverable.
 4. Call `compile_check`.
 
-**Checkpoint:** Both scaffolding pairs exercised? Namespace inference correct? Test framework auto-detected?
+#### 4c. Scaffold Test Batch (`scaffold_test_batch_preview`, v1.17+)
+1. Pick 3–5 target types in the same test project. Call `scaffold_test_batch_preview(workspaceId, testProjectName, targets=[{targetTypeName, targetMethodName?}, …], testFramework="auto")`.
+2. Verify the response returns one composite preview token covering every generated file — not N tokens.
+3. Commit via `apply_composite_preview` (or the dedicated apply sibling if one has landed by the time you run this).
+4. Call `test_discover` to verify every scaffolded test is discoverable.
+5. Call `compile_check`.
+
+**Checkpoint:** All 4 scaffolding tools exercised? Namespace inference correct? Test framework auto-detected? Interface-stub emission toggles on `implementInterface`? Batch mode emits one composite token, not N?
 
 ---
 
@@ -224,6 +265,12 @@ Exercise each project mutation preview, then apply at least one reversible mutat
 1. Call `apply_text_edit` with a small targeted edit to a single file.
 2. Call `apply_multi_file_edit` with coordinated edits across two files.
 3. Call `compile_check`.
+
+#### 5b-i. Multi-file edit preview/apply (`preview_multi_file_edit`, `preview_multi_file_edit_apply`, v1.17+)
+1. Call `preview_multi_file_edit(workspaceId, fileEdits=[…])` with coordinated edits across two files. Verify the response returns per-file unified diffs and a preview token — and that every file was validated in-memory against the same Solution snapshot.
+2. Commit via `preview_multi_file_edit_apply(previewToken)`. Verify the apply succeeds atomically.
+3. Negative probe: take the token, mutate the workspace via another path (e.g. `format_document_apply` on an unrelated file), then retry `preview_multi_file_edit_apply` with the now-stale token — expected: a clear "workspace moved, regenerate preview" rejection.
+4. Call `compile_check`.
 
 #### 5c. Pragma suppression (`add_pragma_suppression`)
 1. Find a diagnostic occurrence via `project_diagnostics`.
@@ -290,7 +337,38 @@ v1.15+ ships one experimental resource template:
 
 ---
 
-### Phase 8: Prompt verification (19 experimental prompts)
+### Phase 7c: Analysis / validation / prompt-dispatch additions (4 experimental tools — v1.17 + v1.18)
+
+Covers the new cross-cutting tools that don't fit into the earlier families.
+
+#### 7c.1 Symbol Impact Sweep (`symbol_impact_sweep`, v1.17+)
+1. Pick a symbol that recently changed (or pick a type with many callsites). Call `symbol_impact_sweep(workspaceId, metadataName | filePath+line+column)`.
+2. Verify the response contains three buckets: `references`, `nonExhaustiveSwitches`, `mapperCallsites`, plus `suggestedTasks`.
+3. For property sweeps (v1.18+), verify the response also includes `persistenceLayerFindings` with `To*`/`From*` mapper symmetry checks.
+4. Cross-check against individual tools: the `references` bucket should match `find_references` on the same symbol; `nonExhaustiveSwitches` should correspond to `project_diagnostics` filtered to CS8509 / CS8524 / IDE0072.
+
+#### 7c.2 Test Reference Map (`test_reference_map`, v1.17+)
+1. Call `test_reference_map(workspaceId, projectName?)`. Verify the response shape: `{ coveredSymbols, uncoveredSymbols, coveragePercent, inspectedTestProjects, notes, mockDriftWarnings? }`.
+2. Probe the v1.18+ `mockDriftWarnings` array on a repo that uses NSubstitute — confirm it flags interface methods that production code calls but the matching test class never stubs via `.Returns()` / `.ReturnsForAnyArgs()` / `.Configure*()`. Moq/FakeItEasy are not detected — that is documented, not a bug.
+3. Repo-shape note: on repos with no test project, assert the response is a clean empty-result-with-reason instead of an error.
+
+#### 7c.3 Composite Workspace Validation (`validate_workspace`, v1.18+)
+1. After the Phase 1 / Phase 2 / Phase 5 applies, call `validate_workspace(workspaceId, changedFilePaths=null, runTests=false)`. Verify the aggregate envelope's `overallStatus` is one of `clean` / `compile-error` / `analyzer-error` / `test-failure`.
+2. Probe the auto-scoping behavior: call with `changedFilePaths=null` and verify the session's tracked `IChangeTracker` mutations are used automatically.
+3. Probe the `runTests=true` path in `full-surface` mode on a disposable checkout — verify the envelope carries discovered tests + `test_run` output.
+4. Negative probe: call `validate_workspace` with a fabricated `changedFilePaths` entry — verify the response is a clean "no related tests" result, not a crash.
+
+#### 7c.4 Prompt Dispatcher (`get_prompt_text`, v1.18+)
+1. Call `get_prompt_text(promptName="discover_capabilities", parametersJson="{\"taskCategory\":\"refactoring\"}")`. Verify the response is the rendered messages array — exactly what `prompts/get` would have returned if the client could invoke prompts directly.
+2. Repeat for 2–3 other prompts drawn from Phase 8's realistic input sources — assert no hallucinated tool names leak into the rendered text.
+3. Negative probe: call with an unknown `promptName` — verify an actionable error naming the prompt.
+4. Negative probe: call with malformed `parametersJson` (e.g. `"{"`). Verify the error cites the JSON parse failure.
+
+**Checkpoint:** All 4 v1.17/v1.18 cross-cutting tools exercised? `symbol_impact_sweep` produced `suggestedTasks` and — for properties — `persistenceLayerFindings`? `test_reference_map` coverage percentage is plausible against `test_coverage`? `validate_workspace` returned a coherent `overallStatus`? `get_prompt_text` rendering matched the `prompts/get` surface?
+
+---
+
+### Phase 8: Prompt verification (20 experimental prompts)
 
 All prompts are experimental. For each:
 1. **Schema sanity** — look up the prompt in `roslyn://server/catalog` and verify argument list.
@@ -299,7 +377,7 @@ All prompts are experimental. For each:
 4. **Hallucinated tools** — count any references to tools not in the live catalog.
 5. **Idempotency** — call the same prompt twice; rendered text should be stable.
 
-Exercise all 19 prompts:
+Exercise all 20 prompts:
 
 | Prompt | Realistic input source |
 |--------|----------------------|
@@ -322,10 +400,11 @@ Exercise all 19 prompts:
 | `guided_extract_method` | Method from Phase 1g |
 | `msbuild_inspection` | Project from Phase 3 |
 | `session_undo` | Workspace ID |
+| `refactor_loop` | Refactor scenario from Phase 1 (v1.18+) |
 
 For every prompt, append one row to the **Prompt verification** table.
 
-**Checkpoint:** All 19 prompts exercised or blocked? Schema matched? No hallucinated tool names? Rendered output actionable?
+**Checkpoint:** All 20 prompts exercised or blocked? Schema matched? No hallucinated tool names? Rendered output actionable? `refactor_loop` references v1.17/v1.18 primitives (`apply_with_verify`, `validate_workspace`) — not stale v1.16 tool names?
 
 ---
 
@@ -497,6 +576,7 @@ Maintain a draft at `<canonical-path>.draft.md` and append after every phase. Re
 | `guided_extract_method` | | | | | | | |
 | `msbuild_inspection` | | | | | | | |
 | `session_undo` | | | | | | | |
+| `refactor_loop` | | | | | | | |
 
 ## 8. Experimental promotion scorecard
 
@@ -544,14 +624,14 @@ The file must exist at the canonical path. The task is **incomplete** without th
 
 ---
 
-## Appendix — Experimental surface reference (2026.04)
+## Appendix — Experimental surface reference (2026.04, post-v1.18.0)
 
 > **Maintenance note:** This appendix mirrors the experimental entries from the live catalog. The live catalog from Phase 0 is authoritative. Treat this as a convenience snapshot.
-> Last verified: 2026-04-14 against catalog version 2026.04 — **29 experimental tools, 19 experimental prompts** (v1.16.0 25-tool promotion batch + new `format_check`).
+> Last verified: 2026-04-14 against catalog version 2026.04 (post-v1.18.0) — **40 experimental tools, 20 experimental prompts, 1 experimental resource** (v1.16.0 25-tool promotion batch + `format_check`; v1.17.0 added 7 experimental tools; v1.18.0 added 4 experimental tools + 1 prompt + 1 skill).
 
 ### Experimental tools by category
 
-#### `refactoring` (10 experimental — `format_range_preview`, `extract_type_preview`, `move_type_to_file_preview`, `bulk_replace_type_preview`, `extract_method_preview` promoted in v1.16.0)
+#### `refactoring` (14 experimental — 10 legacy + 4 added in v1.17/v1.18)
 | Tool | RO/D | Pair | Phase |
 |------|------|------|-------|
 | `fix_all_preview` | RO | — | 1a |
@@ -564,6 +644,10 @@ The file must exist at the canonical path. The task is **incomplete** without th
 | `bulk_replace_type_apply` | D | `bulk_replace_type_preview` (now stable) | 1f |
 | `extract_method_apply` | D | `extract_method_preview` (now stable) | 1g |
 | `format_check` | RO | — | 1h (new v1.16.0; solution-wide format verification) |
+| `restructure_preview` | RO | — | 1h (new v1.17.0; syntax-tree pattern rewrite) |
+| `replace_string_literals_preview` | RO | — | 1i (new v1.17.0; string-literal → constant) |
+| `change_signature_preview` | RO | — | 1j (new v1.18.0; add/remove/rename parameter with callsite rewrite) |
+| `symbol_refactor_preview` | RO | — | 1k (new v1.18.0; composite rename+edit+restructure chain) |
 
 #### `file-operations` (3 experimental — all `*_preview` siblings promoted in v1.16.0)
 | Tool | RO/D | Pair | Phase |
@@ -578,12 +662,13 @@ The file must exist at the canonical path. The task is **incomplete** without th
 | `add_central_package_version_preview` | RO | 3e |
 | `apply_project_mutation` | D | 3a–3d |
 
-#### `scaffolding` (3 experimental — `scaffold_test_preview` promoted in v1.16.0)
+#### `scaffolding` (4 experimental — `scaffold_test_preview` promoted in v1.16.0; `scaffold_test_batch_preview` added in v1.17.0)
 | Tool | RO/D | Pair | Phase |
 |------|------|------|-------|
 | `scaffold_type_preview` | RO | — | 4a |
 | `scaffold_type_apply` | D | `scaffold_type_preview` | 4a |
 | `scaffold_test_apply` | D | `scaffold_test_preview` (now stable) | 4b |
+| `scaffold_test_batch_preview` | RO | — | 4c (new v1.17.0; batch wrapper with one composite token) |
 
 #### `dead-code` (2 experimental — `remove_dead_code_preview` promoted in v1.16.0; `remove_interface_member_preview` added v1.15.0)
 | Tool | RO/D | Pair | Phase |
@@ -591,10 +676,12 @@ The file must exist at the canonical path. The task is **incomplete** without th
 | `remove_dead_code_apply` | D | `remove_dead_code_preview` (now stable) | 5a |
 | `remove_interface_member_preview` | RO | — | 5a (v1.15.0; preview-only sweep for unused interface members) |
 
-#### `editing` (1 experimental — `apply_text_edit` and `add_pragma_suppression` promoted in v1.16.0)
+#### `editing` (3 experimental — +2 via v1.17)
 | Tool | RO/D | Phase |
 |------|------|-------|
 | `apply_multi_file_edit` | D | 5b |
+| `preview_multi_file_edit` | RO | 5b-i (new v1.17.0; multi-file preview → token) |
+| `preview_multi_file_edit_apply` | D | 5b-i (new v1.17.0; atomic apply of the token; rejects stale tokens) |
 
 #### `configuration` (0 experimental — all promoted in v1.16.0)
 
@@ -620,7 +707,23 @@ The configuration family is fully stable as of v1.16.0; no experimental rows rem
 | `extract_and_wire_interface_preview` | RO | 7 |
 | `apply_composite_preview` | D | 7 |
 
-### Experimental prompts (19)
+#### `analysis` (1 experimental — added v1.17.0)
+| Tool | RO/D | Phase |
+|------|------|-------|
+| `symbol_impact_sweep` | RO | 7c.1 (new v1.17.0; refs + switch-exhaustiveness + mapper callsites; v1.18+ property `persistenceLayerFindings`) |
+
+#### `validation` (2 experimental — added v1.17.0 and v1.18.0)
+| Tool | RO/D | Phase |
+|------|------|-------|
+| `test_reference_map` | RO | 7c.2 (new v1.17.0; static coverage + `mockDriftWarnings` v1.18+) |
+| `validate_workspace` | RO | 7c.3 (new v1.18.0; composite compile+diagnostics+related-tests bundle) |
+
+#### `prompts` (1 experimental — new v1.18.0 category)
+| Tool | RO/D | Phase |
+|------|------|-------|
+| `get_prompt_text` | RO | 7c.4 (new v1.18.0; generic prompt renderer as a tool) |
+
+### Experimental prompts (20)
 
 | Prompt | Phase |
 |--------|-------|
@@ -643,6 +746,7 @@ The configuration family is fully stable as of v1.16.0; no experimental rows rem
 | `guided_extract_method` | 8 |
 | `msbuild_inspection` | 8 |
 | `session_undo` | 8 |
+| `refactor_loop` | 8 (new v1.18.0; paired with `refactor-loop` skill) |
 
 ### Promotion checklist (when executing a promotion after this exercise)
 

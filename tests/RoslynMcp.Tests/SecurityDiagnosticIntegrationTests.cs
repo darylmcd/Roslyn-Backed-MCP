@@ -146,18 +146,24 @@ public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task AnalyzerStatus_AfterSecurityCodeScanRemoval_ReportsAbsence()
     {
-        // Item 1 (v1.18, securitycodescan-currency): SecurityCodeScan.VS2019 was archived and
-        // removed from Directory.Build.props/.Packages.props. NetAnalyzers (CA-rule security
-        // checks) is the replacement. The status now reports SecurityCodeScan as absent;
-        // MissingRecommendedPackages may or may not include SCS depending on whether the
-        // analyzer-status service still treats it as recommended. The contract we lock in here
-        // is just that the analyzer-status surface reports a coherent state for a workspace
-        // that no longer ships SCS.
+        // v1.18 (`securitycodescan-currency`) removed the archived SecurityCodeScan.VS2019
+        // package. NetAnalyzers (CA-rule security checks) is the replacement. v1.19 follow-up
+        // drops SCS from the service's recommendation list too — recommending an archived
+        // package is worse than offering no recommendation. The contract locked in here:
+        //
+        //  - SecurityCodeScan is reported as absent for this workspace.
+        //  - MissingRecommendedPackages does NOT include the archived SCS package. Empty is
+        //    the honest answer when the only historical recommendation has been retired.
         var status = await SecurityService.GetAnalyzerStatusAsync(
             WorkspaceId, CancellationToken.None);
 
         Assert.IsFalse(status.SecurityCodeScanPresent,
             "SecurityCodeScan.VS2019 was removed in v1.18 — analyzer status must reflect that.");
+        CollectionAssert.DoesNotContain(
+            status.MissingRecommendedPackages.ToList(),
+            "SecurityCodeScan.VS2019",
+            "The archived SecurityCodeScan.VS2019 package must not appear in MissingRecommendedPackages " +
+            "— recommending an archived package gives consumers bad advice.");
     }
 
     // ── Catalog Tests ──
