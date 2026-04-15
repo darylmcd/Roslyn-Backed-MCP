@@ -85,6 +85,8 @@ The easiest way to use this server with Claude Code is as a plugin.
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
+**No further configuration is required** — the server starts with the defaults listed in [Configuration](#configuration). To tune any `ROSLYNMCP_*` value, drop a project-scope `.mcp.json` at your repo root with literal `env` values (see [`docs/mcp-json-examples/with-overrides.mcp.json`](docs/mcp-json-examples/with-overrides.mcp.json) for a copy-ready template). Earlier versions (≤1.18.1) shipped a `.mcp.json` that referenced `${user_config.*}` placeholders substituted at plugin enable-time — that path was unreliable on default installs, so v1.18.2 moved all tuning to project-scope `.mcp.json` with literal values.
+
 Or for local development/testing:
 
 ```bash
@@ -201,7 +203,7 @@ For a reproducible release build and publish verification:
 
 ## Configuration
 
-The server reads optional environment variables at startup. When set, these override the built-in defaults. See [`ai_docs/runtime.md`](ai_docs/runtime.md) for the full list of advanced overrides (path validation, scripting concurrency, abandoned-script caps, etc.).
+All variables below are **optional**. The server starts with the listed defaults when no value is set — no per-user or per-install configuration step is required. Override by adding an `env` block to a project-scope `.mcp.json` at your repo root (see [`docs/mcp-json-examples/with-overrides.mcp.json`](docs/mcp-json-examples/with-overrides.mcp.json)) or to your MCP client's server config. See [`ai_docs/runtime.md`](ai_docs/runtime.md) for the full list of advanced overrides (path validation, scripting concurrency, abandoned-script caps, etc.).
 
 | Environment Variable | Default | Description |
 |---|---|---|

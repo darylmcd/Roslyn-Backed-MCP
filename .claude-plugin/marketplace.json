@@ -13,7 +13,7 @@
       "name": "roslyn-mcp",
       "source": "./",
       "description": "Semantic C# analysis and refactoring powered by Roslyn. 142 tools (102 stable / 40 experimental) for navigation, diagnostics, refactoring, security, testing, and more.",
-      "version": "1.18.1",
+      "version": "1.18.2",
       "author": {
         "name": "darylmcd"
       },
