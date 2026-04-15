@@ -1122,7 +1122,7 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `format_check` | E | RO | — | New v1.16.0 — solution-wide format verification (no apply). |
 | `restructure_preview` | E | RO | — | New v1.17.0 — syntax-tree pattern-based find-and-replace using `__name__` placeholder captures. |
 | `replace_string_literals_preview` | E | RO | — | New v1.17.0 — rewrites string literals in argument/initializer/attribute-argument/return positions to a constant; skips XML doc, interpolated-string holes, `nameof()`. |
-| `change_signature_preview` | E | RO | — | New v1.18.0 — add/remove/rename parameter with callsite rewrite (`op=reorder` reserved for a future release). |
+| `change_signature_preview` | E | RO | — | New v1.18.0 — add/remove/rename parameter with callsite rewrite. Reorder is not supported; use `symbol_refactor_preview` to stage remove + add when you need it. |
 | `symbol_refactor_preview` | E | RO | — | New v1.18.0 — composite preview chaining `rename` + `edit` + `restructure` operations in order; max 25 ops / 500 affected files per token. |
 
 #### `cross-project-refactoring` (0 stable, 3 experimental)
@@ -1324,11 +1324,23 @@ When the audit target is not Roslyn-Backed-MCP, the skills audit runs against a 
 | `OrchestrationTools.cs` | 4 | `orchestration` |
 | `DeadCodeTools.cs` | 2 | `dead-code` |
 | `EditTools.cs` | 1 | `editing` (`apply_text_edit`) |
-| `MultiFileEditTools.cs` | 1 | `editing` (`apply_multi_file_edit`) |
+| `MultiFileEditTools.cs` | 3 | `editing` (`apply_multi_file_edit`, `preview_multi_file_edit`, `preview_multi_file_edit_apply`) |
 | `FileOperationTools.cs` | 6 | `file-operations` |
 | `ProjectMutationTools.cs` | 11 | `project-mutation` |
-| `ScaffoldingTools.cs` | 4 | `scaffolding` |
+| `ScaffoldingTools.cs` | 4 | `scaffolding` (including `scaffold_test_batch_preview` v1.17+) |
+| `ExtractMethodTools.cs` | 2 | `refactoring` (`extract_method_preview`, `extract_method_apply`) |
 | `ValidationTools.cs` | 7 | `validation` (build/test/coverage) |
+| `ValidationBundleTools.cs` | 1 | `validation` (`validate_workspace`, v1.18+) |
+| `TestReferenceMapTools.cs` | 1 | `validation` (`test_reference_map`, v1.17+) |
+| `TestCoverageTools.cs` | — | `validation` (legacy split — see `ValidationTools.cs` for `test_coverage`) |
+| `ImpactSweepTools.cs` | 1 | `analysis` (`symbol_impact_sweep`, v1.17+) |
+| `RestructureTools.cs` | 2 | `refactoring` (`restructure_preview`, `replace_string_literals_preview`, v1.17+) |
+| `ChangeSignatureTools.cs` | 1 | `refactoring` (`change_signature_preview`, v1.18+) |
+| `SymbolRefactorTools.cs` | 1 | `refactoring` (`symbol_refactor_preview`, v1.18+) |
+| `ApplyWithVerifyTool.cs` | 1 | `undo` (`apply_with_verify`, v1.15+) |
+| `RemoveInterfaceMemberTool.cs` | 1 | `dead-code` (`remove_interface_member_preview`, v1.15+) |
+| `PromptShimTools.cs` | 1 | `prompts` (`get_prompt_text`, v1.18+) |
+| `SuggestionTools.cs` | 1 | `advanced-analysis` (`suggest_refactorings`) |
 | `EditorConfigTools.cs` | 2 | `configuration` |
 | `MSBuildTools.cs` | 3 | `project-mutation` (`evaluate_msbuild_*`, `get_msbuild_properties`) |
 | `SuppressionTools.cs` | 2 | `configuration` (`set_diagnostic_severity`) + `editing` (`add_pragma_suppression`) |

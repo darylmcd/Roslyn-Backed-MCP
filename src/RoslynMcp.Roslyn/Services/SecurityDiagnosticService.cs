@@ -17,14 +17,19 @@ public sealed class SecurityDiagnosticService : ISecurityDiagnosticService
 
     /// <summary>
     /// Recommended security analyzer NuGet packages beyond what the SDK provides.
+    /// Historically this contained <c>SecurityCodeScan.VS2019</c>, but that package was
+    /// archived in 2021 and the replacement (<c>Microsoft.CodeAnalysis.NetAnalyzers</c>,
+    /// CA-rule security checks) is already implicit in modern SDK-style projects.
+    /// Recommending an archived package misled consumers; the project's own
+    /// <c>Directory.Build.props</c> explicitly removed the package reference in v1.18
+    /// (<c>securitycodescan-currency</c>, CHANGELOG.md). Empty for now — future
+    /// security analyzers can be added here if / when they become recommended.
     /// </summary>
-    private static readonly string[] RecommendedPackages =
-    [
-        "SecurityCodeScan.VS2019"
-    ];
+    private static readonly string[] RecommendedPackages = [];
 
     /// <summary>
-    /// Known assembly name prefixes that indicate a security analyzer.
+    /// Known assembly name prefixes that indicate a security analyzer. Still checked so
+    /// consumer projects that ship their own SecurityCodeScan fork are reported accurately.
     /// </summary>
     private static readonly string[] SecurityCodeScanAssemblyPrefixes =
     [

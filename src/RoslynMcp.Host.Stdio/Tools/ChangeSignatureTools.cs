@@ -20,12 +20,12 @@ public static class ChangeSignatureTools
     [McpServerTool(Name = "change_signature_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview adding/removing/renaming a method parameter with all callsites updated atomically."),
-     Description("Preview a change to a method's signature: add, remove, or rename a parameter. The declaration AND every callsite are rewritten in one preview token. For 'add', supply Name + ParameterType + DefaultValue (default value is spliced into every existing callsite). For 'remove', supply Name OR Position. For 'rename', supply Name (current) + NewName. Reorder is reserved for a future release.")]
+     Description("Preview a change to a method's signature: add, remove, or rename a parameter. The declaration AND every callsite are rewritten in one preview token. For 'add', supply Name + ParameterType + DefaultValue (default value is spliced into every existing callsite). For 'remove', supply Name OR Position. For 'rename', supply Name (current) + NewName. Reordering is not supported — stage a remove + add pair via symbol_refactor_preview if you need it.")]
     public static Task<string> PreviewChangeSignature(
         IWorkspaceExecutionGate gate,
         IChangeSignatureService changeSignatureService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Operation: 'add', 'remove', 'rename', or 'reorder' (reorder errors out — reserved for follow-up release).")] string op,
+        [Description("Operation: 'add', 'remove', or 'rename'. Reordering parameters is not supported.")] string op,
         [Description("Optional: absolute path to the source file containing the method declaration")] string? filePath = null,
         [Description("Optional: 1-based line number of the method declaration")] int? line = null,
         [Description("Optional: 1-based column number of the method declaration")] int? column = null,
