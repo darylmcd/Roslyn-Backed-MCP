@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ public static class ConsumerAnalysisTools
 {
 
     [McpServerTool(Name = "find_consumers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("analysis", "stable", true, false,
+        "Find all types that depend on a given type or interface, classified by dependency kind."),
      Description("Find all types that depend on a given type or interface, classified by dependency kind (Constructor, Field, Parameter, BaseType, LocalVariable, Property, ReturnType, GenericArgument)")]
     public static Task<string> FindConsumers(
         IWorkspaceExecutionGate gate,

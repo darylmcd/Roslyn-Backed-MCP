@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -11,6 +12,8 @@ public static class EditTools
 {
 
     [McpServerTool(Name = "apply_text_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("editing", "stable", false, true,
+        "Apply direct text edits to a single file."),
      Description("Apply one or more text edits to a source file in the workspace. Each edit specifies a range (start/end line and column) and the replacement text. The workspace is updated in-place and a diff is returned. Revertible via revert_last_apply (one snapshot per call, single-slot per workspace). Prefer a semantic preview/apply Roslyn tool whenever one exists; only fall back to apply_text_edit when no semantic equivalent is available.")]
     public static Task<string> ApplyTextEdit(
         McpServer server,

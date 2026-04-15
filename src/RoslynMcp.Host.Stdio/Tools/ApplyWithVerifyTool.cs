@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -15,6 +16,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class ApplyWithVerifyTool
 {
     [McpServerTool(Name = "apply_with_verify", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("undo", "experimental", false, true,
+        "Apply a preview AND immediately verify via compile_check; auto-revert on new errors."),
      Description("Apply a previously previewed refactoring AND immediately verify the workspace still compiles. When new compile errors appear (relative to the pre-apply baseline), automatically revert via revert_last_apply and return status=\"rolled_back\" with the introduced errors. Otherwise return status=\"applied\". Pass rollbackOnError=false to keep broken state for inspection (returns status=\"applied_with_errors\").")]
     public static Task<string> ApplyWithVerify(
         IWorkspaceExecutionGate gate,

@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -16,6 +17,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class RemoveInterfaceMemberTool
 {
     [McpServerTool(Name = "remove_interface_member_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("dead-code", "experimental", true, false,
+        "Composite preview removing a dead interface member and every implementation in one shot. Refuses if any external caller exists."),
      Description("Preview removing a dead interface member (method/property/event) AND every concrete implementation in one shot. Refuses to remove if the member has any non-implementation callers — returns the caller list instead. Apply via remove_dead_code_apply with the returned preview token.")]
     public static Task<string> PreviewRemoveInterfaceMember(
         IWorkspaceExecutionGate gate,

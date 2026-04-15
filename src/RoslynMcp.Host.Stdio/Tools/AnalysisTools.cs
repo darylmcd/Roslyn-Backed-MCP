@@ -5,6 +5,7 @@ using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using McpServer = ModelContextProtocol.Server.McpServer;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -24,6 +25,8 @@ public static class AnalysisTools
         "the severity parameter only narrows which rows are collected (default minimum severity is Info when omitted — Hidden is still excluded). " +
         "Use offset/limit to page; limit defaults to 200 to cap payload size. When hasMore is true, increase offset or narrow project/file filters. " +
         "Large solutions can take tens of seconds — prefer projectName or file filters.")]
+    [McpToolMetadata("analysis", "stable", true, false,
+        "Return compiler diagnostics for a workspace.")]
     public static Task<string> GetProjectDiagnostics(
         IWorkspaceExecutionGate gate,
         IDiagnosticService diagnosticService,
@@ -136,6 +139,8 @@ public static class AnalysisTools
     }
 
     [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information and curated fix options for a specific diagnostic occurrence")]
+    [McpToolMetadata("analysis", "stable", true, false,
+        "Inspect one diagnostic occurrence in detail.")]
     public static Task<string> GetDiagnosticDetails(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -174,6 +179,8 @@ public static class AnalysisTools
     }
 
     [McpServerTool(Name = "type_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the type hierarchy (base types, derived types, implemented interfaces) for a type at the given position")]
+    [McpToolMetadata("analysis", "stable", true, false,
+        "Inspect type inheritance and interface relationships.")]
     public static Task<string> GetTypeHierarchy(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,
@@ -194,6 +201,8 @@ public static class AnalysisTools
     }
 
     [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of the symbol resolved at the exact line/column (or symbolHandle). Resolution uses the token at that position — e.g. a caret on a field name inside a method resolves the field, not the enclosing method. Place the caret on the method name to analyze the method.")]
+    [McpToolMetadata("analysis", "stable", true, false,
+        "Find direct callers and callees for a method.")]
     public static Task<string> GetCallersCallees(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,
@@ -235,6 +244,8 @@ public static class AnalysisTools
     }
 
     [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects. References and declarations are paginated server-side (FLAG-3D) — use referencesOffset/referencesLimit/declarationsLimit. Total counts and hasMore flags are always returned.")]
+    [McpToolMetadata("analysis", "stable", true, false,
+        "Estimate the impact of changing a symbol.")]
     public static Task<string> AnalyzeImpact(
         IWorkspaceExecutionGate gate,
         IMutationAnalysisService mutationAnalysisService,
@@ -265,6 +276,8 @@ public static class AnalysisTools
     }
 
     [McpServerTool(Name = "find_type_mutations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Heavy analysis: find all mutating members of a type (settable properties, methods that write instance state) and their external callers, classified as construction-phase vs post-construction callers")]
+    [McpToolMetadata("analysis", "stable", true, false,
+        "Identify mutating members of a type and who calls them.")]
     public static Task<string> FindTypeMutations(
         IWorkspaceExecutionGate gate,
         IMutationAnalysisService mutationAnalysisService,
@@ -299,6 +312,8 @@ public static class AnalysisTools
     }
 
     [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all usages of a type across the solution, classified by role: MethodReturnType, MethodParameter, PropertyType, LocalVariable, FieldType, GenericArgument, BaseType, Cast, TypeCheck, ObjectCreation, or Other")]
+    [McpToolMetadata("analysis", "stable", true, false,
+        "Classify usages of a type across the solution.")]
     public static Task<string> FindTypeUsages(
         IWorkspaceExecutionGate gate,
         IMutationAnalysisService mutationAnalysisService,

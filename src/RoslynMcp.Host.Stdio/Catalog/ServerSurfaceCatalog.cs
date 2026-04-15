@@ -80,6 +80,10 @@ public static class ServerSurfaceCatalog
         Tool("replace_string_literals_preview", "refactoring", "experimental", true, false, "Preview replacing string literals in argument/initializer position with a constant expression."),
         Tool("symbol_impact_sweep", "analysis", "experimental", true, false, "Sweep downstream impact of a symbol change: references + switch-exhaustiveness diagnostics + mapper-suffix callsites."),
         Tool("test_reference_map", "validation", "experimental", true, false, "Statically map source symbols to test references; returns covered/uncovered symbol lists and a coverage percentage."),
+        Tool("get_prompt_text", "prompts", "experimental", true, false, "Render any registered MCP prompt as plain text. Pass the prompt name plus a JSON object of the prompt's parameters; returns { messages: [{role, text}], promptName, parameterCount }."),
+        Tool("validate_workspace", "validation", "experimental", true, false, "Composite post-edit validation: compile_check + project_diagnostics (errors) + test_related_files (+ optional test_run)."),
+        Tool("change_signature_preview", "refactoring", "experimental", true, false, "Preview adding/removing/renaming a method parameter with all callsites updated atomically."),
+        Tool("symbol_refactor_preview", "refactoring", "experimental", true, false, "Composite preview chaining rename + edit + restructure operations into a single token."),
         Tool("create_file_preview", "file-operations", "stable", true, false, "Preview creating a new source file in a project."),
         Tool("create_file_apply", "file-operations", "experimental", false, true, "Apply a previously previewed file creation."),
         Tool("delete_file_preview", "file-operations", "stable", true, false, "Preview deleting an existing source file."),
@@ -198,7 +202,8 @@ public static class ServerSurfaceCatalog
         Prompt("consumer_impact", "prompts", "experimental", true, false, "Generate a prompt analyzing the consumer/dependency graph for a type to assess refactoring impact."),
         Prompt("guided_extract_method", "prompts", "experimental", true, false, "Generate a prompt for extract-method refactoring with data-flow and control-flow checks."),
         Prompt("msbuild_inspection", "prompts", "experimental", true, false, "Generate a prompt for evaluating MSBuild properties and items for a project file."),
-        Prompt("session_undo", "prompts", "experimental", true, false, "Generate a prompt for inspecting session mutations and undoing the last apply operation.")
+        Prompt("session_undo", "prompts", "experimental", true, false, "Generate a prompt for inspecting session mutations and undoing the last apply operation."),
+        Prompt("refactor_loop", "prompts", "experimental", true, false, "Generate a prompt that walks an agent through the standard refactor → preview → apply-with-verify → validate_workspace loop using v1.17/v1.18 primitives.")
     ];
 
     public static SurfaceSummary GetSummary()

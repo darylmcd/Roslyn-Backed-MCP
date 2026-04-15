@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ public static class TypeExtractionTools
 {
 
     [McpServerTool(Name = "extract_type_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("refactoring", "stable", true, false,
+        "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
      Description("Preview extracting selected members from a type into a new type. The source type gets a private field for the new type and the extracted members are moved. Use this for SRP refactoring.")]
     public static Task<string> PreviewExtractType(
         IWorkspaceExecutionGate gate,
@@ -32,6 +35,8 @@ public static class TypeExtractionTools
     }
 
     [McpServerTool(Name = "extract_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", false, true,
+        "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type."),
      Description("Apply a previously previewed type extraction")]
     public static Task<string> ApplyExtractType(
         IWorkspaceExecutionGate gate,

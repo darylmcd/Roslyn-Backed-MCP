@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -9,6 +10,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class EditorConfigTools
 {
     [McpServerTool(Name = "get_editorconfig_options", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("configuration", "stable", true, false,
+        "Get effective .editorconfig options for a source file."),
      Description("Get the effective .editorconfig options for a source file — returns the active code style rules, formatting settings, and naming conventions that Roslyn applies to the file.")]
     public static Task<string> GetEditorConfigOptions(
         IWorkspaceExecutionGate gate,
@@ -26,6 +29,8 @@ public static class EditorConfigTools
     }
 
     [McpServerTool(Name = "set_editorconfig_option", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("configuration", "stable", false, false,
+        "Set or update a key in .editorconfig for C# files (creates file if needed)."),
      Description("Set or update a key/value in the .editorconfig that applies to the given source file (under the [*.{cs,csx,cake}] section). Creates a new .editorconfig next to the file if none exists in the directory chain. Direct-apply (no preview token), but integrated with revert_last_apply: the pre-write .editorconfig content is captured and restored on revert (or the file is deleted on revert if this call created it). Read the existing settings first with get_editorconfig_options so you can confirm the change you intend to make before calling this tool.")]
     public static Task<string> SetEditorConfigOption(
         IWorkspaceExecutionGate gate,

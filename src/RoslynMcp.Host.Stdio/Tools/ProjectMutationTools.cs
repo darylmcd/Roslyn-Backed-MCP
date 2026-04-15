@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Core.Models;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -11,6 +12,8 @@ public static class ProjectMutationTools
 {
 
     [McpServerTool(Name = "add_package_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "stable", true, false,
+        "Preview adding a PackageReference to a project file."),
      Description("Preview adding a PackageReference to a project file in the loaded workspace.")]
     public static Task<string> PreviewAddPackageReference(
         IWorkspaceExecutionGate gate,
@@ -33,6 +36,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "remove_package_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "stable", true, false,
+        "Preview removing a PackageReference from a project file."),
      Description("Preview removing a PackageReference from a project file in the loaded workspace.")]
     public static Task<string> PreviewRemovePackageReference(
         IWorkspaceExecutionGate gate,
@@ -54,6 +59,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "add_project_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "stable", true, false,
+        "Preview adding a ProjectReference to a project file."),
      Description("Preview adding a ProjectReference to a project file in the loaded workspace.")]
     public static Task<string> PreviewAddProjectReference(
         IWorkspaceExecutionGate gate,
@@ -75,6 +82,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "remove_project_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "stable", true, false,
+        "Preview removing a ProjectReference from a project file."),
      Description("Preview removing a ProjectReference from a project file in the loaded workspace.")]
     public static Task<string> PreviewRemoveProjectReference(
         IWorkspaceExecutionGate gate,
@@ -96,6 +105,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "set_project_property_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "stable", true, false,
+        "Preview setting an allowlisted property in a project file."),
      Description("Preview setting an allowlisted property in a project file in the loaded workspace.")]
     public static Task<string> PreviewSetProjectProperty(
         IWorkspaceExecutionGate gate,
@@ -118,6 +129,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "add_target_framework_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "stable", true, false,
+        "Preview adding a target framework to a project file."),
      Description("Preview adding a target framework to a project file in the loaded workspace.")]
     public static Task<string> PreviewAddTargetFramework(
         IWorkspaceExecutionGate gate,
@@ -139,6 +152,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "remove_target_framework_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "stable", true, false,
+        "Preview removing a target framework from a project file."),
      Description("Preview removing a target framework from a project file in the loaded workspace.")]
     public static Task<string> PreviewRemoveTargetFramework(
         IWorkspaceExecutionGate gate,
@@ -160,6 +175,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "set_conditional_property_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "stable", true, false,
+        "Preview setting an allowlisted conditional project property."),
      Description("Preview setting an allowlisted property in a conditional PropertyGroup within a project file.")]
     public static Task<string> PreviewSetConditionalProperty(
         IWorkspaceExecutionGate gate,
@@ -183,6 +200,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "add_central_package_version_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "experimental", true, false,
+        "Preview adding a PackageVersion entry to Directory.Packages.props."),
      Description("Preview adding a PackageVersion entry to Directory.Packages.props for the loaded workspace.")]
     public static Task<string> PreviewAddCentralPackageVersion(
         IWorkspaceExecutionGate gate,
@@ -204,6 +223,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "remove_central_package_version_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "stable", true, false,
+        "Preview removing a PackageVersion entry from Directory.Packages.props."),
      Description("Preview removing a PackageVersion entry from Directory.Packages.props for the loaded workspace.")]
     public static Task<string> PreviewRemoveCentralPackageVersion(
         IWorkspaceExecutionGate gate,
@@ -224,6 +245,8 @@ public static class ProjectMutationTools
     }
 
     [McpServerTool(Name = "apply_project_mutation", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("project-mutation", "experimental", false, true,
+        "Apply a previously previewed project file mutation."),
      Description("Apply a previously previewed project file mutation using its preview token.")]
     public static Task<string> ApplyProjectMutation(
         IWorkspaceExecutionGate gate,

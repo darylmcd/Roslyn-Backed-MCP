@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -9,6 +10,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class ExtractMethodTools
 {
     [McpServerTool(Name = "extract_method_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpToolMetadata("refactoring", "stable", true, false,
+        "Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values.")]
     [Description("Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values. Selection must cover complete statements in the same block without return statements.")]
     public static Task<string> PreviewExtractMethod(
         IWorkspaceExecutionGate gate,
@@ -32,6 +35,8 @@ public static class ExtractMethodTools
     }
 
     [McpServerTool(Name = "extract_method_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
+    [McpToolMetadata("refactoring", "experimental", false, true,
+        "Apply a previously previewed extract method refactoring.")]
     [Description("Apply a previously previewed extract method refactoring.")]
     public static Task<string> ApplyExtractMethod(
         IWorkspaceExecutionGate gate,

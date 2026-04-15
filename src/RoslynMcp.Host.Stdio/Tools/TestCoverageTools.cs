@@ -5,6 +5,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -13,6 +14,8 @@ public static class TestCoverageTools
 {
 
     [McpServerTool(Name = "test_coverage", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("validation", "stable", false, false,
+        "Run coverage collection for test execution."),
      Description("Run tests with code coverage collection and return coverage metrics per module and class. Requires coverlet.collector NuGet package in test projects.")]
     public static Task<string> RunTestCoverage(
         IWorkspaceExecutionGate gate,

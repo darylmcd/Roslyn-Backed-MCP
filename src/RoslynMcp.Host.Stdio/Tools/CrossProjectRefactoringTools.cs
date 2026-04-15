@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ public static class CrossProjectRefactoringTools
 {
 
     [McpServerTool(Name = "move_type_to_project_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("cross-project-refactoring", "experimental", true, false,
+        "Preview moving a type declaration into another project."),
      Description("Preview moving a C# type declaration into another project in the loaded workspace.")]
     public static Task<string> PreviewMoveTypeToProject(
         IWorkspaceExecutionGate gate,
@@ -38,6 +41,8 @@ public static class CrossProjectRefactoringTools
     }
 
     [McpServerTool(Name = "extract_interface_cross_project_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("cross-project-refactoring", "experimental", true, false,
+        "Preview extracting an interface from a concrete type into a different project."),
      Description("Preview extracting an interface from a type into a different project in the loaded workspace. For same-project extraction, use extract_interface_preview instead.")]
     public static Task<string> PreviewExtractInterface(
         IWorkspaceExecutionGate gate,
@@ -64,6 +69,8 @@ public static class CrossProjectRefactoringTools
     }
 
     [McpServerTool(Name = "dependency_inversion_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("cross-project-refactoring", "experimental", true, false,
+        "Preview extracting an interface and updating constructor dependencies."),
      Description("Preview extracting an interface and updating constructor dependencies to use it across the loaded workspace.")]
     public static Task<string> PreviewDependencyInversion(
         IWorkspaceExecutionGate gate,

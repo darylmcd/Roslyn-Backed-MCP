@@ -4,6 +4,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -11,6 +12,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class ScriptingTools
 {
     [McpServerTool(Name = "evaluate_csharp", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("scripting", "stable", true, false,
+        "Evaluate a C# expression or script interactively via the Roslyn Scripting API. Emits MCP progress and heartbeat logs during long compile/run so clients are not stuck on a static label."),
      Description("Evaluate a C# expression or script interactively using the Roslyn Scripting API. Returns the result value and type. The server enforces a script budget (default 10 seconds, override per-call with timeoutSeconds or env ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS — UX-002). After budget + ROSLYNMCP_SCRIPT_WATCHDOG_GRACE_SECONDS (default 10), the tool returns a timeout response even if Roslyn is still running (e.g. tight infinite loops do not honor CancellationToken). A Critical watchdog log may still fire on a timer for observability. MCP progress and heartbeats apply as documented. The MCP client may enforce its own session timeout (e.g. error -32001) independently of the server.")]
     public static Task<string> EvaluateCSharp(
         IScriptingService scriptingService,

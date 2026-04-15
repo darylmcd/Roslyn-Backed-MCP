@@ -13,6 +13,8 @@ public static class MultiFileEditTools
 {
 
     [McpServerTool(Name = "apply_multi_file_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("editing", "experimental", false, true,
+        "Apply direct text edits to multiple files."),
      Description("Apply text edits to multiple files in the workspace sequentially. All edits share a single pre-apply snapshot — revert_last_apply rolls back the entire batch atomically. If a file validation or apply fails partway through, revert_last_apply restores the pre-call state for any files that were already written. Prefer preview_multi_file_edit + apply_composite_preview for agent workflows that need a review step.")]
     public static Task<string> ApplyMultiFileEdit(
         McpServer server,

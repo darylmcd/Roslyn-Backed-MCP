@@ -40,7 +40,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICompositePreviewStore>(sp =>
         {
             var (maxEntries, ttl) = ResolvePreviewStoreConfiguration(sp);
-            return new CompositePreviewStore(maxEntries, ttl);
+            var opts = sp.GetService<PreviewStoreOptions>() ?? new PreviewStoreOptions();
+            // Item 6: opt-in disk persistence for cross-process token redemption.
+            PersistentCompositeStorage? disk = null;
+            if (!string.IsNullOrWhiteSpace(opts.PersistDirectory))
+            {
+                disk = new PersistentCompositeStorage(opts.PersistDirectory!, ttl);
+            }
+            return new CompositePreviewStore(maxEntries, ttl, disk);
         });
         services.AddSingleton<ISymbolNavigationService, SymbolNavigationService>();
         services.AddSingleton<ISymbolSearchService, SymbolSearchService>();
@@ -100,6 +107,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IStringLiteralReplaceService, StringLiteralReplaceService>();
         services.AddSingleton<IImpactSweepService, ImpactSweepService>();
         services.AddSingleton<ITestReferenceMapService, TestReferenceMapService>();
+        services.AddSingleton<IWorkspaceValidationService, WorkspaceValidationService>();
+        services.AddSingleton<IChangeSignatureService, ChangeSignatureService>();
+        services.AddSingleton<ISymbolRefactorService, SymbolRefactorService>();
         return services;
     }
 

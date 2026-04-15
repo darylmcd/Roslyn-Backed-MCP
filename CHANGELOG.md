@@ -6,9 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.18.0] - 2026-04-14
+
+Top-10 backlog remediation pass v5 — **six new tools**, one new prompt, one new skill, two service extensions, a security-analyzer cleanup, and the full v1.17 catalog-attribute migration. Stable surface unchanged at 102; experimental lifts from 36 → 42.
+
+### Removed
+
+- **`SecurityCodeScan.VS2019` (`securitycodescan-currency`):** archived package (last release 2021) deleted from `Directory.Build.props` + `Directory.Packages.props`. `Microsoft.CodeAnalysis.NetAnalyzers 10.0.100` (already installed) covers the equivalent CA-rule security checks. Build and test verification clean. The `analyzer_status` tool now reports `securityCodeScanPresent: false` for this workspace — existing tests updated accordingly.
+
+### Added
+
+- **`change_signature_preview` (experimental):** Plumbs Roslyn's signature-change refactoring through the MCP surface. Supports `op=add` (insert parameter with default; splices `default value` at every callsite; inserts named arg when caller uses named args), `op=remove` (drop parameter with callsite cleanup), and `op=rename` (delegates to the rename engine for parameter rename with named-arg callsite safety). `op=reorder` is reserved for a follow-up release. Closes `change-signature-add-parameter-cross-callsite`.
+- **`symbol_refactor_preview` (experimental):** Composite preview chaining `rename` + `edit` + `restructure` operations in order. Each operation sees the rewritten state from earlier ops; the final accumulator is stored under one preview token. Max 25 operations / 500 affected files per preview. Closes `agent-symbol-refactor-unified-preview`.
+- **`validate_workspace` (experimental):** One-call composite that runs `compile_check` + error-severity diagnostics + `test_related_files` (+ optional `test_run`). Emits an aggregate envelope with `overallStatus` = `clean` / `compile-error` / `analyzer-error` / `test-failure`. Reduces 4 round-trips to 1. Closes `roslyn-mcp-post-edit-validation-bundle`.
+- **`get_prompt_text` (experimental):** Generic dispatcher that exposes every `[McpServerPrompt]`-registered prompt as a `call_mcp_tool`-invocable tool. Pass `promptName` + a JSON object of the prompt's parameters; returns the rendered messages array. Closes `prompt-tools-exposable-to-agents` for hosts that can't invoke prompts via `prompts/get`.
+- **`refactor_loop` MCP prompt + `refactor-loop` Claude skill:** Paired surface that walks agents through the standard refactor → preview → apply-with-verify → validate_workspace loop using v1.17/v1.18 primitives. Closes `roslyn-mcp-guided-refactor-flow`. The skill lives under `skills/refactor-loop/SKILL.md`; the prompt lives in `RoslynPrompts.RefactoringWorkflows.cs`.
+
+### Changed
+
+- **Catalog attribute migration (`mcp-tool-catalog-attribute-binding`, v1.17 Item 3 finish):** Every `[McpServerTool]` method now carries a matching `[McpToolMetadata(category, tier, readOnly, destructive, summary)]` attribute — 131 mechanical additions via the new `eng/gen-mcp-tool-metadata.ps1` generator, plus 7 already added in v1.17. `SurfaceCatalogTests.McpToolMetadata_RequiredOnEveryTool_MatchesCatalogEntry` is now strict: missing attribute OR field-level drift fails CI. Silent drift between `[McpServerTool]` and `ServerSurfaceCatalog.Tools` is now structurally impossible.
+- **`test_reference_map` mock-drift detection (`test-mock-drift-new-interface-usage`):** Response DTO gains a `mockDriftWarnings` array. Each entry identifies an NSubstitute-mocked interface method that production code calls but the matching test class never stubs via `.Returns()` / `.ReturnsForAnyArgs()` / `.Configure*()`. Heuristic: NSubstitute only; Moq/FakeItEasy not detected. Does not flood results when no test project uses NSubstitute.
+- **`symbol_impact_sweep` persistence-layer findings (`mapper-snapshot-dto-symmetry-check`):** When the swept symbol is a property, the response gains a `persistenceLayerFindings` array. Each entry pairs the domain property with its sibling DTO record (matched by `JsonPropertyName` / `DataMember` attribute or by property name), then checks mapper-suffixed types for `To*` + `From*` symmetry. Asymmetric pairs — e.g. `ToSnapshot` writes the property but `FromSnapshot` never reads it — are flagged.
+- **Composite preview token disk persistence (`preview-token-cross-process-handoff`):** New env var `ROSLYNMCP_PREVIEW_PERSIST_DIR` activates opt-in on-disk storage for `CompositePreviewStore` tokens under `{dir}/{workspaceVersion}/{token}.json` with atomic-write + TTL-by-mtime semantics. When unset (default), behavior is in-memory only as before. Only composite preview tokens are portable cross-process — full Roslyn-`Solution` previews stored in `IPreviewStore` remain single-process.
+- **`IEditService` / `IChangeTracker` consumption:** `WorkspaceValidationService` reads `IChangeTracker.GetChanges()` when the caller doesn't pass an explicit `changedFilePaths` list, so the post-edit validation bundle auto-scopes to the session's tracked mutations.
+- **Surface counts:** catalog bumps from 138 → 144 tools (102 stable / 42 experimental, +6 experimental). Prompts bump from 19 → 20 (new `refactor_loop`). Skills bump from 19 → 20 (new `refactor-loop`).
+
+### Maintenance
+
+- **Backlog:** Closed 10 rows in this pass plus the `securitycodescan-currency` sidecar (`roslyn-mcp-workspace-staleness`… wait, those closed in v1.17). v1.18 closes: `securitycodescan-currency`, `tool-catalog-full-attribute-migration`, `change-signature-add-parameter-cross-callsite`, `prompt-tools-exposable-to-agents`, `roslyn-mcp-post-edit-validation-bundle`, `preview-token-cross-process-handoff`, `agent-symbol-refactor-unified-preview`, `roslyn-mcp-guided-refactor-flow`, `test-mock-drift-new-interface-usage`, `mapper-snapshot-dto-symmetry-check`. The `composite-split-service-di-registration` P3 row is not closed but is now implementable on top of `symbol_refactor_preview` — deferred to a future pass.
+- **Tests:** 491 passed, 0 failed. `SecurityDiagnosticIntegrationTests.AnalyzerStatus_AfterSecurityCodeScanRemoval_ReportsAbsence` replaces the pre-v1.18 `AnalyzerStatus_Reports_SecurityCodeScan_Present` to match the removal. `SurfaceCatalogTests.McpToolMetadata_RequiredOnEveryTool_MatchesCatalogEntry` now enforces the attribute across all 144 tools.
+- **Docs:** `ai_docs/runtime.md` env-var table adds `ROSLYNMCP_PREVIEW_PERSIST_DIR`. `ai_docs/backlog.md` synced per the workflow contract.
+- **CHANGELOG correction:** v1.17.0 prose originally claimed 140 tools / +9 experimental; actual live count was 138 / +7. v1.17.0 entry rewritten in this PR to match reality; v1.18.0 count (138 → 144) is derived from the corrected baseline.
+
 ## [1.17.0] - 2026-04-14
 
-Top-10 backlog remediation pass v4 — **nine new tools**, one correctness gate, and a metadata-drift safeguard. Stable surface unchanged at 102; experimental lifts from 29 → 38.
+Top-10 backlog remediation pass v4 — **seven new tools**, one correctness gate, and a metadata-drift safeguard. Stable surface unchanged at 102; experimental lifts from 29 → 36 (live `server_info` confirms 138 tools post-ship; CHANGELOG initially miscounted as 140).
 
 ### Added
 
@@ -28,7 +60,7 @@ Top-10 backlog remediation pass v4 — **nine new tools**, one correctness gate,
 - **`IScaffoldingService` constructor signature:** now takes `IPreviewStore` to support the batch-mode composite preview. DI registration updated in `ServiceCollectionExtensions` and test infrastructure (`TestServiceContainer`).
 - **`IEditService` interface:** new `PreviewMultiFileTextEditsAsync` method; all existing implementations (plus `SuppressionServiceTests.StubEditService`) updated.
 - **`IDotnetCommandRunner` / `IGatedCommandExecutor`:** new overloads accept `IReadOnlyList<EarlyKillPattern>?`; default implementations delegate to the original overload so legacy callers keep compiling.
-- **Surface counts:** catalog bumps from 131 → 140 tools (102 stable / 38 experimental, +9 experimental). Stable tier unchanged in this release.
+- **Surface counts:** catalog bumps from 131 → 138 tools (102 stable / 36 experimental, +7 experimental). Stable tier unchanged in this release. (CHANGELOG originally claimed 140/+9; corrected post-ship after `server_info` reported the live count.)
 
 ### Maintenance
 

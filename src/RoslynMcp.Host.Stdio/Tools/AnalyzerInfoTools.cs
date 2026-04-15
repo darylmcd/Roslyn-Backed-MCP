@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -9,6 +10,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class AnalyzerInfoTools
 {
     [McpServerTool(Name = "list_analyzers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("analysis", "stable", true, false,
+        "List all loaded analyzers and their diagnostic rules."),
      Description(
         "List all loaded Roslyn analyzers and their supported diagnostic rules. Use to understand what analysis coverage exists and which diagnostic IDs are available for code_fix_preview or fix_all_preview. " +
         "Response JSON: analyzerCount = total distinct analyzer assemblies (unpaged); totalRules = sum of rules across all assemblies — use this for total rule count without paging the full list; offset/limit paginate the flattened rule list (not whole analyzers). " +

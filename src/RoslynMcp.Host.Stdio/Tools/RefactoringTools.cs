@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ public static class RefactoringTools
 {
 
     [McpServerTool(Name = "rename_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol. Prefer symbolHandle from enclosing_symbol or document_symbols for precise targeting — line/column can resolve an adjacent symbol on busy lines (tuple deconstruction, multiple declarations).")]
+    [McpToolMetadata("refactoring", "stable", true, false,
+        "Preview a rename refactoring.")]
     public static Task<string> PreviewRename(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -30,6 +33,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "rename_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed rename refactoring using its preview token. Rejects stale tokens if the workspace has changed.")]
+    [McpToolMetadata("refactoring", "stable", false, true,
+        "Apply a previously previewed rename refactoring.")]
     public static Task<string> ApplyRename(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -50,6 +55,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "organize_usings_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview organizing using directives in a file: removes unused usings and sorts them")]
+    [McpToolMetadata("refactoring", "stable", true, false,
+        "Preview using-directive cleanup.")]
     public static Task<string> PreviewOrganizeUsings(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -66,6 +73,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "organize_usings_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed organize usings operation using its preview token")]
+    [McpToolMetadata("refactoring", "stable", false, true,
+        "Apply a previously previewed organize-usings operation.")]
     public static Task<string> ApplyOrganizeUsings(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -86,6 +95,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "format_document_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview formatting a document: applies standard C# formatting rules")]
+    [McpToolMetadata("refactoring", "stable", true, false,
+        "Preview document formatting.")]
     public static Task<string> PreviewFormatDocument(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -102,6 +113,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "format_document_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed format document operation using its preview token")]
+    [McpToolMetadata("refactoring", "stable", false, true,
+        "Apply a previously previewed document format operation.")]
     public static Task<string> ApplyFormatDocument(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -122,6 +135,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "code_fix_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a curated code fix for a specific diagnostic occurrence")]
+    [McpToolMetadata("refactoring", "stable", true, false,
+        "Preview a curated diagnostic code fix.")]
     public static Task<string> PreviewCodeFix(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -142,6 +157,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "code_fix_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed code fix using its preview token")]
+    [McpToolMetadata("refactoring", "stable", false, true,
+        "Apply a previously previewed curated code fix.")]
     public static Task<string> ApplyCodeFix(
         IWorkspaceExecutionGate gate,
         IRefactoringService refactoringService,
@@ -162,6 +179,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "format_range_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "stable", true, false,
+        "Preview formatting a specific range within a document."),
      Description("Preview formatting a specific range within a document — more efficient than full-document formatting and produces smaller diffs")]
     public static Task<string> PreviewFormatRange(
         IWorkspaceExecutionGate gate,
@@ -183,6 +202,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "format_range_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", false, true,
+        "Apply a previously previewed range format operation."),
      Description("Apply a previously previewed range format operation using its preview token")]
     public static Task<string> ApplyFormatRange(
         IWorkspaceExecutionGate gate,
@@ -204,6 +225,8 @@ public static class RefactoringTools
     }
 
     [McpServerTool(Name = "format_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", true, false,
+        "Report documents that would change under Roslyn's formatter without applying edits (workspace-wide format-verify)."),
      Description("Report documents in the workspace that would change under Roslyn's formatter without applying any edits. Analogous to `dotnet format --verify-no-changes` but in-memory via Formatter.FormatAsync. Response: { checkedDocuments, violationCount, violations: [{ filePath, changeCount }], elapsedMs }. Optionally scoped to a single project via projectName.")]
     public static Task<string> FormatCheck(
         IWorkspaceExecutionGate gate,

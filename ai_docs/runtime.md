@@ -61,6 +61,7 @@ Optional overrides read at startup from `src/RoslynMcp.Host.Stdio/Program.cs`. V
 | `ROSLYNMCP_FAST_FAIL_FILE_LOCK` | When unset or `true`, `test_run` terminates the child `dotnet test` on the first MSB3027/MSB3021 line so the FailureEnvelope returns within ~200ms instead of ~10s. Set to `false` to restore pre-v1.17 behavior (wait for MSBuild's 10× retry loop). | `true` |
 | `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `PreviewStoreOptions.MaxEntries` | 20 |
 | `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `PreviewStoreOptions.TtlMinutes` | 5 minutes |
+| `ROSLYNMCP_PREVIEW_PERSIST_DIR` | `PreviewStoreOptions.PersistDirectory` — when set, composite preview tokens are written to disk so a separate `roslynmcp` process (e.g. an apply-phase sub-agent) can redeem them. Solution-backed previews stay in-memory only. | unset (in-memory only) |
 | `ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS` | `ExecutionGateOptions.RateLimitMaxRequests` | 120 |
 | `ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS` | `ExecutionGateOptions.RateLimitWindow` | 60 |
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `ExecutionGateOptions.RequestTimeout` | 120 |

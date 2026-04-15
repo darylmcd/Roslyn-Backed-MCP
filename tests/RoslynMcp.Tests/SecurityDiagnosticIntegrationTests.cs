@@ -144,15 +144,20 @@ public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task AnalyzerStatus_Reports_SecurityCodeScan_Present()
+    public async Task AnalyzerStatus_AfterSecurityCodeScanRemoval_ReportsAbsence()
     {
+        // Item 1 (v1.18, securitycodescan-currency): SecurityCodeScan.VS2019 was archived and
+        // removed from Directory.Build.props/.Packages.props. NetAnalyzers (CA-rule security
+        // checks) is the replacement. The status now reports SecurityCodeScan as absent;
+        // MissingRecommendedPackages may or may not include SCS depending on whether the
+        // analyzer-status service still treats it as recommended. The contract we lock in here
+        // is just that the analyzer-status surface reports a coherent state for a workspace
+        // that no longer ships SCS.
         var status = await SecurityService.GetAnalyzerStatusAsync(
             WorkspaceId, CancellationToken.None);
 
-        // SecurityCodeScan.VS2019 is installed via Directory.Build.props
-        Assert.IsTrue(status.SecurityCodeScanPresent);
-        Assert.AreEqual(0, status.MissingRecommendedPackages.Count,
-            "No recommended packages should be missing");
+        Assert.IsFalse(status.SecurityCodeScanPresent,
+            "SecurityCodeScan.VS2019 was removed in v1.18 — analyzer status must reflect that.");
     }
 
     // ── Catalog Tests ──

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -9,6 +10,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class FixAllTools
 {
     [McpServerTool(Name = "fix_all_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", true, false,
+        "Preview fixing ALL instances of a diagnostic across a scope."),
      Description("Preview applying a code fix to ALL instances of a diagnostic across a scope (document, project, or solution). Dramatically faster than fixing diagnostics one at a time. Use list_analyzers or project_diagnostics to find diagnostic IDs. When no provider or no FixAll support exists, the response includes guidanceMessage with next steps (e.g. organize_usings_preview for IDE0005).")]
     public static Task<string> PreviewFixAll(
         IWorkspaceExecutionGate gate,
@@ -29,6 +32,8 @@ public static class FixAllTools
     }
 
     [McpServerTool(Name = "fix_all_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", false, true,
+        "Apply a previously previewed fix-all operation."),
      Description("Apply a previously previewed fix-all operation using its preview token")]
     public static Task<string> ApplyFixAll(
         IWorkspaceExecutionGate gate,

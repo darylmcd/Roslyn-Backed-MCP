@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -11,6 +12,8 @@ public static class FileOperationTools
 {
 
     [McpServerTool(Name = "create_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("file-operations", "stable", true, false,
+        "Preview creating a new source file in a project."),
      Description("Preview creating a new source file inside a loaded workspace project. Returns the file diff and a preview token.")]
     public static Task<string> PreviewCreateFile(
         McpServer server,
@@ -32,6 +35,8 @@ public static class FileOperationTools
     }
 
     [McpServerTool(Name = "create_file_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("file-operations", "experimental", false, true,
+        "Apply a previously previewed file creation."),
      Description("Apply a previously previewed file creation using its preview token.")]
     public static Task<string> ApplyCreateFile(
         IWorkspaceExecutionGate gate,
@@ -53,6 +58,8 @@ public static class FileOperationTools
     }
 
     [McpServerTool(Name = "delete_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("file-operations", "stable", true, false,
+        "Preview deleting an existing source file."),
      Description("Preview deleting an existing source file from a loaded workspace. Returns the file diff and a preview token.")]
     public static Task<string> PreviewDeleteFile(
         McpServer server,
@@ -72,6 +79,8 @@ public static class FileOperationTools
     }
 
     [McpServerTool(Name = "delete_file_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("file-operations", "experimental", false, true,
+        "Apply a previously previewed file deletion."),
      Description("Apply a previously previewed file deletion using its preview token.")]
     public static Task<string> ApplyDeleteFile(
         IWorkspaceExecutionGate gate,
@@ -93,6 +102,8 @@ public static class FileOperationTools
     }
 
     [McpServerTool(Name = "move_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("file-operations", "stable", true, false,
+        "Preview moving a source file, optionally updating its namespace."),
      Description("Preview moving an existing source file, optionally updating its namespace to match the destination folder.")]
     public static Task<string> PreviewMoveFile(
         McpServer server,
@@ -119,6 +130,8 @@ public static class FileOperationTools
     }
 
     [McpServerTool(Name = "move_file_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("file-operations", "experimental", false, true,
+        "Apply a previously previewed file move."),
      Description("Apply a previously previewed file move using its preview token.")]
     public static Task<string> ApplyMoveFile(
         IWorkspaceExecutionGate gate,

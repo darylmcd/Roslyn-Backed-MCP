@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ public static class InterfaceExtractionTools
 {
 
     [McpServerTool(Name = "extract_interface_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", true, false,
+        "Preview extracting an interface from a concrete type within the same project. Optionally replaces concrete type references with the interface."),
      Description("Preview extracting an interface from a concrete type. Creates a new interface file with selected member signatures, adds it to the type's base list, and optionally replaces concrete type references with the interface.")]
     public static Task<string> PreviewExtractInterface(
         IWorkspaceExecutionGate gate,
@@ -32,6 +35,8 @@ public static class InterfaceExtractionTools
     }
 
     [McpServerTool(Name = "extract_interface_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", false, true,
+        "Apply a previewed interface extraction. Creates the interface file, updates the type's base list, and applies usage replacements if requested."),
      Description("Apply a previously previewed interface extraction")]
     public static Task<string> ApplyExtractInterface(
         IWorkspaceExecutionGate gate,

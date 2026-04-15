@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using McpServer = ModelContextProtocol.Server.McpServer;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -11,6 +12,8 @@ public static class SyntaxTools
 {
 
     [McpServerTool(Name = "get_syntax_tree", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("syntax", "stable", true, false,
+        "Return a structured syntax tree for a document or range."),
      Description("Get the syntax tree (AST) for a source file or a specific line range. Returns a hierarchical tree of syntax nodes with their kinds and positions.")]
     public static Task<string> GetSyntaxTree(
         McpServer server,

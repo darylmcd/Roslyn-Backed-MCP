@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -9,6 +10,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class UndoTools
 {
     [McpServerTool(Name = "revert_last_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("undo", "stable", false, true,
+        "Revert the most recent Roslyn solution-level apply operation for a workspace."),
      Description("Revert the most recent apply operation for a workspace, restoring the previous solution state. Roslyn preview/apply operations (renames, code fixes, format, organize usings) AND apply_text_edit / apply_multi_file_edit register for undo. File create/delete/move and project file mutations are not revertible. workspaceId is required.")]
     public static Task<string> RevertLastApply(
         IWorkspaceExecutionGate gate,

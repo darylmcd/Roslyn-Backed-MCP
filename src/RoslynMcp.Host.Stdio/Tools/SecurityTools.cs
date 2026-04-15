@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -11,6 +12,8 @@ public static class SecurityTools
 {
 
     [McpServerTool(Name = "security_diagnostics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get security-relevant diagnostics with OWASP categorization, severity classification, and fix hints. Filters the existing diagnostic pipeline to return only security findings.")]
+    [McpToolMetadata("security", "stable", true, false,
+        "Return security-relevant diagnostics with OWASP categorization and fix hints.")]
     public static Task<string> GetSecurityDiagnostics(
         IWorkspaceExecutionGate gate,
         ISecurityDiagnosticService securityService,
@@ -28,6 +31,8 @@ public static class SecurityTools
     }
 
     [McpServerTool(Name = "security_analyzer_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Check whether security analyzer packages are present in the workspace. Returns which analyzers are installed and recommends missing packages for improved security coverage.")]
+    [McpToolMetadata("security", "stable", true, false,
+        "Check which security analyzer packages are present and recommend missing ones.")]
     public static Task<string> GetSecurityAnalyzerStatus(
         IWorkspaceExecutionGate gate,
         ISecurityDiagnosticService securityService,
@@ -43,6 +48,8 @@ public static class SecurityTools
     }
 
     [McpServerTool(Name = "nuget_vulnerability_scan", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("security", "stable", true, false,
+        "Scan NuGet references for known CVEs using dotnet list package --vulnerable."),
      Description("Scan NuGet package references for known security vulnerabilities (CVEs) using the NuGet vulnerability database via dotnet list package. Returns affected packages with severity, advisory links, and project locations. Response includes IncludesTransitive: when false, results match direct references only — use includeTransitive=true (and CLI transitive flags) when you need full transitive CVE coverage. Requires .NET 8+ SDK with JSON output support.")]
     public static Task<string> ScanNuGetVulnerabilities(
         IWorkspaceExecutionGate gate,

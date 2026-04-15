@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ public static class AdvancedAnalysisTools
 {
 
     [McpServerTool(Name = "find_unused_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Find likely unused symbols."),
      Description("Find symbols (types, methods, properties, fields) with zero references across the solution — helps identify dead code. Each hit includes Confidence: high (private/internal), medium (public API), low (enum members, record/serialization-shaped properties, interface members — often false positives). By default skips convention-invoked shapes (EF ModelSnapshots, xUnit/NUnit/MSTest fixtures, ASP.NET middleware, SignalR Hubs, FluentValidation validators, Razor PageModels) — set excludeConventionInvoked=false to include them.")]
     public static Task<string> FindUnusedSymbols(
         IWorkspaceExecutionGate gate,
@@ -47,6 +50,8 @@ public static class AdvancedAnalysisTools
     }
 
     [McpServerTool(Name = "get_di_registrations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Inspect DI registration patterns in source."),
      Description("Scan the solution for dependency injection registrations (AddSingleton, AddScoped, AddTransient) and return the service-to-implementation mappings")]
     public static Task<string> GetDiRegistrations(
         IWorkspaceExecutionGate gate,
@@ -64,6 +69,8 @@ public static class AdvancedAnalysisTools
     }
 
     [McpServerTool(Name = "get_complexity_metrics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Compute cyclomatic complexity and related metrics."),
      Description("Calculate cyclomatic complexity, lines of code, nesting depth, parameter count, and an approximate maintainability index (0–100, higher is better) for methods in the workspace")]
     public static Task<string> GetComplexityMetrics(
         IWorkspaceExecutionGate gate,
@@ -85,6 +92,8 @@ public static class AdvancedAnalysisTools
     }
 
     [McpServerTool(Name = "find_reflection_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Find reflection-heavy call sites."),
      Description("Find all reflection API usage in the solution (typeof, Type.GetMethod, Activator.CreateInstance, Assembly.Load, etc.)")]
     public static Task<string> FindReflectionUsages(
         IWorkspaceExecutionGate gate,
@@ -104,6 +113,8 @@ public static class AdvancedAnalysisTools
     }
 
     [McpServerTool(Name = "get_namespace_dependencies", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Build namespace dependency graphs."),
      Description("Get the namespace dependency graph and detect circular namespace dependencies in the solution")]
     public static Task<string> GetNamespaceDependencies(
         IWorkspaceExecutionGate gate,
@@ -140,6 +151,8 @@ public static class AdvancedAnalysisTools
     }
 
     [McpServerTool(Name = "get_nuget_dependencies", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Inspect NuGet package references and versions."),
      Description("List all NuGet package references across projects in the workspace, including which projects use each package")]
     public static Task<string> GetNuGetDependencies(
         IWorkspaceExecutionGate gate,
@@ -156,6 +169,8 @@ public static class AdvancedAnalysisTools
     }
 
     [McpServerTool(Name = "semantic_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Run semantic search over symbols and declarations."),
      Description("Search for symbols by semantic criteria. Supports natural language queries like 'async methods returning Task<bool>', 'classes implementing IDisposable', 'methods with more than 5 parameters', 'static methods', 'virtual properties', 'generic classes', etc. async gotcha: the 'async' keyword maps to Roslyn's IMethodSymbol.IsAsync which REQUIRES the 'async' modifier on the declaration — a Task<T>-returning method that uses Task.FromResult(...) without 'async' is NOT matched. Query 'methods returning Task<bool>' without 'async' to match all Task-returning methods. Verbose-query fallback: long natural-language queries that fail structured parsing decompose into stopword-filtered tokens and match any symbol name containing a token; the response Debug payload shows the parsed tokens, applied predicates, and fallback strategy (structured/name-substring/token-or-match/none) so callers can see why a query matched or missed.")]
     public static Task<string> SemanticSearch(
         IWorkspaceExecutionGate gate,
