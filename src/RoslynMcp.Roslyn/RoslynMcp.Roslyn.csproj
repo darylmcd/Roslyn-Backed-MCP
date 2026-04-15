@@ -24,6 +24,17 @@
     <PackageReference Include="Microsoft.Build.Utilities.Core" ExcludeAssets="runtime" PrivateAssets="all" />
   </ItemGroup>
 
+  <!-- Security mitigation: override the transitive System.Security.Cryptography.Xml 8.0.0
+       dragged in via Microsoft.Build.* / Microsoft.CodeAnalysis.Workspaces.MSBuild. Version
+       8.0.0 carries two High-severity DoS advisories (GHSA-37gx-xxp4-5rgx, GHSA-w3x6-4m5h-cxqf,
+       CVE-2026-26171 on the EncryptedXml class); 10.0.6 is the patched release on the net10.0
+       line. This direct reference is needed because NuGet's central package management only
+       pins transitive-only dependencies when CentralPackageTransitivePinningEnabled is set,
+       which here collides with Microsoft.Build.Locator's MSBL001 runtime-asset constraint. -->
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.Xml" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\RoslynMcp.Core\RoslynMcp.Core.csproj" />
   </ItemGroup>

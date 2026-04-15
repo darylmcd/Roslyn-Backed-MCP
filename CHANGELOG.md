@@ -10,6 +10,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 Plugin-packaging fix — the marketplace install path now loads `roslyn-mcp` correctly on any repo. Zero server behaviour change; this is a pure plugin-loader / env-resolution hardening pass.
 
+### Security
+
+- **`System.Security.Cryptography.Xml` transitive bump to 10.0.6.** 8.0.0 was pulled in transitively via `Microsoft.Build.*` / `Microsoft.CodeAnalysis.Workspaces.MSBuild` and carries two High-severity DoS advisories against the `EncryptedXml` class (`GHSA-37gx-xxp4-5rgx`, `GHSA-w3x6-4m5h-cxqf`, `CVE-2026-26171`). Mitigated with a direct `PackageReference` in `RoslynMcp.Roslyn.csproj` — NuGet's central-package-management transitive pinning would have cascaded into an MSBL001 collision with `Microsoft.Build.Locator`'s runtime-asset constraint, so the surgical direct reference is the right scope. `dotnet list package --vulnerable --include-transitive` reports clean.
+
 ### Fixed
 
 - **Plugin-scope `.mcp.json` format (`dr-9-1-high-roslyn-plugin-mcp-does-not-connect-in-audit`, `mcp-connection-session-resilience`):** The `.mcp.json` file bundled inside the plugin now uses the top-level server-name shape (`{ "roslyn": {...} }`) that Claude Code's plugin loader expects, instead of the `{ "mcpServers": { "roslyn": {...} } }` wrapper that is only valid for project-scope and user-scope configs. Users installing via the marketplace no longer need a repo-local `.mcp.json` fallback for roslyn tools to register. The project-scope file at repo root (`/.mcp.json`) keeps the wrapper shape so dogfooding in this repo still works.
