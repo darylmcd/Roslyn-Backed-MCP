@@ -1,6 +1,31 @@
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
+/// Controls how <see cref="WorkspaceExecutionGate"/> responds when a workspace is marked stale
+/// by <see cref="RoslynMcp.Core.Services.IFileWatcherService"/> at tool-call time.
+/// </summary>
+public enum StalenessPolicy
+{
+    /// <summary>
+    /// Transparently reload the workspace before the tool runs. First stale call pays the
+    /// reload cost; subsequent calls see fresh data. Default.
+    /// </summary>
+    AutoReload = 0,
+
+    /// <summary>
+    /// Proceed against the stale snapshot but annotate the response envelope with a
+    /// <see cref="StaleWorkspaceWarning"/>. Useful when auto-reload latency is unacceptable
+    /// but the caller still wants an explicit signal.
+    /// </summary>
+    Warn = 1,
+
+    /// <summary>
+    /// Ignore the stale flag entirely. Restores pre-v1.17 behavior for callers that need it.
+    /// </summary>
+    Off = 2,
+}
+
+/// <summary>
 /// Configuration options for <see cref="WorkspaceExecutionGate"/> rate limiting and timeouts.
 /// </summary>
 public sealed class ExecutionGateOptions
@@ -25,4 +50,11 @@ public sealed class ExecutionGateOptions
     /// Set via <c>ROSLYNMCP_REQUEST_TIMEOUT_SECONDS</c>.
     /// </summary>
     public TimeSpan RequestTimeout { get; init; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// How the gate responds when a workspace is marked stale by the file watcher.
+    /// Defaults to <see cref="StalenessPolicy.AutoReload"/>.
+    /// Set via <c>ROSLYNMCP_ON_STALE</c> (values: <c>auto-reload</c>, <c>warn</c>, <c>off</c>).
+    /// </summary>
+    public StalenessPolicy OnStale { get; init; } = StalenessPolicy.AutoReload;
 }

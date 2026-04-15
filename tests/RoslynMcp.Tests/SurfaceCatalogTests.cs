@@ -33,6 +33,49 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
+    public void McpToolMetadata_WhenPresent_MatchesCatalogEntry()
+    {
+        // Item 3: silent drift between [McpServerTool] and ServerSurfaceCatalog.Tools is prevented
+        // by the name-parity test above. This assertion adds a second guardrail for tools that
+        // carry the new [McpToolMetadata] attribute: their category / tier / read-only /
+        // destructive / summary must agree with the hand-maintained catalog entry. New tools
+        // added after v1.17 are expected to use the attribute; legacy tools are exempt during
+        // the migration and surface through the name-parity check only.
+        var assembly = typeof(ServerTools).Assembly;
+        var catalogByName = ServerSurfaceCatalog.Tools.ToDictionary(
+            entry => entry.Name, entry => entry, StringComparer.Ordinal);
+
+        var drift = new List<string>();
+        foreach (var method in assembly.GetTypes()
+            .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)))
+        {
+            var serverTool = method.GetCustomAttribute<McpServerToolAttribute>();
+            var metadata = method.GetCustomAttribute<McpToolMetadataAttribute>();
+            if (serverTool is null || metadata is null) continue;
+
+            if (!catalogByName.TryGetValue(serverTool.Name!, out var entry))
+            {
+                drift.Add($"{serverTool.Name}: catalog entry missing");
+                continue;
+            }
+
+            if (!string.Equals(entry.Category, metadata.Category, StringComparison.Ordinal))
+                drift.Add($"{serverTool.Name}: Category mismatch (attr='{metadata.Category}', catalog='{entry.Category}')");
+            if (!string.Equals(entry.SupportTier, metadata.SupportTier, StringComparison.Ordinal))
+                drift.Add($"{serverTool.Name}: SupportTier mismatch (attr='{metadata.SupportTier}', catalog='{entry.SupportTier}')");
+            if (entry.ReadOnly != metadata.ReadOnly)
+                drift.Add($"{serverTool.Name}: ReadOnly mismatch (attr={metadata.ReadOnly}, catalog={entry.ReadOnly})");
+            if (entry.Destructive != metadata.Destructive)
+                drift.Add($"{serverTool.Name}: Destructive mismatch (attr={metadata.Destructive}, catalog={entry.Destructive})");
+            if (!string.Equals(entry.Summary, metadata.Summary, StringComparison.Ordinal))
+                drift.Add($"{serverTool.Name}: Summary mismatch");
+        }
+
+        Assert.AreEqual(0, drift.Count,
+            "McpToolMetadata drift detected:\n  " + string.Join("\n  ", drift));
+    }
+
+    [TestMethod]
     public async Task ServerInfo_IncludesSurfaceSupportSummary()
     {
         var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new NuGetVersionChecker(new HttpClient()));
@@ -76,6 +119,7 @@ public sealed class SurfaceCatalogTests
         public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
         public bool ContainsWorkspace(string workspaceId) => false;
+        public bool IsStale(string workspaceId) => false;
         public bool Close(string workspaceId) => throw new NotSupportedException();
         public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
         public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();

@@ -147,6 +147,8 @@ public class PerformanceBehaviorTests : SharedWorkspaceTestBase
 
         public bool ContainsWorkspace(string workspaceId) => !string.IsNullOrWhiteSpace(workspaceId);
 
+        public bool IsStale(string workspaceId) => false;
+
         public WorkspaceStatusDto GetStatus(string workspaceId) =>
             new(
                 WorkspaceId: workspaceId,

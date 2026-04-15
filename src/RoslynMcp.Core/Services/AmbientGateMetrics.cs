@@ -65,5 +65,14 @@ public sealed class GateMetricsBuilder
     /// </summary>
     public long ElapsedMs { get; set; }
 
-    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs);
+    /// <summary>
+    /// Set by <c>WorkspaceExecutionGate</c> when the workspace was stale at gate entry:
+    /// <c>auto-reloaded</c> or <c>warn</c>. <see langword="null"/> otherwise.
+    /// </summary>
+    public string? StaleAction { get; set; }
+
+    /// <summary>Milliseconds spent reloading when <see cref="StaleAction"/> is <c>auto-reloaded</c>.</summary>
+    public long? StaleReloadMs { get; set; }
+
+    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs);
 }

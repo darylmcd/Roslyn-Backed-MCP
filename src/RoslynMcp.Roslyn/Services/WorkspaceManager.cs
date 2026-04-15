@@ -74,6 +74,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public bool ContainsWorkspace(string workspaceId) =>
         !string.IsNullOrWhiteSpace(workspaceId) && _sessions.ContainsKey(workspaceId);
 
+    /// <inheritdoc />
+    public bool IsStale(string workspaceId) =>
+        ContainsWorkspace(workspaceId) && _fileWatcher.IsStale(workspaceId);
+
     /// <summary>
     /// Returns the first live session whose <see cref="WorkspaceSession.LoadedPath"/> matches
     /// the given full path (case-insensitive on Windows where paths are case-insensitive).

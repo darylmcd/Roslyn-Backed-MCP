@@ -132,6 +132,7 @@ public sealed class CompilationCacheTests
         public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
         public bool ContainsWorkspace(string workspaceId) => workspaceId == WorkspaceId;
+        public bool IsStale(string workspaceId) => false;
         public bool Close(string workspaceId) => throw new NotSupportedException();
         public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => throw new NotSupportedException();
         public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();

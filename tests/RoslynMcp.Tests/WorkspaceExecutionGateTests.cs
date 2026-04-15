@@ -350,6 +350,95 @@ public class WorkspaceExecutionGateTests
             gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None));
     }
 
+    // ---------- Item 1: staleness policy ----------
+
+    [TestMethod]
+    public async Task StalenessPolicy_AutoReload_TriggersReloadBeforeToolRuns()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        var staleSeen = false;
+        await gate.RunReadAsync(WorkspaceA, _ =>
+        {
+            staleSeen = manager.IsStale(WorkspaceA);
+            return Task.FromResult(0);
+        }, CancellationToken.None);
+
+        Assert.AreEqual(1, manager.ReloadCount, "Auto-reload should fire exactly once for a stale workspace.");
+        Assert.IsFalse(staleSeen, "Tool should observe a fresh workspace after auto-reload.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.AreEqual("auto-reloaded", metrics!.StaleAction);
+        Assert.IsNotNull(metrics.StaleReloadMs);
+    }
+
+    [TestMethod]
+    public async Task StalenessPolicy_Warn_DoesNotReloadButStampsMetrics()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.Warn },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        await gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
+
+        Assert.AreEqual(0, manager.ReloadCount, "Warn policy must not auto-reload.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.AreEqual("warn", metrics!.StaleAction);
+        Assert.IsNull(metrics.StaleReloadMs);
+    }
+
+    [TestMethod]
+    public async Task StalenessPolicy_Off_IsNoOp()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.Off },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        await gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
+
+        Assert.AreEqual(0, manager.ReloadCount, "Off policy must not auto-reload.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.IsNull(metrics!.StaleAction);
+    }
+
+    [TestMethod]
+    public async Task StalenessPolicy_FreshWorkspace_SkipsReloadAndMetricStamping()
+    {
+        var manager = new FakeGateWorkspaceManager();
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        await gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
+
+        Assert.AreEqual(0, manager.ReloadCount, "Fresh workspace should never trigger reload.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.IsNull(metrics!.StaleAction);
+    }
+
     private sealed class ConcurrencyTracker
     {
         private int _current;
@@ -368,7 +457,10 @@ public class WorkspaceExecutionGateTests
     private sealed class FakeGateWorkspaceManager : IWorkspaceManager
     {
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _removed = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _stale = new();
         private readonly bool _containsAny;
+
+        public int ReloadCount;
 
         public FakeGateWorkspaceManager(bool containsAny = true)
         {
@@ -377,16 +469,39 @@ public class WorkspaceExecutionGateTests
 
         public void RemoveWorkspace(string workspaceId) => _removed.TryAdd(workspaceId, 0);
 
+        public void MarkStale(string workspaceId) => _stale.TryAdd(workspaceId, 0);
+
+        public void ClearStaleFlag(string workspaceId) => _stale.TryRemove(workspaceId, out _);
+
         public event Action<string>? WorkspaceClosed { add { } remove { } }
 
         public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
+        {
+            Interlocked.Increment(ref ReloadCount);
+            ClearStaleFlag(workspaceId);
+            return Task.FromResult(new WorkspaceStatusDto(
+                WorkspaceId: workspaceId,
+                LoadedPath: null,
+                WorkspaceVersion: 1,
+                SnapshotToken: $"{workspaceId}:1",
+                LoadedAtUtc: DateTime.UtcNow,
+                ProjectCount: 0,
+                DocumentCount: 0,
+                Projects: [],
+                IsLoaded: true,
+                IsStale: false,
+                WorkspaceDiagnostics: []));
+        }
 
         public bool ContainsWorkspace(string workspaceId)
         {
             if (!_containsAny) return false;
             return !_removed.ContainsKey(workspaceId);
         }
+
+        public bool IsStale(string workspaceId) => _stale.ContainsKey(workspaceId);
 
         public bool Close(string workspaceId) { _removed.TryAdd(workspaceId, 0); return true; }
 

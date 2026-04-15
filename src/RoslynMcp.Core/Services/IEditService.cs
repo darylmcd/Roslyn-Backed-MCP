@@ -31,4 +31,17 @@ public interface IEditService
     /// <param name="skipSyntaxCheck">When <c>false</c> (default), each <c>.cs</c> file is parsed after edits; parser errors block that file's apply.</param>
     Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
         string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false);
+
+    /// <summary>
+    /// Item 5: previews a multi-file edit batch. Edits are simulated in-memory against the
+    /// current workspace snapshot, producing a per-file unified diff and a composite preview
+    /// token that can later be redeemed by <c>apply_composite_preview</c> to commit the batch
+    /// atomically. No disk writes occur at preview time.
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="fileEdits">The per-file edit batches to preview, in order.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <param name="skipSyntaxCheck">When <c>false</c> (default), each <c>.cs</c> file is parsed after edits; parser errors surface as a syntax-error warning on the preview and the preview token is not issued.</param>
+    Task<RefactoringPreviewDto> PreviewMultiFileTextEditsAsync(
+        string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false);
 }

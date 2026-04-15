@@ -196,7 +196,8 @@ internal sealed class TestServiceContainer
             CompositeApplyOrchestrator = new CompositeApplyOrchestrator(workspaceManager, compositePreviewStore, changeTracker),
             ScaffoldingService = new ScaffoldingService(
                 workspaceManager,
-                fileOperationService),
+                fileOperationService,
+                previewStore),
             DeadCodeService = new DeadCodeService(
                 workspaceManager,
                 previewStore),

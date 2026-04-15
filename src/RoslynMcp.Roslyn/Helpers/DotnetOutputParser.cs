@@ -138,16 +138,28 @@ internal static partial class DotnetOutputParser
         // Windows concurrent-testhost collision pattern documented in ai_docs/runtime.md
         // § *Known issues*. Classify as retryable so callers (or an outer retry loop)
         // can close the conflicting runner and try again without touching source.
-        var lockHit = MsBuildFileLockRegex().IsMatch(execution.StdErr)
+        //
+        // Item 4: prefer EarlyKillReason when present — it proves the runner saw the pattern
+        // mid-stream and killed the process, so the retry summary reflects the shortened
+        // timeline instead of the full 10×1s MSBuild loop.
+        var earlyKilledForFileLock = execution.EarlyKillReason is { Length: > 0 } reason
+            && reason.Contains("MSB3027", StringComparison.Ordinal);
+        var lockHit = earlyKilledForFileLock
+            || MsBuildFileLockRegex().IsMatch(execution.StdErr)
             || MsBuildFileLockRegex().IsMatch(execution.StdOut);
         if (lockHit)
         {
+            var summary = earlyKilledForFileLock
+                ? $"dotnet test was terminated early (after {execution.DurationMs}ms) because MSBuild reported an MSB3027/MSB3021 file lock. " +
+                  "Another process (testhost.exe, IDE test runner, or background build) is still holding the test assembly. " +
+                  "Close the conflicting runner and retry the same invocation."
+                : $"dotnet test exited with code {execution.ExitCode} due to an MSBuild file lock (MSB3027/MSB3021). " +
+                  "Another process (testhost.exe, IDE test runner, or background build) is still holding the test assembly. " +
+                  "Close the conflicting runner and retry the same invocation.";
             return new TestRunFailureEnvelopeDto(
                 ErrorKind: "FileLock",
                 IsRetryable: true,
-                Summary: $"dotnet test exited with code {execution.ExitCode} due to an MSBuild file lock (MSB3027/MSB3021). " +
-                         "Another process (testhost.exe, IDE test runner, or background build) is still holding the test assembly. " +
-                         "Close the conflicting runner and retry the same invocation.",
+                Summary: summary,
                 StdOutTail: stdOutTail,
                 StdErrTail: stdErrTail);
         }

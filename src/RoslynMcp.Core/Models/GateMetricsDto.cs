@@ -16,9 +16,19 @@ namespace RoslynMcp.Core.Models;
 /// <param name="HeldMs">Total milliseconds the per-workspace lock (or load gate) was held while the action executed.</param>
 /// <param name="HeartbeatCount">For long-running operations that emit progress heartbeats, the number of heartbeats observed. <see langword="null"/> when the tool does not emit progress.</param>
 /// <param name="ElapsedMs">Total wall-clock milliseconds the tool action took, including queue + lock-hold + service work. Lets concurrency audits compute speedup ratios from inside the agent loop without external instrumentation.</param>
+/// <param name="StaleAction">
+/// When the workspace was marked stale by the file watcher before this call ran, records the
+/// staleness policy that took effect: <c>auto-reloaded</c> (the gate reloaded the workspace
+/// transparently and the tool saw fresh state), <c>warn</c> (the tool ran against a stale
+/// snapshot with a structured warning attached), or <see langword="null"/> when the call was
+/// not stale or the policy was set to <c>off</c>.
+/// </param>
+/// <param name="StaleReloadMs">Milliseconds spent inside <c>workspace_reload</c> when <paramref name="StaleAction"/> is <c>auto-reloaded</c>. <see langword="null"/> otherwise.</param>
 public sealed record GateMetricsDto(
     string? GateMode,
     long QueuedMs,
     long HeldMs,
     int? HeartbeatCount,
-    long ElapsedMs = 0);
+    long ElapsedMs = 0,
+    string? StaleAction = null,
+    long? StaleReloadMs = null);

@@ -58,11 +58,13 @@ Optional overrides read at startup from `src/RoslynMcp.Host.Stdio/Program.cs`. V
 | `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `ValidationServiceOptions.TestTimeout` | 10 minutes |
 | `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `ValidationServiceOptions.VulnerabilityScanTimeout` | 2 minutes |
 | `ROSLYNMCP_MAX_RELATED_FILES` | `ValidationServiceOptions.MaxRelatedFiles` | 25 |
+| `ROSLYNMCP_FAST_FAIL_FILE_LOCK` | When unset or `true`, `test_run` terminates the child `dotnet test` on the first MSB3027/MSB3021 line so the FailureEnvelope returns within ~200ms instead of ~10s. Set to `false` to restore pre-v1.17 behavior (wait for MSBuild's 10× retry loop). | `true` |
 | `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `PreviewStoreOptions.MaxEntries` | 20 |
 | `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `PreviewStoreOptions.TtlMinutes` | 5 minutes |
 | `ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS` | `ExecutionGateOptions.RateLimitMaxRequests` | 120 |
 | `ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS` | `ExecutionGateOptions.RateLimitWindow` | 60 |
 | `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `ExecutionGateOptions.RequestTimeout` | 120 |
+| `ROSLYNMCP_ON_STALE` | `ExecutionGateOptions.OnStale` — stale-workspace policy (`auto-reload`, `warn`, `off`) | `auto-reload` |
 | `ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN` | `SecurityOptions.PathValidationFailOpen` | `false` (must parse as `true`/`false` to override) |
 | `ROSLYNMCP_SCRIPT_MAX_CONCURRENT` | `ScriptingServiceOptions.MaxConcurrentEvaluations` | 4 (FLAG-5C: max in-flight `evaluate_csharp` calls racing their hard deadline) |
 | `ROSLYNMCP_SCRIPT_SLOT_WAIT_SECONDS` | `ScriptingServiceOptions.ConcurrencySlotAcquireTimeoutSeconds` | 5 seconds |

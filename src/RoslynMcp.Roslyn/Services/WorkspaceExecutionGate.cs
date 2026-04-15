@@ -36,6 +36,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     private readonly TimeSpan _requestTimeout;
     private readonly int _rateLimitMax;
     private readonly TimeSpan _rateLimitWindow;
+    private readonly StalenessPolicy _onStale;
 
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly SemaphoreSlim _globalThrottle = new(MaxGlobalConcurrency, MaxGlobalConcurrency);
@@ -58,6 +59,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         _requestTimeout = options.RequestTimeout;
         _rateLimitMax = options.RateLimitMaxRequests;
         _rateLimitWindow = options.RateLimitWindow;
+        _onStale = options.OnStale;
     }
 
     public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
@@ -155,6 +157,11 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         timeoutCts.CancelAfter(_requestTimeout);
         var linked = timeoutCts.Token;
 
+        // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
+        // acquired, so an auto-reload path runs under the same load gate as explicit
+        // workspace_reload calls — the reload's own write-locking is handled by WorkspaceManager.
+        await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
+
         return await WithGlobalThrottle(async () =>
         {
             var rwLock = _rwLocks.Get(workspaceId);
@@ -173,6 +180,57 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => action(linked)).ConfigureAwait(false);
             }
         }, linked).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Item 1: enforces <see cref="ExecutionGateOptions.OnStale"/> when the underlying file
+    /// watcher has flagged the workspace as stale. AutoReload transparently reloads, Warn
+    /// leaves the snapshot alone but stamps <see cref="AmbientGateMetrics"/> so the response
+    /// envelope surfaces a structured signal, Off is a no-op.
+    /// </summary>
+    private async Task ApplyStalenessPolicyAsync(string workspaceId, CancellationToken ct)
+    {
+        if (_onStale == StalenessPolicy.Off)
+        {
+            return;
+        }
+
+        if (!_workspaceManager.IsStale(workspaceId))
+        {
+            return;
+        }
+
+        var metrics = AmbientGateMetrics.Current;
+
+        if (_onStale == StalenessPolicy.Warn)
+        {
+            if (metrics is not null)
+            {
+                metrics.StaleAction = "warn";
+            }
+            return;
+        }
+
+        // AutoReload: reload under the existing load-gate path so writes can't race with us.
+        var reloadStopwatch = Stopwatch.StartNew();
+        try
+        {
+            await _workspaceManager.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
+        }
+        catch (KeyNotFoundException)
+        {
+            // Workspace was closed between the stale check and the reload attempt — fall through
+            // and let the caller's ContainsWorkspace check throw a user-facing error.
+        }
+        finally
+        {
+            reloadStopwatch.Stop();
+            if (metrics is not null)
+            {
+                metrics.StaleAction = "auto-reloaded";
+                metrics.StaleReloadMs = reloadStopwatch.ElapsedMilliseconds;
+            }
+        }
     }
 
     /// <summary>
