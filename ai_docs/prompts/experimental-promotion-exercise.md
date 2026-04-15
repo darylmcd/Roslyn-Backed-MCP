@@ -77,11 +77,11 @@ These rules apply to **every** experimental tool call. Capture findings in real 
 
 Exercise each refactoring preview/apply pair. For each pair: preview → inspect diff → apply → `compile_check` → verify with a cross-tool probe → revert (if needed to keep workspace clean for the next pair).
 
-v1.17/v1.18 additions (preview-only — no apply siblings yet):
-- `restructure_preview` (v1.17) — syntax-tree pattern rewrite with `__name__` placeholders (use `preview_multi_file_edit_apply` to commit).
+v1.17/v1.18 additions (preview-only — no dedicated apply siblings; all four tokens live in `IPreviewStore` and are redeemed via `preview_multi_file_edit_apply`):
+- `restructure_preview` (v1.17) — syntax-tree pattern rewrite with `__name__` placeholders.
 - `replace_string_literals_preview` (v1.17) — string-literal → named constant.
 - `change_signature_preview` (v1.18) — add/remove/rename parameter with callsite rewrite (reordering is not supported — agents should stage remove + add via `symbol_refactor_preview`).
-- `symbol_refactor_preview` (v1.18) — composite chain of `rename` + `edit` + `restructure` operations; commit via `apply_composite_preview`.
+- `symbol_refactor_preview` (v1.18) — composite chain of `rename` + `edit` + `restructure` operations; commit via `preview_multi_file_edit_apply` (NOT `apply_composite_preview` — that reads a different store used by `extract_and_wire_interface_preview`, `class_split_preview`, `migrate_package_preview`).
 
 #### 1a. Fix All (`fix_all_preview`, `fix_all_apply`)
 1. Call `project_diagnostics` to find a diagnostic ID with multiple occurrences (e.g. IDE0005, CS8600).
@@ -148,16 +148,17 @@ v1.17/v1.18 additions (preview-only — no apply siblings yet):
 #### 1j. Change Signature (`change_signature_preview`, v1.18+)
 1. Pick a method with multiple callsites (use `callers_callees` or `find_references`).
 2. Exercise `op=add`, `op=remove`, and `op=rename` in separate preview calls. For `op=add` verify the default value is spliced at every callsite (and named-arg callers got a named argument).
-3. Apply the preview via `apply_multi_file_edit` (or `preview_multi_file_edit_apply` on the returned token).
+3. Apply the preview via `preview_multi_file_edit_apply` on the returned token (the token lives in the shared `IPreviewStore`; do not attempt to redeem it via `apply_composite_preview` — that uses a different store).
 4. Call `compile_check`.
 5. Call `find_references` on the renamed parameter — stale references? (Parameter rename updates callsites only when the caller uses named args; positional callers need no rewrite.)
 6. Negative probe: call with `op=reorder` — verify the error lists the valid ops (`add`, `remove`, `rename`) and points at `symbol_refactor_preview` for reorder workflows (FAIL if it silently succeeds).
+7. **Known limitation** — backlog row `change-signature-preview-callsite-summary` (P3): the preview's `changes[].unifiedDiff` currently enumerates the declaration-owner file only; callsite diffs are not surfaced in the preview response even though the apply correctly rewrites every callsite. Verify the apply by running `compile_check` and `find_references` post-apply rather than by trusting the preview diff alone. Do NOT re-raise as a new finding.
 
 #### 1k. Composite Symbol Refactor (`symbol_refactor_preview`, v1.18+)
 1. Pick a symbol change that legitimately needs multiple op kinds (e.g. rename + structural rewrite on the renamed symbol's callsites + a multi-file edit patching a companion DTO).
 2. Build an `operations` array with at most 25 entries — each entry sets exactly one of `kind=rename`/`edit`/`restructure`. Max 500 affected files per token.
 3. Call `symbol_refactor_preview`. Verify each operation sees the rewritten state from earlier ops in the returned diff.
-4. Commit via `apply_composite_preview` (destructive apply despite the name).
+4. Commit via `preview_multi_file_edit_apply` on the returned token. **Do not use `apply_composite_preview`** — that tool reads from `ICompositePreviewStore` (mutation-based, used by `extract_and_wire_interface_preview`, `class_split_preview`, `migrate_package_preview`), whereas `symbol_refactor_preview` stores into `IPreviewStore` (Solution-snapshot-based). Passing a `symbol_refactor_preview` token to `apply_composite_preview` will fail with "Preview token is invalid, expired, or stale".
 5. Call `compile_check`.
 
 **Checkpoint:** All 14 experimental refactoring tools (10 legacy + 4 v1.17/v1.18) exercised? Each preview/apply pair round-tripped cleanly? `compile_check` passed after each apply? `change_signature_preview` `op=reorder` returns a clear unsupported-op error that points at `symbol_refactor_preview`? `symbol_refactor_preview` enforces the 25-op / 500-file cap?
@@ -245,7 +246,7 @@ Exercise each project mutation preview, then apply at least one reversible mutat
 #### 4c. Scaffold Test Batch (`scaffold_test_batch_preview`, v1.17+)
 1. Pick 3–5 target types in the same test project. Call `scaffold_test_batch_preview(workspaceId, testProjectName, targets=[{targetTypeName, targetMethodName?}, …], testFramework="auto")`.
 2. Verify the response returns one composite preview token covering every generated file — not N tokens.
-3. Commit via `apply_composite_preview` (or the dedicated apply sibling if one has landed by the time you run this).
+3. Commit via `preview_multi_file_edit_apply` on the returned token. **Do not use `apply_composite_preview`** — `scaffold_test_batch_preview` stores into `IPreviewStore` (Solution-snapshot-based), not the mutation-based `ICompositePreviewStore` that `apply_composite_preview` consumes.
 4. Call `test_discover` to verify every scaffolded test is discoverable.
 5. Call `compile_check`.
 
