@@ -1081,19 +1081,20 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `security_analyzer_status` | S | RO | |
 | `nuget_vulnerability_scan` | S | RO | Requires .NET 8+ SDK. |
 
-#### `validation` (8 stable, 0 experimental)
+#### `validation` (8 stable, 1 experimental — +1 experimental via v1.18)
 | Tool | Tier | RO/D | Notes |
 |------|------|------|-------|
 | `build_workspace` | S | RO | dotnet build wrapper. |
 | `build_project` | S | RO | |
 | `test_discover` | S | RO | Paginated (BUG-007). |
-| `test_run` | S | RO | Backlog: `test-run-failure-envelope`. |
+| `test_run` | S | RO | v1.17+ fast-fails on MSB3027/MSB3021 file lock (opt out via `ROSLYNMCP_FAST_FAIL_FILE_LOCK=false`). Backlog: `test-run-failure-envelope`. |
 | `test_related` | S | RO | |
 | `test_related_files` | S | RO | |
 | `test_coverage` | S | RO | Requires coverlet.collector. |
 | `compile_check` | S | RO | Paginated v1.7+; `emitValidation=true` forces PE emit. |
+| `validate_workspace` | E | RO | New v1.18.0 — one-call composite: `compile_check` + error-severity diagnostics + `test_related_files` (+ optional `test_run`). Emits `overallStatus = clean / compile-error / analyzer-error / test-failure`. |
 
-#### `refactoring` (13 stable, 10 experimental)
+#### `refactoring` (13 stable, 14 experimental — +4 experimental via v1.17/v1.18)
 | Tool | Tier | RO/D | Pair | Notes |
 |------|------|------|------|-------|
 | `rename_preview` | S | RO | — | |
@@ -1119,6 +1120,10 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `extract_method_preview` | S | RO | — | Promoted v1.16.0; custom DataFlowAnalysis-based extraction (v1.10.0+). |
 | `extract_method_apply` | E | D | `extract_method_preview` | Revertible. |
 | `format_check` | E | RO | — | New v1.16.0 — solution-wide format verification (no apply). |
+| `restructure_preview` | E | RO | — | New v1.17.0 — syntax-tree pattern-based find-and-replace using `__name__` placeholder captures. |
+| `replace_string_literals_preview` | E | RO | — | New v1.17.0 — rewrites string literals in argument/initializer/attribute-argument/return positions to a constant; skips XML doc, interpolated-string holes, `nameof()`. |
+| `change_signature_preview` | E | RO | — | New v1.18.0 — add/remove/rename parameter with callsite rewrite (`op=reorder` reserved for a future release). |
+| `symbol_refactor_preview` | E | RO | — | New v1.18.0 — composite preview chaining `rename` + `edit` + `restructure` operations in order; max 25 ops / 500 affected files per token. |
 
 #### `cross-project-refactoring` (0 stable, 3 experimental)
 | Tool | Tier | RO/D | Notes |
@@ -1163,13 +1168,14 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `evaluate_msbuild_items` | S | RO | Promoted after 3/4 audit exercises with zero failures. |
 | `get_msbuild_properties` | S | RO | Promoted v1.16.0; filter with `propertyNameFilter` / `includedNames`. |
 
-#### `scaffolding` (1 stable, 3 experimental)
+#### `scaffolding` (1 stable, 4 experimental — +1 experimental via v1.17)
 | Tool | Tier | RO/D | Pair | Notes |
 |------|------|------|------|-------|
-| `scaffold_type_preview` | E | RO | — | v1.8+ emits `internal sealed class T`. |
+| `scaffold_type_preview` | E | RO | — | v1.8+ emits `internal sealed class T`. v1.17+ auto-implements interface members as `NotImplementedException` stubs when `baseType`/`interfaces` resolve to an interface (opt out via `implementInterface: false`). |
 | `scaffold_type_apply` | E | D | `scaffold_type_preview` | Not revertible. |
 | `scaffold_test_preview` | S | RO | — | Promoted v1.16.0; auto-detects test framework. |
 | `scaffold_test_apply` | E | D | `scaffold_test_preview` | Not revertible. |
+| `scaffold_test_batch_preview` | E | RO | — | New v1.17.0 — batch wrapper around `scaffold_test_preview`, reuses one compilation cache across N targets; one composite preview token covers every generated file. |
 
 #### `dead-code` (1 stable, 2 experimental)
 | Tool | Tier | RO/D | Pair | Notes |
@@ -1178,12 +1184,14 @@ The `Category` column below is the exact value emitted by `roslyn://server/catal
 | `remove_dead_code_apply` | E | D | `remove_dead_code_preview` | Revertible. |
 | `remove_interface_member_preview` | E | RO | — | Specialized dead-code preview for interface methods. |
 
-#### `editing` (2 stable, 1 experimental)
+#### `editing` (2 stable, 3 experimental — +2 experimental via v1.17)
 | Tool | Tier | RO/D | Notes |
 |------|------|------|-------|
 | `apply_text_edit` | S | D | Promoted v1.16.0; revertible via single-slot undo. |
 | `apply_multi_file_edit` | E | D | Revertible; batched snapshot. |
 | `add_pragma_suppression` | S | D | Promoted v1.16.0; direct write; not a preview-based flow. |
+| `preview_multi_file_edit` | E | RO | New v1.17.0 — simulates multi-file edits against a single Solution snapshot, returns per-file unified diffs + preview token. |
+| `preview_multi_file_edit_apply` | E | D | New v1.17.0 — redeems the `preview_multi_file_edit` token; rejects stale tokens if workspace moved. |
 
 #### `configuration` (3 stable, 0 experimental)
 | Tool | Tier | RO/D | Notes |
