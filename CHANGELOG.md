@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.18.1] - 2026-04-15
+
+Plugin-packaging fix — the marketplace install path now loads `roslyn-mcp` correctly on any repo. Zero server behaviour change; this is a pure plugin-loader / env-resolution hardening pass.
+
+### Fixed
+
+- **Plugin-scope `.mcp.json` format (`dr-9-1-high-roslyn-plugin-mcp-does-not-connect-in-audit`, `mcp-connection-session-resilience`):** The `.mcp.json` file bundled inside the plugin now uses the top-level server-name shape (`{ "roslyn": {...} }`) that Claude Code's plugin loader expects, instead of the `{ "mcpServers": { "roslyn": {...} } }` wrapper that is only valid for project-scope and user-scope configs. Users installing via the marketplace no longer need a repo-local `.mcp.json` fallback for roslyn tools to register. The project-scope file at repo root (`/.mcp.json`) keeps the wrapper shape so dogfooding in this repo still works.
+- **Unresolved `${user_config.*}` env placeholders (`\u00a75.4` of the task brief):** When a user hasn't configured a Claude Code plugin user-config entry, Claude Code passes the literal `${user_config.KEY}` string as the env var value rather than substituting or omitting it. `Program.cs` now routes every `ROSLYNMCP_*` read through a single `ReadEnv(name)` helper that detects the literal placeholder shape, logs one line to stderr naming the key, and falls back to the in-source default. Previously, every `int.TryParse` / `bool.TryParse` call silently rejected the literal with no signal; now the behaviour is explicit. Supersedes the `${user_config.*}` substitution-is-broken hypothesis from the jellyfin audit report.
+
+### Changed
+
+- **Plugin manifest `mcpServers` path:** `.claude-plugin/plugin.json` now points to `./.claude-plugin/mcp.json` (new file, plugin-scope shape) instead of `./.mcp.json` (repo-root file, project-scope shape). Two files, two roles — no duplication of concerns.
+- **Env-var binding path in `Program.cs`:** All 22 `Environment.GetEnvironmentVariable("ROSLYNMCP_*")` call sites now go through `ReadEnv(name)`. Code shape unchanged; defensive filter transparent to all valid values.
+
+### Maintenance
+
+- **Tests:** Full suite re-run, all pass.
+- **Backlog:** Closed `dr-9-1-high-roslyn-plugin-mcp-does-not-connect-in-audit`. Updated `mcp-connection-session-resilience` to strike the `${user_config.*}` substitution narrative (now known to be a loader-skip issue, not a resolution-pipeline issue). Retired the brief `ai_docs/tasks/fix-plugin-mcp-json-format.md` — per archive policy, completed task briefs are not retained in-tree; recover from git history if needed.
+- **Jellyfin audit report:** Added a top-of-file supersede note pointing to this release as the root-cause fix.
+
 ## [1.18.0] - 2026-04-14
 
 Top-10 backlog remediation pass v5 — **four new tools**, one new prompt, one new skill, two service extensions, a security-analyzer cleanup, and the full v1.17 catalog-attribute migration. Stable surface unchanged at 102; experimental lifts from 36 → 40 (live `server_info` confirms 142 tools post-ship; CHANGELOG initially miscounted as 144).
