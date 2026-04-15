@@ -285,5 +285,56 @@ public static partial class RoslynPrompts
             return [PromptMessageBuilder.CreateErrorMessage("guided_extract_interface", ex)];
         }
     }
+
+    [McpServerPrompt(Name = "refactor_loop")]
+    [Description("Generate a prompt that walks an agent through the standard refactor → preview → apply-with-verify → validate_workspace loop using v1.17/v1.18 primitives. Mirrors the `refactor-loop` Claude Code skill so non-Claude clients have the same workflow.")]
+    public static IEnumerable<PromptMessage> RefactorLoop(
+        [Description("Natural-language refactor intent (e.g. 'rename GetUser to GetUserAsync and propagate to mappers').")] string intent,
+        [Description("The workspace session identifier")] string workspaceId)
+    {
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
+                Execute the following refactor against workspace `{workspaceId}` using the standard four-stage loop. Do not skip stages.
+
+                **Intent:** {intent}
+
+                ## Stage 1 — Pick the primitive
+                Map the intent to ONE entry-point tool:
+                - Single-symbol rename → `rename_preview`
+                - Method extraction → `extract_method_preview`
+                - Pattern rewrite → `restructure_preview` (with `__name__` placeholders)
+                - Magic strings → `replace_string_literals_preview`
+                - Multi-file ad-hoc edits → `preview_multi_file_edit`
+                - Type organization → `move_type_to_file_preview` / `extract_type_preview` / `extract_interface_preview` / `split_class_preview`
+                - Cross-project move → `move_type_to_project_preview`
+                - Multi-step composite → `symbol_refactor_preview`
+
+                If unsure, run `symbol_impact_sweep` first to surface references + switch-exhaustiveness diagnostics + mapper callsites.
+
+                ## Stage 2 — Preview
+                Call the chosen `*_preview` tool. Capture the `previewToken`. Show the per-file diff to the user. If `warnings: [...]` present, summarize and ask before proceeding.
+
+                ## Stage 3 — Apply with verify
+                Always prefer `apply_with_verify(previewToken)` — it runs the apply, then `compile_check`, and auto-reverts on new errors. Surface the resulting `status` (`applied` / `rolled_back` / `applied_with_errors`).
+
+                ## Stage 4 — Validate
+                Run `validate_workspace(workspaceId, runTests: true)`. Inspect `overallStatus`:
+                - `clean` — done.
+                - `compile-error` / `analyzer-error` — read `errorDiagnostics` and decide next action.
+                - `test-failure` — read `testRunResult.failures` and decide next action.
+
+                ## Stage 5 — Optional repeat
+                If the intent implies more work, return to Stage 1 with the next sub-intent. Use `workspace_changes` to keep a session-wide ledger.
+
+                ## Failure modes
+                - Empty preview → primitive doesn't match; try `symbol_impact_sweep`.
+                - `apply_with_verify` rolls back → read errors before retrying.
+                - Stale workspace → v1.17 `ROSLYNMCP_ON_STALE=auto-reload` handles this transparently; check `_meta.staleAction`.
+
+                Output a tight summary after each iteration: what changed, validation result, next suggestion.
+                """)
+        ];
+    }
 }
 

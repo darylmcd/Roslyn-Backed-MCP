@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ public static class CohesionAnalysisTools
 {
 
     [McpServerTool(Name = "get_cohesion_metrics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("analysis", "stable", true, false,
+        "Measure type cohesion via LCOM4 metrics, identifying independent method clusters."),
      Description("Measure type cohesion via LCOM4 metrics. Identifies independent method clusters that share no state — a score > 1 suggests the type has multiple responsibilities and should be split.")]
     public static Task<string> GetCohesionMetrics(
         IWorkspaceExecutionGate gate,
@@ -52,6 +55,8 @@ public static class CohesionAnalysisTools
          filePath.EndsWith("Test.cs", StringComparison.OrdinalIgnoreCase));
 
     [McpServerTool(Name = "find_shared_members", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("analysis", "stable", true, false,
+        "Find private members used by multiple public methods to inform type extractions."),
      Description("Find private members of a type that are referenced by multiple public methods. Helps plan type extractions by identifying shared dependencies that would need duplication or extraction.")]
     public static Task<string> FindSharedMembers(
         IWorkspaceExecutionGate gate,

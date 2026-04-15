@@ -4,6 +4,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using McpServer = ModelContextProtocol.Server.McpServer;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -12,6 +13,8 @@ public static class SymbolTools
 {
 
     [McpServerTool(Name = "symbol_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search for symbols (types, methods, properties, fields) by name pattern across the loaded workspace. Matching is substring (case-insensitive) — pass a bare fragment like 'Animal' to find 'AnimalService', 'IAnimal', 'CatAnimal', etc. Wildcards (*, ?) and regex metacharacters are NOT interpreted; they are matched literally.")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Search symbols by name across the workspace.")]
     public static Task<string> SearchSymbols(
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
@@ -32,6 +35,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "symbol_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information about a symbol at a specific file location")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Inspect the symbol at a source location.")]
     public static Task<string> GetSymbolInfo(
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
@@ -54,6 +59,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "go_to_definition", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the definition location(s) of a symbol at the given position")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Navigate to the symbol definition.")]
     public static Task<string> GoToDefinition(
         IWorkspaceExecutionGate gate,
         ISymbolNavigationService symbolNavigationService,
@@ -75,6 +82,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution. Response shape: { count, totalCount, hasMore, offset, limit, items } where items is the paged LocationDto list.")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Find references to a symbol.")]
     public static Task<string> FindReferences(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -108,6 +117,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all implementations of an interface or abstract member at the given position. Response shape: { count, items }. IMPORTANT: when using filePath/line/column, the column must point at the symbol identifier token (e.g., the interface name 'IMyService'), not the start of the line — otherwise no symbol can be resolved and the result is empty. For interface lookups, prefer metadataName (fully qualified) when you do not have an exact cursor position.")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Find implementations of an interface or abstract member.")]
     public static Task<string> FindImplementations(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -129,6 +140,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get all symbol declarations (types, methods, properties, fields) in a document as a hierarchical tree")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "List declared symbols in a document.")]
     public static Task<string> GetDocumentSymbols(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -147,6 +160,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member. Response shape: { count, items }. Auto-promotes to the virtual/interface root: override chains, explicit interface implementations, and implicit interface implementations are normalized before the search so callers can anchor at the implementation or declaration site and get the same result set.")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Find overrides of a virtual or abstract member.")]
     public static Task<string> FindOverrides(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -167,6 +182,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "find_base_members", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find base or implemented members for an override or implementation")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Find base or implemented members.")]
     public static Task<string> FindBaseMembers(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -187,6 +204,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "member_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a summary of base members and overrides for a symbol")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Summarize base and override relationships for a member.")]
     public static Task<string> GetMemberHierarchy(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,
@@ -207,6 +226,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "symbol_signature_help", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get display signature, parameters, return type, and documentation for the symbol resolved at the exact line/column (or handle/metadata name). When the caret lands on a method's return-type token (or a property's type token), the result is auto-promoted to the enclosing member by default — disable with preferDeclaringMember=false to inspect the type token directly.")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Return symbol signature and documentation.")]
     public static Task<string> GetSignatureHelp(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,
@@ -229,6 +250,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "symbol_relationships", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a combined summary of definitions, references, implementations, base members, and overrides. Auto-promotes a caret on a member's type token to the enclosing member by default (see preferDeclaringMember).")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Combine definition, reference, base, and implementation relationships.")]
     public static Task<string> GetSymbolRelationships(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,
@@ -283,6 +306,8 @@ public static class SymbolTools
         "Find references for multiple symbols in one call (max 50). Returns { count, results } where each result has key, referenceCount, references, and optional error. " +
         "Parameter name must be `symbols` (array of objects). Do NOT pass symbolHandles or a JSON string array. " +
         "Each element must set exactly one of: symbolHandle, metadataName, or filePath+line+column.")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Resolve references for multiple symbols in one request.")]
     public static Task<string> FindReferencesBulk(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -300,6 +325,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "find_property_writes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all locations where a property is assigned to (written), classified as object-initializer writes (safe for init) or post-construction assignments")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Find property write sites and classify object-initializer writes.")]
     public static Task<string> FindPropertyWrites(
         IWorkspaceExecutionGate gate,
         IMutationAnalysisService mutationAnalysisService,
@@ -331,6 +358,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "enclosing_symbol", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the enclosing symbol (method, property, type) at a given file position — useful for understanding the context of a cursor position")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Return the enclosing symbol for a source position.")]
     public static Task<string> GetEnclosingSymbol(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -352,6 +381,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "goto_type_definition", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Navigate to the type definition of a symbol (e.g., for a variable, go to its type's declaration rather than the variable's declaration)")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Navigate from a symbol usage to its type definition.")]
     public static Task<string> GoToTypeDefinition(
         IWorkspaceExecutionGate gate,
         ISymbolNavigationService symbolNavigationService,
@@ -373,6 +404,8 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file. Use filterText for case-insensitive prefix narrowing and maxItems for paging (UX-007). The response IsIncomplete flag indicates that the filtered list is longer than maxItems — raise maxItems or refine filterText to see the rest. InlineDescription may be empty when Roslyn does not supply inline text for an item.")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Return IntelliSense-style completion items at a position.")]
     public static Task<string> GetCompletions(
         McpServer server,
         IWorkspaceExecutionGate gate,

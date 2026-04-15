@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -9,6 +10,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class SuggestionTools
 {
     [McpServerTool(Name = "suggest_refactorings", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Analyze the workspace and return ranked refactoring suggestions based on complexity, cohesion (LCOM4), and unused symbol detection. Each suggestion includes severity, target, and recommended tool sequence.")]
     [Description("Analyze the workspace and return ranked refactoring suggestions based on complexity metrics, cohesion analysis (LCOM4), and unused symbol detection. Each suggestion includes severity, description, target symbol location, and a recommended tool sequence.")]
     public static Task<string> SuggestRefactorings(
         IWorkspaceExecutionGate gate,

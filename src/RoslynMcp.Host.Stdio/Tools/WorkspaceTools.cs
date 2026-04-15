@@ -5,6 +5,7 @@ using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -13,6 +14,8 @@ public static class WorkspaceTools
 {
 
     [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 8) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error.")]
+    [McpToolMetadata("workspace", "stable", false, false,
+        "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session.")]
     public static Task<string> LoadWorkspace(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -37,6 +40,8 @@ public static class WorkspaceTools
     }
 
     [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Reload the currently loaded workspace to pick up file changes")]
+    [McpToolMetadata("workspace", "stable", false, false,
+        "Reload an existing workspace session from disk.")]
     public static Task<string> ReloadWorkspace(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -57,6 +62,8 @@ public static class WorkspaceTools
     }
 
     [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources")]
+    [McpToolMetadata("workspace", "stable", false, true,
+        "Close a loaded workspace session and release resources.")]
     public static Task<string> CloseWorkspace(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -83,6 +90,8 @@ public static class WorkspaceTools
     }
 
     [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions. Returns a lean summary per workspace by default — pass verbose=true for the full per-project tree of every workspace.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "List active workspace sessions.")]
     public static Task<string> ListWorkspaces(
         IWorkspaceManager workspace,
         [Description("When true, return the full per-project tree and workspace diagnostics for each workspace. Default false returns only counts and load state.")] bool verbose = false)
@@ -104,6 +113,8 @@ public static class WorkspaceTools
         "Cheap health check after workspace_load — call this first before compile_check or heavy tools. " +
         "Default (verbose=false) returns summary JSON: isReady, isStale, workspaceErrorCount, restoreHint, solutionFileName, counts. " +
         "Pass verbose=true for the full per-project tree and workspace diagnostics.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "Inspect status, diagnostics, and stale-state information for a workspace.")]
     public static Task<string> GetWorkspaceStatus(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -123,6 +134,8 @@ public static class WorkspaceTools
 
     [McpServerTool(Name = "workspace_health", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Alias for workspace_status with verbose=false — same summary JSON (isReady, restoreHint, solutionFileName, error counts). Use for agent bootstrap right after workspace_load.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "Lean workspace readiness summary (alias of workspace_status verbose=false).")]
     public static Task<string> GetWorkspaceHealth(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -131,6 +144,8 @@ public static class WorkspaceTools
         GetWorkspaceStatus(gate, workspace, workspaceId, verbose: false, ct);
 
     [McpServerTool(Name = "project_graph", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the project dependency graph and project metadata for a loaded workspace")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "Inspect project and dependency structure.")]
     public static Task<string> GetProjectGraph(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -146,6 +161,8 @@ public static class WorkspaceTools
     }
 
     [McpServerTool(Name = "source_generated_documents", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List source-generated documents for a workspace or specific project")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "List source-generated documents for a workspace or project.")]
     public static Task<string> GetSourceGeneratedDocuments(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -162,6 +179,8 @@ public static class WorkspaceTools
     }
 
     [McpServerTool(Name = "get_source_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Read source text of a document in the loaded workspace. By default returns the full file. Pass startLine/endLine (1-based, inclusive) to slice. Output is capped at maxChars (default 65536); set Truncated=true marker indicates the response was clipped — re-request a narrower line range. Always returns RequestedStartLine/RequestedEndLine, ReturnedStartLine/ReturnedEndLine, TotalLineCount so callers can verify the slice.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "Read source text as the Roslyn workspace currently sees it (may differ from disk if workspace hasn't been reloaded).")]
     public static Task<string> GetSourceText(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -242,6 +261,8 @@ public static class WorkspaceTools
     }
 
     [McpServerTool(Name = "workspace_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "List all mutations applied to a workspace during this session, with descriptions, affected files, tool names, and timestamps.")]
     [Description("List all mutations applied to a workspace during this session. Returns an ordered list of changes with descriptions, affected files, tool names, and timestamps. Use to understand what has been modified since workspace_load.")]
     public static Task<string> GetWorkspaceChanges(
         IWorkspaceExecutionGate gate,

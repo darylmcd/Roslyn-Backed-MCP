@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -11,6 +12,8 @@ public static class OrchestrationTools
 {
 
     [McpServerTool(Name = "migrate_package_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("orchestration", "experimental", true, false,
+        "Preview migrating a package across affected projects."),
      Description("Preview migrating one package dependency to another across all affected projects in the loaded workspace.")]
     public static Task<string> PreviewMigratePackage(
         IWorkspaceExecutionGate gate,
@@ -30,6 +33,8 @@ public static class OrchestrationTools
     }
 
     [McpServerTool(Name = "split_class_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("orchestration", "experimental", true, false,
+        "Preview splitting a class into a new partial file."),
      Description("Preview splitting a type into a new partial class file by moving selected members.")]
     public static Task<string> PreviewSplitClass(
         IWorkspaceExecutionGate gate,
@@ -50,6 +55,8 @@ public static class OrchestrationTools
     }
 
     [McpServerTool(Name = "extract_and_wire_interface_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("orchestration", "experimental", true, false,
+        "Preview extracting an interface and updating DI registrations."),
      Description("Preview extracting an interface and optionally rewriting DI registrations to use it.")]
     public static Task<string> PreviewExtractAndWireInterface(
         IWorkspaceExecutionGate gate,
@@ -81,6 +88,8 @@ public static class OrchestrationTools
     }
 
     [McpServerTool(Name = "apply_composite_preview", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("orchestration", "experimental", false, true,
+        "Apply a previously previewed orchestration operation."),
      Description("Apply a previously previewed orchestration operation using its preview token.")]
     public static Task<string> ApplyCompositePreview(
         IWorkspaceExecutionGate gate,

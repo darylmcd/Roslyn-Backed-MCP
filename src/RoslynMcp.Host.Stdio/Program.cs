@@ -120,6 +120,9 @@ static PreviewStoreOptions BindPreviewStoreOptions()
         opts = opts with { MaxEntries = max };
     if (int.TryParse(Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_TTL_MINUTES"), out var ttl) && ttl > 0)
         opts = opts with { TtlMinutes = ttl };
+    var persistDir = Environment.GetEnvironmentVariable("ROSLYNMCP_PREVIEW_PERSIST_DIR");
+    if (!string.IsNullOrWhiteSpace(persistDir))
+        opts = opts with { PersistDirectory = persistDir };
     return opts;
 }
 

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ public static class BulkRefactoringTools
 {
 
     [McpServerTool(Name = "bulk_replace_type_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("refactoring", "stable", true, false,
+        "Preview replacing all references to one type with another across the solution. Scope can be 'parameters', 'fields', or 'all'. Useful after extracting an interface."),
      Description("Preview replacing all references to one type with another across the solution. Useful after extracting an interface to update all consumers. Scope can be 'parameters', 'fields', or 'all'.")]
     public static Task<string> PreviewBulkReplaceType(
         IWorkspaceExecutionGate gate,
@@ -32,6 +35,8 @@ public static class BulkRefactoringTools
     }
 
     [McpServerTool(Name = "bulk_replace_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", false, true,
+        "Apply a previewed bulk type replacement. Updates all matching type references and adds using directives where needed."),
      Description("Apply a previously previewed bulk type replacement")]
     public static Task<string> ApplyBulkReplaceType(
         IWorkspaceExecutionGate gate,

@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class CompileCheckTools
 {
     [McpServerTool(Name = "compile_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("validation", "stable", true, false,
+        "Fast in-memory compilation check without invoking dotnet build."),
      Description("Fast in-memory compilation check using the Roslyn Compilation API — validates compilability without invoking dotnet build. Much faster for quick feedback loops during code generation. Note: only reports compiler diagnostics (CS*); analyzer diagnostics (CA*, IDE*) are excluded — use project_diagnostics for those. The emitValidation option performs a real PE emit (not metadata-only) and is typically 50–100× slower than GetDiagnostics-only on large solutions, BUT only when the workspace has its NuGet packages restored — on a workspace with unresolved metadata references the emit phase short-circuits and the wall-clock cost matches GetDiagnostics. If you observe identical timing between emitValidation=true and emitValidation=false, run dotnet restore on the workspace first. Results are paginated — use offset/limit to page through large diagnostic sets, and severity/file filters to narrow the scope.")]
     public static Task<string> CompileCheck(
         IWorkspaceExecutionGate gate,

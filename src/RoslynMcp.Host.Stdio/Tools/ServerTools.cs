@@ -13,6 +13,8 @@ public static class ServerTools
 {
 
     [McpServerTool(Name = "server_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("server", "stable", true, false,
+        "Inspect server capabilities, versions, and support tiers."),
      Description("Get server version, capabilities, runtime information, and loaded workspace count. workspaceCount reflects sessions at call time and may briefly lag if invoked in parallel with or immediately after workspace_load; use workspace_list for authoritative session enumeration. Prompts tier note: the response carries prompts.stable and prompts.experimental from the live catalog; all currently-exposed prompts are experimental until promoted, so stable=0 with a nonzero experimental count is expected — it is NOT a missing-surface bug.")]
     public static Task<string> GetServerInfo(
         IWorkspaceManager workspace,

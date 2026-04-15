@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -9,6 +10,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class SuppressionTools
 {
     [McpServerTool(Name = "set_diagnostic_severity", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("configuration", "stable", false, false,
+        "Set dotnet_diagnostic severity in .editorconfig."),
      Description("Set dotnet_diagnostic.&lt;id&gt;.severity in .editorconfig for C# files (warning, suggestion, silent, none), scoped from a source file path.")]
     public static Task<string> SetDiagnosticSeverity(
         IWorkspaceExecutionGate gate,
@@ -29,6 +32,8 @@ public static class SuppressionTools
     }
 
     [McpServerTool(Name = "add_pragma_suppression", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("editing", "stable", false, false,
+        "Insert a #pragma warning disable before a line."),
      Description("Insert #pragma warning disable &lt;id&gt; immediately before the given 1-based line in a source file.")]
     public static Task<string> AddPragmaSuppression(
         IWorkspaceExecutionGate gate,

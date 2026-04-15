@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -10,6 +11,8 @@ public static class TypeMoveTools
 {
 
     [McpServerTool(Name = "move_type_to_file_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("refactoring", "stable", true, false,
+        "Preview moving a type declaration into its own file."),
      Description("Preview moving a type declaration from a multi-type file into its own dedicated file within the same project")]
     public static Task<string> PreviewMoveTypeToFile(
         IWorkspaceExecutionGate gate,
@@ -29,6 +32,8 @@ public static class TypeMoveTools
     }
 
     [McpServerTool(Name = "move_type_to_file_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", false, true,
+        "Apply a previewed move-type-to-file refactoring. Removes the type from the source file and creates its own dedicated file."),
      Description("Apply a previously previewed move-type-to-file refactoring")]
     public static Task<string> ApplyMoveTypeToFile(
         IWorkspaceExecutionGate gate,

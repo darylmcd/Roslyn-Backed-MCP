@@ -12,6 +12,8 @@ public static class ScaffoldingTools
 {
 
     [McpServerTool(Name = "scaffold_type_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("scaffolding", "experimental", true, false,
+        "Preview scaffolding a new type file in a project."),
      Description("Preview scaffolding a new type file in a project. When baseType or interfaces resolve to an interface and implementInterface is true (default), interface members are emitted as NotImplementedException stubs so the scaffolded class compiles against the interface contract.")]
     public static Task<string> PreviewScaffoldType(
         IWorkspaceExecutionGate gate,
@@ -65,6 +67,8 @@ public static class ScaffoldingTools
     }
 
     [McpServerTool(Name = "scaffold_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("scaffolding", "experimental", false, true,
+        "Apply a previously previewed type scaffolding operation."),
      Description("Apply a previously previewed type scaffolding operation.")]
     public static Task<string> ApplyScaffoldType(
         IWorkspaceExecutionGate gate,
@@ -86,6 +90,8 @@ public static class ScaffoldingTools
     }
 
     [McpServerTool(Name = "scaffold_test_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("scaffolding", "stable", true, false,
+        "Preview scaffolding a new test file (MSTest, xUnit, or NUnit; auto-detect or specify testFramework)."),
      Description("Preview scaffolding a new test file for a target type. Supports MSTest, xUnit, and NUnit (use testFramework or auto-detect from the test project's package references).")]
     public static Task<string> PreviewScaffoldTest(
         IWorkspaceExecutionGate gate,
@@ -109,6 +115,8 @@ public static class ScaffoldingTools
     }
 
     [McpServerTool(Name = "scaffold_test_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("scaffolding", "experimental", false, true,
+        "Apply a previously previewed test scaffolding operation."),
      Description("Apply a previously previewed test scaffolding operation.")]
     public static Task<string> ApplyScaffoldTest(
         IWorkspaceExecutionGate gate,

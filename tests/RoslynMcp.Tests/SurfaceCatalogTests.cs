@@ -33,25 +33,32 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
-    public void McpToolMetadata_WhenPresent_MatchesCatalogEntry()
+    public void McpToolMetadata_RequiredOnEveryTool_MatchesCatalogEntry()
     {
-        // Item 3: silent drift between [McpServerTool] and ServerSurfaceCatalog.Tools is prevented
-        // by the name-parity test above. This assertion adds a second guardrail for tools that
-        // carry the new [McpToolMetadata] attribute: their category / tier / read-only /
-        // destructive / summary must agree with the hand-maintained catalog entry. New tools
-        // added after v1.17 are expected to use the attribute; legacy tools are exempt during
-        // the migration and surface through the name-parity check only.
+        // Item 2 (v1.18): every [McpServerTool] method MUST carry [McpToolMetadata]. The
+        // attribute's category/tier/readOnly/destructive/summary must match the
+        // hand-maintained ServerSurfaceCatalog.Tools entry. Together these two checks make
+        // it structurally impossible for a new tool to ship with stale or missing catalog
+        // metadata: the name-parity test catches missing catalog rows, and this test
+        // catches missing attributes plus any field-level drift.
         var assembly = typeof(ServerTools).Assembly;
         var catalogByName = ServerSurfaceCatalog.Tools.ToDictionary(
             entry => entry.Name, entry => entry, StringComparer.Ordinal);
 
         var drift = new List<string>();
+        var missingAttribute = new List<string>();
         foreach (var method in assembly.GetTypes()
             .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)))
         {
             var serverTool = method.GetCustomAttribute<McpServerToolAttribute>();
+            if (serverTool is null) continue;
+
             var metadata = method.GetCustomAttribute<McpToolMetadataAttribute>();
-            if (serverTool is null || metadata is null) continue;
+            if (metadata is null)
+            {
+                missingAttribute.Add($"{serverTool.Name}: declared on {method.DeclaringType?.FullName}.{method.Name} but lacks [McpToolMetadata]");
+                continue;
+            }
 
             if (!catalogByName.TryGetValue(serverTool.Name!, out var entry))
             {
@@ -71,6 +78,8 @@ public sealed class SurfaceCatalogTests
                 drift.Add($"{serverTool.Name}: Summary mismatch");
         }
 
+        Assert.AreEqual(0, missingAttribute.Count,
+            "Tools missing [McpToolMetadata]:\n  " + string.Join("\n  ", missingAttribute));
         Assert.AreEqual(0, drift.Count,
             "McpToolMetadata drift detected:\n  " + string.Join("\n  ", drift));
     }

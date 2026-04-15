@@ -3,6 +3,7 @@ using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -11,6 +12,8 @@ public static class ValidationTools
 {
 
     [McpServerTool(Name = "build_workspace", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet build for the loaded workspace and return structured diagnostics and execution output")]
+    [McpToolMetadata("validation", "stable", false, false,
+        "Run dotnet build for the loaded workspace.")]
     public static Task<string> BuildWorkspace(
         IWorkspaceExecutionGate gate,
         IBuildService buildService,
@@ -29,6 +32,8 @@ public static class ValidationTools
     }
 
     [McpServerTool(Name = "build_project", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet build for a specific project in the loaded workspace and return structured diagnostics and execution output")]
+    [McpToolMetadata("validation", "stable", false, false,
+        "Run dotnet build for a selected project.")]
     public static Task<string> BuildProject(
         IWorkspaceExecutionGate gate,
         IBuildService buildService,
@@ -45,6 +50,8 @@ public static class ValidationTools
     }
 
     [McpServerTool(Name = "test_discover", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Discover tests from test projects in the loaded workspace. Results are paginated to keep responses within MCP context budgets — large suites should be filtered with projectName and/or nameFilter (BUG-007). The response includes returnedCount/totalCount/hasMore so you can tell when more pages exist.")]
+    [McpToolMetadata("validation", "stable", true, false,
+        "Discover tests in the loaded workspace.")]
     public static Task<string> DiscoverTests(
         IWorkspaceExecutionGate gate,
         ITestDiscoveryService testDiscoveryService,
@@ -136,6 +143,8 @@ public static class ValidationTools
     }
 
     [McpServerTool(Name = "test_run", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Run dotnet test for the loaded workspace or a specific test project and return structured test results. When the run cannot produce TRX output (MSBuild file lock, build failure, timeout, unknown exit) the result carries a populated FailureEnvelope with ErrorKind ('FileLock'|'BuildFailure'|'Timeout'|'Unknown'), IsRetryable, Summary, and tails of StdOut/StdErr — instead of throwing a bare invocation error. Windows note: MSB3027/MSB3021 file-lock failures typically mean another testhost.exe (IDE test runner, background build) is holding the test assembly; the envelope classifies these as retryable so callers can close the conflicting runner and retry without touching source.")]
+    [McpToolMetadata("validation", "stable", false, false,
+        "Run dotnet test for the workspace or a selected project.")]
     public static Task<string> RunTests(
         IWorkspaceExecutionGate gate,
         ITestRunnerService testRunnerService,
@@ -156,6 +165,8 @@ public static class ValidationTools
     }
 
     [McpServerTool(Name = "test_related", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find likely related tests for a symbol by source location or symbol handle. Results use heuristic name matching (substring of the symbol name in test methods/classes) and may not be exhaustive. An empty result set usually means: (a) the symbol's simple name doesn't appear as a substring in any test method/class name (common for private/internal symbols), (b) the target symbol is a local/anonymous construct that isn't reachable by name, or (c) tests reference the symbol only through an interface and no test name contains that interface's name. For file-based impact, use `test_related_files` instead.")]
+    [McpToolMetadata("validation", "stable", true, false,
+        "Find tests related to a symbol.")]
     public static Task<string> FindRelatedTests(
         IWorkspaceExecutionGate gate,
         ITestDiscoveryService testDiscoveryService,
@@ -176,6 +187,8 @@ public static class ValidationTools
     }
 
     [McpServerTool(Name = "test_related_files", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Given a list of changed source file paths, find all related tests across the solution and return a combined dotnet test filter expression. Results use heuristic name matching and may not be exhaustive.")]
+    [McpToolMetadata("validation", "stable", true, false,
+        "Find tests related to a set of changed files.")]
     public static Task<string> FindRelatedTestsForFiles(
         IWorkspaceExecutionGate gate,
         ITestDiscoveryService testDiscoveryService,
