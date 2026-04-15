@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [1.18.0] - 2026-04-14
 
-Top-10 backlog remediation pass v5 — **six new tools**, one new prompt, one new skill, two service extensions, a security-analyzer cleanup, and the full v1.17 catalog-attribute migration. Stable surface unchanged at 102; experimental lifts from 36 → 42.
+Top-10 backlog remediation pass v5 — **four new tools**, one new prompt, one new skill, two service extensions, a security-analyzer cleanup, and the full v1.17 catalog-attribute migration. Stable surface unchanged at 102; experimental lifts from 36 → 40 (live `server_info` confirms 142 tools post-ship; CHANGELOG initially miscounted as 144).
 
 ### Removed
 
@@ -29,14 +29,14 @@ Top-10 backlog remediation pass v5 — **six new tools**, one new prompt, one ne
 - **`symbol_impact_sweep` persistence-layer findings (`mapper-snapshot-dto-symmetry-check`):** When the swept symbol is a property, the response gains a `persistenceLayerFindings` array. Each entry pairs the domain property with its sibling DTO record (matched by `JsonPropertyName` / `DataMember` attribute or by property name), then checks mapper-suffixed types for `To*` + `From*` symmetry. Asymmetric pairs — e.g. `ToSnapshot` writes the property but `FromSnapshot` never reads it — are flagged.
 - **Composite preview token disk persistence (`preview-token-cross-process-handoff`):** New env var `ROSLYNMCP_PREVIEW_PERSIST_DIR` activates opt-in on-disk storage for `CompositePreviewStore` tokens under `{dir}/{workspaceVersion}/{token}.json` with atomic-write + TTL-by-mtime semantics. When unset (default), behavior is in-memory only as before. Only composite preview tokens are portable cross-process — full Roslyn-`Solution` previews stored in `IPreviewStore` remain single-process.
 - **`IEditService` / `IChangeTracker` consumption:** `WorkspaceValidationService` reads `IChangeTracker.GetChanges()` when the caller doesn't pass an explicit `changedFilePaths` list, so the post-edit validation bundle auto-scopes to the session's tracked mutations.
-- **Surface counts:** catalog bumps from 138 → 144 tools (102 stable / 42 experimental, +6 experimental). Prompts bump from 19 → 20 (new `refactor_loop`). Skills bump from 19 → 20 (new `refactor-loop`).
+- **Surface counts:** catalog bumps from 138 → 142 tools (102 stable / 40 experimental, +4 experimental). The 4 new tools: `get_prompt_text`, `validate_workspace`, `change_signature_preview`, `symbol_refactor_preview`. `preview-token-cross-process-handoff` shipped as an env var (no new tool surface) and `roslyn-mcp-guided-refactor-flow` shipped as a prompt + skill. Prompts bump from 19 → 20 (new `refactor_loop`). Skills bump from 19 → 20 (new `refactor-loop`). (CHANGELOG originally claimed 144/+6; corrected post-ship after `server_info` reported the live count.)
 
 ### Maintenance
 
 - **Backlog:** Closed 10 rows in this pass plus the `securitycodescan-currency` sidecar (`roslyn-mcp-workspace-staleness`… wait, those closed in v1.17). v1.18 closes: `securitycodescan-currency`, `tool-catalog-full-attribute-migration`, `change-signature-add-parameter-cross-callsite`, `prompt-tools-exposable-to-agents`, `roslyn-mcp-post-edit-validation-bundle`, `preview-token-cross-process-handoff`, `agent-symbol-refactor-unified-preview`, `roslyn-mcp-guided-refactor-flow`, `test-mock-drift-new-interface-usage`, `mapper-snapshot-dto-symmetry-check`. The `composite-split-service-di-registration` P3 row is not closed but is now implementable on top of `symbol_refactor_preview` — deferred to a future pass.
 - **Tests:** 491 passed, 0 failed. `SecurityDiagnosticIntegrationTests.AnalyzerStatus_AfterSecurityCodeScanRemoval_ReportsAbsence` replaces the pre-v1.18 `AnalyzerStatus_Reports_SecurityCodeScan_Present` to match the removal. `SurfaceCatalogTests.McpToolMetadata_RequiredOnEveryTool_MatchesCatalogEntry` now enforces the attribute across all 144 tools.
 - **Docs:** `ai_docs/runtime.md` env-var table adds `ROSLYNMCP_PREVIEW_PERSIST_DIR`. `ai_docs/backlog.md` synced per the workflow contract.
-- **CHANGELOG correction:** v1.17.0 prose originally claimed 140 tools / +9 experimental; actual live count was 138 / +7. v1.17.0 entry rewritten in this PR to match reality; v1.18.0 count (138 → 144) is derived from the corrected baseline.
+- **CHANGELOG correction:** v1.17.0 prose originally claimed 140 tools / +9 experimental; actual live count was 138 / +7. v1.17.0 entry rewritten in this PR to match reality; v1.18.0 count is 138 → 142 (+4) derived from the corrected baseline, after a second post-ship correction when `server_info` revealed a similar over-count.
 
 ## [1.17.0] - 2026-04-14
 
