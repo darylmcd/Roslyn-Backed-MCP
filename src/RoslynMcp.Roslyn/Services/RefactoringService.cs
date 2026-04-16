@@ -65,7 +65,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Rename '{symbol.Name}' to '{newName}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         // No-op warning: caller asked to rename a symbol to its own current name. C# identifiers
         // are case-sensitive, so a Foo→foo rename is real and must NOT be flagged.
@@ -82,7 +82,10 @@ public sealed class RefactoringService : IRefactoringService
     /// Applies a previously previewed refactoring. Validates the preview token against the current
     /// workspace version to reject stale changes.
     /// </summary>
-    public async Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct)
+    public Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct)
+        => ApplyRefactoringAsync(previewToken, force: false, ct);
+
+    public async Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, bool force, CancellationToken ct)
     {
         var entry = _previewStore.Retrieve(previewToken);
         if (entry is null)
@@ -92,7 +95,7 @@ public sealed class RefactoringService : IRefactoringService
                 "Preview token is invalid, expired, or stale because the workspace changed since the preview was generated. Please create a new preview.");
         }
 
-        var (workspaceId, modifiedSolution, workspaceVersion, description) = entry.Value;
+        var (workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated) = entry.Value;
         if (_workspace.GetCurrentVersion(workspaceId) != workspaceVersion)
         {
             _previewStore.Invalidate(previewToken);
@@ -100,6 +103,21 @@ public sealed class RefactoringService : IRefactoringService
                 false,
                 [],
                 "Preview token is stale because the target workspace changed. Please create a new preview.");
+        }
+
+        // Item #4 — severity-high-output-would-ship-as-is-and-fail-code and the
+        // "preview truncated while apply still mutates disk" concern. The agent reviewing
+        // the preview could not see all the changes the apply will make; refusing the
+        // blind apply by default makes the corruption path explicit. Callers that deliberately
+        // want to apply without full visibility pass `force: true` in the apply tool schema.
+        if (diffTruncated && !force)
+        {
+            return new ApplyResultDto(
+                false,
+                [],
+                "Refusing to apply a truncated preview — the diff was capped for payload-size reasons so the reviewed preview is not a complete picture of the disk state the apply will produce. " +
+                "Options: (1) re-run the preview with a narrower scope (smaller file set or more targeted symbol) to fit under the diff cap; " +
+                "(2) if you understand the tradeoff and want to proceed without full visibility, call the apply tool again with `force: true`.");
         }
 
         var currentSolution = _workspace.GetCurrentSolution(workspaceId);
@@ -216,7 +234,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Organize usings in '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -236,7 +254,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Format document '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -286,7 +304,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Format range in '{Path.GetFileName(filePath)}' (lines {startLine}-{endLine})";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -381,7 +399,7 @@ public sealed class RefactoringService : IRefactoringService
         var newSolution = document.WithSyntaxRoot(newRoot).Project.Solution;
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Apply code fix '{normalizedFixId}' for CS8019 in '{Path.GetFileName(document.FilePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }

@@ -61,6 +61,7 @@ public sealed class ExtractMethodService : IExtractMethodService
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Extract {statementsInSelection.Count} statement(s) into method '{methodName}'";
         var token = _previewStore.Store(
+            // Item #4 — pass changes so the store knows whether the diff was truncated.
             workspaceId, newSolution,
             _workspace.GetCurrentVersion(workspaceId), description);
 

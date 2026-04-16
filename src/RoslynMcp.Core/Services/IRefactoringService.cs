@@ -25,6 +25,16 @@ public interface IRefactoringService
     Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct);
 
     /// <summary>
+    /// Item #4 — apply a preview with an explicit <paramref name="force"/> override.
+    /// When the stored preview's diff was truncated and <paramref name="force"/> is
+    /// <see langword="false"/> (the default for every *_apply tool), the apply is
+    /// refused with an actionable error message. Pass <see langword="true"/> to
+    /// apply without full visibility — the agent accepts responsibility for the
+    /// unreviewed changes.
+    /// </summary>
+    Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, bool force, CancellationToken ct);
+
+    /// <summary>
     /// Previews removing unused <c>using</c> directives and sorting the remaining ones for the given file.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier.</param>

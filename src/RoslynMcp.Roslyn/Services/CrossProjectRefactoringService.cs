@@ -101,7 +101,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Move type '{typeName}' to project '{targetProject.Name}'";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
@@ -183,7 +183,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
@@ -256,7 +256,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and update constructor dependencies";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 

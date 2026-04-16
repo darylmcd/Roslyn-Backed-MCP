@@ -97,7 +97,7 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // Compute diff
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Extract {membersToExtract.Count} member(s) from '{sourceTypeName}' into new type '{newTypeName}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
     }
