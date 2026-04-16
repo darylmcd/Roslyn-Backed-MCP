@@ -66,8 +66,15 @@ internal static class ReferenceLocationMaterializer
     /// Convenience overload for callers (e.g., <c>ReferenceService</c>) that don't need the
     /// surrounding syntax/semantic data.
     /// </summary>
+    /// <param name="summary">
+    /// When <c>true</c>, drops <see cref="LocationDto.PreviewText"/> to keep responses small
+    /// for high-fan-out symbols. Container/classification fields stay populated.
+    /// (find-references-preview-text-inflates-response — Jellyfin stress test 2026-04-15
+    /// Phase 7: <c>find_references(IUserManager)</c> returned 154 KB on 233 refs because
+    /// per-ref preview text dominated the payload.)
+    /// </param>
     public static async Task<IReadOnlyList<LocationDto>> MaterializeDtosAsync(
-        IReadOnlyList<ReferenceLocation> locations, CancellationToken ct)
+        IReadOnlyList<ReferenceLocation> locations, CancellationToken ct, bool summary = false)
     {
         var rich = await MaterializeAsync(locations, ct).ConfigureAwait(false);
         if (rich.Count == 0) return [];
@@ -75,7 +82,9 @@ internal static class ReferenceLocationMaterializer
         var dtos = new LocationDto[rich.Count];
         for (var i = 0; i < rich.Count; i++)
         {
-            dtos[i] = rich[i].Dto;
+            dtos[i] = summary
+                ? rich[i].Dto with { PreviewText = null }
+                : rich[i].Dto;
         }
         return dtos;
     }
