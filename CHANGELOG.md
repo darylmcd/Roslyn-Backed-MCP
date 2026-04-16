@@ -6,9 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.19.0] - 2026-04-16
+
 Top-10 remediation pass v6 — ten correctness and safety fixes targeting the classes of bugs flagged across the 2026-04-15 experimental-promotion audits (firewall-analyzer, IT-Chat-Bot, NetworkDocumentation, SampleSolution) and the v1.18.2 Jellyfin stress test. Closes **19 backlog rows** (7 P2 · 6 P3 · 6 P4). Shipped as PR #162 — one commit per item, plus a baseline plan commit and a final backlog-sync commit.
 
-Backlog sweep 2026-04-16 (plan: `ai_docs/plans/20260416T054040Z_backlog-sweep/plan.md`) — additional initiatives shipped one PR each, listed below.
+Backlog sweep 2026-04-16 (plan: `ai_docs/plans/20260416T054040Z_backlog-sweep/plan.md`) — 14 additional initiatives shipped one PR each (PRs #165–#178), closing 17 more backlog rows (11 P3 · 6 P4). Summary-mode additions across 4 high-fan-out tools, tighter readiness contract, structured parameter-binding errors, and Windows-path resource normalization dominate the feature surface.
 
 ### Fixed
 
