@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-16T21:30:00Z
+**updated_at:** 2026-04-16T22:00:00Z
 
 ## Agent contract
 
@@ -80,7 +80,6 @@ Within P4, rows are **alphabetical by `id`**.
 | `dr-9-4-returns-for-some-ide-series-diagnostic-ids` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140302Z_networkdocumentation_experimental-promotion.md - ### 9.4 `fix_all_preview` returns `guidanceMessage: null` for some IDE-series diagnostic IDs |
 | `dr-9-5-documented-error-prior-session-ticket-draft-cont` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.5 [documented-error] Prior-session ticket draft contained a flawed "whole cohort failed" narrative |
 | `dr-9-5-returns-silent-empty-result-for-info-severity-di` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140403Z_itchatbot_experimental-promotion.md - ### 9.5 `fix_all_preview` returns silent empty result for Info-severity diagnostics without a fix provider |
-| `dr-9-5-strips-the-blank-line-between-namespace-and-clas` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.5 `extract_type_preview` strips the blank line between namespace and class |
 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.6 `extract_interface_preview` emits `base list` continuation on a new line instead of inline |
 | `dr-9-6-preview-token-issued-in-turn-t-invalidated-by-a` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140302Z_networkdocumentation_experimental-promotion.md - ### 9.6 Preview-token issued in turn T invalidated by a sibling `*_apply` in the same turn |
 | `dr-9-7-only-partially-normalizes-whitespace` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.7 `format_range_preview` only partially normalizes whitespace |

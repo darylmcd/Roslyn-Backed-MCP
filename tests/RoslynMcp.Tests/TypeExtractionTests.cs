@@ -179,4 +179,79 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             WorkspaceManager.Close(wsId);
         }
     }
+
+    [TestMethod]
+    public async Task ExtractType_PreservesBlankLineBetweenNamespaceAndClass()
+    {
+        // Regression for `dr-9-5-strips-the-blank-line-between-namespace-and-clas` (P4):
+        // `extract_type_preview` generated the new type file without a blank line between
+        // the namespace declaration and the class, producing the non-idiomatic layout
+        //     namespace SampleLib;
+        //     public sealed class NewType
+        // instead of the standard C# convention
+        //     namespace SampleLib;
+        //
+        //     public sealed class NewType
+        // Root cause: `BuildNewFileRoot` called `NormalizeWhitespace()` which collapses the
+        // blank line. Fixed by injecting a blank line on the type declaration's leading
+        // trivia after normalization.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "BlankLineFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class BlankLineFixture",
+                "{",
+                "    public int InternalUser() => Helper(42);",
+                "    private int Helper(int x) => x * 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var result = await TypeExtractionService.PreviewExtractTypeAsync(
+                wsId, fixturePath, "BlankLineFixture", ["Helper"], "HelperService", null,
+                CancellationToken.None);
+
+            Assert.IsNotNull(result);
+            var newFileDiff = result.Changes.FirstOrDefault(
+                c => c.FilePath.EndsWith("HelperService.cs", StringComparison.OrdinalIgnoreCase));
+            Assert.IsNotNull(newFileDiff, "preview must emit a change entry for the new extracted type file");
+            var diffText = newFileDiff!.UnifiedDiff;
+
+            // Extract the added lines (new file contents).
+            var addedLines = diffText
+                .Split('\n')
+                .Where(line => line.StartsWith('\u002B') && !line.StartsWith("\u002B\u002B\u002B"))
+                .Select(line => line.TrimEnd('\r').Substring(1)) // strip the '+' prefix and any CR
+                .ToArray();
+
+            // Find the namespace declaration line and assert the following line is blank.
+            var namespaceIndex = Array.FindIndex(addedLines, l => l.TrimStart().StartsWith("namespace "));
+            Assert.IsTrue(namespaceIndex >= 0,
+                $"extracted file must contain a namespace declaration. Diff:\n{diffText}");
+            Assert.IsTrue(namespaceIndex + 1 < addedLines.Length,
+                $"extracted file must have content after the namespace declaration. Diff:\n{diffText}");
+            Assert.AreEqual(string.Empty, addedLines[namespaceIndex + 1],
+                $"the line immediately after the namespace declaration must be blank (standard C# layout). " +
+                $"Actual next line: '{addedLines[namespaceIndex + 1]}'. Full diff:\n{diffText}");
+
+            // Sanity: the class declaration should follow the blank line.
+            Assert.IsTrue(namespaceIndex + 2 < addedLines.Length &&
+                addedLines[namespaceIndex + 2].TrimStart().StartsWith("public sealed class HelperService"),
+                $"class declaration must follow the blank line. Diff:\n{diffText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+        }
+    }
 }
