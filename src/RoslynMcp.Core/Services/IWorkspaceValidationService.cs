@@ -10,11 +10,22 @@ namespace RoslynMcp.Core.Services;
 /// </summary>
 public interface IWorkspaceValidationService
 {
+    /// <param name="summary">
+    /// (validate-workspace-output-cap-summary-mode) When <c>true</c>, drops the per-diagnostic
+    /// <see cref="WorkspaceValidationDto.ErrorDiagnostics"/> list and per-test
+    /// <see cref="WorkspaceValidationDto.DiscoveredTests"/> list to keep the response under the
+    /// MCP cap on multi-project solutions. The aggregated counts +
+    /// <see cref="WorkspaceValidationDto.OverallStatus"/> still surface the verdict; callers
+    /// wanting per-item detail should re-run with <c>summary=false</c> or call the underlying
+    /// primitive (<c>project_diagnostics</c>, <c>test_related_files</c>) directly. Default
+    /// <c>false</c> preserves the v1.18 response shape.
+    /// </param>
     Task<WorkspaceValidationDto> ValidateAsync(
         string workspaceId,
         IReadOnlyList<string>? changedFilePaths,
         bool runTests,
-        CancellationToken ct);
+        CancellationToken ct,
+        bool summary = false);
 }
 
 /// <summary>

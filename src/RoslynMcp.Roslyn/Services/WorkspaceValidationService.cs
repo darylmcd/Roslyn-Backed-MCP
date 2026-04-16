@@ -44,7 +44,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         string workspaceId,
         IReadOnlyList<string>? changedFilePaths,
         bool runTests,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool summary = false)
     {
         var changedFiles = ResolveChangedFiles(workspaceId, changedFilePaths);
 
@@ -110,13 +111,21 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
 
         var status = ComputeOverallStatus(compile, allErrors, testRunResult, runTests);
 
+        // validate-workspace-output-cap-summary-mode: drop per-diagnostic + per-test detail
+        // when caller asked for a summary. Counts + status still surface the verdict; the
+        // CompileResult and TestRunResult are kept because they already carry their own
+        // bounded summaries (compile_check.Diagnostics is capped at 200 by the caller above;
+        // test results are aggregate counters, not per-test rows).
+        var emittedErrors = summary ? Array.Empty<DiagnosticDto>() : (IReadOnlyList<DiagnosticDto>)allErrors;
+        var emittedTests = summary ? Array.Empty<RelatedTestCaseDto>() : related.Tests;
+
         return new WorkspaceValidationDto(
             OverallStatus: status,
             ChangedFilePaths: changedFiles,
             CompileResult: compile,
-            ErrorDiagnostics: allErrors,
+            ErrorDiagnostics: emittedErrors,
             WarningCount: compile.WarningCount,
-            DiscoveredTests: related.Tests,
+            DiscoveredTests: emittedTests,
             DotnetTestFilter: string.IsNullOrWhiteSpace(related.DotnetTestFilter) ? null : related.DotnetTestFilter,
             TestRunResult: testRunResult);
     }
