@@ -160,7 +160,15 @@ public sealed class TypeExtractionService : ITypeExtractionService
         IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
         string newTypeName)
     {
-        var extractedMembers = membersToExtract.Select(EnsurePublicAccessibility).ToList();
+        // The new type is emitted as `public sealed class NewType` with NO base list, so any
+        // inheritance-only modifiers on the extracted members (`override`, `virtual`, `abstract`,
+        // `sealed`, `new`) become compile errors or meaningless noise. Strip them alongside the
+        // access-modifier normalization. Tracked by
+        // `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas`.
+        var extractedMembers = membersToExtract
+            .Select(EnsurePublicAccessibility)
+            .Select(StripInheritanceOnlyModifiers)
+            .ToList();
         TypeDeclarationSyntax newTypeDecl = SyntaxFactory.ClassDeclaration(newTypeName)
             .WithModifiers(SyntaxFactory.TokenList(
                 SyntaxFactory.Token(SyntaxKind.PublicKeyword),
@@ -384,6 +392,76 @@ public sealed class TypeExtractionService : ITypeExtractionService
             .Prepend(SyntaxFactory.Token(SyntaxKind.PublicKeyword));
 
         var tokenList = SyntaxFactory.TokenList(newModifiers);
+
+        return member switch
+        {
+            MethodDeclarationSyntax m => m.WithModifiers(tokenList),
+            PropertyDeclarationSyntax p => p.WithModifiers(tokenList),
+            FieldDeclarationSyntax f => f.WithModifiers(tokenList),
+            EventDeclarationSyntax e => e.WithModifiers(tokenList),
+            _ => member
+        };
+    }
+
+    /// <summary>
+    /// Strips modifiers that only make sense in the context of a base class or hidden member
+    /// (<c>override</c>, <c>virtual</c>, <c>abstract</c>, <c>sealed</c>, <c>new</c>) from an
+    /// extracted member. The new type has no base list, so these modifiers either fail to
+    /// compile (CS0115 on <c>override</c>, CS0549 on <c>virtual</c>/<c>abstract</c> inside a
+    /// sealed class) or silently hide nothing (<c>new</c>). Called after
+    /// <see cref="EnsurePublicAccessibility"/> so both transforms compose.
+    /// </summary>
+    private static MemberDeclarationSyntax StripInheritanceOnlyModifiers(MemberDeclarationSyntax member)
+    {
+        var inheritanceOnly = new[]
+        {
+            SyntaxKind.OverrideKeyword,
+            SyntaxKind.VirtualKeyword,
+            SyntaxKind.AbstractKeyword,
+            SyntaxKind.SealedKeyword,
+            SyntaxKind.NewKeyword,
+        };
+
+        var currentModifiers = member switch
+        {
+            MethodDeclarationSyntax m => m.Modifiers,
+            PropertyDeclarationSyntax p => p.Modifiers,
+            FieldDeclarationSyntax f => f.Modifiers,
+            EventDeclarationSyntax e => e.Modifiers,
+            _ => default
+        };
+
+        if (currentModifiers.Count == 0)
+            return member;
+
+        var kept = currentModifiers.Where(tok => !inheritanceOnly.Contains(tok.Kind())).ToArray();
+        if (kept.Length == currentModifiers.Count)
+            return member;
+
+        // Preserve the leading trivia from the original first modifier so the declaration
+        // does not collapse against the preceding newline when an override-only modifier sat
+        // at the front of the list.
+        var leadingTrivia = currentModifiers[0].LeadingTrivia;
+        if (kept.Length > 0)
+            kept[0] = kept[0].WithLeadingTrivia(leadingTrivia);
+
+        var tokenList = SyntaxFactory.TokenList(kept);
+
+        // For members whose method body remains valid after dropping `abstract`, we need to
+        // also ensure the declaration has a body (abstract members carry `;` instead). Roslyn
+        // keeps a null body as an abstract-method shape; if we stripped `abstract` from a
+        // method without a body we leave an invalid declaration. This cannot occur in the
+        // current extract path (the source method already had a body to be extracted), but we
+        // guard defensively so any future caller shape surfaces an explicit error instead of
+        // silently emitting broken syntax.
+        if (member is MethodDeclarationSyntax method
+            && currentModifiers.Any(m => m.IsKind(SyntaxKind.AbstractKeyword))
+            && method.Body is null
+            && method.ExpressionBody is null)
+        {
+            throw new InvalidOperationException(
+                $"Cannot extract abstract member '{method.Identifier.Text}' into a non-inheriting type: the source has no body.");
+        }
 
         return member switch
         {

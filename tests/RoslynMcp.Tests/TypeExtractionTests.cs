@@ -102,4 +102,81 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
             TypeExtractionService.PreviewExtractTypeAsync(
                 wsId, doc.FilePath!, "NonExistentType", ["Foo"], "NewType", null, CancellationToken.None));
     }
+
+    [TestMethod]
+    public async Task ExtractType_OverrideMember_StripsOverrideFromNewType()
+    {
+        // Regression for `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas` (P4): when a
+        // member carries `override` / `virtual` / `abstract` / `sealed` / `new`, the extracted
+        // type (which is emitted as a plain `public sealed class` with no base list) must strip
+        // those modifiers. Source audit: IT-Chat-Bot experimental promotion §9.3 — extracting
+        // `Down()` from a class inheriting `Migration` produced `public override void Down(...)`
+        // inside the new class and yielded CS0115 on the first compile_check.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "OverrideMemberFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public abstract class BaseMigration",
+                "{",
+                "    public abstract void Down();",
+                "    public virtual void Up() { }",
+                "}",
+                "",
+                "public class OverrideMemberFixture : BaseMigration",
+                "{",
+                "    public override void Down() { }",
+                "    public sealed override void Up() { }",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var result = await TypeExtractionService.PreviewExtractTypeAsync(
+                wsId, fixturePath, "OverrideMemberFixture", ["Down", "Up"], "RollbackHelper", null,
+                CancellationToken.None);
+
+            Assert.IsNotNull(result);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(result.PreviewToken));
+
+            // Locate the diff for the new file (RollbackHelper.cs) and assert no override/virtual
+            // modifiers leaked into the extracted members.
+            var newFileDiff = result.Changes.FirstOrDefault(
+                c => c.FilePath.EndsWith("RollbackHelper.cs", StringComparison.OrdinalIgnoreCase));
+            Assert.IsNotNull(newFileDiff, "preview must emit a change entry for the new extracted type file");
+            var diffText = newFileDiff!.UnifiedDiff;
+
+            // The added lines (prefixed with '+') must not carry override/virtual/abstract — the
+            // new type has no base to override. `new` and member-level `sealed` are also stripped.
+            var addedLines = diffText
+                .Split('\n')
+                .Where(line => line.StartsWith('\u002B') && !line.StartsWith("\u002B\u002B\u002B"))
+                .ToArray();
+
+            foreach (var forbidden in new[] { "override", "virtual", "abstract" })
+            {
+                Assert.IsFalse(
+                    addedLines.Any(line => System.Text.RegularExpressions.Regex.IsMatch(line, $@"\b{forbidden}\b")),
+                    $"extracted members must not carry '{forbidden}' (the new type has no base). Diff:\n{diffText}");
+            }
+
+            // Sanity: the method declarations themselves still appear.
+            Assert.IsTrue(addedLines.Any(l => l.Contains("void Down")),
+                $"Down method should still be present in extracted type. Diff:\n{diffText}");
+            Assert.IsTrue(addedLines.Any(l => l.Contains("void Up")),
+                $"Up method should still be present in extracted type. Diff:\n{diffText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+        }
+    }
 }
