@@ -82,7 +82,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             : $"{request.ParameterType} {request.Name} = {request.DefaultValue}";
         var argText = request.DefaultValue ?? "default";
 
-        var (accumulator, changes) = await ApplyAddRemoveAsync(
+        var (accumulator, changes, callsiteUpdates) = await ApplyAddRemoveAsync(
             solution, method,
             updateDeclaration: (existingList) =>
             {
@@ -109,7 +109,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             },
             ct).ConfigureAwait(false);
 
-        return BuildPreviewDto(workspaceId, accumulator, changes,
+        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates,
             $"Add parameter '{request.Name}: {request.ParameterType}' at position {insertPosition} of {method.ToDisplayString()}");
     }
 
@@ -120,7 +120,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         if (index < 0) throw new ArgumentException(
             $"op='remove' requires Position or Name to identify the parameter.", nameof(request));
 
-        var (accumulator, changes) = await ApplyAddRemoveAsync(
+        var (accumulator, changes, callsiteUpdates) = await ApplyAddRemoveAsync(
             solution, method,
             updateDeclaration: existingList => BuildParameterListFromTextChange(existingList, addParam: null, addAt: null, removeAt: index),
             updateCallsite: (args, isPositional) =>
@@ -138,7 +138,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             },
             ct).ConfigureAwait(false);
 
-        return BuildPreviewDto(workspaceId, accumulator, changes,
+        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates,
             $"Remove parameter '{method.Parameters[index].Name}' (position {index}) from {method.ToDisplayString()}");
     }
 
@@ -211,7 +211,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         return -1;
     }
 
-    private async Task<(Solution Accumulator, List<FileChangeDto> Changes)> ApplyAddRemoveAsync(
+    private async Task<(Solution Accumulator, List<FileChangeDto> Changes, List<CallsiteUpdateDto> CallsiteUpdates)> ApplyAddRemoveAsync(
         Solution solution,
         IMethodSymbol method,
         Func<ParameterListSyntax, ParameterListSyntax> updateDeclaration,
@@ -227,6 +227,12 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         // reads as "before" on subsequent iterations.
         var originalTexts = new Dictionary<DocumentId, string>();
 
+        // change-signature-preview-callsite-summary: per-file callsite counts so callers
+        // can audit total reach (especially through interface dispatch) without parsing
+        // every diff. Keyed by absolute file path; counts only invocation rewrites
+        // (declaration changes do not contribute).
+        var perFileCallsites = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
         async Task<string> CaptureOriginalAsync(DocumentId docId)
         {
             if (originalTexts.TryGetValue(docId, out var cached)) return cached;
@@ -237,38 +243,98 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             return text;
         }
 
-        // 1. Update the declaration(s). Most methods have one source declaration; partial methods
-        //    can have two (definition + implementation) — both need updating.
-        foreach (var declRef in method.DeclaringSyntaxReferences)
-        {
-            var node = await declRef.GetSyntaxAsync(ct).ConfigureAwait(false);
-            if (node is not BaseMethodDeclarationSyntax mds) continue;
-            var newParamList = updateDeclaration(mds.ParameterList);
-            var doc = accumulator.GetDocument(node.SyntaxTree);
-            if (doc is null) continue;
-            await CaptureOriginalAsync(doc.Id).ConfigureAwait(false);
-            var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            if (oldRoot is null) continue;
-            var newRoot = oldRoot.ReplaceNode(mds.ParameterList, newParamList);
-            accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newRoot.ToFullString()));
-        }
+        // change-signature-preview-callsite-summary (firewall-analyzer 2026-04-15):
+        // Build the related-symbol set ONCE — used for declaration rewrites in step 1
+        // AND for caller enumeration in step 2. SymbolFinder.FindCallersAsync(method)
+        // returns callers that invoke through THIS exact symbol. For an interface
+        // method, that misses callers invoking through implementing classes; for an
+        // implementer, it misses callers invoking through the interface. Same shape for
+        // declarations — when changing the signature on an interface method, every
+        // implementer must also update its declaration to keep compiling.
+        var symbolsToScan = await CollectRelatedSymbolsAsync(method, accumulator, ct).ConfigureAwait(false);
 
-        // 2. Walk every caller and update its argument list. Capture the original text on first
-        //    visit per document so the end-of-pass diff is against the untouched baseline.
-        var callers = await SymbolFinder.FindCallersAsync(method, accumulator, ct).ConfigureAwait(false);
-        foreach (var caller in callers)
+        // 1. Update every related symbol's declaration(s). Includes the interface method,
+        //    every implementing class, every override, and (for partial methods) both
+        //    definition + implementation. Without this pass, changing an interface method
+        //    would break every implementer at compile time.
+        var visitedDeclarationSpans = new HashSet<(DocumentId DocId, TextSpan Span)>();
+        foreach (var sym in symbolsToScan)
         {
-            foreach (var location in caller.Locations)
+            foreach (var declRef in sym.DeclaringSyntaxReferences)
             {
-                ct.ThrowIfCancellationRequested();
-                if (!location.IsInSource) continue;
-                var doc = accumulator.GetDocument(location.SourceTree);
+                var node = await declRef.GetSyntaxAsync(ct).ConfigureAwait(false);
+                if (node is not BaseMethodDeclarationSyntax mds) continue;
+                var doc = accumulator.GetDocument(node.SyntaxTree);
                 if (doc is null) continue;
+                if (!visitedDeclarationSpans.Add((doc.Id, mds.ParameterList.Span))) continue;
+
                 await CaptureOriginalAsync(doc.Id).ConfigureAwait(false);
                 var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (oldRoot is null) continue;
 
-                var node = oldRoot.FindNode(location.SourceSpan);
+                // Re-find the parameter list inside the (possibly already-modified) root —
+                // the symbol's declaration position is from the original solution; if a
+                // sibling iteration already mutated the document, the original span may no
+                // longer be valid.
+                var currentMds = oldRoot.FindNode(mds.Span).FirstAncestorOrSelf<BaseMethodDeclarationSyntax>();
+                if (currentMds is null) continue;
+                var newParamList = updateDeclaration(currentMds.ParameterList);
+                var newRoot = oldRoot.ReplaceNode(currentMds.ParameterList, newParamList);
+                accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newRoot.ToFullString()));
+            }
+        }
+
+        // 2. Walk every caller and update its argument list. Capture the original text on first
+        //    visit per document so the end-of-pass diff is against the untouched baseline.
+        // Collect all unique caller locations across the related-symbol set. Spans are
+        // captured against the ORIGINAL solution; accumulator's per-iteration mutations
+        // would shift the indices and break later span lookups. The rewrite loop then
+        // processes per-document in REVERSE span order so each WithDocumentText doesn't
+        // invalidate spans of earlier callsites in the same document.
+        var callerLocations = new Dictionary<DocumentId, List<TextSpan>>();
+        foreach (var sym in symbolsToScan)
+        {
+            var callers = await SymbolFinder.FindCallersAsync(sym, solution, ct).ConfigureAwait(false);
+            foreach (var caller in callers)
+            {
+                foreach (var location in caller.Locations)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (!location.IsInSource) continue;
+
+                    var originalDoc = solution.GetDocument(location.SourceTree);
+                    if (originalDoc is null) continue;
+
+                    if (!callerLocations.TryGetValue(originalDoc.Id, out var spans))
+                    {
+                        spans = [];
+                        callerLocations[originalDoc.Id] = spans;
+                    }
+                    if (!spans.Contains(location.SourceSpan)) spans.Add(location.SourceSpan);
+                }
+            }
+        }
+
+        // Now rewrite per document. Sort spans descending so each ReplaceNode preserves
+        // the validity of earlier (lower-offset) spans within the same document.
+        foreach (var (docId, spans) in callerLocations)
+        {
+            ct.ThrowIfCancellationRequested();
+            var doc = accumulator.GetDocument(docId);
+            if (doc is null) continue;
+
+            await CaptureOriginalAsync(doc.Id).ConfigureAwait(false);
+
+            spans.Sort((a, b) => b.Start.CompareTo(a.Start));
+            foreach (var span in spans)
+            {
+                ct.ThrowIfCancellationRequested();
+                doc = accumulator.GetDocument(docId);
+                if (doc is null) break;
+                var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                if (oldRoot is null) break;
+
+                var node = oldRoot.FindNode(span);
                 var invocation = node.FirstAncestorOrSelf<InvocationExpressionSyntax>();
                 if (invocation is null) continue;
 
@@ -279,6 +345,9 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 var newInvocation = invocation.WithArgumentList(invocation.ArgumentList.WithArguments(newArgs));
                 var newRoot = oldRoot.ReplaceNode(invocation, newInvocation);
                 accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newRoot.ToFullString()));
+
+                var filePath = doc.FilePath ?? doc.Name;
+                perFileCallsites[filePath] = perFileCallsites.TryGetValue(filePath, out var count) ? count + 1 : 1;
             }
         }
 
@@ -295,14 +364,95 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             changes.Add(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(originalText, finalText, filePath)));
         }
 
-        return (accumulator, changes);
+        var callsiteUpdates = perFileCallsites
+            .Select(kvp => new CallsiteUpdateDto(kvp.Key, kvp.Value))
+            .OrderBy(u => u.FilePath, StringComparer.Ordinal)
+            .ToList();
+
+        return (accumulator, changes, callsiteUpdates);
     }
 
-    private RefactoringPreviewDto BuildPreviewDto(string workspaceId, Solution accumulator, List<FileChangeDto> changes, string description)
+    /// <summary>
+    /// Returns the union of <paramref name="method"/> with every related symbol whose
+    /// callers should be rewritten when the signature changes:
+    /// <list type="bullet">
+    ///   <item><description>The method itself.</description></item>
+    ///   <item><description>If <paramref name="method"/> is an interface member: every implementing method.</description></item>
+    ///   <item><description>If <paramref name="method"/> is an implementing method: the interface members it implements + every other implementer.</description></item>
+    ///   <item><description>If <paramref name="method"/> is virtual/abstract: all overrides + the base virtual.</description></item>
+    /// </list>
+    /// SymbolFinder.FindCallersAsync against any single symbol misses callers that invoke
+    /// through a related symbol (interface vs concrete dispatch); the union ensures the
+    /// preview enumerates every file the apply will touch.
+    /// </summary>
+    private static async Task<IReadOnlyList<IMethodSymbol>> CollectRelatedSymbolsAsync(
+        IMethodSymbol method, Solution solution, CancellationToken ct)
+    {
+        var set = new HashSet<IMethodSymbol>(SymbolEqualityComparer.Default);
+        set.Add(method);
+
+        // Interface members: include every implementer, scoped to the solution.
+        if (method.ContainingType is { TypeKind: TypeKind.Interface })
+        {
+            var impls = await SymbolFinder.FindImplementationsAsync(method, solution, cancellationToken: ct).ConfigureAwait(false);
+            foreach (var impl in impls)
+            {
+                if (impl is IMethodSymbol implMethod) set.Add(implMethod);
+            }
+        }
+        else
+        {
+            // Implementing method: walk back to interface members, then forward to siblings.
+            foreach (var iface in method.ContainingType.AllInterfaces)
+            {
+                foreach (var ifaceMember in iface.GetMembers().OfType<IMethodSymbol>())
+                {
+                    var concrete = method.ContainingType.FindImplementationForInterfaceMember(ifaceMember);
+                    if (SymbolEqualityComparer.Default.Equals(concrete, method))
+                    {
+                        set.Add(ifaceMember);
+                        var siblingImpls = await SymbolFinder.FindImplementationsAsync(ifaceMember, solution, cancellationToken: ct).ConfigureAwait(false);
+                        foreach (var s in siblingImpls)
+                        {
+                            if (s is IMethodSymbol sm) set.Add(sm);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Virtual / abstract: union with overrides + base.
+        if (method.IsVirtual || method.IsAbstract || method.IsOverride)
+        {
+            var overrides = await SymbolFinder.FindOverridesAsync(method, solution, cancellationToken: ct).ConfigureAwait(false);
+            foreach (var o in overrides)
+            {
+                if (o is IMethodSymbol om) set.Add(om);
+            }
+            for (var current = method.OverriddenMethod; current is not null; current = current.OverriddenMethod)
+            {
+                set.Add(current);
+            }
+        }
+
+        return [.. set];
+    }
+
+    private RefactoringPreviewDto BuildPreviewDto(
+        string workspaceId,
+        Solution accumulator,
+        List<FileChangeDto> changes,
+        List<CallsiteUpdateDto> callsiteUpdates,
+        string description)
     {
         if (changes.Count == 0)
             throw new InvalidOperationException("change_signature_preview produced no changes — verify the symbol actually has callers.");
         var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
-        return new RefactoringPreviewDto(token, description, changes, null);
+        return new RefactoringPreviewDto(
+            token,
+            description,
+            changes,
+            Warnings: null,
+            CallsiteUpdates: callsiteUpdates.Count == 0 ? null : callsiteUpdates);
     }
 }

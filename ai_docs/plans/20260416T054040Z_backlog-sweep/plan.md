@@ -90,8 +90,8 @@ initiative below has the standard table fields filled out at execute time.
 
 | # | id | Files (est) | Cost | CHANGELOG cat |
 |---|---|---|---|---|
-| I-04 | `find-references-preview-text-inflates-response` | 2 | 40000 | Added |
-| I-05 | `change-signature-preview-callsite-summary` | 1 | 45000 | Fixed |
+| I-04 | `find-references-preview-text-inflates-response` | 2 | 40000 | Added | merged (PR #168) |
+| I-05 | `change-signature-preview-callsite-summary` | 3 | 45000 | Fixed | in-review |
 | I-06 | `get-nuget-dependencies-no-summary-mode` | 2 | 45000 | Added |
 | I-07 | `get-syntax-tree-max-output-chars-incomplete-cap` | 2 | 45000 | Added + Changed — BREAKING |
 | I-08 | `symbol-impact-sweep-output-size-blowup` | 2 | 45000 | Added |
