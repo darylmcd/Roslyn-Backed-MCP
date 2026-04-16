@@ -34,7 +34,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "symbol_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information about a symbol at a specific file location")]
+    [McpServerTool(Name = "symbol_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information about a symbol at a specific file location. Default resolution is strict — a caret on whitespace adjacent to an identifier returns NotFound. Pass allowAdjacent=true to restore the pre-v1.19.1 lenient behavior where the resolver walks to the adjacent token.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Inspect the symbol at a source location.")]
     public static Task<string> GetSymbolInfo(
@@ -46,13 +46,14 @@ public static class SymbolTools
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
+        [Description("Default false (strict). When true, the resolver walks to the preceding token when the exact-position lookup misses — restores the pre-v1.19.1 lenient behavior that could silently resolve whitespace to adjacent identifiers.")] bool allowAdjacent = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("symbol_info", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-                var result = await symbolSearchService.GetSymbolInfoAsync(workspaceId, locator, c);
+                var result = await symbolSearchService.GetSymbolInfoAsync(workspaceId, locator, c, allowAdjacent);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));

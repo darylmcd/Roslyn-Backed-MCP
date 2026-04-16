@@ -131,9 +131,9 @@ initiative below has the standard table fields filled out at execute time.
 | I-20 | `dr-9-8-bug-validate-fabricated-accepts-fabricated-silen` | 2 | 35000 | Fixed | merged (PR #187, 2026-04-16). |
 | I-21 | `dr-9-11-payload-exceeds-mcp-tool-result-cap` | 2 | 35000 | Added + Changed — BREAKING | merged (PR #188, 2026-04-16). |
 | I-22 | `change-signature-parameter-span-hint-for-remove` | 1 | 35000 | Added | merged (PR #189, 2026-04-16). |
-| I-23 | `dr-9-5-bug-pagination-001-has-no-pagination-filter-igno` | 3 | 35000 | Fixed | in-progress (branch: remediation/dr-9-5-bug-pagination-001-has-no-pagination-filter-igno) — offset/limit params + productive-project scoping + DTO extended; 6 new regressions. |
+| I-23 | `dr-9-5-bug-pagination-001-has-no-pagination-filter-igno` | 3 | 35000 | Fixed | merged (PR #190, 2026-04-16). |
 | I-24 | `symbol-impact-sweep-race-with-auto-reload` | 2 | 35000 | Fixed | Race-aware error envelope during auto-reload. |
-| I-25 | `symbol-info-lenient-whitespace-resolution` | 1 | 35000 | Changed — BREAKING | `allowAdjacent: bool = false`. |
+| I-25 | `symbol-info-lenient-whitespace-resolution` | 4 | 35000 | Changed — BREAKING | in-progress (branch: remediation/symbol-info-lenient-whitespace-resolution) — SymbolResolver gains `strict` flag; tool exposes `allowAdjacent=false` default; 1 regression test. |
 | I-26 | `symbol-search-partial-match-gap` | 1 | 35000 | Fixed | Match against `QualifiedNameOnlyFormat`. |
 | I-27 | `test-coverage-vague-error-when-coverlet-missing` | 1 | 35000 | Fixed | Detect Coverlet absence; structured `missingPackages` error. |
 | I-28 | `test-related-empty-for-valid-symbol` | 1 | 40000 | Fixed | Augment with `SymbolFinder.FindReferencesAsync` backward lookup. |

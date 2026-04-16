@@ -19,9 +19,18 @@ public static class SymbolResolver
     /// <param name="solution">The solution to search.</param>
     /// <param name="locator">The symbol locator describing how to find the symbol.</param>
     /// <param name="ct">Cancellation token.</param>
+    /// <param name="strict">
+    /// symbol-info-lenient-whitespace-resolution: when <see langword="true"/>, disables the
+    /// preceding-token fallback in <see cref="ResolveAtPositionAsync"/> — a caret on whitespace
+    /// next to an identifier will return <see langword="null"/> instead of silently resolving to
+    /// the adjacent symbol. Default <see langword="false"/> preserves the existing lenient
+    /// behavior for every tool that was passing symbol locators before the strict-opt-in contract
+    /// existed. <c>symbol_info</c> is the primary opt-in caller (default <c>allowAdjacent=false</c>
+    /// flips the flag to <c>true</c>).
+    /// </param>
     /// <returns>The resolved symbol, or <see langword="null"/> if it could not be found.</returns>
     /// <exception cref="System.ArgumentException">Thrown when <paramref name="locator"/> does not contain a valid identification strategy.</exception>
-    public static async Task<ISymbol?> ResolveAsync(Solution solution, SymbolLocator locator, CancellationToken ct)
+    public static async Task<ISymbol?> ResolveAsync(Solution solution, SymbolLocator locator, CancellationToken ct, bool strict = false)
     {
         locator.Validate();
 
@@ -35,7 +44,7 @@ public static class SymbolResolver
             return await ResolveByMetadataNameAsync(solution, locator.MetadataName!, ct).ConfigureAwait(false);
         }
 
-        return await ResolveAtPositionAsync(solution, locator.FilePath!, locator.Line!.Value, locator.Column!.Value, ct).ConfigureAwait(false);
+        return await ResolveAtPositionAsync(solution, locator.FilePath!, locator.Line!.Value, locator.Column!.Value, ct, strict).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -67,8 +76,14 @@ public static class SymbolResolver
     /// Resolves the symbol at the given 1-based <paramref name="line"/> and <paramref name="column"/> position
     /// in the specified source file.
     /// </summary>
+    /// <param name="strict">
+    /// symbol-info-lenient-whitespace-resolution: when <see langword="true"/>, the lenient
+    /// preceding-token fallback is skipped — a caret on whitespace adjacent to an identifier
+    /// returns <see langword="null"/> instead of resolving to that identifier.
+    /// </param>
     /// <returns>The resolved symbol, or <see langword="null"/> if no symbol exists at that position.</returns>
-    public static async Task<ISymbol?> ResolveAtPositionAsync(Solution solution, string filePath, int line, int column, CancellationToken ct)
+    public static async Task<ISymbol?> ResolveAtPositionAsync(
+        Solution solution, string filePath, int line, int column, CancellationToken ct, bool strict = false)
     {
         var document = FindDocument(solution, filePath);
         if (document is null) return null;
@@ -93,12 +108,32 @@ public static class SymbolResolver
         // Try the token at the exact position first, then also try FindToken with
         // findInsideTrivia to handle mid-identifier cursor positions (AUDIT-05).
         var token = root.FindToken(position);
+
+        // symbol-info-lenient-whitespace-resolution: in strict mode, reject the match when the
+        // caret sits on trivia (whitespace / comment / end-of-line) that is LEADING to the found
+        // token. Pre-fix, a caret on a blank line right before `ILibraryManager` would silently
+        // resolve to that identifier. Trailing trivia inside the token is still accepted because
+        // Roslyn's FindToken classifies trailing space as part of the token's FullSpan but
+        // callers typically land between-tokens in leading-trivia territory.
+        if (strict)
+        {
+            var tokenStart = token.SpanStart;
+            if (position < tokenStart)
+            {
+                // Caret sits inside the token's leading trivia (between the previous token's
+                // trailing trivia boundary and this token's Start). Reject — don't fall through
+                // to the preceding-token fallback either.
+                return null;
+            }
+        }
+
         var result = ResolveFromToken(token, semanticModel, ct);
         if (result is not null) return result;
 
-        // If the position falls within the token's full span but didn't resolve,
-        // try the preceding token (handles cases like cursor on '(' after a method name).
-        if (position > 0)
+        // symbol-info-lenient-whitespace-resolution: the preceding-token fallback is purely
+        // lenient — gate it on !strict so opt-in strict mode can't drift back into adjacent
+        // resolution via the "cursor on '(' after method name" shape.
+        if (!strict && position > 0)
         {
             var precedingToken = root.FindToken(position - 1);
             if (precedingToken != token)

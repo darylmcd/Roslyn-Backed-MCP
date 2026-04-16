@@ -127,4 +127,49 @@ public sealed class SymbolResolverRenameCaretTests : IsolatedWorkspaceTestBase
 
         Assert.IsNull(sym);
     }
+
+    // symbol-info-lenient-whitespace-resolution: strict mode rejects a caret on whitespace
+    // adjacent to an identifier. Lenient mode (the legacy default when strict is omitted)
+    // still resolves to the adjacent token via the preceding-token fallback.
+    [TestMethod]
+    public async Task ResolveAtPosition_WhitespaceLeadingToIdentifier_StrictReturnsNull_LenientResolves()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var probePath = Path.Combine(workspace.GetPath("SampleLib"), "WhitespaceStrictProbe.cs");
+        await File.WriteAllTextAsync(
+            probePath,
+            """
+            namespace SampleLib;
+
+            public sealed class WhitespaceStrictProbe
+            {
+                public int Value;
+            }
+            """,
+            CancellationToken.None).ConfigureAwait(false);
+        await workspace.ReloadAsync(CancellationToken.None).ConfigureAwait(false);
+
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+
+        // `    public int Value;` — column 1 is leading whitespace (the indent).
+        // Lenient mode's preceding-token fallback would drift to the previous identifier
+        // (the `{` before this line isn't a symbol, but on a richer shape it would be).
+        // Strict mode must return null without drifting.
+        var strictResult = await SymbolResolver.ResolveAtPositionAsync(
+            solution, probePath, line: 5, column: 1, CancellationToken.None, strict: true)
+            .ConfigureAwait(false);
+        Assert.IsNull(strictResult, "Strict mode must reject a caret on leading whitespace.");
+
+        // On an identifier directly, strict mode still resolves — the flag only changes the
+        // leading-trivia / preceding-token fallback, not exact-token lookups.
+        var lines = await File.ReadAllLinesAsync(probePath, CancellationToken.None).ConfigureAwait(false);
+        var fieldLine = Array.FindIndex(lines, l => l.Contains("public int Value", StringComparison.Ordinal)) + 1;
+        var valueCol = lines[fieldLine - 1].IndexOf("Value", StringComparison.Ordinal) + 1;
+
+        var strictHit = await SymbolResolver.ResolveAtPositionAsync(
+            solution, probePath, fieldLine, valueCol, CancellationToken.None, strict: true)
+            .ConfigureAwait(false);
+        Assert.IsNotNull(strictHit, "Strict mode must still resolve a caret on the identifier itself.");
+        Assert.AreEqual("Value", strictHit!.Name);
+    }
 }
