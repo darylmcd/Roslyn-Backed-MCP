@@ -187,10 +187,73 @@ public sealed class TypeExtractionService : ITypeExtractionService
             _ => newTypeDecl
         };
 
-        return SyntaxFactory.CompilationUnit()
+        var compilationUnit = SyntaxFactory.CompilationUnit()
             .WithUsings(sourceRoot.Usings)
             .WithMembers(SyntaxFactory.SingletonList(topLevelMember))
             .NormalizeWhitespace();
+
+        // dr-9-5-strips-the-blank-line-between-namespace-and-clas:
+        // `NormalizeWhitespace()` emits a single newline between a namespace declaration and
+        // its first type member, collapsing the conventional blank line that standard C#
+        // style (and the audit fixture) expects. Post-process to guarantee a blank line sits
+        // between the namespace and the extracted type, matching the layout users author by
+        // hand and the shape `dotnet format` / editorconfig defaults produce.
+        return EnsureBlankLineBetweenNamespaceAndType(compilationUnit);
+    }
+
+    /// <summary>
+    /// After a `NormalizeWhitespace()` pass, inject a blank line before the first type
+    /// declaration that sits inside (or immediately after) a namespace declaration so the
+    /// emitted file reads `namespace Foo;\n\npublic sealed class NewType` or
+    /// `namespace Foo\n{\n    public sealed class NewType` — the standard C# layout.
+    /// Called from <see cref="BuildNewFileRoot"/> only; safe on both file-scoped and block
+    /// namespace shapes.
+    /// </summary>
+    private static CompilationUnitSyntax EnsureBlankLineBetweenNamespaceAndType(CompilationUnitSyntax root)
+    {
+        var blankLine = SyntaxFactory.EndOfLine(Environment.NewLine);
+
+        // File-scoped namespace: the type sits directly on the compilation unit's member
+        // list after the namespace declaration. Inject the blank line on the first type's
+        // leading trivia.
+        var fileScopedNs = root.Members.OfType<FileScopedNamespaceDeclarationSyntax>().FirstOrDefault();
+        if (fileScopedNs is not null)
+        {
+            var firstType = fileScopedNs.Members.OfType<TypeDeclarationSyntax>().FirstOrDefault();
+            if (firstType is not null)
+            {
+                return root.ReplaceNode(firstType, PrependBlankLine(firstType, blankLine));
+            }
+            return root;
+        }
+
+        // Block namespace: type lives inside the namespace's Members list. Same injection —
+        // prepend a blank line to the first type declaration's leading trivia.
+        var blockNs = root.Members.OfType<NamespaceDeclarationSyntax>().FirstOrDefault();
+        if (blockNs is not null)
+        {
+            var firstType = blockNs.Members.OfType<TypeDeclarationSyntax>().FirstOrDefault();
+            if (firstType is not null)
+            {
+                return root.ReplaceNode(firstType, PrependBlankLine(firstType, blankLine));
+            }
+        }
+
+        return root;
+    }
+
+    private static TypeDeclarationSyntax PrependBlankLine(TypeDeclarationSyntax typeDecl, SyntaxTrivia blankLine)
+    {
+        var existing = typeDecl.GetLeadingTrivia();
+
+        // Avoid double-injecting if the trivia already contains a blank line (two or more
+        // consecutive end-of-line markers) at the leading position.
+        if (existing.Count > 0 && existing[0].IsKind(SyntaxKind.EndOfLineTrivia))
+        {
+            return typeDecl;
+        }
+
+        return typeDecl.WithLeadingTrivia(existing.Insert(0, blankLine));
     }
 
     private static TypeDeclarationSyntax InjectFieldAndCtorParameter(
