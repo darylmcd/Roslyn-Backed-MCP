@@ -4,6 +4,7 @@ using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 
@@ -107,14 +108,109 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             searchTerms.Add(symbol.ContainingType.Name);
         }
 
-        return discovery.TestProjects
-            .SelectMany(project => project.Tests)
-            .Where(test =>
-                searchTerms.Any(term =>
+        // test-related-empty-for-valid-symbol: name heuristic misses tests that dispatch
+        // through an interface (test method references `IService.Method()` but this symbol
+        // is the concrete `MyService.Method`). Walk every derived / implementing symbol + the
+        // symbol itself with SymbolFinder.FindReferencesAsync and collect the test files those
+        // references sit in — then look up any test method whose FilePath matches a reference
+        // file. The heuristic name-match is kept as a fast-path (covers the majority case where
+        // the test method name contains the symbol name) and the reference sweep augments it
+        // for interface-dispatched cases.
+        var collected = new Dictionary<string, TestCaseDto>(StringComparer.Ordinal);
+
+        foreach (var test in discovery.TestProjects.SelectMany(project => project.Tests))
+        {
+            if (searchTerms.Any(term =>
                     test.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                     test.FullyQualifiedName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
                     (test.FilePath?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)))
-            .ToList();
+            {
+                collected[test.FullyQualifiedName] = test;
+            }
+        }
+
+        // Reference-based augmentation: collect files that contain a reference to `symbol`
+        // (or any override / implementation when the symbol is abstract / interface). Test
+        // methods whose file path matches are considered related.
+        try
+        {
+            var referencedFilePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var symbolsToWalk = await CollectSymbolAndImplementationsAsync(symbol, solution, ct).ConfigureAwait(false);
+
+            foreach (var candidate in symbolsToWalk)
+            {
+                ct.ThrowIfCancellationRequested();
+                var references = await SymbolFinder.FindReferencesAsync(candidate, solution, ct).ConfigureAwait(false);
+                foreach (var refSet in references)
+                {
+                    foreach (var loc in refSet.Locations)
+                    {
+                        var path = loc.Document.FilePath;
+                        if (!string.IsNullOrWhiteSpace(path))
+                        {
+                            referencedFilePaths.Add(Path.GetFullPath(path));
+                        }
+                    }
+                }
+            }
+
+            if (referencedFilePaths.Count > 0)
+            {
+                foreach (var test in discovery.TestProjects.SelectMany(project => project.Tests))
+                {
+                    if (string.IsNullOrWhiteSpace(test.FilePath)) continue;
+                    if (referencedFilePaths.Contains(Path.GetFullPath(test.FilePath)))
+                    {
+                        collected.TryAdd(test.FullyQualifiedName, test);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            // Reference-sweep is best-effort augmentation — never let it break the heuristic path.
+            _logger.LogWarning(ex, "FindRelatedTests reference-sweep augmentation failed; returning heuristic results only.");
+        }
+
+        return collected.Values.ToList();
+    }
+
+    /// <summary>
+    /// test-related-empty-for-valid-symbol: when the input symbol is an interface or abstract
+    /// member, callers often test the concrete implementation(s). Walk the dispatch tree so
+    /// the reference-sweep covers interface methods, overrides, and concrete classes alike.
+    /// </summary>
+    private static async Task<IReadOnlyList<ISymbol>> CollectSymbolAndImplementationsAsync(ISymbol symbol, Solution solution, CancellationToken ct)
+    {
+        var results = new List<ISymbol> { symbol };
+
+        if (symbol is INamedTypeSymbol namedType && namedType.TypeKind == TypeKind.Interface)
+        {
+            var implementations = await SymbolFinder.FindImplementationsAsync(namedType, solution, cancellationToken: ct).ConfigureAwait(false);
+            results.AddRange(implementations);
+        }
+        else if (symbol is IMethodSymbol method && method.ContainingType?.TypeKind == TypeKind.Interface)
+        {
+            var implementations = await SymbolFinder.FindImplementationsAsync(method, solution, cancellationToken: ct).ConfigureAwait(false);
+            results.AddRange(implementations);
+        }
+        else if (symbol is IMethodSymbol concreteMethod && (concreteMethod.IsAbstract || concreteMethod.IsVirtual))
+        {
+            var overrides = await SymbolFinder.FindOverridesAsync(concreteMethod, solution, cancellationToken: ct).ConfigureAwait(false);
+            results.AddRange(overrides);
+
+            // Also walk upward — if this method is an override itself, include the base chain so
+            // tests that call the base type's version are still matched.
+            var current = concreteMethod;
+            while (current.OverriddenMethod is IMethodSymbol overridden)
+            {
+                results.Add(overridden);
+                current = overridden;
+            }
+        }
+
+        return results;
     }
 
     public async Task<RelatedTestsForFilesDto> FindRelatedTestsForFilesAsync(
