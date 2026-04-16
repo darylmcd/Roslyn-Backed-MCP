@@ -18,7 +18,7 @@ public sealed class ReferenceService : IReferenceService
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool summary = false)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         // Throw on unresolved symbol so callers get a structured NotFound envelope
@@ -27,7 +27,7 @@ public sealed class ReferenceService : IReferenceService
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();
-        var dtos = await ReferenceLocationMaterializer.MaterializeDtosAsync(refLocations, ct).ConfigureAwait(false);
+        var dtos = await ReferenceLocationMaterializer.MaterializeDtosAsync(refLocations, ct, summary).ConfigureAwait(false);
         // FLAG-8b-A: stable sort by (FilePath, StartLine, StartColumn) so parallel callers get
         // identical ordering. Roslyn's symbol-enumeration walker may otherwise produce different
         // orderings across concurrent invocations of the same query.

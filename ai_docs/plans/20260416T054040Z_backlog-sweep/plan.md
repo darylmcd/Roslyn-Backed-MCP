@@ -74,7 +74,7 @@
 
 | Field | Content |
 |---|---|
-| **Status** | `in-review (branch: remediation/workspace-readiness-contract-bundle)` |
+| **Status** | `merged (PR #167, 2026-04-16)` |
 | **Backlog rows closed** | `dr-9-7-reports-during-refactoring-transitions-but-the-w` (P3); `severity-flag-soft-inconsistency-does-not-block-work` (P4); `workspace-load-isready-misreports-unresolved-analyzers` (P4) |
 | **Diagnosis** | **Bundle Rule 1 verification:** All three describe the `isReady` contract failing in opposite directions; all three are computed by the same function. Verified at `src/RoslynMcp.Core/Models/WorkspaceStatusSummaryDto.cs:52`. |
 | **Approach** | Add `analyzersReady: bool`; demote `isReady` to require both. Extend `BuildRestoreHint` for transient stale. |

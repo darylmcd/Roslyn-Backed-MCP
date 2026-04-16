@@ -82,7 +82,7 @@ public static class SymbolTools
             }, ct));
     }
 
-    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution. Response shape: { count, totalCount, hasMore, offset, limit, items } where items is the paged LocationDto list.")]
+    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution. Response shape: { count, totalCount, hasMore, offset, limit, items } where items is the paged LocationDto list. Pass `summary=true` to drop per-ref preview text — useful for high-fan-out symbols where the default payload exceeds the MCP cap (Jellyfin's IUserManager: 154 KB on 233 refs).")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find references to a symbol.")]
     public static Task<string> FindReferences(
@@ -96,6 +96,7 @@ public static class SymbolTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         [Description("Maximum number of references to return (default: 100)")] int limit = 100,
         [Description("Number of references to skip before returning results (default: 0)")] int offset = 0,
+        [Description("When true, drops per-ref preview text to keep the response small for high-fan-out symbols. File path + line + column + classification still populated. Default false preserves the v1.18.2 shape.")] bool summary = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("find_references", () =>
@@ -103,7 +104,7 @@ public static class SymbolTools
             {
                 ParameterValidation.ValidatePagination(offset, limit);
                 var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-                var results = await referenceService.FindReferencesAsync(workspaceId, locator, c);
+                var results = await referenceService.FindReferencesAsync(workspaceId, locator, c, summary);
                 var paged = results.Skip(offset).Take(limit).ToList();
                 var hasMore = offset + paged.Count < results.Count;
                 return JsonSerializer.Serialize(new
@@ -113,6 +114,7 @@ public static class SymbolTools
                     hasMore,
                     offset,
                     limit,
+                    summary,
                     items = paged
                 }, JsonDefaults.Indented);
             }, ct));
