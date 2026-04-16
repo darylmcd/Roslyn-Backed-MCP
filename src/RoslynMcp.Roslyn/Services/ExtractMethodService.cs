@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Formatting;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -56,8 +57,22 @@ public sealed class ExtractMethodService : IExtractMethodService
         var newRoot = ReplaceStatementsAndInsertMethod(
             root, parentBlock, statementsInSelection, callStatement, newMethod, enclosingMember);
 
-        // Build new solution, compute diff, store preview
-        var newSolution = solution.WithDocumentSyntaxRoot(document.Id, newRoot);
+        // dr-9-7-produces-output-that-violates-project-formatting +
+        // dr-9-9-format-bug-004-produces-malformed-body-closing-b: route the synthesized
+        // method declaration AND the synthesized call statement through Roslyn's
+        // `Formatter.FormatAsync` so editorconfig-driven indentation, spacing, and
+        // brace placement are applied. Both the new method and the call statement
+        // carry `Formatter.Annotation`; the formatter touches only those nodes plus
+        // their immediate context, leaving the rest of the document untouched.
+        var documentWithEdit = document.WithSyntaxRoot(newRoot);
+        var formattedDocument = await Formatter.FormatAsync(
+            documentWithEdit,
+            Formatter.Annotation,
+            options: null,
+            cancellationToken: ct).ConfigureAwait(false);
+        var formattedRoot = await formattedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Formatted document produced no syntax root.");
+        var newSolution = solution.WithDocumentSyntaxRoot(document.Id, formattedRoot);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Extract {statementsInSelection.Count} statement(s) into method '{methodName}'";
         var token = _previewStore.Store(
@@ -233,35 +248,53 @@ public sealed class ExtractMethodService : IExtractMethodService
 
         var accessModifier = SyntaxFactory.Token(SyntaxKind.PrivateKeyword);
 
+        // dr-9-7 / dr-9-9: build the parameter list with raw factory nodes — no manual
+        // trailing-space hacks. `Formatter.FormatAsync` (invoked on the final document
+        // in PreviewExtractMethodAsync) inserts proper spacing per editorconfig.
         var parameterList = SyntaxFactory.ParameterList(
             SyntaxFactory.SeparatedList(
                 parameters.Select(p =>
                     SyntaxFactory.Parameter(SyntaxFactory.Identifier(p.Name))
                         .WithType(SyntaxFactory.ParseTypeName(
-                            p.Type!.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))
-                            .WithTrailingTrivia(SyntaxFactory.Space)))));
+                            p.Type!.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))))));
 
-        // Build extracted method body
+        // Build extracted method body. Statements are taken verbatim from the source —
+        // their original trivia (including indentation and line breaks for multi-line
+        // chains) is preserved. The block is wrapped in elastic braces so the formatter
+        // re-indents the body to match the target class scope while keeping intra-statement
+        // formatting intact (dr-9-9: closing-brace + body-indent regression).
         var extractedStatements = new List<StatementSyntax>(statementsInSelection);
         if (flowsOut.Count == 1)
         {
             extractedStatements.Add(
                 SyntaxFactory.ReturnStatement(
-                    SyntaxFactory.IdentifierName(flowsOut[0].Name))
-                .WithLeadingTrivia(SyntaxFactory.Whitespace("        "))
-                .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed));
+                    SyntaxFactory.IdentifierName(flowsOut[0].Name)));
         }
 
+        var body = SyntaxFactory.Block(
+            SyntaxFactory.Token(SyntaxKind.OpenBraceToken)
+                .WithLeadingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed),
+            SyntaxFactory.List(extractedStatements),
+            SyntaxFactory.Token(SyntaxKind.CloseBraceToken)
+                .WithLeadingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed)
+                .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed));
+
+        // Use Formatter.Annotation so the document-wide Formatter.FormatAsync pass
+        // (in PreviewExtractMethodAsync) re-flows whitespace inside this method —
+        // including class-scope indentation on the declaration line and a clean
+        // newline before the next sibling member's closing brace.
         var newMethod = SyntaxFactory.MethodDeclaration(returnType, SyntaxFactory.Identifier(methodName))
             .WithModifiers(SyntaxFactory.TokenList(
                 isStatic
                     ? [accessModifier, SyntaxFactory.Token(SyntaxKind.StaticKeyword)]
                     : [accessModifier]))
             .WithParameterList(parameterList)
-            .WithBody(SyntaxFactory.Block(extractedStatements))
-            .NormalizeWhitespace();
+            .WithBody(body)
+            .WithLeadingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed)
+            .WithAdditionalAnnotations(Formatter.Annotation);
 
-        // Build call site
+        // Build call site with raw factory nodes; spacing around `=`, `,`, etc. is
+        // handled by Formatter.FormatAsync via the Formatter.Annotation tag below.
         var arguments = SyntaxFactory.ArgumentList(
             SyntaxFactory.SeparatedList(
                 parameters.Select(p =>
@@ -282,7 +315,7 @@ public sealed class ExtractMethodService : IExtractMethodService
             {
                 callStatement = SyntaxFactory.LocalDeclarationStatement(
                     SyntaxFactory.VariableDeclaration(
-                        SyntaxFactory.IdentifierName("var").WithTrailingTrivia(SyntaxFactory.Space),
+                        SyntaxFactory.IdentifierName("var"),
                         SyntaxFactory.SingletonSeparatedList(
                             SyntaxFactory.VariableDeclarator(outName)
                                 .WithInitializer(SyntaxFactory.EqualsValueClause(callExpression)))));
@@ -301,9 +334,14 @@ public sealed class ExtractMethodService : IExtractMethodService
             callStatement = SyntaxFactory.ExpressionStatement(callExpression);
         }
 
+        // Preserve the leading trivia from the original first statement so the call site
+        // sits at the correct column inside the enclosing block, but tag the node with
+        // Formatter.Annotation so `Formatter.FormatAsync` corrects intra-statement
+        // spacing (e.g., the `=` and `,` tokens) per editorconfig.
         callStatement = callStatement
             .WithLeadingTrivia(statementsInSelection[0].GetLeadingTrivia())
-            .WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed);
+            .WithTrailingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed)
+            .WithAdditionalAnnotations(Formatter.Annotation);
 
         return (newMethod, callStatement);
     }
