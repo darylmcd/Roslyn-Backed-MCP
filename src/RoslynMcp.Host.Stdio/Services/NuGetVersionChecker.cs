@@ -3,11 +3,22 @@ using System.Text.Json;
 namespace RoslynMcp.Host.Stdio.Services;
 
 /// <summary>
+/// Indirection for "latest published version of this server" — lets tests substitute a
+/// canned value without touching the real NuGet flat container. Implemented by
+/// <see cref="NuGetVersionChecker"/> in production.
+/// </summary>
+public interface ILatestVersionProvider
+{
+    /// <inheritdoc cref="NuGetVersionChecker.GetLatestVersion"/>
+    string? GetLatestVersion();
+}
+
+/// <summary>
 /// Lazily checks NuGet for the latest published version of Darylmcd.RoslynMcp
 /// and caches the result. Never throws — returns null when the check is pending,
 /// failed, or timed out.
 /// </summary>
-public sealed class NuGetVersionChecker
+public sealed class NuGetVersionChecker : ILatestVersionProvider
 {
     private const string PackageId = "darylmcd.roslynmcp";
     private static readonly Uri FlatContainerUri = new($"https://api.nuget.org/v3-flatcontainer/{PackageId}/index.json");
