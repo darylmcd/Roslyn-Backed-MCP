@@ -116,8 +116,30 @@ public sealed class CompileCheckService : ICompileCheckService
               "Run 'dotnet restore' on the solution, then call workspace_reload."
             : null;
 
+        // Item #6: compile-check-zero-projects-claimed-success-after-reload.
+        // When the filter (or a mid-reload race) leaves us with zero projects to evaluate,
+        // returning Success=true with CompletedProjects=0 lets agents trust a vacuous pass
+        // and ship broken code. Fail loud with a structured hint — this mirrors what the
+        // SampleSolution audit §9.8 repro produced (success:true, completedProjects:0,
+        // staleAction:auto-reloaded) and is the specific shape that gave the false-green.
+        string? zeroProjectsHint = null;
+        if (!cancelled && projectList.Count == 0)
+        {
+            zeroProjectsHint = projectFilter is null
+                ? "compile_check evaluated 0 projects. The workspace may have completed a reload without re-populating its project list — call workspace_reload explicitly and retry, or verify workspace_load succeeded."
+                : $"compile_check evaluated 0 projects: projectFilter '{projectFilter}' did not match any project in the workspace. Project names are matched case-insensitively against Project.Name (e.g. 'MyProject', not 'MyProject.csproj'). Call workspace_status for the current project list.";
+        }
+
+        var hint = zeroProjectsHint is not null && restoreHint is not null
+            ? zeroProjectsHint + " " + restoreHint
+            : zeroProjectsHint ?? restoreHint;
+
         return new CompileCheckDto(
-            Success: errorCount == 0 && !cancelled,
+            // A true Success requires that we actually evaluated at least one project.
+            // CompletedProjects==0 with TotalProjects==0 always flips Success false; when
+            // the filter matched no projects (projectList.Count==0), the above branches
+            // synthesize an actionable hint instead of a silent green response.
+            Success: errorCount == 0 && !cancelled && completedProjects > 0,
             ErrorCount: errorCount,
             WarningCount: warningCount,
             TotalDiagnostics: allDiagnostics.Count,
@@ -127,7 +149,7 @@ public sealed class CompileCheckService : ICompileCheckService
             HasMore: offset + pagedDiagnostics.Count < allDiagnostics.Count,
             Diagnostics: pagedDiagnostics,
             ElapsedMs: sw.ElapsedMilliseconds,
-            RestoreHint: restoreHint,
+            RestoreHint: hint,
             Cancelled: cancelled,
             CompletedProjects: completedProjects,
             TotalProjects: projectList.Count);
