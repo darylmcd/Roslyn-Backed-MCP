@@ -146,7 +146,7 @@ initiative below has the standard table fields filled out at execute time.
 | I-35 | `dr-9-2-format-bug-001-cross-project-interface-extractio` | 1 | 50000 | Fixed | in-review (PR #204) — `CrossProjectRefactoringService.CreateCompilationUnitForMember` gains `normalizeWhitespace` flag; `AddBaseType` + new `EnsureOpeningBraceOnOwnLine` helper mirror `InterfaceExtractionService`. |
 | I-36 | `dr-9-3-format-bug-002-destroys-source-formatting` | 1 | 50000 | Fixed | Format-bug singleton — `ExtractAndWireOrchestrator.cs`. |
 | I-37 | `dr-9-4-format-bug-003-produces-inline-itemgroup-xml` | 1 | 50000 | Fixed | Format-bug singleton — `PackageMigrationOrchestrator.cs`. |
-| I-38 | `dr-9-5-strips-the-blank-line-between-namespace-and-clas` | 1 | 50000 | Fixed | in-review (PR PENDING) — `BuildNewFileRoot` post-processes `NormalizeWhitespace()` via new `EnsureBlankLineBetweenNamespaceAndType` helper that prepends an `EndOfLineTrivia` to the first type declaration inside file-scoped or block namespace. |
+| I-38 | `dr-9-5-strips-the-blank-line-between-namespace-and-clas` | 1 | 50000 | Fixed | in-review (PR #206) — `BuildNewFileRoot` post-processes `NormalizeWhitespace()` via new `EnsureBlankLineBetweenNamespaceAndType` helper that prepends an `EndOfLineTrivia` to the first type declaration inside file-scoped or block namespace. |
 | I-39 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | 1 | 45000 | Fixed | Format-bug singleton — `InterfaceExtractionService.cs`. |
 | I-40 | `dr-9-7-only-partially-normalizes-whitespace` | 1 | 45000 | Fixed | Format-bug singleton — `FormatVerifyService.cs`; possibly overlaps I-01. |
 | I-41 | `dr-9-7-produces-output-that-violates-project-formatting` | 1 | 45000 | Fixed | Format-bug singleton — `ExtractMethodService.cs`. |
