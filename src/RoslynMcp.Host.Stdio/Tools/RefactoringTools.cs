@@ -22,12 +22,13 @@ public static class RefactoringTools
         [Description("Optional: 1-based line number of the symbol to rename")] int? line = null,
         [Description("Optional: 1-based column number of the symbol to rename")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("rename_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), newName, c);
+                var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), newName, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

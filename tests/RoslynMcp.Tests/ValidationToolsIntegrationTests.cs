@@ -106,7 +106,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             line: 1,
             column: 1,
             symbolHandle: null,
-            CancellationToken.None);
+            ct: CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsNotNull(doc.RootElement);
     }

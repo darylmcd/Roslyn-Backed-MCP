@@ -69,12 +69,13 @@ public static class SymbolTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("go_to_definition", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await symbolNavigationService.GoToDefinitionAsync(workspaceId, locator, c);
                 if (results.Count == 0) throw new KeyNotFoundException("No definition found for the symbol at the specified location");
                 return JsonSerializer.Serialize(new { count = results.Count, locations = results }, JsonDefaults.Indented);
@@ -92,6 +93,7 @@ public static class SymbolTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         [Description("Maximum number of references to return (default: 100)")] int limit = 100,
         [Description("Number of references to skip before returning results (default: 0)")] int offset = 0,
         CancellationToken ct = default)
@@ -100,7 +102,7 @@ public static class SymbolTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(offset, limit);
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await referenceService.FindReferencesAsync(workspaceId, locator, c);
                 var paged = results.Skip(offset).Take(limit).ToList();
                 var hasMore = offset + paged.Count < results.Count;
@@ -170,12 +172,13 @@ public static class SymbolTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("find_overrides", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await referenceService.FindOverridesAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
             }, ct));
@@ -192,12 +195,13 @@ public static class SymbolTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("find_base_members", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await referenceService.FindBaseMembersAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
             }, ct));
@@ -214,12 +218,13 @@ public static class SymbolTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("member_hierarchy", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await symbolRelationshipService.GetMemberHierarchyAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
@@ -335,12 +340,13 @@ public static class SymbolTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("find_property_writes", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var (results, resolvedKind) = await mutationAnalysisService.FindPropertyWritesWithMetadataAsync(workspaceId, locator, c);
                 // FLAG-3C: when the position resolves to a field or other non-property symbol,
                 // return a structured disambiguation hint instead of a silent empty array.
@@ -391,12 +397,13 @@ public static class SymbolTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("goto_type_definition", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await symbolNavigationService.GoToTypeDefinitionAsync(workspaceId, locator, c);
                 if (results.Count == 0) throw new KeyNotFoundException("No type definition found for the symbol at the specified location");
                 return JsonSerializer.Serialize(new { count = results.Count, locations = results }, JsonDefaults.Indented);

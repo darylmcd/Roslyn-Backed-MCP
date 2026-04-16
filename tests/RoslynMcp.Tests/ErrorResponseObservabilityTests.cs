@@ -37,7 +37,7 @@ public sealed class ErrorResponseObservabilityTests : SharedWorkspaceTestBase
             symbolHandle: fakeHandle,
             limit: 100,
             offset: 0,
-            CancellationToken.None);
+            ct: CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),

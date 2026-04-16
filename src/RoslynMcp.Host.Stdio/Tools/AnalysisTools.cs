@@ -189,12 +189,13 @@ public static class AnalysisTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("type_hierarchy", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), c);
+                var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), c);
                 if (result is null) throw new KeyNotFoundException("No type found at the specified location");
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
@@ -211,6 +212,7 @@ public static class AnalysisTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         [Description("Maximum number of callers to return (default: 100)")] int callersLimit = 100,
         [Description("Maximum number of callees to return (default: 100)")] int calleesLimit = 100,
         CancellationToken ct = default)
@@ -220,7 +222,7 @@ public static class AnalysisTools
             {
                 ParameterValidation.ValidatePagination(0, callersLimit);
                 ParameterValidation.ValidatePagination(0, calleesLimit);
-                var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), c);
+                var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
 
                 var callers = result.Callers.Take(callersLimit).ToList();
@@ -254,6 +256,7 @@ public static class AnalysisTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         [Description("Number of references to skip before returning results (default: 0)")] int referencesOffset = 0,
         [Description("Maximum number of references to return per page (default: 100). Larger pages can blow MCP output budgets on broad-impact symbols.")] int referencesLimit = 100,
         [Description("Maximum number of affected declarations to return (default: 100)")] int declarationsLimit = 100,
@@ -267,7 +270,7 @@ public static class AnalysisTools
                 var paging = new ImpactAnalysisPaging(referencesOffset, referencesLimit, declarationsLimit);
                 var result = await mutationAnalysisService.AnalyzeImpactAsync(
                     workspaceId,
-                    SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false),
+                    SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName),
                     paging,
                     c);
                 if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
@@ -286,6 +289,7 @@ public static class AnalysisTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         [Description("Maximum number of mutating members to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
@@ -293,7 +297,7 @@ public static class AnalysisTools
             gate.RunReadAsync(workspaceId, async c =>
             {
                 ParameterValidation.ValidatePagination(0, limit);
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var result = await mutationAnalysisService.FindTypeMutationsAsync(workspaceId, locator, c);
                 if (result is null) throw new KeyNotFoundException("No named type found at the specified location");
 
