@@ -25,13 +25,12 @@ public static class ExtractMethodTools
         [Description("Name for the extracted method")] string methodName,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("extract_method_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await extractMethodService.PreviewExtractMethodAsync(
-                    workspaceId, filePath, startLine, startColumn, endLine, endColumn, methodName, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await extractMethodService.PreviewExtractMethodAsync(
+                workspaceId, filePath, startLine, startColumn, endLine, endColumn, methodName, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "extract_method_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
@@ -45,15 +44,12 @@ public static class ExtractMethodTools
         [Description("The preview token returned by extract_method_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("extract_method_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

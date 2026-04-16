@@ -38,14 +38,13 @@ public static class ChangeSignatureTools
         [Description("Optional position (0-based) of the parameter. For op='add': insertion index (defaults to trailing). For op='remove': index to drop.")] int? position = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("change_signature_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var locator = new SymbolLocator(filePath, line, column, symbolHandle, metadataName);
-                locator.Validate();
-                var request = new ChangeSignatureRequest(op, name, newName, parameterType, defaultValue, position);
-                var dto = await changeSignatureService.PreviewChangeSignatureAsync(workspaceId, locator, request, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var locator = new SymbolLocator(filePath, line, column, symbolHandle, metadataName);
+            locator.Validate();
+            var request = new ChangeSignatureRequest(op, name, newName, parameterType, defaultValue, position);
+            var dto = await changeSignatureService.PreviewChangeSignatureAsync(workspaceId, locator, request, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
     }
 }

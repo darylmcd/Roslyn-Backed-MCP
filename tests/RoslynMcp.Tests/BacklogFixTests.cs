@@ -2,6 +2,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Text.Json;
 
@@ -24,7 +25,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task ToolErrorHandler_InternalError_IncludesExceptionTypeAndStackTrace()
     {
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => throw new NullReferenceException("test null ref"));
 
@@ -42,7 +43,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
         var inner1 = new InvalidCastException("mid cause", inner2);
         var outer = new AggregateException("wrapper", inner1);
 
-        var result = await ToolErrorHandler.ExecuteAsync("test_tool", () => throw outer);
+        var result = await ToolExecutionTestHarness.RunAsync("test_tool", () => throw outer);
 
         var json = JsonDocument.Parse(result);
         var message = json.RootElement.GetProperty("message").GetString()!;
@@ -53,7 +54,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task ToolErrorHandler_KnownErrors_DoNotIncludeStackTrace()
     {
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => throw new KeyNotFoundException("not found"));
 
@@ -67,7 +68,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task ToolErrorHandler_InvalidOperation_ClassifiedCorrectly()
     {
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => throw new InvalidOperationException("workspace stale"));
 
@@ -78,7 +79,7 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task ToolErrorHandler_RateLimit_ClassifiedCorrectly()
     {
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => throw new InvalidOperationException("Rate limit exceeded"));
 

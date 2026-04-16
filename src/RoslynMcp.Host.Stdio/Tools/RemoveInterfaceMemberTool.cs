@@ -28,11 +28,10 @@ public static class RemoveInterfaceMemberTool
         [Description("When true, also delete files left empty after the removal (default: false).")] bool removeEmptyFiles = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("remove_interface_member_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await orchestrator.PreviewRemoveAsync(workspaceId, interfaceMemberHandle, removeEmptyFiles, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await orchestrator.PreviewRemoveAsync(workspaceId, interfaceMemberHandle, removeEmptyFiles, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

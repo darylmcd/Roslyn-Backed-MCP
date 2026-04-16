@@ -25,11 +25,10 @@ public static class SymbolRefactorTools
         [Description("Ordered list of operations. Each is { kind: 'rename'|'edit'|'restructure', ...kind-specific fields }. Order matters — later ops see earlier ops' rewritten state.")] SymbolRefactorOperation[] operations,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("symbol_refactor_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var dto = await symbolRefactorService.PreviewAsync(workspaceId, operations ?? [], c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var dto = await symbolRefactorService.PreviewAsync(workspaceId, operations ?? [], c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
     }
 }

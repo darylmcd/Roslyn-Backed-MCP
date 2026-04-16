@@ -27,21 +27,20 @@ public static class CohesionAnalysisTools
         [Description("When true, exclude test classes (names/paths suggesting tests) from results after metrics are computed")] bool excludeTests = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("get_cohesion_metrics", () =>
-            gate.RunReadAsync(workspaceId, async c =>
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await cohesionAnalysisService.GetCohesionMetricsAsync(
+                workspaceId, filePath, projectName, minMethods, limit, includeInterfaces, excludeTestProjects, c);
+
+            if (excludeTests)
             {
-                var results = await cohesionAnalysisService.GetCohesionMetricsAsync(
-                    workspaceId, filePath, projectName, minMethods, limit, includeInterfaces, excludeTestProjects, c);
+                results = results.Where(r =>
+                    !IsTestTypeName(r.TypeName ?? string.Empty) &&
+                    !IsTestFilePath(r.FilePath ?? string.Empty)).ToList();
+            }
 
-                if (excludeTests)
-                {
-                    results = results.Where(r =>
-                        !IsTestTypeName(r.TypeName ?? string.Empty) &&
-                        !IsTestFilePath(r.FilePath ?? string.Empty)).ToList();
-                }
-
-                return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
-            }, ct));
+            return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
+        }, ct);
     }
 
     private static bool IsTestTypeName(string typeName) =>
@@ -69,12 +68,11 @@ public static class CohesionAnalysisTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("find_shared_members", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-                var results = await cohesionAnalysisService.FindSharedMembersAsync(workspaceId, locator, c);
-                return JsonSerializer.Serialize(new { count = results.Count, sharedMembers = results }, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+            var results = await cohesionAnalysisService.FindSharedMembersAsync(workspaceId, locator, c);
+            return JsonSerializer.Serialize(new { count = results.Count, sharedMembers = results }, JsonDefaults.Indented);
+        }, ct);
     }
 }

@@ -25,18 +25,17 @@ public static class MultiFileEditTools
         CancellationToken ct = default,
         [Description("When false (default), each C# file is parsed after edits; parser errors block that file's apply.")] bool skipSyntaxCheck = false)
     {
-        return ToolErrorHandler.ExecuteAsync("apply_multi_file_edit", () =>
-            gate.RunWriteAsync(workspaceId, async c =>
+        return gate.RunWriteAsync(workspaceId, async c =>
+        {
+            // Validate ALL paths before snapshotting so a bad path does not leave a stale undo entry.
+            foreach (var fileEdit in fileEdits)
             {
-                // Validate ALL paths before snapshotting so a bad path does not leave a stale undo entry.
-                foreach (var fileEdit in fileEdits)
-                {
-                    await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, fileEdit.FilePath, c).ConfigureAwait(false);
-                }
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, fileEdit.FilePath, c).ConfigureAwait(false);
+            }
 
-                var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, c, skipSyntaxCheck).ConfigureAwait(false);
-                return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-            }, ct));
+            var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, c, skipSyntaxCheck).ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "preview_multi_file_edit", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -52,16 +51,15 @@ public static class MultiFileEditTools
         CancellationToken ct = default,
         [Description("When false (default), each C# file is parsed after edits; syntax errors surface as an error response.")] bool skipSyntaxCheck = false)
     {
-        return ToolErrorHandler.ExecuteAsync("preview_multi_file_edit", () =>
-            gate.RunReadAsync(workspaceId, async c =>
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            foreach (var fileEdit in fileEdits)
             {
-                foreach (var fileEdit in fileEdits)
-                {
-                    await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, fileEdit.FilePath, c).ConfigureAwait(false);
-                }
-                var dto = await editService.PreviewMultiFileTextEditsAsync(workspaceId, fileEdits, c, skipSyntaxCheck).ConfigureAwait(false);
-                return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-            }, ct));
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, fileEdit.FilePath, c).ConfigureAwait(false);
+            }
+            var dto = await editService.PreviewMultiFileTextEditsAsync(workspaceId, fileEdits, c, skipSyntaxCheck).ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "preview_multi_file_edit_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -75,15 +73,12 @@ public static class MultiFileEditTools
         [Description("The preview token returned by preview_multi_file_edit")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("preview_multi_file_edit_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

@@ -28,18 +28,15 @@ public static class ScaffoldingTools
         [Description("When true (default), auto-implement interface members of baseType/interfaces as NotImplementedException stubs; set false to emit an empty class body")] bool implementInterface = true,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("scaffold_type_preview", () =>
+        ParameterValidation.ValidateTypeKind(typeKind);
+        return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidateTypeKind(typeKind);
-            return gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await scaffoldingService.PreviewScaffoldTypeAsync(
-                    workspaceId,
-                    new ScaffoldTypeDto(projectName, typeName, typeKind, @namespace, baseType, interfaces, implementInterface),
-                    c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await scaffoldingService.PreviewScaffoldTypeAsync(
+                workspaceId,
+                new ScaffoldTypeDto(projectName, typeName, typeKind, @namespace, baseType, interfaces, implementInterface),
+                c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "scaffold_test_batch_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -55,15 +52,14 @@ public static class ScaffoldingTools
         [Description("Test framework: mstest, xunit, nunit, or auto (default — inferred from the test project's PackageReferences)")] string testFramework = "auto",
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("scaffold_test_batch_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await scaffoldingService.PreviewScaffoldTestBatchAsync(
-                    workspaceId,
-                    new ScaffoldTestBatchDto(testProjectName, targets ?? [], testFramework),
-                    c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await scaffoldingService.PreviewScaffoldTestBatchAsync(
+                workspaceId,
+                new ScaffoldTestBatchDto(testProjectName, targets ?? [], testFramework),
+                c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "scaffold_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -77,16 +73,13 @@ public static class ScaffoldingTools
         [Description("The preview token returned by scaffold_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("scaffold_type_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "scaffold_test_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -103,15 +96,14 @@ public static class ScaffoldingTools
         [Description("Test framework: mstest, xunit, nunit, or auto (infer from PackageReference in the test csproj)")] string testFramework = "auto",
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("scaffold_test_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await scaffoldingService.PreviewScaffoldTestAsync(
-                    workspaceId,
-                    new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName, testFramework),
-                    c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await scaffoldingService.PreviewScaffoldTestAsync(
+                workspaceId,
+                new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName, testFramework),
+                c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "scaffold_test_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -125,15 +117,12 @@ public static class ScaffoldingTools
         [Description("The preview token returned by scaffold_test_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("scaffold_test_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

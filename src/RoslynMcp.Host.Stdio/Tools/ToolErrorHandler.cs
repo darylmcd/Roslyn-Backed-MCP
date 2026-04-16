@@ -115,62 +115,14 @@ internal static class ToolErrorHandler
     }
 
     /// <summary>
-    /// Wraps a tool action with structured error handling. Returns errors as structured JSON content
-    /// so MCP clients always receive actionable error details, regardless of SDK exception handling.
-    /// </summary>
-    public static async Task<string> ExecuteAsync(string toolName, Func<Task<string>> action, ILogger? auditLogger = null)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(toolName);
-
-        // P3: Open an ambient metrics scope so the workspace execution gate can record per-request
-        // queue/hold timings, and we can merge them into the response JSON as `_meta` so clients
-        // that don't surface MCP `notifications/message` (e.g. Claude Code) still get observability.
-        using var metricsScope = AmbientGateMetrics.BeginRequest();
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
-        try
-        {
-            var result = await action().ConfigureAwait(false);
-            stopwatch.Stop();
-            // backlog: reader-tool-elapsed-ms — every tool, reader or writer, gets the same
-            // wall-clock timing in the response _meta block. Concurrency audits use this to
-            // compute speedup ratios from inside the agent loop.
-            if (AmbientGateMetrics.Current is { } metrics)
-            {
-                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
-            }
-            auditLogger?.LogInformation("Tool {ToolName} completed successfully", toolName);
-            return InjectMetaIfPossible(result, toolName);
-        }
-        catch (OperationCanceledException)
-        {
-            auditLogger?.LogWarning("Tool {ToolName} was cancelled", toolName);
-            throw; // Let MCP SDK handle cancellation natively
-        }
-        catch (Exception ex)
-        {
-            stopwatch.Stop();
-            if (AmbientGateMetrics.Current is { } metrics)
-            {
-                metrics.ElapsedMs = stopwatch.ElapsedMilliseconds;
-            }
-            var info = ClassifyError(ex, toolName);
-            auditLogger?.Log(
-                info.Category == "InternalError" ? LogLevel.Error : LogLevel.Warning,
-                ex, "Tool {ToolName} failed: {ErrorCategory}", toolName, info.Category);
-
-            return InjectMetaIfPossible(FormatErrorResponse(info, toolName, ex), toolName);
-        }
-    }
-
-    /// <summary>
     /// P3: Parse the JSON result and add a top-level <c>_meta</c> property carrying the gate
     /// metrics snapshot. Only injected when the root is a JSON object — non-object roots
     /// (arrays, primitives) are returned unchanged so we don't break consumers that expect a
     /// specific shape. On any parse failure the original string is returned unchanged so this
-    /// never breaks a well-formed response.
+    /// never breaks a well-formed response. Exposed <c>internal</c> so the
+    /// <c>StructuredCallToolFilter</c> can inject <c>_meta</c> on both success and error paths.
     /// </summary>
-    private static string InjectMetaIfPossible(string json, string? source = null)
+    internal static string InjectMetaIfPossible(string json, string? source = null)
     {
         var snapshot = AmbientGateMetrics.Snapshot();
         if (snapshot is null)
@@ -203,47 +155,33 @@ internal static class ToolErrorHandler
         }
     }
 
-    private static ErrorInfo ClassifyError(Exception ex, string toolName)
+    internal static ErrorInfo ClassifyError(Exception ex, string toolName)
     {
         // mcp-parameter-validation-error-messages: detect parameter-binding failures
-        // wrapped in a generic invocation envelope. The MCP SDK + reflection dispatch
-        // surface parameter problems as InvalidOperationException or TargetInvocationException
-        // with the real cause as ImmediateInnerException. The dictionary entry for
-        // InvalidOperationException would otherwise mask this as a generic "InvalidOperation".
+        // in BOTH shapes the runtime can deliver them:
+        //   1. Wrapped in a generic invocation envelope — legacy reflection dispatch surfaces
+        //      parameter problems as InvalidOperationException or TargetInvocationException
+        //      with the real cause as ImmediateInnerException. The dictionary entry for
+        //      InvalidOperationException would otherwise mask this as a generic "InvalidOperation".
+        //   2. Raw (unwrapped) — once wired through ModelContextProtocol's AddCallToolFilter
+        //      (SDK PR csharp-sdk#844, shipped in 0.4.0-preview.3 and carried into 1.x), the
+        //      filter pipeline propagates pre-binding ArgumentException/JsonException/etc.
+        //      directly without an invocation wrapper.
         //
-        // Scope is intentionally narrow — only the IMMEDIATE InnerException is checked, and
-        // the OUTER must be a recognized invocation wrapper. Walking the full chain would
-        // misclassify legitimate internal errors (e.g., AggregateException → InvalidCastException
-        // → ArgumentException buried deep in domain code) as parameter validation.
+        // Both shapes produce the same structured InvalidArgument envelope. The helper
+        // TryClassifyBindingLike runs against the inner exception when there's an invocation
+        // wrapper, otherwise against the exception itself. Legitimate internal errors
+        // (AggregateException → InvalidCastException → ArgumentException buried deep in
+        // domain code) are NOT misclassified because the shallow walk only inspects the
+        // immediate exception at each level.
         if (IsInvocationWrapper(ex) && ex.InnerException is { } directInner)
         {
-            switch (directInner)
-            {
-                case System.Text.Json.JsonException jsonEx:
-                    return new("InvalidArgument",
-                        $"Parameter binding failed (JSON deserialization): {jsonEx.Message}. " +
-                        "Check that JSON property names match the tool schema exactly (camelCase).");
-
-                case ArgumentNullException nullArgEx:
-                    return new("InvalidArgument",
-                        $"Required parameter '{nullArgEx.ParamName ?? "<unknown>"}' is missing or null. " +
-                        "Provide a value for this parameter and retry.");
-
-                case ArgumentOutOfRangeException rangeEx:
-                    return new("InvalidArgument",
-                        $"Parameter '{rangeEx.ParamName ?? "<unknown>"}' has an out-of-range value: {rangeEx.Message}. " +
-                        "Check the tool schema for the accepted range.");
-
-                case ArgumentException argEx2:
-                    return new("InvalidArgument",
-                        $"Parameter '{argEx2.ParamName ?? "<unknown>"}' is invalid: {argEx2.Message}. " +
-                        "Check that all required parameters are provided and values match the expected types.");
-
-                case FormatException fmtEx:
-                    return new("InvalidArgument",
-                        $"Parameter format error: {fmtEx.Message}. " +
-                        "Check that values match the expected format (e.g., integers, booleans, paths).");
-            }
+            if (TryClassifyBindingLike(directInner, out var wrappedInfo))
+                return wrappedInfo;
+        }
+        else if (TryClassifyBindingLike(ex, out var rawInfo))
+        {
+            return rawInfo;
         }
 
         // symbol-impact-sweep-race-with-auto-reload: when a symbol fails to resolve AND the
@@ -279,6 +217,67 @@ internal static class ToolErrorHandler
         return new("InternalError",
             $"Internal error in {toolName}: {detail}. " +
             "If this persists, try reloading the workspace (workspace_reload).");
+    }
+
+    /// <summary>
+    /// Classifies <paramref name="ex"/> against the five known parameter-binding exception
+    /// shapes (<see cref="System.Text.Json.JsonException"/>, <see cref="ArgumentNullException"/>,
+    /// <see cref="ArgumentOutOfRangeException"/>, <see cref="ArgumentException"/>,
+    /// <see cref="FormatException"/>) and produces an <c>InvalidArgument</c> envelope that
+    /// names the offending parameter where possible. Returns <see langword="false"/> when
+    /// the exception is not a binding-like shape, leaving the caller to fall through to
+    /// the dictionary or the default <c>InternalError</c> branch.
+    /// </summary>
+    private static bool TryClassifyBindingLike(Exception ex, out ErrorInfo info)
+    {
+        switch (ex)
+        {
+            case System.Text.Json.JsonException jsonEx:
+                info = new("InvalidArgument",
+                    $"Parameter binding failed (JSON deserialization): {jsonEx.Message}. " +
+                    "Check that JSON property names match the tool schema exactly (camelCase).");
+                return true;
+
+            case ArgumentNullException nullArgEx:
+                info = new("InvalidArgument",
+                    $"Required parameter '{nullArgEx.ParamName ?? "<unknown>"}' is missing or null. " +
+                    "Provide a value for this parameter and retry.");
+                return true;
+
+            case ArgumentOutOfRangeException rangeEx:
+                info = new("InvalidArgument",
+                    $"Parameter '{rangeEx.ParamName ?? "<unknown>"}' has an out-of-range value: {rangeEx.Message}. " +
+                    "Check the tool schema for the accepted range.");
+                return true;
+
+            case ArgumentException argEx:
+                info = new("InvalidArgument",
+                    $"Parameter '{argEx.ParamName ?? "<unknown>"}' is invalid: {argEx.Message}. " +
+                    "Check that all required parameters are provided and values match the expected types.");
+                return true;
+
+            case FormatException fmtEx:
+                info = new("InvalidArgument",
+                    $"Parameter format error: {fmtEx.Message}. " +
+                    "Check that values match the expected format (e.g., integers, booleans, paths).");
+                return true;
+        }
+
+        info = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Facade for the StructuredCallToolFilter: classify an exception and return a fully
+    /// formatted JSON error envelope (without <c>_meta</c>; inject that separately). Wraps
+    /// <see cref="ClassifyError"/> + <see cref="FormatErrorResponse"/> so callers don't need
+    /// access to the private <see cref="ErrorInfo"/> type.
+    /// </summary>
+    internal static string ClassifyAndFormat(Exception ex, string toolName)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(toolName);
+        var info = ClassifyError(ex, toolName);
+        return FormatErrorResponse(info, toolName, ex);
     }
 
     /// <summary>
@@ -336,7 +335,7 @@ internal static class ToolErrorHandler
         return string.Join("\n", frames);
     }
 
-    private static string FormatErrorResponse(ErrorInfo info, string toolName, Exception ex)
+    internal static string FormatErrorResponse(ErrorInfo info, string toolName, Exception ex)
     {
         if (info.Category == "InternalError")
         {
@@ -365,7 +364,7 @@ internal static class ToolErrorHandler
         }
     }
 
-    private readonly record struct ErrorInfo(string Category, string Message);
+    internal readonly record struct ErrorInfo(string Category, string Message);
 }
 
 /// <summary>

@@ -22,12 +22,11 @@ public static class FlowAnalysisTools
         [Description("1-based end line of the code region to analyze")] int endLine,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("analyze_data_flow", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await flowAnalysisService.AnalyzeDataFlowAsync(workspaceId, filePath, startLine, endLine, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await flowAnalysisService.AnalyzeDataFlowAsync(workspaceId, filePath, startLine, endLine, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "analyze_control_flow", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -43,11 +42,10 @@ public static class FlowAnalysisTools
         [Description("1-based end line of the code region to analyze")] int endLine,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("analyze_control_flow", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await flowAnalysisService.AnalyzeControlFlowAsync(workspaceId, filePath, startLine, endLine, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await flowAnalysisService.AnalyzeControlFlowAsync(workspaceId, filePath, startLine, endLine, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

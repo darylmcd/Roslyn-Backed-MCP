@@ -23,15 +23,14 @@ public static class DeadCodeTools
         [Description("When true, delete files whose remaining content is purely trivia or empty namespace shells after the removal (UX-005). False keeps the file and instead emits a warning")] bool removeEmptyFiles = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("remove_dead_code_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await deadCodeService.PreviewRemoveDeadCodeAsync(
-                    workspaceId,
-                    new DeadCodeRemovalDto(symbolHandles, removeEmptyFiles),
-                    c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await deadCodeService.PreviewRemoveDeadCodeAsync(
+                workspaceId,
+                new DeadCodeRemovalDto(symbolHandles, removeEmptyFiles),
+                c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "remove_dead_code_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -45,15 +44,12 @@ public static class DeadCodeTools
         [Description("The preview token returned by remove_dead_code_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("remove_dead_code_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

@@ -26,85 +26,84 @@ public static class TestCoverageTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("test_coverage", () =>
-            gate.RunReadAsync(workspaceId, async c =>
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            ProgressHelper.Report(progress, 0, 1);
+            var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
+            var loadedPath = status.LoadedPath ?? throw new InvalidOperationException("Workspace has no loaded path.");
+
+            var coverageDir = Path.Combine(Path.GetTempPath(), "roslyn-mcp-coverage", Guid.NewGuid().ToString("N"));
+            var targetPath = projectName is not null
+                ? status.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase))?.FilePath ?? loadedPath
+                : loadedPath;
+
+            // test-coverage-vague-error-when-coverlet-missing: inspect the test projects
+            // we're about to run and short-circuit with a structured MissingPackages error
+            // when coverlet.collector isn't referenced. Pre-fix the tool ran `dotnet test`
+            // which would succeed (tests passed) but produce no coverage file — the caller
+            // then saw "Coverage file not generated" with no machine-readable hint that the
+            // fix is a NuGet install.
+            var testProjectsLackingCoverlet = FindTestProjectsWithoutCoverlet(status, projectName);
+            if (testProjectsLackingCoverlet.Count > 0)
             {
-                ProgressHelper.Report(progress, 0, 1);
-                var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
-                var loadedPath = status.LoadedPath ?? throw new InvalidOperationException("Workspace has no loaded path.");
-
-                var coverageDir = Path.Combine(Path.GetTempPath(), "roslyn-mcp-coverage", Guid.NewGuid().ToString("N"));
-                var targetPath = projectName is not null
-                    ? status.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase))?.FilePath ?? loadedPath
-                    : loadedPath;
-
-                // test-coverage-vague-error-when-coverlet-missing: inspect the test projects
-                // we're about to run and short-circuit with a structured MissingPackages error
-                // when coverlet.collector isn't referenced. Pre-fix the tool ran `dotnet test`
-                // which would succeed (tests passed) but produce no coverage file — the caller
-                // then saw "Coverage file not generated" with no machine-readable hint that the
-                // fix is a NuGet install.
-                var testProjectsLackingCoverlet = FindTestProjectsWithoutCoverlet(status, projectName);
-                if (testProjectsLackingCoverlet.Count > 0)
-                {
-                    ProgressHelper.Report(progress, 1, 1);
-                    var summary = $"Coverlet missing: {testProjectsLackingCoverlet.Count} test project(s) don't reference coverlet.collector. " +
-                        $"Install via `dotnet add package coverlet.collector` in: {string.Join(", ", testProjectsLackingCoverlet)}.";
-                    return JsonSerializer.Serialize(new TestCoverageResultDto(
-                        Success: false,
-                        Error: summary,
-                        LineCoveragePercent: null,
-                        BranchCoveragePercent: null,
-                        Modules: [],
-                        FailureEnvelope: new TestCoverageFailureEnvelopeDto(
-                            ErrorKind: "CoverletMissing",
-                            IsRetryable: false,
-                            Summary: summary,
-                            MissingPackages: testProjectsLackingCoverlet)), JsonDefaults.Indented);
-                }
-
-                var arguments = new List<string>
-                {
-                    "test",
-                    targetPath,
-                    "--collect",
-                    "XPlat Code Coverage",
-                    "--results-directory",
-                    coverageDir
-                };
-
-                var execution = await commandRunner.RunAsync(Path.GetDirectoryName(loadedPath)!, targetPath, arguments, c).ConfigureAwait(false);
-                ProgressHelper.Report(progress, 0.8f, 1);
-
-                // Find the coverage XML file
-                var coverageFiles = Directory.Exists(coverageDir)
-                    ? Directory.GetFiles(coverageDir, "coverage.cobertura.xml", SearchOption.AllDirectories)
-                    : [];
-
-                if (coverageFiles.Length == 0)
-                {
-                    ProgressHelper.Report(progress, 1, 1);
-                    var errorKind = !execution.Succeeded ? "TestFailure" : "CoverletMissing";
-                    var summary = !execution.Succeeded
-                        ? $"Tests failed (exit code {execution.ExitCode}). Coverage file not found."
-                        : "Coverage file not generated. Ensure coverlet.collector NuGet package is referenced in test projects.";
-                    return JsonSerializer.Serialize(new TestCoverageResultDto(
-                        Success: false,
-                        Error: summary,
-                        LineCoveragePercent: null,
-                        BranchCoveragePercent: null,
-                        Modules: [],
-                        FailureEnvelope: new TestCoverageFailureEnvelopeDto(
-                            ErrorKind: errorKind,
-                            IsRetryable: errorKind == "TestFailure",
-                            Summary: summary)), JsonDefaults.Indented);
-                }
-
-                var latestCoverage = coverageFiles.OrderByDescending(File.GetLastWriteTimeUtc).First();
-                var result = ParseCoberturaXml(latestCoverage);
                 ProgressHelper.Report(progress, 1, 1);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+                var summary = $"Coverlet missing: {testProjectsLackingCoverlet.Count} test project(s) don't reference coverlet.collector. " +
+                    $"Install via `dotnet add package coverlet.collector` in: {string.Join(", ", testProjectsLackingCoverlet)}.";
+                return JsonSerializer.Serialize(new TestCoverageResultDto(
+                    Success: false,
+                    Error: summary,
+                    LineCoveragePercent: null,
+                    BranchCoveragePercent: null,
+                    Modules: [],
+                    FailureEnvelope: new TestCoverageFailureEnvelopeDto(
+                        ErrorKind: "CoverletMissing",
+                        IsRetryable: false,
+                        Summary: summary,
+                        MissingPackages: testProjectsLackingCoverlet)), JsonDefaults.Indented);
+            }
+
+            var arguments = new List<string>
+            {
+                "test",
+                targetPath,
+                "--collect",
+                "XPlat Code Coverage",
+                "--results-directory",
+                coverageDir
+            };
+
+            var execution = await commandRunner.RunAsync(Path.GetDirectoryName(loadedPath)!, targetPath, arguments, c).ConfigureAwait(false);
+            ProgressHelper.Report(progress, 0.8f, 1);
+
+            // Find the coverage XML file
+            var coverageFiles = Directory.Exists(coverageDir)
+                ? Directory.GetFiles(coverageDir, "coverage.cobertura.xml", SearchOption.AllDirectories)
+                : [];
+
+            if (coverageFiles.Length == 0)
+            {
+                ProgressHelper.Report(progress, 1, 1);
+                var errorKind = !execution.Succeeded ? "TestFailure" : "CoverletMissing";
+                var summary = !execution.Succeeded
+                    ? $"Tests failed (exit code {execution.ExitCode}). Coverage file not found."
+                    : "Coverage file not generated. Ensure coverlet.collector NuGet package is referenced in test projects.";
+                return JsonSerializer.Serialize(new TestCoverageResultDto(
+                    Success: false,
+                    Error: summary,
+                    LineCoveragePercent: null,
+                    BranchCoveragePercent: null,
+                    Modules: [],
+                    FailureEnvelope: new TestCoverageFailureEnvelopeDto(
+                        ErrorKind: errorKind,
+                        IsRetryable: errorKind == "TestFailure",
+                        Summary: summary)), JsonDefaults.Indented);
+            }
+
+            var latestCoverage = coverageFiles.OrderByDescending(File.GetLastWriteTimeUtc).First();
+            var result = ParseCoberturaXml(latestCoverage);
+            ProgressHelper.Report(progress, 1, 1);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     /// <summary>

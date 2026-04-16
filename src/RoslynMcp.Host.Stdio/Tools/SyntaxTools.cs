@@ -29,14 +29,13 @@ public static class SyntaxTools
         [Description("Hard cap on estimated total JSON-serialized response size in bytes (~120 bytes per node + leaf text length). Use this to guarantee the response fits under the MCP cap. Default 65536.")] int maxTotalBytes = 65536,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("get_syntax_tree", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-                var result = await syntaxService.GetSyntaxTreeAsync(
-                    workspaceId, filePath, startLine, endLine, maxDepth, c, maxOutputChars, maxNodes, maxTotalBytes);
-                if (result is null) throw new KeyNotFoundException($"Document not found: {filePath}");
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+            var result = await syntaxService.GetSyntaxTreeAsync(
+                workspaceId, filePath, startLine, endLine, maxDepth, c, maxOutputChars, maxNodes, maxTotalBytes);
+            if (result is null) throw new KeyNotFoundException($"Document not found: {filePath}");
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

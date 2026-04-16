@@ -25,19 +25,18 @@ public static class CrossProjectRefactoringTools
         CancellationToken ct = default,
         [Description("When true, keep the type's current namespace if targetNamespace is null (legacy). When false (default), use targetNamespace or the target project's default namespace.")] bool preserveNamespace = false)
     {
-        return ToolErrorHandler.ExecuteAsync("move_type_to_project_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await crossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
-                    workspaceId,
-                    sourceFilePath,
-                    typeName,
-                    targetProjectName,
-                    targetNamespace,
-                    c,
-                    preserveNamespace).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await crossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+                workspaceId,
+                sourceFilePath,
+                typeName,
+                targetProjectName,
+                targetNamespace,
+                c,
+                preserveNamespace).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "extract_interface_cross_project_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -54,18 +53,17 @@ public static class CrossProjectRefactoringTools
         [Description("Optional: target project name or project file path")] string? targetProjectName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("extract_interface_cross_project_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await crossProjectRefactoringService.PreviewExtractInterfaceAsync(
-                    workspaceId,
-                    filePath,
-                    typeName,
-                    interfaceName,
-                    targetProjectName,
-                    c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await crossProjectRefactoringService.PreviewExtractInterfaceAsync(
+                workspaceId,
+                filePath,
+                typeName,
+                interfaceName,
+                targetProjectName,
+                c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "dependency_inversion_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -82,17 +80,16 @@ public static class CrossProjectRefactoringTools
         [Description("Optional: interface name. Defaults to I + type name")] string? interfaceName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("dependency_inversion_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await crossProjectRefactoringService.PreviewDependencyInversionAsync(
-                    workspaceId,
-                    filePath,
-                    typeName,
-                    interfaceName,
-                    interfaceProjectName,
-                    c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await crossProjectRefactoringService.PreviewDependencyInversionAsync(
+                workspaceId,
+                filePath,
+                typeName,
+                interfaceName,
+                interfaceProjectName,
+                c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

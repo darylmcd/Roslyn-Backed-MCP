@@ -25,13 +25,12 @@ public static class FileOperationTools
         [Description("Initial file contents")] string content,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("create_file_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-                var result = await fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(projectName, filePath, content), c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+            var result = await fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(projectName, filePath, content), c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "create_file_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -45,16 +44,13 @@ public static class FileOperationTools
         [Description("The preview token returned by create_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("create_file_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "delete_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -69,13 +65,12 @@ public static class FileOperationTools
         [Description("Absolute path to the source file to delete")] string filePath,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("delete_file_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-                var result = await fileOperationService.PreviewDeleteFileAsync(workspaceId, new DeleteFileDto(filePath), c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+            var result = await fileOperationService.PreviewDeleteFileAsync(workspaceId, new DeleteFileDto(filePath), c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "delete_file_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -89,16 +84,13 @@ public static class FileOperationTools
         [Description("The preview token returned by delete_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("delete_file_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "move_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -116,17 +108,16 @@ public static class FileOperationTools
         [Description("When true, updates the namespace declaration in the moved file to match the destination folder")] bool updateNamespace = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("move_file_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, sourceFilePath, c).ConfigureAwait(false);
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, targetFilePath, c).ConfigureAwait(false);
-                var result = await fileOperationService.PreviewMoveFileAsync(
-                    workspaceId,
-                    new MoveFileDto(sourceFilePath, targetFilePath, destinationProjectName, updateNamespace),
-                    c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, sourceFilePath, c).ConfigureAwait(false);
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, targetFilePath, c).ConfigureAwait(false);
+            var result = await fileOperationService.PreviewMoveFileAsync(
+                workspaceId,
+                new MoveFileDto(sourceFilePath, targetFilePath, destinationProjectName, updateNamespace),
+                c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "move_file_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -140,15 +131,12 @@ public static class FileOperationTools
         [Description("The preview token returned by move_file_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("move_file_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

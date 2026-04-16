@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -126,11 +127,13 @@ public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
         // Preserve the legacy "no locator at all" error path. The factory's message now
         // advertises all three strategies (including metadataName) since every caller
         // supports it.
-        var json = await SymbolTools.FindReferences(
-            WorkspaceExecutionGate,
-            ReferenceService,
-            WorkspaceId,
-            ct: CancellationToken.None);
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "find_references",
+            () => SymbolTools.FindReferences(
+                WorkspaceExecutionGate,
+                ReferenceService,
+                WorkspaceId,
+                ct: CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(

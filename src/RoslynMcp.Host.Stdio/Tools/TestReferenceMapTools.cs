@@ -26,11 +26,10 @@ public static class TestReferenceMapTools
         [Description("Max entries returned per page. Clamped to [1, 500]. Default 200.")] int limit = 200,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("test_reference_map", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await testReferenceMapService.BuildAsync(workspaceId, projectName, offset, limit, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await testReferenceMapService.BuildAsync(workspaceId, projectName, offset, limit, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

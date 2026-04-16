@@ -21,12 +21,11 @@ public static class SuggestionTools
         [Description("Maximum number of suggestions to return (default: 20)")] int limit = 20,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("suggest_refactorings", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var suggestions = await suggestionService.SuggestRefactoringsAsync(
-                    workspaceId, projectName, limit, c);
-                return JsonSerializer.Serialize(new { count = suggestions.Count, suggestions }, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var suggestions = await suggestionService.SuggestRefactoringsAsync(
+                workspaceId, projectName, limit, c);
+            return JsonSerializer.Serialize(new { count = suggestions.Count, suggestions }, JsonDefaults.Indented);
+        }, ct);
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Host.Stdio.Prompts;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 using ModelContextProtocol.Protocol;
 
 namespace RoslynMcp.Tests;
@@ -105,11 +106,13 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
     {
         using var services = new ServiceCollection().BuildServiceProvider();
 
-        var json = await PromptShimTools.GetPromptText(
-            services,
-            promptName: "discover_capabilities",
-            parametersJson: "{not valid json",
-            CancellationToken.None);
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "get_prompt_text",
+            () => PromptShimTools.GetPromptText(
+                services,
+                promptName: "discover_capabilities",
+                parametersJson: "{not valid json",
+                CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
@@ -130,11 +133,13 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
     {
         using var services = new ServiceCollection().BuildServiceProvider();
 
-        var json = await PromptShimTools.GetPromptText(
-            services,
-            promptName: "discover_capabilities",
-            parametersJson: "[1, 2, 3]",
-            CancellationToken.None);
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "get_prompt_text",
+            () => PromptShimTools.GetPromptText(
+                services,
+                promptName: "discover_capabilities",
+                parametersJson: "[1, 2, 3]",
+                CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
@@ -152,11 +157,13 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
 
         // discover_capabilities takes a string parameter "category"; passing an integer forces
         // the per-parameter JsonException path at the JsonSerializer.Deserialize call.
-        var json = await PromptShimTools.GetPromptText(
-            services,
-            promptName: "discover_capabilities",
-            parametersJson: "{\"category\": 123}",
-            CancellationToken.None);
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "get_prompt_text",
+            () => PromptShimTools.GetPromptText(
+                services,
+                promptName: "discover_capabilities",
+                parametersJson: "{\"category\": 123}",
+                CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),

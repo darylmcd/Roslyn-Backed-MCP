@@ -20,12 +20,11 @@ public static class EditorConfigTools
         [Description("Absolute path to the source file to inspect")] string filePath,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("get_editorconfig_options", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await editorConfigService.GetOptionsAsync(workspaceId, filePath, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await editorConfigService.GetOptionsAsync(workspaceId, filePath, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "set_editorconfig_option", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -41,11 +40,10 @@ public static class EditorConfigTools
         [Description("Value (e.g. warning, suggestion, silent, none)")] string value,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("set_editorconfig_option", () =>
-            gate.RunWriteAsync(workspaceId, async c =>
-            {
-                var result = await editorConfigService.SetOptionAsync(workspaceId, filePath, key, value, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunWriteAsync(workspaceId, async c =>
+        {
+            var result = await editorConfigService.SetOptionAsync(workspaceId, filePath, key, value, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

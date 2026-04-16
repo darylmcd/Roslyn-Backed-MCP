@@ -27,13 +27,12 @@ public static class ValidationBundleTools
         [Description("When true, drops the per-diagnostic ErrorDiagnostics list and per-test DiscoveredTests list to keep the response under the MCP cap on large solutions. OverallStatus + counts still surface the verdict. Default false preserves the v1.18 shape.")] bool summary = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("validate_workspace", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var dto = await validationService
-                    .ValidateAsync(workspaceId, changedFilePaths, runTests, c, summary)
-                    .ConfigureAwait(false);
-                return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var dto = await validationService
+                .ValidateAsync(workspaceId, changedFilePaths, runTests, c, summary)
+                .ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
     }
 }

@@ -30,6 +30,7 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | `references/testing.md` | Test patterns, test command, coverage guidance |
 | `references/tooling/dotnet.md` | dotnet CLI commands used in this repo |
 | `references/tooling/mcp-clients.md` | MCP client integration notes |
+| `references/mcp-server-best-practices.md` | MCP error-model, filter pipeline, anti-patterns; cite before changing `Program.cs`, `ToolErrorHandler`, or tool-call dispatch |
 
 ## Repeatable Procedures & Prompts
 
@@ -64,7 +65,8 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | First session / orientation | `AGENTS.md` → `CI_POLICY.md` → `workflow.md` → `runtime.md` → `architecture.md` |
 | Fix a bug in Roslyn services | `architecture.md` → `domains/roslyn-services/reference.md` → `backlog.md` |
 | C# refactor or multi-file semantic change | `runtime.md` (Roslyn MCP client policy) → `domains/tool-usage-guide.md` |
-| Add or change a tool | `domains/host-stdio/reference.md` → `domains/roslyn-services/reference.md` → `references/testing.md` |
+| Add or change a tool | `domains/host-stdio/reference.md` → `references/mcp-server-best-practices.md` → `domains/roslyn-services/reference.md` → `references/testing.md` |
+| Change error handling, tool-call dispatch, filters, or `Program.cs` | `references/mcp-server-best-practices.md` → `domains/host-stdio/reference.md` |
 | Evolve a DTO or contract | `domains/core-contracts/reference.md` → `architecture.md` |
 | Write or update tests | `references/testing.md` → `runtime.md` |
 | Audit test suite (performance, SRP, workspace/init smells) | `prompts/test-suite-audit.md` → `references/testing.md` |

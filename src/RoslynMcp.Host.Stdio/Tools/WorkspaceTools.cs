@@ -25,18 +25,17 @@ public static class WorkspaceTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("workspace_load", () =>
-            gate.RunLoadGateAsync(async c =>
-            {
-                ProgressHelper.Report(progress, 0, 1);
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
-                var status = await workspace.LoadAsync(path, c);
-                ProgressHelper.Report(progress, 1, 1);
-                _ = NotifyResourcesChangedAsync(server);
-                return verbose
-                    ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
-                    : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
-            }, ct));
+        return gate.RunLoadGateAsync(async c =>
+        {
+            ProgressHelper.Report(progress, 0, 1);
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
+            var status = await workspace.LoadAsync(path, c);
+            ProgressHelper.Report(progress, 1, 1);
+            _ = NotifyResourcesChangedAsync(server);
+            return verbose
+                ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
+                : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Reload the currently loaded workspace to pick up file changes")]
@@ -51,14 +50,13 @@ public static class WorkspaceTools
     {
         // Reload acquires both the global load gate AND the per-workspace write lock so that
         // any in-flight readers on this workspace complete before the solution is replaced.
-        return ToolErrorHandler.ExecuteAsync("workspace_reload", () =>
-            gate.RunLoadGateAsync(outerCt =>
-                gate.RunWriteAsync(workspaceId, async innerCt =>
-                {
-                    var status = await workspace.ReloadAsync(workspaceId, innerCt);
-                    _ = NotifyResourcesChangedAsync(server);
-                    return JsonSerializer.Serialize(status, JsonDefaults.Indented);
-                }, outerCt), ct));
+        return gate.RunLoadGateAsync(outerCt =>
+            gate.RunWriteAsync(workspaceId, async innerCt =>
+            {
+                var status = await workspace.ReloadAsync(workspaceId, innerCt);
+                _ = NotifyResourcesChangedAsync(server);
+                return JsonSerializer.Serialize(status, JsonDefaults.Indented);
+            }, outerCt), ct);
     }
 
     [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources")]
@@ -75,18 +73,17 @@ public static class WorkspaceTools
         // no reader is in flight when the workspace's lock entry is dropped from the registry.
         // RemoveGate must run after RunWriteAsync completes so the per-workspace lock entry is
         // released before being removed from the registry.
-        return ToolErrorHandler.ExecuteAsync("workspace_close", () =>
-            gate.RunLoadGateAsync(async outerCt =>
+        return gate.RunLoadGateAsync(async outerCt =>
+        {
+            var json = await gate.RunWriteAsync(workspaceId, async innerCt =>
             {
-                var json = await gate.RunWriteAsync(workspaceId, async innerCt =>
-                {
-                    var closed = workspace.Close(workspaceId);
-                    _ = NotifyResourcesChangedAsync(server);
-                    return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
-                }, outerCt).ConfigureAwait(false);
-                gate.RemoveGate(workspaceId);
-                return json;
-            }, ct));
+                var closed = workspace.Close(workspaceId);
+                _ = NotifyResourcesChangedAsync(server);
+                return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
+            }, outerCt).ConfigureAwait(false);
+            gate.RemoveGate(workspaceId);
+            return json;
+        }, ct);
     }
 
     [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions. Returns a lean summary per workspace by default — pass verbose=true for the full per-project tree of every workspace.")]
@@ -96,17 +93,14 @@ public static class WorkspaceTools
         IWorkspaceManager workspace,
         [Description("When true, return the full per-project tree and workspace diagnostics for each workspace. Default false returns only counts and load state.")] bool verbose = false)
     {
-        return ToolErrorHandler.ExecuteAsync("workspace_list", () =>
+        var workspaces = workspace.ListWorkspaces();
+        if (verbose)
         {
-            var workspaces = workspace.ListWorkspaces();
-            if (verbose)
-            {
-                return Task.FromResult(JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented));
-            }
+            return Task.FromResult(JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented));
+        }
 
-            var summaries = workspaces.Select(WorkspaceStatusSummaryDto.From).ToList();
-            return Task.FromResult(JsonSerializer.Serialize(new { count = summaries.Count, workspaces = summaries }, JsonDefaults.Indented));
-        });
+        var summaries = workspaces.Select(WorkspaceStatusSummaryDto.From).ToList();
+        return Task.FromResult(JsonSerializer.Serialize(new { count = summaries.Count, workspaces = summaries }, JsonDefaults.Indented));
     }
 
     [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
@@ -122,14 +116,13 @@ public static class WorkspaceTools
         [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("workspace_status", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
-                return verbose
-                    ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
-                    : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
+            return verbose
+                ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
+                : JsonSerializer.Serialize(WorkspaceStatusSummaryDto.From(status), JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "workspace_health", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
@@ -152,12 +145,11 @@ public static class WorkspaceTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("project_graph", () =>
-            gate.RunReadAsync(workspaceId, _ =>
-            {
-                var graph = workspace.GetProjectGraph(workspaceId);
-                return Task.FromResult(JsonSerializer.Serialize(graph, JsonDefaults.Indented));
-            }, ct));
+        return gate.RunReadAsync(workspaceId, _ =>
+        {
+            var graph = workspace.GetProjectGraph(workspaceId);
+            return Task.FromResult(JsonSerializer.Serialize(graph, JsonDefaults.Indented));
+        }, ct);
     }
 
     [McpServerTool(Name = "source_generated_documents", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List source-generated documents for a workspace or specific project")]
@@ -170,12 +162,11 @@ public static class WorkspaceTools
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("source_generated_documents", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var documents = await workspace.GetSourceGeneratedDocumentsAsync(workspaceId, projectName, c);
-                return JsonSerializer.Serialize(documents, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var documents = await workspace.GetSourceGeneratedDocumentsAsync(workspaceId, projectName, c);
+            return JsonSerializer.Serialize(documents, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "get_source_text", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Read source text of a document in the loaded workspace. By default returns the full file. Pass startLine/endLine (1-based, inclusive) to slice. Output is capped at maxChars (default 65536); set Truncated=true marker indicates the response was clipped — re-request a narrower line range. Always returns RequestedStartLine/RequestedEndLine, ReturnedStartLine/ReturnedEndLine, TotalLineCount so callers can verify the slice.")]
@@ -191,58 +182,57 @@ public static class WorkspaceTools
         [Description("Maximum characters to return (default 65536). Truncates with a marker if the requested range exceeds the cap.")] int maxChars = 65536,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("get_source_text", () =>
-            gate.RunReadAsync(workspaceId, async c =>
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            if (maxChars <= 0)
+                throw new ArgumentException($"maxChars must be greater than 0 (got {maxChars}).", nameof(maxChars));
+            if (startLine is < 1)
+                throw new ArgumentException($"startLine must be >= 1 (got {startLine.Value}).", nameof(startLine));
+            if (endLine is < 1)
+                throw new ArgumentException($"endLine must be >= 1 (got {endLine.Value}).", nameof(endLine));
+            if (startLine.HasValue && endLine.HasValue && startLine.Value > endLine.Value)
+                throw new ArgumentException(
+                    $"startLine ({startLine.Value}) must be <= endLine ({endLine.Value}).",
+                    nameof(startLine));
+
+            var text = await workspace.GetSourceTextAsync(workspaceId, filePath, c);
+            if (text is null) throw new KeyNotFoundException($"Document not found: {filePath}");
+
+            var totalLineCount = text.Count(ch => ch == '\n') + 1;
+            var requestedStart = startLine ?? 1;
+            var requestedEnd = endLine ?? totalLineCount;
+
+            if (requestedStart > totalLineCount)
+                throw new ArgumentException(
+                    $"startLine ({requestedStart}) is past the end of the file ({totalLineCount} lines).",
+                    nameof(startLine));
+
+            // Clamp endLine to the file end so callers asking for "lines 100..1000" on a
+            // 200-line file get lines 100..200 instead of an error.
+            var returnedEnd = Math.Min(requestedEnd, totalLineCount);
+            var returnedStart = requestedStart;
+
+            var slice = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.SliceLines(text, returnedStart, returnedEnd);
+
+            var truncated = false;
+            if (slice.Length > maxChars)
             {
-                if (maxChars <= 0)
-                    throw new ArgumentException($"maxChars must be greater than 0 (got {maxChars}).", nameof(maxChars));
-                if (startLine is < 1)
-                    throw new ArgumentException($"startLine must be >= 1 (got {startLine.Value}).", nameof(startLine));
-                if (endLine is < 1)
-                    throw new ArgumentException($"endLine must be >= 1 (got {endLine.Value}).", nameof(endLine));
-                if (startLine.HasValue && endLine.HasValue && startLine.Value > endLine.Value)
-                    throw new ArgumentException(
-                        $"startLine ({startLine.Value}) must be <= endLine ({endLine.Value}).",
-                        nameof(startLine));
+                slice = slice.Substring(0, maxChars) + $"\n[TRUNCATED at {maxChars} characters — re-request a narrower line range to see the rest]";
+                truncated = true;
+            }
 
-                var text = await workspace.GetSourceTextAsync(workspaceId, filePath, c);
-                if (text is null) throw new KeyNotFoundException($"Document not found: {filePath}");
-
-                var totalLineCount = text.Count(ch => ch == '\n') + 1;
-                var requestedStart = startLine ?? 1;
-                var requestedEnd = endLine ?? totalLineCount;
-
-                if (requestedStart > totalLineCount)
-                    throw new ArgumentException(
-                        $"startLine ({requestedStart}) is past the end of the file ({totalLineCount} lines).",
-                        nameof(startLine));
-
-                // Clamp endLine to the file end so callers asking for "lines 100..1000" on a
-                // 200-line file get lines 100..200 instead of an error.
-                var returnedEnd = Math.Min(requestedEnd, totalLineCount);
-                var returnedStart = requestedStart;
-
-                var slice = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.SliceLines(text, returnedStart, returnedEnd);
-
-                var truncated = false;
-                if (slice.Length > maxChars)
-                {
-                    slice = slice.Substring(0, maxChars) + $"\n[TRUNCATED at {maxChars} characters — re-request a narrower line range to see the rest]";
-                    truncated = true;
-                }
-
-                return JsonSerializer.Serialize(new
-                {
-                    filePath,
-                    totalLineCount,
-                    requestedStartLine = requestedStart,
-                    requestedEndLine = requestedEnd,
-                    returnedStartLine = returnedStart,
-                    returnedEndLine = returnedEnd,
-                    truncated,
-                    text = slice
-                }, JsonDefaults.Indented);
-            }, ct));
+            return JsonSerializer.Serialize(new
+            {
+                filePath,
+                totalLineCount,
+                requestedStartLine = requestedStart,
+                requestedEndLine = requestedEnd,
+                returnedStartLine = returnedStart,
+                returnedEndLine = returnedEnd,
+                truncated,
+                text = slice
+            }, JsonDefaults.Indented);
+        }, ct);
     }
 
     /// <summary>
@@ -270,11 +260,10 @@ public static class WorkspaceTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("workspace_changes", () =>
-            gate.RunReadAsync(workspaceId, _ =>
-            {
-                var changes = changeTracker.GetChanges(workspaceId);
-                return Task.FromResult(JsonSerializer.Serialize(new { count = changes.Count, changes }, JsonDefaults.Indented));
-            }, ct));
+        return gate.RunReadAsync(workspaceId, _ =>
+        {
+            var changes = changeTracker.GetChanges(workspaceId);
+            return Task.FromResult(JsonSerializer.Serialize(new { count = changes.Count, changes }, JsonDefaults.Indented));
+        }, ct);
     }
 }

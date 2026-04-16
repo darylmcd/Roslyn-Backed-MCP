@@ -29,47 +29,44 @@ public static class PromptShimTools
         [Description("JSON object of named parameters the prompt expects (e.g. {\"workspaceId\":\"...\",\"filePath\":\"...\",\"line\":12}). Service-typed parameters (IDiagnosticService, IWorkspaceManager, etc.) are resolved automatically and must NOT appear here.")] string parametersJson = "{}",
         CancellationToken ct = default)
     {
-        return await ToolErrorHandler.ExecuteAsync("get_prompt_text", async () =>
+        if (string.IsNullOrWhiteSpace(promptName))
+            throw new ArgumentException("promptName is required.", nameof(promptName));
+
+        var (method, attribute) = ResolvePromptMethod(promptName);
+        if (method is null || attribute is null)
         {
-            if (string.IsNullOrWhiteSpace(promptName))
-                throw new ArgumentException("promptName is required.", nameof(promptName));
+            throw new ArgumentException(
+                $"Prompt '{promptName}' not found. Available prompts: " +
+                string.Join(", ", EnumeratePromptNames()),
+                nameof(promptName));
+        }
 
-            var (method, attribute) = ResolvePromptMethod(promptName);
-            if (method is null || attribute is null)
-            {
-                throw new ArgumentException(
-                    $"Prompt '{promptName}' not found. Available prompts: " +
-                    string.Join(", ", EnumeratePromptNames()),
-                    nameof(promptName));
-            }
+        var parameterValues = await BuildParameterValuesAsync(method, services, parametersJson, ct).ConfigureAwait(false);
 
-            var parameterValues = await BuildParameterValuesAsync(method, services, parametersJson, ct).ConfigureAwait(false);
+        object? result;
+        try
+        {
+            result = method.Invoke(null, parameterValues);
+        }
+        catch (TargetInvocationException tie) when (tie.InnerException is not null)
+        {
+            throw tie.InnerException;
+        }
 
-            object? result;
-            try
+        // Prompt methods return Task<IEnumerable<PromptMessage>> (or sometimes the
+        // synchronous variant). Await the task and project messages into a JSON-friendly shape.
+        var messages = await UnwrapPromptResultAsync(result).ConfigureAwait(false);
+        var dto = new
+        {
+            promptName,
+            parameterCount = method.GetParameters().Count(p => !IsServiceType(p.ParameterType) && p.ParameterType != typeof(CancellationToken)),
+            messages = messages.Select(m => new
             {
-                result = method.Invoke(null, parameterValues);
-            }
-            catch (TargetInvocationException tie) when (tie.InnerException is not null)
-            {
-                throw tie.InnerException;
-            }
-
-            // Prompt methods return Task<IEnumerable<PromptMessage>> (or sometimes the
-            // synchronous variant). Await the task and project messages into a JSON-friendly shape.
-            var messages = await UnwrapPromptResultAsync(result).ConfigureAwait(false);
-            var dto = new
-            {
-                promptName,
-                parameterCount = method.GetParameters().Count(p => !IsServiceType(p.ParameterType) && p.ParameterType != typeof(CancellationToken)),
-                messages = messages.Select(m => new
-                {
-                    role = m.Role.ToString().ToLowerInvariant(),
-                    text = ExtractText(m),
-                }).ToArray(),
-            };
-            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-        }).ConfigureAwait(false);
+                role = m.Role.ToString().ToLowerInvariant(),
+                text = ExtractText(m),
+            }).ToArray(),
+        };
+        return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
     }
 
     private static (MethodInfo? Method, McpServerPromptAttribute? Attribute) ResolvePromptMethod(string promptName)

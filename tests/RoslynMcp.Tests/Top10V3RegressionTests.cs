@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -26,11 +27,13 @@ public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task SymbolSearch_ResponseHasMetaAndCountEnvelope()
     {
-        var json = await SymbolTools.SearchSymbols(
-            WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
-            query: "AnimalService",
-            projectName: null, kind: null, @namespace: null, limit: 10,
-            CancellationToken.None);
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "symbol_search",
+            () => SymbolTools.SearchSymbols(
+                WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
+                query: "AnimalService",
+                projectName: null, kind: null, @namespace: null, limit: 10,
+                CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("count", out var count),

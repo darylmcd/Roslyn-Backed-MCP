@@ -22,12 +22,11 @@ public static class SecurityTools
         [Description("Optional: filter by file path")] string? file = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("security_diagnostics", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var results = await securityService.GetSecurityDiagnosticsAsync(workspaceId, projectName, file, c);
-                return JsonSerializer.Serialize(results, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await securityService.GetSecurityDiagnosticsAsync(workspaceId, projectName, file, c);
+            return JsonSerializer.Serialize(results, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "security_analyzer_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Check whether security analyzer packages are present in the workspace. Returns which analyzers are installed and recommends missing packages for improved security coverage.")]
@@ -39,12 +38,11 @@ public static class SecurityTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("security_analyzer_status", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await securityService.GetAnalyzerStatusAsync(workspaceId, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await securityService.GetAnalyzerStatusAsync(workspaceId, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "nuget_vulnerability_scan", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -60,13 +58,12 @@ public static class SecurityTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("nuget_vulnerability_scan", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                ProgressHelper.Report(progress, 0, 1);
-                var result = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, projectName, includeTransitive, c);
-                ProgressHelper.Report(progress, 1, 1);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            ProgressHelper.Report(progress, 0, 1);
+            var result = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, projectName, includeTransitive, c);
+            ProgressHelper.Report(progress, 1, 1);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

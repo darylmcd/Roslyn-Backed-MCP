@@ -22,13 +22,12 @@ public static class SuppressionTools
         [Description("(required) Absolute path to any C# file used to locate the applicable .editorconfig. Without this the server can't pick which .editorconfig to mutate.")] string filePath,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("set_diagnostic_severity", () =>
-            gate.RunWriteAsync(workspaceId, async c =>
-            {
-                var result = await suppressionService.SetDiagnosticSeverityAsync(
-                    workspaceId, diagnosticId, severity, filePath, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunWriteAsync(workspaceId, async c =>
+        {
+            var result = await suppressionService.SetDiagnosticSeverityAsync(
+                workspaceId, diagnosticId, severity, filePath, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "add_pragma_suppression", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -44,12 +43,11 @@ public static class SuppressionTools
         [Description("Diagnostic id (e.g. CS0168)")] string diagnosticId,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("add_pragma_suppression", () =>
-            gate.RunWriteAsync(workspaceId, async c =>
-            {
-                var result = await suppressionService.AddPragmaWarningDisableAsync(
-                    workspaceId, filePath, line, diagnosticId, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunWriteAsync(workspaceId, async c =>
+        {
+            var result = await suppressionService.AddPragmaWarningDisableAsync(
+                workspaceId, filePath, line, diagnosticId, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

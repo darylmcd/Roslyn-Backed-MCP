@@ -26,18 +26,15 @@ public static class CompileCheckTools
         [Description("Maximum number of diagnostics to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("compile_check", () =>
+        ParameterValidation.ValidateSeverity(severity);
+        ParameterValidation.ValidatePagination(offset, limit);
+        return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidateSeverity(severity);
-            ParameterValidation.ValidatePagination(offset, limit);
-            return gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await compileCheckService.CheckAsync(
-                    workspaceId,
-                    new CompileCheckOptions(projectName, emitValidation, severity, file, offset, limit),
-                    c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await compileCheckService.CheckAsync(
+                workspaceId,
+                new CompileCheckOptions(projectName, emitValidation, severity, file, offset, limit),
+                c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }
