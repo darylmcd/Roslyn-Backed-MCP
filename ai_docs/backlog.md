@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-16T22:30:00Z
+**updated_at:** 2026-04-16T23:00:00Z
 
 ## Agent contract
 
@@ -71,7 +71,6 @@ Within P4, rows are **alphabetical by `id`**.
 | `dr-9-2-medium-and-related-skills-have-no-graceful-degra` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.2 [MEDIUM] `roslyn-mcp:analyze` (and related) skills have no graceful-degradation path when the server isn't connected |
 | `dr-9-3-medium-deferred-tool-advertisement-is-a-misleadi` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.3 [MEDIUM] Deferred-tool advertisement is a misleading signal for "what's connected" |
 | `dr-9-4-correctly-refuses-when-captured-state-would-stay` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140403Z_itchatbot_experimental-promotion.md - ### 9.4 `extract_type_preview` correctly refuses when captured state would stay on the source (PASS) |
-| `dr-9-4-format-bug-003-produces-inline-itemgroup-xml` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.4 FORMAT-BUG-003 — `migrate_package_preview` produces inline ItemGroup XML |
 | `dr-9-4-low-cache-dir-presence-is-not-a-reliable-connect` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.4 [LOW] `mcp-logs-<server>/` cache-dir presence is NOT a reliable connection indicator |
 | `dr-9-4-pretooluse-hook-false-positive-on` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.4 PreToolUse hook false-positive on `move_type_to_file_apply` |
 | `dr-9-5-documented-error-prior-session-ticket-draft-cont` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.5 [documented-error] Prior-session ticket draft contained a flawed "whole cohort failed" narrative |
