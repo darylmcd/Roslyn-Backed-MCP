@@ -40,7 +40,7 @@
 
 | Field | Content |
 |---|---|
-| **Status** | `in-review (PR pending)` |
+| **Status** | `merged (PR #165, 2026-04-16)` |
 | **Backlog rows closed** | `format-range-preview-empty-diff-compile-check-filter-false-clean` (P3, Defect A only — Defect B closed v1.18.2 by `compile-check-zero-projects-claimed-success-after-reload`); `dr-9-12-flag-format-range-empty-returns-empty-diff-on-d` (P4) |
 | **Diagnosis** | **Bundle Rule 1 verification:** Both rows describe the same defect: `format_range_preview` returns `unifiedDiff` with header but no `@@` hunks while apply still mutates the file. Same code path: `RefactoringService.PreviewFormatRangeAsync`. Same fix: format the whole document and splice the requested line range from the formatter's output back into the original text. Per Rule 1 c2: ONE change to ONE function resolves both. Per c3: regression tests (dirty fixture, empty preview, then apply, assert diff matches) cover both. |
 | **Approach** | Replaced the range-restricted `Formatter.FormatAsync(document, [span], …)` with whole-document format + new `SpliceFormattedRange` helper that swaps formatter output for lines inside `[startLine, endLine]` and keeps original bytes outside. Apply now matches preview's `unifiedDiff`. Implementation in `src/RoslynMcp.Roslyn/Services/RefactoringService.cs`. |
@@ -57,7 +57,7 @@
 
 | Field | Content |
 |---|---|
-| **Status** | `pending` |
+| **Status** | `in-review (branch: remediation/change-signature-preview-brace-concat-on-add-op)` |
 | **Backlog rows closed** | `change-signature-preview-brace-concat-on-add-op` (P3) |
 | **Diagnosis** | `src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:75-105` — `PreviewAddParameterAsync` builds the new parameter via `SyntaxFactory.Parameter(...).WithType(SyntaxFactory.ParseTypeName(request.ParameterType + " "))`. Trailing-space hack tries to force a space between type and identifier; doesn't address the broader issue that raw factory builds nodes without proper trivia. Result on Jellyfin `MusicManager.GetInstantMixFromSong` (audit 2026-04-16 §9.1): signature line concatenates with body's `{` AND original `{` line is removed; param-separator spacing stripped. Also: `paramText` local at line 75 is computed but never read (dead local). |
 | **Approach** | In `PreviewAddParameterAsync`: switch to `SyntaxFactory.ParseParameter(paramText)` (parser-built, not raw factory) — produces properly-tokenized parameter. Use the existing `paramText` local. Drop trailing-space hack on `ParseTypeName`. In `ApplyAddRemoveAsync` line 215: preserve close-paren trailing trivia when replacing ParameterList (`newParamList.WithTriviaFrom(mds.ParameterList)`). |

@@ -1,4 +1,3 @@
-using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -72,6 +71,12 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             throw new ArgumentException(
                 $"Position {insertPosition} is out of range (0..{method.Parameters.Length}).", nameof(request));
 
+        // change-signature-preview-brace-concat-on-add-op:
+        // Build the new parameter via SyntaxFactory.ParseParameter — the parser produces a
+        // properly-tokenized ParameterSyntax (type + space + identifier + optional `= value`).
+        // The previous implementation used SyntaxFactory.Parameter + ParseTypeName(type + " ")
+        // which left the parameter without inter-token trivia, so the rendered preview ran
+        // tokens together (e.g. `intx` instead of `int x`) and dropped any default value.
         var paramText = string.IsNullOrWhiteSpace(request.DefaultValue)
             ? $"{request.ParameterType} {request.Name}"
             : $"{request.ParameterType} {request.Name} = {request.DefaultValue}";
@@ -79,25 +84,28 @@ public sealed class ChangeSignatureService : IChangeSignatureService
 
         var (accumulator, changes) = await ApplyAddRemoveAsync(
             solution, method,
-            updateDeclaration: (existingParams) =>
+            updateDeclaration: (existingList) =>
             {
-                var newParams = existingParams.Insert(insertPosition,
-                    SyntaxFactory.Parameter(SyntaxFactory.Identifier(request.Name)).WithType(SyntaxFactory.ParseTypeName(request.ParameterType + " ")));
-                return ParameterListFromText(newParams);
+                // Build a fully-parsed parameter list from text so commas + parameter
+                // separators get correct trivia. Preserve the existing list's leading +
+                // trailing trivia (the close-paren's trailing trivia carries the
+                // whitespace before the method body's opening brace — losing it caused
+                // the brace-concat symptom from the audit).
+                return BuildParameterListFromTextChange(existingList, addParam: paramText, addAt: insertPosition, removeAt: null);
             },
             updateCallsite: (args, isPositional) =>
             {
                 if (isPositional)
                 {
                     var newArg = SyntaxFactory.Argument(SyntaxFactory.ParseExpression(argText));
-                    return args.Insert(insertPosition, newArg);
+                    return args.Insert(insertPosition, newArg.WithLeadingTrivia(insertPosition == 0 ? default : SyntaxFactory.Space));
                 }
                 // Caller uses named args — splice by name so we don't break existing positions.
                 var named = SyntaxFactory.Argument(
                     SyntaxFactory.NameColon(SyntaxFactory.IdentifierName(request.Name!)),
                     refKindKeyword: default,
                     expression: SyntaxFactory.ParseExpression(argText));
-                return args.Add(named);
+                return args.Add(named.WithLeadingTrivia(args.Count == 0 ? default : SyntaxFactory.Space));
             },
             ct).ConfigureAwait(false);
 
@@ -114,7 +122,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
 
         var (accumulator, changes) = await ApplyAddRemoveAsync(
             solution, method,
-            updateDeclaration: existing => ParameterListFromText(existing.RemoveAt(index)),
+            updateDeclaration: existingList => BuildParameterListFromTextChange(existingList, addParam: null, addAt: null, removeAt: index),
             updateCallsite: (args, isPositional) =>
             {
                 if (isPositional && index < args.Count)
@@ -132,6 +140,37 @@ public sealed class ChangeSignatureService : IChangeSignatureService
 
         return BuildPreviewDto(workspaceId, accumulator, changes,
             $"Remove parameter '{method.Parameters[index].Name}' (position {index}) from {method.ToDisplayString()}");
+    }
+
+    /// <summary>
+    /// Builds a new ParameterList by serializing the existing parameters to text, applying
+    /// add/remove edits, and reparsing through <see cref="SyntaxFactory.ParseParameterList"/>.
+    /// This produces correct comma + space trivia between every parameter — the raw
+    /// SeparatedSyntaxList API path loses these. Trivia on the enclosing list (and therefore
+    /// on the close-paren) is copied from the original list so the method-body brace stays
+    /// on its own line.
+    /// </summary>
+    private static ParameterListSyntax BuildParameterListFromTextChange(
+        ParameterListSyntax existingList,
+        string? addParam,
+        int? addAt,
+        int? removeAt)
+    {
+        var paramTexts = new List<string>(existingList.Parameters.Count + 1);
+        for (var i = 0; i < existingList.Parameters.Count; i++)
+        {
+            if (removeAt is int r && r == i) continue;
+            if (addAt is int a && a == i && addParam is not null) paramTexts.Add(addParam);
+            paramTexts.Add(existingList.Parameters[i].ToString());
+        }
+        if (addAt is int aTail && aTail >= existingList.Parameters.Count && addParam is not null)
+        {
+            paramTexts.Add(addParam);
+        }
+
+        var newListText = "(" + string.Join(", ", paramTexts) + ")";
+        var newList = SyntaxFactory.ParseParameterList(newListText);
+        return newList.WithTriviaFrom(existingList);
     }
 
     /// <summary>
@@ -175,7 +214,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
     private async Task<(Solution Accumulator, List<FileChangeDto> Changes)> ApplyAddRemoveAsync(
         Solution solution,
         IMethodSymbol method,
-        Func<ImmutableArray<ParameterSyntax>, ParameterListSyntax> updateDeclaration,
+        Func<ParameterListSyntax, ParameterListSyntax> updateDeclaration,
         Func<SeparatedSyntaxList<ArgumentSyntax>, bool, SeparatedSyntaxList<ArgumentSyntax>> updateCallsite,
         CancellationToken ct)
     {
@@ -204,8 +243,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         {
             var node = await declRef.GetSyntaxAsync(ct).ConfigureAwait(false);
             if (node is not BaseMethodDeclarationSyntax mds) continue;
-            var existing = ImmutableArray.CreateRange(mds.ParameterList.Parameters);
-            var newParamList = updateDeclaration(existing);
+            var newParamList = updateDeclaration(mds.ParameterList);
             var doc = accumulator.GetDocument(node.SyntaxTree);
             if (doc is null) continue;
             await CaptureOriginalAsync(doc.Id).ConfigureAwait(false);
@@ -258,11 +296,6 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         }
 
         return (accumulator, changes);
-    }
-
-    private static ParameterListSyntax ParameterListFromText(ImmutableArray<ParameterSyntax> parameters)
-    {
-        return SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(parameters));
     }
 
     private RefactoringPreviewDto BuildPreviewDto(string workspaceId, Solution accumulator, List<FileChangeDto> changes, string description)
