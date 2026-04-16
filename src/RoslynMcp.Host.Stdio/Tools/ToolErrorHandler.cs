@@ -246,6 +246,23 @@ internal static class ToolErrorHandler
             }
         }
 
+        // symbol-impact-sweep-race-with-auto-reload: when a symbol fails to resolve AND the
+        // request's gate reported it had to auto-reload the workspace mid-call, surface a
+        // race-specific envelope instead of the generic "NotFound" that implies the symbol
+        // itself is gone. The pre-reload handle/metadata-name may still be valid; callers
+        // just need to re-resolve against the fresh compilation and retry. Scope is
+        // deliberately narrow — any KeyNotFoundException outside a reload window still
+        // falls through to the generic NotFound handler.
+        if (ex is KeyNotFoundException &&
+            AmbientGateMetrics.Current?.StaleAction == "auto-reloaded")
+        {
+            return new("WorkspaceReloadedDuringCall",
+                $"Workspace was auto-reloaded during this call; {ex.Message} The symbol handle " +
+                "or metadata name may target the pre-reload compilation. Re-resolve the symbol " +
+                "(e.g. via symbol_search, symbol_info, or a fresh position-based locator) and retry. " +
+                "See _meta.staleReloadMs for how long the reload held the request.");
+        }
+
         // Walk the handler dictionary for exact or assignable type match
         foreach (var (type, handler) in ErrorHandlers)
         {
