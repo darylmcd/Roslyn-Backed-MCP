@@ -54,7 +54,17 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
             ?? throw new InvalidOperationException("Failed to remove the selected members from the original type."));
         var updatedRoot = root.ReplaceNode(typeDeclaration, partialOriginal);
 
-        var partialNewType = EnsurePartial(typeDeclaration.WithMembers(SyntaxFactory.List(selectedMembers)));
+        // FORMAT-BUG-006 (dr-9-11-format-bug-006-duplicates-leading-trivia-into-b):
+        // The original type declaration's leading trivia (XML doc comments, license headers,
+        // explanatory single-line comments) and attribute lists must NOT be duplicated onto
+        // the second partial. They stay with the first partial; the new partial gets only
+        // minimal leading trivia (a leading newline so the partial sits below the namespace
+        // header) and no attribute lists. Attributes on a partial class are merged by the
+        // compiler, so leaving them on the original is sufficient.
+        var partialNewType = EnsurePartial(typeDeclaration
+            .WithAttributeLists(SyntaxFactory.List<AttributeListSyntax>())
+            .WithMembers(SyntaxFactory.List(selectedMembers))
+            .WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed)));
         var namespaceName = GetNamespaceName(typeDeclaration);
         var partialCompilationUnit = CreateCompilationUnit(root, partialNewType, namespaceName);
         var newFilePath = Path.Combine(Path.GetDirectoryName(filePath)!, newFileName);
@@ -107,7 +117,12 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
 
     private static CompilationUnitSyntax CreateCompilationUnit(CompilationUnitSyntax sourceRoot, TypeDeclarationSyntax declaration, string namespaceName)
     {
-        var compilationUnit = SyntaxFactory.CompilationUnit().WithUsings(sourceRoot.Usings);
+        // FORMAT-BUG-006 (dr-9-11-format-bug-006-duplicates-leading-trivia-into-b):
+        // The first `using` directive in the source carries the file-level license header in
+        // its leading trivia. Copying `sourceRoot.Usings` verbatim duplicates that header
+        // into the new partial. Strip the leading trivia from the first using only.
+        var copiedUsings = StripLeadingTriviaFromFirstUsing(sourceRoot.Usings);
+        var compilationUnit = SyntaxFactory.CompilationUnit().WithUsings(copiedUsings);
         if (string.IsNullOrWhiteSpace(namespaceName))
         {
             return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(declaration));
@@ -118,5 +133,17 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
                 SyntaxFactory.Token(SyntaxKind.NamespaceKeyword).WithTrailingTrivia(SyntaxFactory.Space))
             .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(declaration));
         return compilationUnit.WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(nsDecl));
+    }
+
+    private static SyntaxList<UsingDirectiveSyntax> StripLeadingTriviaFromFirstUsing(SyntaxList<UsingDirectiveSyntax> usings)
+    {
+        if (usings.Count == 0)
+        {
+            return usings;
+        }
+
+        var first = usings[0];
+        var stripped = first.WithLeadingTrivia(SyntaxFactory.TriviaList());
+        return usings.Replace(first, stripped);
     }
 }
