@@ -131,7 +131,13 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
 
         var consumerContents = await File.ReadAllTextAsync(consumerFilePath, CancellationToken.None);
         Assert.IsTrue(consumerContents.Contains("IAnimalService", StringComparison.Ordinal));
-        Assert.IsFalse(consumerContents.Contains("AnimalService service", StringComparison.Ordinal));
+        // Constructor parameter must now declare the interface, not the concrete class. Use a
+        // word-boundary-aware check so `IAnimalService service` (the desired post-fix output)
+        // doesn't trip a naive "AnimalService service" substring match.
+        Assert.IsFalse(
+            consumerContents.Contains("(AnimalService service", StringComparison.Ordinal),
+            $"Constructor still declares concrete type.\nConsumer contents:\n{consumerContents}");
+        StringAssert.Contains(consumerContents, "IAnimalService service");
     }
 
     [TestMethod]
@@ -198,6 +204,110 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         Assert.IsFalse(
             sourceContents.Contains("IAnimalService{", StringComparison.Ordinal),
             $"Source class has `{{` glued onto the interface base type (FORMAT-BUG-001 regression).\nFile contents:\n{sourceContents}");
+    }
+
+    [TestMethod]
+    public async Task Dependency_Inversion_Preview_Preserves_Source_File_Formatting()
+    {
+        // Regression for dr-9-3-format-bug-002-destroys-source-formatting (FORMAT-BUG-002).
+        // Before the fix: CreateInterfaceExtractionSolutionAsync called
+        //     updatedSourceRoot = ((CompilationUnitSyntax)updatedSourceRoot).NormalizeWhitespace();
+        // which re-flowed the ENTIRE source compilation unit — collapsed intentional spacing,
+        // dropped blank lines, reshuffled indentation. After the fix the source file's original
+        // trivia is preserved; only the targeted `: IName` edit is applied.
+        //
+        // Seed the source file with distinctive whitespace (multiple spaces inside a parameter
+        // list, blank lines between members, trailing whitespace) so NormalizeWhitespace would
+        // be instantly observable as a regression.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var consumerFilePath = workspace.GetPath("SampleApp", "AnimalCoordinator.cs");
+        File.WriteAllText(
+            consumerFilePath,
+            "using SampleLib;\n\npublic class AnimalCoordinator\n{\n    public AnimalCoordinator(AnimalService service)\n    {\n    }\n}\n");
+
+        const string distinctiveSource = """
+            using System.Threading;
+
+            namespace SampleLib;
+
+            public class AnimalService
+            {
+
+
+                public    void    MakeThemSpeak(   IEnumerable<IAnimal>     animals   )
+                {
+                    foreach (var animal in animals)
+                    {
+                        var sound = animal.Speak();
+                        Console.WriteLine($"{animal.Name} says {sound}");
+                    }
+                }
+
+                public int CountAnimals(List<IAnimal> animals)
+                {
+                    return animals.Count;
+                }
+            }
+
+            """;
+        File.WriteAllText(sourceFilePath, distinctiveSource);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewDependencyInversionAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "AnimalService",
+            "IAnimalService",
+            "Contracts",
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var sourceContents = await File.ReadAllTextAsync(sourceFilePath, CancellationToken.None);
+
+        // (1) Distinctive parameter-list spacing survives the preview+apply round-trip.
+        StringAssert.Contains(
+            sourceContents,
+            "MakeThemSpeak(   IEnumerable<IAnimal>     animals   )",
+            $"Source parameter-list whitespace was collapsed (FORMAT-BUG-002 regression).\nFile contents:\n{sourceContents}");
+
+        // (2) Distinctive spacing inside the signature (between modifier, return type, and name)
+        //     survives. NormalizeWhitespace would rewrite `public    void    MakeThemSpeak` as
+        //     `public void MakeThemSpeak`.
+        StringAssert.Contains(
+            sourceContents,
+            "public    void    MakeThemSpeak",
+            $"Source signature whitespace was collapsed (FORMAT-BUG-002 regression).\nFile contents:\n{sourceContents}");
+
+        // (3) Multi-line blank-line separation between members survives. The original source was
+        //     written with `\n` line endings; the AddBaseType edit may introduce a `\r\n` where
+        //     the class body's `{` was relocated, but the two consecutive blank lines between `{`
+        //     and the first member must survive intact. Normalize to `\n` before asserting.
+        var normalized = sourceContents.Replace("\r\n", "\n", StringComparison.Ordinal);
+        StringAssert.Contains(
+            normalized,
+            "\n{\n\n\n    public",
+            $"Source blank-line structure was collapsed (FORMAT-BUG-002 regression).\nFile contents:\n{sourceContents}");
+
+        // (4) The targeted `: IAnimalService` edit was applied with correct spacing.
+        StringAssert.Contains(sourceContents, "class AnimalService : IAnimalService");
+        Assert.IsFalse(
+            sourceContents.Contains("IAnimalService{", StringComparison.Ordinal),
+            $"Source class has `{{` glued onto the interface base type (regression).\nFile contents:\n{sourceContents}");
+
+        // (5) Consumer parameter-type replacement preserved the space between type and name.
+        var consumerContents = await File.ReadAllTextAsync(consumerFilePath, CancellationToken.None);
+        StringAssert.Contains(
+            consumerContents,
+            "IAnimalService service",
+            $"Consumer parameter lost whitespace between type and name (FORMAT-BUG-002 regression).\nFile contents:\n{consumerContents}");
+        Assert.IsFalse(
+            consumerContents.Contains("IAnimalServiceservice", StringComparison.Ordinal),
+            $"Consumer parameter has glued-together type and name (FORMAT-BUG-002 regression).\nFile contents:\n{consumerContents}");
     }
 
     private static void AddProjectToCopiedSolution(string copiedRoot, string projectName, string targetFramework)
