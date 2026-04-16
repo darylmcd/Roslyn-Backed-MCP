@@ -169,6 +169,86 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task FORMAT_BUG_006_Split_Class_Preview_Does_Not_Duplicate_Leading_Trivia_Onto_Second_Partial()
+    {
+        // FORMAT-BUG-006 regression (dr-9-11-format-bug-006-duplicates-leading-trivia-into-b):
+        // Pre-fix, `split_class_preview` carried the original type declaration's leading trivia
+        // (XML doc comment, license header, explanatory single-line comment) AND its attribute
+        // lists onto BOTH the original partial AND the newly created partial. Post-fix, the
+        // first partial keeps those decorations and the second partial gets only minimal
+        // leading trivia (a leading newline) and no attribute lists.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var newFilePath = workspace.GetPath("SampleLib", "Dog.Behavior.cs");
+
+        // Overwrite the canonical Dog.cs with a version carrying a license header + XML doc
+        // + attribute + explanatory single-line comment. Each artefact is unique so we can
+        // grep for it independently.
+        const string DogSource = "// SPDX-License-Identifier: MIT (LICENSE-HEADER-FORMAT-BUG-006)\n"
+            + "using System;\n"
+            + "\n"
+            + "namespace SampleLib;\n"
+            + "\n"
+            + "/// <summary>XMLDOC-FORMAT-BUG-006: A canine.</summary>\n"
+            + "// EXPLANATORY-FORMAT-BUG-006: extra context for maintainers.\n"
+            + "[Serializable]\n"
+            + "public class Dog : IAnimal\n"
+            + "{\n"
+            + "    public string Name => \"Dog\";\n"
+            + "\n"
+            + "    public string Speak() => \"Woof\";\n"
+            + "\n"
+            + "    public void Fetch(string item)\n"
+            + "    {\n"
+            + "        Console.WriteLine($\"Fetching {item}\");\n"
+            + "    }\n"
+            + "}\n";
+        await File.WriteAllTextAsync(dogFilePath, DogSource, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await ClassSplitOrchestrator.PreviewSplitClassAsync(
+            workspace.WorkspaceId,
+            dogFilePath,
+            "Dog",
+            ["Fetch"],
+            "Dog.Behavior.cs",
+            CancellationToken.None);
+
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.IsTrue(File.Exists(newFilePath), "split_class_preview apply must have created the new partial file.");
+
+        var originalContents = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        var newContents = await File.ReadAllTextAsync(newFilePath, CancellationToken.None);
+
+        // The first partial (original file) keeps every decoration.
+        StringAssert.Contains(originalContents, "LICENSE-HEADER-FORMAT-BUG-006",
+            "FORMAT-BUG-006 regression: license header must remain on the first partial.");
+        StringAssert.Contains(originalContents, "XMLDOC-FORMAT-BUG-006",
+            "FORMAT-BUG-006 regression: XML doc must remain on the first partial.");
+        StringAssert.Contains(originalContents, "EXPLANATORY-FORMAT-BUG-006",
+            "FORMAT-BUG-006 regression: explanatory comment must remain on the first partial.");
+        StringAssert.Contains(originalContents, "[Serializable]",
+            "FORMAT-BUG-006 regression: attribute must remain on the first partial.");
+
+        // The second partial (new file) must NOT carry any of those decorations.
+        Assert.IsFalse(newContents.Contains("LICENSE-HEADER-FORMAT-BUG-006", StringComparison.Ordinal),
+            $"FORMAT-BUG-006 regression: license header leaked into the new partial. New file:\n{newContents}");
+        Assert.IsFalse(newContents.Contains("XMLDOC-FORMAT-BUG-006", StringComparison.Ordinal),
+            $"FORMAT-BUG-006 regression: XML doc comment duplicated onto the new partial. New file:\n{newContents}");
+        Assert.IsFalse(newContents.Contains("EXPLANATORY-FORMAT-BUG-006", StringComparison.Ordinal),
+            $"FORMAT-BUG-006 regression: explanatory comment duplicated onto the new partial. New file:\n{newContents}");
+        Assert.IsFalse(newContents.Contains("[Serializable]", StringComparison.Ordinal),
+            $"FORMAT-BUG-006 regression: attribute duplicated onto the new partial. New file:\n{newContents}");
+
+        // Sanity: the new partial must still hold the moved member and declare the partial type.
+        StringAssert.Contains(newContents, "void Fetch",
+            "split_class_preview must move the selected member into the new partial.");
+        StringAssert.Contains(newContents, "partial class Dog",
+            "split_class_preview must mark the new type as partial.");
+    }
+
+    [TestMethod]
     public async Task Extract_And_Wire_Interface_Preview_And_Apply_Rewrites_Di_Registration()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
