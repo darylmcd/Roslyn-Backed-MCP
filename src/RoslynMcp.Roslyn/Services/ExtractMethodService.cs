@@ -152,14 +152,29 @@ public sealed class ExtractMethodService : IExtractMethodService
                 "Cannot extract: the selection contains return statements. " +
                 "Extract method requires a single-exit region without return statements.");
 
+        // Item #9 — extract-method-preview-fabricates-this-parameter. `DataFlowsIn`
+        // includes the implicit `this` pointer when the extracted region reads instance
+        // state via an unqualified member access (e.g. `_field`). Roslyn models `this`
+        // as an `IParameterSymbol` subtype (`IThisParameterSymbol`) whose Name is
+        // literally "this" and Type is the containing type. Without the explicit
+        // exclusion below, the filter `s is ILocalSymbol or IParameterSymbol` accepts
+        // it, the rendered parameter list becomes `(MusicManager this, Audio item, …)`,
+        // and the generated method fails to compile (audit: Jellyfin stress test §5).
+        // The extracted method is always declared on the same containing type (isStatic
+        // is derived from the enclosing member below), so `this` is implicitly available
+        // — the exclusion is correct for every branch.
+        static bool IsCapturableVariable(ISymbol s)
+            => s is ILocalSymbol
+               || (s is IParameterSymbol parameter && !parameter.IsThis);
+
         var parameters = dataFlow.DataFlowsIn
-            .Where(s => s is ILocalSymbol or IParameterSymbol)
+            .Where(IsCapturableVariable)
             .Select(s => (s.Name, Type: GetSymbolType(s)))
             .Where(p => p.Type is not null)
             .ToList();
 
         var flowsOut = dataFlow.DataFlowsOut
-            .Where(s => s is ILocalSymbol or IParameterSymbol)
+            .Where(IsCapturableVariable)
             .Select(s => (s.Name, Type: GetSymbolType(s)))
             .Where(p => p.Type is not null)
             .ToList();
