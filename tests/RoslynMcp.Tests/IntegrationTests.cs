@@ -110,6 +110,28 @@ public class IntegrationTests : SharedWorkspaceTestBase
         Assert.IsTrue(results.Any(s => s.Name == "IAnimal"), "IAnimal interface not found");
     }
 
+    // symbol-search-partial-match-gap: queries that include a namespace segment should still
+    // find the type. Pre-fix, `FindSourceDeclarationsWithPatternAsync` matched only simple
+    // names so "SampleLib.Dog" returned []; the FQN-substring pass now surfaces the type.
+    [TestMethod]
+    public async Task Symbol_Search_Finds_Type_By_Namespace_Qualified_Partial_Name()
+    {
+        var results = await SymbolSearchService.SearchSymbolsAsync(
+            WorkspaceId, "SampleLib.Dog", null, null, null, 10, CancellationToken.None);
+        Assert.IsTrue(results.Any(s => s.Name == "Dog"),
+            $"Expected to find `Dog` via namespace-qualified query 'SampleLib.Dog'; got: {string.Join(", ", results.Select(r => r.Name))}");
+    }
+
+    [TestMethod]
+    public async Task Symbol_Search_Finds_Member_By_FullyQualified_Name()
+    {
+        var results = await SymbolSearchService.SearchSymbolsAsync(
+            WorkspaceId, "SampleLib.AnimalService.CountAnimals", null, null, null, 10, CancellationToken.None);
+
+        Assert.IsTrue(results.Count > 0,
+            $"Expected at least one hit for 'SampleLib.AnimalService.CountAnimals'; got zero.");
+    }
+
     [TestMethod]
     public async Task Symbol_Search_With_Kind_Filter()
     {

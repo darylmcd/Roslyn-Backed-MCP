@@ -20,11 +20,26 @@ public sealed class SymbolSearchService : ISymbolSearchService
         _logger = logger;
     }
 
+    // symbol-search-partial-match-gap: `FindSourceDeclarationsWithPatternAsync` matches against
+    // simple names and handles camelCase/substring at that level, but cannot hit queries that
+    // mention any containing namespace (e.g. "Conversation.Manager" won't reach
+    // `ITChatBot.Conversation.ConversationManager` because Roslyn's pattern matcher runs on the
+    // simple-name level). We augment the primary pattern search with a fully-qualified-name
+    // substring pass that walks the solution's named types so namespace-qualified queries
+    // surface the declaration.
+    private static readonly SymbolDisplayFormat QualifiedNameOnlyFormat = new(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.None,
+        memberOptions: SymbolDisplayMemberOptions.IncludeContainingType,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.None);
+
     public async Task<IReadOnlyList<SymbolDto>> SearchSymbolsAsync(
         string workspaceId, string query, string? projectFilter, string? kindFilter, string? namespaceFilter, int limit, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<SymbolDto>();
+        var seenKeys = new HashSet<string>(StringComparer.Ordinal);
         HashSet<string>? allowedProjectPaths = null;
 
         if (projectFilter is not null)
@@ -47,31 +62,108 @@ public sealed class SymbolSearchService : ISymbolSearchService
 
         foreach (var symbol in symbols)
         {
-            if (ct.IsCancellationRequested) break;
-            if (results.Count >= limit) break;
+            if (!TryAddSymbol(symbol, limit, kindFilter, namespaceFilter, allowedProjectPaths, solution, results, seenKeys, ct))
+                break;
+        }
 
-            if (kindFilter is not null && !MatchesKind(symbol, kindFilter))
-                continue;
-
-            if (namespaceFilter is not null && symbol.ContainingNamespace?.ToDisplayString() != namespaceFilter)
-                continue;
-
-            if (allowedProjectPaths is not null)
+        // symbol-search-partial-match-gap: FQN-substring pass. Only runs when we still have
+        // budget under `limit` — most queries are single-word simple-name lookups and the
+        // primary pattern search already nails those.
+        if (results.Count < limit && !ct.IsCancellationRequested)
+        {
+            foreach (var project in solution.Projects)
             {
-                var inAllowedProject = symbol.Locations.Any(location =>
-                    location.IsInSource &&
-                    allowedProjectPaths.Contains(Path.GetFullPath(location.GetLineSpan().Path)));
-                if (!inAllowedProject)
+                if (ct.IsCancellationRequested) break;
+                if (results.Count >= limit) break;
+
+                var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+                if (compilation is null) continue;
+
+                foreach (var typeSymbol in EnumerateNamedTypes(compilation.GlobalNamespace))
                 {
-                    continue;
+                    if (ct.IsCancellationRequested) break;
+                    if (results.Count >= limit) break;
+
+                    var fqn = typeSymbol.ToDisplayString(QualifiedNameOnlyFormat);
+                    if (fqn.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
+                        continue;
+
+                    if (!TryAddSymbol(typeSymbol, limit, kindFilter, namespaceFilter, allowedProjectPaths, solution, results, seenKeys, ct))
+                        break;
+
+                    // Also walk members whose FQN (Namespace.Type.Member) matches.
+                    foreach (var member in typeSymbol.GetMembers())
+                    {
+                        if (ct.IsCancellationRequested) break;
+                        if (results.Count >= limit) break;
+                        if (member.IsImplicitlyDeclared) continue;
+
+                        var memberFqn = member.ToDisplayString(QualifiedNameOnlyFormat);
+                        if (memberFqn.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
+                            continue;
+
+                        if (!TryAddSymbol(member, limit, kindFilter, namespaceFilter, allowedProjectPaths, solution, results, seenKeys, ct))
+                            break;
+                    }
                 }
             }
-
-            var dto = SymbolMapper.ToDto(symbol, solution);
-            results.Add(dto);
         }
 
         return results;
+    }
+
+    private static bool TryAddSymbol(
+        ISymbol symbol,
+        int limit,
+        string? kindFilter,
+        string? namespaceFilter,
+        HashSet<string>? allowedProjectPaths,
+        Solution solution,
+        List<SymbolDto> results,
+        HashSet<string> seenKeys,
+        CancellationToken ct)
+    {
+        if (ct.IsCancellationRequested) return false;
+        if (results.Count >= limit) return false;
+
+        if (kindFilter is not null && !MatchesKind(symbol, kindFilter))
+            return true;
+
+        if (namespaceFilter is not null && symbol.ContainingNamespace?.ToDisplayString() != namespaceFilter)
+            return true;
+
+        if (allowedProjectPaths is not null)
+        {
+            var inAllowedProject = symbol.Locations.Any(location =>
+                location.IsInSource &&
+                allowedProjectPaths.Contains(Path.GetFullPath(location.GetLineSpan().Path)));
+            if (!inAllowedProject) return true;
+        }
+
+        // Dedupe by SymbolDisplayString — same symbol surfaces from both passes for simple names.
+        var key = symbol.ToDisplayString();
+        if (!seenKeys.Add(key)) return true;
+
+        results.Add(SymbolMapper.ToDto(symbol, solution));
+        return true;
+    }
+
+    private static IEnumerable<INamedTypeSymbol> EnumerateNamedTypes(INamespaceSymbol ns)
+    {
+        foreach (var member in ns.GetMembers())
+        {
+            if (member is INamespaceSymbol child)
+            {
+                foreach (var nested in EnumerateNamedTypes(child))
+                    yield return nested;
+            }
+            else if (member is INamedTypeSymbol type)
+            {
+                yield return type;
+                foreach (var nested in type.GetTypeMembers())
+                    yield return nested;
+            }
+        }
     }
 
     public async Task<SymbolDto?> GetSymbolInfoAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool allowAdjacent = false)
