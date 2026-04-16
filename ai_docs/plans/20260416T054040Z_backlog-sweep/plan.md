@@ -151,7 +151,7 @@ initiative below has the standard table fields filled out at execute time.
 | I-40 | `dr-9-7-only-partially-normalizes-whitespace` | 1 | 45000 | Fixed | Format-bug singleton — `FormatVerifyService.cs`; possibly overlaps I-01. |
 | I-41 | `dr-9-7-produces-output-that-violates-project-formatting` | 1 | 45000 | Fixed | Format-bug singleton — `ExtractMethodService.cs`. |
 | I-42 | `dr-9-9-format-bug-004-produces-malformed-body-closing-b` | 1 | 50000 | Fixed | Format-bug singleton — `ExtractMethodService.cs`. |
-| I-43 | `dr-9-11-format-bug-006-duplicates-leading-trivia-into-b` | 1 | 50000 | Fixed | in-review (PR pending) — `ClassSplitOrchestrator` strips leading trivia + attribute lists from second partial; new `StripLeadingTriviaFromFirstUsing` helper drops file-level license header from cloned compilation unit. 1 regression test. |
+| I-43 | `dr-9-11-format-bug-006-duplicates-leading-trivia-into-b` | 1 | 50000 | Fixed | in-review (PR #212) — `ClassSplitOrchestrator` strips leading trivia + attribute lists from second partial; new `StripLeadingTriviaFromFirstUsing` helper drops file-level license header from cloned compilation unit. 1 regression test. |
 
 Each initiative table is expanded inline at execute time per the executor prompt, with
 diagnosis (file:line evidence), approach, validation strategy, and CHANGELOG draft. The
