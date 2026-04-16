@@ -18,7 +18,7 @@ public static class ServerTools
      Description("Get server version, capabilities, runtime information, and loaded workspace count. workspaceCount reflects sessions at call time and may briefly lag if invoked in parallel with or immediately after workspace_load; use workspace_list for authoritative session enumeration. Prompts tier note: the response carries prompts.stable and prompts.experimental from the live catalog; all currently-exposed prompts are experimental until promoted, so stable=0 with a nonzero experimental count is expected — it is NOT a missing-surface bug.")]
     public static Task<string> GetServerInfo(
         IWorkspaceManager workspace,
-        NuGetVersionChecker versionChecker)
+        ILatestVersionProvider versionChecker)
     {
         return ToolErrorHandler.ExecuteAsync("server_info", () =>
         {
@@ -84,10 +84,16 @@ public static class ServerTools
                     logging = true,
                     progress = true
                 },
+                // server-info-update-latest-inverted: only emit `latest` when the registry
+                // reports a STRICTLY GREATER version than the running build. Pre-fix the
+                // field surfaced any cached registry value (Jellyfin 2026-04-16: latest=1.16.0
+                // while current=1.18.2 — the cached value was older). The new contract: if
+                // `latest` is present, it is genuinely newer than `current`. updateAvailable
+                // remains for callers that prefer the boolean.
                 update = latestVersion is not null ? new
                 {
                     current = currentSemver,
-                    latest = latestVersion,
+                    latest = updateAvailable ? latestVersion : null,
                     updateAvailable,
                     command = updateAvailable ? "dotnet tool update -g Darylmcd.RoslynMcp" : (string?)null
                 } : null
