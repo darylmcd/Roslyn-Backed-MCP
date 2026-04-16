@@ -147,7 +147,7 @@ initiative below has the standard table fields filled out at execute time.
 | I-36 | `dr-9-3-format-bug-002-destroys-source-formatting` | 1 | 50000 | Fixed | Format-bug singleton — `ExtractAndWireOrchestrator.cs`. |
 | I-37 | `dr-9-4-format-bug-003-produces-inline-itemgroup-xml` | 1 | 50000 | Fixed | Format-bug singleton — `PackageMigrationOrchestrator.cs`. |
 | I-38 | `dr-9-5-strips-the-blank-line-between-namespace-and-clas` | 1 | 50000 | Fixed | Format-bug singleton — `TypeExtractionService.cs`. |
-| I-39 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | 1 | 45000 | Fixed | Format-bug singleton — `InterfaceExtractionService.cs`. |
+| I-39 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | 1 | 45000 | Fixed | in-review (PR #209) — `InterfaceExtractionService.PreviewExtractInterfaceAsync` re-homes the last existing base type's trailing trivia onto the new interface before `AddTypes`, keeping the comma separator inline. |
 | I-40 | `dr-9-7-only-partially-normalizes-whitespace` | 1 | 45000 | Fixed | Format-bug singleton — `FormatVerifyService.cs`; possibly overlaps I-01. |
 | I-41 | `dr-9-7-produces-output-that-violates-project-formatting` | 1 | 45000 | Fixed | Format-bug singleton — `ExtractMethodService.cs`. |
 | I-42 | `dr-9-9-format-bug-004-produces-malformed-body-closing-b` | 1 | 50000 | Fixed | Format-bug singleton — `ExtractMethodService.cs`. |
