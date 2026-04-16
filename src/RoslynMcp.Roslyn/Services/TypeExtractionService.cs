@@ -4,6 +4,7 @@ using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -63,6 +64,26 @@ public sealed class TypeExtractionService : ITypeExtractionService
                 $"that would remain on the source type, so the generated code would not compile. " +
                 $"Either include the referenced members in the extraction or perform a manual redesign first. " +
                 $"Details: {summary}");
+        }
+
+        // dr-9-1-does-not-update-external-consumer-call-sites (SampleSolution audit §9.1):
+        // If any extracted member is referenced from a file OUTSIDE the source file, applying
+        // the extraction silently breaks those callers — the methods move to the new type but
+        // the new type is constructor-injected as a private field on the source, so external
+        // code calling `source.ExtractedMember()` no longer compiles. Refuse the preview so the
+        // caller knows to either pull the affected callers into the extraction redesign, or to
+        // first refactor those callers to interact with the new type directly via DI / factory.
+        var externalConsumerWarnings = await CollectExternalConsumerWarningsAsync(
+            solution, sourceDocument, semanticModel, membersToExtract, ct).ConfigureAwait(false);
+        if (externalConsumerWarnings.Count > 0)
+        {
+            var summary = string.Join("; ", externalConsumerWarnings);
+            throw new InvalidOperationException(
+                $"Refusing to extract type '{newTypeName}' from '{sourceTypeName}': the selected member(s) are " +
+                $"referenced by external consumer files. Applying the extraction would move the members to the new " +
+                $"type (constructor-injected as a private field on the source), breaking every external call site. " +
+                $"Either include the calling code in the extraction redesign, or first refactor consumers to interact " +
+                $"with the new type directly via DI / a public factory. Details: {summary}");
         }
 
         // Determine target file path
@@ -212,6 +233,59 @@ public sealed class TypeExtractionService : ITypeExtractionService
     /// <summary>
     /// Warns when extracted members reference symbols that remain on the original type (not moved with the extraction).
     /// </summary>
+    /// <summary>
+    /// dr-9-1-does-not-update-external-consumer-call-sites: For each member to be extracted,
+    /// run a solution-wide reference search and collect any reference whose source-file path
+    /// differs from the source document. Each external caller becomes a warning so the
+    /// preview can refuse with an actionable message instead of silently producing a diff
+    /// that the apply will break.
+    /// </summary>
+    private static async Task<List<string>> CollectExternalConsumerWarningsAsync(
+        Solution solution,
+        Document sourceDocument,
+        SemanticModel semanticModel,
+        IReadOnlyList<MemberDeclarationSyntax> membersToExtract,
+        CancellationToken ct)
+    {
+        var warnings = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var sourceFilePath = sourceDocument.FilePath;
+
+        foreach (var member in membersToExtract)
+        {
+            ct.ThrowIfCancellationRequested();
+            var memberSymbol = semanticModel.GetDeclaredSymbol(member, ct);
+            if (memberSymbol is null) continue;
+
+            // Only public / internal members can be referenced from outside the source type
+            // (private/protected references are confined to the source file or its derivatives,
+            // which the existing dangling-reference check already handles).
+            if (memberSymbol.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal or Accessibility.ProtectedOrInternal))
+                continue;
+
+            var references = await SymbolFinder.FindReferencesAsync(memberSymbol, solution, ct).ConfigureAwait(false);
+            foreach (var refResult in references)
+            {
+                foreach (var loc in refResult.Locations)
+                {
+                    if (!loc.Location.IsInSource) continue;
+                    var refDoc = solution.GetDocument(loc.Document.Id);
+                    if (refDoc?.FilePath is null) continue;
+                    if (string.Equals(refDoc.FilePath, sourceFilePath, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    var msg =
+                        $"Extracted member '{memberSymbol.Name}' is referenced from external consumer " +
+                        $"'{Path.GetFileName(refDoc.FilePath)}' (project '{refDoc.Project.Name}')";
+                    if (seen.Add(msg))
+                        warnings.Add(msg);
+                }
+            }
+        }
+
+        return warnings;
+    }
+
     private static List<string> CollectExtractTypeDanglingReferenceWarnings(
         SemanticModel semanticModel,
         INamedTypeSymbol typeSymbol,
