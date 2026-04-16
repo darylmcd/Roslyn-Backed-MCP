@@ -249,7 +249,16 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
                 var updatedRoot = root.ReplaceNodes(
                     parameterReplacements.Select(entry => entry.Parameter),
-                    (original, _) => original.WithType(SyntaxFactory.ParseTypeName(resolvedInterfaceName)));
+                    (original, _) =>
+                    {
+                        // FORMAT-BUG-002: Preserve the original type node's surrounding trivia.
+                        // `ParseTypeName` produces a bare identifier with no trivia; without
+                        // `WithTriviaFrom` the trailing space between type and parameter name is
+                        // lost, producing `IAnimalServiceservice` instead of `IAnimalService service`.
+                        var replacementType = SyntaxFactory.ParseTypeName(resolvedInterfaceName)
+                            .WithTriviaFrom(original.Type!);
+                        return original.WithType(replacementType);
+                    });
                 updatedSolution = updatedSolution.WithDocumentSyntaxRoot(document.Id, updatedRoot);
             }
         }
@@ -599,9 +608,36 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         TypeDeclarationSyntax updated;
         if (declaration.BaseList is null)
         {
-            // No existing base list. Attach ` : IName` — AddTypes/Roslyn emits the colon token
-            // automatically. Leading space on the BaseList keeps it separated from the class
-            // identifier's trailing token.
+            // FORMAT-BUG-002 (dr-9-3-format-bug-002-destroys-source-formatting): when the class had
+            // `class Foo\n{` (brace on its own line), the identifier's trailing trivia carries the
+            // `\n`. Inserting a BaseList after the identifier would emit `class Foo\n : IName {`
+            // with the base list orphaned on a new line. Relocate the identifier's trailing EOL
+            // trivia to the brace's leading trivia so the output reads `class Foo : IName\n{`.
+            var identifier = declaration.Identifier;
+            var identifierTrailing = identifier.TrailingTrivia;
+            var hasEolTrailing = identifierTrailing.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia));
+
+            if (hasEolTrailing)
+            {
+                // Drop the trailing EOL-family trivia from the identifier and relocate it to the
+                // brace's leading trivia. Keep any leading whitespace trivia that was before the
+                // EOL (rare, e.g. trailing space before newline).
+                var newIdentifierTrailing = SyntaxFactory.TriviaList(
+                    identifierTrailing.TakeWhile(t => !t.IsKind(SyntaxKind.EndOfLineTrivia)));
+                var relocatedTrivia = identifierTrailing.SkipWhile(t => !t.IsKind(SyntaxKind.EndOfLineTrivia));
+
+                var newIdentifier = identifier.WithTrailingTrivia(newIdentifierTrailing);
+                var existingBrace = declaration.OpenBraceToken;
+                var newBrace = existingBrace.WithLeadingTrivia(
+                    SyntaxFactory.TriviaList(relocatedTrivia.Concat(existingBrace.LeadingTrivia)));
+
+                declaration = declaration
+                    .WithIdentifier(newIdentifier)
+                    .WithOpenBraceToken(newBrace);
+            }
+
+            // Attach ` : IName` — AddTypes/Roslyn emits the colon token automatically. Leading
+            // space on the BaseList keeps it separated from the class identifier's trailing token.
             var baseList = SyntaxFactory.BaseList(
                 SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceType))
                 .WithLeadingTrivia(SyntaxFactory.Space);
@@ -614,10 +650,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             updated = declaration.WithBaseList(declaration.BaseList.AddTypes(interfaceType));
         }
 
-        // FORMAT-BUG-001: the OpenBraceToken inherits its leading trivia from the original
-        // position right after the identifier. If the identifier had a trailing newline, the
-        // newline now sits before `:` — producing `class Foo\n : IName{`. Force the brace onto
-        // its own line so the output reads `class Foo : IName\n{`.
+        // FORMAT-BUG-001: ensure `{` is on its own line if it isn't already (e.g., same-line brace
+        // `class Foo{` becomes `class Foo : IName\n{`). In the no-base-list path above we already
+        // relocated the identifier's trailing EOL to the brace, so this is a no-op in that case.
         updated = EnsureOpeningBraceOnOwnLine(updated);
         return updated;
     }
@@ -688,8 +723,12 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var updatedTypeDeclaration = AddBaseType(typeDeclaration, interfaceName);
         var updatedSourceRoot = sourceRoot.ReplaceNode(typeDeclaration, updatedTypeDeclaration);
-        if (updatedSourceRoot is CompilationUnitSyntax updatedCu)
-            updatedSourceRoot = updatedCu.NormalizeWhitespace();
+        // FORMAT-BUG-002 (dr-9-3-format-bug-002-destroys-source-formatting): do NOT
+        // NormalizeWhitespace() the entire source compilation unit — that re-flows every node
+        // in the file (collapses multi-line bodies, strips intentional spacing, reshuffles
+        // indentation). `AddBaseType` + `EnsureOpeningBraceOnOwnLine` already emit the targeted
+        // `: IName\n{` edit with correct trivia; ReplaceNode preserves surrounding source layout.
+        // Mirrors the same decision made in PreviewExtractInterfaceAsync.
 
         // Item #1 — pass folders so MSBuildWorkspace resolves the disk path consistently.
         var diInterfaceFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
