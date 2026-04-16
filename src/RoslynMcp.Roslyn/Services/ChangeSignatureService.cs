@@ -41,6 +41,27 @@ public sealed class ChangeSignatureService : IChangeSignatureService
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
+
+        // change-signature-parameter-span-hint-for-remove: accept a caret ON the parameter
+        // itself as a shortcut. Pre-fix the service required the caret to point at the method
+        // declaration, which forced agents with a parameter caret to translate a parameter
+        // name into a 0-based Position or re-click at the method name. If the caret resolves
+        // to a parameter symbol, promote to the containing method and splice the parameter's
+        // 0-based index into the request when Position/Name are both unset. Explicit values
+        // still win (caret-on-method with explicit Name is unchanged).
+        if (symbol is IParameterSymbol parameter && parameter.ContainingSymbol is IMethodSymbol paramOwner)
+        {
+            symbol = paramOwner;
+            if (request.Position is null && string.IsNullOrWhiteSpace(request.Name))
+            {
+                var parameterIndex = paramOwner.Parameters.IndexOf(parameter);
+                if (parameterIndex >= 0)
+                {
+                    request = request with { Position = parameterIndex };
+                }
+            }
+        }
+
         if (symbol is not IMethodSymbol method)
             throw new InvalidOperationException(
                 $"change_signature_preview requires a method symbol; resolved {symbol?.Kind.ToString() ?? "null"} instead.");
