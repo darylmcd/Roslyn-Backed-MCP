@@ -153,17 +153,18 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "get_nuget_dependencies", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Inspect NuGet package references and versions."),
-     Description("List all NuGet package references across projects in the workspace, including which projects use each package")]
+     Description("List all NuGet package references across projects in the workspace, including which projects use each package. Pass `summary=true` to collapse the response to per-package counts + distinct version count — required on multi-project solutions where the default response exceeds the MCP cap (Jellyfin's 40-project graph: ~102 KB).")]
     public static Task<string> GetNuGetDependencies(
         IWorkspaceExecutionGate gate,
         INuGetDependencyService nuGetDependencyService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("When true, returns a compact per-package summary `{packageId, version, projectCount, distinctVersionCount}` instead of the full per-project graph. Default false preserves the verbose shape.")] bool summary = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("get_nuget_dependencies", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, c);
+                var result = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, c, summary);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

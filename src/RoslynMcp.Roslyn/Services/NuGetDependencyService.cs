@@ -61,7 +61,7 @@ public sealed class NuGetDependencyService : INuGetDependencyService
     }
 
     public async Task<NuGetDependencyResultDto> GetNuGetDependenciesAsync(
-        string workspaceId, CancellationToken ct)
+        string workspaceId, CancellationToken ct, bool summary = false)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var projectDtos = new List<NuGetProjectDto>();
@@ -135,6 +135,40 @@ public sealed class NuGetDependencyService : INuGetDependencyService
 
             return new NuGetPackageDto(kvp.Key.Id, displayVersion, kvp.Value);
         }).ToList();
+
+        if (summary)
+        {
+            // get-nuget-dependencies-no-summary-mode: collapse to per-package counts +
+            // distinct version count. Packages and Projects emit empty lists so callers
+            // can safely iterate without null-checks; Summaries carries the data.
+            var summaries = packageMap
+                .GroupBy(kvp => kvp.Key.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var distinctVersions = g.Select(kvp => kvp.Key.Version)
+                        .Where(v => !string.IsNullOrWhiteSpace(v))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    var projectCount = g.SelectMany(kvp => kvp.Value)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Count();
+                    var displayVersion = distinctVersions
+                        .OrderBy(v => v, StringComparer.OrdinalIgnoreCase)
+                        .FirstOrDefault() ?? string.Empty;
+                    return new NuGetPackageSummaryDto(
+                        PackageId: g.Key,
+                        Version: displayVersion,
+                        ProjectCount: projectCount,
+                        DistinctVersionCount: distinctVersions.Count);
+                })
+                .OrderBy(s => s.PackageId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            return new NuGetDependencyResultDto(
+                Packages: [],
+                Projects: [],
+                Summaries: summaries);
+        }
 
         return new NuGetDependencyResultDto(packageDtos, projectDtos);
     }
