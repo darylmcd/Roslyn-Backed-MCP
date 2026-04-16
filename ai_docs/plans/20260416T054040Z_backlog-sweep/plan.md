@@ -121,7 +121,7 @@ initiative below has the standard table fields filled out at execute time.
 | # | id | Files (est) | Cost | CHANGELOG cat | Notes |
 |---|---|---|---|---|---|
 | I-12 | `server-info-update-latest-inverted` | 3 | 25000 | Fixed | merged (PR pending — ILatestVersionProvider abstraction added for testability). |
-| I-13 | `mcp-stdio-console-flush-on-exit` | 1 | 25000 | Fixed | Trivial — add `Console.Out.Flush()` to shutdown. |
+| I-13 | `mcp-stdio-console-flush-on-exit` | 1 | 25000 | Fixed | in-review — AppDomain.ProcessExit handler + sync flush. |
 | I-14 | `file-resource-uri-windows-path-handling` | 1 | 30000 | Fixed | URI-encode/decode `filePath` segments. |
 | I-15 | `dr-9-13-flag-resource-invalid-range-resource-returns-ge` | 1 | 30000 | Fixed | Wrap resource handler in `ToolErrorHandler.ExecuteResource`. |
 | I-16 | `dr-9-7-bug-json-parse-surfaces-stack-trace` | 1 | 30000 | Fixed | Wrap `JsonSerializer.Deserialize` in try/catch. |
