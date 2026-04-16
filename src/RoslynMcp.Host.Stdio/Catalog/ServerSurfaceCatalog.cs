@@ -79,7 +79,7 @@ public static class ServerSurfaceCatalog
         Tool("restructure_preview", "refactoring", "experimental", true, false, "Preview a syntax-tree pattern-based find-and-replace using __placeholder__ captures."),
         Tool("replace_string_literals_preview", "refactoring", "experimental", true, false, "Preview replacing string literals in argument/initializer position with a constant expression."),
         Tool("symbol_impact_sweep", "analysis", "experimental", true, false, "Sweep downstream impact of a symbol change: references + switch-exhaustiveness diagnostics + mapper-suffix callsites."),
-        Tool("test_reference_map", "validation", "experimental", true, false, "Statically map source symbols to test references; returns covered/uncovered symbol lists and a coverage percentage."),
+        Tool("test_reference_map", "validation", "experimental", true, false, "Statically map source symbols to test references; returns covered/uncovered symbol lists and a coverage percentage. Supports offset/limit pagination and projectName scoping."),
         Tool("get_prompt_text", "prompts", "experimental", true, false, "Render any registered MCP prompt as plain text. Pass the prompt name plus a JSON object of the prompt's parameters; returns { messages: [{role, text}], promptName, parameterCount }."),
         Tool("validate_workspace", "validation", "experimental", true, false, "Composite post-edit validation: compile_check + project_diagnostics (errors) + test_related_files (+ optional test_run)."),
         Tool("change_signature_preview", "refactoring", "experimental", true, false, "Preview adding/removing/renaming a method parameter with all callsites updated atomically."),

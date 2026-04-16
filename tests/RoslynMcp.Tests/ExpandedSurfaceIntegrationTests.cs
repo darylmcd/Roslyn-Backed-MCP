@@ -281,7 +281,9 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         using var catalogDoc = JsonDocument.Parse(ServerResources.GetServerCatalog());
         Assert.AreEqual("local-first", catalogDoc.RootElement.GetProperty("productShape").GetString());
-        Assert.IsTrue(catalogDoc.RootElement.GetProperty("tools").GetArrayLength() > 0);
+        // dr-9-11-payload-exceeds-mcp-tool-result-cap (PR #188): default catalog now returns
+        // a summary with toolCount + toolsResourceTemplate instead of an inline tools array.
+        Assert.IsTrue(catalogDoc.RootElement.GetProperty("toolCount").GetInt32() > 0);
 
         using var templatesDoc = JsonDocument.Parse(ServerResources.GetResourceTemplates());
         Assert.IsTrue(templatesDoc.RootElement.GetProperty("count").GetInt32() >= 1);
