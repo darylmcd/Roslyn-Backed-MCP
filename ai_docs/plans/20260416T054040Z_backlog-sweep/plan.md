@@ -124,8 +124,8 @@ initiative below has the standard table fields filled out at execute time.
 | I-13 | `mcp-stdio-console-flush-on-exit` | 1 | 25000 | Fixed | merged (PR #177). |
 | I-14 | `file-resource-uri-windows-path-handling` | 1 | 30000 | Fixed | merged (PR #178, 2026-04-16). |
 | I-15 | `dr-9-13-flag-resource-invalid-range-resource-returns-ge` | 1 | 30000 | Fixed | merged (PR #182, 2026-04-16). |
-| I-16 | `dr-9-7-bug-json-parse-surfaces-stack-trace` | 1 | 30000 | Fixed | in-progress (branch: remediation/dr-9-7-bug-json-parse-surfaces-stack-trace) — wrapped both JsonDocument.Parse and per-parameter Deserialize; 3 regression tests. |
-| I-17 | `dr-9-9-response-claims` | 2 | 30000 | Fixed | Gate `staleAction: "auto-reloaded"` on actual reload. |
+| I-16 | `dr-9-7-bug-json-parse-surfaces-stack-trace` | 1 | 30000 | Fixed | merged (PR #183, 2026-04-16). |
+| I-17 | `dr-9-9-response-claims` | 1 | 30000 | Fixed | in-progress (branch: remediation/dr-9-9-response-claims) — local `reloaded` flag gates StaleAction stamp; 1 regression test. |
 | I-18 | `project-graph-missing-metadata-fields` | 1 | 30000 | Fixed | Defensive populate of Name + ProjectPath. |
 | I-19 | `dr-9-1-regression-r17a-emits-literal-placeholder` | 1 | 35000 | Fixed | Restore placeholder substitution in `RestructureService.PreviewAsync`. |
 | I-20 | `dr-9-8-bug-validate-fabricated-accepts-fabricated-silen` | 1 | 35000 | Fixed | Add `unknownFilePaths: string[]` to validate response. |
