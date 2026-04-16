@@ -57,7 +57,7 @@
 
 | Field | Content |
 |---|---|
-| **Status** | `in-review (branch: remediation/change-signature-preview-brace-concat-on-add-op)` |
+| **Status** | `merged (PR #166, 2026-04-16)` |
 | **Backlog rows closed** | `change-signature-preview-brace-concat-on-add-op` (P3) |
 | **Diagnosis** | `src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:75-105` — `PreviewAddParameterAsync` builds the new parameter via `SyntaxFactory.Parameter(...).WithType(SyntaxFactory.ParseTypeName(request.ParameterType + " "))`. Trailing-space hack tries to force a space between type and identifier; doesn't address the broader issue that raw factory builds nodes without proper trivia. Result on Jellyfin `MusicManager.GetInstantMixFromSong` (audit 2026-04-16 §9.1): signature line concatenates with body's `{` AND original `{` line is removed; param-separator spacing stripped. Also: `paramText` local at line 75 is computed but never read (dead local). |
 | **Approach** | In `PreviewAddParameterAsync`: switch to `SyntaxFactory.ParseParameter(paramText)` (parser-built, not raw factory) — produces properly-tokenized parameter. Use the existing `paramText` local. Drop trailing-space hack on `ParseTypeName`. In `ApplyAddRemoveAsync` line 215: preserve close-paren trailing trivia when replacing ParameterList (`newParamList.WithTriviaFrom(mds.ParameterList)`). |
@@ -74,7 +74,7 @@
 
 | Field | Content |
 |---|---|
-| **Status** | `pending` |
+| **Status** | `in-review (branch: remediation/workspace-readiness-contract-bundle)` |
 | **Backlog rows closed** | `dr-9-7-reports-during-refactoring-transitions-but-the-w` (P3); `severity-flag-soft-inconsistency-does-not-block-work` (P4); `workspace-load-isready-misreports-unresolved-analyzers` (P4) |
 | **Diagnosis** | **Bundle Rule 1 verification:** All three describe the `isReady` contract failing in opposite directions; all three are computed by the same function. Verified at `src/RoslynMcp.Core/Models/WorkspaceStatusSummaryDto.cs:52`. |
 | **Approach** | Add `analyzersReady: bool`; demote `isReady` to require both. Extend `BuildRestoreHint` for transient stale. |
