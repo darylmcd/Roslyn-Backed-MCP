@@ -145,17 +145,17 @@ public static class WorkspaceResources
     // Throwing McpToolException with the OriginatingSource keeps the framework's default
     // exception path; the MCP client will see a generic error rather than a structured envelope.
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/file/{filePath}", Name = "source_file", MimeType = "text/x-csharp")]
-    [Description("Read the source text of a file in the loaded workspace. filePath must be URL-encoded; see roslyn://server/resource-templates. For a line range, use the sibling template roslyn://workspace/{workspaceId}/file/{filePath}/lines/{startLine}-{endLine}.")]
+    [Description("Read the source text of a file in the loaded workspace. filePath accepts URL-encoded form (recommended for cross-client portability — Windows absolute paths contain `:` and `\\` which are reserved in URI grammar) or a raw absolute path; both are normalized server-side. Forward slashes are converted to the platform separator. For a line range, use the sibling template roslyn://workspace/{workspaceId}/file/{filePath}/lines/{startLine}-{endLine}.")]
     public static async Task<string> GetSourceFile(
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId,
-        [Description("Absolute path to the source file (URL-encoded)")] string filePath,
+        [Description("Absolute path to the source file. URL-encoded preferred (e.g. C%3A%5CUsers%5Cfoo) — Windows raw paths contain `:` and `\\` which are reserved per RFC 3986 and may be rejected by some MCP clients before reaching the server.")] string filePath,
         CancellationToken ct = default)
     {
         const string source = "roslyn://workspace/{workspaceId}/file/{filePath}";
         try
         {
-            var normalizedPath = Uri.UnescapeDataString(filePath).Replace('/', Path.DirectorySeparatorChar);
+            var normalizedPath = NormalizeFilePathForResource(filePath);
             if (!Path.IsPathFullyQualified(normalizedPath))
             {
                 throw new InvalidOperationException(
@@ -169,6 +169,24 @@ public static class WorkspaceResources
         }
         catch (KeyNotFoundException ex) { throw new McpToolException(source, $"Not found: {ex.Message}", ex); }
         catch (InvalidOperationException ex) { throw new McpToolException(source, $"Invalid operation: {ex.Message}", ex); }
+    }
+
+    /// <summary>
+    /// file-resource-uri-windows-path-handling: centralized normalizer that handles every
+    /// shape a client may send filePath in:
+    /// <list type="bullet">
+    ///   <item><description>Fully URL-encoded (e.g. <c>C%3A%5CUsers%5Cfoo</c>) — single decode.</description></item>
+    ///   <item><description>Raw Windows absolute (e.g. <c>C:\Users\foo</c>) — already in usable form.</description></item>
+    ///   <item><description>Forward-slash variant (e.g. <c>C:/Users/foo</c>) — separator-normalized.</description></item>
+    ///   <item><description>Mixed encoding (some segments encoded, others not) — decode is idempotent for non-`%` content.</description></item>
+    /// </list>
+    /// </summary>
+    private static string NormalizeFilePathForResource(string filePath)
+    {
+        // UnescapeDataString is idempotent on already-decoded paths (no `%XX` sequences = no-op).
+        // Replace forward slashes with the platform separator AFTER decoding so encoded `%2F`
+        // sequences are also normalized.
+        return Uri.UnescapeDataString(filePath).Replace('/', Path.DirectorySeparatorChar);
     }
 
     /// <summary>
@@ -191,7 +209,7 @@ public static class WorkspaceResources
         const string source = "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}";
         try
         {
-            var normalizedPath = Uri.UnescapeDataString(filePath).Replace('/', Path.DirectorySeparatorChar);
+            var normalizedPath = NormalizeFilePathForResource(filePath);
             if (!Path.IsPathFullyQualified(normalizedPath))
             {
                 throw new InvalidOperationException(
