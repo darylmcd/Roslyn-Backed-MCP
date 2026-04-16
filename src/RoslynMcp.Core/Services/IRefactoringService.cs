@@ -18,6 +18,17 @@ public interface IRefactoringService
     Task<RefactoringPreviewDto> PreviewRenameAsync(string workspaceId, SymbolLocator locator, string newName, CancellationToken ct);
 
     /// <summary>
+    /// Item #8 — <c>rename-preview-output-cap-high-fan-out-symbols</c>. Preview a rename
+    /// with an optional summary mode. When <paramref name="summary"/> is
+    /// <see langword="true"/>, per-file unified diffs are replaced with a compact
+    /// single-line summary (reference count, line change totals), keeping the payload
+    /// under the MCP output cap even on symbols with hundreds of references. The apply
+    /// path uses the stored Solution, not the summary text, so applying a summary
+    /// preview rewrites every reference correctly.
+    /// </summary>
+    Task<RefactoringPreviewDto> PreviewRenameAsync(string workspaceId, SymbolLocator locator, string newName, bool summary, CancellationToken ct);
+
+    /// <summary>
     /// Applies a previously previewed refactoring to the workspace.
     /// </summary>
     /// <param name="previewToken">The token returned by a prior preview call.</param>

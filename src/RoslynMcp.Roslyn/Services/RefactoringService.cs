@@ -42,8 +42,12 @@ public sealed class RefactoringService : IRefactoringService
     /// <summary>
     /// Previews renaming a symbol and all its references across the solution.
     /// </summary>
-    public async Task<RefactoringPreviewDto> PreviewRenameAsync(
+    public Task<RefactoringPreviewDto> PreviewRenameAsync(
         string workspaceId, SymbolLocator locator, string newName, CancellationToken ct)
+        => PreviewRenameAsync(workspaceId, locator, newName, summary: false, ct);
+
+    public async Task<RefactoringPreviewDto> PreviewRenameAsync(
+        string workspaceId, SymbolLocator locator, string newName, bool summary, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
@@ -63,7 +67,22 @@ public sealed class RefactoringService : IRefactoringService
         var newSolution = await Renamer.RenameSymbolAsync(
             solution, symbol, new SymbolRenameOptions(), newName, ct).ConfigureAwait(false);
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        // Item #8 — rename-preview-output-cap-high-fan-out-symbols. The full unified
+        // diffs scale with reference fan-out (a 233-ref symbol produces ~98 KB of diff
+        // text); on symbols with >200 refs the payload exceeds the MCP output cap. In
+        // summary mode we replace the per-file UnifiedDiff with a compact descriptor
+        // while the stored Solution still carries every actual edit, so a subsequent
+        // apply rewrites every reference correctly.
+        IReadOnlyList<FileChangeDto> changes;
+        if (summary)
+        {
+            changes = await BuildRenameSummaryChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        }
+
         var description = $"Rename '{symbol.Name}' to '{newName}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
@@ -76,6 +95,88 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         return new RefactoringPreviewDto(token, description, changes, warnings);
+    }
+
+    /// <summary>
+    /// Item #8 — compact per-file summaries for summary=true. Computes per-file
+    /// added/removed line counts from the Solution diff without serializing full
+    /// unified-diff hunk bodies. Keeps each FileChangeDto's UnifiedDiff to a single
+    /// human-readable line so the total response stays well under the MCP output cap
+    /// even on 200+ reference symbols.
+    /// </summary>
+    private static async Task<IReadOnlyList<FileChangeDto>> BuildRenameSummaryChangesAsync(
+        Solution oldSolution, Solution newSolution, CancellationToken ct)
+    {
+        var summaries = new List<FileChangeDto>();
+
+        foreach (var projectChange in newSolution.GetChanges(oldSolution).GetProjectChanges())
+        {
+            foreach (var docId in projectChange.GetChangedDocuments())
+            {
+                var oldDoc = oldSolution.GetDocument(docId);
+                var newDoc = newSolution.GetDocument(docId);
+                if (oldDoc is null || newDoc is null)
+                {
+                    continue;
+                }
+
+                var oldText = (await oldDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                if (string.Equals(oldText, newText, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var oldLineCount = CountLines(oldText);
+                var newLineCount = CountLines(newText);
+                var filePath = oldDoc.FilePath ?? newDoc.FilePath ?? oldDoc.Name;
+                var netChange = newLineCount - oldLineCount;
+                var netMarker = netChange switch
+                {
+                    > 0 => $"+{netChange} lines",
+                    < 0 => $"{netChange} lines",
+                    _ => "no net line change"
+                };
+
+                summaries.Add(new FileChangeDto(
+                    filePath,
+                    $"# summary=true: {oldLineCount} → {newLineCount} lines ({netMarker}). " +
+                    "Full unified diff suppressed to keep the response under the MCP output cap; " +
+                    "pass summary=false to see per-site edits."));
+            }
+
+            // Added/removed documents (rare for rename but possible with extension-method
+            // cross-file moves) get their own minimal entries.
+            foreach (var docId in projectChange.GetAddedDocuments())
+            {
+                var newDoc = newSolution.GetDocument(docId);
+                if (newDoc is null) continue;
+                var path = newDoc.FilePath ?? newDoc.Name;
+                var lineCount = CountLines((await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString());
+                summaries.Add(new FileChangeDto(path, $"# summary=true: added file ({lineCount} lines)."));
+            }
+
+            foreach (var docId in projectChange.GetRemovedDocuments())
+            {
+                var oldDoc = oldSolution.GetDocument(docId);
+                if (oldDoc is null) continue;
+                var path = oldDoc.FilePath ?? oldDoc.Name;
+                summaries.Add(new FileChangeDto(path, "# summary=true: removed file."));
+            }
+        }
+
+        return summaries;
+    }
+
+    private static int CountLines(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        var count = 1;
+        foreach (var ch in text)
+        {
+            if (ch == '\n') count++;
+        }
+        return count;
     }
 
     /// <summary>
