@@ -167,7 +167,7 @@ re-read the v1-style verbose plan. State for status / branch / PR is tracked in
 
 | Field | Content |
 |---|---|
-| **Status** | `in-review (PR pending)` |
+| **Status** | `in-review (PR #215)` |
 | **Backlog rows closed** | `create-file-apply-csproj-side-effect-all-projects` (P2) |
 | **Diagnosis** | `src/RoslynMcp.Roslyn/Services/RefactoringService.cs:691-840` — `PersistDocumentSetChangesAsync` calls `_workspace.TryApplyChanges(workspaceId, modifiedSolution)` at line 793. v1.18.2 Item #5 fix snapshots only **SDK-style csprojs with ADDED documents** (line 716-737) and restores them at line 801-824. The P2 reports a different scope: ALL 40 csprojs get BOM, blank-line stripping, CRLF→LF conversion — even csprojs with NO document changes. Root cause: MSBuildWorkspace's internal save logic runs on every project on `TryApplyChanges`. |
 | **Approach** | Extend Item #5's snapshot pattern to **every csproj in the workspace** before `TryApplyChanges`. After the call, restore csprojs whose disk content differs ONLY in normalization (BOM, line-endings, blank-line collapsing). New `Helpers/CsprojSemanticEquality.cs` parses XML on both sides; if only-trivia diff: restore. If semantic diff: keep new bytes (legitimate change). Alternative: investigate `MSBuildWorkspace.SkipUnchangedFiles` or equivalent setting; if exists, opt in. |
