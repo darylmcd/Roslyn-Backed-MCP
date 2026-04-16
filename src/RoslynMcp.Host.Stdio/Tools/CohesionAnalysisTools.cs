@@ -66,12 +66,13 @@ public static class CohesionAnalysisTools
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("find_shared_members", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false);
+                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
                 var results = await cohesionAnalysisService.FindSharedMembersAsync(workspaceId, locator, c);
                 return JsonSerializer.Serialize(new { count = results.Count, sharedMembers = results }, JsonDefaults.Indented);
             }, ct));

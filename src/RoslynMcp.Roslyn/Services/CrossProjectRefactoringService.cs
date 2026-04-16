@@ -73,10 +73,15 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         }
 
         var movedRoot = CreateCompilationUnitForMember(sourceRoot, typeDeclaration, resolvedTargetNamespace);
+        // Item #1 — pass folders so MSBuildWorkspace.TryApplyChanges resolves the disk path
+        // consistently with our explicit write. Without folders, Roslyn resolves cross-project
+        // adds to {targetProjectDir}/{fileName} and produces a rogue project-root copy.
+        var movedDocFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, targetFilePath);
         var updatedSolution = solution.AddDocument(
             DocumentId.CreateNewId(targetProject.Id),
             Path.GetFileName(targetFilePath),
             SourceText.From(movedRoot.ToFullString()),
+            folders: movedDocFolders,
             filePath: targetFilePath);
 
         updatedSolution = EnsureProjectReference(updatedSolution, sourceDocument.Project.Id, targetProject.Id);
@@ -96,7 +101,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Move type '{typeName}' to project '{targetProject.Name}'";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
@@ -161,11 +166,14 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // unrelated code (collapses multi-line bodies, reshuffles format specifiers). ReplaceNode
         // preserves the surrounding source layout while still applying our targeted edit.
 
+        // Item #1 — pass folders so MSBuildWorkspace resolves the disk path consistently.
+        var interfaceFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
         var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
             .AddDocument(
                 DocumentId.CreateNewId(targetProject.Id),
                 resolvedInterfaceName + ".cs",
                 SourceText.From(interfaceRoot.ToFullString()),
+                folders: interfaceFolders,
                 filePath: interfaceFilePath);
 
         if (isCrossProject)
@@ -175,7 +183,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}'";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
@@ -248,7 +256,7 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, updatedSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and update constructor dependencies";
-        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, updatedSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
@@ -597,11 +605,14 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         if (updatedSourceRoot is CompilationUnitSyntax updatedCu)
             updatedSourceRoot = updatedCu.NormalizeWhitespace();
 
+        // Item #1 — pass folders so MSBuildWorkspace resolves the disk path consistently.
+        var diInterfaceFolders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
         var updatedSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot)
             .AddDocument(
                 DocumentId.CreateNewId(targetProject.Id),
                 interfaceName + ".cs",
                 SourceText.From(interfaceRoot.ToFullString()),
+                folders: diInterfaceFolders,
                 filePath: interfaceFilePath);
 
         if (isCrossProject)

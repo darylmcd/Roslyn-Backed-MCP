@@ -55,6 +55,9 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         _logger = logger;
         _options = options ?? new ValidationServiceOptions();
         _workspace.WorkspaceClosed += workspaceId => _vulnCache.TryRemove(workspaceId, out _);
+        // Item #7: reload typically coincides with a `dotnet restore`, which is exactly when
+        // the vulnerability scan needs to run again — drop cached results on reload.
+        _workspace.WorkspaceReloaded += workspaceId => _vulnCache.TryRemove(workspaceId, out _);
     }
 
     public async Task<NuGetDependencyResultDto> GetNuGetDependenciesAsync(

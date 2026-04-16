@@ -14,9 +14,10 @@ internal static class SymbolLocatorFactory
     /// <remarks>
     /// Priority order: <paramref name="symbolHandle"/> (most stable) &gt;
     /// <paramref name="metadataName"/> &gt; <paramref name="filePath"/>/<paramref name="line"/>/<paramref name="column"/>.
-    /// The error message reflects only those identification strategies that the calling tool exposes;
-    /// callers that omit <paramref name="metadataName"/> can pass <c>supportsMetadataName: false</c>
-    /// to keep the message accurate (BUG-002).
+    /// All locator-accepting tools advertise <paramref name="metadataName"/> uniformly as of the
+    /// top-10 remediation pass (item #10 / `find-references-metadataname-parameter-rejected`); the
+    /// previous <c>supportsMetadataName</c> error-tailoring switch is gone because every caller
+    /// now supports the parameter.
     /// </remarks>
     /// <exception cref="System.ArgumentException">
     /// Thrown when none of the identification parameters are supplied, or when a partial source location
@@ -27,8 +28,7 @@ internal static class SymbolLocatorFactory
         int? line = null,
         int? column = null,
         string? symbolHandle = null,
-        string? metadataName = null,
-        bool supportsMetadataName = true)
+        string? metadataName = null)
     {
         if (!string.IsNullOrWhiteSpace(symbolHandle))
             return SymbolLocator.ByHandle(symbolHandle);
@@ -62,11 +62,7 @@ internal static class SymbolLocatorFactory
                 $"Source location is incomplete. Provide all of filePath, line, and column. Missing: {string.Join(", ", missing)}." + hint);
         }
 
-        // BUG-002: Tailor the error message to the strategies that this caller actually exposes.
-        // Tools without a metadataName parameter should not have it suggested in their errors.
         throw new ArgumentException(
-            supportsMetadataName
-                ? "Provide one of: filePath with line and column, symbolHandle, or metadataName."
-                : "Provide either filePath with line and column, or symbolHandle.");
+            "Provide one of: filePath with line and column, symbolHandle, or metadataName.");
     }
 }

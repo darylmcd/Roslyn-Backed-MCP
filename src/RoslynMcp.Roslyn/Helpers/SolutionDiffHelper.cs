@@ -9,6 +9,15 @@ namespace RoslynMcp.Roslyn.Helpers;
 internal static class SolutionDiffHelper
 {
     /// <summary>
+    /// Item #4 — sentinel FilePath used on a synthetic FileChangeDto to signal the per-solution
+    /// 64 KB cap kicked in. Callers that pipe this list into PreviewStore use the presence of
+    /// this sentinel to tag the stored preview as truncated, and the apply path then refuses
+    /// to proceed without an explicit <c>force</c> flag (the audit's "preview truncated while
+    /// apply still mutates disk" concern).
+    /// </summary>
+    public const string TruncatedSentinelFilePath = "<truncated>";
+
+    /// <summary>
     /// FLAG-6A: Maximum total characters across all generated FileChangeDtos. When exceeded,
     /// the remaining file diffs are returned as truncation markers and a summary file change
     /// is appended noting how many files were omitted. Protects MCP clients from runaway
@@ -106,7 +115,7 @@ internal static class SolutionDiffHelper
                 fileList += $", … ({truncatedFiles.Count - 10} more)";
             }
             changes.Add(new FileChangeDto(
-                "<truncated>",
+                TruncatedSentinelFilePath,
                 $"# FLAG-6A: solution diff exceeded {DefaultMaxTotalChars} characters total. " +
                 $"{changes.Count} file diff(s) returned, {truncatedFiles.Count} omitted. " +
                 $"Omitted file(s): {fileList}. " +

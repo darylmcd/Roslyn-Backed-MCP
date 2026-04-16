@@ -86,16 +86,18 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
-        // Add new document
+        // Add new document. Item #1 — pass folders so MSBuildWorkspace's TryApplyChanges
+        // resolves the disk path consistently with our explicit write.
         var targetFileName = Path.GetFileName(resolvedTargetPath);
-        var newDoc = newSolution.GetProject(sourceDocument.Project.Id)!
-            .AddDocument(targetFileName, newFileRoot.ToFullString(), filePath: resolvedTargetPath);
+        var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
+        var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, resolvedTargetPath);
+        var newDoc = targetProject.AddDocument(targetFileName, newFileRoot.ToFullString(), folders: folders, filePath: resolvedTargetPath);
         newSolution = newDoc.Project.Solution;
 
         // Compute diff
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Extract {membersToExtract.Count} member(s) from '{sourceTypeName}' into new type '{newTypeName}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
     }

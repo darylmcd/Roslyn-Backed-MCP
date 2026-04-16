@@ -39,11 +39,18 @@ public sealed class CompilationCache : ICompilationCache, IDisposable
         // because every read re-checks GetCurrentVersion, but they hold Compilation references
         // until process exit.
         _workspaceManager.WorkspaceClosed += Invalidate;
+        // Item #7: `compile-check-stale-assembly-refs-post-reload` — also invalidate on reload.
+        // The per-read version check at lines ~54/~80 is correct in isolation but creates a
+        // window where a cached `Compilation` (holding its own `MetadataReference` handles
+        // through `Compilation.References`) survives until the next cache read. The fire-and-
+        // forget invalidation here closes that window synchronously with the reload.
+        _workspaceManager.WorkspaceReloaded += Invalidate;
     }
 
     public void Dispose()
     {
         _workspaceManager.WorkspaceClosed -= Invalidate;
+        _workspaceManager.WorkspaceReloaded -= Invalidate;
     }
 
     public Task<Compilation?> GetCompilationAsync(string workspaceId, Project project, CancellationToken ct)

@@ -474,6 +474,7 @@ public class WorkspaceExecutionGateTests
         public void ClearStaleFlag(string workspaceId) => _stale.TryRemove(workspaceId, out _);
 
         public event Action<string>? WorkspaceClosed { add { } remove { } }
+        public event Action<string>? WorkspaceReloaded { add { } remove { } }
 
         public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
 

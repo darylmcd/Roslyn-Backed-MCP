@@ -57,6 +57,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// <inheritdoc />
     public event Action<string>? WorkspaceClosed;
 
+    /// <inheritdoc />
+    public event Action<string>? WorkspaceReloaded;
+
     public WorkspaceManager(
         ILogger<WorkspaceManager> logger,
         IPreviewStore previewStore,
@@ -198,6 +201,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             $"Workspace '{workspaceId}' is not loaded."),
             ct).ConfigureAwait(false);
         _fileWatcher.ClearStale(workspaceId);
+        // Item #7: explicit reload signal for per-workspace caches. The version bump inside
+        // LoadIntoSessionAsync is enough for caches that version-check on every read, but
+        // firing the event synchronously here (a) makes the invalidation contract explicit,
+        // (b) lets caches drop references immediately rather than on next read (freeing
+        // memory sooner when a large workspace is reloaded), and (c) defends against future
+        // caches that forget to version-check.
+        RaiseWorkspaceReloaded(workspaceId);
         return BuildStatus(session);
     }
 
@@ -233,6 +243,25 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "WorkspaceClosed handler threw for {WorkspaceId}", workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// Notifies subscribers that a workspace has been reloaded. Wrapped so that handler
+    /// exceptions cannot break the reload path.
+    /// </summary>
+    private void RaiseWorkspaceReloaded(string workspaceId)
+    {
+        var handler = WorkspaceReloaded;
+        if (handler is null) return;
+
+        try
+        {
+            handler(workspaceId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "WorkspaceReloaded handler threw for {WorkspaceId}", workspaceId);
         }
     }
 

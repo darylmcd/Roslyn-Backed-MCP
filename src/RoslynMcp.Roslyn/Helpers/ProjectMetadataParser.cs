@@ -151,4 +151,123 @@ internal static class ProjectMetadataParser
             return null;
         }
     }
+
+    /// <summary>
+    /// Item #1 / severity-critical-fail-preview-diff-does-not-match-t. Computes the relative
+    /// folder segments from a project file to a target file, for use as the <c>folders</c>
+    /// argument to <see cref="Microsoft.CodeAnalysis.Project.AddDocument(string, Microsoft.CodeAnalysis.Text.SourceText, System.Collections.Generic.IEnumerable{string}?, string?, System.Collections.Generic.IReadOnlyList{string}?, bool)"/>.
+    /// Omitting folders makes MSBuildWorkspace treat the added document as living at project
+    /// root, which — when our own explicit disk write uses a deeper path — produces TWO files
+    /// on disk (the deep path plus a rogue project-root copy). All AddDocument callers that
+    /// target a file outside the project root MUST pass folders to keep Roslyn's path
+    /// resolution consistent with the explicit write.
+    /// </summary>
+    /// <param name="projectFilePath">The absolute path to the .csproj.</param>
+    /// <param name="filePath">The absolute path to the file being added.</param>
+    /// <returns>
+    /// The relative folder segments from the project directory to the file directory,
+    /// or an empty list when the file lives at project root or when paths are not resolvable.
+    /// </returns>
+    public static IReadOnlyList<string> ComputeDocumentFolders(string? projectFilePath, string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath))
+        {
+            return [];
+        }
+
+        var projectDirectory = Path.GetDirectoryName(projectFilePath);
+        var fileDirectory = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrWhiteSpace(projectDirectory) || string.IsNullOrWhiteSpace(fileDirectory))
+        {
+            return [];
+        }
+
+        var relativeDirectory = Path.GetRelativePath(projectDirectory, fileDirectory);
+        if (string.Equals(relativeDirectory, ".", StringComparison.Ordinal))
+        {
+            return [];
+        }
+
+        return relativeDirectory
+            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Where(folder => !string.IsNullOrWhiteSpace(folder) && folder != ".")
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Item #5 — <c>severity-medium-breaks-msbuild-until-csproj-is-hand</c>.
+    /// Returns <see langword="true"/> when the project file is SDK-style
+    /// (has an <c>Sdk=</c> attribute on the root <c>&lt;Project&gt;</c> element
+    /// or a top-level <c>&lt;Sdk&gt;</c> import) AND does not explicitly disable
+    /// default compile items with <c>&lt;EnableDefaultCompileItems&gt;false&lt;/EnableDefaultCompileItems&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// When this returns true, the server MUST NOT let
+    /// <see cref="Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace.TryApplyChanges(Microsoft.CodeAnalysis.Solution)"/>
+    /// inject an explicit <c>&lt;Compile Include="…"/&gt;</c> for an added document —
+    /// the default glob picks up the file automatically on the next workspace load, and
+    /// an explicit include produces the <c>Duplicate 'Compile' items were included</c>
+    /// MSBuild error reported in the firewall-analyzer audit §9.6 (BUG-COMPILE-INCLUDE)
+    /// and IT-Chat-Bot audit §9.1.
+    /// </remarks>
+    public static bool IsSdkStyleWithDefaultCompileItems(string? projectFilePath, ILogger? logger = null)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
+        {
+            return false;
+        }
+
+        var document = LoadProjectDocument(projectFilePath, logger);
+        return IsSdkStyleWithDefaultCompileItems(document);
+    }
+
+    /// <summary>
+    /// XML-shape overload — avoids re-reading the file when the caller already has a
+    /// parsed document. Pure: no I/O, no MSBuild evaluation.
+    /// </summary>
+    public static bool IsSdkStyleWithDefaultCompileItems(XDocument? document)
+    {
+        if (document?.Root is null)
+        {
+            return false;
+        }
+
+        var root = document.Root;
+
+        // SDK-style detection. Three shapes in the wild:
+        //   1. Attribute form: <Project Sdk="Microsoft.NET.Sdk">…</Project>    (most common)
+        //   2. Element form:   <Project><Sdk Name="Microsoft.NET.Sdk"/>…</Project>
+        //   3. Import form:    <Project><Import Sdk="…"/>…</Project>
+        // Non-SDK legacy csprojs use <Project ToolsVersion=…> without Sdk attributes.
+        var hasSdkAttribute = root.Attribute("Sdk") is not null;
+        var hasSdkElement = root.Elements().Any(e => string.Equals(e.Name.LocalName, "Sdk", StringComparison.Ordinal));
+        var hasSdkImport = root.Descendants().Any(e =>
+            string.Equals(e.Name.LocalName, "Import", StringComparison.Ordinal) &&
+            e.Attribute("Sdk") is not null);
+
+        var isSdkStyle = hasSdkAttribute || hasSdkElement || hasSdkImport;
+        if (!isSdkStyle)
+        {
+            return false;
+        }
+
+        // Default is true for SDK-style; only opted-out projects carry
+        // <EnableDefaultCompileItems>false</EnableDefaultCompileItems> explicitly.
+        // We intentionally only look at XML; if a user overrides the property via an
+        // imported .props file they're taking responsibility for their build graph.
+        foreach (var element in root.Descendants())
+        {
+            if (!string.Equals(element.Name.LocalName, "EnableDefaultCompileItems", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (bool.TryParse(element.Value.Trim(), out var enabled) && !enabled)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

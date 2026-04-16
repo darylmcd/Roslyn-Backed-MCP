@@ -10,7 +10,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class RefactoringTools
 {
 
-    [McpServerTool(Name = "rename_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol. Prefer symbolHandle from enclosing_symbol or document_symbols for precise targeting — line/column can resolve an adjacent symbol on busy lines (tuple deconstruction, multiple declarations).")]
+    [McpServerTool(Name = "rename_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol. Prefer symbolHandle from enclosing_symbol or document_symbols for precise targeting — line/column can resolve an adjacent symbol on busy lines (tuple deconstruction, multiple declarations). Set summary=true for high-fan-out symbols (>150 refs) to replace per-file unified diffs with one-line summaries and keep the response under the MCP output cap; the apply path rewrites every reference correctly either way.")]
     [McpToolMetadata("refactoring", "stable", true, false,
         "Preview a rename refactoring.")]
     public static Task<string> PreviewRename(
@@ -22,12 +22,14 @@ public static class RefactoringTools
         [Description("Optional: 1-based line number of the symbol to rename")] int? line = null,
         [Description("Optional: 1-based column number of the symbol to rename")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
+        [Description("Item #8 — when true, replace per-file unified diffs with compact one-line summaries. The stored preview still carries every real edit, so rename_apply rewrites all references correctly. Use for high-fan-out symbols (>150 refs) where the full diff exceeds the MCP output cap.")] bool summary = false,
         CancellationToken ct = default)
     {
         return ToolErrorHandler.ExecuteAsync("rename_preview", () =>
             gate.RunReadAsync(workspaceId, async c =>
             {
-                var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName: null, supportsMetadataName: false), newName, c);
+                var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), newName, summary, c);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
     }

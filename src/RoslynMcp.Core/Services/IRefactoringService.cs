@@ -18,11 +18,32 @@ public interface IRefactoringService
     Task<RefactoringPreviewDto> PreviewRenameAsync(string workspaceId, SymbolLocator locator, string newName, CancellationToken ct);
 
     /// <summary>
+    /// Item #8 — <c>rename-preview-output-cap-high-fan-out-symbols</c>. Preview a rename
+    /// with an optional summary mode. When <paramref name="summary"/> is
+    /// <see langword="true"/>, per-file unified diffs are replaced with a compact
+    /// single-line summary (reference count, line change totals), keeping the payload
+    /// under the MCP output cap even on symbols with hundreds of references. The apply
+    /// path uses the stored Solution, not the summary text, so applying a summary
+    /// preview rewrites every reference correctly.
+    /// </summary>
+    Task<RefactoringPreviewDto> PreviewRenameAsync(string workspaceId, SymbolLocator locator, string newName, bool summary, CancellationToken ct);
+
+    /// <summary>
     /// Applies a previously previewed refactoring to the workspace.
     /// </summary>
     /// <param name="previewToken">The token returned by a prior preview call.</param>
     /// <param name="ct">Cancellation token.</param>
     Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct);
+
+    /// <summary>
+    /// Item #4 — apply a preview with an explicit <paramref name="force"/> override.
+    /// When the stored preview's diff was truncated and <paramref name="force"/> is
+    /// <see langword="false"/> (the default for every *_apply tool), the apply is
+    /// refused with an actionable error message. Pass <see langword="true"/> to
+    /// apply without full visibility — the agent accepts responsibility for the
+    /// unreviewed changes.
+    /// </summary>
+    Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, bool force, CancellationToken ct);
 
     /// <summary>
     /// Previews removing unused <c>using</c> directives and sorting the remaining ones for the given file.

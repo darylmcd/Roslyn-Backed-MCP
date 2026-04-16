@@ -40,6 +40,16 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var candidateMembers = SelectCandidateMembers(typeSymbol, memberNames, typeName);
         var interfaceMembers = BuildInterfaceMembers(candidateMembers);
+        // Item #3 — severity-high-fail-produces-code-that-does-not-compi.
+        // The legacy FilterRelevantUsings text-grepped the synthesized interface
+        // for the FULL namespace name, but BuildInterfaceMembers renders types with
+        // MinimallyQualifiedFormat (short names like NetworkInventory) — so the text
+        // never contained "NetworkDocumentation.Core.Models" and the using was dropped,
+        // producing post-apply CS0246/CS0535 (NetworkDocumentation audit §9.1). Fix:
+        // walk the member symbols semantically to collect every referenced type's
+        // containing namespace, and use that set (plus aliases/static usings from the
+        // source file) as the authoritative using list.
+        var requiredNamespaces = CollectReferencedNamespaces(candidateMembers, typeSymbol.ContainingNamespace);
 
         await ValidateNoConflictsAsync(solution, typeSymbol, interfaceName, ct).ConfigureAwait(false);
 
@@ -50,7 +60,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             .WithModifiers(SyntaxFactory.TokenList(interfaceAccessibilityToken))
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
-        var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot);
+        var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot, requiredNamespaces);
 
         // Add interface to type's base list only if the type does not already implement it.
         // Skipping this guard produced CS0528 (duplicate interface in base list).
@@ -97,11 +107,13 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
-        // Add interface document
+        // Add interface document. Item #1 — pass folders so MSBuildWorkspace's
+        // TryApplyChanges resolves the disk path consistently with our explicit write.
         var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
         var interfaceFilePath = Path.Combine(sourceDir, $"{interfaceName}.cs");
-        var interfaceDoc = newSolution.GetProject(sourceDocument.Project.Id)!
-            .AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), filePath: interfaceFilePath);
+        var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
+        var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
+        var interfaceDoc = targetProject.AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), folders: folders, filePath: interfaceFilePath);
         newSolution = interfaceDoc.Project.Solution;
 
         if (replaceUsages)
@@ -112,7 +124,7 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{interfaceName}' from '{typeName}' with {candidateMembers.Count} member(s)";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -221,17 +233,20 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
     }
 
     private static CompilationUnitSyntax BuildInterfaceFile(
-        InterfaceDeclarationSyntax interfaceDecl, TypeDeclarationSyntax typeDecl, CompilationUnitSyntax sourceRoot)
+        InterfaceDeclarationSyntax interfaceDecl,
+        TypeDeclarationSyntax typeDecl,
+        CompilationUnitSyntax sourceRoot,
+        IReadOnlyCollection<string> requiredNamespaces)
     {
         var namespaceDecl = typeDecl.Ancestors().OfType<BaseNamespaceDeclarationSyntax>().FirstOrDefault();
-        var filteredUsings = FilterRelevantUsings(sourceRoot.Usings, interfaceDecl);
+        var usings = BuildUsingDirectives(sourceRoot.Usings, requiredNamespaces);
 
         if (namespaceDecl is FileScopedNamespaceDeclarationSyntax fileScopedNs)
         {
             var newNs = SyntaxFactory.FileScopedNamespaceDeclaration(fileScopedNs.Name)
                 .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
             return SyntaxFactory.CompilationUnit()
-                .WithUsings(filteredUsings)
+                .WithUsings(usings)
                 .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
                 .NormalizeWhitespace();
         }
@@ -241,57 +256,177 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             var newNs = SyntaxFactory.NamespaceDeclaration(blockNs.Name)
                 .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl));
             return SyntaxFactory.CompilationUnit()
-                .WithUsings(filteredUsings)
+                .WithUsings(usings)
                 .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(newNs))
                 .NormalizeWhitespace();
         }
 
         return SyntaxFactory.CompilationUnit()
-            .WithUsings(filteredUsings)
+            .WithUsings(usings)
             .WithMembers(SyntaxFactory.SingletonList<MemberDeclarationSyntax>(interfaceDecl))
             .NormalizeWhitespace();
     }
 
-    private static SyntaxList<UsingDirectiveSyntax> FilterRelevantUsings(
-        SyntaxList<UsingDirectiveSyntax> usings,
-        InterfaceDeclarationSyntax interfaceDecl)
+    /// <summary>
+    /// Item #3 — semantic using-collection. Walk every candidate member symbol and collect
+    /// the containing namespaces of every referenced type (parameter types, return types,
+    /// property types, event types, type-parameter constraints, recursive type arguments on
+    /// generics). The result set is the authoritative list of namespaces the generated
+    /// interface file needs, independent of what the source file happened to declare.
+    /// Excludes the interface's own containing namespace (self-reference is invalid as a using).
+    /// </summary>
+    private static IReadOnlyCollection<string> CollectReferencedNamespaces(
+        IReadOnlyList<ISymbol> members,
+        INamespaceSymbol? containingNamespace)
     {
-        var text = interfaceDecl.ToFullString();
-        var filtered = usings.Where(u =>
+        var namespaces = new HashSet<string>(StringComparer.Ordinal);
+        var ownNamespace = containingNamespace?.IsGlobalNamespace == false
+            ? containingNamespace.ToDisplayString()
+            : null;
+
+        foreach (var member in members)
         {
-            var ns = u.Name?.ToString();
-            if (string.IsNullOrWhiteSpace(ns)) return false;
-
-            // BUG-N12: do not pull in all System.* namespaces — only those plausibly needed by the interface text.
-            if (string.Equals(ns, "System.Threading", StringComparison.Ordinal))
+            switch (member)
             {
-                return text.Contains("CancellationToken", StringComparison.Ordinal) ||
-                       text.Contains("Thread", StringComparison.Ordinal) ||
-                       text.Contains("Interlocked", StringComparison.Ordinal);
+                case IMethodSymbol method:
+                    AddType(namespaces, method.ReturnType, ownNamespace);
+                    foreach (var parameter in method.Parameters)
+                    {
+                        AddType(namespaces, parameter.Type, ownNamespace);
+                    }
+                    foreach (var typeParameter in method.TypeParameters)
+                    {
+                        foreach (var constraint in typeParameter.ConstraintTypes)
+                        {
+                            AddType(namespaces, constraint, ownNamespace);
+                        }
+                    }
+                    break;
+                case IPropertySymbol property:
+                    AddType(namespaces, property.Type, ownNamespace);
+                    break;
+                case IEventSymbol evt:
+                    AddType(namespaces, evt.Type, ownNamespace);
+                    break;
+            }
+        }
+
+        return namespaces;
+    }
+
+    private static void AddType(HashSet<string> namespaces, ITypeSymbol type, string? ownNamespace)
+    {
+        if (type is null)
+        {
+            return;
+        }
+
+        // Type-parameter symbols have no containing namespace — skip them outright.
+        if (type is ITypeParameterSymbol)
+        {
+            return;
+        }
+
+        var typeNamespace = type.ContainingNamespace;
+        if (typeNamespace is { IsGlobalNamespace: false })
+        {
+            var nsName = typeNamespace.ToDisplayString();
+            if (!string.Equals(nsName, ownNamespace, StringComparison.Ordinal))
+            {
+                namespaces.Add(nsName);
+            }
+        }
+
+        // Walk generic type arguments recursively so Task<NetworkInventory>, List<Foo>,
+        // Dictionary<Foo, Bar>, IEnumerable<Item>, etc. all contribute their inner-type
+        // namespaces. Without this the Task is captured but the NetworkInventory isn't.
+        if (type is INamedTypeSymbol named && named.IsGenericType)
+        {
+            foreach (var argument in named.TypeArguments)
+            {
+                AddType(namespaces, argument, ownNamespace);
+            }
+        }
+
+        // Array element types and pointer element types also contribute. Rare for
+        // interfaces but handled for completeness.
+        if (type is IArrayTypeSymbol array)
+        {
+            AddType(namespaces, array.ElementType, ownNamespace);
+        }
+    }
+
+    /// <summary>
+    /// Item #3 — merge the semantically-required namespaces with the source file's using
+    /// block. Keeps source-file aliases, static usings, and global usings (they cannot be
+    /// re-synthesized from symbols), and adds plain-<c>using</c> directives for every
+    /// required namespace. Drops plain source-file usings that the semantic walk determined
+    /// are unnecessary (the previous text-grep heuristic kept too much or too little).
+    /// </summary>
+    private static SyntaxList<UsingDirectiveSyntax> BuildUsingDirectives(
+        SyntaxList<UsingDirectiveSyntax> sourceUsings,
+        IReadOnlyCollection<string> requiredNamespaces)
+    {
+        var result = new List<UsingDirectiveSyntax>();
+        var alreadyAddedPlainNamespaces = new HashSet<string>(StringComparer.Ordinal);
+
+        // Preserve aliases, static usings, and global usings — the semantic walker cannot
+        // reproduce these, they may carry meaningful intent, and they never cause the
+        // missing-using bug we're fixing.
+        foreach (var source in sourceUsings)
+        {
+            var isAlias = source.Alias is not null;
+            var isStatic = source.StaticKeyword.IsKind(SyntaxKind.StaticKeyword);
+            var isGlobal = source.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword);
+
+            if (isAlias || isStatic || isGlobal)
+            {
+                result.Add(source);
+                continue;
             }
 
-            if (string.Equals(ns, "System.Threading.Tasks", StringComparison.Ordinal))
+            // Plain using: keep ONLY if the semantic walk identified this namespace as
+            // required. This drops unrelated usings that pollute the interface file.
+            var name = source.Name?.ToString();
+            if (!string.IsNullOrWhiteSpace(name) && requiredNamespaces.Contains(name))
             {
-                return System.Text.RegularExpressions.Regex.IsMatch(text, @"\b(Value)?Task(<|\s|\))");
+                result.Add(source);
+                alreadyAddedPlainNamespaces.Add(name);
+            }
+        }
+
+        // Add missing required namespaces as new plain usings.
+        foreach (var ns in requiredNamespaces)
+        {
+            if (alreadyAddedPlainNamespaces.Contains(ns))
+            {
+                continue;
             }
 
-            if (ns.StartsWith("System.", StringComparison.Ordinal))
-            {
-                var shortName = ns.Split('.').Last();
-                return text.Contains(shortName, StringComparison.Ordinal) ||
-                       text.Contains(ns, StringComparison.Ordinal);
-            }
+            result.Add(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns)));
+        }
 
-            // Non-System namespaces: only include if a type from the namespace is explicitly
-            // referenced in the interface text by its fully qualified name or contains a type
-            // token that exactly matches a member return type or parameter type.
-            // Previously the short-name heuristic was too permissive, pulling in implementation-
-            // only namespaces (DiffPlex, Microsoft.Extensions.Logging, etc.) that are never
-            // needed in a pure interface file.
-            return text.Contains(ns, StringComparison.Ordinal);
-        });
+        // Sort: System.* first alphabetically, then other plain usings alphabetically,
+        // then aliases/static/global at the end in their original order. This keeps the
+        // generated file PEP-style tidy for code review.
+        var systemUsings = result
+            .Where(u => u.Alias is null
+                && !u.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
+                && !u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword)
+                && (u.Name?.ToString().StartsWith("System", StringComparison.Ordinal) ?? false))
+            .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
+        var otherPlain = result
+            .Where(u => u.Alias is null
+                && !u.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
+                && !u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword)
+                && !(u.Name?.ToString().StartsWith("System", StringComparison.Ordinal) ?? false))
+            .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
+        var specials = result
+            .Where(u => u.Alias is not null
+                || u.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
+                || u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword));
 
-        return SyntaxFactory.List(filtered);
+        return SyntaxFactory.List(systemUsings.Concat(otherPlain).Concat(specials));
     }
 
     private static TypeDeclarationSyntax EnsureOpeningBraceOnOwnLine(TypeDeclarationSyntax typeDecl)

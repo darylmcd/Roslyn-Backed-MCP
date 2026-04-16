@@ -12,7 +12,7 @@ public static class UndoTools
     [McpServerTool(Name = "revert_last_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("undo", "stable", false, true,
         "Revert the most recent Roslyn solution-level apply operation for a workspace."),
-     Description("Revert the most recent apply operation for a workspace, restoring the previous solution state. Roslyn preview/apply operations (renames, code fixes, format, organize usings) AND apply_text_edit / apply_multi_file_edit register for undo. File create/delete/move and project file mutations are not revertible. workspaceId is required.")]
+     Description("Revert the most recent apply operation for a workspace, restoring the previous solution state. Coverage: renames, code fixes, format, organize usings, apply_text_edit / apply_multi_file_edit, create_file / delete_file / move_file / extract_interface_apply / extract_type_apply / move_type_to_file_apply (Item #2 — 2026-04-16). Project-file (csproj) mutations route through Item #5's SDK-style-safe apply path, which restores the pre-apply csproj bytes as part of the apply itself; on revert the csproj is already in its pre-apply state. workspaceId is required.")]
     public static Task<string> RevertLastApply(
         IWorkspaceExecutionGate gate,
         IUndoService undoService,
@@ -34,8 +34,7 @@ public static class UndoTools
                     {
                         reverted = false,
                         message = "No operation to revert. Nothing has been applied in this session, " +
-                                  "or the last operation was an unrevertible change (file create/delete/move " +
-                                  "or project file mutation)."
+                                  "or the workspace was reloaded / closed and re-loaded since the last apply."
                     };
                     return JsonSerializer.Serialize(nothingResult, JsonDefaults.Indented);
                 }

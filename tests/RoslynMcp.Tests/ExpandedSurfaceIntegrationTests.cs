@@ -178,7 +178,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             symbolHandle: null,
             limit: 1,
             offset: 0,
-            CancellationToken.None);
+            ct: CancellationToken.None);
 
         using var refsDoc = JsonDocument.Parse(refsJson);
         Assert.IsTrue(refsDoc.RootElement.GetProperty("count").GetInt32() <= 1);

@@ -18,6 +18,24 @@ public interface IWorkspaceManager
     event Action<string>? WorkspaceClosed;
 
     /// <summary>
+    /// Raised after <see cref="ReloadAsync"/> has successfully replaced the underlying
+    /// <c>MSBuildWorkspace</c> and bumped the workspace version. Subscribers receive the
+    /// reloaded workspace's identifier.
+    /// </summary>
+    /// <remarks>
+    /// Item #7 (<c>compile-check-stale-assembly-refs-post-reload</c>) — version-keyed caches
+    /// already invalidate themselves on the next read when the workspace version changes, but
+    /// some Roslyn internals hold references that survive across the <c>OpenSolutionAsync</c>
+    /// refresh. Exposing an explicit reload signal lets caches drop their entries synchronously
+    /// with the reload, eliminating the small-but-real window where a tool can observe a
+    /// stale cached <see cref="Microsoft.CodeAnalysis.Compilation"/> (and its associated
+    /// <see cref="Microsoft.CodeAnalysis.MetadataReference"/> handles) between reload
+    /// completion and the version check. Handlers must not throw; the manager swallows
+    /// handler exceptions so a misbehaving subscriber cannot break the reload path.
+    /// </remarks>
+    event Action<string>? WorkspaceReloaded;
+
+    /// <summary>
     /// Loads a solution or project file from disk into a new named workspace session.
     /// </summary>
     /// <param name="path">The absolute path to the <c>.sln</c>, <c>.slnx</c>, or <c>.csproj</c> file to load.</param>

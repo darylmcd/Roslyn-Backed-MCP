@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Roslyn.Contracts;
 
@@ -22,9 +23,28 @@ public interface IPreviewStore
     string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description);
 
     /// <summary>
+    /// Item #4 — stores a preview along with a flag indicating whether the preview's diff
+    /// was truncated by the per-solution / per-file caps in <see cref="Helpers.SolutionDiffHelper"/>.
+    /// The apply path refuses to redeem a truncated preview unless the caller opts into a
+    /// blind apply via <c>force: true</c>.
+    /// </summary>
+    string Store(string workspaceId, Solution modifiedSolution, int workspaceVersion, string description, bool diffTruncated);
+
+    /// <summary>
+    /// Item #4 — convenience overload: derives the truncated flag from the presence of
+    /// <see cref="Helpers.SolutionDiffHelper.TruncatedSentinelFilePath"/> in <paramref name="changes"/>.
+    /// </summary>
+    string Store(
+        string workspaceId,
+        Solution modifiedSolution,
+        int workspaceVersion,
+        string description,
+        IReadOnlyList<FileChangeDto> changes);
+
+    /// <summary>
     /// Retrieves the stored solution for the given token, or <see langword="null"/> if the token is expired or not found.
     /// </summary>
-    (string WorkspaceId, Solution ModifiedSolution, int WorkspaceVersion, string Description)? Retrieve(string token);
+    (string WorkspaceId, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token);
 
     /// <summary>
     /// Removes the entry for the given token.

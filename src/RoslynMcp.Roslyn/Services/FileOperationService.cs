@@ -50,7 +50,7 @@ public sealed class FileOperationService : IFileOperationService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Create file '{Path.GetFileName(fullPath)}' in project '{project.Name}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         _logger.LogInformation("Prepared create-file preview for {FilePath} in workspace {WorkspaceId}", fullPath, workspaceId);
         return new RefactoringPreviewDto(token, description, changes, null);
@@ -103,7 +103,7 @@ public sealed class FileOperationService : IFileOperationService
         var newSolution = solution.RemoveDocument(document.Id);
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Delete file '{Path.GetFileName(fullPath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         _logger.LogInformation("Prepared delete-file preview for {FilePath} in workspace {WorkspaceId}", fullPath, workspaceId);
         return new RefactoringPreviewDto(token, description, changes, null);
@@ -153,7 +153,7 @@ public sealed class FileOperationService : IFileOperationService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Move file '{Path.GetFileName(sourcePath)}' to '{destinationPath}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         _logger.LogInformation("Prepared move-file preview from {SourcePath} to {DestinationPath} in workspace {WorkspaceId}", sourcePath, destinationPath, workspaceId);
         return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
@@ -196,31 +196,12 @@ public sealed class FileOperationService : IFileOperationService
         }
     }
 
+    // Item #1 — the folders-resolution helper moved to ProjectMetadataParser.ComputeDocumentFolders
+    // so TypeMoveService, TypeExtractionService, InterfaceExtractionService, and
+    // CrossProjectRefactoringService can share it (they all previously omitted folders and
+    // produced the NetworkDocumentation §9.2 "rogue project-root file" shape on apply).
     private static IReadOnlyList<string> GetFolders(string? projectFilePath, string filePath)
-    {
-        if (string.IsNullOrWhiteSpace(projectFilePath))
-        {
-            return [];
-        }
-
-        var projectDirectory = Path.GetDirectoryName(projectFilePath);
-        var fileDirectory = Path.GetDirectoryName(filePath);
-        if (string.IsNullOrWhiteSpace(projectDirectory) || string.IsNullOrWhiteSpace(fileDirectory))
-        {
-            return [];
-        }
-
-        var relativeDirectory = Path.GetRelativePath(projectDirectory, fileDirectory);
-        if (string.Equals(relativeDirectory, ".", StringComparison.Ordinal))
-        {
-            return [];
-        }
-
-        return relativeDirectory
-            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .Where(folder => !string.IsNullOrWhiteSpace(folder) && folder != ".")
-            .ToArray();
-    }
+        => ProjectMetadataParser.ComputeDocumentFolders(projectFilePath, filePath);
 
     private static async Task<(SourceText? Text, string? Warning)> TryUpdateNamespaceAsync(
         Document document,

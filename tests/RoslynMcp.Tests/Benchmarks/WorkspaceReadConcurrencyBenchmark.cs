@@ -67,6 +67,7 @@ public sealed class WorkspaceReadConcurrencyBenchmark
     private sealed class BenchmarkWorkspaceManager : IWorkspaceManager
     {
         public event Action<string>? WorkspaceClosed { add { } remove { } }
+        public event Action<string>? WorkspaceReloaded { add { } remove { } }
 
         public bool ContainsWorkspace(string workspaceId) => true;
         public bool IsStale(string workspaceId) => false;

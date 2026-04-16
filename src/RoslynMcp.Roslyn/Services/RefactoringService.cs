@@ -42,8 +42,12 @@ public sealed class RefactoringService : IRefactoringService
     /// <summary>
     /// Previews renaming a symbol and all its references across the solution.
     /// </summary>
-    public async Task<RefactoringPreviewDto> PreviewRenameAsync(
+    public Task<RefactoringPreviewDto> PreviewRenameAsync(
         string workspaceId, SymbolLocator locator, string newName, CancellationToken ct)
+        => PreviewRenameAsync(workspaceId, locator, newName, summary: false, ct);
+
+    public async Task<RefactoringPreviewDto> PreviewRenameAsync(
+        string workspaceId, SymbolLocator locator, string newName, bool summary, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
@@ -63,9 +67,24 @@ public sealed class RefactoringService : IRefactoringService
         var newSolution = await Renamer.RenameSymbolAsync(
             solution, symbol, new SymbolRenameOptions(), newName, ct).ConfigureAwait(false);
 
-        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        // Item #8 — rename-preview-output-cap-high-fan-out-symbols. The full unified
+        // diffs scale with reference fan-out (a 233-ref symbol produces ~98 KB of diff
+        // text); on symbols with >200 refs the payload exceeds the MCP output cap. In
+        // summary mode we replace the per-file UnifiedDiff with a compact descriptor
+        // while the stored Solution still carries every actual edit, so a subsequent
+        // apply rewrites every reference correctly.
+        IReadOnlyList<FileChangeDto> changes;
+        if (summary)
+        {
+            changes = await BuildRenameSummaryChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        }
+
         var description = $"Rename '{symbol.Name}' to '{newName}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         // No-op warning: caller asked to rename a symbol to its own current name. C# identifiers
         // are case-sensitive, so a Foo→foo rename is real and must NOT be flagged.
@@ -79,10 +98,95 @@ public sealed class RefactoringService : IRefactoringService
     }
 
     /// <summary>
+    /// Item #8 — compact per-file summaries for summary=true. Computes per-file
+    /// added/removed line counts from the Solution diff without serializing full
+    /// unified-diff hunk bodies. Keeps each FileChangeDto's UnifiedDiff to a single
+    /// human-readable line so the total response stays well under the MCP output cap
+    /// even on 200+ reference symbols.
+    /// </summary>
+    private static async Task<IReadOnlyList<FileChangeDto>> BuildRenameSummaryChangesAsync(
+        Solution oldSolution, Solution newSolution, CancellationToken ct)
+    {
+        var summaries = new List<FileChangeDto>();
+
+        foreach (var projectChange in newSolution.GetChanges(oldSolution).GetProjectChanges())
+        {
+            foreach (var docId in projectChange.GetChangedDocuments())
+            {
+                var oldDoc = oldSolution.GetDocument(docId);
+                var newDoc = newSolution.GetDocument(docId);
+                if (oldDoc is null || newDoc is null)
+                {
+                    continue;
+                }
+
+                var oldText = (await oldDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                if (string.Equals(oldText, newText, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var oldLineCount = CountLines(oldText);
+                var newLineCount = CountLines(newText);
+                var filePath = oldDoc.FilePath ?? newDoc.FilePath ?? oldDoc.Name;
+                var netChange = newLineCount - oldLineCount;
+                var netMarker = netChange switch
+                {
+                    > 0 => $"+{netChange} lines",
+                    < 0 => $"{netChange} lines",
+                    _ => "no net line change"
+                };
+
+                summaries.Add(new FileChangeDto(
+                    filePath,
+                    $"# summary=true: {oldLineCount} → {newLineCount} lines ({netMarker}). " +
+                    "Full unified diff suppressed to keep the response under the MCP output cap; " +
+                    "pass summary=false to see per-site edits."));
+            }
+
+            // Added/removed documents (rare for rename but possible with extension-method
+            // cross-file moves) get their own minimal entries.
+            foreach (var docId in projectChange.GetAddedDocuments())
+            {
+                var newDoc = newSolution.GetDocument(docId);
+                if (newDoc is null) continue;
+                var path = newDoc.FilePath ?? newDoc.Name;
+                var lineCount = CountLines((await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString());
+                summaries.Add(new FileChangeDto(path, $"# summary=true: added file ({lineCount} lines)."));
+            }
+
+            foreach (var docId in projectChange.GetRemovedDocuments())
+            {
+                var oldDoc = oldSolution.GetDocument(docId);
+                if (oldDoc is null) continue;
+                var path = oldDoc.FilePath ?? oldDoc.Name;
+                summaries.Add(new FileChangeDto(path, "# summary=true: removed file."));
+            }
+        }
+
+        return summaries;
+    }
+
+    private static int CountLines(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        var count = 1;
+        foreach (var ch in text)
+        {
+            if (ch == '\n') count++;
+        }
+        return count;
+    }
+
+    /// <summary>
     /// Applies a previously previewed refactoring. Validates the preview token against the current
     /// workspace version to reject stale changes.
     /// </summary>
-    public async Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct)
+    public Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct)
+        => ApplyRefactoringAsync(previewToken, force: false, ct);
+
+    public async Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, bool force, CancellationToken ct)
     {
         var entry = _previewStore.Retrieve(previewToken);
         if (entry is null)
@@ -92,7 +196,7 @@ public sealed class RefactoringService : IRefactoringService
                 "Preview token is invalid, expired, or stale because the workspace changed since the preview was generated. Please create a new preview.");
         }
 
-        var (workspaceId, modifiedSolution, workspaceVersion, description) = entry.Value;
+        var (workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated) = entry.Value;
         if (_workspace.GetCurrentVersion(workspaceId) != workspaceVersion)
         {
             _previewStore.Invalidate(previewToken);
@@ -102,11 +206,42 @@ public sealed class RefactoringService : IRefactoringService
                 "Preview token is stale because the target workspace changed. Please create a new preview.");
         }
 
+        // Item #4 — severity-high-output-would-ship-as-is-and-fail-code and the
+        // "preview truncated while apply still mutates disk" concern. The agent reviewing
+        // the preview could not see all the changes the apply will make; refusing the
+        // blind apply by default makes the corruption path explicit. Callers that deliberately
+        // want to apply without full visibility pass `force: true` in the apply tool schema.
+        if (diffTruncated && !force)
+        {
+            return new ApplyResultDto(
+                false,
+                [],
+                "Refusing to apply a truncated preview — the diff was capped for payload-size reasons so the reviewed preview is not a complete picture of the disk state the apply will produce. " +
+                "Options: (1) re-run the preview with a narrower scope (smaller file set or more targeted symbol) to fit under the diff cap; " +
+                "(2) if you understand the tradeoff and want to proceed without full visibility, call the apply tool again with `force: true`.");
+        }
+
         var currentSolution = _workspace.GetCurrentSolution(workspaceId);
-        _undoService?.CaptureBeforeApply(workspaceId, description, currentSolution);
         var solutionChanges = modifiedSolution.GetChanges(currentSolution);
         var hasDocumentSetChanges = solutionChanges.GetProjectChanges()
             .Any(projectChange => projectChange.GetAddedDocuments().Any() || projectChange.GetRemovedDocuments().Any());
+
+        // Item #2 — severity-high-fail-documented-semantic-is-restore-pr.
+        // When a refactor creates, deletes, or moves files, the legacy solution-based
+        // undo path at UndoService.RevertFromSolutionSnapshotAsync can't fully reverse
+        // the side effects (created files remain on disk, deleted files aren't restored).
+        // Compute an authoritative FileSnapshotDto list here so UndoService takes its fast
+        // path (RevertFromFileSnapshotsAsync), which explicitly handles file creation
+        // (OriginalText=null → delete on revert) and file deletion (OriginalText=captured
+        // bytes → rewrite on revert) alongside the usual text-edit case.
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null;
+        if (hasDocumentSetChanges)
+        {
+            fileSnapshots = await BuildFileSnapshotsForDocumentSetChangesAsync(
+                currentSolution, modifiedSolution, solutionChanges, ct).ConfigureAwait(false);
+        }
+
+        _undoService?.CaptureBeforeApply(workspaceId, description, currentSolution, fileSnapshots);
 
         bool success;
         IReadOnlyList<string> appliedFiles;
@@ -200,7 +335,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Organize usings in '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -220,7 +355,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Format document '{Path.GetFileName(filePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -270,7 +405,7 @@ public sealed class RefactoringService : IRefactoringService
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Format range in '{Path.GetFileName(filePath)}' (lines {startLine}-{endLine})";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -365,7 +500,7 @@ public sealed class RefactoringService : IRefactoringService
         var newSolution = document.WithSyntaxRoot(newRoot).Project.Solution;
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Apply code fix '{normalizedFixId}' for CS8019 in '{Path.GetFileName(document.FilePath)}'";
-        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
@@ -461,6 +596,98 @@ public sealed class RefactoringService : IRefactoringService
         }
     }
 
+    /// <summary>
+    /// Item #2 — build the authoritative FileSnapshotDto list that <see cref="UndoService"/>'s
+    /// fast path uses to restore disk state. Added documents get <c>OriginalText: null</c>
+    /// (delete-on-revert); removed documents get the pre-apply disk bytes (recreate-on-revert);
+    /// changed documents get the pre-apply disk bytes (overwrite-on-revert).
+    /// </summary>
+    private static async Task<IReadOnlyList<FileSnapshotDto>> BuildFileSnapshotsForDocumentSetChangesAsync(
+        Solution currentSolution,
+        Solution modifiedSolution,
+        SolutionChanges solutionChanges,
+        CancellationToken ct)
+    {
+        var snapshots = new List<FileSnapshotDto>();
+        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        {
+            // Added documents: file doesn't exist pre-apply; revert must delete it.
+            // Roslyn may be a step ahead of disk when a previous tool already wrote the file,
+            // but the UndoService revert path tolerates "file not on disk" gracefully so using
+            // null unconditionally here is correct.
+            foreach (var documentId in projectChange.GetAddedDocuments())
+            {
+                var document = currentSolution.GetDocument(documentId)
+                    ?? modifiedSolution.GetDocument(documentId);
+                var filePath = document?.FilePath;
+                if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
+                {
+                    continue;
+                }
+
+                snapshots.Add(new FileSnapshotDto(filePath, OriginalText: null));
+            }
+
+            // Removed documents: capture the pre-apply bytes so revert can recreate the file.
+            // Prefer disk (authoritative) over Solution text because some tools may be mid-flight
+            // and the disk copy is what the user actually had.
+            foreach (var documentId in projectChange.GetRemovedDocuments())
+            {
+                var document = currentSolution.GetDocument(documentId);
+                var filePath = document?.FilePath;
+                if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
+                {
+                    continue;
+                }
+
+                string originalText;
+                if (File.Exists(filePath))
+                {
+                    originalText = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+                }
+                else if (document is not null)
+                {
+                    // No disk copy (rare) — fall back to the Solution text.
+                    var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
+                    originalText = sourceText.ToString();
+                }
+                else
+                {
+                    // Can't snapshot at all — skip rather than silently lose the entry on revert.
+                    continue;
+                }
+
+                snapshots.Add(new FileSnapshotDto(filePath, originalText));
+            }
+
+            // Changed documents: capture pre-apply disk bytes so revert can overwrite-in-place.
+            foreach (var documentId in projectChange.GetChangedDocuments())
+            {
+                var document = currentSolution.GetDocument(documentId);
+                var filePath = document?.FilePath;
+                if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
+                {
+                    continue;
+                }
+
+                if (File.Exists(filePath))
+                {
+                    var originalText = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+                    snapshots.Add(new FileSnapshotDto(filePath, originalText));
+                }
+                else if (document is not null)
+                {
+                    var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
+                    snapshots.Add(new FileSnapshotDto(filePath, sourceText.ToString()));
+                }
+            }
+        }
+
+        return snapshots;
+    }
+
     private async Task<(bool Success, IReadOnlyList<string> AppliedFiles)> PersistDocumentSetChangesAsync(
         string workspaceId,
         Solution currentSolution,
@@ -470,13 +697,46 @@ public sealed class RefactoringService : IRefactoringService
     {
         var appliedFiles = new List<string>();
 
+        // Item #5 — severity-medium-breaks-msbuild-until-csproj-is-hand.
+        //
+        // MSBuildWorkspace.TryApplyChanges, when it sees an added document in an
+        // SDK-style csproj with default Compile globbing enabled, injects an explicit
+        // <Compile Include="…"/> item into the csproj XML. Because the SDK's default
+        // glob already matches every .cs under the project directory, the injection
+        // produces a "Duplicate 'Compile' items were included" MSBuild error on the
+        // next workspace_reload (firewall-analyzer audit §9.6 BUG-COMPILE-INCLUDE;
+        // IT-Chat-Bot audit §9.1).
+        //
+        // We capture which added-document projects are SDK-style here so that after
+        // the TryApplyChanges call we can restore each affected csproj from its
+        // pre-apply bytes — undoing Roslyn's injection while keeping the in-memory
+        // workspace's view of the added document (TryApplyChanges has already added
+        // the document to the in-memory Solution). The next reload picks up the new
+        // file through the SDK's default glob, so the on-disk csproj stays clean.
+        var sdkProjectCsprojSnapshots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         try
         {
             foreach (var projectChange in solutionChanges.GetProjectChanges())
             {
                 await PersistProjectReferenceChangesAsync(currentSolution, modifiedSolution, projectChange, appliedFiles, ct).ConfigureAwait(false);
 
-                foreach (var documentId in projectChange.GetAddedDocuments())
+                // Snapshot csproj BEFORE we write any new files (the csproj itself is
+                // untouched on disk at this point; capture its canonical bytes).
+                var addedDocuments = projectChange.GetAddedDocuments().ToList();
+                if (addedDocuments.Count > 0)
+                {
+                    var project = modifiedSolution.GetProject(projectChange.ProjectId);
+                    if (project?.FilePath is not null
+                        && ProjectMetadataParser.IsSdkStyleWithDefaultCompileItems(project.FilePath, _logger)
+                        && !sdkProjectCsprojSnapshots.ContainsKey(project.FilePath))
+                    {
+                        var csprojBytes = await File.ReadAllTextAsync(project.FilePath, ct).ConfigureAwait(false);
+                        sdkProjectCsprojSnapshots[project.FilePath] = csprojBytes;
+                    }
+                }
+
+                foreach (var documentId in addedDocuments)
                 {
                     var document = modifiedSolution.GetDocument(documentId);
                     if (document?.FilePath is null)
@@ -530,7 +790,40 @@ public sealed class RefactoringService : IRefactoringService
             // first — MSBuildWorkspace supports added/removed/changed documents — and only
             // fall back to ReloadAsync if the workspace rejects the change. TryApplyChanges
             // bumps WorkspaceSession.Version so per-version caches invalidate correctly.
-            if (!_workspace.TryApplyChanges(workspaceId, modifiedSolution))
+            var applied = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
+
+            // Item #5 — re-apply csproj snapshots for SDK-style projects, undoing
+            // any <Compile Include=…/> injection TryApplyChanges wrote to disk. This
+            // runs whether TryApplyChanges succeeded or failed: on failure we'll
+            // ReloadAsync immediately after, and having the csproj back to its
+            // original bytes ensures the reloaded in-memory workspace matches the
+            // pre-apply csproj (the new file is discovered via the SDK glob).
+            foreach (var (csprojPath, originalContent) in sdkProjectCsprojSnapshots)
+            {
+                try
+                {
+                    var currentContent = await File.ReadAllTextAsync(csprojPath, ct).ConfigureAwait(false);
+                    if (!string.Equals(currentContent, originalContent, StringComparison.Ordinal))
+                    {
+                        await File.WriteAllTextAsync(csprojPath, originalContent, ct).ConfigureAwait(false);
+                        _logger.LogDebug(
+                            "Item #5: restored SDK-style csproj {Path} after TryApplyChanges injected an explicit <Compile> item (default glob will pick up the new file on next reload).",
+                            csprojPath);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Rare on the apply path since we just wrote sibling files in the same
+                    // directory, but a restore failure here does not invalidate the apply
+                    // itself — the duplicate-Compile error surfaces only on the NEXT reload,
+                    // which the caller will see clearly. Log and continue.
+                    _logger.LogWarning(ex,
+                        "Item #5: failed to restore SDK-style csproj snapshot for {Path}; the project may show a duplicate-<Compile> build error until manually edited.",
+                        csprojPath);
+                }
+            }
+
+            if (!applied)
             {
                 _logger.LogInformation(
                     "TryApplyChanges rejected document-set changes for {WorkspaceId}; falling back to full ReloadAsync.",

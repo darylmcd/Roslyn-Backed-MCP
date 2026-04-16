@@ -59,6 +59,7 @@ internal sealed class TestServiceContainer
     public required ChangeTracker ChangeTracker { get; init; }
     public required RefactoringSuggestionService RefactoringSuggestionService { get; init; }
     public required FormatVerifyService FormatVerifyService { get; init; }
+    public required InterfaceExtractionService InterfaceExtractionService { get; init; }
 
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
@@ -216,6 +217,10 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 previewStore,
                 NullLogger<TypeExtractionService>.Instance),
+            InterfaceExtractionService = new InterfaceExtractionService(
+                workspaceManager,
+                previewStore,
+                NullLogger<InterfaceExtractionService>.Instance),
             TypeMoveService = new TypeMoveService(
                 workspaceManager,
                 previewStore,

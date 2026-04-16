@@ -60,7 +60,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
             line: 7,
             column: 26,
             symbolHandle: null,
-            CancellationToken.None);
+            ct: CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("previewToken", out _));
     }

@@ -41,6 +41,8 @@ public sealed class DiRegistrationService : IDiRegistrationService
         _compilationCache = compilationCache;
         _logger = logger;
         _workspace.WorkspaceClosed += workspaceId => _scanCache.TryRemove(workspaceId, out _);
+        // Item #7: also drop scan cache on reload so DI registrations reflect the new solution.
+        _workspace.WorkspaceReloaded += workspaceId => _scanCache.TryRemove(workspaceId, out _);
     }
 
     public async Task<IReadOnlyList<DiRegistrationDto>> GetDiRegistrationsAsync(
