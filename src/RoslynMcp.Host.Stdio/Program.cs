@@ -6,6 +6,18 @@ using RoslynMcp.Host.Stdio;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
 
+// mcp-stdio-console-flush-on-exit: belt-and-suspenders synchronous flush hook that fires
+// on every process-exit path (graceful, abrupt, AppDomain unload). Pre-fix the host
+// flushed in the ApplicationStopping callback + after RunAsync returns, but on stdin-EOF
+// the SDK transport could exit fast enough that buffered MCP JSON responses were lost
+// before the async FlushAsync completed (IT-Chat-Bot 2026-04-13 §9.4: clients received
+// 0 bytes). The ProcessExit handler runs synchronously during runtime teardown — anything
+// still in the stdout buffer at that moment makes it to the pipe.
+AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+{
+    try { Console.Out.Flush(); } catch { /* shutdown — never throw */ }
+};
+
 var builder = Host.CreateApplicationBuilder(args);
 
 // Redirect all logging to stderr so stdout remains clean for MCP protocol
@@ -82,6 +94,11 @@ await host.RunAsync();
 
 // Belt-and-suspenders: flush stdout after the host stops in case the
 // ApplicationStopping handler didn't run (e.g., on abrupt shutdown).
+// Both the sync and async overloads — sync ensures the buffer is drained before
+// any subsequent disposal/IO; async re-flushes any encoder writes that batched
+// behind the sync call. The ProcessExit handler at the top of this file is the
+// final fallback for stdin-EOF cases where RunAsync may not return cleanly.
+Console.Out.Flush();
 await Console.Out.FlushAsync();
 
 static WorkspaceManagerOptions BindWorkspaceManagerOptions()
