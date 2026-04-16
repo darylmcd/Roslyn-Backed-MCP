@@ -2,11 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-<<<<<<< HEAD
-**updated_at:** 2026-04-16T21:45:00Z
-=======
-**updated_at:** 2026-04-16T22:00:00Z
->>>>>>> origin/main
+**updated_at:** 2026-04-16T22:30:00Z
 
 ## Agent contract
 
@@ -73,11 +69,6 @@ Within P4, rows are **alphabetical by `id`**.
 | `dr-9-16-obs-001-observation-not-a-bug-workspace-require` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.16 OBS-001 (observation, not a bug) — Workspace requires explicit `workspace_reload` after `dotnet restore` |
 | `dr-9-17-obs-002-observation-workspace-root-sandbox-bloc` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.17 OBS-002 (observation) — Workspace-root sandbox blocks out-of-tree worktrees |
 | `dr-9-2-medium-and-related-skills-have-no-graceful-degra` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.2 [MEDIUM] `roslyn-mcp:analyze` (and related) skills have no graceful-degradation path when the server isn't connected |
-<<<<<<< HEAD
-| `dr-9-2-no-code-fix-providers-loaded-for-any-exercised-d` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.2 `fix_all_preview` — no code-fix providers loaded for any exercised diagnostic ID |
-=======
-| `dr-9-3-format-bug-002-destroys-source-formatting` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.3 FORMAT-BUG-002 — `dependency_inversion_preview` destroys source formatting |
->>>>>>> origin/main
 | `dr-9-3-medium-deferred-tool-advertisement-is-a-misleadi` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.3 [MEDIUM] Deferred-tool advertisement is a misleading signal for "what's connected" |
 | `dr-9-4-correctly-refuses-when-captured-state-would-stay` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140403Z_itchatbot_experimental-promotion.md - ### 9.4 `extract_type_preview` correctly refuses when captured state would stay on the source (PASS) |
 | `dr-9-4-format-bug-003-produces-inline-itemgroup-xml` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.4 FORMAT-BUG-003 — `migrate_package_preview` produces inline ItemGroup XML |
