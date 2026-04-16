@@ -15,7 +15,13 @@ public interface IBulkRefactoringService
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="oldTypeName">Fully qualified or simple name of the type to replace.</param>
     /// <param name="newTypeName">Fully qualified or simple name of the replacement type.</param>
-    /// <param name="scope">Scope filter: "parameters", "fields", or "all" (default).</param>
+    /// <param name="scope">
+    /// Scope filter: "parameters", "fields", or "all" (default).
+    /// The "parameters" scope covers method parameter declarations and also generic
+    /// arguments appearing in implemented-interface / base-class declarations (e.g. the
+    /// <c>T</c> in <c>class Foo : IValidateOptions&lt;T&gt;</c>) so the interface contract
+    /// stays in sync with the parameter rewrites.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     Task<RefactoringPreviewDto> PreviewBulkReplaceTypeAsync(
         string workspaceId, string oldTypeName, string newTypeName, string? scope, CancellationToken ct);

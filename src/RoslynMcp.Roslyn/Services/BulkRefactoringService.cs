@@ -123,8 +123,13 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
     private static bool ShouldReplace(SyntaxNode node, string scope)
     {
         var contextNode = node;
+        var crossedGenericBoundary = false;
         while (contextNode.Parent is QualifiedNameSyntax or AliasQualifiedNameSyntax or NullableTypeSyntax or GenericNameSyntax or TypeArgumentListSyntax)
         {
+            if (contextNode.Parent is GenericNameSyntax or TypeArgumentListSyntax)
+            {
+                crossedGenericBoundary = true;
+            }
             contextNode = contextNode.Parent;
         }
 
@@ -133,7 +138,13 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 
         return scope switch
         {
-            "parameters" => parent is ParameterSyntax,
+            // scope=parameters covers method parameter declarations AND generic arguments
+            // in implemented-interface / base-class declarations. The latter keeps the class's
+            // interface-contract signatures in sync with the parameter rewrites — otherwise a
+            // parameter-only rewrite produces an exact-match violation on interface members
+            // whose signatures are parameterised by the old type (e.g. IValidateOptions<T>).
+            "parameters" => parent is ParameterSyntax
+                  || (crossedGenericBoundary && parent is SimpleBaseTypeSyntax),
             "fields" => parent is VariableDeclarationSyntax vd && vd.Parent is FieldDeclarationSyntax,
             "all" => parent is ParameterSyntax
                   || (parent is VariableDeclarationSyntax vd2 && (vd2.Parent is FieldDeclarationSyntax || vd2.Parent is LocalDeclarationStatementSyntax))

@@ -12,8 +12,8 @@ public static class BulkRefactoringTools
 
     [McpServerTool(Name = "bulk_replace_type_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
-        "Preview replacing all references to one type with another across the solution. Scope can be 'parameters', 'fields', or 'all'. Useful after extracting an interface."),
-     Description("Preview replacing all references to one type with another across the solution. Useful after extracting an interface to update all consumers. Scope can be 'parameters', 'fields', or 'all'.")]
+        "Preview replacing all references to one type with another across the solution. Scope can be 'parameters', 'fields', or 'all'. 'parameters' also covers generic arguments in implemented-interface / base-class declarations so the class's interface contract stays in sync. Useful after extracting an interface."),
+     Description("Preview replacing all references to one type with another across the solution. Useful after extracting an interface to update all consumers. Scope can be 'parameters', 'fields', or 'all'. Under 'parameters' the replacement also walks generic arguments on implemented-interface / base-class declarations so the class's interface contract stays in sync with the rewritten parameter types.")]
     public static Task<string> PreviewBulkReplaceType(
         IWorkspaceExecutionGate gate,
         IBulkRefactoringService bulkRefactoringService,
