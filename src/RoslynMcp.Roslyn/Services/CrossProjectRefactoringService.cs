@@ -368,16 +368,60 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         }
     }
 
+    /// <summary>
+    /// Build a fresh compilation unit that contains <paramref name="member"/> wrapped in a
+    /// file-scoped namespace. Two shapes:
+    /// <list type="bullet">
+    ///   <item><description>
+    ///     <paramref name="normalizeWhitespace"/> = <c>true</c> — used by the synthesized-interface
+    ///     path (<see cref="CreateInterfaceCompilationUnit"/>). The member is built from raw
+    ///     <c>SyntaxFactory</c> nodes with no trivia, so the entire new compilation unit is put
+    ///     through <see cref="SyntaxNodeExtensions.NormalizeWhitespace{T}(T, string, bool)"/> to
+    ///     produce readable C# (the interface file is brand-new — there is no original formatting
+    ///     to preserve). This closes FORMAT-BUG-001 (dr-9-2-format-bug-001-cross-project-interface-extractio):
+    ///     without it, the emitted file reads <c>publicinterfaceIName{TaskRunAsync(…);}</c>.
+    ///   </description></item>
+    ///   <item><description>
+    ///     <paramref name="normalizeWhitespace"/> = <c>false</c> — used by
+    ///     <see cref="PreviewMoveTypeToProjectAsync"/>. The member is the real source syntax node
+    ///     (trivia intact), so calling <c>NormalizeWhitespace</c> would re-flow the body and lose
+    ///     blank lines / indentation. Instead the usings are kept verbatim and the member is
+    ///     wrapped in a hand-built file-scoped namespace with explicit line endings.
+    ///   </description></item>
+    /// </list>
+    /// </summary>
     private static CompilationUnitSyntax CreateCompilationUnitForMember(
         CompilationUnitSyntax sourceRoot,
         MemberDeclarationSyntax member,
         string namespaceName,
-        bool filterUsings = false)
+        bool filterUsings = false,
+        bool normalizeWhitespace = false)
     {
         var usings = filterUsings
             ? FilterUsingsForMember(sourceRoot.Usings, member, crossProjectExtraction: filterUsings)
             : sourceRoot.Usings;
 
+        if (normalizeWhitespace)
+        {
+            // Synthesized-interface path: drop all inherited trivia (the raw factory usings carry
+            // none anyway, and propagating the source file's leading trivia to a brand-new file is
+            // wrong). Rebuild usings without trivia so NormalizeWhitespace can lay out the file.
+            var cleanUsings = SyntaxFactory.List(
+                usings.Select(u => u.WithoutTrivia()));
+
+            MemberDeclarationSyntax wrappedMember = string.IsNullOrWhiteSpace(namespaceName)
+                ? member
+                : SyntaxFactory.FileScopedNamespaceDeclaration(SyntaxFactory.ParseName(namespaceName))
+                    .WithMembers(SyntaxFactory.SingletonList(member));
+
+            return SyntaxFactory.CompilationUnit()
+                .WithUsings(cleanUsings)
+                .WithMembers(SyntaxFactory.SingletonList(wrappedMember))
+                .NormalizeWhitespace();
+        }
+
+        // Move-type path: preserve the member's original trivia. Build a file-scoped namespace
+        // with explicit line endings so the declaration-to-member boundary has a blank line.
         var compilationUnit = SyntaxFactory.CompilationUnit()
             .WithUsings(usings)
             .WithLeadingTrivia(sourceRoot.GetLeadingTrivia())
@@ -390,7 +434,6 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
                 .WithSemicolonToken(SyntaxFactory.Token(SyntaxKind.SemicolonToken).WithTrailingTrivia(SyntaxFactory.CarriageReturnLineFeed))
                 .WithMembers(SyntaxFactory.SingletonList(member));
 
-        // dependency-inversion-noisy-diff: avoid whole-file whitespace normalization; callers rely on Roslyn's structured edits for readable diffs.
         return compilationUnit.WithMembers(SyntaxFactory.SingletonList(namespacedMember));
     }
 
@@ -473,7 +516,17 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             .AddModifiers(accessibilityToken)
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
-        return CreateCompilationUnitForMember(sourceRoot, interfaceDeclaration, namespaceName, filterUsings);
+        // FORMAT-BUG-001 (dr-9-2-format-bug-001-cross-project-interface-extractio): the
+        // interface declaration and its members are built from raw SyntaxFactory nodes that
+        // carry no trivia. Without whole-document normalization the emitted file reads
+        // `publicinterfaceIName{TaskRunAsync(…);}`. Pass normalizeWhitespace: true so the
+        // generated-only file is formatted before we call ToFullString().
+        return CreateCompilationUnitForMember(
+            sourceRoot,
+            interfaceDeclaration,
+            namespaceName,
+            filterUsings,
+            normalizeWhitespace: true);
     }
 
     /// <summary>
@@ -538,23 +591,56 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             return declaration;
         }
 
-        var interfaceType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName));
+        // FORMAT-BUG-001: the interface base-type token must carry a leading space or it glues
+        // onto the preceding token (`:IFoo` or `,IFoo`). Mirrors InterfaceExtractionService.
+        var interfaceType = SyntaxFactory.SimpleBaseType(SyntaxFactory.ParseTypeName(interfaceName))
+            .WithLeadingTrivia(SyntaxFactory.Space);
+
+        TypeDeclarationSyntax updated;
         if (declaration.BaseList is null)
         {
-            // Create new base list with proper spacing: " : IFoo"
-            var colonToken = SyntaxFactory.Token(SyntaxKind.ColonToken)
-                .WithLeadingTrivia(SyntaxFactory.Space)
-                .WithTrailingTrivia(SyntaxFactory.Space);
-            var baseList = SyntaxFactory.BaseList(colonToken, SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceType));
-            return declaration.WithBaseList(baseList);
+            // No existing base list. Attach ` : IName` — AddTypes/Roslyn emits the colon token
+            // automatically. Leading space on the BaseList keeps it separated from the class
+            // identifier's trailing token.
+            var baseList = SyntaxFactory.BaseList(
+                SyntaxFactory.SingletonSeparatedList<BaseTypeSyntax>(interfaceType))
+                .WithLeadingTrivia(SyntaxFactory.Space);
+            updated = declaration.WithBaseList(baseList);
+        }
+        else
+        {
+            // Append to existing base list via AddTypes so Roslyn manages comma separators and
+            // preserves the enclosing trivia of the existing list.
+            updated = declaration.WithBaseList(declaration.BaseList.AddTypes(interfaceType));
         }
 
-        // Add to existing base list with proper comma spacing: ", IFoo"
-        var existingTypes = declaration.BaseList.Types.ToList();
-        existingTypes.Add(interfaceType);
-        var separatedList = SyntaxFactory.SeparatedList<BaseTypeSyntax>(existingTypes,
-            Enumerable.Repeat(SyntaxFactory.Token(SyntaxKind.CommaToken).WithTrailingTrivia(SyntaxFactory.Space), existingTypes.Count - 1));
-        return declaration.WithBaseList(declaration.BaseList.WithTypes(separatedList));
+        // FORMAT-BUG-001: the OpenBraceToken inherits its leading trivia from the original
+        // position right after the identifier. If the identifier had a trailing newline, the
+        // newline now sits before `:` — producing `class Foo\n : IName{`. Force the brace onto
+        // its own line so the output reads `class Foo : IName\n{`.
+        updated = EnsureOpeningBraceOnOwnLine(updated);
+        return updated;
+    }
+
+    /// <summary>
+    /// Force the type declaration's opening brace onto its own line. Mirrors
+    /// <c>InterfaceExtractionService.EnsureOpeningBraceOnOwnLine</c>.
+    /// </summary>
+    private static TypeDeclarationSyntax EnsureOpeningBraceOnOwnLine(TypeDeclarationSyntax typeDecl)
+    {
+        var brace = typeDecl.OpenBraceToken;
+        if (brace.IsMissing)
+        {
+            return typeDecl;
+        }
+
+        if (brace.LeadingTrivia.Any(t => t.IsKind(SyntaxKind.EndOfLineTrivia)))
+        {
+            return typeDecl;
+        }
+
+        return typeDecl.WithOpenBraceToken(
+            brace.WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.EndOfLine(Environment.NewLine))));
     }
 
     private static Solution EnsureProjectReference(Solution solution, ProjectId sourceProjectId, ProjectId targetProjectId)

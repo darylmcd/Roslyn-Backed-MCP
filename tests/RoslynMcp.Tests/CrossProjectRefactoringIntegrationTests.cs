@@ -134,6 +134,72 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         Assert.IsFalse(consumerContents.Contains("AnimalService service", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public async Task Extract_Interface_Preview_Generates_Formatted_Interface_File_Across_Projects()
+    {
+        // Regression for dr-9-2-format-bug-001-cross-project-interface-extractio.
+        // Before the fix: the generated interface file read
+        //     `publicinterfaceIAnimalService{...}`
+        // with every token glued together, and the source class's base list emitted
+        //     `public class AnimalService\n : IAnimalService{`
+        // with `{` glued to the interface name. After the fix both shapes are readable C#.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "AnimalService",
+            "IAnimalService",
+            "Contracts",
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var interfaceText = await File.ReadAllTextAsync(interfaceFilePath, CancellationToken.None);
+
+        // --- Interface file whitespace assertions ---
+        // (1) Keywords and identifiers must be separated by whitespace.
+        Assert.IsFalse(
+            interfaceText.Contains("publicinterface", StringComparison.Ordinal),
+            $"Interface file has glued-together tokens (FORMAT-BUG-001 regression).\nFile contents:\n{interfaceText}");
+        Assert.IsFalse(
+            interfaceText.Contains("interfaceIAnimalService", StringComparison.Ordinal),
+            $"Interface file has glued-together tokens (FORMAT-BUG-001 regression).\nFile contents:\n{interfaceText}");
+        StringAssert.Contains(interfaceText, "public interface IAnimalService");
+
+        // (2) Opening brace must be on a line following the declaration (either same-line with a
+        //     preceding space or on its own line).
+        Assert.IsFalse(
+            interfaceText.Contains("IAnimalService{", StringComparison.Ordinal),
+            $"Interface file has opening brace glued to declaration identifier (FORMAT-BUG-001 regression).\nFile contents:\n{interfaceText}");
+
+        // (3) File must span multiple lines (reformatted output, not a one-liner).
+        var lineCount = interfaceText.Split('\n').Length;
+        Assert.IsTrue(
+            lineCount >= 4,
+            $"Interface file was emitted on {lineCount} line(s); expected at least 4 for a formatted file.\nFile contents:\n{interfaceText}");
+
+        // (4) Parameter lists and method signatures must have whitespace preserved.
+        Assert.IsFalse(
+            interfaceText.Contains("IEnumerable<IAnimal>animals", StringComparison.Ordinal),
+            $"Interface file has glued-together parameter type and name (FORMAT-BUG-001 regression).\nFile contents:\n{interfaceText}");
+
+        // --- Source file base-list assertions ---
+        var sourceContents = await File.ReadAllTextAsync(sourceFilePath, CancellationToken.None);
+        Assert.IsTrue(
+            sourceContents.Contains("IAnimalService", StringComparison.Ordinal),
+            "Source class should declare the new interface in its base list.");
+        // The `{` of the class body must not be glued onto the interface name.
+        Assert.IsFalse(
+            sourceContents.Contains("IAnimalService{", StringComparison.Ordinal),
+            $"Source class has `{{` glued onto the interface base type (FORMAT-BUG-001 regression).\nFile contents:\n{sourceContents}");
+    }
+
     private static void AddProjectToCopiedSolution(string copiedRoot, string projectName, string targetFramework)
     {
         var projectDirectory = Path.Combine(copiedRoot, projectName);
