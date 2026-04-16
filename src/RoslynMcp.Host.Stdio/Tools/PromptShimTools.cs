@@ -110,42 +110,74 @@ public static class PromptShimTools
         MethodInfo method, IServiceProvider services, string parametersJson, CancellationToken ct)
     {
         await Task.CompletedTask.ConfigureAwait(false);
-        using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(parametersJson) ? "{}" : parametersJson);
-        var rootObj = doc.RootElement;
-        if (rootObj.ValueKind != JsonValueKind.Object)
-            throw new ArgumentException("parametersJson must be a JSON object.", nameof(parametersJson));
 
-        var parameters = method.GetParameters();
-        var values = new object?[parameters.Length];
-        for (var i = 0; i < parameters.Length; i++)
+        // dr-9-7-bug-json-parse-surfaces-stack-trace: a raw JsonException bubbling out of this
+        // method lands in ToolErrorHandler.ClassifyError without the InvocationWrapper guard,
+        // so it falls through to "InternalError" and the client sees a stack trace. Wrap the
+        // top-level parse + each per-parameter deserialize and re-throw as ArgumentException —
+        // that maps to "InvalidArgument" via the exact-type handler dictionary and the message
+        // tells the agent exactly which parameter broke.
+        JsonDocument doc;
+        try
         {
-            var p = parameters[i];
-            if (p.ParameterType == typeof(CancellationToken))
-            {
-                values[i] = ct;
-                continue;
-            }
-            if (IsServiceType(p.ParameterType))
-            {
-                values[i] = services.GetRequiredService(p.ParameterType);
-                continue;
-            }
-            if (rootObj.TryGetProperty(p.Name!, out var element))
-            {
-                values[i] = JsonSerializer.Deserialize(element.GetRawText(), p.ParameterType);
-            }
-            else if (p.HasDefaultValue)
-            {
-                values[i] = p.DefaultValue;
-            }
-            else
-            {
-                throw new ArgumentException(
-                    $"Prompt parameter '{p.Name}' (type {p.ParameterType.Name}) is required but missing from parametersJson.",
-                    nameof(parametersJson));
-            }
+            doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(parametersJson) ? "{}" : parametersJson);
         }
-        return values;
+        catch (JsonException ex)
+        {
+            throw new ArgumentException(
+                $"parametersJson is not valid JSON: {ex.Message}. Supply a JSON object (e.g. {{\"workspaceId\":\"…\"}}); use \"{{}}\" to omit all parameters.",
+                nameof(parametersJson),
+                ex);
+        }
+
+        using (doc)
+        {
+            var rootObj = doc.RootElement;
+            if (rootObj.ValueKind != JsonValueKind.Object)
+                throw new ArgumentException("parametersJson must be a JSON object.", nameof(parametersJson));
+
+            var parameters = method.GetParameters();
+            var values = new object?[parameters.Length];
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var p = parameters[i];
+                if (p.ParameterType == typeof(CancellationToken))
+                {
+                    values[i] = ct;
+                    continue;
+                }
+                if (IsServiceType(p.ParameterType))
+                {
+                    values[i] = services.GetRequiredService(p.ParameterType);
+                    continue;
+                }
+                if (rootObj.TryGetProperty(p.Name!, out var element))
+                {
+                    try
+                    {
+                        values[i] = JsonSerializer.Deserialize(element.GetRawText(), p.ParameterType);
+                    }
+                    catch (JsonException ex)
+                    {
+                        throw new ArgumentException(
+                            $"parametersJson property '{p.Name}' could not be deserialized into {p.ParameterType.Name}: {ex.Message}.",
+                            nameof(parametersJson),
+                            ex);
+                    }
+                }
+                else if (p.HasDefaultValue)
+                {
+                    values[i] = p.DefaultValue;
+                }
+                else
+                {
+                    throw new ArgumentException(
+                        $"Prompt parameter '{p.Name}' (type {p.ParameterType.Name}) is required but missing from parametersJson.",
+                        nameof(parametersJson));
+                }
+            }
+            return values;
+        }
     }
 
     private static bool IsServiceType(Type t) =>

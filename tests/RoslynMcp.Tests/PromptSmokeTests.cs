@@ -1,5 +1,8 @@
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Host.Stdio.Prompts;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using ModelContextProtocol.Protocol;
 
@@ -92,6 +95,76 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             CancellationToken.None)).ToList();
         Assert.AreEqual(1, messages.Count);
         Assert.IsFalse(string.IsNullOrWhiteSpace(GetText(messages[0])));
+    }
+
+    // dr-9-7-bug-json-parse-surfaces-stack-trace: malformed parametersJson used to leak a
+    // JsonException stack trace as "InternalError"; the wrapped tool now re-throws as
+    // ArgumentException which ToolErrorHandler maps to "InvalidArgument".
+    [TestMethod]
+    public async Task GetPromptText_MalformedJson_ReturnsStructuredInvalidArgument()
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+
+        var json = await PromptShimTools.GetPromptText(
+            services,
+            promptName: "discover_capabilities",
+            parametersJson: "{not valid json",
+            CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("get_prompt_text", doc.RootElement.GetProperty("tool").GetString());
+
+        var message = doc.RootElement.GetProperty("message").GetString() ?? string.Empty;
+        StringAssert.Contains(message, "parametersJson is not valid JSON",
+            "Error message should name the offending parameter.");
+        Assert.IsFalse(message.Contains(" at System."),
+            "Envelope message must not contain raw .NET stack-trace frames.");
+    }
+
+    [TestMethod]
+    public async Task GetPromptText_NonObjectJson_ReturnsStructuredInvalidArgument()
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+
+        var json = await PromptShimTools.GetPromptText(
+            services,
+            promptName: "discover_capabilities",
+            parametersJson: "[1, 2, 3]",
+            CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString() ?? string.Empty,
+            "must be a JSON object");
+    }
+
+    [TestMethod]
+    public async Task GetPromptText_ParameterTypeMismatch_ReturnsStructuredInvalidArgument()
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+
+        // discover_capabilities takes a string parameter "category"; passing an integer forces
+        // the per-parameter JsonException path at the JsonSerializer.Deserialize call.
+        var json = await PromptShimTools.GetPromptText(
+            services,
+            promptName: "discover_capabilities",
+            parametersJson: "{\"category\": 123}",
+            CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString() ?? string.Empty,
+            "could not be deserialized");
     }
 
     private static string GetText(PromptMessage message) =>
