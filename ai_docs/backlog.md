@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-16T14:00:00Z
+**updated_at:** 2026-04-16T15:00:00Z
 
 ## Agent contract
 
@@ -65,7 +65,6 @@ Within P4, rows are **alphabetical by `id`**.
 | `dr-9-11-format-bug-006-duplicates-leading-trivia-into-b` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.11 FORMAT-BUG-006 — `split_class_preview` duplicates leading trivia into both partials |
 | `dr-9-11-payload-exceeds-mcp-tool-result-cap` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.11 `roslyn://server/catalog` payload exceeds MCP tool-result cap |
 | `dr-9-12-posttooluse-hook-adds-n-1-verification-step-per` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.12 PostToolUse hook adds N+1 verification step per `*_apply` |
-| `dr-9-13-flag-resource-invalid-range-resource-returns-ge` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.13 FLAG-RESOURCE-INVALID-RANGE — `source_file_lines` resource returns generic `-32603` for invalid ranges |
 | `dr-9-14-drift-001-param-name-mismatch-vs-experimental-p` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.14 DRIFT-001 — `get_prompt_text discover_capabilities` param name mismatch vs. experimental-promotion prompt appendix |
 | `dr-9-15-ux-hook-001-environment-finding-not-a-server-bu` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.15 UX-HOOK-001 (environment finding, not a server bug) — PreToolUse hook blocks legitimate applies in this client |
 | `dr-9-16-obs-001-observation-not-a-bug-workspace-require` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.16 OBS-001 (observation, not a bug) — Workspace requires explicit `workspace_reload` after `dotnet restore` |

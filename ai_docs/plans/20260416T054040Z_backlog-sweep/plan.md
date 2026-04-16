@@ -122,8 +122,8 @@ initiative below has the standard table fields filled out at execute time.
 |---|---|---|---|---|---|
 | I-12 | `server-info-update-latest-inverted` | 3 | 25000 | Fixed | merged (PR pending — ILatestVersionProvider abstraction added for testability). |
 | I-13 | `mcp-stdio-console-flush-on-exit` | 1 | 25000 | Fixed | merged (PR #177). |
-| I-14 | `file-resource-uri-windows-path-handling` | 1 | 30000 | Fixed | in-review — centralized normalizer + encoding-shape regression suite. |
-| I-15 | `dr-9-13-flag-resource-invalid-range-resource-returns-ge` | 1 | 30000 | Fixed | Wrap resource handler in `ToolErrorHandler.ExecuteResource`. |
+| I-14 | `file-resource-uri-windows-path-handling` | 1 | 30000 | Fixed | merged (PR #178, 2026-04-16). |
+| I-15 | `dr-9-13-flag-resource-invalid-range-resource-returns-ge` | 1 | 30000 | Fixed | in-progress (branch: remediation/dr-9-13-flag-resource-invalid-range-resource-returns-ge) — wrapped GetSourceFileLines in `ExecuteResourceAsync`; 3 regression tests. |
 | I-16 | `dr-9-7-bug-json-parse-surfaces-stack-trace` | 1 | 30000 | Fixed | Wrap `JsonSerializer.Deserialize` in try/catch. |
 | I-17 | `dr-9-9-response-claims` | 2 | 30000 | Fixed | Gate `staleAction: "auto-reloaded"` on actual reload. |
 | I-18 | `project-graph-missing-metadata-fields` | 1 | 30000 | Fixed | Defensive populate of Name + ProjectPath. |

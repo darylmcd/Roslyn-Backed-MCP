@@ -197,9 +197,15 @@ public static class WorkspaceResources
     /// surface. The returned text is prefixed with a `// roslyn://… lines N..M of T` marker
     /// so agents can tell the slice apart from a whole-file read.
     /// </summary>
+    // dr-9-13-flag-resource-invalid-range-resource-returns-ge:
+    // Wrapped in ToolErrorHandler.ExecuteResourceAsync so invalid lineRange/filePath inputs
+    // return a structured JSON error envelope (category, message, tool) instead of bubbling
+    // a generic JSON-RPC -32603 through the framework. On success the response is still the
+    // marker-prefixed source slice; on failure clients get an actionable error document with
+    // the resource URI template as the `tool` field.
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}", Name = "source_file_lines", MimeType = "text/x-csharp")]
-    [Description("Read a 1-based inclusive line range from a file in the loaded workspace. filePath must be URL-encoded. lineRange is \"startLine-endLine\" (e.g. /lines/100-200). The response is prefixed with a comment marker noting the slice. For the whole file, use the sibling template without /lines/.")]
-    public static async Task<string> GetSourceFileLines(
+    [Description("Read a 1-based inclusive line range from a file in the loaded workspace. filePath must be URL-encoded. lineRange is \"startLine-endLine\" (e.g. /lines/100-200). The response is prefixed with a comment marker noting the slice. For the whole file, use the sibling template without /lines/. Invalid ranges (e.g. non-numeric, endLine < startLine, or startLine past EOF) return a structured JSON error envelope — not the C# MIME success shape.")]
+    public static Task<string> GetSourceFileLines(
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Absolute path to the source file (URL-encoded)")] string filePath,
@@ -207,13 +213,14 @@ public static class WorkspaceResources
         CancellationToken ct = default)
     {
         const string source = "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}";
-        try
+        return ToolErrorHandler.ExecuteResourceAsync(source, async () =>
         {
             var normalizedPath = NormalizeFilePathForResource(filePath);
             if (!Path.IsPathFullyQualified(normalizedPath))
             {
-                throw new InvalidOperationException(
-                    $"filePath must be an absolute path after decoding. Received: {filePath}");
+                throw new ArgumentException(
+                    $"filePath must be an absolute path after decoding. Received: {filePath}",
+                    nameof(filePath));
             }
 
             var (startLine, endLine) = ParseLineRange(lineRange);
@@ -225,7 +232,8 @@ public static class WorkspaceResources
             var totalLineCount = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.CountLines(text);
             if (startLine > totalLineCount)
             {
-                throw new InvalidOperationException(
+                throw new ArgumentOutOfRangeException(
+                    nameof(lineRange),
                     $"startLine ({startLine}) is past the end of the file ({totalLineCount} lines).");
             }
             // Clamp end to file end for graceful behavior on over-shoot ranges.
@@ -234,10 +242,7 @@ public static class WorkspaceResources
             var slice = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.SliceLines(text, startLine, clampedEnd);
             var marker = $"// roslyn://workspace/{workspaceId}/file/.../lines/{startLine}-{clampedEnd} of {totalLineCount}{Environment.NewLine}";
             return marker + slice;
-        }
-        catch (KeyNotFoundException ex) { throw new McpToolException(source, $"Not found: {ex.Message}", ex); }
-        catch (InvalidOperationException ex) { throw new McpToolException(source, $"Invalid operation: {ex.Message}", ex); }
-        catch (ArgumentException ex) { throw new McpToolException(source, $"Invalid argument: {ex.Message}", ex); }
+        });
     }
 
     private static (int StartLine, int EndLine) ParseLineRange(string lineRange)
