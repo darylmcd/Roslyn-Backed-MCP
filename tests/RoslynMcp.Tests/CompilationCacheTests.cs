@@ -116,6 +116,7 @@ public sealed class CompilationCacheTests
         public int Version { get; set; }
 
         public event Action<string>? WorkspaceClosed;
+        public event Action<string>? WorkspaceReloaded;
 
         public FakeWorkspaceManager(string workspaceId, int initialVersion)
         {
@@ -124,6 +125,7 @@ public sealed class CompilationCacheTests
         }
 
         public void RaiseWorkspaceClosed(string workspaceId) => WorkspaceClosed?.Invoke(workspaceId);
+        public void RaiseWorkspaceReloaded(string workspaceId) => WorkspaceReloaded?.Invoke(workspaceId);
 
         public int GetCurrentVersion(string workspaceId) => Version;
         public void RestoreVersion(string workspaceId, int version) => Version = version;

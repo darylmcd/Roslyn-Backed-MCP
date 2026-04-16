@@ -45,11 +45,19 @@ public sealed class DiagnosticService : IDiagnosticService
         _workspace = workspace;
         _compilationCache = compilationCache;
         _logger = logger;
-        _workspace.WorkspaceClosed += workspaceId =>
-        {
-            _resultCache.TryRemove(workspaceId, out _);
-            _diagnosticCache.TryRemove(workspaceId, out _);
-        };
+        _workspace.WorkspaceClosed += InvalidateWorkspaceCaches;
+        // Item #7: `compile-check-stale-assembly-refs-post-reload` — drop cached analyzer
+        // results synchronously on reload. The version check on read still catches stale
+        // entries, but keeping stale results around for a read-window on large solutions
+        // wastes memory (~50–200 KB per analyzer pass) and risks a narrow race where a
+        // filtered read could return a partial stale result.
+        _workspace.WorkspaceReloaded += InvalidateWorkspaceCaches;
+    }
+
+    private void InvalidateWorkspaceCaches(string workspaceId)
+    {
+        _resultCache.TryRemove(workspaceId, out _);
+        _diagnosticCache.TryRemove(workspaceId, out _);
     }
 
     public async Task<DiagnosticsResultDto> GetDiagnosticsAsync(

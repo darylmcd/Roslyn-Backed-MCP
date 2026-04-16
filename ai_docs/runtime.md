@@ -103,6 +103,7 @@ For tool selection and workflows, see `domains/tool-usage-guide.md`.
 ## Known issues (local validation)
 
 - **Parallel test hosts / MSBuild file locks:** If `dotnet test` or `dotnet build` fails with errors copying the test assembly (`RoslynMcp.Tests.dll`) because `testhost.exe` still holds the file, close other test runners or IDE test sessions that loaded that output, then run a full `dotnet test RoslynMcp.slnx --nologo` again from a clean state.
+- **Stale `MetadataReference` after a cross-restore reload (rare):** On workspaces where an out-of-process `dotnet restore` bumps a transitive package version between `workspace_load` and a subsequent tool call, the server can — in rare cases — surface spurious `CS1705` "assembly uses higher version" errors from `compile_check`. The Item #7 remediation fires a `WorkspaceReloaded` event that drops the server's per-workspace `Compilation`, diagnostic, DI-scan, and NuGet-vuln caches synchronously with every `workspace_reload`, which eliminates the in-server cache as a suspect. If the symptom still reproduces after a `workspace_reload`, close the workspace and call `workspace_load` again — recreating the underlying `MSBuildWorkspace` forces Roslyn itself to re-resolve every `MetadataReference` from disk.
 
 ## Server surface (live counts)
 
