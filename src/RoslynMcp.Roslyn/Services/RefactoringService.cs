@@ -103,10 +103,26 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         var currentSolution = _workspace.GetCurrentSolution(workspaceId);
-        _undoService?.CaptureBeforeApply(workspaceId, description, currentSolution);
         var solutionChanges = modifiedSolution.GetChanges(currentSolution);
         var hasDocumentSetChanges = solutionChanges.GetProjectChanges()
             .Any(projectChange => projectChange.GetAddedDocuments().Any() || projectChange.GetRemovedDocuments().Any());
+
+        // Item #2 — severity-high-fail-documented-semantic-is-restore-pr.
+        // When a refactor creates, deletes, or moves files, the legacy solution-based
+        // undo path at UndoService.RevertFromSolutionSnapshotAsync can't fully reverse
+        // the side effects (created files remain on disk, deleted files aren't restored).
+        // Compute an authoritative FileSnapshotDto list here so UndoService takes its fast
+        // path (RevertFromFileSnapshotsAsync), which explicitly handles file creation
+        // (OriginalText=null → delete on revert) and file deletion (OriginalText=captured
+        // bytes → rewrite on revert) alongside the usual text-edit case.
+        IReadOnlyList<FileSnapshotDto>? fileSnapshots = null;
+        if (hasDocumentSetChanges)
+        {
+            fileSnapshots = await BuildFileSnapshotsForDocumentSetChangesAsync(
+                currentSolution, modifiedSolution, solutionChanges, ct).ConfigureAwait(false);
+        }
+
+        _undoService?.CaptureBeforeApply(workspaceId, description, currentSolution, fileSnapshots);
 
         bool success;
         IReadOnlyList<string> appliedFiles;
@@ -459,6 +475,98 @@ public sealed class RefactoringService : IRefactoringService
                 await File.WriteAllTextAsync(document.FilePath, text, ct).ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>
+    /// Item #2 — build the authoritative FileSnapshotDto list that <see cref="UndoService"/>'s
+    /// fast path uses to restore disk state. Added documents get <c>OriginalText: null</c>
+    /// (delete-on-revert); removed documents get the pre-apply disk bytes (recreate-on-revert);
+    /// changed documents get the pre-apply disk bytes (overwrite-on-revert).
+    /// </summary>
+    private static async Task<IReadOnlyList<FileSnapshotDto>> BuildFileSnapshotsForDocumentSetChangesAsync(
+        Solution currentSolution,
+        Solution modifiedSolution,
+        SolutionChanges solutionChanges,
+        CancellationToken ct)
+    {
+        var snapshots = new List<FileSnapshotDto>();
+        var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        {
+            // Added documents: file doesn't exist pre-apply; revert must delete it.
+            // Roslyn may be a step ahead of disk when a previous tool already wrote the file,
+            // but the UndoService revert path tolerates "file not on disk" gracefully so using
+            // null unconditionally here is correct.
+            foreach (var documentId in projectChange.GetAddedDocuments())
+            {
+                var document = currentSolution.GetDocument(documentId)
+                    ?? modifiedSolution.GetDocument(documentId);
+                var filePath = document?.FilePath;
+                if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
+                {
+                    continue;
+                }
+
+                snapshots.Add(new FileSnapshotDto(filePath, OriginalText: null));
+            }
+
+            // Removed documents: capture the pre-apply bytes so revert can recreate the file.
+            // Prefer disk (authoritative) over Solution text because some tools may be mid-flight
+            // and the disk copy is what the user actually had.
+            foreach (var documentId in projectChange.GetRemovedDocuments())
+            {
+                var document = currentSolution.GetDocument(documentId);
+                var filePath = document?.FilePath;
+                if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
+                {
+                    continue;
+                }
+
+                string originalText;
+                if (File.Exists(filePath))
+                {
+                    originalText = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+                }
+                else if (document is not null)
+                {
+                    // No disk copy (rare) — fall back to the Solution text.
+                    var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
+                    originalText = sourceText.ToString();
+                }
+                else
+                {
+                    // Can't snapshot at all — skip rather than silently lose the entry on revert.
+                    continue;
+                }
+
+                snapshots.Add(new FileSnapshotDto(filePath, originalText));
+            }
+
+            // Changed documents: capture pre-apply disk bytes so revert can overwrite-in-place.
+            foreach (var documentId in projectChange.GetChangedDocuments())
+            {
+                var document = currentSolution.GetDocument(documentId);
+                var filePath = document?.FilePath;
+                if (string.IsNullOrWhiteSpace(filePath) || !seenPaths.Add(filePath))
+                {
+                    continue;
+                }
+
+                if (File.Exists(filePath))
+                {
+                    var originalText = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+                    snapshots.Add(new FileSnapshotDto(filePath, originalText));
+                }
+                else if (document is not null)
+                {
+                    var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
+                    snapshots.Add(new FileSnapshotDto(filePath, sourceText.ToString()));
+                }
+            }
+        }
+
+        return snapshots;
     }
 
     private async Task<(bool Success, IReadOnlyList<string> AppliedFiles)> PersistDocumentSetChangesAsync(
