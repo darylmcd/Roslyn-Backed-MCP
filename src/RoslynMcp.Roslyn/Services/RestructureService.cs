@@ -52,7 +52,25 @@ public sealed class RestructureService : IRestructureService
                 $"pattern={patternKind}, goal={goalKind}.");
         }
 
-        var placeholderNames = ExtractPlaceholderNames(patternNode);
+        // dr-9-1-regression-r17a-emits-literal-placeholder: extract placeholder names from
+        // BOTH sides. Pre-fix the service only inspected the pattern, so:
+        //   (a) a pattern with no placeholders + a goal with placeholders emitted the literal
+        //       `__name__` text verbatim because Substitute short-circuited on `pattern.Count == 0`.
+        //   (b) a goal referencing a placeholder name that the pattern never captured silently
+        //       left the literal text in the output.
+        // Both shapes now fail loud with an actionable error that names the offending
+        // placeholder, so callers catch the mismatch at preview time instead of discovering it
+        // mid-refactor.
+        var patternPlaceholderNames = ExtractPlaceholderNames(patternNode);
+        var goalPlaceholderNames = ExtractPlaceholderNames(goalNode);
+        var orphaned = goalPlaceholderNames.Except(patternPlaceholderNames, StringComparer.Ordinal).ToList();
+        if (orphaned.Count > 0)
+        {
+            throw new ArgumentException(
+                $"goal references placeholder(s) not captured by the pattern: {string.Join(", ", orphaned.Select(n => $"__{n}__"))}. " +
+                $"Every `__name__` in the goal must appear in the pattern so it has a captured value to substitute.",
+                nameof(goal));
+        }
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var accumulator = solution;
@@ -67,7 +85,7 @@ public sealed class RestructureService : IRestructureService
                 var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (root is null) continue;
 
-                var rewriter = new StructuralRewriter(patternNode, goalNode, placeholderNames);
+                var rewriter = new StructuralRewriter(patternNode, goalNode, patternPlaceholderNames, goalPlaceholderNames);
                 var newRoot = rewriter.Visit(root);
 
                 if (rewriter.MatchCount == 0 || newRoot is null) continue;
@@ -171,14 +189,20 @@ public sealed class RestructureService : IRestructureService
     {
         private readonly SyntaxNode _pattern;
         private readonly SyntaxNode _goal;
-        private readonly IReadOnlyCollection<string> _placeholderNames;
+        private readonly IReadOnlyCollection<string> _patternPlaceholderNames;
+        private readonly IReadOnlyCollection<string> _goalPlaceholderNames;
         public int MatchCount { get; private set; }
 
-        public StructuralRewriter(SyntaxNode pattern, SyntaxNode goal, IReadOnlyCollection<string> placeholderNames)
+        public StructuralRewriter(
+            SyntaxNode pattern,
+            SyntaxNode goal,
+            IReadOnlyCollection<string> patternPlaceholderNames,
+            IReadOnlyCollection<string> goalPlaceholderNames)
         {
             _pattern = pattern;
             _goal = goal;
-            _placeholderNames = placeholderNames;
+            _patternPlaceholderNames = patternPlaceholderNames;
+            _goalPlaceholderNames = goalPlaceholderNames;
         }
 
         public override SyntaxNode? Visit(SyntaxNode? node)
@@ -269,7 +293,12 @@ public sealed class RestructureService : IRestructureService
 
         private SyntaxNode Substitute(SyntaxNode goal, IReadOnlyDictionary<string, SyntaxNode> captures)
         {
-            if (_placeholderNames.Count == 0) return goal;
+            // dr-9-1-regression-r17a-emits-literal-placeholder: substitution now gates on the
+            // goal's placeholder set, not the pattern's. A goal with no placeholders is returned
+            // unchanged (fast path); otherwise every `__name__` in the goal gets rewritten from
+            // the captures dict. Pre-fix the gate used the pattern's set, so any pattern without
+            // placeholders returned the goal verbatim — literal `__name__` text included.
+            if (_goalPlaceholderNames.Count == 0) return goal;
 
             return new PlaceholderSubstituter(captures).Visit(goal) ?? goal;
         }
