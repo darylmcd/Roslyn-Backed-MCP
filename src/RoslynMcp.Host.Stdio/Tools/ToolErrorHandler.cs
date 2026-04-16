@@ -205,27 +205,52 @@ internal static class ToolErrorHandler
 
     private static ErrorInfo ClassifyError(Exception ex, string toolName)
     {
+        // mcp-parameter-validation-error-messages: detect parameter-binding failures
+        // wrapped in a generic invocation envelope. The MCP SDK + reflection dispatch
+        // surface parameter problems as InvalidOperationException or TargetInvocationException
+        // with the real cause as ImmediateInnerException. The dictionary entry for
+        // InvalidOperationException would otherwise mask this as a generic "InvalidOperation".
+        //
+        // Scope is intentionally narrow — only the IMMEDIATE InnerException is checked, and
+        // the OUTER must be a recognized invocation wrapper. Walking the full chain would
+        // misclassify legitimate internal errors (e.g., AggregateException → InvalidCastException
+        // → ArgumentException buried deep in domain code) as parameter validation.
+        if (IsInvocationWrapper(ex) && ex.InnerException is { } directInner)
+        {
+            switch (directInner)
+            {
+                case System.Text.Json.JsonException jsonEx:
+                    return new("InvalidArgument",
+                        $"Parameter binding failed (JSON deserialization): {jsonEx.Message}. " +
+                        "Check that JSON property names match the tool schema exactly (camelCase).");
+
+                case ArgumentNullException nullArgEx:
+                    return new("InvalidArgument",
+                        $"Required parameter '{nullArgEx.ParamName ?? "<unknown>"}' is missing or null. " +
+                        "Provide a value for this parameter and retry.");
+
+                case ArgumentOutOfRangeException rangeEx:
+                    return new("InvalidArgument",
+                        $"Parameter '{rangeEx.ParamName ?? "<unknown>"}' has an out-of-range value: {rangeEx.Message}. " +
+                        "Check the tool schema for the accepted range.");
+
+                case ArgumentException argEx2:
+                    return new("InvalidArgument",
+                        $"Parameter '{argEx2.ParamName ?? "<unknown>"}' is invalid: {argEx2.Message}. " +
+                        "Check that all required parameters are provided and values match the expected types.");
+
+                case FormatException fmtEx:
+                    return new("InvalidArgument",
+                        $"Parameter format error: {fmtEx.Message}. " +
+                        "Check that values match the expected format (e.g., integers, booleans, paths).");
+            }
+        }
+
         // Walk the handler dictionary for exact or assignable type match
         foreach (var (type, handler) in ErrorHandlers)
         {
             if (type.IsAssignableFrom(ex.GetType()))
                 return handler(ex, toolName);
-        }
-
-        // MCP SDK parameter binding failures: the framework wraps deserialization errors
-        // in a generic exception. Surface the inner JsonException or ArgumentException with
-        // actionable hints about the correct JSON property names.
-        if (ex.InnerException is System.Text.Json.JsonException jsonEx)
-        {
-            return new("InvalidArgument",
-                $"Parameter binding failed: {jsonEx.Message}. " +
-                "Check that JSON property names match the tool schema exactly (camelCase).");
-        }
-        if (ex.InnerException is ArgumentException argEx && ex.GetType().Name.Contains("Invocation", StringComparison.OrdinalIgnoreCase))
-        {
-            return new("InvalidArgument",
-                $"Parameter validation failed: {argEx.Message}. " +
-                "Check that all required parameters are provided and values match the expected types.");
         }
 
         // Fallback: unexpected error — include inner exception chain for diagnosis
@@ -237,6 +262,24 @@ internal static class ToolErrorHandler
         return new("InternalError",
             $"Internal error in {toolName}: {detail}. " +
             "If this persists, try reloading the workspace (workspace_reload).");
+    }
+
+    /// <summary>
+    /// Returns true when the exception type indicates a generic SDK/reflection invocation
+    /// wrapper that hides the real cause in InnerException. Used by the parameter-binding
+    /// detector to scope its inner-exception check to legitimate wrappers (and avoid
+    /// misclassifying domain errors that happen to have an Argument-like exception in their
+    /// chain).
+    /// </summary>
+    private static bool IsInvocationWrapper(Exception ex)
+    {
+        if (ex is System.Reflection.TargetInvocationException) return true;
+        // The MCP SDK + Microsoft.Extensions.* hosting wrap with InvalidOperationException
+        // when a tool method throws during binding. Walk type names rather than concrete
+        // types so the SDK can rev internal exception classes without breaking us.
+        var name = ex.GetType().Name;
+        return name.Contains("Invocation", StringComparison.OrdinalIgnoreCase)
+            || (name == nameof(InvalidOperationException) && ex.Message.Contains("invocation", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
