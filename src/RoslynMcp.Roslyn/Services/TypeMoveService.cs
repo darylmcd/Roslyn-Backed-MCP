@@ -112,11 +112,19 @@ public sealed class TypeMoveService : ITypeMoveService
         // Apply changes to solution
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
-        // Add the new document
+        // Add the new document.
+        // Item #1 — severity-critical-fail-preview-diff-does-not-match-t: pass `folders`
+        // so MSBuildWorkspace.TryApplyChanges computes the disk path consistently with
+        // our explicit write in RefactoringService.PersistDocumentSetChangesAsync.
+        // Without folders, Roslyn resolved the AddedDocument to {projectDir}/{fileName}
+        // while our explicit write used the full resolvedTargetPath — producing two files
+        // on disk (the intended deep path plus a rogue project-root copy) per the
+        // NetworkDocumentation audit §9.2 repro.
         var targetFileName = Path.GetFileName(resolvedTargetPath);
         var newFileText = newFileRoot.ToFullString();
-        var newDocument = newSolution.GetProject(sourceDocument.Project.Id)!
-            .AddDocument(targetFileName, newFileText, filePath: resolvedTargetPath);
+        var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
+        var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, resolvedTargetPath);
+        var newDocument = targetProject.AddDocument(targetFileName, newFileText, folders: folders, filePath: resolvedTargetPath);
         newSolution = newDocument.Project.Solution;
 
         // BUG-N13: source file may rely on ImplicitUsings for generic collections; new file must carry explicit usings when needed.

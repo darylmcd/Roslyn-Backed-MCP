@@ -86,10 +86,12 @@ public sealed class TypeExtractionService : ITypeExtractionService
 
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
-        // Add new document
+        // Add new document. Item #1 — pass folders so MSBuildWorkspace's TryApplyChanges
+        // resolves the disk path consistently with our explicit write.
         var targetFileName = Path.GetFileName(resolvedTargetPath);
-        var newDoc = newSolution.GetProject(sourceDocument.Project.Id)!
-            .AddDocument(targetFileName, newFileRoot.ToFullString(), filePath: resolvedTargetPath);
+        var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
+        var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, resolvedTargetPath);
+        var newDoc = targetProject.AddDocument(targetFileName, newFileRoot.ToFullString(), folders: folders, filePath: resolvedTargetPath);
         newSolution = newDoc.Project.Solution;
 
         // Compute diff

@@ -153,6 +153,48 @@ internal static class ProjectMetadataParser
     }
 
     /// <summary>
+    /// Item #1 / severity-critical-fail-preview-diff-does-not-match-t. Computes the relative
+    /// folder segments from a project file to a target file, for use as the <c>folders</c>
+    /// argument to <see cref="Microsoft.CodeAnalysis.Project.AddDocument(string, Microsoft.CodeAnalysis.Text.SourceText, System.Collections.Generic.IEnumerable{string}?, string?, System.Collections.Generic.IReadOnlyList{string}?, bool)"/>.
+    /// Omitting folders makes MSBuildWorkspace treat the added document as living at project
+    /// root, which — when our own explicit disk write uses a deeper path — produces TWO files
+    /// on disk (the deep path plus a rogue project-root copy). All AddDocument callers that
+    /// target a file outside the project root MUST pass folders to keep Roslyn's path
+    /// resolution consistent with the explicit write.
+    /// </summary>
+    /// <param name="projectFilePath">The absolute path to the .csproj.</param>
+    /// <param name="filePath">The absolute path to the file being added.</param>
+    /// <returns>
+    /// The relative folder segments from the project directory to the file directory,
+    /// or an empty list when the file lives at project root or when paths are not resolvable.
+    /// </returns>
+    public static IReadOnlyList<string> ComputeDocumentFolders(string? projectFilePath, string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath))
+        {
+            return [];
+        }
+
+        var projectDirectory = Path.GetDirectoryName(projectFilePath);
+        var fileDirectory = Path.GetDirectoryName(filePath);
+        if (string.IsNullOrWhiteSpace(projectDirectory) || string.IsNullOrWhiteSpace(fileDirectory))
+        {
+            return [];
+        }
+
+        var relativeDirectory = Path.GetRelativePath(projectDirectory, fileDirectory);
+        if (string.Equals(relativeDirectory, ".", StringComparison.Ordinal))
+        {
+            return [];
+        }
+
+        return relativeDirectory
+            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Where(folder => !string.IsNullOrWhiteSpace(folder) && folder != ".")
+            .ToArray();
+    }
+
+    /// <summary>
     /// Item #5 — <c>severity-medium-breaks-msbuild-until-csproj-is-hand</c>.
     /// Returns <see langword="true"/> when the project file is SDK-style
     /// (has an <c>Sdk=</c> attribute on the root <c>&lt;Project&gt;</c> element

@@ -196,31 +196,12 @@ public sealed class FileOperationService : IFileOperationService
         }
     }
 
+    // Item #1 — the folders-resolution helper moved to ProjectMetadataParser.ComputeDocumentFolders
+    // so TypeMoveService, TypeExtractionService, InterfaceExtractionService, and
+    // CrossProjectRefactoringService can share it (they all previously omitted folders and
+    // produced the NetworkDocumentation §9.2 "rogue project-root file" shape on apply).
     private static IReadOnlyList<string> GetFolders(string? projectFilePath, string filePath)
-    {
-        if (string.IsNullOrWhiteSpace(projectFilePath))
-        {
-            return [];
-        }
-
-        var projectDirectory = Path.GetDirectoryName(projectFilePath);
-        var fileDirectory = Path.GetDirectoryName(filePath);
-        if (string.IsNullOrWhiteSpace(projectDirectory) || string.IsNullOrWhiteSpace(fileDirectory))
-        {
-            return [];
-        }
-
-        var relativeDirectory = Path.GetRelativePath(projectDirectory, fileDirectory);
-        if (string.Equals(relativeDirectory, ".", StringComparison.Ordinal))
-        {
-            return [];
-        }
-
-        return relativeDirectory
-            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            .Where(folder => !string.IsNullOrWhiteSpace(folder) && folder != ".")
-            .ToArray();
-    }
+        => ProjectMetadataParser.ComputeDocumentFolders(projectFilePath, filePath);
 
     private static async Task<(SourceText? Text, string? Warning)> TryUpdateNamespaceAsync(
         Document document,

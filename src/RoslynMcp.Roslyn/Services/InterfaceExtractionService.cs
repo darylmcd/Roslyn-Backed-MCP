@@ -97,11 +97,13 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
-        // Add interface document
+        // Add interface document. Item #1 — pass folders so MSBuildWorkspace's
+        // TryApplyChanges resolves the disk path consistently with our explicit write.
         var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
         var interfaceFilePath = Path.Combine(sourceDir, $"{interfaceName}.cs");
-        var interfaceDoc = newSolution.GetProject(sourceDocument.Project.Id)!
-            .AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), filePath: interfaceFilePath);
+        var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
+        var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
+        var interfaceDoc = targetProject.AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), folders: folders, filePath: interfaceFilePath);
         newSolution = interfaceDoc.Project.Solution;
 
         if (replaceUsages)
