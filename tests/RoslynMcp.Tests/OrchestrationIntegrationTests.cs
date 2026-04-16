@@ -51,6 +51,98 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task FORMAT_BUG_003_Migrate_Package_Preview_Emits_MultiLine_ItemGroup_With_Matching_Indent()
+    {
+        // FORMAT-BUG-003 regression (dr-9-4-format-bug-003-produces-inline-itemgroup-xml):
+        // Previously `migrate_package_preview` serialized via `document.ToString(SaveOptions.DisableFormatting)`
+        // which (i) inlined the new `<ItemGroup><PackageReference /></ItemGroup>` onto a single line,
+        // (ii) glued `</Project>` onto the preceding element, and (iii) left an empty prior ItemGroup.
+        // The fix emits via an indenting XmlWriter and inserts whitespace trivia around the new
+        // ItemGroup, so each PackageReference must be on its own indented line.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sampleLibProject = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        InjectPackageReference(sampleLibProject, "Legacy.Package");
+        InjectCentralPackageVersion(workspace.GetPath("Directory.Packages.props"), "Legacy.Package", "1.0.0");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await PackageMigrationOrchestrator.PreviewMigratePackageAsync(
+            workspace.WorkspaceId,
+            "Legacy.Package",
+            "Modern.Package",
+            "2.5.0",
+            CancellationToken.None);
+
+        // Preview diff must not contain inline ItemGroups or glued closing Project tags in any
+        // ADDED lines (the pre-mutation `-` lines in the diff can contain the inline shape
+        // because the fixture's XDocument.Save side-effected the csproj into a condensed form).
+        var projectDiff = preview.Changes.First(change =>
+            string.Equals(change.FilePath, sampleLibProject, StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+        var addedLines = projectDiff.Split('\n')
+            .Where(line => line.StartsWith('+') && !line.StartsWith("+++", StringComparison.Ordinal))
+            .ToArray();
+        Assert.IsFalse(addedLines.Any(line => line.Contains("<ItemGroup><PackageReference", StringComparison.Ordinal)),
+            $"FORMAT-BUG-003 regression: ItemGroup must not inline the PackageReference in added lines. Diff:\n{projectDiff}");
+        Assert.IsFalse(addedLines.Any(line => line.Contains("</ItemGroup></Project>", StringComparison.Ordinal)),
+            $"FORMAT-BUG-003 regression: ItemGroup close must not be glued to Project close in added lines. Diff:\n{projectDiff}");
+        Assert.IsFalse(addedLines.Any(line => line.Contains("<ItemGroup />", StringComparison.Ordinal)
+            || line.Contains("<ItemGroup></ItemGroup>", StringComparison.Ordinal)),
+            $"FORMAT-BUG-003 regression: no orphan empty ItemGroup should remain in added lines. Diff:\n{projectDiff}");
+
+        // Apply and re-inspect the actual csproj contents for layout.
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var csprojText = await File.ReadAllTextAsync(sampleLibProject, CancellationToken.None);
+        Assert.IsFalse(csprojText.Contains("<ItemGroup><PackageReference", StringComparison.Ordinal),
+            $"FORMAT-BUG-003 regression on disk: ItemGroup must not inline the PackageReference. File:\n{csprojText}");
+        Assert.IsFalse(csprojText.Contains("</ItemGroup></Project>", StringComparison.Ordinal),
+            $"FORMAT-BUG-003 regression on disk: ItemGroup close must not be glued to Project close. File:\n{csprojText}");
+
+        // Each PackageReference must own its own line with two-space parent indentation inherited
+        // from the existing PropertyGroup layout.
+        var packageReferenceLine = csprojText.Split('\n').Select(line => line.TrimEnd('\r'))
+            .SingleOrDefault(line => line.Contains("PackageReference Include=\"Modern.Package\"", StringComparison.Ordinal))
+            ?? throw new AssertFailedException("Modern.Package PackageReference line not found.");
+        StringAssert.StartsWith(packageReferenceLine, "    <PackageReference",
+            "FORMAT-BUG-003 regression: PackageReference must be indented with four spaces inside an ItemGroup.");
+    }
+
+    [TestMethod]
+    public async Task FORMAT_BUG_003_Migrate_Package_Preview_Preserves_Utf8_Declaration_When_Present()
+    {
+        // FORMAT-BUG-003 regression (encoding half): the pre-fix serializer wrote via a
+        // StringBuilder-backed XmlWriter, which emitted `<?xml version="1.0" encoding="utf-16"?>`
+        // because StringBuilder is UTF-16 internally. Persisting that text as UTF-8 to disk
+        // produced files whose declaration lied about their encoding, and subsequent readers
+        // threw "There is no Unicode byte order mark. Cannot switch to Unicode." The fix writes
+        // to a MemoryStream backed by UTF-8, so any emitted declaration correctly advertises utf-8.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sampleLibProject = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        InjectPackageReference(sampleLibProject, "Legacy.Package");
+        InjectCentralPackageVersion(workspace.GetPath("Directory.Packages.props"), "Legacy.Package", "1.0.0");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await PackageMigrationOrchestrator.PreviewMigratePackageAsync(
+            workspace.WorkspaceId,
+            "Legacy.Package",
+            "Modern.Package",
+            "2.5.0",
+            CancellationToken.None);
+
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var csprojText = await File.ReadAllTextAsync(sampleLibProject, CancellationToken.None);
+        Assert.IsFalse(csprojText.Contains("encoding=\"utf-16\"", StringComparison.OrdinalIgnoreCase),
+            $"FORMAT-BUG-003 regression: csproj must not advertise utf-16 encoding when persisted as UTF-8. File:\n{csprojText}");
+
+        // XDocument.Load must succeed — the pre-fix output threw "There is no Unicode byte order
+        // mark" here. Use the default Load path (reads as UTF-8) to mirror real consumers.
+        var reloaded = XDocument.Load(sampleLibProject);
+        Assert.IsNotNull(reloaded.Root);
+    }
+
+    [TestMethod]
     public async Task Split_Class_Preview_And_Apply_Creates_New_Partial_File()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);

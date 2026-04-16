@@ -84,7 +84,7 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
 
         foreach (var packageReference in packageReferences)
         {
-            packageReference.Remove();
+            OrchestrationMsBuildXml.RemoveElementCleanly(packageReference);
         }
 
         if (document.Descendants("PackageReference").Any(element =>
@@ -100,10 +100,11 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
                 replacement.Add(new XAttribute("Version", newVersion));
             }
 
-            OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "PackageReference").Add(replacement);
+            var itemGroup = OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "PackageReference");
+            OrchestrationMsBuildXml.AddChildElementPreservingIndentation(itemGroup, replacement);
         }
 
-        var updatedContent = document.ToString(SaveOptions.DisableFormatting);
+        var updatedContent = OrchestrationMsBuildXml.FormatProjectXml(document, originalContent);
         if (!string.Equals(originalContent, updatedContent, StringComparison.Ordinal))
         {
             mutations.Add(new CompositeFileMutation(projectFilePath, updatedContent));
@@ -125,11 +126,14 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
 
         var oldCentralVersion = propsDocument.Descendants("PackageVersion")
             .FirstOrDefault(element => string.Equals((string?)element.Attribute("Include"), oldPackageId, StringComparison.OrdinalIgnoreCase));
-        oldCentralVersion?.Remove();
+        if (oldCentralVersion is not null)
+        {
+            OrchestrationMsBuildXml.RemoveElementCleanly(oldCentralVersion);
+        }
 
         UpsertCentralPackageVersion(propsDocument, newPackageId, newVersion);
 
-        var updatedPropsContent = propsDocument.ToString(SaveOptions.DisableFormatting);
+        var updatedPropsContent = OrchestrationMsBuildXml.FormatProjectXml(propsDocument, originalPropsContent);
         if (!string.Equals(originalPropsContent, updatedPropsContent, StringComparison.Ordinal))
         {
             mutations.Add(new CompositeFileMutation(packagesPropsPath, updatedPropsContent));
@@ -143,8 +147,10 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
             .FirstOrDefault(element => string.Equals((string?)element.Attribute("Include"), packageId, StringComparison.OrdinalIgnoreCase));
         if (existing is null)
         {
-            OrchestrationMsBuildXml.GetOrCreateItemGroup(propsDocument, "PackageVersion")
-                .Add(new XElement("PackageVersion",
+            var itemGroup = OrchestrationMsBuildXml.GetOrCreateItemGroup(propsDocument, "PackageVersion");
+            OrchestrationMsBuildXml.AddChildElementPreservingIndentation(
+                itemGroup,
+                new XElement("PackageVersion",
                     new XAttribute("Include", packageId),
                     new XAttribute("Version", newVersion)));
         }
