@@ -626,7 +626,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // Compilation.GetDiagnostics, and Roslyn-internal switches over AnalyzerReference
             // subtypes throw "Unexpected value 'UnresolvedAnalyzerReference'" otherwise. The
             // earlier per-service guards in CompilationCache/FixAllService are now unnecessary.
-            StripUnresolvedAnalyzerReferences(session);
+            await StripUnresolvedAnalyzerReferencesAsync(session, ct).ConfigureAwait(false);
 
             session.ProjectStatuses = BuildProjectStatuses(session.Workspace.CurrentSolution);
             session.LoadedPath = fullPath;
@@ -653,7 +653,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// <c>WORKSPACE_UNRESOLVED_ANALYZER</c> warning (severity Warning, not Error) so callers
     /// can still discover that something was filtered.
     /// </summary>
-    private void StripUnresolvedAnalyzerReferences(WorkspaceSession session)
+    private async Task StripUnresolvedAnalyzerReferencesAsync(WorkspaceSession session, CancellationToken ct)
     {
         if (session.Workspace is null) return;
 
@@ -693,6 +693,29 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
         if (strippedCount == 0) return;
 
+        // csproj-reserialization-msbuildworkspace (P2) — create-file-apply-csproj-side-effect-all-projects.
+        //
+        // MSBuildWorkspace.TryApplyChanges reserializes csprojs that had an analyzer-reference
+        // removed: MSBuild reprojects the project file to emit the updated AnalyzerReference
+        // itemgroup, and in doing so adds a UTF-8 BOM, flips LF→CRLF, collapses blank lines, and
+        // strips the trailing newline. The semantics are identical but the on-disk bytes drift,
+        // which shows up as noise in git diff — exactly the pattern every recent subagent on the
+        // 2026-04-16 backlog-sweep observed on samples/GeneratedDocumentSolution/ConsumerLib/
+        // ConsumerLib.csproj during verify-release.ps1 runs (that csproj has an
+        // `OutputItemType="Analyzer"` project reference to ConsumerLib.Generators, which registers
+        // as UnresolvedAnalyzerReference on first load before the generator output is built).
+        //
+        // Snapshot ALL csproj bytes before TryApplyChanges; restore any whose post-apply XML is
+        // semantically equivalent to the snapshot (trivia-only diff). Csprojs with a legitimate
+        // semantic change (should not occur here since we only strip analyzer refs, but defensive)
+        // keep their new bytes.
+        var csprojSnapshots = await CsprojSemanticEquality.SnapshotProjectsAsync(
+            originalSolution.Projects
+                .Select(project => project.FilePath)
+                .Where(path => !string.IsNullOrWhiteSpace(path))!,
+            _logger,
+            ct).ConfigureAwait(false);
+
         if (!session.Workspace.TryApplyChanges(solution))
         {
             // Should be impossible — analyzer reference removal is supported by every workspace
@@ -704,6 +727,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 session.WorkspaceId, strippedCount);
             return;
         }
+
+        // Restore trivia-only drift introduced by TryApplyChanges's csproj reserialization.
+        await CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
+            csprojSnapshots,
+            skipPaths: new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            _logger,
+            operationTag: "csproj-reserialization-msbuildworkspace/strip-unresolved-analyzer",
+            ct).ConfigureAwait(false);
 
         foreach (var dto in newDiagnostics)
         {
