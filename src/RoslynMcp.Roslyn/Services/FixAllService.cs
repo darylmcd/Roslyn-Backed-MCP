@@ -86,7 +86,9 @@ public sealed class FixAllService : IFixAllService
                 Changes: [],
                 GuidanceMessage:
                     $"No code fix provider is loaded for diagnostic '{diagnosticId}'. " +
-                    (alternativeHint ?? "Restore analyzer packages (IDE/CA rules). Use list_analyzers to see loaded diagnostic IDs."));
+                    (alternativeHint ?? "Restore analyzer packages (IDE/CA rules). Use list_analyzers to see loaded diagnostic IDs. " +
+                        "If this is an Info/IDE-series diagnostic without a built-in fix, consider add_pragma_suppression " +
+                        "or an editorconfig severity bump via set_diagnostic_severity."));
         }
 
         var fixAllProvider = provider.GetFixAllProvider();
@@ -124,7 +126,8 @@ public sealed class FixAllService : IFixAllService
                 DiagnosticId: diagnosticId,
                 Scope: scope,
                 FixedCount: 0,
-                Changes: []);
+                Changes: [],
+                GuidanceMessage: BuildNoOccurrencesGuidance(diagnosticId, scope, filePath, projectName));
         }
 
         // Obtain the correct equivalence key by invoking the provider on a sample diagnostic
@@ -155,7 +158,11 @@ public sealed class FixAllService : IFixAllService
                 DiagnosticId: diagnosticId,
                 Scope: scope,
                 FixedCount: 0,
-                Changes: []);
+                Changes: [],
+                GuidanceMessage:
+                    $"The registered FixAll provider for '{diagnosticId}' threw while computing the fix " +
+                    $"({ex.GetType().Name}: {ex.Message}). Try code_fix_preview on individual occurrences, " +
+                    "or narrow the scope (document / project) to isolate the failing occurrence.");
         }
 
         if (fixAllAction is null)
@@ -165,7 +172,8 @@ public sealed class FixAllService : IFixAllService
                 DiagnosticId: diagnosticId,
                 Scope: scope,
                 FixedCount: 0,
-                Changes: []);
+                Changes: [],
+                GuidanceMessage: BuildProviderHasNoActionsGuidance(diagnosticId, totalDiagCount));
         }
 
         ImmutableArray<CodeActionOperation> operations;
@@ -183,7 +191,11 @@ public sealed class FixAllService : IFixAllService
                 DiagnosticId: diagnosticId,
                 Scope: scope,
                 FixedCount: 0,
-                Changes: []);
+                Changes: [],
+                GuidanceMessage:
+                    $"The FixAll action for '{diagnosticId}' threw while materialising code-action operations " +
+                    $"({ex.GetType().Name}: {ex.Message}). Try code_fix_preview on individual occurrences, " +
+                    "or narrow the scope to isolate the failing occurrence.");
         }
 
         var applyOp = operations.OfType<ApplyChangesOperation>().FirstOrDefault();
@@ -194,7 +206,11 @@ public sealed class FixAllService : IFixAllService
                 DiagnosticId: diagnosticId,
                 Scope: scope,
                 FixedCount: 0,
-                Changes: []);
+                Changes: [],
+                GuidanceMessage:
+                    $"The FixAll action for '{diagnosticId}' returned no ApplyChangesOperation — the provider " +
+                    "computed operations but none were workspace edits (typical for interactive-only or " +
+                    "metadata-mutation fixes). Try code_fix_preview on individual occurrences to inspect the action.");
         }
 
         var newSolution = applyOp.ChangedSolution;
@@ -524,6 +540,46 @@ public sealed class FixAllService : IFixAllService
             _logger.LogWarning(ex, "Failed to load diagnostic analyzers for FixAll");
             return [];
         }
+    }
+
+    /// <summary>
+    /// Builds the guidance message for the "no occurrences" empty-result path. A provider IS
+    /// registered for the diagnostic, but <see cref="CollectDiagnosticsAsync"/> found zero
+    /// occurrences in the requested scope. This distinguishes scenario (1) from scenarios (2)
+    /// "no provider registered" and (3) "provider returned no actions" so the caller can tell
+    /// them apart.
+    /// </summary>
+    internal static string BuildNoOccurrencesGuidance(
+        string diagnosticId, string scope, string? filePath, string? projectName)
+    {
+        var scopeSuffix = scope.ToLowerInvariant() switch
+        {
+            "document" when !string.IsNullOrWhiteSpace(filePath) => $" (document scope: '{filePath}')",
+            "project" when !string.IsNullOrWhiteSpace(projectName) => $" (project scope: '{projectName}')",
+            "solution" => " (solution scope)",
+            _ => string.Empty,
+        };
+
+        return
+            $"No occurrences of '{diagnosticId}' found in the requested scope{scopeSuffix}. " +
+            "A code fix provider IS registered for this diagnostic — the workspace simply has no matches. " +
+            "If you expected matches, verify the diagnostic is currently reported via project_diagnostics " +
+            "or list_analyzers.";
+    }
+
+    /// <summary>
+    /// Builds the guidance message for the "provider registered, occurrences exist, but no
+    /// CodeAction produced" path. This can happen when the provider's Fixable check accepts
+    /// the diagnostic id globally but rejects each occurrence's context at registration time
+    /// (e.g. syntax-shape preconditions inside the provider).
+    /// </summary>
+    internal static string BuildProviderHasNoActionsGuidance(string diagnosticId, int occurrenceCount)
+    {
+        return
+            $"The provider for '{diagnosticId}' produced no FixAll action for {occurrenceCount} occurrence(s). " +
+            "This typically means the provider's internal Fixable check rejected every occurrence's syntax " +
+            "context. Try code_fix_preview on individual occurrences to inspect per-site behaviour, " +
+            "or add_pragma_suppression / set_diagnostic_severity if the rule cannot be auto-fixed here.";
     }
 
     /// <summary>
