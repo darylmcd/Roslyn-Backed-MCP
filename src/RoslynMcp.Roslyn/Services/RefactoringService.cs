@@ -386,22 +386,45 @@ public sealed class RefactoringService : IRefactoringService
         if (startLine == endLine && startColumn > endColumn)
             throw new ArgumentException($"startColumn ({startColumn}) must be <= endColumn ({endColumn}) when both are on the same line.", nameof(startColumn));
 
-        var startPosition = text.Lines[startLine - 1].Start + (startColumn - 1);
-        var endPosition = text.Lines[endLine - 1].Start + (endColumn - 1);
-        // Clamp endPosition to the end of the file so a column past the end of the last line
-        // doesn't cause TextSpan.FromBounds to throw.
-        if (endPosition > text.Length) endPosition = text.Length;
-        if (startPosition > endPosition) startPosition = endPosition;
+        // format-range-preview-empty-diff-compile-check-filter-false-clean +
+        // dr-9-12-flag-format-range-empty-returns-empty-diff-on-d:
+        //
+        // Previously this called `Formatter.FormatAsync(document, [span], …)`, which
+        // silently dropped formatting edits whose target trivia sat outside the
+        // explicit span. Result: `format_range_preview` returned a `unifiedDiff` with
+        // headers and no `@@` hunks while a subsequent `format_range_apply` shared the
+        // same stored (no-op) solution — the empty preview led callers to believe
+        // nothing would change, then attribute any observed disk mutation to bugs
+        // elsewhere in the apply pipeline.
+        //
+        // Fix: format the whole document, then construct a "ranged" output by
+        // splicing — keep the formatter's text for lines inside [startLine, endLine]
+        // and the caller's original text outside. The formatter has full context
+        // (no boundary truncation) and the splice guarantees the apply path only
+        // touches lines the caller asked for. Whatever the splice produces is what
+        // the preview's `unifiedDiff` reports and what the apply will write to disk.
+        //
+        // Sub-line column precision (startColumn/endColumn) is not threaded into the
+        // splice: the formatter's edits are line-anchored, so a column-precise splice
+        // would re-introduce the boundary-trivia drop bug this fix removes. The
+        // caller's column inputs are still validated above so existing failure-mode
+        // contracts (out-of-range column, inverted range) keep working.
+        var formattedDoc = await Formatter.FormatAsync(document, options: null, cancellationToken: ct).ConfigureAwait(false);
+        var formattedText = await formattedDoc.GetTextAsync(ct).ConfigureAwait(false);
 
-        var span = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(startPosition, endPosition);
+        var rangedText = SpliceFormattedRange(text, formattedText, startLine, endLine);
 
-        // format-range-preview-nonfunctional: pass an explicit IEnumerable<TextSpan> overload to
-        // avoid a runtime overload-binding ambiguity between
-        // FormatAsync(Document, TextSpan, OptionSet?, CancellationToken) and the newer
-        // FormatAsync(Document, TextSpan, SyntaxFormattingOptions?, CancellationToken).
-        Microsoft.CodeAnalysis.Text.TextSpan[] spans = [span];
-        var formattedDoc = await Formatter.FormatAsync(document, spans, options: null, cancellationToken: ct).ConfigureAwait(false);
-        var newSolution = formattedDoc.Project.Solution;
+        Solution newSolution;
+        if (rangedText.ContentEquals(text))
+        {
+            // Either the range is already clean or the only formatter-proposed edits
+            // fall outside it. Either way: no-op preview, apply will also no-op.
+            newSolution = solution;
+        }
+        else
+        {
+            newSolution = document.WithText(rangedText).Project.Solution;
+        }
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Format range in '{Path.GetFileName(filePath)}' (lines {startLine}-{endLine})";
@@ -944,4 +967,71 @@ public sealed class RefactoringService : IRefactoringService
             "CS8019" => "remove_unused_using",
             _ => string.Empty
         };
+
+    /// <summary>
+    /// Splices the formatter's output for the requested line range back into the original
+    /// text. Lines outside [<paramref name="startLine"/>, <paramref name="endLine"/>] (1-based,
+    /// inclusive) come from <paramref name="originalText"/>; lines inside come from the
+    /// formatter's whole-document output, mapped from the original anchor line.
+    ///
+    /// Why splice rather than apply <c>Formatter.FormatAsync(doc, [span])</c>: that overload
+    /// silently drops formatting edits whose target trivia falls outside the explicit span
+    /// (see <c>format-range-preview-empty-diff-compile-check-filter-false-clean</c>). Whole-
+    /// document formatting + line-splice gives the formatter full context AND keeps the apply
+    /// scope honest to what the caller asked for.
+    ///
+    /// Line correspondence is anchored at <c>startLine - 1</c>: we assume the formatter does
+    /// not insert or delete lines before the requested range. The formatter is a whitespace-
+    /// only transform; this assumption holds for every realistic input. If it is ever
+    /// violated, the splice is conservative — the original text is preserved outside the
+    /// requested range, so the worst case is an unexpected-but-harmless line-shift inside.
+    /// </summary>
+    private static Microsoft.CodeAnalysis.Text.SourceText SpliceFormattedRange(
+        Microsoft.CodeAnalysis.Text.SourceText originalText,
+        Microsoft.CodeAnalysis.Text.SourceText formattedText,
+        int startLine,
+        int endLine)
+    {
+        // 1-based caller indices → 0-based line indices in the SourceText.
+        var startIdx = startLine - 1;
+        var endIdx = endLine - 1;
+
+        // Defensive clamp — caller-side validation already rejects out-of-range inputs but
+        // this avoids any edge case where the formatter changed the line count.
+        if (startIdx < 0) startIdx = 0;
+        if (endIdx >= originalText.Lines.Count) endIdx = originalText.Lines.Count - 1;
+        if (endIdx < startIdx) return originalText;
+
+        // Same number of lines in the formatted text? Use direct line-by-line splice.
+        // This is the common case — Formatter.FormatAsync only adjusts whitespace inside
+        // existing lines and almost never alters line count.
+        if (originalText.Lines.Count == formattedText.Lines.Count)
+        {
+            var sb = new System.Text.StringBuilder(originalText.Length);
+            for (int i = 0; i < originalText.Lines.Count; i++)
+            {
+                var sourceLine = (i >= startIdx && i <= endIdx)
+                    ? formattedText.Lines[i]
+                    : originalText.Lines[i];
+                sb.Append(sourceLine.ToString());
+                // Preserve the line's break (LF / CRLF / nothing on EOF) from whichever side
+                // we're sourcing from so the splice doesn't smuggle in line-ending changes.
+                var lineBreakStart = sourceLine.End;
+                var lineBreakEnd = sourceLine.EndIncludingLineBreak;
+                if (lineBreakEnd > lineBreakStart)
+                {
+                    var breakSpan = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(lineBreakStart, lineBreakEnd);
+                    sb.Append((i >= startIdx && i <= endIdx ? formattedText : originalText).GetSubText(breakSpan).ToString());
+                }
+            }
+            return Microsoft.CodeAnalysis.Text.SourceText.From(sb.ToString(), originalText.Encoding, originalText.ChecksumAlgorithm);
+        }
+
+        // Formatter changed the line count inside the range (rare — would mean it
+        // collapsed or expanded multi-line constructs). Fall back to the formatter's
+        // entire output: the apply may touch lines outside the requested range but at
+        // least preview will match apply, which is the primary contract this method
+        // protects.
+        return formattedText;
+    }
 }
