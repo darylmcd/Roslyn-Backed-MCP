@@ -184,6 +184,126 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         }
     }
 
+    /// <summary>
+    /// Regression for `change-signature-preview-callsite-summary` (P3): firewall-analyzer
+    /// 2026-04-15 reproduced `change_signature_preview op=remove` on `IPanosClient.GetRegisteredIpsAsync`
+    /// returning a preview with only the interface-owner file's diff, while the apply
+    /// rewrote 4 callsite files (concrete impl + tests) invisibly. Agent abandoned the
+    /// preview and switched to manual `Edit` calls. Post-fix, `ApplyAddRemoveAsync` walks
+    /// every related symbol (interface members, implementations, overrides, base
+    /// virtuals) and unions the callers — preview now enumerates every file the apply
+    /// will touch. Also surfaces a `CallsiteUpdates` per-file count summary on the DTO.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_AddOp_OnInterfaceMethod_EnumeratesAllImplementerCallsiteFiles()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        // Interface + 2 implementers + a caller invoking through the interface. Pre-fix,
+        // change_signature_preview on `IService.Compute` would only diff the interface
+        // file (and maybe Caller.cs). The two implementations would be invisible until
+        // apply rewrote them.
+        var interfacePath = Path.Combine(sampleLibDir, "ICallsiteSummaryService.cs");
+        await File.WriteAllTextAsync(interfacePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public interface ICallsiteSummaryService",
+                "{",
+                "    int Compute(int a, int b);",
+                "}",
+                "",
+            }));
+
+        var impl1Path = Path.Combine(sampleLibDir, "CallsiteSummaryServiceA.cs");
+        await File.WriteAllTextAsync(impl1Path,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class CallsiteSummaryServiceA : ICallsiteSummaryService",
+                "{",
+                "    public int Compute(int a, int b) => a + b;",
+                "}",
+                "",
+            }));
+
+        var impl2Path = Path.Combine(sampleLibDir, "CallsiteSummaryServiceB.cs");
+        await File.WriteAllTextAsync(impl2Path,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class CallsiteSummaryServiceB : ICallsiteSummaryService",
+                "{",
+                "    public int Compute(int a, int b) => a * b;",
+                "}",
+                "",
+            }));
+
+        var callerPath = Path.Combine(sampleLibDir, "CallsiteSummaryCaller.cs");
+        await File.WriteAllTextAsync(callerPath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class CallsiteSummaryCaller",
+                "{",
+                "    public int Use(ICallsiteSummaryService svc) => svc.Compute(1, 2);",
+                "    public int UseConcreteA(CallsiteSummaryServiceA a) => a.Compute(3, 4);",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            // Locate the interface method declaration.
+            var locator = SymbolLocator.BySource(interfacePath, line: 5, column: 9); // `Compute` on interface
+            var request = new ChangeSignatureRequest(
+                Op: "add",
+                Name: "c",
+                ParameterType: "int",
+                Position: 2,
+                NewName: null,
+                DefaultValue: "0");
+
+            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspaceId, locator, request, CancellationToken.None);
+
+            Assert.IsNotNull(preview.PreviewToken);
+
+            // The preview MUST enumerate the interface declaration + both implementers +
+            // the caller file (because it invokes through the interface). Pre-fix only
+            // the interface file would appear.
+            var touchedFiles = preview.Changes.Select(c => Path.GetFileName(c.FilePath)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            Assert.IsTrue(touchedFiles.Contains("ICallsiteSummaryService.cs"),
+                $"interface file must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
+            Assert.IsTrue(touchedFiles.Contains("CallsiteSummaryServiceA.cs"),
+                $"impl A must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
+            Assert.IsTrue(touchedFiles.Contains("CallsiteSummaryServiceB.cs"),
+                $"impl B must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
+            Assert.IsTrue(touchedFiles.Contains("CallsiteSummaryCaller.cs"),
+                $"caller file must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
+
+            // CallsiteUpdates summary populated for the caller file (2 invocations).
+            Assert.IsNotNull(preview.CallsiteUpdates, "CallsiteUpdates summary must be populated when apply rewrites invocations");
+            var callerUpdate = preview.CallsiteUpdates.FirstOrDefault(u => u.FilePath.EndsWith("CallsiteSummaryCaller.cs", StringComparison.OrdinalIgnoreCase));
+            Assert.IsNotNull(callerUpdate, "caller file must appear in CallsiteUpdates");
+            Assert.AreEqual(2, callerUpdate.CallsiteCount,
+                $"caller file has 2 invocations (svc.Compute + a.Compute); CallsiteUpdates must reflect that");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     [TestMethod]
     public async Task ChangeSignaturePreview_RemoveOp_PreservesBodyBraceLineBreak()
     {
