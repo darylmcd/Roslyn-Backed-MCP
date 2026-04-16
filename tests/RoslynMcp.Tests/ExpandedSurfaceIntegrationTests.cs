@@ -61,7 +61,9 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             endLine: null,
             maxDepth: 2,
             maxOutputChars: 65536,
-            CancellationToken.None);
+            maxNodes: 5000,
+            maxTotalBytes: 65536,
+            ct: CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.AreEqual("CompilationUnit", doc.RootElement.GetProperty("kind").GetString());
