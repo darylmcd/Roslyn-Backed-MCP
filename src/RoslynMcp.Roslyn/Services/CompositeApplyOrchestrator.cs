@@ -27,12 +27,14 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
             return new ApplyResultDto(false, [], "Preview token is invalid, expired, or stale because the workspace changed since the preview was generated. Please create a new preview.");
         }
 
-        var (workspaceId, workspaceVersion, _, mutations) = entry.Value;
-        if (_workspace.GetCurrentVersion(workspaceId) != workspaceVersion)
-        {
-            _compositePreviewStore.Invalidate(previewToken);
-            return new ApplyResultDto(false, [], "Preview token is stale because the target workspace changed. Please create a new preview.");
-        }
+        var (workspaceId, _, _, mutations) = entry.Value;
+        // preview-token-cross-coupling-bundle (BREAKING): version-equality check removed.
+        // Composite previews hold a per-token list of absolute-path `CompositeFileMutation`
+        // records (write text / delete file). A sibling `*_apply` that mutated unrelated
+        // files does not invalidate these records; the mutations replay cleanly below. If
+        // two previews happen to target the same file, last-apply wins by design. If the
+        // workspace was reloaded or closed, the composite store's lifecycle hook has
+        // already dropped the entry and Retrieve above returned null.
 
         var appliedFiles = new List<string>();
 
