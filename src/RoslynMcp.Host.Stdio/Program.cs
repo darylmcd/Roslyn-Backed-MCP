@@ -37,7 +37,16 @@ builder.Services.AddSingleton(BindSecurityOptions());
 builder.Services.AddSingleton(BindScriptingServiceOptions());
 
 builder.Services.AddSingleton<HttpClient>();
+// Register NuGetVersionChecker against both its concrete type and its ILatestVersionProvider
+// interface. The concrete registration is needed for anything that imports the concrete type
+// directly; the interface registration is what MCP tool methods (e.g. server_info) inject.
+// v1.19.0 shipped with only the concrete registration, which caused the MCP SDK's parameter
+// binder to fail to resolve `ILatestVersionProvider versionChecker` and leak the service
+// parameter into the tool schema as a required user-supplied argument — breaking server_info
+// (fix: di-register-latest-version-provider).
 builder.Services.AddSingleton<RoslynMcp.Host.Stdio.Services.NuGetVersionChecker>();
+builder.Services.AddSingleton<RoslynMcp.Host.Stdio.Services.ILatestVersionProvider>(
+    sp => sp.GetRequiredService<RoslynMcp.Host.Stdio.Services.NuGetVersionChecker>());
 
 builder.Services.AddRoslynServices();
 builder.Services
