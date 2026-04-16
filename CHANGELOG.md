@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.20.0] - 2026-04-16
+
+Backlog sweep 2026-04-16 continuation — 14 additional initiatives shipped (PRs #182–#197), closing 14 backlog rows (all P4). Race-aware error envelopes, pagination everywhere (test_reference_map, catalog), structured JSON error envelopes for resources and prompts, strict symbol resolution for `symbol_info`, and cross-interface callsite summaries dominate. Three BREAKING response-shape changes (`symbol_info` strict default, `restructure_preview` placeholder validation, `roslyn://server/catalog` summary).
+
 ### Fixed
 
 - **Reader tools surface a race-aware `WorkspaceReloadedDuringCall` error when the gate auto-reloaded mid-call (`symbol-impact-sweep-race-with-auto-reload`).** Jellyfin audit 2026-04-16 §9 reported `symbol_impact_sweep` returning "No symbol could be resolved" during concurrent `workspace_reload`, even though the symbol did still exist — callers reading the response treated it as a real miss and gave up. Root cause: the gate auto-reloaded under `ROSLYNMCP_ON_STALE=auto-reload` and `SymbolResolver.ResolveOrThrowAsync` then saw a `SymbolHandle` encoded against the pre-reload compilation that no longer round-tripped, throwing `KeyNotFoundException` with the generic "handle may be from a previous workspace version" message. `ToolErrorHandler.ClassifyError` now inspects the ambient gate metrics: when the current request's `StaleAction == "auto-reloaded"` and the exception is a `KeyNotFoundException`, it emits a distinct `WorkspaceReloadedDuringCall` category with retry guidance (re-resolve the symbol via `symbol_search` / `symbol_info` or a fresh position locator) instead of the generic `NotFound`. Solution-wide — every read tool that throws `KeyNotFoundException` under the same race picks up the new envelope; unrelated `NotFound` paths are unchanged. `_meta.staleReloadMs` already exposes how long the reload held the request, so callers can size their backoff.
