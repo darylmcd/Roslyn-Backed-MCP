@@ -7,6 +7,25 @@ namespace RoslynMcp.Core.Models;
 /// <c>workspace_status</c>, and the <c>roslyn://workspaces</c> resource by default
 /// (see <c>verbose=true</c> opt-in for the full <see cref="WorkspaceStatusDto"/>).
 /// </summary>
+/// <remarks>
+/// <para>
+/// <strong>Readiness model</strong> (workspace-readiness-contract-bundle, 2026-04-16):
+/// <see cref="IsReady"/> is the conjunction of three conditions:
+/// </para>
+/// <list type="bullet">
+///   <item><description><see cref="IsLoaded"/> — workspace finished loading at least once.</description></item>
+///   <item><description><see cref="IsStale"/> is false — no pending external changes.</description></item>
+///   <item><description><see cref="AnalyzersReady"/> — every required analyzer reference resolved.</description></item>
+///   <item><description><see cref="WorkspaceErrorCount"/> is zero.</description></item>
+/// </list>
+/// <para>
+/// Pre-bundle the formula was just <c>IsLoaded &amp;&amp; !IsStale &amp;&amp; errors == 0</c>; analyzer-resolution
+/// failures surface as <c>WORKSPACE_UNRESOLVED_ANALYZER</c> warnings (severity Warning, not Error)
+/// so the old formula returned <c>IsReady=true</c> even when every analyzer-driven tool was
+/// silently missing findings (Jellyfin 2026-04-16: <c>isReady=true</c> with 40 unresolved-analyzer
+/// warnings). The new <see cref="AnalyzersReady"/> field exposes that condition independently.
+/// </para>
+/// </remarks>
 public sealed record WorkspaceStatusSummaryDto(
     string WorkspaceId,
     string? LoadedPath,
@@ -21,6 +40,7 @@ public sealed record WorkspaceStatusSummaryDto(
     int WorkspaceErrorCount,
     int WorkspaceWarningCount,
     bool IsReady,
+    bool AnalyzersReady,
     string? RestoreHint,
     string? SolutionFileName)
 {
@@ -35,6 +55,7 @@ public sealed record WorkspaceStatusSummaryDto(
 
         var errors = 0;
         var warnings = 0;
+        var unresolvedAnalyzerWarnings = 0;
         foreach (var diagnostic in status.WorkspaceDiagnostics)
         {
             if (string.Equals(diagnostic.Severity, "Error", StringComparison.OrdinalIgnoreCase))
@@ -44,12 +65,21 @@ public sealed record WorkspaceStatusSummaryDto(
             else if (string.Equals(diagnostic.Severity, "Warning", StringComparison.OrdinalIgnoreCase))
             {
                 warnings++;
+                if (string.Equals(diagnostic.Id, "WORKSPACE_UNRESOLVED_ANALYZER", StringComparison.OrdinalIgnoreCase))
+                {
+                    unresolvedAnalyzerWarnings++;
+                }
             }
         }
 
-        var restoreHint = BuildRestoreHint(status.WorkspaceDiagnostics);
+        var analyzersReady = unresolvedAnalyzerWarnings == 0;
         var solutionFileName = GetSolutionOrProjectFileName(status.LoadedPath);
-        var isReady = status.IsLoaded && !status.IsStale && errors == 0;
+        var isReady = status.IsLoaded && !status.IsStale && analyzersReady && errors == 0;
+        var restoreHint = BuildRestoreHint(
+            status.WorkspaceDiagnostics,
+            isStale: status.IsStale,
+            errors: errors,
+            unresolvedAnalyzerWarnings: unresolvedAnalyzerWarnings);
 
         return new WorkspaceStatusSummaryDto(
             WorkspaceId: status.WorkspaceId,
@@ -65,16 +95,32 @@ public sealed record WorkspaceStatusSummaryDto(
             WorkspaceErrorCount: errors,
             WorkspaceWarningCount: warnings,
             IsReady: isReady,
+            AnalyzersReady: analyzersReady,
             RestoreHint: restoreHint,
             SolutionFileName: solutionFileName);
     }
 
     /// <summary>
-    /// Heuristic: several missing-metadata / namespace style workspace failures often mean
-    /// packages were not restored before opening the workspace.
+    /// Builds an actionable hint string explaining why the workspace is not ready.
+    /// Three cases, in priority order:
+    /// <list type="number">
+    ///   <item><description>Unresolved analyzer warnings → tell caller analyzer-driven tools will under-report.</description></item>
+    ///   <item><description>Many "could not be found" / CS0234 style errors → suggest <c>dotnet restore</c>.</description></item>
+    ///   <item><description>Workspace is stale with no errors → likely transient post-apply; suggest a brief retry before reload.</description></item>
+    /// </list>
+    /// Returns <c>null</c> when the workspace is healthy or none of the heuristics fire.
     /// </summary>
-    private static string? BuildRestoreHint(IReadOnlyList<DiagnosticDto> workspaceDiagnostics)
+    private static string? BuildRestoreHint(
+        IReadOnlyList<DiagnosticDto> workspaceDiagnostics,
+        bool isStale,
+        int errors,
+        int unresolvedAnalyzerWarnings)
     {
+        if (unresolvedAnalyzerWarnings > 0)
+        {
+            return $"{unresolvedAnalyzerWarnings} analyzer reference(s) failed to load — analyzer-driven tools (e.g. find_unused_symbols, project_diagnostics) will under-report. Run `dotnet restore` on the solution and reload the workspace.";
+        }
+
         var suspicious = 0;
         foreach (var d in workspaceDiagnostics)
         {
@@ -94,9 +140,22 @@ public sealed record WorkspaceStatusSummaryDto(
             }
         }
 
-        return suspicious >= 3
-            ? "Workspace diagnostics suggest missing NuGet assets or references. Run `dotnet restore` on the solution or project, then `workspace_reload`."
-            : null;
+        if (suspicious >= 3)
+        {
+            return "Workspace diagnostics suggest missing NuGet assets or references. Run `dotnet restore` on the solution or project, then `workspace_reload`.";
+        }
+
+        // Transient-stale heuristic: workspace is stale but has no errors. Most likely a
+        // brief inconsistency window between an apply landing and the next workspace_reload
+        // picking up the file change. Tools may still operate correctly during this window —
+        // the bug being fixed is that callers were treating `isReady=false` as "broken" when
+        // it just meant "settling." Suggest a brief retry before going to a full reload.
+        if (isStale && errors == 0)
+        {
+            return "Workspace is stale but has no errors — likely transient (post-apply settling). Retry `workspace_status` in ~250ms; if still stale, run `workspace_reload`.";
+        }
+
+        return null;
     }
 
     private static string? GetSolutionOrProjectFileName(string? loadedPath)
