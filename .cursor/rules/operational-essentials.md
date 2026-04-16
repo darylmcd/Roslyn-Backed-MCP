@@ -32,8 +32,14 @@ All commands are available as `just` recipes (`just --list` for the full menu).
   `find_references` / `symbol_search` over `Grep`. Primer: `ai_docs/bootstrap-read-tool-primer.md`.
 - For C# edits on peer repos, use Roslyn MCP **refactoring** tools
   (`rename_*`, `extract_*`, `code_fix_*`, etc.) with preview → apply.
-- On THIS repo (bootstrap), use `Edit` / `Write` for code changes — `*_apply` is
-  restricted; read-side tools and `*_preview` remain fully supported.
+- On THIS repo, write-side rules depend on session shape:
+  - **Worktree session** (default for backlog-sweep subagents; running against the
+    installed global tool): `*_apply` is safe — use it when a refactor tool covers the
+    operation. Load the worktree's own `RoslynMcp.slnx`; `workspace_reload` after
+    apply if a downstream call needs fresh state.
+  - **Main-checkout self-edit** (running `dotnet run --project src/RoslynMcp.Host.Stdio`
+    against the checkout you're editing): `*_apply` is restricted; use `Edit` /
+    `Write`. Read-side tools and `*_preview` remain fully supported.
 - Pass `workspaceId` and respect workspace version for mutations.
 
 ## Merge-Ready Handoff
