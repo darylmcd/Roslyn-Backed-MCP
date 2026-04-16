@@ -27,8 +27,14 @@ All commands are available as `just` recipes (`just --list` for the full menu).
 ## Roslyn MCP (C#)
 
 - Connect the **`roslyn`** MCP server (repo `.mcp.json`: `roslynmcp` stdio).
-- For C# edits, use Roslyn MCP **refactoring** tools (`rename_*`, `extract_*`, `code_fix_*`, etc.) when available—not only navigation/diagnostics.
-- Use preview → apply; pass `workspaceId` and respect workspace version for mutations.
+- **Read-side first (every session, including bootstrap):** `compile_check` over
+  `dotnet build`; `test_related_files` + `test_run --filter` over `dotnet test`;
+  `find_references` / `symbol_search` over `Grep`. Primer: `ai_docs/bootstrap-read-tool-primer.md`.
+- For C# edits on peer repos, use Roslyn MCP **refactoring** tools
+  (`rename_*`, `extract_*`, `code_fix_*`, etc.) with preview → apply.
+- On THIS repo (bootstrap), use `Edit` / `Write` for code changes — `*_apply` is
+  restricted; read-side tools and `*_preview` remain fully supported.
+- Pass `workspaceId` and respect workspace version for mutations.
 
 ## Merge-Ready Handoff
 

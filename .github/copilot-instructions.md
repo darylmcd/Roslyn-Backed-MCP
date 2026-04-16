@@ -25,8 +25,19 @@ For session bootstrap and workflow, follow `AGENTS.md` first.
 ## Roslyn MCP (AI sessions in this repo)
 
 - Enable the **`roslyn`** MCP server (`roslynmcp` via stdio; see repo `.mcp.json`).
-- For C# changes, prefer Roslyn MCP **refactoring** tools over ad hoc multi-file text edits when a tool covers the operation (rename, extract/move type, code fixes, bulk type replace, etc.).
-- Discovery-only workflows are insufficient for semantic refactors—plan with read-only tools, then execute with preview/apply tools. Canonical policy: `ai_docs/runtime.md` (*Roslyn MCP client policy*).
+- **Read-side tools are the default** for every session — including bootstrap
+  self-edit on this repo — and are 5–30× faster than `Grep` / `Bash: dotnet build` /
+  `Bash: dotnet test`. Specifically: prefer `compile_check` over `dotnet build`,
+  `test_related_files` + `test_run --filter` over `dotnet test`, `find_references` /
+  `symbol_search` over `Grep`, `document_symbols` over eyeballing. See
+  `ai_docs/bootstrap-read-tool-primer.md` for the full pattern→tool table.
+- **Write-side on peer repos:** prefer Roslyn MCP refactoring tools over ad hoc
+  multi-file text edits when a tool covers the operation (rename, extract/move type,
+  code fixes, bulk type replace, etc.) — preview first, then apply.
+- **Write-side on THIS repo:** `*_apply` is restricted under bootstrap (binary being
+  edited is the binary servicing the call); use `Edit` / `Write` for code changes.
+  `*_preview` and all read-side tools remain fully supported.
+- Canonical three-part policy: `ai_docs/runtime.md` (*Roslyn MCP client policy*).
 
 ## Mutation Safety
 

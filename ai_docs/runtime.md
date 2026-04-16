@@ -91,14 +91,68 @@ Install via: `/plugin marketplace add darylmcd/Roslyn-Backed-MCP` then `/plugin 
 
 ## Roslyn MCP client policy (AI sessions)
 
-Use the **Roslyn MCP server** for C# work in this repository—not only for discovery (navigation, search, diagnostics) but also for **refactoring and other structured edits**.
+The Roslyn MCP server is the **default tool surface for all C# work in this repository**
+— navigation, search, diagnostics, verification, AND structured edits. The policy is
+three-part: read-side, write-side, and the bootstrap scope for self-edits.
 
-- **Enable the server:** Repo root `.mcp.json` registers the `roslyn` MCP server (`type: stdio`, `command: roslynmcp`). Cursor may also use a user-level MCP config; keep a `roslyn` / `roslynmcp` entry so agents can reach the same host.
-- **Prefer Roslyn tools for C# changes:** When a Roslyn-backed tool exists for the task (for example `rename_*`, `extract_*`, `move_type_*`, `code_fix_*`, `organize_usings_*`, `bulk_replace_type_*`, `split_class_*`), use it instead of hand-editing multiple files or relying on generic text replacement across the solution.
-- **Preview before apply:** Use `*_preview` (or equivalent preview flows), review the diff, then call `*_apply` with the returned handles. Align with [Session And Mutation Safety](#session-and-mutation-safety) (workspace id, version checks).
-- **Discovery is not a substitute for refactors:** Navigation and read-only tools (`find_references`, `symbol_search`, `go_to_definition`, etc.) inform the plan; they do not replace semantic refactors when a tool implements the change safely.
+### Read-side — prefer over Grep / Bash in every session (including bootstrap)
 
-For tool selection and workflows, see `domains/tool-usage-guide.md`.
+This is the most under-used quadrant. Every read tool listed below is safe under every
+condition — including bootstrap self-edit on this repo — and is 5–30× faster than the
+Bash / Grep alternative. The short answer is: **if your next action is "find / search /
+locate / enumerate / verify / compile / test-targeted-subset", reach for the Roslyn MCP
+tool first.**
+
+Full pattern→tool mapping, session-verb triggers, and anti-pattern examples live in
+[`ai_docs/bootstrap-read-tool-primer.md`](bootstrap-read-tool-primer.md). The primer is
+intentionally short and greppable; bookmark it. The highest-leverage substitutions:
+
+| Reach for… | Instead of… | Win |
+|---|---|---|
+| `compile_check` | `Bash: dotnet build` | 5–30× faster on loaded workspace; identical diagnostics |
+| `test_related_files` + `test_run --filter` | `Bash: dotnet test --no-build` | ~2–5× faster; scoped to touched files |
+| `find_references` / `find_consumers` / `find_implementations` | `Grep` for a symbol name | Symbol-identity exact; no same-simple-name false matches |
+| `symbol_search` | `Grep` for a type / member name | Handles camelCase + FQN natively |
+| `document_symbols` / `enclosing_symbol` | `Read` + eyeball | Semantic, not textual |
+
+### Write-side — preview → apply on peer repos; bootstrap-restricted on this repo
+
+When a Roslyn-backed refactor tool covers the edit (for example `rename_*`, `extract_*`,
+`move_type_*`, `change_signature_*`, `code_fix_*`, `organize_usings_*`,
+`bulk_replace_type_*`, `split_class_*`), use it on peer repositories in preference to
+hand-editing multiple files or relying on text replacement. Use `*_preview` first,
+review the diff, then call `*_apply` with the returned handle. Align with
+[Session And Mutation Safety](#session-and-mutation-safety) (workspace id, version
+checks).
+
+### Bootstrap scope — self-edit on THIS repository
+
+The self-edit bootstrap caveat restricts **write-side `*_apply` tools only** — the
+binary servicing the MCP call is the binary being edited, so any `*_apply` mutates
+files underneath a stale MSBuildWorkspace snapshot. Everything else is fair game.
+
+- ❌ `*_apply` (rename_apply, extract_type_apply, create_file_apply, etc.) — use
+  `Edit` / `Write` in this repo.
+- ✅ `*_preview` — still useful for visualizing the diff before you hand-edit.
+- ✅ **Every read-side tool** — `find_references`, `compile_check`, `test_run`,
+  `symbol_search`, `get_*_metrics`, `project_diagnostics`, etc. These do not mutate
+  anything and are the preferred default over `Grep` / `Bash: dotnet build` /
+  `Bash: dotnet test` even on this repo.
+
+The canonical session-verb → tool table is in
+[`bootstrap-read-tool-primer.md`](bootstrap-read-tool-primer.md) — agents should read
+that file at session start alongside the other bootstrap docs.
+
+### When the server is disconnected
+
+Check `server_info` or try any `mcp__roslyn__*` call. If the server reports "not
+connected", the Grep / Bash fallbacks in the primer's fallback column are appropriate.
+Log the disconnect in the PR description and follow up with the
+`mcp-connection-session-resilience` diagnostics.
+
+For the full long-form decision tree across every tool (including the read-side list
+above + all write-side tools + skill composites), see
+[`domains/tool-usage-guide.md`](domains/tool-usage-guide.md).
 
 ## Known issues (local validation)
 

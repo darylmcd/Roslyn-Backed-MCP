@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Bootstrap read-tool guidance is now explicit and canonical (closes `bootstrap-read-only-roslyn-mcp-checklist-for-self-edit-sessions`).** Four consecutive self-development sessions (v1.15.0 / v1.16.0 / PRs #165–#178 / PRs #182–#194) reproduced the same anti-pattern: agents generalized the `bootstrapCaveat` — which restricts **write-side** `*_apply` only — to the entire Roslyn MCP surface, falling back to `Grep` / `Bash: dotnet build` / `Bash: dotnet test` when `find_references` / `compile_check` / `test_run` were explicitly permitted and 5–30× faster. Root-cause fix (the prompts themselves taught the anti-pattern, so the prompts themselves change):
+  - New canonical cheat-sheet `ai_docs/bootstrap-read-tool-primer.md` with the session-verb → tool mapping, pattern anti-patterns, and fallback-column for disconnected-server scenarios.
+  - Promoted to item #5 in `AGENTS.md` / `CLAUDE.md` bootstrap read order (was: runtime.md → backlog.md; now: runtime.md → primer → backlog.md).
+  - `ai_docs/runtime.md` § *Roslyn MCP client policy (AI sessions)* rewritten into three parts: **read-side** preference for every session including bootstrap (was missing entirely); **write-side** preview→apply for peer repos; **bootstrap scope** explicitly restricting only `*_apply` on this repo while read-side and `*_preview` remain fully supported.
+  - `ai_docs/prompts/backlog-sweep-execute.md` Step 5 replaced the literal `Bash: dotnet build RoslynMcp.slnx -c Release -p:TreatWarningsAsErrors=true` instruction with a preference-order that puts `mcp__roslyn__compile_check` first and `dotnet build` as the disconnected-server fallback; added equivalent preference-orders for `test_run` vs `dotnet test`, `find_references` vs `Grep`, `symbol_search` vs `Grep`, `document_symbols` vs `Grep public `.
+  - `ai_docs/prompts/backlog-sweep-plan.md` bootstrap-caveat paragraph scoped to write-side (was conflating write + read); links the primer.
+  - `.github/copilot-instructions.md` + `.cursor/rules/operational-essentials.md` gain the same read-side rule as their top bullet under "Roslyn MCP".
+
+  Zero code changes — all changes are in docs / prompts / bootstrap lists. Closes the backlog row that tracked this pattern.
+
 ## [1.20.0] - 2026-04-16
 
 Backlog sweep 2026-04-16 continuation — 14 additional initiatives shipped (PRs #182–#197), closing 14 backlog rows (all P4). Race-aware error envelopes, pagination everywhere (test_reference_map, catalog), structured JSON error envelopes for resources and prompts, strict symbol resolution for `symbol_info`, and cross-interface callsite summaries dominate. Three BREAKING response-shape changes (`symbol_info` strict default, `restructure_preview` placeholder validation, `roslyn://server/catalog` summary).
