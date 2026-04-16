@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-16T15:00:00Z
+**updated_at:** 2026-04-16T15:30:00Z
 
 ## Agent contract
 
@@ -87,7 +87,6 @@ Within P4, rows are **alphabetical by `id`**.
 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.6 `extract_interface_preview` emits `base list` continuation on a new line instead of inline |
 | `dr-9-6-ignores-generic-arguments-in-implemented-interfa` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140403Z_itchatbot_experimental-promotion.md - ### 9.6 `bulk_replace_type` `scope=parameters` ignores generic arguments in implemented interfaces |
 | `dr-9-6-preview-token-issued-in-turn-t-invalidated-by-a` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140302Z_networkdocumentation_experimental-promotion.md - ### 9.6 Preview-token issued in turn T invalidated by a sibling `*_apply` in the same turn |
-| `dr-9-7-bug-json-parse-surfaces-stack-trace` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.7 BUG-JSON-PARSE — `get_prompt_text` surfaces `JsonReaderException` stack trace |
 | `dr-9-7-only-partially-normalizes-whitespace` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.7 `format_range_preview` only partially normalizes whitespace |
 | `dr-9-7-produces-output-that-violates-project-formatting` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140403Z_itchatbot_experimental-promotion.md - ### 9.7 `extract_method_preview` produces output that violates project formatting |
 | `dr-9-8-bug-validate-fabricated-accepts-fabricated-silen` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.8 BUG-VALIDATE-FABRICATED — `validate_workspace` accepts fabricated `changedFilePaths` silently |
