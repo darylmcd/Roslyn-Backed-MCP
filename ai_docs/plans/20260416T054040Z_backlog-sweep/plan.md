@@ -149,8 +149,8 @@ initiative below has the standard table fields filled out at execute time.
 | I-38 | `dr-9-5-strips-the-blank-line-between-namespace-and-clas` | 1 | 50000 | Fixed | in-review (PR #206) — `BuildNewFileRoot` post-processes `NormalizeWhitespace()` via new `EnsureBlankLineBetweenNamespaceAndType` helper that prepends an `EndOfLineTrivia` to the first type declaration inside file-scoped or block namespace. |
 | I-39 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | 1 | 45000 | Fixed | Format-bug singleton — `InterfaceExtractionService.cs`. |
 | I-40 | `dr-9-7-only-partially-normalizes-whitespace` | 1 | 45000 | Fixed | Format-bug singleton — `FormatVerifyService.cs`; possibly overlaps I-01. |
-| I-41 | `dr-9-7-produces-output-that-violates-project-formatting` | 1 | 45000 | Fixed | in-review (PR #<n>, bundled with I-42 — `extract-method-format-bundle`). |
-| I-42 | `dr-9-9-format-bug-004-produces-malformed-body-closing-b` | 1 | 50000 | Fixed | in-review (PR #<n>, bundled with I-41 — `extract-method-format-bundle`). |
+| I-41 | `dr-9-7-produces-output-that-violates-project-formatting` | 1 | 45000 | Fixed | in-review (PR #210, bundled with I-42 — `extract-method-format-bundle`). |
+| I-42 | `dr-9-9-format-bug-004-produces-malformed-body-closing-b` | 1 | 50000 | Fixed | in-review (PR #210, bundled with I-41 — `extract-method-format-bundle`). |
 | I-43 | `dr-9-11-format-bug-006-duplicates-leading-trivia-into-b` | 1 | 50000 | Fixed | Format-bug singleton — `ClassSplitOrchestrator.cs`. |
 
 Each initiative table is expanded inline at execute time per the executor prompt, with
