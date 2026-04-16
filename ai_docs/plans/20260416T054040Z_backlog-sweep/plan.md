@@ -106,7 +106,7 @@ initiative below has the standard table fields filled out at execute time.
 
 | Field | Content |
 |---|---|
-| **Status** | `pending` |
+| **Status** | `in-review (PR pending)` |
 | **Backlog rows closed** | `mcp-parameter-validation-error-messages` (P3) |
 | **Approach** | Repro to identify exact SDK exception type chain; extend `ToolErrorHandler.ClassifyError`. |
 | **Scope** | 1 production file (ToolErrorHandler.cs), 1 test file added |
