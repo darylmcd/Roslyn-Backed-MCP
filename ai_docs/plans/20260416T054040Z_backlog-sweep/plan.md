@@ -130,8 +130,8 @@ initiative below has the standard table fields filled out at execute time.
 | I-19 | `dr-9-1-regression-r17a-emits-literal-placeholder` | 1 | 35000 | Changed — BREAKING | merged (PR #186, 2026-04-16). |
 | I-20 | `dr-9-8-bug-validate-fabricated-accepts-fabricated-silen` | 2 | 35000 | Fixed | merged (PR #187, 2026-04-16). |
 | I-21 | `dr-9-11-payload-exceeds-mcp-tool-result-cap` | 2 | 35000 | Added + Changed — BREAKING | merged (PR #188, 2026-04-16). |
-| I-22 | `change-signature-parameter-span-hint-for-remove` | 1 | 35000 | Added | in-progress (branch: remediation/change-signature-parameter-span-hint-for-remove) — auto-promote IParameterSymbol → method + splice index; 2 regression tests. |
-| I-23 | `dr-9-5-bug-pagination-001-has-no-pagination-filter-igno` | 1 | 35000 | Fixed | Add `offset`/`limit` to `test_reference_map`; honor `projectName`. |
+| I-22 | `change-signature-parameter-span-hint-for-remove` | 1 | 35000 | Added | merged (PR #189, 2026-04-16). |
+| I-23 | `dr-9-5-bug-pagination-001-has-no-pagination-filter-igno` | 3 | 35000 | Fixed | in-progress (branch: remediation/dr-9-5-bug-pagination-001-has-no-pagination-filter-igno) — offset/limit params + productive-project scoping + DTO extended; 6 new regressions. |
 | I-24 | `symbol-impact-sweep-race-with-auto-reload` | 2 | 35000 | Fixed | Race-aware error envelope during auto-reload. |
 | I-25 | `symbol-info-lenient-whitespace-resolution` | 1 | 35000 | Changed — BREAKING | `allowAdjacent: bool = false`. |
 | I-26 | `symbol-search-partial-match-gap` | 1 | 35000 | Fixed | Match against `QualifiedNameOnlyFormat`. |

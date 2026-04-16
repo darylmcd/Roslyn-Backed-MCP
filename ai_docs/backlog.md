@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-16T17:00:00Z
+**updated_at:** 2026-04-16T17:15:00Z
 
 ## Agent contract
 
@@ -77,7 +77,6 @@ Within P4, rows are **alphabetical by `id`**.
 | `dr-9-4-low-cache-dir-presence-is-not-a-reliable-connect` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.4 [LOW] `mcp-logs-<server>/` cache-dir presence is NOT a reliable connection indicator |
 | `dr-9-4-pretooluse-hook-false-positive-on` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.4 PreToolUse hook false-positive on `move_type_to_file_apply` |
 | `dr-9-4-returns-for-some-ide-series-diagnostic-ids` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140302Z_networkdocumentation_experimental-promotion.md - ### 9.4 `fix_all_preview` returns `guidanceMessage: null` for some IDE-series diagnostic IDs |
-| `dr-9-5-bug-pagination-001-has-no-pagination-filter-igno` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.5 BUG-PAGINATION-001 — `test_reference_map` has no pagination; `projectName` filter ignored |
 | `dr-9-5-documented-error-prior-session-ticket-draft-cont` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.5 [documented-error] Prior-session ticket draft contained a flawed "whole cohort failed" narrative |
 | `dr-9-5-returns-silent-empty-result-for-info-severity-di` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140403Z_itchatbot_experimental-promotion.md - ### 9.5 `fix_all_preview` returns silent empty result for Info-severity diagnostics without a fix provider |
 | `dr-9-5-strips-the-blank-line-between-namespace-and-clas` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.5 `extract_type_preview` strips the blank line between namespace and class |

@@ -20,7 +20,12 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
         _workspace = workspace;
     }
 
-    public async Task<TestReferenceMapDto> BuildAsync(string workspaceId, string? projectName, CancellationToken ct)
+    public async Task<TestReferenceMapDto> BuildAsync(
+        string workspaceId,
+        string? projectName,
+        int offset,
+        int limit,
+        CancellationToken ct)
     {
         var status = _workspace.GetStatus(workspaceId);
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -47,16 +52,24 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
                 testProjectIds.Add(project.Id);
         }
 
+        // dr-9-5-bug-pagination-001: when projectName matches a PRODUCTIVE project, restrict
+        // the collected productive-symbol set to that project's symbols. Pre-fix, projectName
+        // only influenced which test projects got scanned, so passing a productive project
+        // returned the full unfiltered productive set.
+        var productiveScopeProjects = !string.IsNullOrWhiteSpace(projectName)
+            ? scopedProjects.Where(p => !testProjectIds.Contains(p.Id)).ToList()
+            : (IReadOnlyList<Project>)solution.Projects.Where(p => !testProjectIds.Contains(p.Id)).ToList();
+
         var productiveSymbols = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         var allProductive = new HashSet<string>(StringComparer.Ordinal);
         var scannedTestProjects = new List<string>();
         var notes = new List<string>();
 
-        // First pass: collect every public/internal productive symbol declaration across
-        // non-test referenced projects so we can compute uncovered = productive - covered.
-        foreach (var project in solution.Projects)
+        // First pass: collect every public/internal productive symbol declaration from the
+        // productive-scope projects (all non-test projects by default, or the named project
+        // when projectName identifies a productive project).
+        foreach (var project in productiveScopeProjects)
         {
-            if (testProjectIds.Contains(project.Id)) continue;
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null) continue;
             CollectProductiveSymbols(compilation.GlobalNamespace, allProductive);
@@ -119,20 +132,54 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
         // Item 9: detect NSubstitute mock-drift across the same test projects.
         var mockDrift = await DetectMockDriftAsync(solution, scopedProjects, testProjectIds, ct).ConfigureAwait(false);
 
-        var covered = productiveSymbols
+        var coveredAll = productiveSymbols
             .OrderBy(kv => kv.Key, StringComparer.Ordinal)
             .Select(kv => new CoveredSymbolDto(kv.Key, kv.Value.OrderBy(x => x, StringComparer.Ordinal).ToArray()))
             .ToArray();
 
-        var uncovered = allProductive
+        var uncoveredAll = allProductive
             .Where(sym => !productiveSymbols.ContainsKey(sym))
             .OrderBy(sym => sym, StringComparer.Ordinal)
             .ToArray();
 
-        var denominator = covered.Length + uncovered.Length;
-        var percent = denominator == 0 ? 0 : Math.Round(covered.Length * 100.0 / denominator, 1);
+        var denominator = coveredAll.Length + uncoveredAll.Length;
+        var percent = denominator == 0 ? 0 : Math.Round(coveredAll.Length * 100.0 / denominator, 1);
 
-        return new TestReferenceMapDto(covered, uncovered, percent, scannedTestProjects, notes, mockDrift);
+        // dr-9-5-bug-pagination-001: page through the combined (covered-first, uncovered-next)
+        // list. The combined ordering is stable between calls so callers can resume at
+        // (offset + returnedCount). CoveragePercent stays pegged to the full counts so the
+        // verdict doesn't wobble based on page window.
+        var clampedOffset = Math.Clamp(offset, 0, denominator);
+        var clampedLimit = Math.Clamp(limit, 1, 500);
+
+        var coveredSkip = Math.Min(clampedOffset, coveredAll.Length);
+        var coveredTakeCap = Math.Min(clampedLimit, coveredAll.Length - coveredSkip);
+        var coveredPage = coveredTakeCap > 0
+            ? coveredAll.Skip(coveredSkip).Take(coveredTakeCap).ToArray()
+            : Array.Empty<CoveredSymbolDto>();
+
+        var remainingLimit = clampedLimit - coveredPage.Length;
+        var uncoveredSkip = Math.Max(0, clampedOffset - coveredAll.Length);
+        var uncoveredTakeCap = remainingLimit > 0 ? Math.Min(remainingLimit, uncoveredAll.Length - uncoveredSkip) : 0;
+        var uncoveredPage = uncoveredTakeCap > 0
+            ? uncoveredAll.Skip(uncoveredSkip).Take(uncoveredTakeCap).ToArray()
+            : Array.Empty<string>();
+
+        var returned = coveredPage.Length + uncoveredPage.Length;
+        var hasMore = clampedOffset + returned < denominator;
+
+        return new TestReferenceMapDto(
+            coveredPage,
+            uncoveredPage,
+            percent,
+            scannedTestProjects,
+            notes,
+            mockDrift,
+            Offset: clampedOffset,
+            Limit: clampedLimit,
+            TotalCoveredCount: coveredAll.Length,
+            TotalUncoveredCount: uncoveredAll.Length,
+            HasMore: hasMore);
     }
 
     /// <summary>
