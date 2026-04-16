@@ -196,15 +196,17 @@ public sealed class RefactoringService : IRefactoringService
                 "Preview token is invalid, expired, or stale because the workspace changed since the preview was generated. Please create a new preview.");
         }
 
-        var (workspaceId, modifiedSolution, workspaceVersion, description, diffTruncated) = entry.Value;
-        if (_workspace.GetCurrentVersion(workspaceId) != workspaceVersion)
-        {
-            _previewStore.Invalidate(previewToken);
-            return new ApplyResultDto(
-                false,
-                [],
-                "Preview token is stale because the target workspace changed. Please create a new preview.");
-        }
+        var (workspaceId, originalSolution, modifiedSolution, _, description, diffTruncated) = entry.Value;
+        // preview-token-cross-coupling-bundle (BREAKING): version-equality check removed.
+        // Each token holds its own immutable Roslyn Solution snapshot pair (OriginalSolution
+        // + ModifiedSolution), so a sibling `*_apply` that bumped the workspace version does
+        // NOT invalidate this token. Below we rebase the preview's INTENDED diff
+        // (`ModifiedSolution.GetChanges(OriginalSolution)`) onto the CURRENT workspace
+        // solution via `RebaseModifiedSolutionOntoCurrent` — edits to files the sibling
+        // didn't touch replay cleanly; edits that collide with a sibling's edits win
+        // last-write semantics. If the underlying workspace was closed or reloaded, the
+        // IPreviewStore has already dropped the token via its lifecycle hook and Retrieve
+        // above returned null.
 
         // Item #4 — severity-high-output-would-ship-as-is-and-fail-code and the
         // "preview truncated while apply still mutates disk" concern. The agent reviewing
@@ -222,6 +224,11 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         var currentSolution = _workspace.GetCurrentSolution(workspaceId);
+        // Rebase the preview's edits onto the current workspace solution so sibling
+        // applies to unrelated files don't cause this preview to either (a) fail a
+        // lineage check or (b) undo the sibling's unrelated edits via `GetChanges`
+        // treating newly-added documents as removals.
+        modifiedSolution = await RebaseModifiedSolutionOntoCurrentAsync(originalSolution, modifiedSolution, currentSolution, ct).ConfigureAwait(false);
         var solutionChanges = modifiedSolution.GetChanges(currentSolution);
         var hasDocumentSetChanges = solutionChanges.GetProjectChanges()
             .Any(projectChange => projectChange.GetAddedDocuments().Any() || projectChange.GetRemovedDocuments().Any());
@@ -605,6 +612,108 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         return matchingFixId ?? first;
+    }
+
+    /// <summary>
+    /// preview-token-cross-coupling-bundle (BREAKING): replays the preview's intended diff
+    /// onto the CURRENT workspace solution. The preview's intent is captured as
+    /// <c>modifiedSolution.GetChanges(originalSolution)</c>; this helper reapplies only
+    /// those changes on top of <paramref name="currentSolution"/> so sibling <c>*_apply</c>
+    /// calls that mutated unrelated files since the preview was stored are preserved.
+    /// Collisions on the same document fall to last-apply-wins text semantics. Added
+    /// and removed documents are mirrored into the rebased solution; the caller's existing
+    /// document-set-change code path (PersistDocumentSetChangesAsync) then handles I/O.
+    /// </summary>
+    private static async Task<Solution> RebaseModifiedSolutionOntoCurrentAsync(
+        Solution originalSolution,
+        Solution modifiedSolution,
+        Solution currentSolution,
+        CancellationToken ct)
+    {
+        // Short-circuit: nothing moved between originalSolution and currentSolution — the
+        // legacy in-lineage path is still optimal.
+        if (ReferenceEquals(originalSolution, currentSolution))
+        {
+            return modifiedSolution;
+        }
+
+        var previewChanges = modifiedSolution.GetChanges(originalSolution);
+        var rebased = currentSolution;
+
+        foreach (var projectChange in previewChanges.GetProjectChanges())
+        {
+            foreach (var docId in projectChange.GetChangedDocuments())
+            {
+                var doc = modifiedSolution.GetDocument(docId);
+                if (doc is null)
+                {
+                    continue;
+                }
+
+                // The DocumentId is stable only within a single Solution lineage. If the
+                // current workspace still has the same DocumentId, apply the text directly;
+                // otherwise match on FilePath (the canonical cross-lineage key).
+                var currentDoc = rebased.GetDocument(docId);
+                if (currentDoc is null && !string.IsNullOrWhiteSpace(doc.FilePath))
+                {
+                    currentDoc = rebased.Projects
+                        .SelectMany(project => project.Documents)
+                        .FirstOrDefault(candidate => string.Equals(candidate.FilePath, doc.FilePath, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (currentDoc is null)
+                {
+                    continue;
+                }
+
+                var sourceText = await doc.GetTextAsync(ct).ConfigureAwait(false);
+                rebased = rebased.WithDocumentText(currentDoc.Id, sourceText);
+            }
+
+            foreach (var docId in projectChange.GetAddedDocuments())
+            {
+                var doc = modifiedSolution.GetDocument(docId);
+                if (doc?.FilePath is null)
+                {
+                    continue;
+                }
+
+                // Find the target project in the rebased solution by project file path
+                // (ProjectId may differ across lineages after a sibling apply + reload).
+                var targetProject = rebased.GetProject(projectChange.ProjectId)
+                    ?? (doc.Project.FilePath is not null
+                        ? rebased.Projects.FirstOrDefault(project => string.Equals(project.FilePath, doc.Project.FilePath, StringComparison.OrdinalIgnoreCase))
+                        : null);
+                if (targetProject is null)
+                {
+                    continue;
+                }
+
+                var sourceText = await doc.GetTextAsync(ct).ConfigureAwait(false);
+                var newDocId = DocumentId.CreateNewId(targetProject.Id, doc.Name);
+                rebased = rebased.AddDocument(newDocId, doc.Name, sourceText, doc.Folders, doc.FilePath);
+            }
+
+            foreach (var docId in projectChange.GetRemovedDocuments())
+            {
+                var originalDoc = originalSolution.GetDocument(docId);
+                if (originalDoc?.FilePath is null)
+                {
+                    continue;
+                }
+
+                // Match the removal target by FilePath in the rebased solution.
+                var target = rebased.Projects
+                    .SelectMany(project => project.Documents)
+                    .FirstOrDefault(candidate => string.Equals(candidate.FilePath, originalDoc.FilePath, StringComparison.OrdinalIgnoreCase));
+                if (target is not null)
+                {
+                    rebased = rebased.RemoveDocument(target.Id);
+                }
+            }
+        }
+
+        return rebased;
     }
 
     private static async Task PersistChangedDocumentsFromSolutionAsync(

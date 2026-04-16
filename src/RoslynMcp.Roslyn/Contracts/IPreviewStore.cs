@@ -42,9 +42,22 @@ public interface IPreviewStore
         IReadOnlyList<FileChangeDto> changes);
 
     /// <summary>
-    /// Retrieves the stored solution for the given token, or <see langword="null"/> if the token is expired or not found.
+    /// Retrieves the stored solution pair for the given token, or <see langword="null"/>
+    /// if the token is expired or not found.
     /// </summary>
-    (string WorkspaceId, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token);
+    /// <remarks>
+    /// <b>preview-token-cross-coupling-bundle (BREAKING):</b> the returned tuple now exposes
+    /// both <c>OriginalSolution</c> (the workspace snapshot captured at preview time) and
+    /// <c>ModifiedSolution</c> (with the preview's edits applied). The apply path MUST
+    /// compute the preview's intended diff as
+    /// <c>ModifiedSolution.GetChanges(OriginalSolution)</c> and replay only that diff onto
+    /// the current workspace solution — this preserves sibling token validity when a
+    /// concurrent <c>*_apply</c> has advanced the workspace since the preview was created.
+    /// Passing <c>ModifiedSolution</c> directly to <c>Workspace.TryApplyChanges</c> is
+    /// incorrect: it would either fail a lineage check or silently undo unrelated sibling
+    /// edits by treating newly-added documents as removals.
+    /// </remarks>
+    (string WorkspaceId, Solution OriginalSolution, Solution ModifiedSolution, int WorkspaceVersion, string Description, bool DiffTruncated)? Retrieve(string token);
 
     /// <summary>
     /// Removes the entry for the given token.

@@ -518,7 +518,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         if (result)
         {
             session.IncrementVersion();
-            _previewStore.InvalidateAll(workspaceId);
+            // preview-token-cross-coupling-bundle (BREAKING): do NOT InvalidateAll sibling
+            // preview tokens on a successful apply. Each PreviewEntry holds its own immutable
+            // Roslyn Solution snapshot captured at preview time; sibling `*_apply` calls must
+            // not destroy those references. The apply path rebases each token's snapshot
+            // against the CURRENT solution via `modifiedSolution.GetChanges(currentSolution)`
+            // at redemption time (RefactoringService.ApplyRefactoringAsync), so unrelated
+            // workspace moves don't need to invalidate tokens. InvalidateAll remains wired
+            // to workspace-lifecycle events (Close, LoadIntoSessionAsync) where the underlying
+            // MSBuildWorkspace is disposed and the captured Solution references become
+            // orphaned.
             LogChangesApplied(_logger, workspaceId, session.Version, null);
         }
         else
