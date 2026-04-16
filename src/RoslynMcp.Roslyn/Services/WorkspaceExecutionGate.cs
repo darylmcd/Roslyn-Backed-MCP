@@ -212,20 +212,28 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         }
 
         // AutoReload: reload under the existing load-gate path so writes can't race with us.
+        // dr-9-9-response-claims: only stamp the "auto-reloaded" signal when reload actually
+        // succeeded. Pre-fix, the finally block stamped unconditionally — a reload that
+        // short-circuited on KeyNotFoundException (workspace closed between stale check and
+        // reload attempt) still advertised `staleAction: "auto-reloaded"` in the response
+        // envelope, contradicting the fact that no reload ran.
         var reloadStopwatch = Stopwatch.StartNew();
+        var reloaded = false;
         try
         {
             await _workspaceManager.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
+            reloaded = true;
         }
         catch (KeyNotFoundException)
         {
             // Workspace was closed between the stale check and the reload attempt — fall through
-            // and let the caller's ContainsWorkspace check throw a user-facing error.
+            // and let the caller's ContainsWorkspace check throw a user-facing error. Leave
+            // StaleAction unset so the response does not falsely claim an auto-reload.
         }
         finally
         {
             reloadStopwatch.Stop();
-            if (metrics is not null)
+            if (reloaded && metrics is not null)
             {
                 metrics.StaleAction = "auto-reloaded";
                 metrics.StaleReloadMs = reloadStopwatch.ElapsedMilliseconds;

@@ -439,6 +439,33 @@ public class WorkspaceExecutionGateTests
         Assert.IsNull(metrics!.StaleAction);
     }
 
+    // dr-9-9-response-claims: when ReloadAsync throws KeyNotFoundException (workspace was
+    // closed between the stale check and the reload attempt), the gate must NOT stamp
+    // StaleAction = "auto-reloaded" — nothing actually reloaded, so the response envelope
+    // would otherwise advertise a reload that never ran.
+    [TestMethod]
+    public async Task StalenessPolicy_AutoReload_ReloadThrowsKeyNotFound_LeavesStaleActionUnset()
+    {
+        var manager = new FakeGateWorkspaceManager { ReloadThrowsKeyNotFound = true };
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        await gate.RunReadAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None);
+
+        Assert.AreEqual(1, manager.ReloadCount, "Reload should have been attempted once.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.IsNull(metrics!.StaleAction,
+            "StaleAction must remain null when reload swallows KeyNotFoundException — the envelope would otherwise falsely claim an auto-reload.");
+        Assert.IsNull(metrics.StaleReloadMs,
+            "StaleReloadMs must also remain null when no reload completed.");
+    }
+
     private sealed class ConcurrencyTracker
     {
         private int _current;
@@ -462,6 +489,14 @@ public class WorkspaceExecutionGateTests
 
         public int ReloadCount;
 
+        /// <summary>
+        /// When true, <see cref="ReloadAsync"/> increments <see cref="ReloadCount"/>
+        /// and then throws <see cref="KeyNotFoundException"/> — simulates the
+        /// race where the workspace was closed between the stale check and the
+        /// reload attempt. Used by the <c>dr-9-9-response-claims</c> regression.
+        /// </summary>
+        public bool ReloadThrowsKeyNotFound { get; set; }
+
         public FakeGateWorkspaceManager(bool containsAny = true)
         {
             _containsAny = containsAny;
@@ -481,6 +516,10 @@ public class WorkspaceExecutionGateTests
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
         {
             Interlocked.Increment(ref ReloadCount);
+            if (ReloadThrowsKeyNotFound)
+            {
+                throw new KeyNotFoundException($"Workspace '{workspaceId}' was closed between the stale check and the reload attempt.");
+            }
             ClearStaleFlag(workspaceId);
             return Task.FromResult(new WorkspaceStatusDto(
                 WorkspaceId: workspaceId,
