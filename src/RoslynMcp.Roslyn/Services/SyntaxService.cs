@@ -8,10 +8,32 @@ namespace RoslynMcp.Roslyn.Services;
 
 public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
 {
-    private sealed class SyntaxBudget(int maxChars)
+    /// <summary>
+    /// Caps applied during syntax-tree serialization. Three independent budgets:
+    /// <list type="bullet">
+    ///   <item><description><c>RemainingChars</c> — leaf-text accumulation cap (the original
+    ///   <c>maxOutputChars</c> semantics). Structural JSON (kinds, positions, nesting) is NOT
+    ///   counted here. Documented as such in the tool schema after the bug fix below.</description></item>
+    ///   <item><description><c>RemainingNodes</c> — total node count cap (NEW, get-syntax-tree-max-output-chars-incomplete-cap).
+    ///   Each emitted <see cref="SyntaxNodeDto"/> decrements this. When zero, the walker stops.</description></item>
+    ///   <item><description><c>RemainingBytes</c> — total estimated response size cap (NEW). Each
+    ///   emitted node consumes ~120 bytes of JSON overhead + its text length. Hard cap that
+    ///   matches the agents' actual concern (response payload size) — addresses the §3 stress
+    ///   test repro where <c>maxOutputChars=20000</c> produced 229 KB on EncodingHelper.cs.</description></item>
+    /// </list>
+    /// Hitting any one cap sets <c>Truncated=true</c> and emits a single TruncationNotice.
+    /// </summary>
+    private sealed class SyntaxBudget(int maxChars, int maxNodes, int maxBytes)
     {
-        public int Remaining { get; set; } = maxChars;
+        public int RemainingChars { get; set; } = maxChars;
+        public int RemainingNodes { get; set; } = maxNodes;
+        public int RemainingBytes { get; set; } = maxBytes;
         public bool Truncated { get; set; }
+
+        /// <summary>Approximate JSON bytes per <see cref="SyntaxNodeDto"/> excluding text.</summary>
+        public const int PerNodeStructuralBytes = 120;
+
+        public bool ExhaustedAny => Truncated || RemainingChars <= 0 || RemainingNodes <= 0 || RemainingBytes <= 0;
     }
 
     public async Task<SyntaxNodeDto?> GetSyntaxTreeAsync(
@@ -21,7 +43,9 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
         int? endLine,
         int maxDepth,
         CancellationToken ct,
-        int maxOutputChars = 65536)
+        int maxOutputChars = 65536,
+        int maxNodes = 5000,
+        int maxTotalBytes = 65536)
     {
         var solution = workspace.GetCurrentSolution(workspaceId);
         var document = Helpers.SymbolResolver.FindDocument(solution, filePath);
@@ -32,7 +56,7 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
 
         var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
-        var budget = new SyntaxBudget(maxOutputChars);
+        var budget = new SyntaxBudget(maxOutputChars, maxNodes, maxTotalBytes);
 
         SyntaxNode targetNode = root;
         if (startLine.HasValue && endLine.HasValue)
@@ -53,7 +77,7 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
                 var children = new List<SyntaxNodeDto>();
                 foreach (var n in nodesInRange)
                 {
-                    if (budget.Truncated || budget.Remaining <= 0)
+                    if (budget.ExhaustedAny)
                         break;
                     children.Add(BuildNode(n, text, 0, maxDepth, budget));
                 }
@@ -100,7 +124,7 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
     private static SyntaxNodeDto CreateTruncationNotice() =>
         new(
             Kind: "TruncationNotice",
-            Text: "Further syntax output omitted (maxOutputChars budget exceeded). Narrow the line range, lower maxDepth, or increase maxOutputChars on the tool.",
+            Text: "Further syntax output omitted (maxOutputChars/maxNodes/maxTotalBytes budget exceeded). Narrow startLine/endLine, lower maxDepth, or raise the relevant cap. maxOutputChars caps LEAF text only — use maxTotalBytes to cap total response size.",
             StartLine: 0,
             StartColumn: 0,
             EndLine: 0,
@@ -109,11 +133,15 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
 
     private static SyntaxNodeDto BuildNode(SyntaxNode node, SourceText text, int depth, int maxDepth, SyntaxBudget budget)
     {
-        if (budget.Remaining <= 0)
+        // Each emitted node consumes one unit of node-budget AND its structural bytes.
+        // Check both before recursing so the walker stops crisply at any cap.
+        if (budget.ExhaustedAny)
         {
             budget.Truncated = true;
             return CreateTruncationNotice();
         }
+        budget.RemainingNodes -= 1;
+        budget.RemainingBytes -= SyntaxBudget.PerNodeStructuralBytes;
 
         var lineSpan = node.GetLocation().GetLineSpan();
         List<SyntaxNodeDto>? children = null;
@@ -122,7 +150,7 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
             children = [];
             foreach (var child in node.ChildNodes())
             {
-                if (budget.Remaining <= 0)
+                if (budget.ExhaustedAny)
                 {
                     budget.Truncated = true;
                     break;
@@ -139,15 +167,17 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
             if (nodeText.Length > 500)
                 nodeText = string.Concat(nodeText.AsSpan(0, 500), "\u2026");
 
-            var cost = nodeText.Length;
-            if (cost > budget.Remaining)
+            // Apply both leaf-text and total-byte caps. Take the smaller of the two so
+            // either cap alone can truncate.
+            var maxAllowed = Math.Max(0, Math.Min(budget.RemainingChars, budget.RemainingBytes));
+            if (nodeText.Length > maxAllowed)
             {
                 budget.Truncated = true;
-                nodeText = string.Concat(nodeText.AsSpan(0, Math.Max(0, budget.Remaining)), "\u2026");
-                cost = nodeText.Length;
+                nodeText = string.Concat(nodeText.AsSpan(0, maxAllowed), "\u2026");
             }
 
-            budget.Remaining -= cost;
+            budget.RemainingChars -= nodeText.Length;
+            budget.RemainingBytes -= nodeText.Length;
         }
 
         return new SyntaxNodeDto(
