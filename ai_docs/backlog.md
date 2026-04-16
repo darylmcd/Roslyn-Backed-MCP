@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-16T23:30:00Z
+**updated_at:** 2026-04-16T23:45:00Z
 
 ## Agent contract
 
@@ -74,7 +74,6 @@ Within P4, rows are **alphabetical by `id`**.
 | `dr-9-4-low-cache-dir-presence-is-not-a-reliable-connect` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.4 [LOW] `mcp-logs-<server>/` cache-dir presence is NOT a reliable connection indicator |
 | `dr-9-4-pretooluse-hook-false-positive-on` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.4 PreToolUse hook false-positive on `move_type_to_file_apply` |
 | `dr-9-5-documented-error-prior-session-ticket-draft-cont` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T152747Z_jellyfin_experimental-promotion.md - ### 9.5 [documented-error] Prior-session ticket draft contained a flawed "whole cohort failed" narrative |
-| `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.6 `extract_interface_preview` emits `base list` continuation on a new line instead of inline |
 | `dr-9-6-preview-token-issued-in-turn-t-invalidated-by-a` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140302Z_networkdocumentation_experimental-promotion.md - ### 9.6 Preview-token issued in turn T invalidated by a sibling `*_apply` in the same turn |
 | `dr-9-7-only-partially-normalizes-whitespace` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.7 `format_range_preview` only partially normalizes whitespace |
 | `dr-9-8-context-environmental-not-a-bug-mcp-host-may-dro` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140302Z_networkdocumentation_experimental-promotion.md - ### 9.8 (context / environmental, not a bug) — MCP host may drop workspace sessions between user turns |
