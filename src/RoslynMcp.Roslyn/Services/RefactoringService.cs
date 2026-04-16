@@ -414,6 +414,15 @@ public sealed class RefactoringService : IRefactoringService
 
         var rangedText = SpliceFormattedRange(text, formattedText, startLine, endLine);
 
+        // dr-9-7-only-partially-normalizes-whitespace: Formatter.FormatAsync re-indents and
+        // normalizes inter-token whitespace, and the splice picks up its trailing-whitespace
+        // strip on rewritten lines, but neither pass collapses runs of consecutive blank
+        // lines (3+ newlines in a row → 2+ blank lines). That's a separate
+        // normalization which Roslyn's trivia formatter doesn't perform, so we do it
+        // post-splice — only inside the caller's requested range so out-of-range blank-line
+        // patterns stay untouched.
+        rangedText = CollapseBlankLineRunsInRange(rangedText, startLine, endLine);
+
         Solution newSolution;
         if (rangedText.ContentEquals(text))
         {
@@ -1033,5 +1042,89 @@ public sealed class RefactoringService : IRefactoringService
         // least preview will match apply, which is the primary contract this method
         // protects.
         return formattedText;
+    }
+
+    /// <summary>
+    /// Collapses runs of two or more consecutive blank lines to a single blank line,
+    /// but only when the entire run sits inside the caller's requested range
+    /// [<paramref name="startLine"/>, <paramref name="endLine"/>] (1-based, inclusive).
+    /// A "blank line" here is one whose <see cref="Microsoft.CodeAnalysis.Text.TextLine.ToString"/>
+    /// is empty or pure whitespace — the splice already strips trailing whitespace via
+    /// the formatter, so blank-by-whitespace and blank-by-emptiness collapse identically.
+    ///
+    /// Why this exists: Roslyn's <c>Formatter.FormatAsync</c> normalizes indentation and
+    /// inter-token whitespace, but does not collapse multi-blank-line runs — that's
+    /// usually the job of an analyzer + code-fix pair (e.g. IDE0303 family) which we
+    /// don't run here. <c>format_range_preview</c> is contracted to deliver
+    /// "Roslyn-style whitespace cleanup over the requested range," and three blank lines
+    /// where one belongs is a whitespace anomaly the caller expects fixed (audit
+    /// dr-9-7-only-partially-normalizes-whitespace).
+    ///
+    /// Out-of-range blank-line runs are preserved verbatim. A run that crosses the range
+    /// boundary is also preserved — collapsing it would silently mutate text outside the
+    /// caller's selection, which the splice contract forbids.
+    /// </summary>
+    private static Microsoft.CodeAnalysis.Text.SourceText CollapseBlankLineRunsInRange(
+        Microsoft.CodeAnalysis.Text.SourceText text,
+        int startLine,
+        int endLine)
+    {
+        var startIdx = startLine - 1;
+        var endIdx = endLine - 1;
+        if (startIdx < 0) startIdx = 0;
+        if (endIdx >= text.Lines.Count) endIdx = text.Lines.Count - 1;
+        if (endIdx < startIdx) return text;
+
+        // Identify maximal blank-line runs (length >= 2) whose every line is in [startIdx, endIdx].
+        // Build a set of line indices to drop: keep the first blank in each qualifying run, drop the rest.
+        var dropIndices = new System.Collections.Generic.HashSet<int>();
+        int i = 0;
+        while (i < text.Lines.Count)
+        {
+            if (!IsBlankLine(text.Lines[i])) { i++; continue; }
+            int runStart = i;
+            int runEnd = i;
+            while (runEnd + 1 < text.Lines.Count && IsBlankLine(text.Lines[runEnd + 1]))
+            {
+                runEnd++;
+            }
+            // Qualify: run length >= 2 AND entire run inside the requested range.
+            if (runEnd - runStart >= 1 && runStart >= startIdx && runEnd <= endIdx)
+            {
+                for (int k = runStart + 1; k <= runEnd; k++)
+                {
+                    dropIndices.Add(k);
+                }
+            }
+            i = runEnd + 1;
+        }
+
+        if (dropIndices.Count == 0) return text;
+
+        var sb = new System.Text.StringBuilder(text.Length);
+        for (int j = 0; j < text.Lines.Count; j++)
+        {
+            if (dropIndices.Contains(j)) continue;
+            var line = text.Lines[j];
+            sb.Append(line.ToString());
+            var lineBreakStart = line.End;
+            var lineBreakEnd = line.EndIncludingLineBreak;
+            if (lineBreakEnd > lineBreakStart)
+            {
+                var breakSpan = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(lineBreakStart, lineBreakEnd);
+                sb.Append(text.GetSubText(breakSpan).ToString());
+            }
+        }
+        return Microsoft.CodeAnalysis.Text.SourceText.From(sb.ToString(), text.Encoding, text.ChecksumAlgorithm);
+
+        static bool IsBlankLine(Microsoft.CodeAnalysis.Text.TextLine line)
+        {
+            var s = line.ToString();
+            for (int n = 0; n < s.Length; n++)
+            {
+                if (s[n] != ' ' && s[n] != '\t') return false;
+            }
+            return true;
+        }
     }
 }

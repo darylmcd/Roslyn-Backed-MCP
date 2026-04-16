@@ -147,11 +147,11 @@ initiative below has the standard table fields filled out at execute time.
 | I-36 | `dr-9-3-format-bug-002-destroys-source-formatting` | 1 | 50000 | Fixed | in-review (PR #207) — drops `NormalizeWhitespace()` on source file in `CreateInterfaceExtractionSolutionAsync`; parameter-type replacement uses `WithTriviaFrom`; `AddBaseType` relocates identifier trailing EOL trivia to brace leading trivia. |
 | I-37 | `dr-9-4-format-bug-003-produces-inline-itemgroup-xml` | 1 | 50000 | Fixed | in-review (PR #208) — `OrchestrationMsBuildXml` helpers (`FormatProjectXml` + `AddChildElementPreservingIndentation` + `RemoveElementCleanly`) route all csproj + `Directory.Packages.props` edits through an indenting `XmlWriter`. |
 | I-38 | `dr-9-5-strips-the-blank-line-between-namespace-and-clas` | 1 | 50000 | Fixed | in-review (PR #206) — `BuildNewFileRoot` post-processes `NormalizeWhitespace()` via new `EnsureBlankLineBetweenNamespaceAndType` helper that prepends an `EndOfLineTrivia` to the first type declaration inside file-scoped or block namespace. |
-| I-39 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | 1 | 45000 | Fixed | Format-bug singleton — `InterfaceExtractionService.cs`. |
-| I-40 | `dr-9-7-only-partially-normalizes-whitespace` | 1 | 45000 | Fixed | Format-bug singleton — `FormatVerifyService.cs`; possibly overlaps I-01. |
-| I-41 | `dr-9-7-produces-output-that-violates-project-formatting` | 1 | 45000 | Fixed | Format-bug singleton — `ExtractMethodService.cs`. |
-| I-42 | `dr-9-9-format-bug-004-produces-malformed-body-closing-b` | 1 | 50000 | Fixed | Format-bug singleton — `ExtractMethodService.cs`. |
-| I-43 | `dr-9-11-format-bug-006-duplicates-leading-trivia-into-b` | 1 | 50000 | Fixed | in-review (PR #212) — `ClassSplitOrchestrator` strips leading trivia + attribute lists from second partial; new `StripLeadingTriviaFromFirstUsing` helper drops file-level license header from cloned compilation unit. 1 regression test. |
+| I-39 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | 1 | 45000 | Fixed | in-review (PR #209) — `PreviewExtractInterfaceAsync` transfers the last existing base type's trailing trivia onto the new interface before `AddTypes`. |
+| I-40 | `dr-9-7-only-partially-normalizes-whitespace` | 1 | 45000 | Fixed | in-review (PR #211) — `RefactoringService.CollapseBlankLineRunsInRange` post-pass after `SpliceFormattedRange`. Verified NOT obsolete; I-01 covered tab/trailing cases but not multi-blank-line runs. |
+| I-41 | `dr-9-7-produces-output-that-violates-project-formatting` | 1 | 45000 | Fixed | in-review (PR #210, bundled with I-42 — `extract-method-format-bundle`). |
+| I-42 | `dr-9-9-format-bug-004-produces-malformed-body-closing-b` | 1 | 50000 | Fixed | in-review (PR #210, bundled with I-41 — `extract-method-format-bundle`). |
+| I-43 | `dr-9-11-format-bug-006-duplicates-leading-trivia-into-b` | 1 | 50000 | Fixed | in-review (PR #212) — Second partial strips attribute lists + resets leading trivia; `StripLeadingTriviaFromFirstUsing` helper moves license headers off cloned usings. |
 
 Each initiative table is expanded inline at execute time per the executor prompt, with
 diagnosis (file:line evidence), approach, validation strategy, and CHANGELOG draft. The

@@ -261,4 +261,95 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             WorkspaceManager.Close(workspaceId);
         }
     }
+
+    /// <summary>
+    /// Regression for dr-9-7-only-partially-normalizes-whitespace: format_range_preview
+    /// must clean up the full set of whitespace anomalies a caller would expect,
+    /// not just inter-token spacing. The audit found three categories that survived a
+    /// preview/apply round-trip pre-fix:
+    /// <list type="number">
+    ///   <item>Tab indentation where editorconfig says spaces (handled by
+    ///   <c>Formatter.FormatAsync</c>'s indentation normalization).</item>
+    ///   <item>Trailing whitespace at end-of-line (handled implicitly by the formatter
+    ///   on lines where it rewrote the leading trivia, since the rewritten line carries
+    ///   the formatter's trimmed trailing trivia).</item>
+    ///   <item>Runs of two or more consecutive blank lines (NOT handled by the formatter
+    ///   alone — needed an explicit collapse pass; that's the new fix).</item>
+    /// </list>
+    /// </summary>
+    [TestMethod]
+    public async Task FormatRangePreview_NormalizesAllWhitespaceAnomalies()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        // Anomaly catalogue (each must be cleaned up by format_range_preview):
+        //   L7  : tab-indented inside a method body that .editorconfig wants spaces
+        //   L8  : trailing whitespace after a statement
+        //   L9..L11 : three consecutive blank lines (should collapse to one between
+        //             statements / one before closing brace)
+        //   L12 : another statement with trailing tab + spaces.
+        //
+        // Use \r\n explicitly so the diff baseline isn't affected by line-ending munging.
+        var fixturePath = Path.Combine(sampleLibDir, "FormatRangeWhitespaceFixture.cs");
+        var content =
+            "namespace SampleLib;\r\n" +
+            "\r\n" +
+            "public class FormatRangeWhitespaceFixture\r\n" +
+            "{\r\n" +
+            "    public int Compute(int input)\r\n" +
+            "    {\r\n" +
+            "\tvar a = input + 1;\r\n" +                 // L7  tab indent
+            "        var b = a + 2;   \r\n" +            // L8  trailing spaces
+            "\r\n" +                                       // L9  blank
+            "\r\n" +                                       // L10 blank
+            "\r\n" +                                       // L11 blank
+            "        var c = b + 3;\t  \r\n" +             // L12 trailing tab + spaces
+            "        return c;\r\n" +
+            "    }\r\n" +
+            "}\r\n";
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            // Range covers the full method body (L6..L14) so the formatter has every
+            // anomaly inside the requested span.
+            var preview = await RefactoringService.PreviewFormatRangeAsync(
+                workspaceId, fixturePath,
+                startLine: 6, startColumn: 1,
+                endLine: 14, endColumn: 6,
+                CancellationToken.None);
+
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, "apply must succeed");
+
+            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+
+            // (1) tab indent normalized to 4 spaces
+            Assert.IsFalse(
+                postApplyText.Contains("\tvar a", StringComparison.Ordinal),
+                $"tab-indented line should be re-indented with spaces. Got:\n{postApplyText}");
+
+            // (2) trailing whitespace stripped
+            foreach (var line in postApplyText.Split("\r\n"))
+            {
+                var endsWithWhitespace = line.Length > 0 && (line[^1] == ' ' || line[^1] == '\t');
+                Assert.IsFalse(endsWithWhitespace,
+                    $"trailing whitespace found on line: '{line.Replace("\t", "<TAB>").Replace(" ", "<SP>")}'\nFull text:\n{postApplyText}");
+            }
+
+            // (3) Multiple consecutive blank lines collapsed to at most one inside the body.
+            Assert.IsFalse(
+                postApplyText.Contains("\r\n\r\n\r\n", StringComparison.Ordinal),
+                $"more than one consecutive blank line survived inside the body. Got:\n{postApplyText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
 }
