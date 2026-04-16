@@ -111,6 +111,26 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         Assert.IsNotNull(doc.RootElement);
     }
 
+    // test-related-empty-for-valid-symbol: an interface MEMBER whose implementations are
+    // called by tests (through interface dispatch — no test method name mentions the
+    // interface or member) must surface the test. Tests call `animals.Select(a => a.Name)`
+    // on `IAnimal` variables — pre-fix the heuristic searched test names for "Name" or
+    // "IAnimal" and had to rely on a false-positive "Name" substring match. Post-fix, the
+    // reference-sweep augmentation walks IAnimal.Name → finds Dog.Name, Cat.Name
+    // implementations → finds AnimalServiceTests.cs where tests invoke `.Name` on IAnimal.
+    [TestMethod]
+    public async Task TestRelated_InterfaceMemberCalledByTestsViaDispatch_SurfacesTheTest()
+    {
+        var result = await TestDiscoveryService.FindRelatedTestsAsync(
+            WorkspaceId,
+            RoslynMcp.Core.Models.SymbolLocator.ByMetadataName("SampleLib.IAnimal.Name"),
+            CancellationToken.None);
+
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Any(t => t.FilePath?.EndsWith("AnimalServiceTests.cs", StringComparison.OrdinalIgnoreCase) == true),
+            $"Expected AnimalServiceTests.cs to surface via interface-dispatch augmentation; got: {string.Join(", ", result.Select(t => t.FilePath))}");
+    }
+
     private static string FindDocumentPath(string name)
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
