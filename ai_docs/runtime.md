@@ -127,17 +127,42 @@ checks).
 
 ### Bootstrap scope — self-edit on THIS repository
 
-The self-edit bootstrap caveat restricts **write-side `*_apply` tools only** — the
-binary servicing the MCP call is the binary being edited, so any `*_apply` mutates
-files underneath a stale MSBuildWorkspace snapshot. Everything else is fair game.
+The self-edit bootstrap caveat restricts **write-side `*_apply` tools** when — and only
+when — the binary servicing the MCP call is the same binary whose source tree is being
+edited. There are two concrete shapes this takes in day-to-day work:
+
+#### Main-checkout self-edit (restricted)
+
+Running `dotnet run --project src/RoslynMcp.Host.Stdio` (or a freshly rebuilt
+`roslynmcp` whose source IS the main checkout) against a workspace loaded from that
+same checkout. Here `*_apply` is forbidden — the binary under edit is servicing the
+call, so any apply mutates files underneath a stale `MSBuildWorkspace` snapshot.
 
 - ❌ `*_apply` (rename_apply, extract_type_apply, create_file_apply, etc.) — use
-  `Edit` / `Write` in this repo.
+  `Edit` / `Write`.
 - ✅ `*_preview` — still useful for visualizing the diff before you hand-edit.
-- ✅ **Every read-side tool** — `find_references`, `compile_check`, `test_run`,
-  `symbol_search`, `get_*_metrics`, `project_diagnostics`, etc. These do not mutate
-  anything and are the preferred default over `Grep` / `Bash: dotnet build` /
-  `Bash: dotnet test` even on this repo.
+- ✅ **Every read-side tool** — see the primer.
+
+#### Worktree self-edit (the `workflow.md` default — `*_apply` is safe)
+
+Subagent sessions spawned under `backlog-sweep-execute.md` (and most other task work)
+run inside a `.worktrees/<id>/` worktree against the **installed global tool** at
+`%USERPROFILE%\.dotnet\tools\roslynmcp.exe` — the running binary is a distinct, already-
+built artifact that is NOT mutated by edits to the worktree source tree. The binary-
+under-edit rationale does not hold.
+
+- ✅ `*_apply` — safe, and preferred when a refactoring tool covers the operation
+  (rename, extract/move type, code fix, bulk type replace, organize usings, format).
+- ✅ `*_preview` — use first; review the diff; then apply.
+- ✅ **Every read-side tool** — same as above.
+
+Discipline requirements for worktree `*_apply`:
+
+1. Load the worktree's own solution — `workspace_load` on `.worktrees/<id>/RoslynMcp.slnx`,
+   not the main-checkout path. Mixing them up applies edits to the wrong tree.
+2. If a subsequent tool call depends on the post-apply state, call `workspace_reload`
+   (or rely on the server's change tracker) to refresh the snapshot. This is the
+   ordinary peer-repo discipline, not a bootstrap-specific constraint.
 
 The canonical session-verb → tool table is in
 [`bootstrap-read-tool-primer.md`](bootstrap-read-tool-primer.md) — agents should read

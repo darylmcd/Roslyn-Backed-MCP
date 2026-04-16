@@ -4,13 +4,26 @@
      bootstrap self-edit sessions on this repo. Read this at session start before
      reaching for Grep / Bash: dotnet build / Bash: dotnet test. -->
 
-## The only write-side restriction
+## The write-side restriction — narrow, not blanket
 
 The `bootstrapCaveat` that appears in this repo's plan `state.json` files and executor
-prompts restricts **write-side MCP tools only** — specifically any tool whose name ends
-`_apply` (e.g. `rename_apply`, `extract_type_apply`, `create_file_apply`). The binary
-being edited is the binary servicing those calls, so the MSBuildWorkspace snapshot goes
-stale mid-apply.
+prompts restricts write-side `*_apply` tools only — and only when the running MCP
+server binary is the **same** binary whose source tree you're editing. The two shapes
+in practice:
+
+- **Main-checkout self-edit** (you're running `dotnet run --project src/RoslynMcp.Host.Stdio`
+  against the checkout you're editing): `*_apply` is forbidden. The binary under edit
+  is servicing the call, so the MSBuildWorkspace snapshot goes stale mid-apply.
+- **Worktree self-edit** (subagent session inside `.worktrees/<id>/` running against
+  the installed global tool at `%USERPROFILE%\.dotnet\tools\roslynmcp.exe`): `*_apply`
+  is safe. The global binary is a distinct, already-built artifact; edits to the
+  worktree source tree do not mutate it. Load the worktree's own `RoslynMcp.slnx`, use
+  `workspace_reload` if a downstream call needs a refreshed snapshot — that's the
+  ordinary peer-repo discipline, not a bootstrap-specific constraint.
+
+Worktree-based backlog-sweep subagents (the default workflow per `ai_docs/workflow.md`)
+fall into the second case. They may use `*_apply` tools when those are the correct tool
+for the refactor.
 
 **Every read-side tool is safe and strongly preferred over the generic alternatives**,
 even on this repo. The list below is the pattern→tool mapping that should be your
@@ -50,13 +63,17 @@ default when working on any C# task, bootstrap or not.
 | Test discovery + failure triage | `roslyn-mcp:test-triage` |
 | Test coverage analysis | `roslyn-mcp:test-coverage` |
 
-## Pattern → tool (write-side — restricted in bootstrap mode)
+## Pattern → tool (write-side)
 
-On **this** repo (self-edit bootstrap), do NOT use the `*_apply` half of these tools.
-The `*_preview` half is safe and often still useful for visualizing the proposed diff
-before you hand-edit; the apply step must be `Edit` / `Write` instead.
-
-On **every other** C# repo, prefer the full preview → apply flow over hand-editing.
+- **Worktree self-edit** (the default workflow for backlog-sweep subagents and any
+  session running against the installed global `roslynmcp` tool): use the full
+  preview → apply flow. `*_apply` is safe in a worktree because the running binary is
+  the installed dotnet tool, not the worktree source.
+- **Main-checkout self-edit** (running `dotnet run --project src/RoslynMcp.Host.Stdio`
+  against the checkout you're editing): do NOT use the `*_apply` half. The
+  `*_preview` half is still useful for visualizing the proposed diff before you
+  hand-edit; the apply step must be `Edit` / `Write` instead.
+- **Every other C# repo**: prefer the full preview → apply flow over hand-editing.
 
 | When you want to… | Tool |
 |---|---|
@@ -95,9 +112,11 @@ Ask yourself:
 
 - Is my task phrased as "find / search / locate / enumerate"? → read-side tool.
 - Is my task phrased as "verify / compile / test"? → read-side tool.
-- Is my task phrased as "apply / rewrite / replace / move"? → write-side (restricted
-  in bootstrap; fall back to `Edit` on this repo only, with `compile_check` as the
-  verify loop).
+- Is my task phrased as "apply / rewrite / replace / move"? → write-side. In a
+  worktree session (default for backlog-sweep subagents): use the Roslyn MCP `*_apply`
+  tool. In a main-checkout self-edit session: fall back to `Edit` / `Write` with
+  `compile_check` as the verify loop. `*_preview` is useful in both cases before
+  committing.
 
 If you find yourself typing `Grep` for a symbol name or `Bash: dotnet build` on a
 repo that's already loaded in a workspace session, stop and pick the tool from the

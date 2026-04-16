@@ -144,11 +144,24 @@ estimated (Rules 3-5 violation), STOP. Mark `status → "deferred"`, `notes →
 
 Follow the Approach field in plan.md. Rules:
 
-**Write-side (bootstrap-restricted on this repo):**
+**Write-side (worktree rules — read carefully; differs from main-checkout sessions):**
 
-- Use `Edit` / `Write` for code changes. Do NOT use Roslyn MCP `*_apply` on the Roslyn
-  MCP codebase itself (bootstrap caveat in plan's `state.json.bootstrapCaveat`).
-  The restriction is **write-side only** — read-side tools below are safe and preferred.
+Backlog-sweep executor sessions run inside a `.worktrees/<id>/` worktree against the
+**installed global tool** at `%USERPROFILE%\.dotnet\tools\roslynmcp.exe`. The running
+MCP server binary is a distinct artifact that is NOT mutated by edits to the worktree
+source. The main-checkout `bootstrapCaveat` rationale ("binary under edit = binary
+servicing the call") does not hold here, so:
+
+- ✅ `*_apply` is safe and preferred when a Roslyn MCP refactor tool covers the
+  operation (rename, extract/move type, code fix, bulk type replace, organize usings,
+  format). Load the worktree's own `RoslynMcp.slnx` first; follow up with
+  `workspace_reload` if a downstream call needs a refreshed snapshot.
+- ✅ `*_preview` — use first; review the diff; then apply.
+- ✅ `Edit` / `Write` — fine for cases the Roslyn MCP surface doesn't cover, or when
+  the diff is small and textual.
+
+See `ai_docs/runtime.md` § *Bootstrap scope — self-edit on THIS repository* for the
+two-sub-case policy (main-checkout restriction vs worktree carve-out).
 
 **Read-side (always safe — including bootstrap mode — and 5–30× faster than Bash/Grep):**
 

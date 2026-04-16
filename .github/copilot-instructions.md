@@ -34,9 +34,15 @@ For session bootstrap and workflow, follow `AGENTS.md` first.
 - **Write-side on peer repos:** prefer Roslyn MCP refactoring tools over ad hoc
   multi-file text edits when a tool covers the operation (rename, extract/move type,
   code fixes, bulk type replace, etc.) — preview first, then apply.
-- **Write-side on THIS repo:** `*_apply` is restricted under bootstrap (binary being
-  edited is the binary servicing the call); use `Edit` / `Write` for code changes.
-  `*_preview` and all read-side tools remain fully supported.
+- **Write-side on THIS repo:** depends on session shape.
+  - *Worktree session* (default for backlog-sweep subagents; running against the
+    installed global `roslynmcp` tool): `*_apply` is safe — use it when a Roslyn MCP
+    refactor tool covers the operation. Load the worktree's own `RoslynMcp.slnx`;
+    `workspace_reload` after apply if a downstream call needs fresh state.
+  - *Main-checkout self-edit* (running `dotnet run --project src/RoslynMcp.Host.Stdio`
+    against the checkout you're editing): `*_apply` is restricted because the binary
+    servicing the call is the binary being edited; use `Edit` / `Write`. `*_preview`
+    and all read-side tools remain fully supported.
 - Canonical three-part policy: `ai_docs/runtime.md` (*Roslyn MCP client policy*).
 
 ## Mutation Safety
