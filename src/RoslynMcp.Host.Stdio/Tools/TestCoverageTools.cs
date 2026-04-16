@@ -38,6 +38,31 @@ public static class TestCoverageTools
                     ? status.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase))?.FilePath ?? loadedPath
                     : loadedPath;
 
+                // test-coverage-vague-error-when-coverlet-missing: inspect the test projects
+                // we're about to run and short-circuit with a structured MissingPackages error
+                // when coverlet.collector isn't referenced. Pre-fix the tool ran `dotnet test`
+                // which would succeed (tests passed) but produce no coverage file — the caller
+                // then saw "Coverage file not generated" with no machine-readable hint that the
+                // fix is a NuGet install.
+                var testProjectsLackingCoverlet = FindTestProjectsWithoutCoverlet(status, projectName);
+                if (testProjectsLackingCoverlet.Count > 0)
+                {
+                    ProgressHelper.Report(progress, 1, 1);
+                    var summary = $"Coverlet missing: {testProjectsLackingCoverlet.Count} test project(s) don't reference coverlet.collector. " +
+                        $"Install via `dotnet add package coverlet.collector` in: {string.Join(", ", testProjectsLackingCoverlet)}.";
+                    return JsonSerializer.Serialize(new TestCoverageResultDto(
+                        Success: false,
+                        Error: summary,
+                        LineCoveragePercent: null,
+                        BranchCoveragePercent: null,
+                        Modules: [],
+                        FailureEnvelope: new TestCoverageFailureEnvelopeDto(
+                            ErrorKind: "CoverletMissing",
+                            IsRetryable: false,
+                            Summary: summary,
+                            MissingPackages: testProjectsLackingCoverlet)), JsonDefaults.Indented);
+                }
+
                 var arguments = new List<string>
                 {
                     "test",
@@ -80,6 +105,37 @@ public static class TestCoverageTools
                 ProgressHelper.Report(progress, 1, 1);
                 return JsonSerializer.Serialize(result, JsonDefaults.Indented);
             }, ct));
+    }
+
+    /// <summary>
+    /// test-coverage-vague-error-when-coverlet-missing: walk the test projects in scope and
+    /// return the names of those that don't reference <c>coverlet.collector</c>. The XML
+    /// inspection is cheap enough to run before launching `dotnet test`, so we fail fast with
+    /// a structured error instead of waiting for `dotnet test` to succeed-with-no-coverage.
+    /// </summary>
+    private static IReadOnlyList<string> FindTestProjectsWithoutCoverlet(WorkspaceStatusDto status, string? projectName)
+    {
+        var candidates = status.Projects.Where(p =>
+        {
+            if (!p.IsTestProject) return false;
+            if (projectName is null) return true;
+            return string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase);
+        }).ToList();
+
+        var missing = new List<string>();
+        foreach (var project in candidates)
+        {
+            if (string.IsNullOrWhiteSpace(project.FilePath) || !File.Exists(project.FilePath))
+                continue;
+
+            var text = File.ReadAllText(project.FilePath);
+            if (!text.Contains("coverlet.collector", StringComparison.OrdinalIgnoreCase))
+            {
+                missing.Add(project.Name);
+            }
+        }
+
+        return missing;
     }
 
     private static TestCoverageResultDto ParseCoberturaXml(string path)
