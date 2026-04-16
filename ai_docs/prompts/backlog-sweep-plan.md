@@ -21,9 +21,16 @@ violate the scope rules below — so produce a plan that passes vetting.
 - **Large refactors are on the table** — but each refactor is its own initiative.
 - **Priorities, strict order:** correctness → performance → SRP. Correctness always
   wins. When correctness risk ties, use blast radius, then SRP improvement, then cost.
-- **Bootstrap caveat.** This codebase is the Roslyn MCP server itself. Execution
-  sessions use `Edit` + `Bash: dotnet build` + `compile_check`, NOT `*_apply`/`*_preview`
-  self-application. See `self-edit-bootstrap-mode-mcp-development` in backlog.
+- **Bootstrap caveat (write-side only).** This codebase is the Roslyn MCP server
+  itself, so execution sessions must NOT use `*_apply` / `*_preview` self-application
+  — the binary servicing the call is the binary being edited, so the MSBuildWorkspace
+  snapshot goes stale mid-apply. Execution sessions use `Edit` / `Write` for code
+  changes. **Read-side Roslyn MCP tools are fully supported and preferred**:
+  `compile_check` / `test_run` / `find_references` / `symbol_search` / `document_symbols`
+  are all safe under bootstrap and faster than the Bash/Grep alternatives. See
+  `ai_docs/bootstrap-read-tool-primer.md` for the pattern→tool table and
+  `self-edit-bootstrap-mode-mcp-development` + `bootstrap-read-only-roslyn-mcp-checklist-for-self-edit-sessions`
+  in backlog for prior-session evidence.
 
 ## Scope discipline rules (HARD)
 

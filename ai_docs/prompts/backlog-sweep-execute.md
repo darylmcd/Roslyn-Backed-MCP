@@ -144,13 +144,38 @@ estimated (Rules 3-5 violation), STOP. Mark `status → "deferred"`, `notes →
 
 Follow the Approach field in plan.md. Rules:
 
-- Use `Edit`/`Write` for code changes. Do NOT use Roslyn MCP `*_apply` on the Roslyn
+**Write-side (bootstrap-restricted on this repo):**
+
+- Use `Edit` / `Write` for code changes. Do NOT use Roslyn MCP `*_apply` on the Roslyn
   MCP codebase itself (bootstrap caveat in plan's `state.json.bootstrapCaveat`).
-- Use `roslyn-mcp:review`/`:complexity`/`:dead-code` READ-ONLY to verify your changes
-  don't regress adjacent code.
-- After each meaningful edit, run:
-  `Bash: dotnet build RoslynMcp.slnx -c Release -p:TreatWarningsAsErrors=true`
-  If red, fix before proceeding.
+  The restriction is **write-side only** — read-side tools below are safe and preferred.
+
+**Read-side (always safe — including bootstrap mode — and 5–30× faster than Bash/Grep):**
+
+Before reaching for `Grep` or `Bash: dotnet build`, consult
+`ai_docs/bootstrap-read-tool-primer.md` for the pattern→tool table. Highest-leverage
+substitutions for this step:
+
+- **Compile after each meaningful edit:** `mcp__roslyn__compile_check` on the loaded
+  workspace. Returns structured diagnostics in <1s. Only fall back to
+  `Bash: dotnet build RoslynMcp.slnx -c Release -p:TreatWarningsAsErrors=true` if the
+  server is disconnected or the failure class specifically requires MSBuild
+  (e.g. analyzer-package resolution bugs).
+- **Test after each meaningful edit:** `mcp__roslyn__test_related_files` on the files
+  you touched to derive the targeted filter, then `mcp__roslyn__test_run --filter`.
+  Full-suite `Bash: dotnet test` is only correct for the Step 6 CI-parity run.
+- **Find callers / consumers / implementations:** `mcp__roslyn__find_references` with
+  `metadataName` (or `filePath+line+column`) — not `Grep` for the simple name. Grep
+  matches `SymbolFinder.FindReferencesAsync` when you wanted
+  `MyService.FindReferencesAsync`.
+- **Find a symbol by name (simple / fuzzy / FQN):** `mcp__roslyn__symbol_search` —
+  not `Grep`. Handles `"SampleLib.Dog"` and `"SampleLib.AnimalService.CountAnimals"`
+  natively since v1.19.2.
+- **Enumerate a file's public surface:** `mcp__roslyn__document_symbols` — not
+  `Grep` for `public `.
+
+**Validation rigor:**
+
 - Add or update tests per the Validation field. Tests MUST cover the specific
   regression (not just "the class still works"). One regression test per closed
   backlog row is the floor; more if the row covers multiple symptoms.
