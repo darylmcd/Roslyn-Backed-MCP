@@ -809,11 +809,20 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         {
             var projectDoc = Helpers.ProjectMetadataParser.LoadProjectDocument(project.FilePath, _logger);
             return new ProjectStatusDto(
-                Name: project.Name,
-                FilePath: project.FilePath ?? "unknown",
+                // project-graph-missing-metadata-fields: never emit an empty Name / FilePath
+                // into the status DTO. ResolveProjectName falls back through AssemblyName →
+                // filename stem → "unknown"; ResolveProjectPath falls back to "unknown".
+                Name: Helpers.ProjectMetadataParser.ResolveProjectName(project),
+                FilePath: Helpers.ProjectMetadataParser.ResolveProjectPath(project),
                 DocumentCount: project.Documents.Count(),
                 ProjectReferences: project.ProjectReferences
-                    .Select(reference => solution.GetProject(reference.ProjectId)?.Name ?? "unknown")
+                    .Select(reference =>
+                    {
+                        var referenced = solution.GetProject(reference.ProjectId);
+                        return referenced is null
+                            ? "unknown"
+                            : Helpers.ProjectMetadataParser.ResolveProjectName(referenced);
+                    })
                     .ToList(),
                 TargetFrameworks: Helpers.ProjectMetadataParser.GetTargetFrameworks(project, projectDoc, _logger),
                 IsTestProject: Helpers.ProjectMetadataParser.IsTestProject(projectDoc),
