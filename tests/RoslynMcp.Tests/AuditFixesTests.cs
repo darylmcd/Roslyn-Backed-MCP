@@ -4,6 +4,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -169,7 +170,7 @@ public sealed class AuditFixesTests : SharedWorkspaceTestBase
     {
         // Pre-fix: every error reported `tool: "unknown"` because no caller passed toolName.
         // Post-fix: toolName is required and propagates into the error payload.
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "compile_check",
             () => throw new KeyNotFoundException("not found"));
 
@@ -182,7 +183,7 @@ public sealed class AuditFixesTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task ToolErrorHandler_SuccessResponse_HasMetaField_WhenObjectRoot()
     {
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => Task.FromResult("""{"foo":"bar"}"""));
 
@@ -199,7 +200,7 @@ public sealed class AuditFixesTests : SharedWorkspaceTestBase
         // BUG fix (reader-tool-elapsed-ms): every tool response should expose wall-clock
         // elapsed time so concurrency audits can compute speedup ratios from inside the
         // agent loop without external instrumentation.
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             async () =>
             {
@@ -220,7 +221,7 @@ public sealed class AuditFixesTests : SharedWorkspaceTestBase
     {
         // Backward-compat guarantee: array roots are NOT wrapped in {data, _meta}.
         // Some tools (e.g. source_generated_documents) return bare arrays.
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => Task.FromResult("[1,2,3]"));
 
@@ -233,7 +234,7 @@ public sealed class AuditFixesTests : SharedWorkspaceTestBase
     {
         // _meta should also appear on error payloads so clients can observe gate state when
         // a request fails inside the action.
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => throw new InvalidOperationException("boom"));
 

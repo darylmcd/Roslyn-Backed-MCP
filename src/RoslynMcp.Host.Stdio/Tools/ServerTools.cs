@@ -20,86 +20,83 @@ public static class ServerTools
         IWorkspaceManager workspace,
         ILatestVersionProvider versionChecker)
     {
-        return ToolErrorHandler.ExecuteAsync("server_info", () =>
+        var assembly = typeof(ServerTools).Assembly;
+        var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                      ?? assembly.GetName().Version?.ToString() ?? "unknown";
+
+        var catalogSummary = ServerSurfaceCatalog.GetSummary();
+        var wsCount = workspace.ListWorkspaces().Count;
+
+        // Best-effort: returns cached latest version or null if pending/failed.
+        // Sanity guard: never report "update available" when the reported latest is
+        // older than the running version (can happen with stale NuGet CDN cache).
+        var latestVersion = versionChecker.GetLatestVersion();
+        var currentSemver = version.Split('+')[0]; // strip git hash suffix
+        var updateAvailable = latestVersion is not null
+                              && Version.TryParse(currentSemver, out var currentParsed)
+                              && Version.TryParse(latestVersion, out var latestParsed)
+                              && latestParsed > currentParsed;
+
+        var info = new
         {
-            var assembly = typeof(ServerTools).Assembly;
-            var version = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                          ?? assembly.GetName().Version?.ToString() ?? "unknown";
-
-            var catalogSummary = ServerSurfaceCatalog.GetSummary();
-            var wsCount = workspace.ListWorkspaces().Count;
-
-            // Best-effort: returns cached latest version or null if pending/failed.
-            // Sanity guard: never report "update available" when the reported latest is
-            // older than the running version (can happen with stale NuGet CDN cache).
-            var latestVersion = versionChecker.GetLatestVersion();
-            var currentSemver = version.Split('+')[0]; // strip git hash suffix
-            var updateAvailable = latestVersion is not null
-                                  && Version.TryParse(currentSemver, out var currentParsed)
-                                  && Version.TryParse(latestVersion, out var latestParsed)
-                                  && latestParsed > currentParsed;
-
-            var info = new
+            server = "roslyn-mcp",
+            version,
+            productShape = "local-first",
+            runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+            os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+            roslynVersion = typeof(Microsoft.CodeAnalysis.SyntaxNode).Assembly.GetName().Version?.ToString() ?? "unknown",
+            workspaceCount = wsCount,
+            workspaceCountHint = wsCount == 0
+                ? "If you just called workspace_load, workspaceCount may still be 0 briefly; call workspace_list for authoritative session ids."
+                : null,
+            catalogVersion = ServerSurfaceCatalog.CatalogVersion,
+            surface = new
             {
-                server = "roslyn-mcp",
-                version,
-                productShape = "local-first",
-                runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
-                os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
-                roslynVersion = typeof(Microsoft.CodeAnalysis.SyntaxNode).Assembly.GetName().Version?.ToString() ?? "unknown",
-                workspaceCount = wsCount,
-                workspaceCountHint = wsCount == 0
-                    ? "If you just called workspace_load, workspaceCount may still be 0 briefly; call workspace_list for authoritative session ids."
-                    : null,
-                catalogVersion = ServerSurfaceCatalog.CatalogVersion,
-                surface = new
+                tools = new
                 {
-                    tools = new
-                    {
-                        stable = catalogSummary.StableTools,
-                        experimental = catalogSummary.ExperimentalTools
-                    },
-                    resources = new
-                    {
-                        stable = catalogSummary.StableResources,
-                        experimental = catalogSummary.ExperimentalResources
-                    },
-                    prompts = new
-                    {
-                        stable = catalogSummary.StablePrompts,
-                        experimental = catalogSummary.ExperimentalPrompts
-                    }
+                    stable = catalogSummary.StableTools,
+                    experimental = catalogSummary.ExperimentalTools
                 },
-                productBoundaries = new[]
+                resources = new
                 {
-                    "Stable support targets the local stdio host on a developer workstation.",
-                    "Workspace state comes from on-disk MSBuildWorkspace snapshots rather than unsaved editor buffers.",
-                    "Remote HTTP/SSE hosting is not part of the current stable release contract."
+                    stable = catalogSummary.StableResources,
+                    experimental = catalogSummary.ExperimentalResources
                 },
-                capabilities = new
+                prompts = new
                 {
-                    tools = true,
-                    resources = true,
-                    prompts = true,
-                    logging = true,
-                    progress = true
-                },
-                // server-info-update-latest-inverted: only emit `latest` when the registry
-                // reports a STRICTLY GREATER version than the running build. Pre-fix the
-                // field surfaced any cached registry value (Jellyfin 2026-04-16: latest=1.16.0
-                // while current=1.18.2 — the cached value was older). The new contract: if
-                // `latest` is present, it is genuinely newer than `current`. updateAvailable
-                // remains for callers that prefer the boolean.
-                update = latestVersion is not null ? new
-                {
-                    current = currentSemver,
-                    latest = updateAvailable ? latestVersion : null,
-                    updateAvailable,
-                    command = updateAvailable ? "dotnet tool update -g Darylmcd.RoslynMcp" : (string?)null
-                } : null
-            };
+                    stable = catalogSummary.StablePrompts,
+                    experimental = catalogSummary.ExperimentalPrompts
+                }
+            },
+            productBoundaries = new[]
+            {
+                "Stable support targets the local stdio host on a developer workstation.",
+                "Workspace state comes from on-disk MSBuildWorkspace snapshots rather than unsaved editor buffers.",
+                "Remote HTTP/SSE hosting is not part of the current stable release contract."
+            },
+            capabilities = new
+            {
+                tools = true,
+                resources = true,
+                prompts = true,
+                logging = true,
+                progress = true
+            },
+            // server-info-update-latest-inverted: only emit `latest` when the registry
+            // reports a STRICTLY GREATER version than the running build. Pre-fix the
+            // field surfaced any cached registry value (Jellyfin 2026-04-16: latest=1.16.0
+            // while current=1.18.2 — the cached value was older). The new contract: if
+            // `latest` is present, it is genuinely newer than `current`. updateAvailable
+            // remains for callers that prefer the boolean.
+            update = latestVersion is not null ? new
+            {
+                current = currentSemver,
+                latest = updateAvailable ? latestVersion : null,
+                updateAvailable,
+                command = updateAvailable ? "dotnet tool update -g Darylmcd.RoslynMcp" : (string?)null
+            } : null
+        };
 
-            return Task.FromResult(JsonSerializer.Serialize(info, JsonDefaults.Indented));
-        });
+        return Task.FromResult(JsonSerializer.Serialize(info, JsonDefaults.Indented));
     }
 }

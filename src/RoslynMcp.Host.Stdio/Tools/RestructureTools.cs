@@ -29,14 +29,13 @@ public static class RestructureTools
         [Description("Optional: restrict scope to this project (name or file path)")] string? projectName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("restructure_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await restructureService.PreviewRestructureAsync(
-                    workspaceId, pattern, goal,
-                    new RestructureScope(filePath, projectName), c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await restructureService.PreviewRestructureAsync(
+                workspaceId, pattern, goal,
+                new RestructureScope(filePath, projectName), c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "replace_string_literals_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -52,12 +51,11 @@ public static class RestructureTools
         [Description("Optional: restrict scope to this project (name or file path)")] string? projectName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("replace_string_literals_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await stringLiteralReplaceService.PreviewReplaceAsync(
-                    workspaceId, replacements, new RestructureScope(filePath, projectName), c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await stringLiteralReplaceService.PreviewReplaceAsync(
+                workspaceId, replacements, new RestructureScope(filePath, projectName), c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

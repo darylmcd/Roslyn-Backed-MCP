@@ -31,13 +31,12 @@ public static class ImpactSweepTools
         [Description("Optional cap on items per category (References, MapperCallsites, SwitchExhaustivenessIssues). Use together with summary=true on extremely high-fan-out symbols.")] int? maxItemsPerCategory = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("symbol_impact_sweep", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var locator = new SymbolLocator(filePath, line, column, symbolHandle, metadataName);
-                locator.Validate();
-                var dto = await impactSweepService.SweepAsync(workspaceId, locator, c, summary, maxItemsPerCategory).ConfigureAwait(false);
-                return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var locator = new SymbolLocator(filePath, line, column, symbolHandle, metadataName);
+            locator.Validate();
+            var dto = await impactSweepService.SweepAsync(workspaceId, locator, c, summary, maxItemsPerCategory).ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
     }
 }

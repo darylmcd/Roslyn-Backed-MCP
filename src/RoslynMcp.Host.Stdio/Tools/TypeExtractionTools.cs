@@ -25,13 +25,12 @@ public static class TypeExtractionTools
         [Description("Optional: target file path for the new type. If omitted, defaults to {NewTypeName}.cs in the same directory")] string? newFilePath = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("extract_type_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await typeExtractionService.PreviewExtractTypeAsync(
-                    workspaceId, filePath, typeName, memberNames, newTypeName, newFilePath, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await typeExtractionService.PreviewExtractTypeAsync(
+                workspaceId, filePath, typeName, memberNames, newTypeName, newFilePath, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "extract_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -45,15 +44,12 @@ public static class TypeExtractionTools
         [Description("The preview token returned by extract_type_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("extract_type_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

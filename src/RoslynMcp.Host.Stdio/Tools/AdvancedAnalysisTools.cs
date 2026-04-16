@@ -28,25 +28,24 @@ public static class AdvancedAnalysisTools
         [Description("When true (default), skip symbols matching convention-invoked shapes — EF ModelSnapshot, xUnit/MSTest/NUnit fixtures, ASP.NET middleware (Invoke/InvokeAsync(HttpContext)), SignalR Hubs, FluentValidation AbstractValidator<T>, Razor PageModel subclasses. Detection is name-shape based, so a custom class literally named 'Hub'/'PageModel'/etc. may also be excluded.")] bool excludeConventionInvoked = true,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("find_unused_symbols", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
-                    workspaceId,
-                    new UnusedSymbolsAnalysisOptions
-                    {
-                        ProjectFilter = projectName,
-                        IncludePublic = includePublic,
-                        Limit = limit,
-                        ExcludeEnums = excludeEnums,
-                        ExcludeRecordProperties = excludeRecordProperties,
-                        ExcludeTestProjects = excludeTestProjects,
-                        ExcludeTests = excludeTests,
-                        ExcludeConventionInvoked = excludeConventionInvoked
-                    },
-                    c);
-                return JsonSerializer.Serialize(new { count = results.Count, unusedSymbols = results }, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await unusedCodeAnalyzer.FindUnusedSymbolsAsync(
+                workspaceId,
+                new UnusedSymbolsAnalysisOptions
+                {
+                    ProjectFilter = projectName,
+                    IncludePublic = includePublic,
+                    Limit = limit,
+                    ExcludeEnums = excludeEnums,
+                    ExcludeRecordProperties = excludeRecordProperties,
+                    ExcludeTestProjects = excludeTestProjects,
+                    ExcludeTests = excludeTests,
+                    ExcludeConventionInvoked = excludeConventionInvoked
+                },
+                c);
+            return JsonSerializer.Serialize(new { count = results.Count, unusedSymbols = results }, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "get_di_registrations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -60,12 +59,11 @@ public static class AdvancedAnalysisTools
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("get_di_registrations", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var results = await diRegistrationService.GetDiRegistrationsAsync(workspaceId, projectName, c);
-                return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await diRegistrationService.GetDiRegistrationsAsync(workspaceId, projectName, c);
+            return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "get_complexity_metrics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -83,12 +81,11 @@ public static class AdvancedAnalysisTools
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("get_complexity_metrics", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, filePaths, projectName, minComplexity, limit, c);
-                return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await codeMetricsService.GetComplexityMetricsAsync(workspaceId, filePath, filePaths, projectName, minComplexity, limit, c);
+            return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "find_reflection_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -102,14 +99,13 @@ public static class AdvancedAnalysisTools
         [Description("Optional: filter by project name")] string? projectName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("find_reflection_usages", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, projectName, c);
-                var grouped = results.GroupBy(r => r.UsageKind)
-                    .ToDictionary(g => g.Key, g => g.ToList());
-                return JsonSerializer.Serialize(new { count = results.Count, usagesByKind = grouped }, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, projectName, c);
+            var grouped = results.GroupBy(r => r.UsageKind)
+                .ToDictionary(g => g.Key, g => g.ToList());
+            return JsonSerializer.Serialize(new { count = results.Count, usagesByKind = grouped }, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "get_namespace_dependencies", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -124,30 +120,29 @@ public static class AdvancedAnalysisTools
         [Description("When true, return only namespaces and edges involved in circular dependencies")] bool circularOnly = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("get_namespace_dependencies", () =>
-            gate.RunReadAsync(workspaceId, async c =>
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, projectName, c);
+
+            if (circularOnly && result.CircularDependencies.Count > 0)
             {
-                var result = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, projectName, c);
+                var cyclicNamespaces = new HashSet<string>(
+                    result.CircularDependencies.SelectMany(cd => cd.Cycle),
+                    StringComparer.Ordinal);
 
-                if (circularOnly && result.CircularDependencies.Count > 0)
-                {
-                    var cyclicNamespaces = new HashSet<string>(
-                        result.CircularDependencies.SelectMany(cd => cd.Cycle),
-                        StringComparer.Ordinal);
+                result = new RoslynMcp.Core.Models.NamespaceDependencyGraphDto(
+                    result.Nodes.Where(n => cyclicNamespaces.Contains(n.Namespace)).ToList(),
+                    result.Edges.Where(e => cyclicNamespaces.Contains(e.FromNamespace) &&
+                                            cyclicNamespaces.Contains(e.ToNamespace)).ToList(),
+                    result.CircularDependencies);
+            }
+            else if (circularOnly)
+            {
+                result = new RoslynMcp.Core.Models.NamespaceDependencyGraphDto([], [], []);
+            }
 
-                    result = new RoslynMcp.Core.Models.NamespaceDependencyGraphDto(
-                        result.Nodes.Where(n => cyclicNamespaces.Contains(n.Namespace)).ToList(),
-                        result.Edges.Where(e => cyclicNamespaces.Contains(e.FromNamespace) &&
-                                                cyclicNamespaces.Contains(e.ToNamespace)).ToList(),
-                        result.CircularDependencies);
-                }
-                else if (circularOnly)
-                {
-                    result = new RoslynMcp.Core.Models.NamespaceDependencyGraphDto([], [], []);
-                }
-
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "get_nuget_dependencies", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -161,12 +156,11 @@ public static class AdvancedAnalysisTools
         [Description("When true, returns a compact per-package summary `{packageId, version, projectCount, distinctVersionCount}` instead of the full per-project graph. Default false preserves the verbose shape.")] bool summary = false,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("get_nuget_dependencies", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, c, summary);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, c, summary);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "semantic_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -182,16 +176,15 @@ public static class AdvancedAnalysisTools
         [Description("Maximum number of results to return (default: 50)")] int limit = 50,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("semantic_search", () =>
-            gate.RunReadAsync(workspaceId, async c =>
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var response = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, projectName, limit, c);
+            return JsonSerializer.Serialize(new
             {
-                var response = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, projectName, limit, c);
-                return JsonSerializer.Serialize(new
-                {
-                    count = response.Results.Count,
-                    results = response.Results,
-                    warning = response.Warning
-                }, JsonDefaults.Indented);
-            }, ct));
+                count = response.Results.Count,
+                results = response.Results,
+                warning = response.Warning
+            }, JsonDefaults.Indented);
+        }, ct);
     }
 }

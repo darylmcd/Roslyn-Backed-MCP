@@ -25,12 +25,11 @@ public static class EditTools
         CancellationToken ct = default,
         [Description("When false (default), C# files are parsed after edits and lexer/parser errors block the apply. Set true only for intentional intermediate invalid states.")] bool skipSyntaxCheck = false)
     {
-        return ToolErrorHandler.ExecuteAsync("apply_text_edit", () =>
-            gate.RunWriteAsync(workspaceId, async c =>
-            {
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-                var result = await editService.ApplyTextEditsAsync(workspaceId, filePath, edits, c, skipSyntaxCheck);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunWriteAsync(workspaceId, async c =>
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+            var result = await editService.ApplyTextEditsAsync(workspaceId, filePath, edits, c, skipSyntaxCheck);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

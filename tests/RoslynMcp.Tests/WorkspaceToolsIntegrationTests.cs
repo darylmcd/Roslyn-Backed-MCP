@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -196,14 +197,16 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     public async Task WorkspaceTools_GetSourceText_InvertedRange_ReturnsInvalidArgument()
     {
         var programPath = FindProgramPath();
-        var json = await WorkspaceTools.GetSourceText(
-            WorkspaceExecutionGate,
-            WorkspaceManager,
-            WorkspaceId,
-            programPath,
-            startLine: 5,
-            endLine: 2,
-            ct: CancellationToken.None);
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "get_source_text",
+            () => WorkspaceTools.GetSourceText(
+                WorkspaceExecutionGate,
+                WorkspaceManager,
+                WorkspaceId,
+                programPath,
+                startLine: 5,
+                endLine: 2,
+                ct: CancellationToken.None));
         using var doc = JsonDocument.Parse(json);
         Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
         StringAssert.Contains(doc.RootElement.GetProperty("message").GetString()!, "<=");
@@ -213,14 +216,16 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
     public async Task WorkspaceTools_GetSourceText_StartPastEof_ReturnsInvalidArgument()
     {
         var programPath = FindProgramPath();
-        var json = await WorkspaceTools.GetSourceText(
-            WorkspaceExecutionGate,
-            WorkspaceManager,
-            WorkspaceId,
-            programPath,
-            startLine: 99999,
-            endLine: 99999,
-            ct: CancellationToken.None);
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "get_source_text",
+            () => WorkspaceTools.GetSourceText(
+                WorkspaceExecutionGate,
+                WorkspaceManager,
+                WorkspaceId,
+                programPath,
+                startLine: 99999,
+                endLine: 99999,
+                ct: CancellationToken.None));
         using var doc = JsonDocument.Parse(json);
         Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
     }

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -20,7 +21,7 @@ public sealed class ToolErrorHandlerWorkspaceReloadRaceTests
     [TestMethod]
     public async Task KeyNotFoundException_WithAutoReloadedStaleAction_SurfacesWorkspaceReloadedDuringCall()
     {
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "symbol_impact_sweep",
             () =>
             {
@@ -54,7 +55,7 @@ public sealed class ToolErrorHandlerWorkspaceReloadRaceTests
     [TestMethod]
     public async Task KeyNotFoundException_WithoutStaleAction_FallsThroughToGenericNotFound()
     {
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "symbol_info",
             () => throw new KeyNotFoundException(
                 "No symbol could be resolved for metadata name 'Foo.Bar'."));
@@ -72,7 +73,7 @@ public sealed class ToolErrorHandlerWorkspaceReloadRaceTests
         // Only the reload-completed case ("auto-reloaded") is race-prone. A "warn"
         // stamp means the workspace was stale but no reload fired, so the usual
         // NotFound envelope remains the correct signal.
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "find_references",
             () =>
             {

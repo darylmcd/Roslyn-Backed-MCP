@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -27,17 +28,19 @@ public sealed class ErrorResponseObservabilityTests : SharedWorkspaceTestBase
         var fakeHandle = Convert.ToBase64String(
             Encoding.UTF8.GetBytes("""{"MetadataName":"NonExistentNamespace.NonExistentType"}"""));
 
-        var json = await SymbolTools.FindReferences(
-            WorkspaceExecutionGate,
-            ReferenceService,
-            WorkspaceId,
-            filePath: null,
-            line: null,
-            column: null,
-            symbolHandle: fakeHandle,
-            limit: 100,
-            offset: 0,
-            ct: CancellationToken.None);
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "find_references",
+            () => SymbolTools.FindReferences(
+                WorkspaceExecutionGate,
+                ReferenceService,
+                WorkspaceId,
+                filePath: null,
+                line: null,
+                column: null,
+                symbolHandle: fakeHandle,
+                limit: 100,
+                offset: 0,
+                ct: CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),

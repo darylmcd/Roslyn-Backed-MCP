@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio;
+using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
 
@@ -62,7 +63,19 @@ builder.Services
     .WithStdioServerTransport()
     .WithToolsFromAssembly()
     .WithResourcesFromAssembly()
-    .WithPromptsFromAssembly();
+    .WithPromptsFromAssembly()
+    // Single error-handling and observability boundary for every tools/call dispatch.
+    // See ai_docs/references/mcp-server-best-practices.md § 2-3. Replaces the legacy
+    // per-handler ToolErrorHandler.ExecuteAsync(...) wrapper so that pre-binding
+    // failures (missing/unknown required parameter, JSON deserialization of arguments)
+    // surface the same structured CallToolResult { IsError = true } envelope as any
+    // exception thrown inside a handler body. Requires SDK PR csharp-sdk#844 (shipped
+    // in 0.4.0-preview.3, carried into 1.x) so filters observe binding-stage
+    // ArgumentException / JsonException propagation.
+    .WithRequestFilters(requestFilters =>
+    {
+        requestFilters.AddCallToolFilter(StructuredCallToolFilter.Create);
+    });
 
 var host = builder.Build();
 

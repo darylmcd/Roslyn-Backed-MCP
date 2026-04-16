@@ -21,12 +21,11 @@ public static class MSBuildTools
         [Description("Property name (e.g. TargetFramework)")] string propertyName,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("evaluate_msbuild_property", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await msbuildEvaluation.EvaluatePropertyAsync(workspaceId, projectName, propertyName, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await msbuildEvaluation.EvaluatePropertyAsync(workspaceId, projectName, propertyName, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "evaluate_msbuild_items", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -41,12 +40,11 @@ public static class MSBuildTools
         [Description("Item type (e.g. Compile, PackageReference)")] string itemType,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("evaluate_msbuild_items", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await msbuildEvaluation.EvaluateItemsAsync(workspaceId, projectName, itemType, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await msbuildEvaluation.EvaluateItemsAsync(workspaceId, projectName, itemType, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "get_msbuild_properties", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -62,12 +60,11 @@ public static class MSBuildTools
         [Description("Optional: explicit allowlist of property names to return. Takes precedence over propertyNameFilter when supplied.")] string[]? includedNames = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("get_msbuild_properties", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await msbuildEvaluation.GetEvaluatedPropertiesAsync(
-                    workspaceId, projectName, propertyNameFilter, includedNames, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await msbuildEvaluation.GetEvaluatedPropertiesAsync(
+                workspaceId, projectName, propertyNameFilter, includedNames, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

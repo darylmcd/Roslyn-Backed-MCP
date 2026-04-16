@@ -23,12 +23,11 @@ public static class FixAllTools
         [Description("Optional: project name when scope is 'project'")] string? projectName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("fix_all_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await fixAllService.PreviewFixAllAsync(workspaceId, diagnosticId, scope, filePath, projectName, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await fixAllService.PreviewFixAllAsync(workspaceId, diagnosticId, scope, filePath, projectName, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "fix_all_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -42,15 +41,12 @@ public static class FixAllTools
         [Description("The preview token returned by fix_all_preview")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("fix_all_apply", () =>
+        var wsId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

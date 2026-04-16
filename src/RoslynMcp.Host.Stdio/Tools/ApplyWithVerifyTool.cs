@@ -29,13 +29,11 @@ public static class ApplyWithVerifyTool
         [Description("If true (default) and the apply introduces new compile errors, automatically revert via revert_last_apply.")] bool rollbackOnError = true,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("apply_with_verify", () =>
-        {
-            var workspaceId = previewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        var workspaceId = previewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
 
-            return gate.RunWriteAsync(workspaceId, async c =>
-            {
+        return gate.RunWriteAsync(workspaceId, async c =>
+        {
                 // Snapshot pre-apply error fingerprints so we can tell NEW errors from pre-existing
                 // ones (some repos already have errors; we shouldn't roll back over those).
                 var preBaseline = await compileCheckService.CheckAsync(
@@ -93,12 +91,11 @@ public static class ApplyWithVerifyTool
                     introducedErrors = newErrors,
                     preErrorCount = preBaseline.ErrorCount,
                     postErrorCount = postCheck.ErrorCount,
-                    message = reverted
-                        ? "Apply introduced new compile errors and was reverted. The workspace is back to the pre-apply state."
-                        : "Apply introduced new compile errors AND the rollback also failed — the workspace is in an inconsistent state. Inspect manually.",
-                }, JsonDefaults.Indented);
-            }, ct);
-        });
+                message = reverted
+                    ? "Apply introduced new compile errors and was reverted. The workspace is back to the pre-apply state."
+                    : "Apply introduced new compile errors AND the rollback also failed — the workspace is in an inconsistent state. Inspect manually.",
+            }, JsonDefaults.Indented);
+        }, ct);
     }
 
     /// <summary>

@@ -25,13 +25,12 @@ public static class ConsumerAnalysisTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.IMyInterface")] string? metadataName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("find_consumers", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-                var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, c);
-                if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+            var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, c);
+            if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -20,7 +21,7 @@ public sealed class ToolErrorHandlerParameterValidationTests
         var inner = new ArgumentNullException("workspaceId", "Required parameter is null");
         var outer = new System.Reflection.TargetInvocationException("Invocation failed", inner);
 
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => throw outer);
 
@@ -37,7 +38,7 @@ public sealed class ToolErrorHandlerParameterValidationTests
         var inner = new ArgumentOutOfRangeException("limit", 5000, "Value must be <= 1000");
         var outer = new InvalidOperationException("Tool invocation failed", inner);
 
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => throw outer);
 
@@ -52,7 +53,7 @@ public sealed class ToolErrorHandlerParameterValidationTests
         var inner = new JsonException("Unexpected token at line 3");
         var outer = new InvalidOperationException("Invocation failed", inner);
 
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => throw outer);
 
@@ -68,7 +69,7 @@ public sealed class ToolErrorHandlerParameterValidationTests
         var inner = new FormatException("Input string was not in a correct format");
         var outer = new InvalidOperationException("Invocation failed", inner);
 
-        var result = await ToolErrorHandler.ExecuteAsync(
+        var result = await ToolExecutionTestHarness.RunAsync(
             "test_tool",
             () => throw outer);
 
@@ -86,7 +87,7 @@ public sealed class ToolErrorHandlerParameterValidationTests
         var outer = new InvalidOperationException("Wrapper",
             new NullReferenceException("Object reference not set"));
 
-        var result = await ToolErrorHandler.ExecuteAsync("test_tool", () => throw outer);
+        var result = await ToolExecutionTestHarness.RunAsync("test_tool", () => throw outer);
         var doc = JsonDocument.Parse(result);
         var category = doc.RootElement.GetProperty("category").GetString();
         // The outer is InvalidOperationException, which the ErrorHandlers dictionary

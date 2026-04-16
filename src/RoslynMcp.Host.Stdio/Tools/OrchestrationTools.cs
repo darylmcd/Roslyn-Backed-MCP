@@ -24,12 +24,11 @@ public static class OrchestrationTools
         [Description("Replacement package version")] string newVersion,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("migrate_package_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await packageMigrationOrchestrator.PreviewMigratePackageAsync(workspaceId, oldPackageId, newPackageId, newVersion, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await packageMigrationOrchestrator.PreviewMigratePackageAsync(workspaceId, oldPackageId, newPackageId, newVersion, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "split_class_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -46,12 +45,11 @@ public static class OrchestrationTools
         [Description("File name for the new partial class file, for example Dog.Behavior.cs")] string newFileName,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("split_class_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await classSplitOrchestrator.PreviewSplitClassAsync(workspaceId, filePath, typeName, memberNames, newFileName, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await classSplitOrchestrator.PreviewSplitClassAsync(workspaceId, filePath, typeName, memberNames, newFileName, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "extract_and_wire_interface_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -70,21 +68,20 @@ public static class OrchestrationTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("extract_and_wire_interface_preview", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                ProgressHelper.Report(progress, 0, 1);
-                var result = await extractAndWireOrchestrator.PreviewExtractAndWireInterfaceAsync(
-                    workspaceId,
-                    filePath,
-                    typeName,
-                    interfaceName,
-                    targetProjectName,
-                    updateDiRegistrations,
-                    c).ConfigureAwait(false);
-                ProgressHelper.Report(progress, 1, 1);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            ProgressHelper.Report(progress, 0, 1);
+            var result = await extractAndWireOrchestrator.PreviewExtractAndWireInterfaceAsync(
+                workspaceId,
+                filePath,
+                typeName,
+                interfaceName,
+                targetProjectName,
+                updateDiRegistrations,
+                c).ConfigureAwait(false);
+            ProgressHelper.Report(progress, 1, 1);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "apply_composite_preview", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -98,15 +95,12 @@ public static class OrchestrationTools
         [Description("The preview token returned by an orchestration preview tool")] string previewToken,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("apply_composite_preview", () =>
+        var wsId = compositePreviewStore.PeekWorkspaceId(previewToken)
+            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+        return gate.RunWriteAsync(wsId, async c =>
         {
-            var wsId = compositePreviewStore.PeekWorkspaceId(previewToken)
-                ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-            return gate.RunWriteAsync(wsId, async c =>
-            {
-                var result = await compositeApplyOrchestrator.ApplyCompositeAsync(previewToken, c).ConfigureAwait(false);
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct);
-        });
+            var result = await compositeApplyOrchestrator.ApplyCompositeAsync(previewToken, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 }

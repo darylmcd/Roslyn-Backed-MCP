@@ -41,15 +41,13 @@ public static class AnalysisTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("project_diagnostics", () =>
+        ParameterValidation.ValidateSeverity(severity);
+        ParameterValidation.ValidatePagination(offset, limit);
+        return gate.RunReadAsync(workspaceId, async c =>
         {
-            ParameterValidation.ValidateSeverity(severity);
-            ParameterValidation.ValidatePagination(offset, limit);
-            return gate.RunReadAsync(workspaceId, async c =>
-            {
-                ProgressHelper.Report(progress, 0);
-                var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, projectName, file, severity, diagnosticId, c);
-                ProgressHelper.Report(progress, 1, 1);
+            ProgressHelper.Report(progress, 0);
+            var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, projectName, file, severity, diagnosticId, c);
+            ProgressHelper.Report(progress, 1, 1);
 
                 var allDiagnostics = results.WorkspaceDiagnostics
                     .Select(diagnostic => (Bucket: DiagnosticBucket.Workspace, Diagnostic: diagnostic))
@@ -129,13 +127,12 @@ public static class AnalysisTools
                         .Where(entry => entry.Bucket == DiagnosticBucket.Compiler)
                         .Select(entry => entry.Diagnostic)
                         .ToList(),
-                    analyzerDiagnostics = pagedDiagnostics
-                        .Where(entry => entry.Bucket == DiagnosticBucket.Analyzer)
-                        .Select(entry => entry.Diagnostic)
-                        .ToList(),
-                }, JsonDefaults.Indented);
-            }, ct);
-        });
+                analyzerDiagnostics = pagedDiagnostics
+                    .Where(entry => entry.Bucket == DiagnosticBucket.Analyzer)
+                    .Select(entry => entry.Diagnostic)
+                    .ToList(),
+            }, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information and curated fix options for a specific diagnostic occurrence")]
@@ -152,30 +149,29 @@ public static class AnalysisTools
         [Description("1-based column number")] int column,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("diagnostic_details", () =>
-            gate.RunReadAsync(workspaceId, async c =>
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+            var result = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, c);
+            if (result is null)
             {
-                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-                var result = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, c);
-                if (result is null)
+                // FLAG-1C: surface a structured "not found" envelope instead of raw JSON null,
+                // so downstream agents get an actionable error message they can route on.
+                var notFound = new
                 {
-                    // FLAG-1C: surface a structured "not found" envelope instead of raw JSON null,
-                    // so downstream agents get an actionable error message they can route on.
-                    var notFound = new
-                    {
-                        found = false,
-                        diagnosticId,
-                        filePath,
-                        line,
-                        column,
-                        message = $"No diagnostic with id '{diagnosticId}' was found at {filePath}:{line}:{column}. " +
-                                  "Run project_diagnostics first and copy an exact (id, line, column) tuple from a real entry; " +
-                                  "diagnostic positions must match the analyzer-reported location, not just the surrounding line.",
-                    };
-                    return JsonSerializer.Serialize(notFound, JsonDefaults.Indented);
-                }
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+                    found = false,
+                    diagnosticId,
+                    filePath,
+                    line,
+                    column,
+                    message = $"No diagnostic with id '{diagnosticId}' was found at {filePath}:{line}:{column}. " +
+                              "Run project_diagnostics first and copy an exact (id, line, column) tuple from a real entry; " +
+                              "diagnostic positions must match the analyzer-reported location, not just the surrounding line.",
+                };
+                return JsonSerializer.Serialize(notFound, JsonDefaults.Indented);
+            }
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "type_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the type hierarchy (base types, derived types, implemented interfaces) for a type at the given position")]
@@ -192,13 +188,12 @@ public static class AnalysisTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("type_hierarchy", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), c);
-                if (result is null) throw new KeyNotFoundException("No type found at the specified location");
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await symbolRelationshipService.GetTypeHierarchyAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), c);
+            if (result is null) throw new KeyNotFoundException("No type found at the specified location");
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "callers_callees", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find direct callers and callees of the symbol resolved at the exact line/column (or symbolHandle). Resolution uses the token at that position — e.g. a caret on a field name inside a method resolves the field, not the enclosing method. Place the caret on the method name to analyze the method.")]
@@ -217,32 +212,31 @@ public static class AnalysisTools
         [Description("Maximum number of callees to return (default: 100)")] int calleesLimit = 100,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("callers_callees", () =>
-            gate.RunReadAsync(workspaceId, async c =>
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            ParameterValidation.ValidatePagination(0, callersLimit);
+            ParameterValidation.ValidatePagination(0, calleesLimit);
+            var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), c);
+            if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+
+            var callers = result.Callers.Take(callersLimit).ToList();
+            var callees = result.Callees.Take(calleesLimit).ToList();
+            var hasMoreCallers = result.Callers.Count > callers.Count;
+            var hasMoreCallees = result.Callees.Count > callees.Count;
+
+            return JsonSerializer.Serialize(new
             {
-                ParameterValidation.ValidatePagination(0, callersLimit);
-                ParameterValidation.ValidatePagination(0, calleesLimit);
-                var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), c);
-                if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
-
-                var callers = result.Callers.Take(callersLimit).ToList();
-                var callees = result.Callees.Take(calleesLimit).ToList();
-                var hasMoreCallers = result.Callers.Count > callers.Count;
-                var hasMoreCallees = result.Callees.Count > callees.Count;
-
-                return JsonSerializer.Serialize(new
-                {
-                    symbol = result.Symbol,
-                    callers,
-                    callees,
-                    callersLimit,
-                    calleesLimit,
-                    hasMoreCallers,
-                    hasMoreCallees,
-                    totalCallers = result.Callers.Count,
-                    totalCallees = result.Callees.Count
-                }, JsonDefaults.Indented);
-            }, ct));
+                symbol = result.Symbol,
+                callers,
+                callees,
+                callersLimit,
+                calleesLimit,
+                hasMoreCallers,
+                hasMoreCallees,
+                totalCallers = result.Callers.Count,
+                totalCallees = result.Callees.Count
+            }, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects. References and declarations are paginated server-side (FLAG-3D) — use referencesOffset/referencesLimit/declarationsLimit. Total counts and hasMore flags are always returned.")]
@@ -262,20 +256,19 @@ public static class AnalysisTools
         [Description("Maximum number of affected declarations to return (default: 100)")] int declarationsLimit = 100,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("impact_analysis", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                ParameterValidation.ValidatePagination(referencesOffset, referencesLimit);
-                if (declarationsLimit < 1) throw new ArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
-                var paging = new ImpactAnalysisPaging(referencesOffset, referencesLimit, declarationsLimit);
-                var result = await mutationAnalysisService.AnalyzeImpactAsync(
-                    workspaceId,
-                    SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName),
-                    paging,
-                    c);
-                if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
-                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-            }, ct));
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            ParameterValidation.ValidatePagination(referencesOffset, referencesLimit);
+            if (declarationsLimit < 1) throw new ArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
+            var paging = new ImpactAnalysisPaging(referencesOffset, referencesLimit, declarationsLimit);
+            var result = await mutationAnalysisService.AnalyzeImpactAsync(
+                workspaceId,
+                SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName),
+                paging,
+                c);
+            if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "find_type_mutations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Heavy analysis: find all mutating members of a type (settable properties, methods that write instance state) and their external callers, classified as construction-phase vs post-construction callers")]
@@ -293,26 +286,25 @@ public static class AnalysisTools
         [Description("Maximum number of mutating members to return (default: 100)")] int limit = 100,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("find_type_mutations", () =>
-            gate.RunReadAsync(workspaceId, async c =>
-            {
-                ParameterValidation.ValidatePagination(0, limit);
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-                var result = await mutationAnalysisService.FindTypeMutationsAsync(workspaceId, locator, c);
-                if (result is null) throw new KeyNotFoundException("No named type found at the specified location");
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            ParameterValidation.ValidatePagination(0, limit);
+            var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+            var result = await mutationAnalysisService.FindTypeMutationsAsync(workspaceId, locator, c);
+            if (result is null) throw new KeyNotFoundException("No named type found at the specified location");
 
-                var mutatingMembers = result.MutatingMembers.Take(limit).ToList();
-                var hasMore = result.MutatingMembers.Count > mutatingMembers.Count;
-                return JsonSerializer.Serialize(new
-                {
-                    type = result.Type,
-                    mutatingMembers,
-                    summary = result.Summary,
-                    limit,
-                    hasMore,
-                    totalMutatingMembers = result.MutatingMembers.Count
-                }, JsonDefaults.Indented);
-            }, ct));
+            var mutatingMembers = result.MutatingMembers.Take(limit).ToList();
+            var hasMore = result.MutatingMembers.Count > mutatingMembers.Count;
+            return JsonSerializer.Serialize(new
+            {
+                type = result.Type,
+                mutatingMembers,
+                summary = result.Summary,
+                limit,
+                hasMore,
+                totalMutatingMembers = result.MutatingMembers.Count
+            }, JsonDefaults.Indented);
+        }, ct);
     }
 
     [McpServerTool(Name = "find_type_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all usages of a type across the solution, classified by role: MethodReturnType, MethodParameter, PropertyType, LocalVariable, FieldType, GenericArgument, BaseType, Cast, TypeCheck, ObjectCreation, or Other")]
@@ -331,27 +323,26 @@ public static class AnalysisTools
         [Description("Number of usages to skip before returning results (default: 0)")] int offset = 0,
         CancellationToken ct = default)
     {
-        return ToolErrorHandler.ExecuteAsync("find_type_usages", () =>
-            gate.RunReadAsync(workspaceId, async c =>
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            ParameterValidation.ValidatePagination(offset, limit);
+            var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+            var results = await mutationAnalysisService.FindTypeUsagesAsync(workspaceId, locator, c);
+            var paged = results.Skip(offset).Take(limit).ToList();
+            // BUG-N11: Use PascalCase enum names for dictionary keys (Json may camelCase member names elsewhere).
+            var grouped = paged
+                .GroupBy(u => u.Classification.ToString(), StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+            var hasMore = offset + paged.Count < results.Count;
+            return JsonSerializer.Serialize(new
             {
-                ParameterValidation.ValidatePagination(offset, limit);
-                var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-                var results = await mutationAnalysisService.FindTypeUsagesAsync(workspaceId, locator, c);
-                var paged = results.Skip(offset).Take(limit).ToList();
-                // BUG-N11: Use PascalCase enum names for dictionary keys (Json may camelCase member names elsewhere).
-                var grouped = paged
-                    .GroupBy(u => u.Classification.ToString(), StringComparer.Ordinal)
-                    .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
-                var hasMore = offset + paged.Count < results.Count;
-                return JsonSerializer.Serialize(new
-                {
-                    count = paged.Count,
-                    totalCount = results.Count,
-                    hasMore,
-                    offset,
-                    limit,
-                    usagesByClassification = grouped
-                }, JsonDefaults.Indented);
-            }, ct));
+                count = paged.Count,
+                totalCount = results.Count,
+                hasMore,
+                offset,
+                limit,
+                usagesByClassification = grouped
+            }, JsonDefaults.Indented);
+        }, ct);
     }
 }
