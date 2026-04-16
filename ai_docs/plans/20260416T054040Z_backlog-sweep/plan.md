@@ -128,8 +128,8 @@ initiative below has the standard table fields filled out at execute time.
 | I-17 | `dr-9-9-response-claims` | 1 | 30000 | Fixed | in-progress (branch: remediation/dr-9-9-response-claims) — local `reloaded` flag gates StaleAction stamp; 1 regression test. |
 | I-18 | `project-graph-missing-metadata-fields` | 2 | 30000 | Fixed | merged (PR #185, 2026-04-16). |
 | I-19 | `dr-9-1-regression-r17a-emits-literal-placeholder` | 1 | 35000 | Changed — BREAKING | merged (PR #186, 2026-04-16). |
-| I-20 | `dr-9-8-bug-validate-fabricated-accepts-fabricated-silen` | 2 | 35000 | Fixed | in-progress (branch: remediation/dr-9-8-bug-validate-fabricated-accepts-fabricated-silen) — ResolveChangedFiles partitions into known/unknown; new DTO field `UnknownFilePaths`; 3 regression tests. |
-| I-21 | `dr-9-11-payload-exceeds-mcp-tool-result-cap` | 1 | 35000 | Added | Paginate `roslyn://server/catalog`. |
+| I-20 | `dr-9-8-bug-validate-fabricated-accepts-fabricated-silen` | 2 | 35000 | Fixed | merged (PR #187, 2026-04-16). |
+| I-21 | `dr-9-11-payload-exceeds-mcp-tool-result-cap` | 2 | 35000 | Added + Changed — BREAKING | in-progress (branch: remediation/dr-9-11-payload-exceeds-mcp-tool-result-cap) — default catalog returns summary shape; 3 new resources (full, tools page, prompts page); 4 regression tests. |
 | I-22 | `change-signature-parameter-span-hint-for-remove` | 2 | 35000 | Added | Caret-on-parameter dispatch to remove. |
 | I-23 | `dr-9-5-bug-pagination-001-has-no-pagination-filter-igno` | 1 | 35000 | Fixed | Add `offset`/`limit` to `test_reference_map`; honor `projectName`. |
 | I-24 | `symbol-impact-sweep-race-with-auto-reload` | 2 | 35000 | Fixed | Race-aware error envelope during auto-reload. |
