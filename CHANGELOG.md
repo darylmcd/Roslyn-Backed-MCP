@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`source_file_lines` resource returns structured JSON error envelopes for invalid inputs (`dr-9-13-flag-resource-invalid-range-resource-returns-ge`).** Firewall-analyzer audit 2026-04-15 §9.13 reported that calling the resource with `endLine < startLine`, non-numeric bounds, or a `startLine` past EOF produced a generic JSON-RPC `-32603` with no machine-readable category — callers could not distinguish "bad range" from "backend crash". `GetSourceFileLines` now executes inside `ToolErrorHandler.ExecuteResourceAsync`, which maps the validation-failure exceptions (`ArgumentException`, `ArgumentOutOfRangeException`, `KeyNotFoundException`) to the standard `{error, category, tool, message, exceptionType?}` envelope. Success responses are unchanged (still the marker-prefixed C# slice at `text/x-csharp`); only the error path picks up the structured shape with the resource URI template as the `tool` field. The three `ParseLineRange` branches that previously surfaced `InvalidOperationException` now throw `ArgumentException`/`ArgumentOutOfRangeException` so they classify as `InvalidArgument` rather than `InvalidOperation`.
+
+### Maintenance
+
+- **Backlog:** 1 row closed under the 2026-04-16 sweep: `dr-9-13-flag-resource-invalid-range-resource-returns-ge` (P4).
+- **Tests:** 3 new regression tests in `Top10V2RegressionTests` (end-before-start, non-numeric range, start-past-EOF). The two pre-existing `*_Throws` tests were rewritten as `*_ReturnsStructuredError` to reflect the new contract.
+
 ## [1.19.0] - 2026-04-16
 
 Top-10 remediation pass v6 — ten correctness and safety fixes targeting the classes of bugs flagged across the 2026-04-15 experimental-promotion audits (firewall-analyzer, IT-Chat-Bot, NetworkDocumentation, SampleSolution) and the v1.18.2 Jellyfin stress test. Closes **19 backlog rows** (7 P2 · 6 P3 · 6 P4). Shipped as PR #162 — one commit per item, plus a baseline plan commit and a final backlog-sync commit.

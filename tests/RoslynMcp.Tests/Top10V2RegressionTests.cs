@@ -77,26 +77,64 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(bodyLineCount < 20, $"Slice should be small (<20 lines including marker); got {bodyLineCount}.");
     }
 
+    // dr-9-13-flag-resource-invalid-range-resource-returns-ge:
+    // Pre-fix: invalid ranges threw McpToolException → framework surfaced -32603 JSON-RPC.
+    // Post-fix: the handler is wrapped in ToolErrorHandler.ExecuteResourceAsync which returns
+    // a structured JSON error envelope (category, message, tool) for every input-validation
+    // failure.
     [TestMethod]
-    public async Task SourceFileLinesResource_InvalidRange_Throws()
+    public async Task SourceFileLinesResource_EndBeforeStart_ReturnsStructuredInvalidArgument()
     {
         var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
         var encoded = Uri.EscapeDataString(animalServicePath);
 
-        await Assert.ThrowsExceptionAsync<RoslynMcp.Host.Stdio.Tools.McpToolException>(() =>
-            WorkspaceResources.GetSourceFileLines(
-                WorkspaceManager, _workspaceId, encoded, lineRange: "10-5", CancellationToken.None));
+        var json = await WorkspaceResources.GetSourceFileLines(
+            WorkspaceManager, _workspaceId, encoded, lineRange: "10-5", CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}",
+            doc.RootElement.GetProperty("tool").GetString(),
+            "Resource URI template must populate the tool field, not 'unknown'.");
     }
 
     [TestMethod]
-    public async Task SourceFileLinesResource_NonNumericRange_Throws()
+    public async Task SourceFileLinesResource_NonNumericRange_ReturnsStructuredInvalidArgument()
     {
         var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
         var encoded = Uri.EscapeDataString(animalServicePath);
 
-        await Assert.ThrowsExceptionAsync<RoslynMcp.Host.Stdio.Tools.McpToolException>(() =>
-            WorkspaceResources.GetSourceFileLines(
-                WorkspaceManager, _workspaceId, encoded, lineRange: "abc-def", CancellationToken.None));
+        var json = await WorkspaceResources.GetSourceFileLines(
+            WorkspaceManager, _workspaceId, encoded, lineRange: "abc-def", CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+    }
+
+    [TestMethod]
+    public async Task SourceFileLinesResource_StartLinePastEof_ReturnsStructuredInvalidArgument()
+    {
+        var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
+        var encoded = Uri.EscapeDataString(animalServicePath);
+
+        // AnimalService.cs is ~30 lines; 9999 is safely past EOF.
+        var json = await WorkspaceResources.GetSourceFileLines(
+            WorkspaceManager, _workspaceId, encoded, lineRange: "9999-10000", CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        StringAssert.Contains(doc.RootElement.GetProperty("message").GetString() ?? string.Empty,
+            "past the end",
+            "Error message should explain the startLine-past-EOF condition.");
     }
 
     // ── apply-with-verify-and-rollback ──
