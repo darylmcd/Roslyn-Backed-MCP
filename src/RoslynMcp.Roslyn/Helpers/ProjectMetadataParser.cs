@@ -151,4 +151,81 @@ internal static class ProjectMetadataParser
             return null;
         }
     }
+
+    /// <summary>
+    /// Item #5 — <c>severity-medium-breaks-msbuild-until-csproj-is-hand</c>.
+    /// Returns <see langword="true"/> when the project file is SDK-style
+    /// (has an <c>Sdk=</c> attribute on the root <c>&lt;Project&gt;</c> element
+    /// or a top-level <c>&lt;Sdk&gt;</c> import) AND does not explicitly disable
+    /// default compile items with <c>&lt;EnableDefaultCompileItems&gt;false&lt;/EnableDefaultCompileItems&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// When this returns true, the server MUST NOT let
+    /// <see cref="Microsoft.CodeAnalysis.MSBuild.MSBuildWorkspace.TryApplyChanges(Microsoft.CodeAnalysis.Solution)"/>
+    /// inject an explicit <c>&lt;Compile Include="…"/&gt;</c> for an added document —
+    /// the default glob picks up the file automatically on the next workspace load, and
+    /// an explicit include produces the <c>Duplicate 'Compile' items were included</c>
+    /// MSBuild error reported in the firewall-analyzer audit §9.6 (BUG-COMPILE-INCLUDE)
+    /// and IT-Chat-Bot audit §9.1.
+    /// </remarks>
+    public static bool IsSdkStyleWithDefaultCompileItems(string? projectFilePath, ILogger? logger = null)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
+        {
+            return false;
+        }
+
+        var document = LoadProjectDocument(projectFilePath, logger);
+        return IsSdkStyleWithDefaultCompileItems(document);
+    }
+
+    /// <summary>
+    /// XML-shape overload — avoids re-reading the file when the caller already has a
+    /// parsed document. Pure: no I/O, no MSBuild evaluation.
+    /// </summary>
+    public static bool IsSdkStyleWithDefaultCompileItems(XDocument? document)
+    {
+        if (document?.Root is null)
+        {
+            return false;
+        }
+
+        var root = document.Root;
+
+        // SDK-style detection. Three shapes in the wild:
+        //   1. Attribute form: <Project Sdk="Microsoft.NET.Sdk">…</Project>    (most common)
+        //   2. Element form:   <Project><Sdk Name="Microsoft.NET.Sdk"/>…</Project>
+        //   3. Import form:    <Project><Import Sdk="…"/>…</Project>
+        // Non-SDK legacy csprojs use <Project ToolsVersion=…> without Sdk attributes.
+        var hasSdkAttribute = root.Attribute("Sdk") is not null;
+        var hasSdkElement = root.Elements().Any(e => string.Equals(e.Name.LocalName, "Sdk", StringComparison.Ordinal));
+        var hasSdkImport = root.Descendants().Any(e =>
+            string.Equals(e.Name.LocalName, "Import", StringComparison.Ordinal) &&
+            e.Attribute("Sdk") is not null);
+
+        var isSdkStyle = hasSdkAttribute || hasSdkElement || hasSdkImport;
+        if (!isSdkStyle)
+        {
+            return false;
+        }
+
+        // Default is true for SDK-style; only opted-out projects carry
+        // <EnableDefaultCompileItems>false</EnableDefaultCompileItems> explicitly.
+        // We intentionally only look at XML; if a user overrides the property via an
+        // imported .props file they're taking responsibility for their build graph.
+        foreach (var element in root.Descendants())
+        {
+            if (!string.Equals(element.Name.LocalName, "EnableDefaultCompileItems", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (bool.TryParse(element.Value.Trim(), out var enabled) && !enabled)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

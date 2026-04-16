@@ -470,13 +470,46 @@ public sealed class RefactoringService : IRefactoringService
     {
         var appliedFiles = new List<string>();
 
+        // Item #5 — severity-medium-breaks-msbuild-until-csproj-is-hand.
+        //
+        // MSBuildWorkspace.TryApplyChanges, when it sees an added document in an
+        // SDK-style csproj with default Compile globbing enabled, injects an explicit
+        // <Compile Include="…"/> item into the csproj XML. Because the SDK's default
+        // glob already matches every .cs under the project directory, the injection
+        // produces a "Duplicate 'Compile' items were included" MSBuild error on the
+        // next workspace_reload (firewall-analyzer audit §9.6 BUG-COMPILE-INCLUDE;
+        // IT-Chat-Bot audit §9.1).
+        //
+        // We capture which added-document projects are SDK-style here so that after
+        // the TryApplyChanges call we can restore each affected csproj from its
+        // pre-apply bytes — undoing Roslyn's injection while keeping the in-memory
+        // workspace's view of the added document (TryApplyChanges has already added
+        // the document to the in-memory Solution). The next reload picks up the new
+        // file through the SDK's default glob, so the on-disk csproj stays clean.
+        var sdkProjectCsprojSnapshots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
         try
         {
             foreach (var projectChange in solutionChanges.GetProjectChanges())
             {
                 await PersistProjectReferenceChangesAsync(currentSolution, modifiedSolution, projectChange, appliedFiles, ct).ConfigureAwait(false);
 
-                foreach (var documentId in projectChange.GetAddedDocuments())
+                // Snapshot csproj BEFORE we write any new files (the csproj itself is
+                // untouched on disk at this point; capture its canonical bytes).
+                var addedDocuments = projectChange.GetAddedDocuments().ToList();
+                if (addedDocuments.Count > 0)
+                {
+                    var project = modifiedSolution.GetProject(projectChange.ProjectId);
+                    if (project?.FilePath is not null
+                        && ProjectMetadataParser.IsSdkStyleWithDefaultCompileItems(project.FilePath, _logger)
+                        && !sdkProjectCsprojSnapshots.ContainsKey(project.FilePath))
+                    {
+                        var csprojBytes = await File.ReadAllTextAsync(project.FilePath, ct).ConfigureAwait(false);
+                        sdkProjectCsprojSnapshots[project.FilePath] = csprojBytes;
+                    }
+                }
+
+                foreach (var documentId in addedDocuments)
                 {
                     var document = modifiedSolution.GetDocument(documentId);
                     if (document?.FilePath is null)
@@ -530,7 +563,40 @@ public sealed class RefactoringService : IRefactoringService
             // first — MSBuildWorkspace supports added/removed/changed documents — and only
             // fall back to ReloadAsync if the workspace rejects the change. TryApplyChanges
             // bumps WorkspaceSession.Version so per-version caches invalidate correctly.
-            if (!_workspace.TryApplyChanges(workspaceId, modifiedSolution))
+            var applied = _workspace.TryApplyChanges(workspaceId, modifiedSolution);
+
+            // Item #5 — re-apply csproj snapshots for SDK-style projects, undoing
+            // any <Compile Include=…/> injection TryApplyChanges wrote to disk. This
+            // runs whether TryApplyChanges succeeded or failed: on failure we'll
+            // ReloadAsync immediately after, and having the csproj back to its
+            // original bytes ensures the reloaded in-memory workspace matches the
+            // pre-apply csproj (the new file is discovered via the SDK glob).
+            foreach (var (csprojPath, originalContent) in sdkProjectCsprojSnapshots)
+            {
+                try
+                {
+                    var currentContent = await File.ReadAllTextAsync(csprojPath, ct).ConfigureAwait(false);
+                    if (!string.Equals(currentContent, originalContent, StringComparison.Ordinal))
+                    {
+                        await File.WriteAllTextAsync(csprojPath, originalContent, ct).ConfigureAwait(false);
+                        _logger.LogDebug(
+                            "Item #5: restored SDK-style csproj {Path} after TryApplyChanges injected an explicit <Compile> item (default glob will pick up the new file on next reload).",
+                            csprojPath);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Rare on the apply path since we just wrote sibling files in the same
+                    // directory, but a restore failure here does not invalidate the apply
+                    // itself — the duplicate-Compile error surfaces only on the NEXT reload,
+                    // which the caller will see clearly. Log and continue.
+                    _logger.LogWarning(ex,
+                        "Item #5: failed to restore SDK-style csproj snapshot for {Path}; the project may show a duplicate-<Compile> build error until manually edited.",
+                        csprojPath);
+                }
+            }
+
+            if (!applied)
             {
                 _logger.LogInformation(
                     "TryApplyChanges rejected document-set changes for {WorkspaceId}; falling back to full ReloadAsync.",
