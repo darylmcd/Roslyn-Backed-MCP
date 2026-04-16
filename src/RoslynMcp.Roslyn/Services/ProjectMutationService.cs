@@ -397,12 +397,14 @@ public sealed class ProjectMutationService : IProjectMutationService
             return new ApplyResultDto(false, [], "Preview token is invalid, expired, or stale because the workspace changed since the preview was generated. Please create a new preview.");
         }
 
-        var (workspaceId, projectFilePath, updatedContent, workspaceVersion, _) = entry.Value;
-        if (_workspace.GetCurrentVersion(workspaceId) != workspaceVersion)
-        {
-            _previewStore.Invalidate(previewToken);
-            return new ApplyResultDto(false, [], "Preview token is stale because the target workspace changed. Please create a new preview.");
-        }
+        var (workspaceId, projectFilePath, updatedContent, _, _) = entry.Value;
+        // preview-token-cross-coupling-bundle (BREAKING): version-equality check removed.
+        // Project-mutation previews hold the complete post-edit csproj text and a target
+        // path — a full per-token snapshot. A sibling `*_apply` that mutated unrelated
+        // projects does not invalidate this token. If a sibling edited the SAME csproj,
+        // last-apply wins (documented semantic). If the workspace was reloaded or closed,
+        // the store's lifecycle hook has already dropped the entry and Retrieve above
+        // returned null.
 
         try
         {
