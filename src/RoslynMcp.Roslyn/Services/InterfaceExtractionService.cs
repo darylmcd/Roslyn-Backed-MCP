@@ -81,7 +81,30 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
                 .WithLeadingTrivia(SyntaxFactory.Space);
             if (typeDecl.BaseList is not null)
             {
-                var newBaseList = typeDecl.BaseList.AddTypes(interfaceTypeSyntax);
+                // dr-9-6-emits-continuation-on-a-new-line-instead-of-inli: when the source class is
+                // `class Foo : IBar\n{` the last existing base type (`IBar`) carries a trailing
+                // end-of-line trivia (the newline that originally preceded the `{`). Roslyn's
+                // SeparatedSyntaxList.Add inserts a zero-trivia comma token AFTER that trailing
+                // newline, producing `: IBar\n, INewInterface{`. To keep the continuation inline
+                // (`: IBar, INewInterface`), transfer the last existing base type's trailing trivia
+                // onto the new interface's trailing position and clear it from the original last
+                // base type so the comma stays glued to it.
+                var baseList = typeDecl.BaseList;
+                var lastIndex = baseList.Types.Count - 1;
+                BaseTypeSyntax newInterfaceType = interfaceTypeSyntax;
+                if (lastIndex >= 0)
+                {
+                    var lastExisting = baseList.Types[lastIndex];
+                    var trailing = lastExisting.GetTrailingTrivia();
+                    if (trailing.Count > 0)
+                    {
+                        newInterfaceType = interfaceTypeSyntax.WithTrailingTrivia(trailing);
+                        var strippedLast = lastExisting.WithTrailingTrivia(SyntaxTriviaList.Empty);
+                        baseList = baseList.WithTypes(baseList.Types.Replace(lastExisting, strippedLast));
+                    }
+                }
+
+                var newBaseList = baseList.AddTypes(newInterfaceType);
                 updatedTypeDecl = typeDecl.WithBaseList(newBaseList);
             }
             else
