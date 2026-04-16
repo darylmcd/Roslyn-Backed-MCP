@@ -206,6 +206,104 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         }
     }
 
+    [TestMethod]
+    public async Task ExtractInterface_Appends_To_Existing_Base_List_Inline_Without_Newline_Continuation()
+    {
+        // Regression for dr-9-6-emits-continuation-on-a-new-line-instead-of-inli
+        // (samplesolution audit 2026-04-15 §9.6). Repro: a class with an existing base
+        // (`public class Foo : BaseClass\n{`) — the newline after `BaseClass` used to
+        // carry over, producing `public class Foo : BaseClass\n    , IFoo{` after
+        // extract_interface_preview. Expected:
+        //     public class Foo : BaseClass, IFoo
+        //     {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var basePath = Path.Combine(sampleLibDir, "Item96Base.cs");
+        await File.WriteAllTextAsync(basePath,
+            """
+            namespace SampleLib;
+
+            public abstract class Item96Base
+            {
+                public abstract int BaseValue { get; }
+            }
+            """);
+
+        var servicePath = Path.Combine(sampleLibDir, "Item96Service.cs");
+        await File.WriteAllTextAsync(servicePath,
+            """
+            namespace SampleLib;
+
+            public class Item96Service : Item96Base
+            {
+                public override int BaseValue => 42;
+
+                public int Compute() => BaseValue * 2;
+            }
+            """);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var previewDto = await InterfaceExtractionService.PreviewExtractInterfaceAsync(
+                workspaceId,
+                servicePath,
+                typeName: "Item96Service",
+                interfaceName: "IItem96Service",
+                memberNames: new[] { "Compute" },
+                replaceUsages: false,
+                CancellationToken.None);
+
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
+
+            var updatedSourceText = await File.ReadAllTextAsync(servicePath);
+
+            // (1) The new interface must be added to the base list.
+            StringAssert.Contains(updatedSourceText, "IItem96Service",
+                $"Interface must be appended to the base list. Source:\n{updatedSourceText}");
+
+            // (2) CRITICAL — the comma separator must be INLINE with the existing base type.
+            // Before the fix: the last base type (Item96Base) carried the original trailing
+            // newline, and SeparatedSyntaxList.Add inserted a zero-trivia comma AFTER that
+            // newline — producing `: Item96Base\n    , IItem96Service\n{`.
+            Assert.IsTrue(
+                updatedSourceText.Contains("Item96Base, IItem96Service", StringComparison.Ordinal),
+                $"Continuation must be inline (`Item96Base, IItem96Service`). Source:\n{updatedSourceText}");
+
+            // (3) No stray leading-comma continuation line.
+            Assert.IsFalse(
+                System.Text.RegularExpressions.Regex.IsMatch(
+                    updatedSourceText,
+                    @"Item96Base\s*\r?\n\s*,\s*IItem96Service"),
+                $"Comma must not land on a new line after Item96Base. Source:\n{updatedSourceText}");
+
+            // (4) Sanity: the class body's `{` stays on its own line.
+            Assert.IsFalse(
+                updatedSourceText.Contains("IItem96Service{", StringComparison.Ordinal),
+                $"Opening brace must not be glued to the interface name. Source:\n{updatedSourceText}");
+
+            // (5) Sanity: the updated source must parse cleanly.
+            var tree = CSharpSyntaxTree.ParseText(updatedSourceText);
+            var parseDiagnostics = tree.GetDiagnostics()
+                .Where(d => d.Severity == DiagnosticSeverity.Error)
+                .ToList();
+            Assert.AreEqual(
+                0,
+                parseDiagnostics.Count,
+                $"Updated source must parse as valid C#. Diagnostics: {string.Join("; ", parseDiagnostics.Select(d => d.ToString()))}\nSource:\n{updatedSourceText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
     private static void TryDeleteDirectory(string path)
     {
         try
