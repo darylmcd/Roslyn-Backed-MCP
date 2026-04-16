@@ -47,7 +47,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         CancellationToken ct,
         bool summary = false)
     {
-        var changedFiles = ResolveChangedFiles(workspaceId, changedFilePaths);
+        var (changedFiles, unknownFiles) = ResolveChangedFiles(workspaceId, changedFilePaths);
 
         // Stage 1: in-memory compile check across the whole workspace.
         var compile = await _compile.CheckAsync(
@@ -122,6 +122,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         return new WorkspaceValidationDto(
             OverallStatus: status,
             ChangedFilePaths: changedFiles,
+            UnknownFilePaths: unknownFiles,
             CompileResult: compile,
             ErrorDiagnostics: emittedErrors,
             WarningCount: compile.WarningCount,
@@ -131,21 +132,77 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     }
 
     /// <summary>
-    /// When the caller doesn't pass an explicit list, default to "every file the change-tracker
-    /// has recorded since session start". Falls back to empty list when no change tracker is
-    /// wired up — in that case the test-discovery stage is skipped.
+    /// Partition caller-supplied paths into (known-to-workspace, unknown-to-workspace). When the
+    /// caller omits the list we fall back to the change-tracker set — those entries are already
+    /// materialized from Roslyn document operations, so every path is known by construction.
+    ///
+    /// dr-9-8-bug-validate-fabricated-accepts-fabricated-silen: pre-fix the service returned only
+    /// a single list and silently dropped unknown paths inside the test-discovery stage. Unknown
+    /// paths are now surfaced as a separate list in the response so callers can tell that part of
+    /// their requested scope was ignored (typo in path, stale audit-report reference, etc.).
     /// </summary>
-    private IReadOnlyList<string> ResolveChangedFiles(string workspaceId, IReadOnlyList<string>? caller)
+    private (IReadOnlyList<string> Known, IReadOnlyList<string> Unknown) ResolveChangedFiles(
+        string workspaceId, IReadOnlyList<string>? caller)
     {
         if (caller is { Count: > 0 })
-            return caller.Where(p => !string.IsNullOrWhiteSpace(p)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        {
+            var deduped = caller
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
-        if (_changeTracker is null) return Array.Empty<string>();
-        return _changeTracker
+            if (deduped.Length == 0)
+                return (Array.Empty<string>(), Array.Empty<string>());
+
+            var solution = _workspace.GetCurrentSolution(workspaceId);
+            var workspacePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var project in solution.Projects)
+            {
+                foreach (var document in project.Documents)
+                {
+                    if (!string.IsNullOrEmpty(document.FilePath))
+                    {
+                        workspacePaths.Add(Path.GetFullPath(document.FilePath));
+                    }
+                }
+            }
+
+            var known = new List<string>(deduped.Length);
+            var unknown = new List<string>();
+            foreach (var path in deduped)
+            {
+                string normalized;
+                try
+                {
+                    normalized = Path.GetFullPath(path);
+                }
+                catch (Exception) when (path is not null)
+                {
+                    // An unrooted / malformed path is definitively unknown.
+                    unknown.Add(path);
+                    continue;
+                }
+
+                if (workspacePaths.Contains(normalized))
+                    known.Add(path);
+                else
+                    unknown.Add(path);
+            }
+
+            return (known, unknown);
+        }
+
+        // Change-tracker fallback: every entry originates from a Roslyn document mutation inside
+        // this process, so there is no unknown-path set to surface.
+        if (_changeTracker is null)
+            return (Array.Empty<string>(), Array.Empty<string>());
+
+        var tracked = _changeTracker
             .GetChanges(workspaceId)
             .SelectMany(c => c.AffectedFiles ?? Array.Empty<string>())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        return (tracked, Array.Empty<string>());
     }
 
     private static string ComputeOverallStatus(

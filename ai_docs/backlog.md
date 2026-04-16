@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-16T16:15:00Z
+**updated_at:** 2026-04-16T16:30:00Z
 
 ## Agent contract
 
@@ -88,7 +88,6 @@ Within P4, rows are **alphabetical by `id`**.
 | `dr-9-6-preview-token-issued-in-turn-t-invalidated-by-a` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140302Z_networkdocumentation_experimental-promotion.md - ### 9.6 Preview-token issued in turn T invalidated by a sibling `*_apply` in the same turn |
 | `dr-9-7-only-partially-normalizes-whitespace` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140448Z_samplesolution_experimental-promotion.md - ### 9.7 `format_range_preview` only partially normalizes whitespace |
 | `dr-9-7-produces-output-that-violates-project-formatting` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140403Z_itchatbot_experimental-promotion.md - ### 9.7 `extract_method_preview` produces output that violates project formatting |
-| `dr-9-8-bug-validate-fabricated-accepts-fabricated-silen` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.8 BUG-VALIDATE-FABRICATED — `validate_workspace` accepts fabricated `changedFilePaths` silently |
 | `dr-9-8-context-environmental-not-a-bug-mcp-host-may-dro` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140302Z_networkdocumentation_experimental-promotion.md - ### 9.8 (context / environmental, not a bug) — MCP host may drop workspace sessions between user turns |
 | `dr-9-8-documented-limitation-interacts-poorly-with-side` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140403Z_itchatbot_experimental-promotion.md - ### 9.8 `revert_last_apply` documented limitation interacts poorly with `extract_*_apply` (side-effect cleanup) |
 | `dr-9-9-format-bug-004-produces-malformed-body-closing-b` | P4 | — | — | **P4 / tracking.** **Auto (deep-review).** 20260415T140000Z_firewallanalyzer_experimental-promotion.md - ### 9.9 FORMAT-BUG-004 — `extract_method_preview` produces malformed body + closing braces |

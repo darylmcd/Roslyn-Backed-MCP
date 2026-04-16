@@ -32,7 +32,14 @@ public interface IWorkspaceValidationService
 /// Aggregated output of <see cref="IWorkspaceValidationService.ValidateAsync"/>.
 /// </summary>
 /// <param name="OverallStatus">One of <c>clean</c>, <c>compile-error</c>, <c>analyzer-error</c>, <c>test-failure</c>, <c>skipped</c>.</param>
-/// <param name="ChangedFilePaths">The file set that drove the validation (caller-supplied or derived from <c>workspace_changes</c>).</param>
+/// <param name="ChangedFilePaths">Caller-supplied paths that actually resolved to a document in the workspace. Drives compile-check scoping + test discovery.</param>
+/// <param name="UnknownFilePaths">
+/// dr-9-8-bug-validate-fabricated-accepts-fabricated-silen — caller-supplied paths that did NOT
+/// resolve to any workspace document. Pre-fix these were silently dropped inside
+/// <c>FindRelatedTestsForFilesAsync</c> and the response gave no indication that part of the
+/// requested scope was ignored. Non-null; empty list when all paths resolved or when the change
+/// tracker supplied the path set (in which case they are guaranteed to exist).
+/// </param>
 /// <param name="CompileResult">Result of the compile-check stage.</param>
 /// <param name="ErrorDiagnostics">All compiler/analyzer diagnostics with severity <c>Error</c> across the validated scope.</param>
 /// <param name="WarningCount">Count of warning-severity diagnostics in scope (not surfaced individually to keep response size bounded).</param>
@@ -42,6 +49,7 @@ public interface IWorkspaceValidationService
 public sealed record WorkspaceValidationDto(
     string OverallStatus,
     IReadOnlyList<string> ChangedFilePaths,
+    IReadOnlyList<string> UnknownFilePaths,
     CompileCheckDto CompileResult,
     IReadOnlyList<DiagnosticDto> ErrorDiagnostics,
     int WarningCount,

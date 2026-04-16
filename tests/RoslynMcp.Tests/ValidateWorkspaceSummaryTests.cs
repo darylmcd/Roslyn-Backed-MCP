@@ -72,4 +72,65 @@ public sealed class ValidateWorkspaceSummaryTests : SharedWorkspaceTestBase
         Assert.IsTrue(summaryJson.Length <= fullJson.Length,
             $"summary JSON must not exceed full JSON; summary={summaryJson.Length}, full={fullJson.Length}");
     }
+
+    // dr-9-8-bug-validate-fabricated-accepts-fabricated-silen: fabricated / nonexistent paths
+    // used to be silently dropped by the downstream test-discovery stage; the response gave
+    // no signal that the caller's scope was ignored. UnknownFilePaths now surfaces them.
+    [TestMethod]
+    public async Task ValidateAsync_FabricatedChangedFilePaths_SurfacedInUnknownFilePaths()
+    {
+        var fakePath = Path.Combine(Path.GetTempPath(), "definitely-not-in-workspace-" + Guid.NewGuid().ToString("N") + ".cs");
+
+        var result = await _validationService.ValidateAsync(
+            WorkspaceId,
+            changedFilePaths: [fakePath],
+            runTests: false,
+            CancellationToken.None);
+
+        Assert.IsNotNull(result.UnknownFilePaths, "UnknownFilePaths must be non-null (empty list when all paths resolve).");
+        Assert.AreEqual(1, result.UnknownFilePaths.Count,
+            $"The fabricated path must surface as unknown; got {result.UnknownFilePaths.Count} entries.");
+        Assert.AreEqual(fakePath, result.UnknownFilePaths[0]);
+        Assert.AreEqual(0, result.ChangedFilePaths.Count,
+            "A fabricated path must NOT leak into ChangedFilePaths — that field is the known set.");
+    }
+
+    [TestMethod]
+    public async Task ValidateAsync_MixedRealAndFabricatedPaths_PartitionsCorrectly()
+    {
+        var realPath = FindDocumentPath("AnimalService.cs");
+        var fakePath = Path.Combine(Path.GetTempPath(), "imaginary-" + Guid.NewGuid().ToString("N") + ".cs");
+
+        var result = await _validationService.ValidateAsync(
+            WorkspaceId,
+            changedFilePaths: [realPath, fakePath],
+            runTests: false,
+            CancellationToken.None);
+
+        Assert.AreEqual(1, result.ChangedFilePaths.Count, "Known path must appear in ChangedFilePaths.");
+        Assert.AreEqual(1, result.UnknownFilePaths.Count, "Fabricated path must appear in UnknownFilePaths.");
+        Assert.AreEqual(fakePath, result.UnknownFilePaths[0]);
+    }
+
+    [TestMethod]
+    public async Task ValidateAsync_NullChangedFilePaths_NoUnknownSurfaced()
+    {
+        // Change-tracker fallback path: every recorded file was materialized from a Roslyn
+        // document mutation so there can't be unknown entries.
+        var result = await _validationService.ValidateAsync(
+            WorkspaceId, changedFilePaths: null, runTests: false, CancellationToken.None);
+
+        Assert.IsNotNull(result.UnknownFilePaths);
+        Assert.AreEqual(0, result.UnknownFilePaths.Count,
+            "Change-tracker entries are materialized from Roslyn ops so none should ever be unknown.");
+    }
+
+    private static string FindDocumentPath(string name)
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var path = solution.Projects
+            .SelectMany(project => project.Documents)
+            .FirstOrDefault(document => string.Equals(document.Name, name, StringComparison.Ordinal))?.FilePath;
+        return path ?? throw new AssertFailedException($"Document '{name}' was not found.");
+    }
 }
