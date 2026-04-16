@@ -32,6 +32,53 @@ public sealed class SurfaceCatalogTests
             ServerSurfaceCatalog.Prompts.Select(entry => entry.Name).ToArray());
     }
 
+    // dr-9-11-payload-exceeds-mcp-tool-result-cap: the default `server_catalog` resource must
+    // return a cap-safe summary (no Tools / Prompts lists inline). The paginated siblings
+    // serve those lists in slices.
+    [TestMethod]
+    public void ServerCatalogSummary_ReplacesToolsAndPromptsWithPaginationPointers()
+    {
+        var summary = ServerSurfaceCatalog.CreateSummaryDocument();
+        Assert.AreEqual(ServerSurfaceCatalog.Tools.Count, summary.ToolCount);
+        Assert.AreEqual(ServerSurfaceCatalog.Prompts.Count, summary.PromptCount);
+        Assert.AreEqual("roslyn://server/catalog/tools/{offset}/{limit}", summary.ToolsResourceTemplate);
+        Assert.AreEqual("roslyn://server/catalog/prompts/{offset}/{limit}", summary.PromptsResourceTemplate);
+        CollectionAssert.AreEquivalent(
+            ServerSurfaceCatalog.Resources.Select(e => e.Name).ToArray(),
+            summary.Resources.Select(e => e.Name).ToArray());
+    }
+
+    [TestMethod]
+    public void PageEntries_HonoursOffsetAndLimit_SurfacesPaginationMetadata()
+    {
+        var page = ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: 0, limit: 10, resourceName: "test");
+        Assert.AreEqual("test", page.ResourceName);
+        Assert.AreEqual(0, page.Offset);
+        Assert.AreEqual(10, page.Limit);
+        Assert.AreEqual(10, page.ReturnedCount);
+        Assert.AreEqual(ServerSurfaceCatalog.Tools.Count, page.TotalCount);
+        Assert.IsTrue(page.HasMore);
+        Assert.AreEqual(10, page.Entries.Count);
+    }
+
+    [TestMethod]
+    public void PageEntries_ClampsOffsetPastTotal_EmptyPageNoHasMore()
+    {
+        var total = ServerSurfaceCatalog.Tools.Count;
+        var page = ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: total + 100, limit: 10, resourceName: "test");
+        Assert.AreEqual(total, page.Offset, "Offset must clamp to total, not past it.");
+        Assert.AreEqual(0, page.ReturnedCount);
+        Assert.AreEqual(total, page.TotalCount);
+        Assert.IsFalse(page.HasMore);
+    }
+
+    [TestMethod]
+    public void PageEntries_ClampsLimitToCeiling()
+    {
+        var page = ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: 0, limit: 99999, resourceName: "test");
+        Assert.AreEqual(200, page.Limit, "Limit must clamp to the 200 ceiling.");
+    }
+
     [TestMethod]
     public void McpToolMetadata_RequiredOnEveryTool_MatchesCatalogEntry()
     {

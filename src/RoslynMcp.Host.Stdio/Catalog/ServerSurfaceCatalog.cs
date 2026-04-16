@@ -170,7 +170,10 @@ public static class ServerSurfaceCatalog
 
     public static IReadOnlyList<SurfaceEntry> Resources { get; } =
     [
-        Resource("server_catalog", "server", "stable", true, false, "Machine-readable support policy and surface inventory.", "roslyn://server/catalog"),
+        Resource("server_catalog", "server", "stable", true, false, "Cap-safe summary of the server surface (tool/prompt counts + resource list + workflow hints). Full tools and prompts via paginated siblings.", "roslyn://server/catalog"),
+        Resource("server_catalog_full", "server", "experimental", true, false, "Unpaginated full catalog including every tool and prompt entry. Large payload (~80 KB).", "roslyn://server/catalog/full"),
+        Resource("server_catalog_tools_page", "server", "experimental", true, false, "Paginated slice of the server tool catalog. Slots: offset (0-based) + limit (1-200).", "roslyn://server/catalog/tools/{offset}/{limit}"),
+        Resource("server_catalog_prompts_page", "server", "experimental", true, false, "Paginated slice of the server prompt catalog. Slots: offset (0-based) + limit (1-200).", "roslyn://server/catalog/prompts/{offset}/{limit}"),
         Resource("resource_templates", "server", "stable", true, false, "Lists all resource URI templates, including workspace-scoped templates.", "roslyn://server/resource-templates"),
         Resource("workspaces", "workspace", "stable", true, false, "List active workspace sessions (lean summary; counts and load state, no per-project tree).", "roslyn://workspaces"),
         Resource("workspaces_verbose", "workspace", "stable", true, false, "List active workspace sessions with full per-project tree and diagnostics.", "roslyn://workspaces/verbose"),
@@ -239,6 +242,13 @@ public static class ServerSurfaceCatalog
         new("Selection-Range Refactoring", ["get_code_actions", "preview_code_action", "apply_code_action", "compile_check"], "Pass startLine/startColumn/endLine/endColumn to get_code_actions for selection-based refactorings: introduce parameter (expression → method parameter with call-site updates) and inline temporary variable. Preview, apply, then verify compilation.")
     ];
 
+    /// <summary>
+    /// dr-9-11-payload-exceeds-mcp-tool-result-cap: full catalog including every tool. The
+    /// paginated resource variants (<c>roslyn://server/catalog</c> default + per-page sibling)
+    /// deliver this same material in cap-safe chunks; this method remains the canonical
+    /// programmatic entry point for in-process consumers (surface parity tests, internal docs
+    /// generation).
+    /// </summary>
     public static ServerCatalogDto CreateDocument()
     {
         return new ServerCatalogDto(
@@ -257,6 +267,62 @@ public static class ServerSurfaceCatalog
             Prompts,
             WorkflowHints,
             Summary: GetSummary());
+    }
+
+    /// <summary>
+    /// dr-9-11-payload-exceeds-mcp-tool-result-cap: cap-safe summary document served by
+    /// <c>roslyn://server/catalog</c>. Tools and prompts dominate the full payload (~80 KB on
+    /// a 168-tool solution); this shape drops both lists and replaces them with pagination
+    /// pointers and totals. Resources stay inline (10 entries, fits easily). Callers that
+    /// need tool/prompt rows fetch the paginated siblings.
+    /// </summary>
+    public static ServerCatalogSummaryDto CreateSummaryDocument()
+    {
+        return new ServerCatalogSummaryDto(
+            CatalogVersion,
+            ProductShape: "local-first",
+            SupportPolicy: "Stable entries are covered by release documentation and compatibility expectations for the local stdio host. Experimental entries may evolve faster and can change with less notice before a remote host exists.",
+            ProductBoundaries:
+            [
+                "The production target is the local stdio server running on a developer workstation.",
+                "Workspace state comes from MSBuildWorkspace and on-disk files, not unsaved editor buffers.",
+                "Future HTTP/SSE hosting is intentionally a separate operational tier and not part of the current stable contract.",
+                "Write-capable tools require an already loaded workspace and are intentionally bounded by preview/apply or explicit edit requests."
+            ],
+            ToolCount: Tools.Count,
+            ToolsResourceTemplate: "roslyn://server/catalog/tools/{offset}/{limit}",
+            Resources,
+            PromptCount: Prompts.Count,
+            PromptsResourceTemplate: "roslyn://server/catalog/prompts/{offset}/{limit}",
+            WorkflowHints,
+            Summary: GetSummary());
+    }
+
+    /// <summary>
+    /// Return a paginated slice of an entry list. Offset clamps to [0, entries.Count]; limit
+    /// clamps to [1, 200]. Response carries the page window + totals + hasMore so callers
+    /// can iterate without guessing.
+    /// </summary>
+    public static ServerCatalogPagedEntriesDto PageEntries(
+        IReadOnlyList<SurfaceEntry> entries, int offset, int limit, string resourceName)
+    {
+        var total = entries.Count;
+        var clampedOffset = Math.Clamp(offset, 0, total);
+        var clampedLimit = Math.Clamp(limit, 1, 200);
+        var remaining = total - clampedOffset;
+        var take = Math.Min(clampedLimit, remaining);
+        var page = take <= 0
+            ? Array.Empty<SurfaceEntry>()
+            : entries.Skip(clampedOffset).Take(take).ToArray();
+
+        return new ServerCatalogPagedEntriesDto(
+            ResourceName: resourceName,
+            Offset: clampedOffset,
+            Limit: clampedLimit,
+            ReturnedCount: page.Length,
+            TotalCount: total,
+            HasMore: clampedOffset + page.Length < total,
+            Entries: page);
     }
 
     private static int CountByTier(IReadOnlyList<SurfaceEntry> entries, string tier) =>
@@ -318,6 +384,38 @@ public sealed record ServerCatalogDto(
     IReadOnlyList<SurfaceEntry> Prompts,
     IReadOnlyList<WorkflowHint> WorkflowHints,
     SurfaceSummary Summary);
+
+/// <summary>
+/// dr-9-11-payload-exceeds-mcp-tool-result-cap: cap-safe summary returned by the default
+/// <c>roslyn://server/catalog</c> resource. Tool and prompt lists are replaced with a count +
+/// paginated-sibling URI template; resources stay inline because the list is small.
+/// </summary>
+public sealed record ServerCatalogSummaryDto(
+    string CatalogVersion,
+    string ProductShape,
+    string SupportPolicy,
+    IReadOnlyList<string> ProductBoundaries,
+    int ToolCount,
+    string ToolsResourceTemplate,
+    IReadOnlyList<SurfaceEntry> Resources,
+    int PromptCount,
+    string PromptsResourceTemplate,
+    IReadOnlyList<WorkflowHint> WorkflowHints,
+    SurfaceSummary Summary);
+
+/// <summary>
+/// dr-9-11-payload-exceeds-mcp-tool-result-cap: response shape for a paginated slice of
+/// surface entries (tools or prompts). Matches the pagination contract used by the tools
+/// (offset/limit/returned/total/hasMore) so clients can iterate uniformly.
+/// </summary>
+public sealed record ServerCatalogPagedEntriesDto(
+    string ResourceName,
+    int Offset,
+    int Limit,
+    int ReturnedCount,
+    int TotalCount,
+    bool HasMore,
+    IReadOnlyList<SurfaceEntry> Entries);
 
 /// <summary>
 /// Describes a common tool workflow — a sequence of tools that work together.
