@@ -126,8 +126,8 @@ initiative below has the standard table fields filled out at execute time.
 | I-15 | `dr-9-13-flag-resource-invalid-range-resource-returns-ge` | 1 | 30000 | Fixed | merged (PR #182, 2026-04-16). |
 | I-16 | `dr-9-7-bug-json-parse-surfaces-stack-trace` | 1 | 30000 | Fixed | merged (PR #183, 2026-04-16). |
 | I-17 | `dr-9-9-response-claims` | 1 | 30000 | Fixed | in-progress (branch: remediation/dr-9-9-response-claims) — local `reloaded` flag gates StaleAction stamp; 1 regression test. |
-| I-18 | `project-graph-missing-metadata-fields` | 2 | 30000 | Fixed | in-progress (branch: remediation/project-graph-missing-metadata-fields) — ResolveProjectName + ResolveProjectPath helpers with name→AssemblyName→filename→"unknown" fallback; 1 regression test. |
-| I-19 | `dr-9-1-regression-r17a-emits-literal-placeholder` | 1 | 35000 | Fixed | Restore placeholder substitution in `RestructureService.PreviewAsync`. |
+| I-18 | `project-graph-missing-metadata-fields` | 2 | 30000 | Fixed | merged (PR #185, 2026-04-16). |
+| I-19 | `dr-9-1-regression-r17a-emits-literal-placeholder` | 1 | 35000 | Changed — BREAKING | in-progress (branch: remediation/dr-9-1-regression-r17a-emits-literal-placeholder) — extract placeholder names from both pattern + goal; refuse orphaned goal placeholders; 3 new RestructureServiceTests. |
 | I-20 | `dr-9-8-bug-validate-fabricated-accepts-fabricated-silen` | 1 | 35000 | Fixed | Add `unknownFilePaths: string[]` to validate response. |
 | I-21 | `dr-9-11-payload-exceeds-mcp-tool-result-cap` | 1 | 35000 | Added | Paginate `roslyn://server/catalog`. |
 | I-22 | `change-signature-parameter-span-hint-for-remove` | 2 | 35000 | Added | Caret-on-parameter dispatch to remove. |
