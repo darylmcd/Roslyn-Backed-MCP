@@ -140,11 +140,11 @@ initiative below has the standard table fields filled out at execute time.
 | I-29 | `dr-9-6-ignores-generic-arguments-in-implemented-interfa` | 1 | 40000 | Fixed | merged (PR #201, 2026-04-16) — crossedGenericBoundary flag + SimpleBaseTypeSyntax acceptance under scope=parameters. |
 | I-30 | `response-key-casing-standardization` | 4 | 50000 | Changed — BREAKING | Global camelCase + `_meta` injection. |
 | I-31 | `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas` | 1 | 40000 | Fixed | in-review (PR #203) — strip `override`/`virtual`/`abstract`/member-`sealed`/`new` when target type doesn't inherit base. |
-| I-32 | `dr-9-10-format-bug-005-renders-declaration-without-spac` | 1 | 35000 | Fixed | Likely resolved by I-02; verify on execute, mark obsolete if so. |
+| I-32 | `dr-9-10-format-bug-005-renders-declaration-without-spac` | 1 | 35000 | Fixed | obsolete (resolved by I-02 / PR #166) — `ChangeSignatureService.cs:101-103` + `BuildParameterListFromTextChange` correctly emit `{ParameterType} {Name} = {DefaultValue}` with proper spacing. |
 | I-33 | `code-fix-provider-bundle` (4 rows) | 2 | 50000 | Fixed | Bundle Rule 1 verified — categorized empty-result `guidanceMessage`. |
 | I-34 | `preview-token-cross-coupling-bundle` (2 rows) | 3 | 55000 | Changed — BREAKING | Bundle Rule 1 verified — per-token snapshot isolation. |
 | I-35 | `dr-9-2-format-bug-001-cross-project-interface-extractio` | 1 | 50000 | Fixed | in-review (PR #204) — `CrossProjectRefactoringService.CreateCompilationUnitForMember` gains `normalizeWhitespace` flag; `AddBaseType` + new `EnsureOpeningBraceOnOwnLine` helper mirror `InterfaceExtractionService`. |
-| I-36 | `dr-9-3-format-bug-002-destroys-source-formatting` | 1 | 50000 | Fixed | Format-bug singleton — `ExtractAndWireOrchestrator.cs`. |
+| I-36 | `dr-9-3-format-bug-002-destroys-source-formatting` | 1 | 50000 | Fixed | in-review (PR #<n>) — drops `NormalizeWhitespace()` on source file in `CreateInterfaceExtractionSolutionAsync`; parameter-type replacement uses `WithTriviaFrom`; `AddBaseType` relocates identifier trailing EOL trivia to brace leading trivia. |
 | I-37 | `dr-9-4-format-bug-003-produces-inline-itemgroup-xml` | 1 | 50000 | Fixed | Format-bug singleton — `PackageMigrationOrchestrator.cs`. |
 | I-38 | `dr-9-5-strips-the-blank-line-between-namespace-and-clas` | 1 | 50000 | Fixed | Format-bug singleton — `TypeExtractionService.cs`. |
 | I-39 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | 1 | 45000 | Fixed | Format-bug singleton — `InterfaceExtractionService.cs`. |
