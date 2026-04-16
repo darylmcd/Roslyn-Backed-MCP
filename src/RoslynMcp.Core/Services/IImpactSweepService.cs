@@ -8,7 +8,29 @@ namespace RoslynMcp.Core.Services;
 /// </summary>
 public interface IImpactSweepService
 {
-    Task<SymbolImpactSweepDto> SweepAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
+    /// <summary>
+    /// Aggregates references + switch-exhaustiveness diagnostics + mapper callsites + DTO
+    /// persistence findings for the symbol resolved at <paramref name="locator"/>.
+    /// </summary>
+    /// <param name="summary">
+    /// (symbol-impact-sweep-output-size-blowup) When <c>true</c>, drops <see cref="LocationDto.PreviewText"/>
+    /// from every <see cref="LocationDto"/> in the response (References + MapperCallsites). The
+    /// truncated locations still carry file path + line + column + classification. Required on
+    /// high-fan-out symbols where the default response exceeds the MCP cap (Jellyfin's
+    /// 1452-ref BaseItem: ~886 KB). Default <c>false</c> preserves the v1.18 response shape.
+    /// </param>
+    /// <param name="maxItemsPerCategory">
+    /// (symbol-impact-sweep-output-size-blowup) When non-null, caps the count of items in each
+    /// list independently (References, MapperCallsites, SwitchExhaustivenessIssues). Items
+    /// beyond the cap are dropped. Use this together with <paramref name="summary"/> to bound
+    /// both per-item size AND total list length on extremely high-fan-out symbols.
+    /// </param>
+    Task<SymbolImpactSweepDto> SweepAsync(
+        string workspaceId,
+        SymbolLocator locator,
+        CancellationToken ct,
+        bool summary = false,
+        int? maxItemsPerCategory = null);
 }
 
 /// <summary>

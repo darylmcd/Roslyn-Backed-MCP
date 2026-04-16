@@ -32,13 +32,19 @@ public sealed class ImpactSweepService : IImpactSweepService
     }
 
     public async Task<SymbolImpactSweepDto> SweepAsync(
-        string workspaceId, SymbolLocator locator, CancellationToken ct)
+        string workspaceId,
+        SymbolLocator locator,
+        CancellationToken ct,
+        bool summary = false,
+        int? maxItemsPerCategory = null)
     {
         locator.Validate();
 
         // Run the three independent queries in parallel. The references query blocks on the
         // workspace read side; diagnostics runs against the analyzer pipeline.
-        var referencesTask = _references.FindReferencesAsync(workspaceId, locator, ct);
+        // Pass `summary` through to FindReferencesAsync so the heavy preview text is
+        // dropped at the source — saves materializing it just to discard later.
+        var referencesTask = _references.FindReferencesAsync(workspaceId, locator, ct, summary);
         var diagnosticsTask = CollectSwitchExhaustivenessDiagnosticsAsync(workspaceId, ct);
 
         var references = await referencesTask.ConfigureAwait(false);
@@ -54,6 +60,17 @@ public sealed class ImpactSweepService : IImpactSweepService
         // Item 10: when the swept symbol is a property carrying a JSON/DataMember attribute,
         // surface paired-DTO mapper findings (To*/From* asymmetry).
         var persistenceFindings = await CollectPersistenceLayerFindingsAsync(workspaceId, locator, ct).ConfigureAwait(false);
+
+        // symbol-impact-sweep-output-size-blowup: maxItemsPerCategory truncates each list
+        // INDEPENDENTLY (so a 1500-ref symbol with 0 mapper callsites still returns the
+        // mapper-callsite list). Persistence findings are not capped — they are always
+        // small in practice and represent qualitatively distinct review work.
+        if (maxItemsPerCategory is int cap && cap >= 0)
+        {
+            references = references.Take(cap).ToList();
+            mapperCallsites = mapperCallsites.Take(cap).ToList();
+            diagnostics = diagnostics.Take(cap).ToList();
+        }
 
         var tasks = BuildSuggestedTasks(references.Count, diagnostics.Count, mapperCallsites.Count, persistenceFindings.Count);
 
