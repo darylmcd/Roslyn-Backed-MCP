@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-17T02:00:00Z
+**updated_at:** 2026-04-17T03:30:00Z
 
 ## Agent contract
 
@@ -28,9 +28,7 @@ These are **not** backlog rows; do not delete them when clearing completed work.
 
 Within P2, rows are **alphabetical by `id`**.
 
-| id | pri | blocker | deps | do |
-|----|-----|---------|------|-----|
-| `create-file-apply-csproj-side-effect-all-projects` | P2 | — | — | **CRITICAL destructive side-effect (Jellyfin experimental promotion 2026-04-16).** **Evidence:** `ai_docs/audit-reports/20260416T025959Z_jellyfin_experimental-promotion.md` §9.3. Calling `create_file_apply` to add ONE file in ONE project triggered solution-wide rewrite of **all 40 csproj files**: BOM (`\ufeff`) inserted at top of each, blank lines between `<PropertyGroup>`/`<ItemGroup>` stripped, CRLF→LF conversion. `git diff --stat` reported 40 files changed, 81 insertions / 300 deletions. **Distinct from** closed Item #5 (explicit `<Compile>` injection guard on SDK-style projects) — this is MSBuildWorkspace-wide reserialization, not Compile-item mutation. Reproducible 100%; preview diff shows only the new file, so the side-effect is invisible pre-apply. Applies to every apply-family tool route that calls `TryApplyChanges`. **Suggested fix:** Investigate MSBuild snapshot serialization in `RefactoringService.PersistDocumentSetChangesAsync` / `MSBuildWorkspace.TryApplyChanges`. Either scope persistence to the mutated project only, or suppress BOM / line-ending / blank-line normalisation on reserialization. **Why it matters:** destructive side-effect on unrelated files; worktree audit required `git reset --hard HEAD` to recover. **Refs:** `RefactoringService.PersistDocumentSetChangesAsync`; MSBuildWorkspace reserialization path. |
+_No open P2 rows._
 
 ## P3 — open work
 
@@ -100,6 +98,7 @@ Within P4, rows are **alphabetical by `id`**.
 | `ai_docs/backlog.md` | This file (open work + contract) |
 | `ai_docs/audit-reports/` | Raw deep-review audits (inputs for prioritization). Per-run audit files are deleted once their findings are either closed in the top-10 remediation branches or tracked as `dr-9-*`/identity-keyed rows in this file. |
 | `ai_docs/plans/20260415T220000Z_top10-remediation-plan.md` | Top-10 remediation plan drafted from independent source-code verification — 10 per-item diagnosis/approach/scope/risks/validation/perf fields. Shipped across 10 commits on the `top10-remediation` branch (2026-04-16): closes 19 backlog rows across the P2/P3/P4 bands. |
+| `ai_docs/plans/20260416T054040Z_backlog-sweep/plan.md` | Backlog sweep (2026-04-16). Shipped 41 initiatives across 40 PRs; closed 47 backlog rows (P2: 1, P3: 14, P4: 32). Final initiative `csproj-reserialization-msbuildworkspace` closes the P2 row `create-file-apply-csproj-side-effect-all-projects`. |
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Multi-repo audit import / backlog merge (`eng/new-deep-review-batch.ps1`) |
 | `eng/import-deep-review-audit.ps1` | Ingest external audit markdown into this repo (if present at repo root) |
 | `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs` | Workspace lifecycle (`workspace_load`, `workspace_reload`, `workspace_close`) — cited in firewall audit Phase 16 concurrency prose |

@@ -856,6 +856,33 @@ public sealed class RefactoringService : IRefactoringService
         // file through the SDK's default glob, so the on-disk csproj stays clean.
         var sdkProjectCsprojSnapshots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+        // csproj-reserialization-msbuildworkspace (P2) — create-file-apply-csproj-side-effect-all-projects.
+        //
+        // Extends Item #5's snapshot pattern to EVERY csproj in the workspace. MSBuildWorkspace's
+        // project-file writer can reserialize untouched csprojs as a side effect of TryApplyChanges
+        // (adds UTF-8 BOM, flips LF→CRLF, collapses blank lines, strips trailing newline). The
+        // semantics are identical but the on-disk bytes drift, which shows up as noise in git diff
+        // and pollutes PRs.
+        //
+        // After TryApplyChanges we compare each snapshot to the current on-disk bytes via
+        // CsprojSemanticEquality.AreXmlEquivalent (parses both as XDocument with LoadOptions.None and
+        // walks the element tree ignoring trivia). If the diff is trivia-only, we restore the snapshot
+        // bytes. If the diff is semantic (new PackageReference, new Compile Include, property change,
+        // etc.), we keep the new bytes because MSBuild wrote them for a legitimate reason (e.g.,
+        // migrate_package_preview apply that moves PackageReference nodes into Directory.Packages.props).
+        //
+        // The Item #5 SDK-style snapshot runs FIRST and unconditionally restores its captured bytes;
+        // projects captured there are tracked in skipPaths so the semantic-diff pass doesn't re-check
+        // them. This whole-workspace snapshot is a SECOND pass that handles the other shapes of
+        // MSBuild-driven reserialization drift (e.g., csprojs with analyzer references that trigger
+        // TryApplyChanges via StripUnresolvedAnalyzerReferences on subsequent reloads).
+        var allCsprojSnapshots = await CsprojSemanticEquality.SnapshotProjectsAsync(
+            currentSolution.Projects
+                .Select(project => project.FilePath)
+                .Where(path => !string.IsNullOrWhiteSpace(path))!,
+            _logger,
+            ct).ConfigureAwait(false);
+
         try
         {
             foreach (var projectChange in solutionChanges.GetProjectChanges())
@@ -963,6 +990,20 @@ public sealed class RefactoringService : IRefactoringService
                         csprojPath);
                 }
             }
+
+            // csproj-reserialization-msbuildworkspace (P2) — second pass, whole-workspace scope.
+            // For every csproj we snapshotted before TryApplyChanges, compare current on-disk bytes
+            // against the snapshot; if the XML is semantically identical (only trivia differs),
+            // restore the snapshot bytes. If semantically different (MSBuild wrote a legitimate
+            // change — new PackageReference, property edit, etc.), keep the new bytes.
+            //
+            // Skip csprojs Item #5 already restored: they're byte-identical by definition.
+            await CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
+                allCsprojSnapshots,
+                sdkProjectCsprojSnapshots.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase),
+                _logger,
+                operationTag: "csproj-reserialization-msbuildworkspace",
+                ct).ConfigureAwait(false);
 
             if (!applied)
             {
