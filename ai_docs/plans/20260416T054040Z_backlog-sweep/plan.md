@@ -94,8 +94,8 @@ initiative below has the standard table fields filled out at execute time.
 | I-05 | `change-signature-preview-callsite-summary` | 3 | 45000 | Fixed | merged (PR #169) |
 | I-06 | `get-nuget-dependencies-no-summary-mode` | 4 | 45000 | Added | merged (PR #170) |
 | I-07 | `get-syntax-tree-max-output-chars-incomplete-cap` | 3 | 45000 | Added + Changed — BREAKING | merged (PR #171) |
-| I-08 | `symbol-impact-sweep-output-size-blowup` | 3 | 45000 | Added | in-review |
-| I-09 | `validate-workspace-output-cap-summary-mode` | 2 | 45000 | Added |
+| I-08 | `symbol-impact-sweep-output-size-blowup` | 3 | 45000 | Added | merged (PR #172) |
+| I-09 | `validate-workspace-output-cap-summary-mode` | 3 | 45000 | Added | in-review |
 | I-10 | `dr-9-1-does-not-update-external-consumer-call-sites` | 1 | 50000 | Fixed |
 
 ---
