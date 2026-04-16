@@ -139,7 +139,7 @@ initiative below has the standard table fields filled out at execute time.
 | I-28 | `test-related-empty-for-valid-symbol` | 2 | 40000 | Fixed | merged (PR #194, 2026-04-16) — two-pass heuristic + `SymbolFinder.FindReferencesAsync` through implementations/overrides. |
 | I-29 | `dr-9-6-ignores-generic-arguments-in-implemented-interfa` | 1 | 40000 | Fixed | merged (PR #201, 2026-04-16) — crossedGenericBoundary flag + SimpleBaseTypeSyntax acceptance under scope=parameters. |
 | I-30 | `response-key-casing-standardization` | 4 | 50000 | Changed — BREAKING | Global camelCase + `_meta` injection. |
-| I-31 | `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas` | 1 | 40000 | Fixed | Strip `override` when target type doesn't inherit base. |
+| I-31 | `dr-9-3-preserves-when-new-type-does-not-inherit-the-bas` | 1 | 40000 | Fixed | in-review (PR pending) — strip `override`/`virtual`/`abstract`/member-`sealed`/`new` when target type doesn't inherit base. |
 | I-32 | `dr-9-10-format-bug-005-renders-declaration-without-spac` | 1 | 35000 | Fixed | Likely resolved by I-02; verify on execute, mark obsolete if so. |
 | I-33 | `code-fix-provider-bundle` (4 rows) | 2 | 50000 | Fixed | Bundle Rule 1 verified — categorized empty-result `guidanceMessage`. |
 | I-34 | `preview-token-cross-coupling-bundle` (2 rows) | 3 | 55000 | Changed — BREAKING | Bundle Rule 1 verified — per-token snapshot isolation. |
