@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Middleware;
 
 namespace RoslynMcp.Tests;
@@ -16,6 +17,11 @@ namespace RoslynMcp.Tests;
 ///         a protocol-level signal, not a tool-execution error).</item>
 ///   <item><c>_meta</c> injection on the success path, including the bare-array pass-through
 ///         contract that preserves <c>source_generated_documents</c>-shaped responses.</item>
+///   <item>The response-key-casing-standardization contract: every successful read-tool
+///         response emits camelCase JSON keys (PascalCase DTO properties round-tripped
+///         through <c>JsonDefaults.Indented</c>) and carries a top-level <c>_meta</c> block
+///         whose nested keys are also camelCase. BREAKING for clients that previously
+///         parsed PascalCase.</item>
 /// </list>
 ///
 /// <para>
@@ -191,6 +197,92 @@ public sealed class StructuredCallToolFilterTests
         var result = StructuredCallToolFilter.InjectMetaIntoContent(input, "test_tool");
 
         Assert.AreSame(input, result);
+    }
+
+    // ── Response shape contract: camelCase keys + _meta on every read-tool response ──
+    //
+    // Pins the response-key-casing-standardization initiative. The serialization pipeline
+    // and meta-injection middleware MUST produce camelCase JSON keys for every successful
+    // read-tool response, AND every object-rooted response MUST carry a top-level _meta
+    // block whose nested keys are also camelCase. This is a BREAKING contract for clients
+    // that previously parsed PascalCase keys; see CHANGELOG `### Changed — BREAKING`.
+
+    [TestMethod]
+    public void ResponseShape_PascalCaseDtoSerialization_EmitsCamelCaseKeysAndCamelCaseMeta()
+    {
+        // Build a representative read-tool response from a PascalCase-property anonymous
+        // type (the exact shape every tool produces via JsonSerializer.Serialize(...,
+        // JsonDefaults.Indented)). After running through InjectMetaIntoContent, every
+        // top-level key — including those serialized from PascalCase properties — must
+        // be camelCase, and the _meta block must carry the gate-metrics snapshot with
+        // camelCase field names.
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        var bodyJson = JsonSerializer.Serialize(
+            new
+            {
+                WorkspaceId = "ws-1",
+                LineCount = 42,
+                ProjectCount = 3,
+                IsLoaded = true,
+            },
+            JsonDefaults.Indented);
+
+        // Sanity: the global serializer must produce camelCase keys for PascalCase
+        // properties (i.e. JsonNamingPolicy.CamelCase is wired into JsonDefaults.Indented).
+        StringAssert.Contains(bodyJson, "\"workspaceId\"");
+        StringAssert.Contains(bodyJson, "\"lineCount\"");
+        Assert.IsFalse(bodyJson.Contains("\"WorkspaceId\""),
+            "JsonDefaults.Indented must emit camelCase keys, not PascalCase. " +
+            "If this assertion fails, JsonNamingPolicy.CamelCase has been removed from " +
+            "JsonDefaults.Indented — see response-key-casing-standardization in CHANGELOG.");
+        Assert.IsFalse(bodyJson.Contains("\"LineCount\""),
+            "PascalCase 'LineCount' must serialize as camelCase 'lineCount'.");
+
+        var input = new CallToolResult
+        {
+            IsError = false,
+            Content = [new TextContentBlock { Text = bodyJson }],
+        };
+
+        var result = StructuredCallToolFilter.InjectMetaIntoContent(input, "workspace_status");
+
+        var text = ((TextContentBlock)result.Content![0]).Text;
+        var payload = JsonDocument.Parse(text).RootElement;
+
+        // Every top-level key must start with a lowercase letter (camelCase) — except
+        // _meta itself, which is the conventional MCP observability block name.
+        foreach (var prop in payload.EnumerateObject())
+        {
+            if (prop.Name == "_meta") continue;
+            Assert.IsTrue(char.IsLower(prop.Name[0]),
+                $"Top-level response key '{prop.Name}' must be camelCase (start with a lowercase letter). " +
+                "BREAKING: the response-key-casing-standardization initiative requires every read-tool " +
+                "response to use camelCase keys.");
+        }
+
+        // _meta must be present on every successful object-rooted read-tool response.
+        Assert.IsTrue(payload.TryGetProperty("_meta", out var meta),
+            "Every successful object-rooted read-tool response MUST carry a top-level _meta " +
+            "block carrying gate timings (queuedMs, heldMs, elapsedMs, etc.). See " +
+            "ai_docs/references/mcp-server-best-practices.md and the response-key-casing-standardization " +
+            "initiative.");
+
+        // _meta keys must also be camelCase (gateMode, queuedMs, heldMs, elapsedMs,
+        // staleAction, staleReloadMs). This pins MetaSerializer.CamelCase wiring.
+        foreach (var metaProp in meta.EnumerateObject())
+        {
+            Assert.IsTrue(char.IsLower(metaProp.Name[0]),
+                $"_meta key '{metaProp.Name}' must be camelCase. Pins MetaSerializer.CamelCase wiring.");
+        }
+
+        // Spot-check a couple of well-known _meta fields exist with their camelCase names.
+        Assert.IsTrue(meta.TryGetProperty("queuedMs", out _),
+            "_meta.queuedMs is part of the documented gate-metrics surface.");
+        Assert.IsTrue(meta.TryGetProperty("heldMs", out _),
+            "_meta.heldMs is part of the documented gate-metrics surface.");
+        Assert.IsTrue(meta.TryGetProperty("elapsedMs", out _),
+            "_meta.elapsedMs is part of the documented gate-metrics surface.");
     }
 
     // ── OperationCanceledException is structurally guaranteed to propagate ────
