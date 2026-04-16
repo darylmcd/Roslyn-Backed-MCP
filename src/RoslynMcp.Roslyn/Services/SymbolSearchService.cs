@@ -74,10 +74,13 @@ public sealed class SymbolSearchService : ISymbolSearchService
         return results;
     }
 
-    public async Task<SymbolDto?> GetSymbolInfoAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    public async Task<SymbolDto?> GetSymbolInfoAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool allowAdjacent = false)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
+        // symbol-info-lenient-whitespace-resolution: the tool flag maps inversely — strict=true
+        // when the caller has NOT opted into adjacent-token walking. Default false preserves
+        // the stricter contract against silent whitespace drift.
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct, strict: !allowAdjacent).ConfigureAwait(false);
         return symbol is not null ? SymbolMapper.ToDto(symbol, solution) : null;
     }
 
