@@ -95,6 +95,33 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         Assert.IsTrue(doc.RootElement.GetProperty("projects").GetArrayLength() >= 1);
     }
 
+    // project-graph-missing-metadata-fields: every project node MUST advertise a non-empty
+    // `name` and `filePath`. Pre-fix, projects with an empty-string Name (unusual but
+    // observed in MSBuild evaluation races) emitted `name: ""` which broke downstream
+    // project-lookup flows (scaffold_test_preview, DI resolution).
+    [TestMethod]
+    public async Task WorkspaceTools_GetProjectGraph_AllNodesHaveNonEmptyNameAndFilePath()
+    {
+        var json = await WorkspaceTools.GetProjectGraph(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            CancellationToken.None);
+        using var doc = JsonDocument.Parse(json);
+        var projects = doc.RootElement.GetProperty("projects").EnumerateArray().ToList();
+        Assert.IsTrue(projects.Count >= 1);
+
+        foreach (var project in projects)
+        {
+            var name = project.GetProperty("name").GetString();
+            var filePath = project.GetProperty("filePath").GetString();
+            Assert.IsFalse(string.IsNullOrWhiteSpace(name),
+                $"ProjectGraphNodeDto.name must be non-empty; got '{name ?? "<null>"}'. Full node: {project}");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(filePath),
+                $"ProjectGraphNodeDto.filePath must be non-empty; got '{filePath ?? "<null>"}'. Full node: {project}");
+        }
+    }
+
     [TestMethod]
     public async Task WorkspaceTools_GetSourceGeneratedDocuments_Returns_Array()
     {

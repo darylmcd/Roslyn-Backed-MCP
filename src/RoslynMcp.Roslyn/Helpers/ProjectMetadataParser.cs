@@ -134,6 +134,38 @@ internal static class ProjectMetadataParser
         return project.Name;
     }
 
+    /// <summary>
+    /// project-graph-missing-metadata-fields: defensive name resolver. Roslyn's
+    /// <see cref="RoslynProject.Name"/> is declared non-nullable but can surface as an empty
+    /// string when a project is loaded without a populated <c>&lt;AssemblyName&gt;</c> or when
+    /// the underlying MSBuild evaluation raced with a reload. Fall back through (1) the
+    /// populated AssemblyName, (2) a filename-derived stem, (3) the literal "unknown"
+    /// sentinel — never emit an empty string into the project graph or status DTO since
+    /// downstream tools (scaffold_test_preview, DI resolution) rely on a non-empty name for
+    /// lookup.
+    /// </summary>
+    public static string ResolveProjectName(RoslynProject project)
+    {
+        if (!string.IsNullOrWhiteSpace(project.Name))
+            return project.Name;
+
+        if (!string.IsNullOrWhiteSpace(project.AssemblyName))
+            return project.AssemblyName;
+
+        if (!string.IsNullOrWhiteSpace(project.FilePath))
+            return Path.GetFileNameWithoutExtension(project.FilePath);
+
+        return "unknown";
+    }
+
+    /// <summary>
+    /// project-graph-missing-metadata-fields: defensive path resolver. Matches the
+    /// <see cref="ResolveProjectName"/> contract — never emits empty / whitespace strings
+    /// into the project graph.
+    /// </summary>
+    public static string ResolveProjectPath(RoslynProject project) =>
+        string.IsNullOrWhiteSpace(project.FilePath) ? "unknown" : project.FilePath;
+
     public static XDocument? LoadProjectDocument(string? projectFilePath, ILogger? logger = null)
     {
         if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
