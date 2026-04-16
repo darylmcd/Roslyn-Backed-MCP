@@ -144,7 +144,7 @@ initiative below has the standard table fields filled out at execute time.
 | I-33 | `code-fix-provider-bundle` (4 rows) | 2 | 50000 | Fixed | Bundle Rule 1 verified — categorized empty-result `guidanceMessage`. |
 | I-34 | `preview-token-cross-coupling-bundle` (2 rows) | 3 | 55000 | Changed — BREAKING | Bundle Rule 1 verified — per-token snapshot isolation. |
 | I-35 | `dr-9-2-format-bug-001-cross-project-interface-extractio` | 1 | 50000 | Fixed | in-review (PR #204) — `CrossProjectRefactoringService.CreateCompilationUnitForMember` gains `normalizeWhitespace` flag; `AddBaseType` + new `EnsureOpeningBraceOnOwnLine` helper mirror `InterfaceExtractionService`. |
-| I-36 | `dr-9-3-format-bug-002-destroys-source-formatting` | 1 | 50000 | Fixed | in-review (PR #<n>) — drops `NormalizeWhitespace()` on source file in `CreateInterfaceExtractionSolutionAsync`; parameter-type replacement uses `WithTriviaFrom`; `AddBaseType` relocates identifier trailing EOL trivia to brace leading trivia. |
+| I-36 | `dr-9-3-format-bug-002-destroys-source-formatting` | 1 | 50000 | Fixed | in-review (PR #207) — drops `NormalizeWhitespace()` on source file in `CreateInterfaceExtractionSolutionAsync`; parameter-type replacement uses `WithTriviaFrom`; `AddBaseType` relocates identifier trailing EOL trivia to brace leading trivia. |
 | I-37 | `dr-9-4-format-bug-003-produces-inline-itemgroup-xml` | 1 | 50000 | Fixed | Format-bug singleton — `PackageMigrationOrchestrator.cs`. |
 | I-38 | `dr-9-5-strips-the-blank-line-between-namespace-and-clas` | 1 | 50000 | Fixed | Format-bug singleton — `TypeExtractionService.cs`. |
 | I-39 | `dr-9-6-emits-continuation-on-a-new-line-instead-of-inli` | 1 | 45000 | Fixed | Format-bug singleton — `InterfaceExtractionService.cs`. |
