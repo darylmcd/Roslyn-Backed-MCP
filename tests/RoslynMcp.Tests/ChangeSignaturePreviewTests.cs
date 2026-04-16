@@ -360,4 +360,120 @@ public sealed class ChangeSignaturePreviewTests : TestBase
             WorkspaceManager.Close(workspaceId);
         }
     }
+
+    /// <summary>
+    /// change-signature-parameter-span-hint-for-remove: caret on the PARAMETER (not the
+    /// method) with <c>op=remove</c> and no explicit <c>Position</c>/<c>Name</c> now
+    /// auto-dispatches. Pre-fix this threw "requires a method symbol" because the resolved
+    /// <c>IParameterSymbol</c> wasn't promoted to its owner.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_RemoveOp_CaretOnParameter_AutoResolvesIndex()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureCaretFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureCaretFixture",
+            "{",
+            "    public int Compute(int a, int b, int c)",
+            "    {",
+            "        return a + b + c;",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            // Caret on `b` — the parameter name at position 1. Pre-fix this would throw
+            // "requires a method symbol". Post-fix it auto-promotes + dispatches.
+            // Line 5 content: `    public int Compute(int a, int b, int c)`
+            // Column math: 4 spaces + "public int Compute(" = 23 chars; "int " = 4 more → `a` at col 27.
+            // `, int ` between a and b = 6 chars; `b` at col 27 + 1 + 6 = 34.
+            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 35);
+            var request = new ChangeSignatureRequest(
+                Op: "remove",
+                Name: null,
+                ParameterType: null,
+                Position: null,     // explicitly unset — auto-resolve should fill
+                NewName: null,
+                DefaultValue: null);
+
+            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspaceId, locator, request, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+
+            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+            StringAssert.Contains(postApplyText, "public int Compute(int a, int c)",
+                $"parameter `b` at position 1 must be removed via caret-on-parameter; got:\n{postApplyText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ChangeSignaturePreview_RemoveOp_CaretOnParameter_ExplicitPositionOverridesAutoResolve()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureCaretOverrideFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureCaretOverrideFixture",
+            "{",
+            "    public int Compute(int a, int b, int c)",
+            "    {",
+            "        return a + b + c;",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            // Caret on `b` (parameter 1) but explicit Position=2 — auto-resolve must defer.
+            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 35);
+            var request = new ChangeSignatureRequest(
+                Op: "remove",
+                Name: null,
+                ParameterType: null,
+                Position: 2,
+                NewName: null,
+                DefaultValue: null);
+
+            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspaceId, locator, request, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success);
+
+            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+            StringAssert.Contains(postApplyText, "public int Compute(int a, int b)",
+                $"explicit Position=2 must win over caret-on-b auto-resolve; got:\n{postApplyText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
 }
