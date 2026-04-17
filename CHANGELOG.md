@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Maintenance
 
 - **Maintenance:** Documented that Claude Code's deferred-tool advertisement is not a connection signal; only `server_info` / `server_heartbeat` probes prove connectivity (`dr-9-3-medium-deferred-tool-advertisement-is-a-misleadi`).
+- **Maintenance:** Documented that `revert_last_apply` does not clean up file-creation side effects from `extract_*_apply`; suggested `delete_file_apply` follow-up (`dr-9-8-documented-limitation-interacts-poorly-with-side`).
 
 ## [1.22.0] - 2026-04-17
 

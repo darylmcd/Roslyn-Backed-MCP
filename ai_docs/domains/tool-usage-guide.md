@@ -139,6 +139,46 @@ Most write operations follow a two-step pattern:
 If the workspace changes between preview and apply, the token becomes stale and the apply will fail.
 Always call `build_workspace` after applying changes.
 
+## Undo
+
+`revert_last_apply(workspaceId)` rolls back the **most recent** `*_apply`
+operation on a workspace. Coverage includes renames, code fixes, format,
+organize usings, `apply_text_edit` / `apply_multi_file_edit`, and the
+file-level apply tools (`create_file_apply`, `delete_file_apply`,
+`move_file_apply`, `extract_interface_apply`, `extract_type_apply`,
+`move_type_to_file_apply`). A second `revert_last_apply` call in the same
+session does **not** undo the one before it — the history is depth-1.
+
+### revert_last_apply — side-effect cleanup
+
+`revert_last_apply` reverts **text edits** from the last `*_apply`. It does
+**NOT** remove files created as a side effect of that apply. Specifically,
+the extracted file that `extract_type_apply`, `extract_method_apply`, or
+`extract_interface_apply` wrote to disk stays on disk after the revert —
+the extracted symbol is restored to its original location, but the new
+file is now an orphan. Any other `*_apply` that creates new files has the
+same shape.
+
+**Canonical follow-up:** call `delete_file_apply` on the extracted file to
+finish the undo.
+
+**Worked example:**
+
+```text
+extract_type_apply(..., newTypeName: "Foo")
+  → moves Foo out of Bar.cs into new file Foo.cs.
+revert_last_apply(workspaceId)
+  → Bar.cs is restored (Foo's members move back in),
+    BUT Foo.cs still exists on disk (now empty of the extracted symbol
+    or a leftover scaffold, depending on what the extract wrote).
+delete_file_apply(workspaceId, filePath: ".../Foo.cs")
+  → removes Foo.cs. Workspace is now byte-identical to the pre-extract state.
+```
+
+The same pattern applies to `extract_method_apply` (if the method lands in
+a new partial file) and `extract_interface_apply` (the new interface file
+on disk).
+
 ## Error Recovery
 
 - **"Preview token is stale"** — The workspace changed since the preview. Re-run the preview.
