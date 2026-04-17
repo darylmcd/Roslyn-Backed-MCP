@@ -15,14 +15,14 @@
       "estimatedContextTokens": 45000,
       "productionFilesTouched": 3,
       "testFilesAdded": 1,
-      "status": "in-review",
+      "status": "merged",
       "correctnessClass": "P3-correctness",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
       "branch": "remediation/mcp-connection-session-resilience",
       "worktreePath": ".worktrees/mcp-connection-session-resilience",
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/218",
+      "mergedAt": "2026-04-17T13:05:19Z",
       "notes": ""
     },
     {

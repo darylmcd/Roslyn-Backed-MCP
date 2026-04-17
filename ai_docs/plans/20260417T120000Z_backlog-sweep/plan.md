@@ -40,7 +40,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 1. `mcp-connection-session-resilience` — Enrich server_info with connection readiness and add heartbeat
 
-**Status:** in-review (branch: remediation/mcp-connection-session-resilience, worktree: .worktrees/mcp-connection-session-resilience) · **Order:** 1 · **Correctness class:** P3-correctness · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Fixed
+**Status:** merged (PR #218, 2026-04-17) · **Order:** 1 · **Correctness class:** P3-correctness · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Fixed
 
 | Field | Content |
 |---|---|
