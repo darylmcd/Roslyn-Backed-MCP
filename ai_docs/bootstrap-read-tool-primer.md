@@ -132,6 +132,9 @@ and follow up with `mcp-connection-session-resilience` diagnostics.
 ## Further reading
 
 - `ai_docs/runtime.md` — canonical Roslyn MCP client policy (operational constraints)
-- `ai_docs/domains/tool-usage-guide.md` — long-form decision tree for every tool
+- `ai_docs/domains/tool-usage-guide.md` — long-form decision tree for every tool, plus
+  the [Verification workflow](domains/tool-usage-guide.md#verification-workflow-post-edit-default)
+  section that promotes the `compile_check` → `test_run --filter` → `format_check`
+  triple as the default post-edit loop (shell commands are CI-parity-only fallbacks).
 - `ai_docs/backlog.md` — `bootstrap-read-only-roslyn-mcp-checklist-for-self-edit-sessions`
   is the backlog row that tracks adoption of this primer across sessions
