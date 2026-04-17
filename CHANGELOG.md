@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Added:** `/draft-changelog-entry` skill takes an initiative id + commit SHA and emits the CHANGELOG bullet + Maintenance tallies atomically (`changelog-entry-draft-from-pr-metadata`).
+
 ### Maintenance
 
 - **Maintenance:** Documented that the `mcp-logs-<server>/` cache directory is not a connection-state signal; canonical probes are `server_info` / `server_heartbeat` (`dr-9-4-low-cache-dir-presence-is-not-a-reliable-connect`).
