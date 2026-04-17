@@ -23,6 +23,47 @@ Call `discover_capabilities` with a category to get contextual guidance, or use 
 
 **"I need to build/test"** → `build_workspace` (compile), `test_run` (run tests), `test_related_files` (targeted tests after changes)
 
+## Verification workflow (post-edit default)
+
+After any C# edit — `Edit`, `Write`, or `*_apply` — the default verification loop is the
+Roslyn MCP **verify triple**, in order:
+
+1. `compile_check` — structured diagnostics on the loaded workspace. Sub-second on a
+   warm workspace; identical diagnostic coverage to `dotnet build` modulo analyzer
+   packages (which are the same set this repo's MSBuild targets pull in).
+2. `test_related_files` → `test_run --filter "<filter>"` — derive the test filter from
+   the touched-file set, then run only the relevant subset. Returns in seconds instead
+   of the minutes a full `dotnet test` takes.
+3. `format_check` — confirm `dotnet format`-equivalent whitespace / using-ordering is
+   clean on the touched files only.
+
+Example (after editing `src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs`):
+
+```text
+compile_check(workspaceId, projectFilter: "RoslynMcp.Roslyn")
+test_related_files(workspaceId, filePaths: ["src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs"])
+  → returns filter "FullyQualifiedName~SymbolSearch"
+test_run(workspaceId, filter: "FullyQualifiedName~SymbolSearch")
+format_check(workspaceId, filePaths: ["src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs"])
+```
+
+### Shell fallbacks — CI-parity only
+
+Reach for these **only** when you need byte-identical CI parity (e.g., the final
+`verify-release.ps1` check before cutting a release), or when the MCP server is
+disconnected and the [fallback column in the primer](../bootstrap-read-tool-primer.md#pattern--tool-read-sideawayssafe)
+applies:
+
+- `Bash: dotnet build <sln> -c Release -p:TreatWarningsAsErrors=true` — full MSBuild
+  cycle, ~5–30s; matches CI exactly.
+- `Bash: dotnet test <testproj> -c Release --no-build` — full suite, minutes; matches
+  CI exactly.
+- `Bash: dotnet format --verify-no-changes` — full-solution formatter check.
+
+Routine post-edit verify should **not** use the shell commands. The MCP triple returns
+the same signal 5–30× faster and with structured output the caller can inspect without
+re-parsing stdout.
+
 ## Tool Categories
 
 ### Navigation & Search (read-only)
