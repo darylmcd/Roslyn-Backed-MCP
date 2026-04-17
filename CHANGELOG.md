@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **Fixed:** Tightened PreToolUse hook prompt for `move_type_to_file_apply` and related applies to accept composite-preview-redeemed evidence, eliminating the false-positive block observed in the 2026-04-15 samplesolution audit (`dr-9-4-pretooluse-hook-false-positive-on`).
+
 ### Changed
 
 ### Added
