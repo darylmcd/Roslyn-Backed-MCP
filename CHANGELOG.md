@@ -8,10 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+### Changed
+
+### Added
+
+## [1.22.0] - 2026-04-17
+
+Backlog sweep 2026-04-17 execution pass 1 — five initiatives shipped (PRs #218, #220, #221, #223, #224, #225, #226) closing **10 backlog rows** (6 observation-bundle + 4 P3/P4). Adds the `server_heartbeat` readiness probe + `connection` subfield on `server_info`, a build-time `ServerSurfaceCatalogAnalyzer` (RMCP001/RMCP002) that replaces the run-time parity test, two new operational skills (`/reconcile-backlog-sweep-plan`, `/draft-changelog-entry`), and doc upgrades that codify the MCP verify triple and the authoritative connection-state signals.
+
+### Fixed
+
 - **Added:** `server_heartbeat` stable tool and `connection` subfield on `server_info` so consumers can distinguish transport-ready vs. workspace-loaded states (`mcp-connection-session-resilience`).
 - **Added:** `ServerSurfaceCatalogAnalyzer` emits `RMCP001`/`RMCP002` at build time when decorated MCP methods drift from the hand-maintained `ServerSurfaceCatalog` lists (`mcp-server-surface-catalog-parity-generator`). Replaces a test-run-time-only parity check — drift now fails the `Host.Stdio` build directly instead of surviving to test-red. The new `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj` targets `netstandard2.0` and is wired into `Host.Stdio` via `OutputItemType="Analyzer" ReferenceOutputAssembly="false"`; the existing runtime parity test in `SurfaceCatalogTests` stays as a belt-and-braces assertion. Analyzer test fixture in `tests/RoslynMcp.Tests/ServerSurfaceCatalogAnalyzerTests.cs` covers all three scenarios (attributed-but-missing → RMCP001, listed-but-not-attributed → RMCP002, all-matching → zero diagnostics) via `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest`.
-
-### Changed
 
 ### Added
 
@@ -22,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - **Maintenance:** Documented that the `mcp-logs-<server>/` cache directory is not a connection-state signal; canonical probes are `server_info` / `server_heartbeat` (`dr-9-4-low-cache-dir-presence-is-not-a-reliable-connect`).
 - **Maintenance:** Promoted the MCP verify triple (`compile_check` / `test_run --filter` / `format_check`) as the default post-edit verification in `ai_docs/domains/tool-usage-guide.md`; shell fallbacks relegated to CI-parity only (`default-to-compile-check-over-dotnet-build`).
-- **Backlog:** 6 rows closed under the 2026-04-17 sweep (`observation-rows-obsoletion-sweep`). P4 (6): `dr-9-4-correctly-refuses-when-captured-state-would-stay`, `dr-9-5-documented-error-prior-session-ticket-draft-cont`, `dr-9-8-context-environmental-not-a-bug-mcp-host-may-dro`, `dr-9-15-ux-hook-001-environment-finding-not-a-server-bu`, `dr-9-16-obs-001-observation-not-a-bug-workspace-require`, `dr-9-17-obs-002-observation-workspace-root-sandbox-bloc`. All six are imported deep-review audit entries whose descriptions themselves declare non-actionable status (PASS / documented-error / context-only / environment-finding / observation-not-a-bug). No production code path reproduces a defect; they were imported for archival and never re-confirmed as bugs. Zero code touched — closure is a single edit to `ai_docs/backlog.md`.
+- **Backlog:** 10 rows closed under the 2026-04-17 sweep execution pass 1. P3 (2): `mcp-connection-session-resilience`, `mcp-server-surface-catalog-parity-generator`. P4 (8): `backlog-sweep-state-reconcile-merged-initiatives-skill`, `changelog-entry-draft-from-pr-metadata`, `default-to-compile-check-over-dotnet-build`, `dr-9-4-low-cache-dir-presence-is-not-a-reliable-connect`, plus the observation-bundle closure (6 rows: `dr-9-4-correctly-refuses-when-captured-state-would-stay`, `dr-9-5-documented-error-prior-session-ticket-draft-cont`, `dr-9-8-context-environmental-not-a-bug-mcp-host-may-dro`, `dr-9-15-ux-hook-001-environment-finding-not-a-server-bu`, `dr-9-16-obs-001-observation-not-a-bug-workspace-require`, `dr-9-17-obs-002-observation-workspace-root-sandbox-bloc`).
 
 ## [1.21.0] - 2026-04-17
 
