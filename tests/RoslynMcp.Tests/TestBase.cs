@@ -73,6 +73,7 @@ public abstract class TestBase
     protected static RefactoringSuggestionService RefactoringSuggestionService { get; private set; } = null!;
     protected static FormatVerifyService FormatVerifyService { get; private set; } = null!;
     protected static InterfaceExtractionService InterfaceExtractionService { get; private set; } = null!;
+    protected static ExceptionFlowService ExceptionFlowService { get; private set; } = null!;
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -165,6 +166,7 @@ public abstract class TestBase
         RefactoringSuggestionService = services.RefactoringSuggestionService;
         FormatVerifyService = services.FormatVerifyService;
         InterfaceExtractionService = services.InterfaceExtractionService;
+        ExceptionFlowService = services.ExceptionFlowService;
 
         RepositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
         SampleSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");

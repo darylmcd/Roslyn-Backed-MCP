@@ -60,6 +60,7 @@ internal sealed class TestServiceContainer
     public required RefactoringSuggestionService RefactoringSuggestionService { get; init; }
     public required FormatVerifyService FormatVerifyService { get; init; }
     public required InterfaceExtractionService InterfaceExtractionService { get; init; }
+    public required ExceptionFlowService ExceptionFlowService { get; init; }
 
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
@@ -261,7 +262,10 @@ internal sealed class TestServiceContainer
                 new CohesionAnalysisService(workspaceManager, NullLogger<CohesionAnalysisService>.Instance),
                 new UnusedCodeAnalyzer(workspaceManager, compilationCache, NullLogger<UnusedCodeAnalyzer>.Instance),
                 NullLogger<RefactoringSuggestionService>.Instance),
-            FormatVerifyService = new FormatVerifyService(workspaceManager, NullLogger<FormatVerifyService>.Instance)
+            FormatVerifyService = new FormatVerifyService(workspaceManager, NullLogger<FormatVerifyService>.Instance),
+            ExceptionFlowService = new ExceptionFlowService(
+                workspaceManager,
+                NullLogger<ExceptionFlowService>.Instance)
         };
     }
 }
