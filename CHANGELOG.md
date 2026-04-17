@@ -13,6 +13,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+### Changed — BREAKING
+
+- **Changed — BREAKING:** PostToolUse `*_apply` verification reminder batches across back-to-back applies; emits a single reminder when the sequence breaks rather than one per apply (`dr-9-12-posttooluse-hook-adds-n-1-verification-step-per`). Behavior-only change to `hooks/hooks.json` — the hook prompt now tells the agent to respond `ok` when another `*_apply` or a verification tool (`compile_check`, `build_workspace`, `validate_workspace`, `apply_with_verify`, `test_run`, `format_check`) is the next queued tool call, and to emit a one-line reminder only when the apply sequence is breaking without verification queued. No public API change; existing callers need no updates. Before: 3 back-to-back `*_apply` calls followed by `compile_check` produced 3 reminders. After: 0 reminders (each apply sees the next as another apply or the final as `compile_check`-queued, so all respond `ok`).
+
 ### Added
 
 ### Maintenance
@@ -20,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Maintenance:** Documented that Claude Code's deferred-tool advertisement is not a connection signal; only `server_info` / `server_heartbeat` probes prove connectivity (`dr-9-3-medium-deferred-tool-advertisement-is-a-misleadi`).
 - **Maintenance:** Documented that `revert_last_apply` does not clean up file-creation side effects from `extract_*_apply`; suggested `delete_file_apply` follow-up (`dr-9-8-documented-limitation-interacts-poorly-with-side`).
 - **Maintenance:** Added "Self-edit recipe" section to `ai_docs/runtime.md` with worked example showing the `Edit` + read-side MCP + `compile_check` verify loop expected in bootstrap mode (`self-edit-bootstrap-mode-mcp-development`).
+- **Backlog (running tally, sweep execution pass 2):** P4: +1 (`dr-9-12-posttooluse-hook-adds-n-1-verification-step-per`).
 
 ## [1.22.0] - 2026-04-17
 
