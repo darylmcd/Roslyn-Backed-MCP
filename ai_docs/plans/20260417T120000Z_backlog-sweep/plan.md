@@ -166,7 +166,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 8. `observation-rows-obsoletion-sweep` — Bulk-close six observation/tracking rows
 
-**Status:** pending · **Order:** 8 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 15000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #221, 2026-04-17) · **Order:** 8 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 15000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
