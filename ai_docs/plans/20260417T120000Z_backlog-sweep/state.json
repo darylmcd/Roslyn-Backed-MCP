@@ -40,8 +40,8 @@
       "changelogCategory": "Fixed",
       "branch": "remediation/mcp-server-surface-catalog-parity-generator",
       "worktreePath": ".worktrees/mcp-server-surface-catalog-parity-generator",
-      "prUrl": "TBD-pre-ship",
-      "mergedAt": "TBD-pre-ship",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/220",
+      "mergedAt": "2026-04-17T13:50:00Z",
       "notes": ""
     },
     {
