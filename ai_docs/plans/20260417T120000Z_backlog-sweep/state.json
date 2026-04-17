@@ -326,15 +326,15 @@
       "estimatedContextTokens": 35000,
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "branch": "remediation/dr-9-14-drift-001-param-name-mismatch-vs-experimental-p",
+      "worktreePath": ".worktrees/dr-9-14-drift-001-param-name-mismatch-vs-experimental-p",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/234",
+      "mergedAt": "2026-04-17T19:47:00Z",
+      "notes": "Stale side: implementation. Renamed C# parameter `category` \u2192 `taskCategory` to match appendix. Original subagent (pre-retry) was blocked mid-session by the pre-fix PreToolUse hook; retry used plain Edit (no *_apply)."
     },
     {
       "id": "dr-9-4-pretooluse-hook-false-positive-on",

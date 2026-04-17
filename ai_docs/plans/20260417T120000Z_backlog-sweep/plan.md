@@ -328,7 +328,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 17. `dr-9-14-drift-001-param-name-mismatch-vs-experimental-p` — Fix discover_capabilities parameter-name drift
 
-**Status:** pending · **Order:** 17 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Fixed
+**Status:** merged (PR #234, 2026-04-17) · **Order:** 17 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Fixed
 
 | Field | Content |
 |---|---|
