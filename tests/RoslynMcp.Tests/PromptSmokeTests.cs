@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -54,6 +55,31 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         Assert.AreEqual(1, messages.Count);
         var text = GetText(messages[0]);
         StringAssert.Contains(text, "server");
+    }
+
+    // dr-9-14-drift-001-param-name-mismatch-vs-experimental-p: guard against doc↔impl drift.
+    // The `discover_capabilities` prompt's sole user-facing parameter must be named
+    // `taskCategory` so callers following the appendix in
+    // `ai_docs/prompts/experimental-promotion-exercise.md` (§7c.4) succeed.
+    [TestMethod]
+    public void DiscoverCapabilities_Parameter_Name_Matches_Experimental_Promotion_Appendix()
+    {
+        const string expectedParameterName = "taskCategory";
+
+        var method = typeof(RoslynPrompts).GetMethod(
+            nameof(RoslynPrompts.DiscoverCapabilities),
+            BindingFlags.Public | BindingFlags.Static)
+            ?? throw new AssertFailedException(
+                $"Could not find {nameof(RoslynPrompts)}.{nameof(RoslynPrompts.DiscoverCapabilities)}.");
+
+        var parameterNames = method.GetParameters().Select(p => p.Name).ToArray();
+
+        CollectionAssert.Contains(
+            parameterNames,
+            expectedParameterName,
+            $"discover_capabilities must expose parameter '{expectedParameterName}' to match the " +
+            "appendix in ai_docs/prompts/experimental-promotion-exercise.md. " +
+            $"Actual parameters: [{string.Join(", ", parameterNames)}]");
     }
 
     [TestMethod]
@@ -155,14 +181,14 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
     {
         using var services = new ServiceCollection().BuildServiceProvider();
 
-        // discover_capabilities takes a string parameter "category"; passing an integer forces
+        // discover_capabilities takes a string parameter "taskCategory"; passing an integer forces
         // the per-parameter JsonException path at the JsonSerializer.Deserialize call.
         var json = await ToolExecutionTestHarness.RunAsync(
             "get_prompt_text",
             () => PromptShimTools.GetPromptText(
                 services,
                 promptName: "discover_capabilities",
-                parametersJson: "{\"category\": 123}",
+                parametersJson: "{\"taskCategory\": 123}",
                 CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
