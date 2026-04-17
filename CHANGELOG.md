@@ -15,6 +15,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Added:** `/draft-changelog-entry` skill takes an initiative id + commit SHA and emits the CHANGELOG bullet + Maintenance tallies atomically (`changelog-entry-draft-from-pr-metadata`).
+
 ### Maintenance
 
 - **Backlog:** 6 rows closed under the 2026-04-17 sweep (`observation-rows-obsoletion-sweep`). P4 (6): `dr-9-4-correctly-refuses-when-captured-state-would-stay`, `dr-9-5-documented-error-prior-session-ticket-draft-cont`, `dr-9-8-context-environmental-not-a-bug-mcp-host-may-dro`, `dr-9-15-ux-hook-001-environment-finding-not-a-server-bu`, `dr-9-16-obs-001-observation-not-a-bug-workspace-require`, `dr-9-17-obs-002-observation-workspace-root-sandbox-bloc`. All six are imported deep-review audit entries whose descriptions themselves declare non-actionable status (PASS / documented-error / context-only / environment-finding / observation-not-a-bug). No production code path reproduces a defect; they were imported for archival and never re-confirmed as bugs. Zero code touched — closure is a single edit to `ai_docs/backlog.md`.
