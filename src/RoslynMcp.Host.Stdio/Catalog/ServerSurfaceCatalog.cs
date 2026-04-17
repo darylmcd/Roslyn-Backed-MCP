@@ -69,6 +69,7 @@ public static class ServerSurfaceCatalog
         Tool("get_di_registrations", "advanced-analysis", "stable", true, false, "Inspect DI registration patterns in source."),
         Tool("get_complexity_metrics", "advanced-analysis", "stable", true, false, "Compute cyclomatic complexity and related metrics."),
         Tool("find_reflection_usages", "advanced-analysis", "stable", true, false, "Find reflection-heavy call sites."),
+        Tool("trace_exception_flow", "advanced-analysis", "experimental", true, false, "Trace catch clauses that handle a given exception type."),
         Tool("get_namespace_dependencies", "advanced-analysis", "stable", true, false, "Build namespace dependency graphs."),
         Tool("get_nuget_dependencies", "advanced-analysis", "stable", true, false, "Inspect NuGet package references and versions."),
         Tool("semantic_search", "advanced-analysis", "stable", true, false, "Run semantic search over symbols and declarations."),

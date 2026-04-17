@@ -110,6 +110,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWorkspaceValidationService, WorkspaceValidationService>();
         services.AddSingleton<IChangeSignatureService, ChangeSignatureService>();
         services.AddSingleton<ISymbolRefactorService, SymbolRefactorService>();
+        services.AddSingleton<IExceptionFlowService, ExceptionFlowService>();
         return services;
     }
 
