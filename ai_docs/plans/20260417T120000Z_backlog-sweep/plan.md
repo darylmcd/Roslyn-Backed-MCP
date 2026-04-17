@@ -220,7 +220,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 11. `dr-9-3-medium-deferred-tool-advertisement-is-a-misleadi` — Document deferred-tool advertisement as a misleading connection signal
 
-**Status:** pending · **Order:** 11 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #229, 2026-04-17) · **Order:** 11 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -238,7 +238,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 12. `dr-9-8-documented-limitation-interacts-poorly-with-side` — Document revert_last_apply side-effect limitation
 
-**Status:** pending · **Order:** 12 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #232, 2026-04-17) · **Order:** 12 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -346,7 +346,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 18. `dr-9-4-pretooluse-hook-false-positive-on` — PreToolUse matcher scoping for move_type_to_file_apply
 
-**Status:** pending · **Order:** 18 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Fixed
+**Status:** merged (PR #230, 2026-04-17) · **Order:** 18 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Fixed
 
 | Field | Content |
 |---|---|
