@@ -184,7 +184,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 9. `dr-9-4-low-cache-dir-presence-is-not-a-reliable-connect` — Document the cache-dir non-signal
 
-**Status:** pending · **Order:** 9 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #223, 2026-04-17) · **Order:** 9 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -202,7 +202,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 10. `default-to-compile-check-over-dotnet-build` — Promote MCP verify triple in the tool-usage guide
 
-**Status:** pending · **Order:** 10 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #224, 2026-04-17) · **Order:** 10 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -274,7 +274,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 14. `backlog-sweep-state-reconcile-merged-initiatives-skill` — /reconcile-backlog-sweep-plan skill
 
-**Status:** pending · **Order:** 14 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #226, 2026-04-17) · **Order:** 14 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -292,7 +292,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 15. `changelog-entry-draft-from-pr-metadata` — /draft-changelog-entry skill
 
-**Status:** pending · **Order:** 15 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #225, 2026-04-17) · **Order:** 15 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
