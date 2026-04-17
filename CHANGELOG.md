@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 
 - **Added:** `/draft-changelog-entry` skill takes an initiative id + commit SHA and emits the CHANGELOG bullet + Maintenance tallies atomically (`changelog-entry-draft-from-pr-metadata`).
+- **Added:** `/reconcile-backlog-sweep-plan` skill automates Step 1b of backlog-sweep-execute.md — reads `state.json` + plan.md, queries `gh pr view`, applies merged/deferred transitions, commits on main (`backlog-sweep-state-reconcile-merged-initiatives-skill`).
 
 ### Maintenance
 
