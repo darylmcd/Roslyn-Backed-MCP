@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -11,11 +12,58 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class ServerTools
 {
+    /// <summary>
+    /// mcp-connection-session-resilience: canonical shape for the <c>connection</c>
+    /// subfield emitted by <c>server_info</c> and the new <c>server_heartbeat</c> tool.
+    /// <para>
+    /// Consumers use this block to distinguish "transport reachable" from
+    /// "workspace-scoped tools will succeed":
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><description><c>ready</c> — at least one workspace session is loaded; workspace-scoped tools will resolve.</description></item>
+    ///   <item><description><c>initializing</c> — the stdio transport is up but no workspace has been loaded yet. Consumers must call <c>workspace_load</c> first.</description></item>
+    ///   <item><description><c>degraded</c> — reserved for future use when the server hit a startup error but is still answering the protocol. Not emitted today.</description></item>
+    /// </list>
+    /// </summary>
+    private static object BuildConnection(IWorkspaceManager workspace)
+    {
+        var loadedWorkspaceCount = workspace.ListWorkspaces().Count;
+        var state = loadedWorkspaceCount >= 1 ? "ready" : "initializing";
+        return new
+        {
+            state,
+            loadedWorkspaceCount,
+            stdioPid = Environment.ProcessId,
+            serverStartedAt = s_serverStartedAtUtc.ToString("O")
+        };
+    }
+
+    /// <summary>
+    /// Process start time captured once at host bootstrap and reused by <c>server_info</c>
+    /// and <c>server_heartbeat</c>. Sourced from <see cref="Process.StartTime"/> so consumers
+    /// can correlate the <c>connection.serverStartedAt</c> timestamp with OS process logs.
+    /// </summary>
+    private static readonly DateTime s_serverStartedAtUtc = ResolveServerStartedAtUtc();
+
+    private static DateTime ResolveServerStartedAtUtc()
+    {
+        try
+        {
+            return Process.GetCurrentProcess().StartTime.ToUniversalTime();
+        }
+        catch
+        {
+            // Some sandboxed hosts (containers without /proc, hardened Windows accounts)
+            // reject StartTime reads. Fall back to "now at static ctor" — still monotonic
+            // and meaningful for a single host lifetime.
+            return DateTime.UtcNow;
+        }
+    }
 
     [McpServerTool(Name = "server_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("server", "stable", true, false,
         "Inspect server capabilities, versions, and support tiers."),
-     Description("Get server version, capabilities, runtime information, and loaded workspace count. workspaceCount reflects sessions at call time and may briefly lag if invoked in parallel with or immediately after workspace_load; use workspace_list for authoritative session enumeration. Prompts tier note: the response carries prompts.stable and prompts.experimental from the live catalog; all currently-exposed prompts are experimental until promoted, so stable=0 with a nonzero experimental count is expected — it is NOT a missing-surface bug.")]
+     Description("Get server version, capabilities, runtime information, and loaded workspace count. workspaceCount reflects sessions at call time and may briefly lag if invoked in parallel with or immediately after workspace_load; use workspace_list for authoritative session enumeration. Prompts tier note: the response carries prompts.stable and prompts.experimental from the live catalog; all currently-exposed prompts are experimental until promoted, so stable=0 with a nonzero experimental count is expected — it is NOT a missing-surface bug. Connection readiness: the response includes a `connection` subfield with state=ready|initializing|degraded, loadedWorkspaceCount, stdioPid, and serverStartedAt — use this (or the lighter `server_heartbeat` tool) to distinguish transport-reachable from workspace-loaded before calling workspace-scoped tools.")]
     public static Task<string> GetServerInfo(
         IWorkspaceManager workspace,
         ILatestVersionProvider versionChecker)
@@ -49,6 +97,11 @@ public static class ServerTools
             workspaceCountHint = wsCount == 0
                 ? "If you just called workspace_load, workspaceCount may still be 0 briefly; call workspace_list for authoritative session ids."
                 : null,
+            // mcp-connection-session-resilience: explicit connection readiness so consumers
+            // can distinguish transport-up from workspace-loaded without guessing via
+            // workspaceCount. Same shape as `server_heartbeat` but carried inline on
+            // server_info so existing pollers get it without a second round-trip.
+            connection = BuildConnection(workspace),
             catalogVersion = ServerSurfaceCatalog.CatalogVersion,
             surface = new
             {
@@ -98,5 +151,22 @@ public static class ServerTools
         };
 
         return Task.FromResult(JsonSerializer.Serialize(info, JsonDefaults.Indented));
+    }
+
+    /// <summary>
+    /// mcp-connection-session-resilience: lightweight readiness probe. Returns only the
+    /// <c>connection</c> block without the full version + catalog payload that
+    /// <c>server_info</c> carries. Intended for consumers that poll the server during
+    /// startup — calling <c>server_info</c> on every poll needlessly ships ~2 KB of
+    /// catalog summary each time.
+    /// </summary>
+    [McpServerTool(Name = "server_heartbeat", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("server", "stable", true, false,
+        "Lightweight connection readiness probe — returns state/loadedWorkspaceCount/stdioPid/serverStartedAt without the full server_info payload."),
+     Description("Return the connection readiness block only — state=ready|initializing|degraded, loadedWorkspaceCount, stdioPid, and serverStartedAt. Cheaper than server_info (no version, catalog, or update metadata). Use this to poll for 'at least one workspace loaded' before calling workspace-scoped tools.")]
+    public static Task<string> GetServerHeartbeat(IWorkspaceManager workspace)
+    {
+        var payload = new { connection = BuildConnection(workspace) };
+        return Task.FromResult(JsonSerializer.Serialize(payload, JsonDefaults.Indented));
     }
 }

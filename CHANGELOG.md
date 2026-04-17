@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **Added:** `server_heartbeat` stable tool and `connection` subfield on `server_info` so consumers can distinguish transport-ready vs. workspace-loaded states (`mcp-connection-session-resilience`).
+
 ### Changed
 
 ### Added
