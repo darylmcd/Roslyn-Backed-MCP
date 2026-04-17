@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 
 - **Added:** `trace_exception_flow` returns every `catch` clause whose declared type is assignable from the input, with body excerpt and rethrow-as annotations — built to shorten error-classification refactor discovery (`exception-handler-classification-tracer`).
+- **Added:** `scaffold_test_preview` accepts an optional `referenceTestFile` and replicates sibling-test scaffolding (fixture class, `IClassFixture<T>`, attributes) when a pattern is inferable (`scaffold-test-sibling-pattern-inference`).
 
 ### Maintenance
 

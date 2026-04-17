@@ -85,7 +85,7 @@ public static class ScaffoldingTools
     [McpServerTool(Name = "scaffold_test_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "stable", true, false,
         "Preview scaffolding a new test file (MSTest, xUnit, or NUnit; auto-detect or specify testFramework)."),
-     Description("Preview scaffolding a new test file for a target type. Supports MSTest, xUnit, and NUnit (use testFramework or auto-detect from the test project's package references).")]
+     Description("Preview scaffolding a new test file for a target type. Supports MSTest, xUnit, and NUnit (use testFramework or auto-detect from the test project's package references). When referenceTestFile is provided (or the test project contains a sibling *Tests.cs file — auto-detected by most-recently-modified), class-level attributes, base class, and constructor-injected fixture parameters (xUnit IClassFixture<T> pattern) are replicated onto the scaffolded output so ASP.NET Core integration-test conventions carry over without manual rewrite. Pass an empty string for referenceTestFile to opt out of inference.")]
     public static Task<string> PreviewScaffoldTest(
         IWorkspaceExecutionGate gate,
         IScaffoldingService scaffoldingService,
@@ -94,13 +94,14 @@ public static class ScaffoldingTools
         [Description("Target type name for the generated test")] string targetTypeName,
         [Description("Optional: target method name for the generated test stub")] string? targetMethodName = null,
         [Description("Test framework: mstest, xunit, nunit, or auto (infer from PackageReference in the test csproj)")] string testFramework = "auto",
+        [Description("Optional: absolute path to an existing sibling test file whose scaffolding (class attributes, base class, IClassFixture<T> constructor) should be replicated. When omitted, the most-recently-modified *Tests.cs in the target project is used. Pass an empty string to opt out of inference.")] string? referenceTestFile = null,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var result = await scaffoldingService.PreviewScaffoldTestAsync(
                 workspaceId,
-                new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName, testFramework),
+                new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName, testFramework, referenceTestFile),
                 c).ConfigureAwait(false);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);

@@ -1,6 +1,8 @@
 using System.Collections.Immutable;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -155,9 +157,12 @@ public sealed class ScaffoldingService : IScaffoldingService
             if (typeInfo.warnings is not null) warnings.AddRange(typeInfo.warnings);
 
             var dto = new ScaffoldTestDto(request.TestProjectName, target.TargetTypeName, target.TargetMethodName, request.TestFramework);
+            // Batch scaffolding intentionally does NOT apply sibling-pattern inference — a batch
+            // run typically targets a homogenous set of production types and callers want the
+            // generic scaffold. Sibling inference is available via per-target scaffold_test_preview.
             var content = BuildTestContent(
                 testNamespace, dto, typeInfo.targetNamespace, typeInfo.constructorArgs, framework,
-                typeInfo.targetMethod, typeInfo.matchedType);
+                typeInfo.targetMethod, typeInfo.matchedType, siblingPattern: null);
 
             var projInAccumulator = accumulator.GetProject(testProject.Id)
                 ?? throw new InvalidOperationException("Test project disappeared from working solution snapshot.");
@@ -248,14 +253,31 @@ public sealed class ScaffoldingService : IScaffoldingService
 
         var typeInfo = await ResolveTargetTypeAndMethodAsync(
             workspaceId, request.TestProjectName, request.TargetTypeName, request.TargetMethodName, ct).ConfigureAwait(false);
+
+        // Sibling-pattern inference (scaffold-test-sibling-pattern-inference). When an explicit
+        // referenceTestFile is supplied we use that as the pattern source; otherwise we
+        // auto-detect the most-recently-modified `*Tests.cs` in the project directory. Empty
+        // string opts out of inference.
+        var siblingInference = InferSiblingTestPattern(request.ReferenceTestFile, projectDirectory, testFilePath);
+        var siblingWarnings = siblingInference.Warnings;
+
         var content = BuildTestContent(
-            testNamespace, request, typeInfo.targetNamespace, typeInfo.constructorArgs, framework, typeInfo.targetMethod, typeInfo.matchedType);
+            testNamespace, request, typeInfo.targetNamespace, typeInfo.constructorArgs, framework,
+            typeInfo.targetMethod, typeInfo.matchedType, siblingInference.Pattern);
         var preview = await _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, testFilePath, content), ct).ConfigureAwait(false);
 
-        if (typeInfo.warnings is null || typeInfo.warnings.Count == 0)
-            return preview;
+        var combinedWarnings = CombineWarnings(typeInfo.warnings, siblingWarnings);
+        return combinedWarnings.Count == 0 ? preview : preview with { Warnings = combinedWarnings };
+    }
 
-        return preview with { Warnings = typeInfo.warnings };
+    private static IReadOnlyList<string> CombineWarnings(List<string>? a, IReadOnlyList<string>? b)
+    {
+        if ((a is null || a.Count == 0) && (b is null || b.Count == 0))
+            return Array.Empty<string>();
+        var combined = new List<string>();
+        if (a is not null) combined.AddRange(a);
+        if (b is not null) combined.AddRange(b);
+        return combined;
     }
 
     private static string ResolveTestFramework(string? requested, string? projectFilePath)
@@ -798,6 +820,170 @@ public sealed class ScaffoldingService : IScaffoldingService
         return $"{usingsBlock}namespace {typeNamespace};\n\n{modifier} {typeKeyword} {request.TypeName}{inheritanceClause}\n{{\n{body}}}\n";
     }
 
+    /// <summary>
+    /// Captured shape of a sibling test class: attributes decorating the class declaration,
+    /// optional base class, and constructor-injected fixture parameters (the xUnit
+    /// <c>IClassFixture&lt;T&gt;</c> pattern is detected by inspecting the constructor
+    /// parameter list). Rendered verbatim onto the scaffolded class so integration-test
+    /// conventions (ASP.NET Core <c>IClassFixture&lt;CustomWebApplicationFactory&gt;</c>,
+    /// <c>[Trait("Category", "Integration")]</c>, etc.) replicate without a manual rewrite.
+    /// </summary>
+    internal sealed record SiblingTestPattern(
+        IReadOnlyList<string> ClassAttributes,
+        IReadOnlyList<string> BaseTypes,
+        IReadOnlyList<(string TypeText, string Name)> ConstructorParameters,
+        IReadOnlyList<string> RequiredUsings,
+        string SourceFileName);
+
+    /// <summary>
+    /// Result of sibling-pattern inference: a pattern (null when no reference is available)
+    /// and any warnings the caller should surface (e.g. explicit reference path missing).
+    /// </summary>
+    internal sealed record SiblingInferenceResult(
+        SiblingTestPattern? Pattern,
+        IReadOnlyList<string> Warnings)
+    {
+        public static SiblingInferenceResult None { get; } = new(null, Array.Empty<string>());
+    }
+
+    /// <summary>
+    /// Inspects an explicit <paramref name="referenceTestFile"/> (when provided) or the
+    /// most-recently-modified <c>*Tests.cs</c> sibling in the target test project directory,
+    /// and captures its class-level attributes + base types + constructor-injected fixture
+    /// parameters into a <see cref="SiblingTestPattern"/>. Scaffold generators replicate the
+    /// captured shape so integration-test conventions carry over to the new file. A deliberate
+    /// opt-out is supported by passing an empty string for <paramref name="referenceTestFile"/>.
+    /// </summary>
+    internal static SiblingInferenceResult InferSiblingTestPattern(
+        string? referenceTestFile,
+        string projectDirectory,
+        string destinationFilePath)
+    {
+        // Explicit opt-out: empty string means "do not infer".
+        if (referenceTestFile is not null && string.IsNullOrWhiteSpace(referenceTestFile))
+            return SiblingInferenceResult.None;
+
+        string? resolved;
+        var warnings = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(referenceTestFile))
+        {
+            if (!File.Exists(referenceTestFile))
+            {
+                warnings.Add(
+                    $"referenceTestFile '{referenceTestFile}' not found on disk — falling back to auto-detection.");
+                resolved = FindMostRecentSiblingTestFile(projectDirectory, destinationFilePath);
+            }
+            else
+            {
+                resolved = referenceTestFile;
+            }
+        }
+        else
+        {
+            resolved = FindMostRecentSiblingTestFile(projectDirectory, destinationFilePath);
+        }
+
+        if (resolved is null)
+            return new SiblingInferenceResult(null, warnings);
+
+        try
+        {
+            var sourceText = File.ReadAllText(resolved);
+            var pattern = ExtractPatternFromSource(sourceText, Path.GetFileName(resolved));
+            return new SiblingInferenceResult(pattern, warnings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            warnings.Add(
+                $"Could not read referenceTestFile '{resolved}' ({ex.GetType().Name}: {ex.Message}) — scaffolded without pattern inference.");
+            return new SiblingInferenceResult(null, warnings);
+        }
+    }
+
+    private static string? FindMostRecentSiblingTestFile(string projectDirectory, string destinationFilePath)
+    {
+        if (!Directory.Exists(projectDirectory))
+            return null;
+
+        // Only consider files ending in *Tests.cs (the canonical convention that scaffold
+        // itself produces). Exclude the destination so we never self-reference, and skip
+        // obj/bin subdirectories so we don't pick up generated files.
+        var destinationNormalized = Path.GetFullPath(destinationFilePath);
+        return Directory.EnumerateFiles(projectDirectory, "*Tests.cs", SearchOption.AllDirectories)
+            .Where(p =>
+            {
+                var normalized = Path.GetFullPath(p);
+                if (string.Equals(normalized, destinationNormalized, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                var rel = Path.GetRelativePath(projectDirectory, normalized);
+                return !rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    .Any(seg => string.Equals(seg, "obj", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(seg, "bin", StringComparison.OrdinalIgnoreCase));
+            })
+            .Select(p => new FileInfo(p))
+            .OrderByDescending(fi => fi.LastWriteTimeUtc)
+            .Select(fi => fi.FullName)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Roslyn-parses the sibling source file, picks the first top-level class declaration
+    /// (ignoring nested types), and captures: class-level attribute lists, base type list,
+    /// constructor parameters (for <c>IClassFixture&lt;T&gt;</c> / fixture injection),
+    /// and any <c>using</c>s we'll need to carry over so the scaffolded file compiles.
+    /// Returns <c>null</c> when the file isn't parseable or has no class declaration.
+    /// </summary>
+    private static SiblingTestPattern? ExtractPatternFromSource(string sourceText, string sourceFileName)
+    {
+        var tree = CSharpSyntaxTree.ParseText(sourceText);
+        var root = tree.GetCompilationUnitRoot();
+
+        var classDecl = root.DescendantNodes()
+            .OfType<ClassDeclarationSyntax>()
+            .FirstOrDefault(c => c.Modifiers.Any(m => m.IsKind(SyntaxKind.PublicKeyword) || m.IsKind(SyntaxKind.InternalKeyword))
+                              || c.Modifiers.Count == 0);
+        if (classDecl is null)
+            return null;
+
+        var attributes = classDecl.AttributeLists
+            .Select(list => list.ToString().Trim())
+            .Where(a => a.Length > 0)
+            .ToList();
+
+        var baseTypes = classDecl.BaseList?.Types
+            .Select(t => t.Type.ToString().Trim())
+            .Where(t => t.Length > 0)
+            .ToList() ?? new List<string>();
+
+        // The first instance constructor is our pattern source. Static constructors are skipped.
+        var ctor = classDecl.Members
+            .OfType<ConstructorDeclarationSyntax>()
+            .FirstOrDefault(c => !c.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword)));
+
+        var parameters = new List<(string TypeText, string Name)>();
+        if (ctor is not null)
+        {
+            foreach (var p in ctor.ParameterList.Parameters)
+            {
+                var typeText = p.Type?.ToString().Trim() ?? string.Empty;
+                var name = p.Identifier.ValueText;
+                if (!string.IsNullOrEmpty(typeText) && !string.IsNullOrEmpty(name))
+                    parameters.Add((typeText, name));
+            }
+        }
+
+        // Collect usings so the scaffolded file can compile. We deliberately do NOT
+        // replicate the sibling's namespace declaration — the scaffolder already picks the
+        // correct namespace for the new file from the target test project.
+        var usings = root.Usings
+            .Select(u => u.Name?.ToString().Trim() ?? string.Empty)
+            .Where(s => s.Length > 0)
+            .ToList();
+
+        return new SiblingTestPattern(attributes, baseTypes, parameters, usings, sourceFileName);
+    }
+
     private static string BuildTestContent(
         string testNamespace,
         ScaffoldTestDto request,
@@ -805,7 +991,8 @@ public sealed class ScaffoldingService : IScaffoldingService
         string constructorArgs,
         string framework,
         IMethodSymbol? targetMethod,
-        INamedTypeSymbol? matchedType)
+        INamedTypeSymbol? matchedType,
+        SiblingTestPattern? siblingPattern)
     {
         var methodName = string.IsNullOrWhiteSpace(request.TargetMethodName)
             ? "Generated_Test"
@@ -827,10 +1014,117 @@ public sealed class ScaffoldingService : IScaffoldingService
 
         return framework switch
         {
-            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold),
-            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold),
-            _ => BuildMSTestTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold),
+            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
+            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
+            _ => BuildMSTestTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
         };
+    }
+
+    /// <summary>
+    /// Renders the sibling-inferred class-level attribute lists and base-list / constructor
+    /// pieces on top of the default scaffold. Framework-level attributes (<c>[TestClass]</c>,
+    /// <c>[TestFixture]</c>) are injected by the per-framework builders; this helper only
+    /// replicates attributes that appear on the sibling class decl so cross-cutting
+    /// conventions (e.g. <c>[Trait("Category","Integration")]</c>) carry over. Returns all
+    /// three render fragments ready for string-interpolation into the per-framework emitter.
+    /// </summary>
+    private static (string ExtraUsings, string ExtraAttributes, string BaseClause, string CtorBlock) BuildSiblingFragments(
+        SiblingTestPattern? pattern,
+        string targetTypeName,
+        string testNamespace,
+        string usingDirective)
+    {
+        if (pattern is null)
+            return (string.Empty, string.Empty, string.Empty, string.Empty);
+
+        // Carry sibling usings, but skip any already present in the explicit target-type using
+        // directive, the test namespace itself, or matching the sibling's own namespace (we
+        // don't try to resolve that — we just carry the explicit usings list). The
+        // duplication guard uses a simple string comparison against the scaffold's
+        // already-emitted using so callers see a clean file.
+        var existingUsings = new HashSet<string>(StringComparer.Ordinal) { testNamespace };
+        if (!string.IsNullOrWhiteSpace(usingDirective))
+        {
+            // "using Foo.Bar;\n" → "Foo.Bar"
+            var candidate = usingDirective.Trim();
+            if (candidate.StartsWith("using ", StringComparison.Ordinal) && candidate.EndsWith(";", StringComparison.Ordinal))
+                existingUsings.Add(candidate[6..^1]);
+        }
+
+        var extraUsingsBuilder = new System.Text.StringBuilder();
+        foreach (var u in pattern.RequiredUsings.Where(u => existingUsings.Add(u)))
+        {
+            // Emit using with a newline so the header block stays consistent with the default
+            // scaffold style. Skip framework-specific usings (Xunit / MSTest / NUnit) — the
+            // per-framework emitters inject those explicitly.
+            if (IsFrameworkUsing(u))
+                continue;
+            extraUsingsBuilder.Append("using ").Append(u).Append(";\n");
+        }
+
+        var attributesBuilder = new System.Text.StringBuilder();
+        foreach (var attr in pattern.ClassAttributes.Where(a => !IsFrameworkClassAttribute(a)))
+        {
+            attributesBuilder.Append(attr).Append('\n');
+        }
+
+        var baseClause = pattern.BaseTypes.Count > 0
+            ? " : " + string.Join(", ", pattern.BaseTypes)
+            : string.Empty;
+
+        var ctorBlock = BuildCtorFromPattern(pattern, targetTypeName);
+
+        return (extraUsingsBuilder.ToString(), attributesBuilder.ToString(), baseClause, ctorBlock);
+    }
+
+    private static bool IsFrameworkUsing(string ns) =>
+        string.Equals(ns, "Xunit", StringComparison.Ordinal) ||
+        string.Equals(ns, "NUnit.Framework", StringComparison.Ordinal) ||
+        string.Equals(ns, "Microsoft.VisualStudio.TestTools.UnitTesting", StringComparison.Ordinal);
+
+    private static bool IsFrameworkClassAttribute(string attribute)
+    {
+        // Strip the surrounding brackets and any argument list so bare-name matching works.
+        var inner = attribute.Trim();
+        if (inner.StartsWith('[')) inner = inner[1..];
+        if (inner.EndsWith(']')) inner = inner[..^1];
+        var parenIdx = inner.IndexOf('(');
+        if (parenIdx >= 0) inner = inner[..parenIdx];
+        inner = inner.Trim();
+        return string.Equals(inner, "TestClass", StringComparison.Ordinal)
+            || string.Equals(inner, "TestFixture", StringComparison.Ordinal)
+            || string.Equals(inner, "Collection", StringComparison.Ordinal); // xUnit collection, often sibling-specific
+    }
+
+    /// <summary>
+    /// Emits a constructor block that accepts the same parameter shape as the sibling and
+    /// stores each argument in a `private readonly` field. Follows the xUnit
+    /// <c>IClassFixture&lt;T&gt;</c> / DI-injected-fixture convention seen in ASP.NET Core
+    /// integration test projects. When the sibling has no constructor, emits an empty block.
+    /// </summary>
+    private static string BuildCtorFromPattern(SiblingTestPattern pattern, string targetTypeName)
+    {
+        if (pattern.ConstructorParameters.Count == 0)
+            return string.Empty;
+
+        var fields = new System.Text.StringBuilder();
+        var assigns = new System.Text.StringBuilder();
+        var ctorParams = new List<string>();
+
+        foreach (var (typeText, name) in pattern.ConstructorParameters)
+        {
+            var fieldName = "_" + name;
+            fields.Append($"    private readonly {typeText} {fieldName};\n");
+            assigns.Append($"        {fieldName} = {name};\n");
+            ctorParams.Add($"{typeText} {name}");
+        }
+
+        return
+            fields.ToString() + "\n" +
+            $"    public {targetTypeName}GeneratedTests({string.Join(", ", ctorParams)})\n" +
+            "    {\n" +
+            assigns.ToString() +
+            "    }\n\n";
     }
 
     /// <summary>
@@ -934,8 +1228,11 @@ public sealed class ScaffoldingService : IScaffoldingService
         string methodName,
         string ctorCall,
         string methodBlock,
-        bool isStaticType)
+        bool isStaticType,
+        SiblingTestPattern? siblingPattern)
     {
+        var (extraUsings, extraAttributes, baseClause, ctorBlock) =
+            BuildSiblingFragments(siblingPattern, targetTypeName, testNamespace, usingDirective);
         var instanceSetup = isStaticType
             ? string.Empty
             : "        var subject = " + ctorCall + ";\n\n";
@@ -945,10 +1242,13 @@ public sealed class ScaffoldingService : IScaffoldingService
         return
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n" +
             usingDirective +
+            extraUsings +
             "\nnamespace " + testNamespace + ";\n\n" +
+            extraAttributes +
             "[TestClass]\n" +
-            "public class " + targetTypeName + "GeneratedTests\n" +
+            "public class " + targetTypeName + "GeneratedTests" + baseClause + "\n" +
             "{\n" +
+            ctorBlock +
             "    [TestMethod]\n" +
             "    public void " + methodName + "()\n" +
             "    {\n" +
@@ -966,8 +1266,11 @@ public sealed class ScaffoldingService : IScaffoldingService
         string methodName,
         string ctorCall,
         string methodBlock,
-        bool isStaticType)
+        bool isStaticType,
+        SiblingTestPattern? siblingPattern)
     {
+        var (extraUsings, extraAttributes, baseClause, ctorBlock) =
+            BuildSiblingFragments(siblingPattern, targetTypeName, testNamespace, usingDirective);
         var instanceSetup = isStaticType
             ? string.Empty
             : "        var subject = " + ctorCall + ";\n\n";
@@ -977,9 +1280,12 @@ public sealed class ScaffoldingService : IScaffoldingService
         return
             "using Xunit;\n" +
             usingDirective +
+            extraUsings +
             "\nnamespace " + testNamespace + ";\n\n" +
-            "public class " + targetTypeName + "GeneratedTests\n" +
+            extraAttributes +
+            "public class " + targetTypeName + "GeneratedTests" + baseClause + "\n" +
             "{\n" +
+            ctorBlock +
             "    [Fact]\n" +
             "    public void " + methodName + "()\n" +
             "    {\n" +
@@ -997,8 +1303,11 @@ public sealed class ScaffoldingService : IScaffoldingService
         string methodName,
         string ctorCall,
         string methodBlock,
-        bool isStaticType)
+        bool isStaticType,
+        SiblingTestPattern? siblingPattern)
     {
+        var (extraUsings, extraAttributes, baseClause, ctorBlock) =
+            BuildSiblingFragments(siblingPattern, targetTypeName, testNamespace, usingDirective);
         var instanceSetup = isStaticType
             ? string.Empty
             : "        var subject = " + ctorCall + ";\n\n";
@@ -1008,10 +1317,13 @@ public sealed class ScaffoldingService : IScaffoldingService
         return
             "using NUnit.Framework;\n" +
             usingDirective +
+            extraUsings +
             "\nnamespace " + testNamespace + ";\n\n" +
+            extraAttributes +
             "[TestFixture]\n" +
-            "public class " + targetTypeName + "GeneratedTests\n" +
+            "public class " + targetTypeName + "GeneratedTests" + baseClause + "\n" +
             "{\n" +
+            ctorBlock +
             "    [Test]\n" +
             "    public void " + methodName + "()\n" +
             "    {\n" +
