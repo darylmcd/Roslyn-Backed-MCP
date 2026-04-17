@@ -4,6 +4,9 @@
     <Project Path="src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj" />
     <Project Path="src/RoslynMcp.Roslyn/RoslynMcp.Roslyn.csproj" />
   </Folder>
+  <Folder Name="/analyzers/">
+    <Project Path="analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RoslynMcp.Tests/RoslynMcp.Tests.csproj" />
   </Folder>

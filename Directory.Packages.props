@@ -5,6 +5,9 @@
   <ItemGroup>
     <PackageVersion Include="ModelContextProtocol" Version="1.1.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.3.0" />
+    <!-- Ships the RS* release-tracking rules used by ServerSurfaceCatalogAnalyzer.
+         Must match the 5.3.x Microsoft.CodeAnalysis.CSharp family — 4.x trips NU1605. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0-2.25625.1" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Features" Version="5.3.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.Features" Version="5.3.0" />
@@ -22,6 +25,14 @@
     <PackageVersion Include="MSTest.TestAdapter" Version="3.8.3" />
     <PackageVersion Include="MSTest.TestFramework" Version="3.8.3" />
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <!-- Analyzer-testing infrastructure for ServerSurfaceCatalogAnalyzer (RMCP001/RMCP002).
+         Version-pinned to the Microsoft.CodeAnalysis.* 5.3.0 family so the test harness
+         and analyzer share the same Roslyn workspace ABI. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest" Version="1.1.2" />
+    <!-- Transitive pin: the analyzer-testing harness drags in NuGet.Frameworks; pin an
+         explicit version so Microsoft.Build.Locator's MSBL001 check stays satisfied
+         (see the PackageReference in RoslynMcp.Tests.csproj for ExcludeAssets details). -->
+    <PackageVersion Include="NuGet.Frameworks" Version="6.3.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.3.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.100" />
     <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="4.14.0" />
