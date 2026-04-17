@@ -203,6 +203,20 @@ Resource discovery for clients that only call `resources/list`: workspace-scoped
 - Some MCP clients (Cursor, Claude Code) may relaunch the stdio server transparently between conversations, which is the most common cause of "lost" sessions.
 - **Consumer ordering — call `workspace_load` first.** Transport-reachable does not imply workspace-loaded. Before invoking any workspace-scoped tool (`symbol_search`, `find_references`, `compile_check`, etc.), either (a) call `workspace_load` with the target `.sln` / `.slnx` / `.csproj` path, or (b) poll `server_heartbeat` (cheaper) or the `connection` subfield of `server_info` until `state == "ready"` and `loadedWorkspaceCount >= 1`. The `connection` block also surfaces `stdioPid` and `serverStartedAt` so consumers can correlate readiness with the current host process and detect silent restarts.
 
+## Connection-state signals
+
+Consumers and skills frequently infer "is the server connected / ready?" from the wrong signals. Use the authoritative probes, not filesystem or tool-list side effects.
+
+**Authoritative probes (reliable):**
+
+- `server_info` — full payload including the `connection` subfield (`state`, `stdioPid`, `serverStartedAt`, `loadedWorkspaceCount`). Use when a rich response is needed.
+- `server_heartbeat` — lightweight readiness probe added in v1.21.x (`mcp-connection-session-resilience`, PR #218). Use for fast polling / readiness gates.
+- Any successful `mcp__roslyn__*` tool call — proves live connectivity by construction.
+
+**NOT reliable connection indicators — do not infer state from these:**
+
+- `mcp-logs-<server>/` cache-directory presence. The directory is created on tool install, not on connect — it persists across disconnects and across host-process restarts.
+
 ## Session And Mutation Safety
 
 - Maintain and pass `workspaceId` for workspace-scoped operations.
