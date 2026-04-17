@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - **Fixed:** Tightened PreToolUse hook prompt for `move_type_to_file_apply` and related applies to accept composite-preview-redeemed evidence, eliminating the false-positive block observed in the 2026-04-15 samplesolution audit (`dr-9-4-pretooluse-hook-false-positive-on`).
+- **Fixed:** Aligned `discover_capabilities` prompt parameter name between implementation and `ai_docs/prompts/experimental-promotion-exercise.md` appendix; added regression test (`dr-9-14-drift-001-param-name-mismatch-vs-experimental-p`).
 
 ### Changed
 

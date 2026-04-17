@@ -93,14 +93,14 @@ public static partial class RoslynPrompts
     [McpServerPrompt(Name = "discover_capabilities")]
     [Description("Generate a prompt that helps an agent discover relevant server tools and workflows for a given task category.")]
     public static Task<IEnumerable<PromptMessage>> DiscoverCapabilities(
-        [Description("Task category: refactoring, analysis, security, testing, editing, navigation, project-mutation, scaffolding, or all")] string category)
+        [Description("Task category: refactoring, analysis, security, testing, editing, navigation, project-mutation, scaffolding, or all")] string taskCategory)
     {
         try
         {
             var allTools = ServerSurfaceCatalog.Tools;
             var allPrompts = ServerSurfaceCatalog.Prompts;
 
-            var normalizedCategory = category.Trim().ToLowerInvariant();
+            var normalizedCategory = taskCategory.Trim().ToLowerInvariant();
             var filteredTools = normalizedCategory == "all"
                 ? allTools
                 : allTools.Where(t => PromptMessageBuilder.MatchesCategory(t.Category, normalizedCategory)).ToList();
@@ -120,7 +120,7 @@ public static partial class RoslynPrompts
             IEnumerable<PromptMessage> result =
             [
                 PromptMessageBuilder.CreatePromptMessage($"""
-                    Here are the server capabilities relevant to **{category}**:
+                    Here are the server capabilities relevant to **{taskCategory}**:
 
                     **Tools ({filteredTools.Count}):**
                     {PromptMessageBuilder.FormatBulletList(toolList, "No tools match this category.")}
