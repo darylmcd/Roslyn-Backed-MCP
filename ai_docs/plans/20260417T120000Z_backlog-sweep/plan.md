@@ -76,7 +76,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 3. `scaffold-test-sibling-pattern-inference` — Infer integration-fixture shape from sibling tests
 
-**Status:** pending · **Order:** 3 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 40000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #238, 2026-04-17) · **Order:** 3 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 40000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -94,7 +94,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 4. `exception-handler-classification-tracer` — trace_exception_flow tool
 
-**Status:** pending · **Order:** 4 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #239, 2026-04-17) · **Order:** 4 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -256,7 +256,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 13. `self-edit-bootstrap-mode-mcp-development` — Strengthen bootstrap-workflow documentation
 
-**Status:** pending · **Order:** 13 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #236, 2026-04-17) · **Order:** 13 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -382,7 +382,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 20. `dr-9-12-posttooluse-hook-adds-n-1-verification-step-per` — PostToolUse hook N+1 nag
 
-**Status:** pending · **Order:** 20 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 40000 tokens · **CHANGELOG category:** Changed — BREAKING
+**Status:** merged (PR #237, 2026-04-17) · **Order:** 20 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 40000 tokens · **CHANGELOG category:** Changed — BREAKING
 
 | Field | Content |
 |---|---|
