@@ -49,6 +49,19 @@
   </ItemGroup>
 
   <!--
+    ServerSurfaceCatalogAnalyzer emits build-time RMCP001/RMCP002 diagnostics when
+    [McpServerTool] / [McpServerResource] / [McpServerPrompt] decorated methods drift
+    from the hand-maintained ServerSurfaceCatalog.Tools / .Resources / .Prompts lists.
+    OutputItemType="Analyzer" + ReferenceOutputAssembly="false" is the canonical way
+    to treat an external csproj as an analyzer without shipping its runtime binary.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\analyzers\ServerSurfaceCatalogAnalyzer\ServerSurfaceCatalogAnalyzer.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!--
     Local dev workflow: dotnet publish -c Release automatically packs the nupkg
     and reinstalls the global tool. Run with /p:ReinstallTool=true to enable:
       dotnet publish -c Release /p:ReinstallTool=true

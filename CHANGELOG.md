@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Fixed
 
 - **Added:** `server_heartbeat` stable tool and `connection` subfield on `server_info` so consumers can distinguish transport-ready vs. workspace-loaded states (`mcp-connection-session-resilience`).
+- **Added:** `ServerSurfaceCatalogAnalyzer` emits `RMCP001`/`RMCP002` at build time when decorated MCP methods drift from the hand-maintained `ServerSurfaceCatalog` lists (`mcp-server-surface-catalog-parity-generator`). Replaces a test-run-time-only parity check — drift now fails the `Host.Stdio` build directly instead of surviving to test-red. The new `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj` targets `netstandard2.0` and is wired into `Host.Stdio` via `OutputItemType="Analyzer" ReferenceOutputAssembly="false"`; the existing runtime parity test in `SurfaceCatalogTests` stays as a belt-and-braces assertion. Analyzer test fixture in `tests/RoslynMcp.Tests/ServerSurfaceCatalogAnalyzerTests.cs` covers all three scenarios (attributed-but-missing → RMCP001, listed-but-not-attributed → RMCP002, all-matching → zero diagnostics) via `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest`.
 
 ### Changed
 

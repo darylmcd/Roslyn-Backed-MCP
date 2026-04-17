@@ -4,6 +4,14 @@
     <RootNamespace>RoslynMcp.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Microsoft.Build.Locator's MSBL001 guards the Host.Stdio startup path
+         (MSBuildLocator.RegisterDefaults() needs the SDK's MSBuild, not a package copy).
+         The test assembly never invokes the locator directly — it exercises Roslyn via
+         fixtures that hand a pre-resolved MSBuildWorkspace to the code under test.
+         ServerSurfaceCatalogAnalyzerTests also pulls NuGet.Frameworks at runtime via the
+         Microsoft.CodeAnalysis.Testing reference-pack downloader, which trips MSBL001.
+         The officially-supported escape hatch is this property from the locator targets. -->
+    <DisableMSBuildAssemblyCopyCheck>true</DisableMSBuildAssemblyCopyCheck>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,12 +19,20 @@
     <PackageReference Include="MSTest.TestAdapter" />
     <PackageReference Include="MSTest.TestFramework" />
     <PackageReference Include="coverlet.collector" />
+    <!-- ServerSurfaceCatalogAnalyzerTests: AnalyzerVerifier<T> harness for RMCP001/RMCP002.
+         PrivateAssets="all" keeps the harness's Roslyn binaries scoped to the test host. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing.MSTest" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\RoslynMcp.Core\RoslynMcp.Core.csproj" />
     <ProjectReference Include="..\..\src\RoslynMcp.Host.Stdio\RoslynMcp.Host.Stdio.csproj" />
     <ProjectReference Include="..\..\src\RoslynMcp.Roslyn\RoslynMcp.Roslyn.csproj" />
+    <!-- Reference the analyzer as a plain project reference so tests can instantiate it
+         directly via typeof(ServerSurfaceCatalogAnalyzer). DO NOT set OutputItemType="Analyzer"
+         here — we want the assembly on the test's compile path, not as an analyzer that would
+         double-run when RoslynMcp.Host.Stdio's own transitive analyzer copy is already present. -->
+    <ProjectReference Include="..\..\analyzers\ServerSurfaceCatalogAnalyzer\ServerSurfaceCatalogAnalyzer.csproj" />
   </ItemGroup>
 
 </Project>

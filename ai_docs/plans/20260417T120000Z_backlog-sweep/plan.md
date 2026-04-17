@@ -58,7 +58,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 2. `mcp-server-surface-catalog-parity-generator` — Promote parity test to build-time analyzer
 
-**Status:** pending · **Order:** 2 · **Correctness class:** P3-correctness · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Fixed
+**Status:** merged (PR #TBD, 2026-04-17) · **Order:** 2 · **Correctness class:** P3-correctness · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Fixed
 
 | Field | Content |
 |---|---|
