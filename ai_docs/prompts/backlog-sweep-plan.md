@@ -1,9 +1,16 @@
 # Backlog sweep — planning pass
 
 <!-- purpose: Initiative-level plan that groups related backlog rows into shippable PRs.
-     v2 — rewritten 2026-04-16 after the v1 plan over-bundled by treating "shared root
-     concept" as "shared fix shape" and produced initiatives no single executor session
-     could complete. v2 forces strict per-initiative scope discipline. -->
+     v3 (2026-04-17) — adds (a) Rule 3 "new-MCP-tool structural-unit" exemption after
+     2026-04-17 pass 2 Init 4 shipped 7 prod files against a 2-prod estimate because
+     the Core+Roslyn+Host.Stdio three-layer pattern is indivisible, and (b) a per-
+     initiative toolPolicy field (`edit-only` / `preview-then-apply` / null) consumed
+     by the v4 executor's parallel-mode Step 5 pre-classification. state.json
+     schemaVersion stays at 2 (toolPolicy is optional; null → executor defaults).
+     Bootstrap caveat clarified: *_apply forbidden in main-checkout self-edit only;
+     worktree sessions (serial or parallel subagents) may use *_apply freely.
+     Prior revisions: v2 (2026-04-16) forced strict per-initiative scope discipline
+     after v1 over-bundled by treating "shared root concept" as "shared fix shape". -->
 
 You are a senior engineer working in the Roslyn-Backed-MCP repo. Your job is to read
 `ai_docs/backlog.md` and produce a per-initiative implementation plan that is **honest
@@ -21,16 +28,23 @@ violate the scope rules below — so produce a plan that passes vetting.
 - **Large refactors are on the table** — but each refactor is its own initiative.
 - **Priorities, strict order:** correctness → performance → SRP. Correctness always
   wins. When correctness risk ties, use blast radius, then SRP improvement, then cost.
-- **Bootstrap caveat (write-side only).** This codebase is the Roslyn MCP server
-  itself, so execution sessions must NOT use `*_apply` / `*_preview` self-application
-  — the binary servicing the call is the binary being edited, so the MSBuildWorkspace
-  snapshot goes stale mid-apply. Execution sessions use `Edit` / `Write` for code
-  changes. **Read-side Roslyn MCP tools are fully supported and preferred**:
-  `compile_check` / `test_run` / `find_references` / `symbol_search` / `document_symbols`
-  are all safe under bootstrap and faster than the Bash/Grep alternatives. See
-  `ai_docs/bootstrap-read-tool-primer.md` for the pattern→tool table and
-  `self-edit-bootstrap-mode-mcp-development` + `bootstrap-read-only-roslyn-mcp-checklist-for-self-edit-sessions`
-  in backlog for prior-session evidence.
+- **Bootstrap caveat (main-checkout self-edit only — NOT worktrees).** This codebase
+  is the Roslyn MCP server itself. In the **main checkout**, the binary servicing
+  the call is the binary being edited, so `*_apply` mutates the MSBuildWorkspace
+  snapshot the running server is holding — avoid `*_apply` / `*_preview` self-
+  application in main-checkout sessions. **Worktree sessions (serial execution in
+  `.worktrees/<id>/` OR parallel-mode subagents) are NOT bootstrap** — they operate
+  against the **installed global tool** at `%USERPROFILE%\.dotnet\tools\roslynmcp.exe`,
+  which is a distinct artifact that is NOT mutated by worktree-source edits. Worktree
+  sessions may use `*_apply` freely when the initiative's toolPolicy is
+  `preview-then-apply` (see Rule 3 toolPolicy below). **Read-side Roslyn MCP tools
+  are always preferred** over Bash/Grep regardless of mode: `compile_check` /
+  `test_run` / `find_references` / `symbol_search` / `document_symbols`. See
+  `ai_docs/bootstrap-read-tool-primer.md` for the pattern→tool table,
+  `ai_docs/runtime.md` § *Bootstrap scope — self-edit on THIS repository* for the
+  two-sub-case policy, and `self-edit-bootstrap-mode-mcp-development` +
+  `bootstrap-read-only-roslyn-mcp-checklist-for-self-edit-sessions` in backlog for
+  prior-session evidence.
 
 ## Scope discipline rules (HARD)
 
@@ -67,7 +81,47 @@ Before claiming two rows can be bundled, you must:
 An initiative must touch **≤ 4 production files** (excluding tests, CHANGELOG.md,
 ai_docs/backlog.md, and the plan/state.json triple). If more files are needed, **split**.
 
-This is a hard upper bound. Most initiatives should touch 1-2 files.
+This is a hard upper bound. Most fix/refactor initiatives should touch 1-2 files.
+
+**Rule 3 exemption — new-MCP-tool structural unit.** Initiatives that introduce a
+new `[McpServerTool]` method following the repo's Core+Roslyn+Host.Stdio three-layer
+pattern count **structural units**, not files. The indivisible new-tool shape is:
+
+| Structural unit | Typical files |
+|---|---|
+| Core contract | `src/RoslynMcp.Core/Services/I{Tool}Service.cs` + `src/RoslynMcp.Core/Models/{Tool}Result.cs` (+ any request DTO) |
+| Roslyn implementation | `src/RoslynMcp.Roslyn/Services/{Tool}Service.cs` |
+| Host.Stdio tool surface | `src/RoslynMcp.Host.Stdio/Tools/{Tool}Tools.cs` |
+| Registration | `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs` entry (forced by the RMCP001/RMCP002 analyzer) + `ServiceCollectionExtensions.cs` DI line |
+
+For new-tool initiatives, Rule 3's cap is **≤ 4 structural units** (typically 5-7
+files). The fix/refactor cap (≤ 4 production files) still applies to initiatives
+that don't introduce a new tool. Record `productionFilesTouched` as the **file
+count**, not the unit count, so the executor's vetting step sees the real file
+budget. Plans for new-tool initiatives MUST set `toolPolicy: "edit-only"` and cite
+the structural-unit exemption in the initiative's Scope field.
+
+**Session evidence:** 2026-04-17 pass 2 Init 4 (`exception-handler-classification-
+tracer`) shipped 7 prod + 1 test against a 2-prod estimate because the new-tool
+shape forced the three-layer pattern. See backlog row
+`backlog-sweep-plan-rule3-new-service-5-file-unit` and the merged PR #239 file list.
+
+### Rule 3b — toolPolicy per initiative
+
+Every initiative gets a `toolPolicy` value that the executor uses to brief the
+subagent (parallel mode) or set defaults (serial mode):
+
+| toolPolicy | When to use | Implementation path |
+|---|---|---|
+| `"edit-only"` | Adding/modifying files where the diff is textual and local. Covers: new-MCP-tool shape, fix/refactor ≤ 3 files, doc-only, config-only, DTO field addition. | Subagent uses `Edit`/`Write`/`Read` + read-side MCP. No `*_apply`. |
+| `"preview-then-apply"` | Solution-wide symbolic refactor: rename across projects, extract-interface-and-wire, bulk-type-replacement, move-type-to-project, code-fix-all. | Subagent calls `*_preview` then `*_apply` in the same turn. Preview redemption lives in-conversation. |
+| `null` | You are not sure. | Executor defaults: edit-only for ≤ 3 production files; preview-then-apply otherwise. Prefer explicit classification when you can — it saves the executor a Step-4 inference pass. |
+
+Classify at planning time based on the Approach field. If the Approach calls for
+a rename, extract, or bulk-replace against an existing symbol set, `"preview-then-
+apply"` is usually correct. If the Approach is "create these N new files and wire
+them up," `"edit-only"` is always correct (new files have no consumers to rewrite
+semantically).
 
 ### Rule 4 — Per-initiative test budget
 
@@ -84,12 +138,26 @@ For each initiative, estimate the executor session's context cost:
 | Read a helper / contract file | ~1-3K tokens |
 | Edit a file | ~1-2K tokens (small) to ~5K (large) |
 | Add or modify a test file | ~3-8K tokens |
+| Write a new file (no Read first) | ~2-4K tokens |
 | Build cycle (`dotnet build`) | ~2-5K tokens output |
+| `compile_check` via MCP | ~0.5-1K tokens output |
+| `test_run --filter` via MCP | ~1-3K tokens output |
 | `verify-release.ps1` run | ~5-15K tokens output |
 | Ship pipeline (commit, PR, merge, cleanup) | ~3-5K tokens |
+| **New-MCP-tool 3-layer bundle** (Core + Roslyn + Host.Stdio writes + catalog entry + DI) | **~15-25K tokens** |
+| **Rebase on parallel-mode peer PR** (CHANGELOG/backlog.md conflict resolve) | ~2-4K tokens |
 
-Per-initiative cost should sit at **~30-60K tokens**. Initiatives over 80K must split.
-Record the estimate in the `estimatedContextTokens` field of `state.json`.
+Per-initiative budgets, by shape:
+
+| Initiative shape | Typical estimate |
+|---|---|
+| Doc-only / config-only | ~15-25K tokens |
+| Fix/refactor, 1-2 files | ~25-40K tokens |
+| Fix/refactor, 3-4 files | ~40-60K tokens |
+| New-MCP-tool (edit-only, structural-unit exemption) | ~45-65K tokens |
+| Solution-wide rename/extract (preview-then-apply) | ~50-70K tokens |
+
+Initiatives over 80K must split. Record the estimate in `estimatedContextTokens`.
 
 The executor vets this number — if your estimate is over budget, the executor will
 refuse to start.
@@ -155,8 +223,9 @@ Produce this table for each initiative:
 | **Backlog rows closed** | List of row ids. Usually 1. Bundle only if Rule 1 conditions all hold (cite at the bottom of Diagnosis). |
 | **Diagnosis** | What you found in the code (file:line). How it differs from or confirms the backlog description. If bundled, the explicit Rule-1 verification. |
 | **Approach** | Concrete implementation strategy. Name files to create/modify, functions to change, patterns to follow. |
-| **Scope** | Production files touched (count + list), test files added/modified (count + list), files deleted (if any). Must satisfy Rules 3 + 4. |
-| **Estimated context cost** | Single number in tokens (~30-60K typical). Per Rule 5. |
+| **Scope** | Production files touched (count + list), test files added/modified (count + list), files deleted (if any). Must satisfy Rules 3 + 4. For new-MCP-tool initiatives, cite the Rule 3 structural-unit exemption and list the 4 structural units. |
+| **Tool policy** | `edit-only` / `preview-then-apply` / null. Per Rule 3b. null is acceptable only when the Approach is genuinely ambiguous — prefer explicit classification. |
+| **Estimated context cost** | Single number in tokens. Per Rule 5 — match the initiative shape's budget row. |
 | **Risks** | What could go wrong; what adjacent behavior to verify. |
 | **Validation** | How to confirm the fix: specific test cases, build checks, manual reproduction steps. |
 | **Performance review** | ONLY if the fix touches a hot path. Otherwise: "N/A — correctness fix, no hot-path changes." |
@@ -184,9 +253,15 @@ Before writing files, walk every initiative and confirm:
 
 - [ ] No initiative claims to close more than 1 row UNLESS Rule 1's four conditions
       are explicitly cited via file:line evidence in Diagnosis.
-- [ ] No initiative touches more than 4 production files (Rule 3).
+- [ ] No initiative touches more than 4 production files (Rule 3 fix/refactor cap)
+      OR more than 4 structural units (Rule 3 new-MCP-tool exemption, with the
+      exemption explicitly cited in Scope).
 - [ ] No initiative adds more than 3 test files (Rule 4).
-- [ ] Every initiative has an `estimatedContextTokens` ≤ 80K (Rule 5).
+- [ ] Every initiative has an `estimatedContextTokens` ≤ 80K (Rule 5), matched to
+      its shape's budget row.
+- [ ] Every initiative has a `toolPolicy` set (Rule 3b). Prefer explicit
+      `edit-only` / `preview-then-apply` classification; null only when genuinely
+      ambiguous. New-MCP-tool initiatives MUST be `edit-only`.
 - [ ] At least one P2 or high-correctness P3 is in the top 5 by sort order.
 - [ ] Total initiative count is honest about backlog size (~1:1 with row count is
       expected, not a sign of failure).
@@ -225,6 +300,7 @@ Do NOT write any code. This is planning only.
       "estimatedContextTokens": 35000,
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
+      "toolPolicy": "edit-only",
       "status": "pending",
       "correctnessClass": "P3-correctness",
       "scheduleHint": null,
@@ -242,14 +318,20 @@ Do NOT write any code. This is planning only.
 Field reference:
 
 - `schemaVersion`: integer; current is `2`. Executor refuses plans with mismatched
-  schema version.
+  schema version. (Planner prompt is at v3 but the schema stays v2-compatible —
+  `toolPolicy` is optional; missing field → executor defaults.)
 - `status`: `pending` | `in-progress` | `in-review` | `merged` | `obsolete` | `deferred`.
 - `correctnessClass`: `P2` | `P3-correctness` | `P3-UX` | `P4`. Drives sort and gating.
 - `scheduleHint`: `null` or `"heroic-last"`.
 - `changelogCategory`: `Fixed` | `Added` | `Changed — BREAKING` | `Maintenance`.
 - `estimatedContextTokens`: per Rule 5; integer. Vetting fails if > 80000.
-- `productionFilesTouched`: per Rule 3; integer. Vetting fails if > 4.
+- `productionFilesTouched`: per Rule 3; integer. Fix/refactor vetting fails if > 4.
+  New-MCP-tool exemption: executor checks initiative `notes` for the structural-unit
+  citation and uses the 4-unit cap instead.
 - `testFilesAdded`: per Rule 4; integer. Vetting fails if > 3.
+- `toolPolicy`: per Rule 3b. `"edit-only"` | `"preview-then-apply"` | `null`.
+  `null` means "executor decides based on file count and Approach shape." Optional
+  for backward-compat with pre-v3 plans; planner v3+ should always emit explicitly.
 
 ## Final sanity check
 

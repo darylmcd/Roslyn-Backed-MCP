@@ -2,6 +2,12 @@
 
 <!-- purpose: Execute one initiative (or a parallel batch) from the latest
      backlog-sweep plan, ship as PR(s).
+     v4 (2026-04-17, same-day refinement of v3) — (a) consumes the planner v3
+     toolPolicy field with a fallback for pre-v3 plans, (b) adds concurrent-
+     session safety note to Appendix A for the state.json spawn-window gap,
+     (c) Appendix B polish: templating convention note, explicit git-add
+     example, MCP-tool reference in validation step, worktree cd sequence
+     clarification, (d) Appendix C gh-pr-view failure handling.
      v3 (2026-04-17) — parallel-execution mode promoted to first-class,
      subagent briefing contract + result-format protocol codified, worktree-vs-
      repo-root merge discipline documented. Prior revisions: v2 added Step 1a
@@ -141,14 +147,20 @@ skip this one and pick the next pending non-heroic.
 | Single initiative selected (only one pending) | serial |
 | `state.json.vettingOverride == true` | serial |
 | Next-in-queue initiative has `scheduleHint == "heroic-last"` | serial |
-| Multiple independent initiatives available AND orchestrator context budget ≥ 100K free | parallel (optional) |
+| Multiple independent initiatives available AND this is the orchestrator's first batch of the session | parallel (default) |
+| Multiple independent initiatives available AND prior batch's Step 10 report said context ≥ 60% free | parallel (optional second batch) |
+| Above prior-batch report said context < 60% free | serial (or end session) |
 
 **Parallel-mode picking rules (orchestrator):**
 
 - Select 2–4 initiatives from the pending queue by `order` ascending.
 - **Production file sets must be disjoint** across the batch (`ai_docs/backlog.md`
   and `CHANGELOG.md` don't count — orchestrator owns those). Verify by comparing
-  each initiative's Scope field in plan.md.
+  each initiative's Scope field in plan.md. For new-MCP-tool initiatives, the
+  structural-unit files listed under the Rule 3 exemption in Scope are the disjoint-
+  check surface; two new-tool initiatives can parallel-run as long as their Core
+  interface / Roslyn service / Host.Stdio tool files don't overlap (ServerSurface-
+  Catalog.cs will conflict — sequential rebase handles it, same as CHANGELOG).
 - Each initiative's own `estimatedContextTokens` lives in its subagent's context,
   not the orchestrator's — the orchestrator consumes ~2–5K per spawn for briefing
   + result parsing.
@@ -224,21 +236,28 @@ The orchestrator spawns one subagent per initiative via the `Agent` tool using
    `mcp__roslyn__*_apply` tools looks for prior `*_preview` evidence in the
    conversation and blocks when none is found. PR #230's widening to accept
    `apply_composite_preview` redemption does NOT help a cold subagent — it
-   has no redemption to point to either. The orchestrator's prompt MUST choose
-   one of:
+   has no redemption to point to either. The orchestrator MUST choose one of:
 
-   - **Edit-only path** (default for ≤3-file edits): subagent uses
-     `Edit`/`Write`/`Read` for mutations. Read-side MCP tools
-     (`symbol_search`, `find_references`, `document_symbols`, `compile_check`,
-     `test_run`, `test_related_files`, `project_diagnostics`) are always safe
-     and preferred over `Grep` / `Bash: dotnet build`.
+   - **Edit-only path** — subagent uses `Edit`/`Write`/`Read` for mutations.
+     Read-side MCP tools (`symbol_search`, `find_references`,
+     `document_symbols`, `compile_check`, `test_run`, `test_related_files`,
+     `project_diagnostics`) are always safe and preferred over `Grep` /
+     `Bash: dotnet build`.
 
-   - **Preview-then-apply path** (solution-wide rename/extract): subagent
-     calls `*_preview` before each `*_apply`. The in-conversation preview
-     redeems at the same turn.
+   - **Preview-then-apply path** — subagent calls `*_preview` before each
+     `*_apply`. The in-conversation preview redeems at the same turn.
 
-   Pre-classify which path each initiative should take in the plan.md Approach
-   field so spawns can be templated.
+   **Tool-policy source-of-truth (planner v3+):** read
+   `state.json.initiatives[n].toolPolicy` per initiative. Three valid values:
+
+   | `toolPolicy` | Subagent path |
+   |---|---|
+   | `"edit-only"` | Edit-only path above. |
+   | `"preview-then-apply"` | Preview-then-apply path above. |
+   | `null` or missing | **Fallback (pre-v3 plans):** choose edit-only if the initiative's `productionFilesTouched <= 3` OR the Approach describes file creation / doc edits / config edits / DTO field addition; choose preview-then-apply if the Approach describes solution-wide rename, extract-interface-and-wire, bulk-type-replacement, move-type-to-project, or code-fix-all. Log the chosen fallback in the orchestrator's Step 10 report for planner feedback. |
+
+   Select the matching Tool policy block in Appendix B's subagent briefing
+   template. Do NOT ship a subagent brief with both blocks included.
 
 2. **Shared-file discipline.** Subagent MUST NOT touch `ai_docs/backlog.md`
    or `CHANGELOG.md`. Orchestrator handles both in Step 7 (parallel variant).
@@ -471,16 +490,43 @@ and exit.
 Compact checklist for the orchestrator. All steps run from the primary repo root
 unless otherwise noted.
 
+### Concurrent-session safety rule (READ BEFORE SPAWNING)
+
+Parallel mode has a **state.json spawn-window gap**: subagents run with their
+initiatives still showing `status: "pending"` in state.json (the `pending → merged`
+transition is collapsed into the reconcile PR at Step 7). During this window,
+another non-orchestrator session reading state.json cannot see that the batch's
+initiatives are taken. **Therefore:**
+
+- **Do not start a second parallel sweep while one is running.** The first sweep
+  owns state.json for its wave duration.
+- If a second sweep is already running (detect via `git branch --list "remediation/*"`
+  or `git worktree list` showing active remediation worktrees you did not create):
+  either hand off to the other session, or downgrade to serial mode which updates
+  state.json per-initiative.
+- The `/reconcile-backlog-sweep-plan` skill is safe to run standalone — it only
+  reconciles `in-review` initiatives and does not spawn subagents.
+
+### Playbook
+
 1. Steps 1 / 1a / 1b (use `/reconcile-backlog-sweep-plan` skill if available).
 2. Steps 2 + 2a — pick 2–4 pending initiatives with disjoint file sets.
 3. Spawn subagents concurrently — single assistant message with multiple `Agent`
    tool uses, each with `run_in_background: true`. Briefing per Appendix B.
+   **Pick the correct Tool policy block** from Appendix B based on each initiative's
+   `state.json.initiatives[n].toolPolicy` (or the Step 5 fallback if null).
 4. **Do not poll.** The harness notifies on each subagent's completion.
 5. Parse each returned result per Appendix C. Verify PR URLs via `gh pr view`.
-   On failure, decide retry (tightened brief) vs defer (`status: "deferred"`).
-6. Merge each subagent's PR in turn. Rebase-on-merge conflicts on
-   `CHANGELOG.md` / `backlog.md` indicate subagent broke shared-file discipline
-   — fix that subagent's prompt for future batches.
+   On failure, decide retry (tightened brief — usually switch toolPolicy from
+   preview-then-apply to edit-only, or narrow scope) vs defer
+   (`status: "deferred"`).
+6. Merge each subagent's PR in turn (from the primary repo root — see Step 8
+   worktree-cd discipline). Rebase-on-merge conflicts on `CHANGELOG.md` /
+   `backlog.md` indicate a subagent broke shared-file discipline — fix that
+   subagent's prompt for future batches. Legitimate overlap on
+   `ServerSurfaceCatalog.cs` (two new-tool initiatives both adding catalog
+   entries) is expected and handled via sequential rebase, not treated as a
+   discipline break.
 7. After all batch PRs merge: open ONE reconcile PR per Step 7 parallel variant,
    merge it, run the post-merge main-sync idiom.
 8. Worktree cleanup:
@@ -492,8 +538,14 @@ unless otherwise noted.
 
 ## Appendix B — Subagent briefing template
 
-Paste this into the `prompt` field of each `Agent` tool call, filling `{…}`
-placeholders from plan.md for that initiative.
+Paste the template below into the `prompt` field of each `Agent` tool call, filling
+`{…}` placeholders from plan.md for that initiative.
+
+**Templating convention:** the template includes **two tool-policy blocks** labeled
+`{ IF edit-only: }` and `{ IF preview-then-apply: }`. **Include exactly ONE** — the
+one that matches the initiative's `toolPolicy` (or the Step 5 fallback if null).
+Remove the `{ IF … }` label and keep the block body. Do NOT ship the brief with
+both blocks included or with the labels intact.
 
 ```
 You are executing ONE initiative from a backlog-sweep plan. Context below is
@@ -505,7 +557,7 @@ exit. Do NOT merge. Do NOT touch shared files (see Hard rules).
 - correctness class: {P3 / P4}
 - branch: remediation/{initiative.id}
 - worktree: .worktrees/{initiative.id}
-- tool policy: {edit-only OR preview-then-apply}
+- tool policy: {edit-only OR preview-then-apply — one, not both}
 
 ## Tool policy (cold-context caveat)
 
@@ -522,12 +574,17 @@ preferred over Grep / Bash: dotnet build — in particular:
 - mcp__roslyn__symbol_search for symbol-by-name lookup
 - mcp__roslyn__test_related_files + mcp__roslyn__test_run --filter for
   targeted test runs
+- mcp__roslyn__document_symbols for enumerating a file's public surface
+- mcp__roslyn__project_diagnostics for full-file diagnostic sweeps
 
 { IF preview-then-apply: }
-For each intended *_apply, first call the corresponding *_preview. The preview
-must be issued in the SAME subagent session (cold-context — you cannot point to
-a prior-session preview). Either redeem the preview via apply_composite_preview
-or follow directly with *_apply in the next turn.
+For each intended *_apply, first call the corresponding *_preview in the SAME
+turn sequence. Cold-context means you cannot point to a prior-session preview.
+Either redeem the preview via apply_composite_preview or follow directly with
+*_apply in the next turn. If the PreToolUse hook blocks an apply despite a
+valid same-session preview, STOP and report failure — do not retry the same
+*_apply call; switching to Edit/Write without the orchestrator's approval is
+a discipline break.
 
 ## Initiative content
 
@@ -535,34 +592,55 @@ or follow directly with *_apply in the next turn.
 
 ## Steps
 
-### 1. Create worktree
+### 1. Create worktree (from primary repo root)
 
 cd /c/Code-Repo/Roslyn-Backed-MCP
 git worktree add .worktrees/{initiative.id} -b remediation/{initiative.id} main
+cd .worktrees/{initiative.id}
 
-All subsequent work runs inside the worktree.
+All subsequent steps (2–4) run from INSIDE the worktree. Step 5 PR-merge-adjacent
+commands (ONLY if the orchestrator has explicitly authorized self-merge) run from
+the primary repo root — see Hard rules.
 
 ### 2. Implement per Approach
 
 Use the tool policy above. Keep the change scoped to the Scope field's file list.
+Do NOT expand beyond the plan's Scope without reporting and asking.
 
-### 3. Validate
+### 3. Validate (prefer MCP tools over shell)
 
-./eng/verify-release.ps1 -Configuration Release
-./eng/verify-ai-docs.ps1
+Per-edit verification — fast path:
+- mcp__roslyn__compile_check (<1s, structured diagnostics)
+- mcp__roslyn__test_related_files on the files you touched → mcp__roslyn__test_run
+  --filter "{derived-filter}"
 
-Both must pass. If verify-release.ps1 is slow, at minimum run
-dotnet build RoslynMcp.slnx -c Release -p:TreatWarningsAsErrors=true plus a
-targeted test run.
+Before PR — CI-parity run:
+- ./eng/verify-release.ps1 -Configuration Release
+- ./eng/verify-ai-docs.ps1
+
+Both CI-parity commands must pass. If verify-release.ps1 is slow and the session
+is context-tight, the minimum acceptable substitute is:
+- Bash: dotnet build RoslynMcp.slnx -c Release -p:TreatWarningsAsErrors=true
+- mcp__roslyn__test_run --filter "{test-class-or-namespace-scoped-to-your-changes}"
+
+Full-suite dotnet test is only required for the CI-parity run immediately before
+opening the PR.
 
 ### 4. Commit + push + open PR
 
 DO NOT edit ai_docs/backlog.md or CHANGELOG.md — orchestrator handles those.
 
-git add -- {explicit-path-list — NOT git add -A}
-git commit -m "..."
-git push -u origin remediation/{initiative.id}
-gh pr create --title "..." --body "..."
+Use EXPLICIT paths when staging — never git add -A, which can accidentally
+include sibling worktrees' stray files or .DS_Store / editor cruft. Example:
+
+  git add -- \
+    src/RoslynMcp.Roslyn/Services/FooService.cs \
+    src/RoslynMcp.Host.Stdio/Tools/FooTools.cs \
+    src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs \
+    tests/RoslynMcp.Tests/FooServiceTests.cs
+  git commit -m "{type}({scope}): {description} ({initiative.id})"
+  git push -u origin remediation/{initiative.id}
+  gh pr create --title "..." --body "..."
 
 PR body must include `Closes: {initiative.backlogRowsClosed as list}` so the
 orchestrator can correlate at reconcile time.
@@ -592,29 +670,44 @@ Any other final-message shape is treated as failure.
 
 - DO NOT edit ai_docs/backlog.md, CHANGELOG.md, state.json, or plan.md.
   The orchestrator handles those post-merge.
-- DO NOT merge your own PR.
-- DO NOT remove your worktree.
-- DO NOT use git add -A — use explicit paths only.
+- DO NOT merge your own PR (unless the orchestrator's briefing prompt
+  explicitly authorizes self-merge for this session).
+- DO NOT remove your worktree — orchestrator does this in Appendix A Step 8.
+- DO NOT use git add -A — use explicit paths only (see step 4 example).
 - If validation fails, fix and recommit before opening PR.
-- Stay inside the worktree directory for all work.
+- Stay inside the worktree directory for steps 2–4. If the orchestrator
+  authorized self-merge: run gh pr merge from the primary repo root only
+  (cd "$(git rev-parse --git-common-dir)/.." first) — gh pr merge fails inside
+  a worktree because it tries to checkout main locally.
 - If you hit a PreToolUse hook block mid-session, STOP and report failure
-  — do not continue past the block by guessing the hook's internal state.
+  with the exact block message — do not continue past the block by guessing
+  the hook's internal state or switching tool-policy unilaterally.
 ```
 
 ## Appendix C — Subagent result protocol
 
 Orchestrator parses each subagent's final message:
 
-1. **Locate the `<<<RESULT>>>` sentinel.** Absent → mark failure.
+1. **Locate the `<<<RESULT>>>` sentinel.** Absent → mark failure with reason
+   `malformed result; no sentinel`. The subagent likely aborted mid-reasoning.
+   Observed 2026-04-17 Init 17 first attempt (emitted an internal-thought
+   fragment as its final message) and 2026-04-17 Init 4 first attempt
+   (emitted `"The hook is conservative; the preview was called immediately
+   before. Let me try again."` — a retry-loop fragment, no sentinel).
 2. **Next non-blank line** starts with `success:` or `failure:`.
 3. **Success path:** extract PR URL. Verify via
-   `gh pr view <n> --json state,mergeable` — if `state` is not `OPEN`
-   or `MERGED`, treat as failure (subagent may have hallucinated the URL —
-   observed 2026-04-17 Init 17 first attempt).
-4. **Failure path:** record the blocker reason. Decide retry (with tightened
-   brief — usually switch from preview-then-apply to edit-only, or narrow
-   the scope) or defer (`status: "deferred"` in state.json with the blocker
-   reason in `notes`).
+   `gh pr view <n> --json state,mergeable` — if `state` is not `OPEN` or
+   `MERGED`, treat as failure (subagent may have hallucinated the URL).
+4. **gh pr view failure handling:** if the `gh pr view` call itself fails
+   (network timeout, auth expiry, rate limit), retry ONCE after 5 seconds.
+   If the second attempt also fails: mark the initiative `verification-blocked`,
+   include the subagent's claimed PR URL in state.json `notes`, and surface
+   this in Step 10 for human review — do NOT silently trust the URL, but also
+   do NOT re-spawn the subagent (that would duplicate work if the URL is real).
+5. **Failure path:** record the blocker reason. Decide retry (with tightened
+   brief — usually switch toolPolicy from preview-then-apply to edit-only,
+   narrow the scope, or pick a different initiative entirely) vs defer
+   (`status: "deferred"` in state.json with the blocker reason in `notes`).
 
 Example success parse:
 
@@ -634,7 +727,16 @@ Example failure parse:
 Found <<<RESULT>>> at line 8.
 Line 9: failure: PreToolUse hook blocked rename_apply; cold session has no prior preview.
 Line 10: partial-work: remediation/dr-9-14-drift (no commits — branch empty)
-Decision: retry with tool policy = edit-only; replan subagent brief.
+Decision: retry with toolPolicy = edit-only; replan subagent brief.
 ```
 
-If NO `<<<RESULT>>>` sentinel appears, treat as failure with reason `malformed result; no sentinel` — the subagent likely aborted mid-reasoning. Observed once 2026-04-17 (Init 17 first attempt emitted an internal-thought fragment as its final message).
+Example gh-verification failure:
+
+```
+Found <<<RESULT>>> at line 5.
+Line 6: success: https://github.com/darylmcd/Roslyn-Backed-MCP/pull/9999
+gh pr view 9999 → HTTP 404 (not found). Retry after 5s → HTTP 404.
+Decision: mark initiative 'verification-blocked'; state.json notes: "subagent
+claimed PR #9999 but gh reports not found; likely hallucinated URL; human review
+required". Step 10 report will flag this.
+```
