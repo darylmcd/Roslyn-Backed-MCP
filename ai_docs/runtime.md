@@ -216,6 +216,7 @@ Consumers and skills frequently infer "is the server connected / ready?" from th
 **NOT reliable connection indicators — do not infer state from these:**
 
 - `mcp-logs-<server>/` cache-directory presence. The directory is created on tool install, not on connect — it persists across disconnects and across host-process restarts.
+- **Deferred-tool advertisement** (Claude Code and similar hosts). The host may list `mcp__roslyn__*` tool names in a deferred-tool catalog — visible to `ToolSearch` as names only, with their JSON schemas *not* yet loaded — even when the MCP server is disconnected or has not yet completed its handshake. Seeing `mcp__roslyn__server_info` in the deferred list only proves the host knows the server *exists*, not that it is reachable. Consumers and skills have misread this catalog as "tools ready"; treat it as a registry entry, not a liveness signal. Only a successful `mcp__roslyn__*` call (in particular `server_info` or `server_heartbeat`) proves live connectivity (`dr-9-3-medium-deferred-tool-advertisement-is-a-misleadi`).
 
 ## Session And Mutation Safety
 

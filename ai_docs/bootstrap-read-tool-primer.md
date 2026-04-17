@@ -129,6 +129,11 @@ not connected", then the fallback column of the table above is appropriate. Log 
 disconnect (the consumer-repo convention is a one-line note in the PR description)
 and follow up with `mcp-connection-session-resilience` diagnostics.
 
+Do **not** infer connectivity from the deferred-tool catalog (Claude Code may
+advertise `mcp__roslyn__*` names — schemas unloaded — even when the server is down).
+See `runtime.md` § *Connection-state signals* for the full list of authoritative
+probes and non-signals.
+
 ## Further reading
 
 - `ai_docs/runtime.md` — canonical Roslyn MCP client policy (operational constraints)

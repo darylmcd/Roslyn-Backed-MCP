@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+### Maintenance
+
+- **Maintenance:** Documented that Claude Code's deferred-tool advertisement is not a connection signal; only `server_info` / `server_heartbeat` probes prove connectivity (`dr-9-3-medium-deferred-tool-advertisement-is-a-misleadi`).
+
 ## [1.22.0] - 2026-04-17
 
 Backlog sweep 2026-04-17 execution pass 1 — five initiatives shipped (PRs #218, #220, #221, #223, #224, #225, #226) closing **10 backlog rows** (6 observation-bundle + 4 P3/P4). Adds the `server_heartbeat` readiness probe + `connection` subfield on `server_info`, a build-time `ServerSurfaceCatalogAnalyzer` (RMCP001/RMCP002) that replaces the run-time parity test, two new operational skills (`/reconcile-backlog-sweep-plan`, `/draft-changelog-entry`), and doc upgrades that codify the MCP verify triple and the authoritative connection-state signals.
