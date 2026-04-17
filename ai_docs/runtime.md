@@ -179,6 +179,100 @@ For the full long-form decision tree across every tool (including the read-side 
 above + all write-side tools + skill composites), see
 [`domains/tool-usage-guide.md`](domains/tool-usage-guide.md).
 
+## Self-edit recipe
+
+This section is the operational home for **how to edit this repository's source**
+when the Roslyn MCP server is the tool surface you're editing with. It complements
+— and does not duplicate — the pattern→tool table in
+[`bootstrap-read-tool-primer.md`](bootstrap-read-tool-primer.md): the primer answers
+"which tool for this verb?", this recipe answers "what is the end-to-end loop?".
+
+Four sessions (v1.15.0, v1.16.0, PRs #165–#178, PRs #182–#194) shipped without
+reaching for read-side MCP tools even though the primer was in the bootstrap order.
+The recipe below is the explicit shape that closes that gap.
+
+### The three steps (worktree self-edit — the default)
+
+Subagent sessions spawned under `ai_docs/prompts/backlog-sweep-execute.md` run inside
+`.worktrees/<id>/` against the installed global tool at
+`%USERPROFILE%\.dotnet\tools\roslynmcp.exe`. The binary-under-edit rationale does
+not hold here — use every Roslyn MCP tool, read- AND write-side, as you would on a
+peer repository.
+
+1. **Load the worktree's own solution.** Call `workspace_load` with
+   `.worktrees/<id>/RoslynMcp.slnx` (NOT the main-checkout path). Mixing paths
+   applies edits to the wrong tree.
+2. **Use read-side MCP tools for navigation and pre-edit exploration.** Every row
+   in the primer's "Pattern → tool (read-side — always safe)" table is 5–30× faster
+   than the Grep / Bash alternative. The highest-value substitutions:
+   `find_references` for "who calls X", `symbol_search` for "find the type by
+   name", `document_symbols` for "what's in this file", `compile_check` for
+   "does this still compile".
+3. **Apply edits with `Edit` / `Write` (main-checkout) or `*_apply` tools
+   (worktree), then verify with `compile_check` + `test_run --filter`.** The
+   verify loop is the whole reason the read-side tools exist — `compile_check`
+   runs <1s on a loaded workspace; `Bash: dotnet build` takes 5–30s for the same
+   diagnostics.
+
+### Worked example — the full Edit → verify loop
+
+Scenario: a small bug fix in `src/RoslynMcp.Roslyn/Services/SomeService.cs` that
+touches three methods. Typical session shape in a worktree:
+
+```text
+1. workspace_load(path=".worktrees/self-edit-xyz/RoslynMcp.slnx")
+   → workspaceId = "ws-abc"
+
+2. find_references(workspaceId="ws-abc",
+                   metadataName="RoslynMcp.Roslyn.Services.SomeService.DoTheThing")
+   → 4 call sites, 2 in tests/, 2 in src/
+
+3. symbol_info(workspaceId="ws-abc",
+               filePath=".worktrees/self-edit-xyz/src/.../SomeService.cs",
+               line=42, column=18)
+   → confirms the symbol under the caret is what the fix targets
+
+4. Edit(file_path=".worktrees/self-edit-xyz/src/.../SomeService.cs", ...)
+   → hand edit (OR, for a pattern-match refactor, rename_preview → rename_apply)
+
+5. workspace_reload(workspaceId="ws-abc")
+   → refreshes the in-memory snapshot so downstream semantic calls see the edit
+
+6. compile_check(workspaceId="ws-abc")
+   → ~0.5s, structured diagnostics; if clean, continue
+
+7. test_related_files(workspaceId="ws-abc",
+                      filePaths=[".worktrees/.../SomeService.cs"])
+   → returns a --filter string covering the tests that exercise the touched file
+
+8. test_run(workspaceId="ws-abc", filter="<the --filter string from step 7>")
+   → ~2–5s scoped run, instead of ~30–60s full-suite dotnet test
+
+9. (optional) format_check(workspaceId="ws-abc", ...) before committing
+```
+
+Two notes on step 5:
+
+- `workspace_reload` is only required between an `Edit` / `Write` and a semantic
+  read that must see the new state. Back-to-back `Edit`s don't need a reload
+  between them. A `compile_check` after `Edit` without a `workspace_reload` will
+  still pick up the change because the file-watcher fires on the write — but the
+  defensive call makes the snapshot-freshness explicit and costs ~50ms.
+- For worktree sessions running `*_apply` tools (the refactor-first path, e.g.
+  `rename_apply`, `extract_type_apply`), the apply pipeline handles the reload
+  internally; you only need an explicit `workspace_reload` when mixing `Edit` with
+  subsequent MCP calls.
+
+### Main-checkout self-edit variant
+
+If the session is running `dotnet run --project src/RoslynMcp.Host.Stdio` against
+the checkout it's editing (not the `.worktrees/<id>/` + installed-tool default),
+the only change to the loop above is step 4: replace any `*_apply` with
+`Edit` / `Write` (the `*_apply` pipeline would write underneath a stale
+`MSBuildWorkspace` snapshot). Every other step — load, read-side navigation,
+verify — is identical. `*_preview` remains useful for visualizing the diff
+before you hand-edit.
+
 ## Known issues (local validation)
 
 - **Parallel test hosts / MSBuild file locks:** If `dotnet test` or `dotnet build` fails with errors copying the test assembly (`RoslynMcp.Tests.dll`) because `testhost.exe` still holds the file, close other test runners or IDE test sessions that loaded that output, then run a full `dotnet test RoslynMcp.slnx --nologo` again from a clean state.
