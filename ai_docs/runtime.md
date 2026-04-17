@@ -201,6 +201,7 @@ Resource discovery for clients that only call `resources/list`: workspace-scoped
 - Sessions are kept entirely in-memory by the stdio host. There is **no inactivity TTL** and no idle expiration — `KeyNotFoundException` from a workspace-scoped tool means the host process restarted, `workspace_close` was called, or the concurrent-workspace cap forced an eviction (`ROSLYNMCP_MAX_WORKSPACES`, default 8).
 - Recovery is to call `workspace_load` again with the same path; the call is idempotent for repeated loads.
 - Some MCP clients (Cursor, Claude Code) may relaunch the stdio server transparently between conversations, which is the most common cause of "lost" sessions.
+- **Consumer ordering — call `workspace_load` first.** Transport-reachable does not imply workspace-loaded. Before invoking any workspace-scoped tool (`symbol_search`, `find_references`, `compile_check`, etc.), either (a) call `workspace_load` with the target `.sln` / `.slnx` / `.csproj` path, or (b) poll `server_heartbeat` (cheaper) or the `connection` subfield of `server_info` until `state == "ready"` and `loadedWorkspaceCount >= 1`. The `connection` block also surfaces `stdioPid` and `serverStartedAt` so consumers can correlate readiness with the current host process and detect silent restarts.
 
 ## Session And Mutation Safety
 

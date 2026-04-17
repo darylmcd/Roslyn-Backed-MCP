@@ -11,6 +11,7 @@ public static class ServerSurfaceCatalog
     public static IReadOnlyList<SurfaceEntry> Tools { get; } =
     [
         Tool("server_info", "server", "stable", true, false, "Inspect server capabilities, versions, and support tiers."),
+        Tool("server_heartbeat", "server", "stable", true, false, "Lightweight connection readiness probe — returns state/loadedWorkspaceCount/stdioPid/serverStartedAt without the full server_info payload."),
 
         Tool("workspace_load", "workspace", "stable", false, false, "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session."),
         Tool("workspace_reload", "workspace", "stable", false, false, "Reload an existing workspace session from disk."),
