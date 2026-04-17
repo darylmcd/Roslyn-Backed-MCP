@@ -27,5 +27,6 @@ Policy ownership:
   build / Bash: dotnet test, including in bootstrap self-edit sessions** — see
   `ai_docs/bootstrap-read-tool-primer.md` for the canonical pattern→tool table and
   `ai_docs/runtime.md` § *Roslyn MCP client policy (AI sessions)* for the three-part
-  policy (read-side / write-side / bootstrap scope).
+  policy (read-side / write-side / bootstrap scope). For the self-edit workflow
+  worked example, see `ai_docs/runtime.md` § *Self-edit recipe*.
 - Unfinished work tracking: `ai_docs/backlog.md` (contract: **Agent contract** section — unfinished only; sync on ship).
