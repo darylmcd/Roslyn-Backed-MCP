@@ -26,6 +26,25 @@ public interface IWorkspaceValidationService
         bool runTests,
         CancellationToken ct,
         bool summary = false);
+
+    /// <summary>
+    /// post-edit-validate-workspace-scoped-to-touched-files: auto-derives <c>changedFilePaths</c>
+    /// from <c>git status --porcelain</c> in the solution directory and forwards to
+    /// <see cref="ValidateAsync"/>. Scopes the bundle to the touched-file set so post-edit verify
+    /// runs against only the projects that own the modified files. When <c>git</c> is unavailable
+    /// or the solution is not inside a git repository, falls back to full-workspace validation
+    /// (<c>changedFilePaths=null</c>) and surfaces the fallback via
+    /// <see cref="WorkspaceValidationDto.Warnings"/>.
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier returned by <c>workspace_load</c>.</param>
+    /// <param name="runTests">When <see langword="true"/>, runs the discovered related tests via <c>dotnet test --filter</c>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <param name="summary">See <see cref="ValidateAsync"/>.</param>
+    Task<WorkspaceValidationDto> ValidateRecentGitChangesAsync(
+        string workspaceId,
+        bool runTests,
+        CancellationToken ct,
+        bool summary = false);
 }
 
 /// <summary>
@@ -46,6 +65,13 @@ public interface IWorkspaceValidationService
 /// <param name="DiscoveredTests">Test cases discovered for the changed files; empty list when no related tests were found.</param>
 /// <param name="DotnetTestFilter">The combined <c>dotnet test --filter</c> expression to re-run just the related tests; <see langword="null"/> when none.</param>
 /// <param name="TestRunResult">Populated only when <c>runTests=true</c>; otherwise <see langword="null"/>.</param>
+/// <param name="Warnings">
+/// post-edit-validate-workspace-scoped-to-touched-files: non-fatal diagnostics surfaced to the
+/// caller. Used by <see cref="IWorkspaceValidationService.ValidateRecentGitChangesAsync"/> to
+/// signal fallbacks (missing <c>git</c> on PATH, solution outside a git repo, git exited with
+/// an error) that caused the bundle to validate the full workspace instead of the scoped
+/// touched-file set. Non-null; empty list when validation ran as requested.
+/// </param>
 public sealed record WorkspaceValidationDto(
     string OverallStatus,
     IReadOnlyList<string> ChangedFilePaths,
@@ -55,4 +81,5 @@ public sealed record WorkspaceValidationDto(
     int WarningCount,
     IReadOnlyList<RelatedTestCaseDto> DiscoveredTests,
     string? DotnetTestFilter,
-    TestRunResultDto? TestRunResult);
+    TestRunResultDto? TestRunResult,
+    IReadOnlyList<string> Warnings);
