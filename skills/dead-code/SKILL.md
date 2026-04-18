@@ -24,6 +24,25 @@ Use **`server_info`**, **`roslyn://server/catalog`**, or MCP prompt **`discover_
 3. **Compile after removing.** Always run `compile_check` after each removal batch.
 4. **Be conservative with public APIs.** Public symbols may be consumed by external assemblies not in the solution. Only flag public symbols if the user explicitly asks.
 5. **Exclude test files by default.** Test helper methods may look unused but are invoked by test frameworks.
+6. **Respect the preserve list.** Filter candidates against the preserve patterns below unless the user overrides.
+
+## Preserve List (default exclusions)
+
+These names/attributes are preserved from removal by default because they're commonly invoked via convention, reflection, or framework contracts. Override with `--preserve=none` or `--preserve=<explicit-list>`.
+
+| Pattern | Rationale |
+|---------|-----------|
+| `Main`, `Program.Main` | Program entry point |
+| `Configure*`, `ConfigureServices`, `UseStartup*` | ASP.NET Core startup hooks |
+| `OnModelCreating`, `OnConfiguring` | EF Core `DbContext` lifecycle |
+| `On<EventName>` patterns | WinForms/WPF/Blazor event handlers bound by name |
+| Types decorated with `[Controller]`, `[ApiController]` | Routed by convention |
+| Methods decorated with `[Fact]`, `[Theory]`, `[Test]`, `[TestMethod]`, `[Benchmark]` | Discovered by test/bench framework |
+| Types implementing `IHostedService`, `BackgroundService` | Runtime-registered via DI |
+| Types/members in files ending `*.Designer.cs`, `*.g.cs`, `*.g.i.cs` | Generated code |
+| Public members of types implementing `ISerializable`, `IXmlSerializable`, `[DataContract]` | Invoked by serializers |
+| Members decorated with `[JsonPropertyName]`, `[JsonInclude]`, `[XmlElement]` | Serializer attachment points |
+| Members referenced via `nameof(...)` anywhere in the solution | Indirect use |
 
 ## Workflow
 
@@ -43,11 +62,13 @@ Use **`server_info`**, **`roslyn://server/catalog`**, or MCP prompt **`discover_
 For each candidate with **high confidence** (private/internal):
 1. Call `find_references` with `limit: 5` to confirm zero references.
 2. If references exist, remove from the dead code list (false positive).
+3. If zero references, compute a **"why unused"** trace: symbol kind, declaring type, whether the declaring type is used, and any structural cue (e.g., "orphan private method — no call sites; declaring type has N other methods; saves ~L lines").
 
 For **medium confidence** candidates:
 1. Call `find_references` to check.
 2. Call `callers_callees` to verify no indirect usage.
 3. Check if the symbol is an interface implementation (`find_base_members`).
+4. Emit a "why unused" trace noting any indirect usage patterns observed (serializer attribute, generated-code origin, etc.) — even if zero direct references, the trace explains WHY this is still flagged.
 
 Skip **low confidence** candidates unless the user explicitly asks.
 

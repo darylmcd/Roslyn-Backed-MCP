@@ -21,6 +21,10 @@ New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null
 # Runs before build so a drift-only mistake fails fast without waiting for compilation.
 & (Join-Path $PSScriptRoot 'verify-version-drift.ps1')
 
+# Shipped-skill generality check — blocks a publish that carries repo-only
+# references in ./skills/ (repo-only skills belong in .claude/skills/).
+& (Join-Path $PSScriptRoot 'verify-skills-are-generic.ps1')
+
 dotnet restore $solutionPath --nologo
 dotnet build $solutionPath -c $Configuration --no-restore --nologo
 dotnet test $solutionPath -c $Configuration --no-build --nologo `

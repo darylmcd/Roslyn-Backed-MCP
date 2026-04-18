@@ -32,8 +32,25 @@ MCP prompt **`session_undo`** summarizes this workflow. Full inventory: **`rosly
 - On new compile errors with `rollbackOnError=true` (default): returns `{status: "rolled_back", introducedErrors: [...]}` and the workspace is back to the pre-apply state.
 - Pass `rollbackOnError=false` to preserve the broken state for manual inspection (returns `{status: "applied_with_errors"}`).
 
+## Diff view — what changed since a previous apply point
+
+When the user asks "what has this session changed?" or "show me the diff since the last apply," produce a structured diff view without committing to an undo:
+
+1. **`workspace_changes`** — pull the session ledger (tool name, files, timestamps, optional preview token if still live).
+2. For each file in the ledger, show the current-vs-original state:
+   - Prefer the server's own change record (if `workspace_changes` returns pre-/post-apply text snippets or a preview-token-backed diff).
+   - Otherwise read the current file via `get_source_text`, then cross-reference with `git diff` if the repo has git (assume the user controls the working tree; do not shell out without asking).
+3. Group by apply-event timestamp, with a heading per event showing tool + affected files.
+4. At the bottom, offer next actions:
+   - `revert_last_apply` to undo the most recent apply
+   - `workspace_reload` if on-disk state drifted from the workspace snapshot
+   - Manual `git` rollback for multi-step undo
+
+This mode is read-only — don't mutate anything without explicit user direction.
+
 ## Limits
 
 - **`revert_last_apply`** is **one step** — not arbitrary history.
 - For multi-step rollback use **git** or manual edits.
 - After reload or revert, run **`compile_check`** or **`build_workspace`**.
+- Diff view relies on what `workspace_changes` records in this session; applies from a previous session are not in scope — use `git` for cross-session history.

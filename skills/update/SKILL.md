@@ -57,11 +57,7 @@ Tell the user to run these two commands in the Claude Code chat input (they are 
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
-**Note:** If the user's Claude Code client does not support `/plugin` slash commands (i.e., they get a normal chat response instead of the client executing the command), tell them to run this PowerShell command instead from the repo root:
-
-```powershell
-pwsh ./eng/update-claude-plugin.ps1
-```
+**Note:** If the user's Claude Code client does not support `/plugin` slash commands (i.e., they get a normal chat response instead of the client executing the command), tell them to update via their client's plugin/marketplace UI, or to uninstall and reinstall the plugin from the marketplace.
 
 ### Step 4: Report
 

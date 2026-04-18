@@ -40,6 +40,16 @@ If the preview surfaces warnings (`warnings: [...]` in the response), summarize 
 
 For multi-file changes, `preview_multi_file_edit` and `restructure_preview` both produce a unified-diff per file. Read each one before applying.
 
+## Stage 2b — (Optional) Dry-run mode
+
+If the user invoked this skill with `--dry-run`, `preview only`, or asked to "see what would change without applying," **stop after Stage 2**. Do not call `apply_with_verify`. Present:
+
+- The per-file diff from the preview
+- The `previewToken` (so the user can resume with `apply_with_verify(previewToken)` in a later turn)
+- Any `warnings: [...]` from the preview response
+
+Dry-run is the right default for reversibility-sensitive refactors (bulk type replace, cross-project moves, composite previews) and for user review before a large apply. Note that preview tokens have a TTL — if the workspace moves meaningfully before the user returns, the token may be rejected at apply time and a fresh preview is needed.
+
 ## Stage 3 — Apply with verify
 
 Always prefer `apply_with_verify` over the bare `*_apply` mirror:

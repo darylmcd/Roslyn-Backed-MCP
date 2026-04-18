@@ -2,6 +2,15 @@
 
 <!-- purpose: Execute one initiative (or a parallel batch) from the latest
      backlog-sweep plan, ship as PR(s).
+     v5 (2026-04-17, same-day refinement of v4) — Appendix B preamble points at
+     the `initiative-executor` subagent (`.claude/agents/initiative-executor.md`)
+     as the preferred spawn path; the inline template is retained as fallback for
+     environments without `.claude/agents/` support. Step 7 serial variant points
+     at `changelog-and-backlog-sync` subagent; Step 8 points at `pr-reconciler`
+     subagent. Rationale: 2026-04-17 session-transcript analysis found 39/39
+     `Agent()` calls pasted the full Appendix B template as a `general-purpose`
+     brief (~3KB of re-stated policy per call); the subagent pulls that policy
+     into its own context instead.
      v4 (2026-04-17, same-day refinement of v3) — (a) consumes the planner v3
      toolPolicy field with a fallback for pre-v3 plans, (b) adds concurrent-
      session safety note to Appendix A for the state.json spawn-window gap,
@@ -331,6 +340,12 @@ part of the initiative.
 
 ### Serial mode — in this PR
 
+**Preferred path (Claude Code sessions):** invoke the `changelog-and-backlog-sync`
+subagent (`.claude/agents/changelog-and-backlog-sync.md`) with `autoCommit: true`
+to handle both 7a and 7b mechanically. It emits a unified-diff preview first;
+the orchestrator can review before the auto-commit. Falls through to the manual
+7a + 7b below if the subagent is unavailable.
+
 #### 7a. `ai_docs/backlog.md`
 
 - Remove the closed rows from the appropriate P-band table.
@@ -377,6 +392,13 @@ Precedent: PRs #233, #235, #240 in the 2026-04-17 execution passes.
 
 Use the `ship` skill if available, otherwise `Bash: gh pr create ...` and
 `gh pr merge`.
+
+**For the merge + cleanup leg specifically:** once the PR is open, invoke the
+`pr-reconciler` subagent (`.claude/agents/pr-reconciler.md`). It polls `gh pr view`
+for green checks, squash-merges from the primary repo root (the
+worktree-cd discipline is handled inside the subagent), cleans up the worktree +
+remote branch, and updates plan.md's Status row — all in isolated context.
+Falls through to manual `gh pr merge` if unavailable.
 
 ### Worktree-cd discipline (both modes)
 
@@ -538,14 +560,30 @@ initiatives are taken. **Therefore:**
 
 ## Appendix B — Subagent briefing template
 
-Paste the template below into the `prompt` field of each `Agent` tool call, filling
+**Preferred path (Claude Code sessions with `.claude/agents/` loaded):** invoke the
+`initiative-executor` subagent via `Agent(subagent_type: "initiative-executor", prompt: <compact-brief>)`.
+The subagent's system prompt (`.claude/agents/initiative-executor.md`) encapsulates
+the full template below. The compact brief is 3 lines of metadata plus the plan.md
+section for the initiative:
+
+- `initiative.id: <id>`
+- `plan path: ai_docs/plans/<ts>_backlog-sweep/plan.md`
+- `toolPolicy: <edit-only | preview-then-apply>`
+- Paste plan.md section for this initiative (Diagnosis / Approach / Scope / Risks / Validation / CHANGELOG draft).
+
+The subagent reads the plan path itself; the inlined section is redundancy in case
+it loses track of which initiative it is on. This eliminates the ~3KB of re-stated
+policy per spawn that cost 39/39 calls across the 2026-04-17 sweeps.
+
+**Fallback path (non-Claude-Code tools, or `.claude/agents/` unavailable):** paste
+the template below into the `prompt` field of each `Agent` tool call, filling
 `{…}` placeholders from plan.md for that initiative.
 
-**Templating convention:** the template includes **two tool-policy blocks** labeled
-`{ IF edit-only: }` and `{ IF preview-then-apply: }`. **Include exactly ONE** — the
-one that matches the initiative's `toolPolicy` (or the Step 5 fallback if null).
-Remove the `{ IF … }` label and keep the block body. Do NOT ship the brief with
-both blocks included or with the labels intact.
+**Templating convention (fallback only):** the template includes **two tool-policy
+blocks** labeled `{ IF edit-only: }` and `{ IF preview-then-apply: }`. **Include
+exactly ONE** — the one that matches the initiative's `toolPolicy` (or the Step 5
+fallback if null). Remove the `{ IF … }` label and keep the block body. Do NOT
+ship the brief with both blocks included or with the labels intact.
 
 ```
 You are executing ONE initiative from a backlog-sweep plan. Context below is

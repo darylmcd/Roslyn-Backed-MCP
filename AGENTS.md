@@ -26,4 +26,5 @@ Policy ownership:
   policy (read-side / write-side / bootstrap scope). For the self-edit workflow
   worked example, see `ai_docs/runtime.md` § *Self-edit recipe*.
 - Unfinished work tracking: `ai_docs/backlog.md` (contract: **Agent contract** section — unfinished only; sync on ship).
+- Skill packaging: shipped skills live in `./skills/` (bundled by `plugin.json` and distributed to every installer); repo-only maintainer skills live in `.claude/skills/` (auto-discovered by Claude Code in this checkout, never shipped). `./skills/**/SKILL.md` must not reference `ai_docs/`, `state.json`, `schemaVersion`, `backlog-sweep`, `backlog.md`, `eng/`, `just verify-`, `Directory.Build.props`, or `BannedSymbols.txt` — GitHub URLs pointing at this repo's public docs are allowed. Enforced by `eng/verify-skills-are-generic.ps1` (run via `just verify-skills`; gates `just ci` and `verify-release.ps1`).
 

@@ -24,7 +24,7 @@ Before running any `mcp__roslyn__*` tool call, probe the server once:
 1. Call `mcp__roslyn__server_info` — confirm the response includes `connection.state: "ready"`.
 2. If the call fails OR `connection.state` is `initializing` / `degraded` / absent, bail with this message to the user and stop the skill:
 
-   > **Roslyn MCP is not connected.** This skill requires an active Roslyn MCP server. Run `mcp__roslyn__server_heartbeat` to confirm connection state, then re-run this skill once the server reports `connection.state: "ready"`. See `ai_docs/runtime.md` § *Connection-state signals* for the canonical probes (`server_info` / `server_heartbeat`) and for the `mcp-connection-session-resilience` background.
+   > **Roslyn MCP is not connected.** This skill requires an active Roslyn MCP server. Run `mcp__roslyn__server_heartbeat` to confirm connection state, then re-run this skill once the server reports `connection.state: "ready"`. See the [Connection-state signals reference](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/ai_docs/runtime.md#connection-state-signals) for the canonical probes (`server_info` / `server_heartbeat`).
 
 3. If `connection.state` is `"ready"`, proceed with the rest of the workflow. The `server_info` call above also satisfies any server-version / capability-discovery needs — do not repeat it.
 
@@ -56,17 +56,31 @@ For the top untested types:
 2. Call `callers_callees` to see how it's used.
 3. Assess testability: does it have dependencies that need mocking? Is it a pure function?
 
-### Step 5: Scaffold Tests (on user request)
+### Step 5: Rank & Scaffold Tests
 
-Only scaffold tests if the user requests it.
+Rank the untested public APIs from Steps 3-4 using this priority rubric:
 
-1. For each target type, call `scaffold_test_preview` with:
+| Tier | Signal | Weight |
+|------|--------|--------|
+| P0 — critical gap | public method with cyclomatic complexity >= 10 AND zero related tests | 100 |
+| P1 — broadly used | public method called by >= 3 other methods AND zero related tests | 50 |
+| P2 — orphan type | public type with no related tests whose enclosing project has other tests | 25 |
+| P3 — remaining | other untested public APIs | 5 |
+
+Present the top 5-10 as a ranked list with tier label, type/method name, file:line, and the signal that landed it there.
+
+Then prompt the user: "Scaffold tests for the top N?" (default N=5 if the user says yes without a number). If the user agrees OR the user invoked this skill with `--scaffold-top=N`:
+
+1. For each target, call `scaffold_test_preview` with:
    - `testProjectName`: the appropriate test project
    - `targetTypeName`: the type to test
    - `targetMethodName`: optionally a specific method
-2. Show the preview to the user.
-3. After confirmation, call `scaffold_test_apply`.
-4. Note that scaffolded tests are stubs — they need assertion logic.
+   - `referenceTestFile`: a sibling test file when the pattern is inferable (v1.22+)
+2. If `scaffold_test_batch_preview` is available and N > 1, prefer batch mode for a single preview token.
+3. Show the preview(s) to the user.
+4. After confirmation, call `scaffold_test_apply` for each token.
+5. Call `compile_check` to verify the scaffolded tests compile.
+6. Note: scaffolded tests are stubs — they need real assertions before they add value.
 
 ### Step 6: Related Test Lookup
 

@@ -72,7 +72,7 @@ The server is also distributed as a Claude Code plugin. Plugin artifacts live ou
 | Directory | Purpose |
 |-----------|---------|
 | `.claude-plugin/` | Plugin manifest (`plugin.json`) and marketplace descriptor (`marketplace.json`) |
-| `skills/` | 10 SKILL.md skill definitions composing Roslyn MCP tools into guided workflows |
+| `skills/` | 31 SKILL.md skill definitions composing Roslyn MCP tools into guided workflows (shipped with the plugin). Repo-only maintainer skills live in `.claude/skills/` and are not shipped. |
 | `hooks/` | `hooks.json` with safety hooks (preview-before-apply guard, post-refactoring compile-check reminder) |
 | `.mcp.json` | MCP server config with userConfig env var passthrough |
 

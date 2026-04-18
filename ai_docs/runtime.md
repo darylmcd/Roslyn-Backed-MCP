@@ -280,12 +280,12 @@ before you hand-edit.
 
 ## Server surface (live counts)
 
-The current stable/experimental tool, resource, and prompt counts are owned by the live `server_info` tool and the `roslyn://server/catalog` resource — query those for an authoritative answer rather than relying on this document. As of catalog `2026.04` (post v1.18.0):
+The current stable/experimental tool, resource, and prompt counts are owned by the live `server_info` tool and the `roslyn://server/catalog` resource — query those for an authoritative answer rather than relying on this document. As of catalog `2026.04` (post v1.23.0):
 
-- Stable tools: 102
-- Experimental tools: 40
+- Stable tools: 104
+- Experimental tools: 43
 - Stable resources: 9 (3 static + 6 workspace-scoped templates, including the verbose siblings of `roslyn://workspaces` and `roslyn://workspace/{id}/status` added in v1.8 for opt-in full payloads)
-- Experimental resources: 1 (`roslyn://workspace/{id}/file/{path}/lines/{N-M}` line-range slice added in v1.15)
+- Experimental resources: 4 (includes `roslyn://workspace/{id}/file/{path}/lines/{N-M}` line-range slice added in v1.15)
 - Experimental prompts: 20 (includes `refactor_loop` added in v1.18)
 
 Resource discovery for clients that only call `resources/list`: workspace-scoped resources are exposed as URI templates (`roslyn://workspace/{workspaceId}/...`). Read `roslyn://server/resource-templates` for the canonical list of supported URI patterns.
