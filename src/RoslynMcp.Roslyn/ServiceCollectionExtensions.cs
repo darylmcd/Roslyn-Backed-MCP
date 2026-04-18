@@ -68,7 +68,11 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDiRegistrationService, DiRegistrationService>();
         services.AddSingleton<INuGetDependencyService, NuGetDependencyService>();
         services.AddSingleton<IMsBuildEvaluationService, MsBuildEvaluationService>();
-        services.AddSingleton<ISuppressionService, SuppressionService>();
+        services.AddSingleton<ISuppressionService>(sp => new SuppressionService(
+            sp.GetRequiredService<IEditorConfigService>(),
+            sp.GetRequiredService<IEditService>(),
+            sp.GetRequiredService<IWorkspaceManager>(),
+            sp.GetRequiredService<ICompileCheckService>()));
         services.AddSingleton<ICodePatternAnalyzer, CodePatternAnalyzer>();
         services.AddSingleton<IEditService, EditService>();
         services.AddSingleton<IFileOperationService, FileOperationService>();
