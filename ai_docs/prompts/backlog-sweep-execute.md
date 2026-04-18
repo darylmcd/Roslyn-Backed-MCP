@@ -168,8 +168,24 @@ skip this one and pick the next pending non-heroic.
   each initiative's Scope field in plan.md. For new-MCP-tool initiatives, the
   structural-unit files listed under the Rule 3 exemption in Scope are the disjoint-
   check surface; two new-tool initiatives can parallel-run as long as their Core
-  interface / Roslyn service / Host.Stdio tool files don't overlap (ServerSurface-
-  Catalog.cs will conflict — sequential rebase handles it, same as CHANGELOG).
+  interface / Roslyn service / Host.Stdio tool files don't overlap.
+- **Virtually-shared files (treat as append-conflict hotspots):**
+  `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs` and
+  `src/RoslynMcp.Host.Stdio/Extensions/ServiceCollectionExtensions.cs`. Every
+  new MCP tool — and many tool extensions that update descriptions — writes
+  into these two files. Treat them like `CHANGELOG.md` for overlap purposes:
+  they don't violate the disjoint-file rule, but more than one catalog-touching
+  initiative per wave forces the second-to-merge PR into `UNSTABLE`
+  → rebase → re-validate CI (~10 minutes on doc-only tests can be skipped via
+  the ci.yml docs-only gate, but full-suite runs pay the cost). **Recommended:**
+  pick at most **one** catalog-touching initiative per wave. Pair it with
+  extensions to existing tools that don't touch the catalog (parameter
+  additions on already-registered tools, internal service refactors), or with
+  pure doc initiatives. Session evidence: 2026-04-18 backlog-sweep pass-4
+  wave 1 had 2 catalog-touching PRs (#258, #260); #260 flipped to `UNSTABLE`
+  after #258 merged and paid a full re-validate before merging. Referenced by
+  backlog row `server-surface-catalog-append-conflict-hotspot` which tracks
+  the structural fix (partial-class split or source generator).
 - Each initiative's own `estimatedContextTokens` lives in its subagent's context,
   not the orchestrator's — the orchestrator consumes ~2–5K per spawn for briefing
   + result parsing.
