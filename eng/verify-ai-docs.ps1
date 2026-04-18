@@ -21,10 +21,14 @@ if ($LASTEXITCODE -ne 0 -or -not $gitFilesRaw) {
     exit 1
 }
 
-$allFiles = $gitFilesRaw | ForEach-Object {
-    $fullPath = Join-Path $RepoRoot $_
-    if (Test-Path -LiteralPath $fullPath -PathType Leaf) {
-        Get-Item -LiteralPath $fullPath
+$allFiles = foreach ($relative in $gitFilesRaw) {
+    $fullPath = Join-Path $RepoRoot $relative
+    # Test-Path + Get-Item is not atomic and trips $ErrorActionPreference='Stop'
+    # when Get-Item sees a stale read — e.g. a tracked file that the CI runner's
+    # checkout hasn't written yet. Use a BCL existence probe + FileInfo, both
+    # synchronous and immune to the PowerShell pipeline's resume semantics.
+    if ([System.IO.File]::Exists($fullPath)) {
+        [System.IO.FileInfo]::new($fullPath)
     }
 }
 
