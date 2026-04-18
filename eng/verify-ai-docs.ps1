@@ -12,10 +12,31 @@ $stalePatterns = @(
     'ai_docs/quickstart.md'
 )
 
-$staleSearchExtensions = @('*.md', '*.ps1', '*.yml', '*.yaml', '*.json')
-$contentFiles = Get-ChildItem -Path $RepoRoot -Recurse -File -Include $staleSearchExtensions |
-    Where-Object { $_.FullName -ne $PSCommandPath }
-$markdownFiles = Get-ChildItem -Path $RepoRoot -Recurse -File -Filter *.md
+# Enumerate only files git considers part of the project (tracked + untracked-but-not-ignored).
+# Skips .gitignore'd paths (.claude/ user state, artifacts/, bin/, obj/, etc.) so doc checks
+# only validate files that will actually ship.
+$gitFilesRaw = & git -C $RepoRoot ls-files --cached --others --exclude-standard 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $gitFilesRaw) {
+    Write-Error "Unable to enumerate files via 'git ls-files'. Is this a git checkout?"
+    exit 1
+}
+
+$allFiles = foreach ($relative in $gitFilesRaw) {
+    $fullPath = Join-Path $RepoRoot $relative
+    # Test-Path + Get-Item is not atomic and trips $ErrorActionPreference='Stop'
+    # when Get-Item sees a stale read — e.g. a tracked file that the CI runner's
+    # checkout hasn't written yet. Use a BCL existence probe + FileInfo, both
+    # synchronous and immune to the PowerShell pipeline's resume semantics.
+    if ([System.IO.File]::Exists($fullPath)) {
+        [System.IO.FileInfo]::new($fullPath)
+    }
+}
+
+$staleSearchExtensions = @('.md', '.ps1', '.yml', '.yaml', '.json')
+$contentFiles = $allFiles | Where-Object {
+    $staleSearchExtensions -contains $_.Extension -and $_.FullName -ne $PSCommandPath
+}
+$markdownFiles = $allFiles | Where-Object { $_.Extension -eq '.md' }
 
 $issues = New-Object System.Collections.Generic.List[string]
 

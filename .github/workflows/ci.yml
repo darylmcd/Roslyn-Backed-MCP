@@ -20,6 +20,17 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # Cache the NuGet global-packages folder so repeated CI runs skip the ~5s
+      # download of unchanged packages. Key on the central version file plus any
+      # csproj or props file so cache invalidates whenever dependencies move.
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj', '**/*.props') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Validate AI docs
         shell: pwsh
         run: ./eng/verify-ai-docs.ps1

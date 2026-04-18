@@ -5,10 +5,14 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class WorkspaceStatusSummaryDtoTests
 {
+    // Path.GetFileName needs a platform-native separator — a Windows-literal `C:\work\...`
+    // is a single filename on Linux, which made From_NoErrors_NotStale_IsReady fail on CI.
+    private static readonly string SampleLoadedPath = Path.Combine("work", "SampleSolution.slnx");
+
     private static WorkspaceStatusDto BaselineStatus(IReadOnlyList<DiagnosticDto> diagnostics, bool isStale = false) =>
         new(
             WorkspaceId: "abc",
-            LoadedPath: @"C:\work\SampleSolution.slnx",
+            LoadedPath: SampleLoadedPath,
             WorkspaceVersion: 1,
             SnapshotToken: "snap",
             LoadedAtUtc: DateTimeOffset.UtcNow,
