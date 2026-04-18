@@ -490,7 +490,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 26. `dr-9-10-initial-does-not-wait-for-concurrent-to-finaliz` — workspace_load awaits concurrent dotnet restore
 
-**Status:** pending · **Order:** 26 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Fixed
+**Status:** merged (PR #262, 2026-04-18) · **Order:** 26 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Fixed
 
 | Field | Content |
 |---|---|
@@ -616,7 +616,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 33. `extract-shared-expression-to-helper-across-call-sites` — extract_shared_expression_to_helper_preview
 
-**Status:** pending · **Order:** 33 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 60000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #263, 2026-04-18) · **Order:** 33 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 60000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
