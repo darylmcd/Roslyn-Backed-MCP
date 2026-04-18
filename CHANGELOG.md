@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **Fixed:** `roslyn-mcp:analyze`/`review`/`complexity`/`test-coverage` now include a `server_info` connectivity precheck and bail with a clear message when the server is disconnected, replacing silent-loop failures (`dr-9-2-medium-and-related-skills-have-no-graceful-degra`).
+- **Fixed:** `get_cohesion_metrics` recognizes the action/handler lifecycle triad (`Describe` + `Validate*` + `Execute*` with type name ending in `Action`/`Handler`/`Command`/`Stage`) and emits `lifecyclePattern: "action-triad"` on `CohesionMetricsDto`, downgrading the LCOM4 split recommendation for types that are orthogonal on fields by design (`lcom4-lifecycle-pattern-false-positive`).
 - **Fixed:** Tightened PreToolUse hook prompt for `move_type_to_file_apply` and related applies to accept composite-preview-redeemed evidence, eliminating the false-positive block observed in the 2026-04-15 samplesolution audit (`dr-9-4-pretooluse-hook-false-positive-on`).
 - **Fixed:** Aligned `discover_capabilities` prompt parameter name between implementation and `ai_docs/prompts/experimental-promotion-exercise.md` appendix; added regression test (`dr-9-14-drift-001-param-name-mismatch-vs-experimental-p`).
 
@@ -24,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 - **Added:** `change_type_namespace_preview` relocates a type between namespaces in the same project — rewrites the namespace declaration, optionally relocates the file, and adjusts consumer `using` directives respecting ambient parent-namespace resolution (`change-type-namespace-preview`).
 - **Added:** `find_duplicated_methods` returns method-body clusters by AST-normalized hash across a workspace (or project scope) for internal-copy-paste discovery — trivia-stripped, local-renamed, syntax-kind-sequenced, overload-invariant, generated-file-excluding (`duplicate-method-body-detector`).
+- **Added:** `validate_recent_git_changes(workspaceId)` companion tool auto-derives `changedFilePaths` from `git status --porcelain`, scoping the `validate_workspace` bundle to the touched-file set; promoted in `ai_docs/domains/tool-usage-guide.md` as the canonical post-multi-file-edit verify. Falls back to full workspace scope with a warning when no `.git` directory or `git` on PATH. `WorkspaceValidationDto` gains a `Warnings` field (breaking DTO addition; session-policy allowed) (`post-edit-validate-workspace-scoped-to-touched-files`).
 - **Added:** `trace_exception_flow` returns every `catch` clause whose declared type is assignable from the input, with body excerpt and rethrow-as annotations — built to shorten error-classification refactor discovery (`exception-handler-classification-tracer`).
 - **Added:** `scaffold_test_preview` accepts an optional `referenceTestFile` and replicates sibling-test scaffolding (fixture class, `IClassFixture<T>`, attributes) when a pattern is inferable (`scaffold-test-sibling-pattern-inference`).
 
@@ -32,7 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Maintenance:** Documented that Claude Code's deferred-tool advertisement is not a connection signal; only `server_info` / `server_heartbeat` probes prove connectivity (`dr-9-3-medium-deferred-tool-advertisement-is-a-misleadi`).
 - **Maintenance:** Documented that `revert_last_apply` does not clean up file-creation side effects from `extract_*_apply`; suggested `delete_file_apply` follow-up (`dr-9-8-documented-limitation-interacts-poorly-with-side`).
 - **Maintenance:** Added "Self-edit recipe" section to `ai_docs/runtime.md` with worked example showing the `Edit` + read-side MCP + `compile_check` verify loop expected in bootstrap mode (`self-edit-bootstrap-mode-mcp-development`).
-- **Backlog (running tally, sweep execution passes 2 + 3):** P3: +3 (`change-type-namespace-preview`, `duplicate-method-body-detector`, `exception-handler-classification-tracer`); P4: +1 (`dr-9-12-posttooluse-hook-adds-n-1-verification-step-per`). Test-file tally: +3 (`DuplicateMethodDetectorTests.cs`, `ExceptionFlowServiceTests.cs`, `NamespaceRelocationTests.cs`).
+- **Backlog (running tally, sweep execution passes 2 + 3):** P3: +3 (`change-type-namespace-preview`, `duplicate-method-body-detector`, `exception-handler-classification-tracer`); P4: +4 (`dr-9-2-medium-and-related-skills-have-no-graceful-degra`, `dr-9-12-posttooluse-hook-adds-n-1-verification-step-per`, `lcom4-lifecycle-pattern-false-positive`, `post-edit-validate-workspace-scoped-to-touched-files`). Test-file tally: +4 (`DuplicateMethodDetectorTests.cs`, `ExceptionFlowServiceTests.cs`, `NamespaceRelocationTests.cs`, `ValidateRecentGitChangesTests.cs`).
 
 ## [1.22.0] - 2026-04-17
 
