@@ -418,7 +418,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 22. `first-test-for-new-service-scaffold` — scaffold_first_test_file_preview
 
-**Status:** pending · **Order:** 22 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #258, 2026-04-18) · **Order:** 22 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -454,7 +454,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 24. `di-lifetime-mismatch-detection` — Extend get_di_registrations with lifetime-override analysis
 
-**Status:** pending · **Order:** 24 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #259, 2026-04-18) · **Order:** 24 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -508,7 +508,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 27. `semantic-edit-with-compile-check-wrapper` — apply_text_edit verify mode
 
-**Status:** pending · **Order:** 27 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #260, 2026-04-18) · **Order:** 27 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|

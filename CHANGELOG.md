@@ -9,11 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Added
 
 - **Added:** `split_service_with_di_preview` composite preview splits a DI-consumed service type into N partition implementations + a forwarding facade and emits DI-registration deltas against the existing host registration (Transient/Scoped/Singleton inferred from the current `services.Add*` call). Built on top of v1.18 `symbol_refactor_preview` primitives (`restructure` + `edit` ops); when the host registration file is null or the registration is missing, the preview falls back to a warning rather than crashing (`composite-split-service-di-registration`). Includes `SplitServicePartition` DTO on `ISymbolRefactorService`.
+- **Added:** `scaffold_first_test_file_preview` inspects a target service's constructor + public methods and emits a new `<Service>Tests.cs` fixture with `ClassInitialize` + service instantiation + one smoke-test method per public method. Derives the boilerplate shape from the 2-3 most-recently-modified sibling test fixtures in the target test project, falling back to repo-convention defaults for projects with zero existing fixtures. Hardened with three type-resolution fallbacks (`GetTypeByMetadataName` → `GetSymbolsWithName` → `ClassDeclarationSyntax` walk) against fresh-load + immediate-query timing gaps in MSBuildWorkspace (`first-test-for-new-service-scaffold`).
+- **Added:** `get_di_registrations` gains a `showLifetimeOverrides: true` opt-in that emits per-interface override chains, the winning registration's lifetime, whether lifetimes differ across overrides (Singleton→Scoped etc.), and a dead-registration count for registrations overridden by a later-wins composition-root call. `DiRegistrationDto` grows a `LifetimeOverrides` section; default output shape unchanged (`di-lifetime-mismatch-detection`).
+- **Added:** `apply_text_edit` and `apply_multi_file_edit` accept `verify: true` + `autoRevertOnError: true` parameters that wrap the edit with a `compile_check` scoped to the owning project and optionally roll back via `revert_last_apply` when the edit introduces new errors. Pre- vs. post-edit diagnostic-set comparison ensures auto-revert only fires on new errors, not pre-existing ones. `VerifyOutcomeDto` carries the structured verify result alongside the edit diff (`semantic-edit-with-compile-check-wrapper`).
 
 ### Maintenance
 
-- Tests: 678 → 680 (+2 across 1 new regression test file, `CompositeSplitServiceDiPreviewTests.cs`).
-- Backlog: 1 row closed (P3: 1 — `composite-split-service-di-registration`).
+- Tests: 678 → 695 (+17 across 4 new regression test files — `CompositeSplitServiceDiPreviewTests.cs` (+2), `ScaffoldingFirstTestFileTests.cs` (+4), `DiLifetimeOverrideTests.cs` (+4), `ApplyTextEditVerifyTests.cs` (+7)).
+- Backlog: 4 rows closed (P3: 1 — `composite-split-service-di-registration`; P4: 3 — `first-test-for-new-service-scaffold`, `di-lifetime-mismatch-detection`, `semantic-edit-with-compile-check-wrapper`).
 
 ## [1.24.0] - 2026-04-18
 
