@@ -25,9 +25,45 @@ public sealed class DiRegistrationService : IDiRegistrationService
     /// callers don't re-walk every syntax tree. Invalidated on workspace close via
     /// <see cref="IWorkspaceManager.WorkspaceClosed"/> and on workspace version bump.
     /// </summary>
+    /// <remarks>
+    /// di-lifetime-mismatch-detection: each snapshot holds the WIDER raw list (including
+    /// <c>TryAdd*</c> entries) plus a memoized legacy view (<c>Add*</c>-only) and lazily-built
+    /// override-chains. The Top10 regression test
+    /// <c>GetDiRegistrations_RepeatCallSameVersion_ReturnsCachedReference</c> asserts reference
+    /// equality on repeat calls — memoizing the legacy view in the snapshot preserves that.
+    /// </remarks>
     private readonly ConcurrentDictionary<string, DiCacheEntry> _scanCache = new(StringComparer.Ordinal);
 
-    private sealed record DiCacheEntry(int Version, ConcurrentDictionary<string, IReadOnlyList<DiRegistrationDto>> ByFilter);
+    private sealed record DiCacheEntry(int Version, ConcurrentDictionary<string, ScanSnapshot> ByFilter);
+
+    /// <summary>
+    /// Per-filter cache snapshot. <see cref="Raw"/> is the full scan (Add* + TryAdd*).
+    /// <see cref="LegacyView"/> is the <c>Add*</c>-only projection returned by
+    /// <see cref="GetDiRegistrationsAsync"/> — cached so repeat callers get the same reference.
+    /// <see cref="OverrideChains"/> is lazily computed on first override-mode call and then
+    /// memoized.
+    /// </summary>
+    private sealed class ScanSnapshot
+    {
+        private IReadOnlyList<DiRegistrationOverrideChainDto>? _overrideChains;
+
+        public ScanSnapshot(IReadOnlyList<DiRegistrationDto> raw, IReadOnlyList<DiRegistrationDto> legacyView)
+        {
+            Raw = raw;
+            LegacyView = legacyView;
+        }
+
+        public IReadOnlyList<DiRegistrationDto> Raw { get; }
+
+        public IReadOnlyList<DiRegistrationDto> LegacyView { get; }
+
+        public IReadOnlyList<DiRegistrationOverrideChainDto> GetOrBuildOverrideChains()
+        {
+            // Volatile single-writer read/write — worst case is two threads each compute once,
+            // both write the same deterministic result, and the last writer wins.
+            return _overrideChains ??= BuildOverrideChains(Raw);
+        }
+    }
 
     private const string UnfilteredKey = "<all>";
     private const int MaxFilterEntriesPerWorkspace = 8;
@@ -48,6 +84,20 @@ public sealed class DiRegistrationService : IDiRegistrationService
     public async Task<IReadOnlyList<DiRegistrationDto>> GetDiRegistrationsAsync(
         string workspaceId, string? projectFilter, CancellationToken ct)
     {
+        var snapshot = await GetOrLoadSnapshotAsync(workspaceId, projectFilter, ct).ConfigureAwait(false);
+        return snapshot.LegacyView;
+    }
+
+    public async Task<DiRegistrationScanResult> GetDiRegistrationsWithOverridesAsync(
+        string workspaceId, string? projectFilter, CancellationToken ct)
+    {
+        var snapshot = await GetOrLoadSnapshotAsync(workspaceId, projectFilter, ct).ConfigureAwait(false);
+        return new DiRegistrationScanResult(snapshot.LegacyView, snapshot.GetOrBuildOverrideChains());
+    }
+
+    private async Task<ScanSnapshot> GetOrLoadSnapshotAsync(
+        string workspaceId, string? projectFilter, CancellationToken ct)
+    {
         // di-registrations-scan-caching: serve from cache if present and the workspace hasn't
         // bumped its version. Cap entries per workspace to avoid unbounded growth on chatty
         // filter combinations.
@@ -56,10 +106,10 @@ public sealed class DiRegistrationService : IDiRegistrationService
 
         var entry = _scanCache.AddOrUpdate(
             workspaceId,
-            _ => new DiCacheEntry(version, new ConcurrentDictionary<string, IReadOnlyList<DiRegistrationDto>>(StringComparer.OrdinalIgnoreCase)),
+            _ => new DiCacheEntry(version, new ConcurrentDictionary<string, ScanSnapshot>(StringComparer.OrdinalIgnoreCase)),
             (_, existing) => existing.Version == version
                 ? existing
-                : new DiCacheEntry(version, new ConcurrentDictionary<string, IReadOnlyList<DiRegistrationDto>>(StringComparer.OrdinalIgnoreCase)));
+                : new DiCacheEntry(version, new ConcurrentDictionary<string, ScanSnapshot>(StringComparer.OrdinalIgnoreCase)));
 
         if (entry.ByFilter.TryGetValue(key, out var cached))
         {
@@ -67,15 +117,22 @@ public sealed class DiRegistrationService : IDiRegistrationService
         }
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var results = await ScanProjectsAsync(workspaceId, solution, projectFilter, ct).ConfigureAwait(false);
+        var raw = await ScanProjectsAsync(workspaceId, solution, projectFilter, ct).ConfigureAwait(false);
+        // di-lifetime-mismatch-detection: derive the legacy view once at cache-population time
+        // so every repeat call returns the same reference (preserves the Top10V2Regression
+        // GetDiRegistrations_RepeatCallSameVersion_ReturnsCachedReference contract).
+        var legacyView = raw.Count == 0
+            ? (IReadOnlyList<DiRegistrationDto>)Array.Empty<DiRegistrationDto>()
+            : raw.Where(r => !IsTryAddMethod(r.RegistrationMethod)).ToList();
+        var snapshot = new ScanSnapshot(raw, legacyView);
 
         if (entry.ByFilter.Count >= MaxFilterEntriesPerWorkspace)
         {
             var someKey = entry.ByFilter.Keys.FirstOrDefault();
             if (someKey is not null) entry.ByFilter.TryRemove(someKey, out _);
         }
-        entry.ByFilter[key] = results;
-        return results;
+        entry.ByFilter[key] = snapshot;
+        return snapshot;
     }
 
     private async Task<IReadOnlyList<DiRegistrationDto>> ScanProjectsAsync(
@@ -205,7 +262,23 @@ public sealed class DiRegistrationService : IDiRegistrationService
         "AddKeyedSingleton" => "Singleton",
         "AddKeyedScoped" => "Scoped",
         "AddKeyedTransient" => "Transient",
+        // di-lifetime-mismatch-detection: include TryAdd* so the override-chain analysis can
+        // model first-wins (TryAdd) vs last-wins (Add) semantics. The legacy
+        // GetDiRegistrationsAsync path filters these back out to preserve its default shape.
+        "TryAddSingleton" => "Singleton",
+        "TryAddScoped" => "Scoped",
+        "TryAddTransient" => "Transient",
+        "TryAddEnumerable" => "Enumerable",
         _ => null
+    };
+
+    private static bool IsTryAddMethod(string methodName) => methodName switch
+    {
+        "TryAddSingleton" => true,
+        "TryAddScoped" => true,
+        "TryAddTransient" => true,
+        "TryAddEnumerable" => true,
+        _ => false
     };
 
     private static bool TryGetDiTypesFromTypeOfArguments(
@@ -282,5 +355,127 @@ public sealed class DiRegistrationService : IDiRegistrationService
             return converted.ToDisplayString();
         }
         return null;
+    }
+
+    /// <summary>
+    /// di-lifetime-mismatch-detection: project the raw scan into per-service-type override
+    /// chains. Models MS.DI's descriptor resolution semantics:
+    /// <list type="bullet">
+    ///   <item><description>Source order is determined by file path then line number across
+    ///   the matched projects. This is a deterministic static approximation of the runtime
+    ///   call order; it cannot model conditional branches that swap composition-root entries
+    ///   at startup.</description></item>
+    ///   <item><description>Each <c>Add*</c> call appends a descriptor; each <c>TryAdd*</c>
+    ///   call appends only if no descriptor exists yet for that service type.</description></item>
+    ///   <item><description>The "winner" returned by <c>GetService&lt;TService&gt;()</c> is the
+    ///   LAST descriptor in the resulting list.</description></item>
+    ///   <item><description>Earlier descriptors are <c>overridden</c>; <c>TryAdd*</c> calls
+    ///   that did not push a descriptor are <c>shadowed</c>.</description></item>
+    ///   <item><description><c>unknown</c> service types (could not resolve generic argument)
+    ///   are skipped — they would group spuriously and produce noise.</description></item>
+    /// </list>
+    /// Service types with only one registration are also skipped from the chain output
+    /// (no override, nothing to flag).
+    /// </summary>
+    private static IReadOnlyList<DiRegistrationOverrideChainDto> BuildOverrideChains(
+        IReadOnlyList<DiRegistrationDto> rawRegistrations)
+    {
+        var chains = new List<DiRegistrationOverrideChainDto>();
+        var groups = rawRegistrations
+            .Where(r => !string.Equals(r.ServiceType, "unknown", StringComparison.Ordinal))
+            .GroupBy(r => r.ServiceType, StringComparer.Ordinal);
+
+        foreach (var group in groups)
+        {
+            var ordered = group
+                .OrderBy(r => r.FilePath ?? string.Empty, StringComparer.Ordinal)
+                .ThenBy(r => r.Line)
+                .ToList();
+
+            if (ordered.Count < 2)
+            {
+                continue;
+            }
+
+            var entries = new List<DiRegistrationOverrideEntryDto>(ordered.Count);
+            var lifetimesSeen = new HashSet<string>(StringComparer.Ordinal);
+            DiRegistrationDto? activeDescriptor = null;
+            DiRegistrationDto? winningDescriptor = null;
+
+            foreach (var registration in ordered)
+            {
+                lifetimesSeen.Add(registration.Lifetime);
+
+                string status;
+                if (IsTryAddMethod(registration.RegistrationMethod))
+                {
+                    if (activeDescriptor is null)
+                    {
+                        // First registration for this service type — TryAdd takes effect.
+                        activeDescriptor = registration;
+                        winningDescriptor = registration;
+                        status = "winning";
+                    }
+                    else
+                    {
+                        // A descriptor already exists; TryAdd is a no-op for GetService.
+                        status = "shadowed";
+                    }
+                }
+                else
+                {
+                    // Unconditional Add*: replaces the prior winner for GetService<T>.
+                    activeDescriptor = registration;
+                    winningDescriptor = registration;
+                    status = "winning";
+                }
+
+                entries.Add(new DiRegistrationOverrideEntryDto(
+                    registration.ImplementationType,
+                    registration.Lifetime,
+                    registration.FilePath,
+                    registration.Line,
+                    registration.RegistrationMethod,
+                    status));
+            }
+
+            // Mark every prior "winning" entry as overridden — only the last winning entry
+            // actually wins. Walk the list once from the end, demoting earlier winners.
+            var seenFinalWinner = false;
+            for (var i = entries.Count - 1; i >= 0; i--)
+            {
+                if (entries[i].EffectiveStatus != "winning")
+                {
+                    continue;
+                }
+
+                if (!seenFinalWinner)
+                {
+                    seenFinalWinner = true;
+                    continue;
+                }
+
+                entries[i] = entries[i] with { EffectiveStatus = "overridden" };
+            }
+
+            var deadCount = entries.Count(e => e.EffectiveStatus is "overridden" or "shadowed");
+            var lifetimesDiffer = lifetimesSeen.Count > 1;
+            // winningDescriptor is non-null because Count >= 2 guarantees at least one entry
+            // and the loop always promotes the first call to winning (Add or first-TryAdd).
+            var winner = winningDescriptor!;
+
+            chains.Add(new DiRegistrationOverrideChainDto(
+                group.Key,
+                entries,
+                winner.Lifetime,
+                winner.ImplementationType,
+                lifetimesDiffer,
+                deadCount));
+        }
+
+        // Stable ordering for callers: alphabetical by service type.
+        return chains
+            .OrderBy(c => c.ServiceType, StringComparer.Ordinal)
+            .ToList();
     }
 }

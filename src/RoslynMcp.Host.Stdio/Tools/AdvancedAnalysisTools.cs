@@ -51,18 +51,33 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "get_di_registrations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Inspect DI registration patterns in source."),
-     Description("Scan the solution for dependency injection registrations (AddSingleton, AddScoped, AddTransient) and return the service-to-implementation mappings")]
+     Description("Scan the solution for dependency injection registrations (AddSingleton, AddScoped, AddTransient) and return the service-to-implementation mappings. Pass showLifetimeOverrides=true to additionally emit per-service-type override chains (winning lifetime, lifetime-mismatch flag, dead-registration count) — opt-in to keep the default payload shape stable.")]
     public static Task<string> GetDiRegistrations(
         IWorkspaceExecutionGate gate,
         IDiRegistrationService diRegistrationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
+        [Description("When true, also emit overrideChains[] grouping registrations by service type with the winning lifetime, lifetime-mismatch flag (Singleton vs Scoped vs Transient), and dead-registration count. Default: false (legacy shape: count + registrations[]).")] bool showLifetimeOverrides = false,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            var results = await diRegistrationService.GetDiRegistrationsAsync(workspaceId, projectName, c);
-            return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
+            if (!showLifetimeOverrides)
+            {
+                var results = await diRegistrationService.GetDiRegistrationsAsync(workspaceId, projectName, c);
+                return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
+            }
+
+            // di-lifetime-mismatch-detection: opt-in path returns the legacy registrations
+            // list (unchanged shape) plus the per-service-type override chains.
+            var scan = await diRegistrationService.GetDiRegistrationsWithOverridesAsync(workspaceId, projectName, c);
+            return JsonSerializer.Serialize(new
+            {
+                count = scan.Registrations.Count,
+                registrations = scan.Registrations,
+                overrideChainCount = scan.OverrideChains.Count,
+                overrideChains = scan.OverrideChains,
+            }, JsonDefaults.Indented);
         }, ct);
     }
 
