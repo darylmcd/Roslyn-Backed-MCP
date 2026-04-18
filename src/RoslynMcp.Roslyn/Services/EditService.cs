@@ -15,23 +15,32 @@ public sealed class EditService : IEditService
     private readonly IUndoService? _undoService;
     private readonly IChangeTracker? _changeTracker;
     private readonly Contracts.IPreviewStore? _previewStore;
+    private readonly ICompileCheckService? _compileCheckService;
 
     public EditService(
         IWorkspaceManager workspace,
         ILogger<EditService> logger,
         IUndoService? undoService = null,
         IChangeTracker? changeTracker = null,
-        Contracts.IPreviewStore? previewStore = null)
+        Contracts.IPreviewStore? previewStore = null,
+        ICompileCheckService? compileCheckService = null)
     {
         _workspace = workspace;
         _logger = logger;
         _undoService = undoService;
         _changeTracker = changeTracker;
         _previewStore = previewStore;
+        _compileCheckService = compileCheckService;
     }
 
     public async Task<TextEditResultDto> ApplyTextEditsAsync(
-        string workspaceId, string filePath, IReadOnlyList<TextEditDto> edits, CancellationToken ct, bool skipSyntaxCheck = false)
+        string workspaceId,
+        string filePath,
+        IReadOnlyList<TextEditDto> edits,
+        CancellationToken ct,
+        bool skipSyntaxCheck = false,
+        bool verify = false,
+        bool autoRevertOnError = false)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var (document, sourceText) = await ResolveDocumentAndTextAsync(solution, filePath, ct).ConfigureAwait(false);
@@ -53,6 +62,15 @@ public sealed class EditService : IEditService
             }
         }
 
+        // semantic-edit-with-compile-check-wrapper: capture the pre-edit diagnostic
+        // fingerprint set BEFORE we mutate the workspace so the verify pass can tell
+        // NEW errors from pre-existing ones. Lives outside ApplyTextEditsCoreAsync
+        // because MultiFile runs the capture once at the batch boundary.
+        var projectFilter = verify ? document.Project.Name : null;
+        var preErrorBaseline = verify
+            ? await CapturePreEditBaselineAsync(workspaceId, projectFilter, ct).ConfigureAwait(false)
+            : null;
+
         // Capture pre-apply snapshot so revert_last_apply can roll back this edit. We
         // pass BOTH the solution (for the legacy path) AND an explicit file snapshot
         // (for the authoritative file-based restore path — see FLAG-9A in UndoService).
@@ -67,11 +85,34 @@ public sealed class EditService : IEditService
             solution,
             fileSnapshots);
 
-        return await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, ct).ConfigureAwait(false);
+        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, ct).ConfigureAwait(false);
+
+        // Only wire up verify when the core apply actually wrote the edit. When the
+        // core path returns Success=false (e.g. MSBuildWorkspace.TryApplyChanges
+        // rejected the change), the undo entry still contains the pre-edit snapshot,
+        // but nothing happened on disk — running compile_check here would add noise.
+        if (!verify || !coreResult.Success)
+        {
+            return coreResult;
+        }
+
+        var verification = await RunVerifyAndMaybeRevertAsync(
+            workspaceId,
+            projectFilter,
+            preErrorBaseline!,
+            autoRevertOnError,
+            ct).ConfigureAwait(false);
+
+        return coreResult with { Verification = verification };
     }
 
     public async Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
-        string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false)
+        string workspaceId,
+        IReadOnlyList<FileEditsDto> fileEdits,
+        CancellationToken ct,
+        bool skipSyntaxCheck = false,
+        bool verify = false,
+        bool autoRevertOnError = false)
     {
         var initialSolution = _workspace.GetCurrentSolution(workspaceId);
 
@@ -86,6 +127,19 @@ public sealed class EditService : IEditService
             ValidateEdits(fileEdit.FilePath, fileEdit.Edits, sourceText);
             perFileSnapshots.Add((document, sourceText, Path.GetFullPath(fileEdit.FilePath)));
         }
+
+        // semantic-edit-with-compile-check-wrapper: pre-edit baseline runs ONCE across
+        // the union of owning projects (project-level filter is still cheaper than a
+        // full-solution compile). A null projectFilter means "compile every project"
+        // — required when the batch spans more than one project.
+        var ownerProjects = perFileSnapshots
+            .Select(t => t.Document.Project.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var batchProjectFilter = verify && ownerProjects.Count == 1 ? ownerProjects[0] : null;
+        var preErrorBaseline = verify
+            ? await CapturePreEditBaselineAsync(workspaceId, batchProjectFilter, ct).ConfigureAwait(false)
+            : null;
 
         // Single snapshot at the top so revert_last_apply rolls back the ENTIRE batch atomically
         // (from an undo perspective; individual disk writes still happen sequentially).
@@ -126,7 +180,18 @@ public sealed class EditService : IEditService
             results.Add(new FileEditSummaryDto(fileEdit.FilePath, result.EditsApplied, diff));
         }
 
-        return new MultiFileEditResultDto(true, results.Count, results);
+        VerifyOutcomeDto? verification = null;
+        if (verify)
+        {
+            verification = await RunVerifyAndMaybeRevertAsync(
+                workspaceId,
+                batchProjectFilter,
+                preErrorBaseline!,
+                autoRevertOnError,
+                ct).ConfigureAwait(false);
+        }
+
+        return new MultiFileEditResultDto(true, results.Count, results, verification);
     }
 
     /// <summary>
@@ -476,4 +541,171 @@ public sealed class EditService : IEditService
             return false;
         }
     }
+
+    // --------------------------------------------------------------------------
+    // semantic-edit-with-compile-check-wrapper: verify + auto-revert support
+    // --------------------------------------------------------------------------
+
+    /// <summary>
+    /// Captures a stable per-error fingerprint set for the current workspace so the
+    /// post-edit verify pass can subtract pre-existing errors from the introduced set.
+    /// Fingerprint format mirrors <c>ApplyWithVerifyTool.ExtractErrorFingerprints</c>:
+    /// <c>id|file:line:col|message</c>. When <paramref name="projectFilter"/> is
+    /// non-null, the baseline is scoped to that single project — cheaper and more
+    /// precise than a full-solution compile for single-file edits.
+    /// </summary>
+    private async Task<PreEditBaseline> CapturePreEditBaselineAsync(
+        string workspaceId,
+        string? projectFilter,
+        CancellationToken ct)
+    {
+        if (_compileCheckService is null)
+        {
+            // verify was requested but the service is not wired — surface a structured
+            // message instead of silently skipping. The caller asked for verify; they
+            // deserve to know why there is no outcome to inspect.
+            throw new InvalidOperationException(
+                "apply_text_edit/apply_multi_file_edit verify=true requires ICompileCheckService to be registered. " +
+                "Ensure RoslynMcp.Roslyn DI is configured (AddRoslynMcpCoreServices).");
+        }
+
+        // Page size of 500 covers most single-project repos. If a project legitimately
+        // has more than 500 errors, the fingerprint set will be an over-count — not a
+        // correctness hazard (any such error will also appear post-edit and be filtered
+        // out), just a performance one.
+        var baseline = await _compileCheckService.CheckAsync(
+            workspaceId,
+            new CompileCheckOptions(ProjectFilter: projectFilter, SeverityFilter: "error", Limit: 500),
+            ct).ConfigureAwait(false);
+
+        var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var d in baseline.Diagnostics)
+        {
+            if (!string.Equals(d.Severity, "Error", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            fingerprints.Add(FormatErrorFingerprint(d));
+        }
+
+        return new PreEditBaseline(fingerprints, baseline.ErrorCount);
+    }
+
+    /// <summary>
+    /// Post-edit verify leg: runs <c>compile_check</c> on the same scope as the baseline,
+    /// subtracts the pre-existing errors to produce the introduced-error set, then either
+    /// returns the verify outcome (when no new errors OR <paramref name="autoRevertOnError"/>
+    /// is false) or calls <c>revert_last_apply</c> to roll back the single-slot snapshot
+    /// this call just captured.
+    /// </summary>
+    /// <remarks>
+    /// Single-shot semantics: this revert targets ONLY the snapshot that the current
+    /// call placed on the undo stack. Prior-turn edits are never touched — the undo
+    /// service is already single-slot per workspace, so the capture earlier in this
+    /// method overwrote whatever was there. Running <c>RevertAsync</c> restores the
+    /// pre-edit state that was captured inside this call's frame, not an earlier one.
+    /// </remarks>
+    private async Task<VerifyOutcomeDto> RunVerifyAndMaybeRevertAsync(
+        string workspaceId,
+        string? projectFilter,
+        PreEditBaseline preEditBaseline,
+        bool autoRevertOnError,
+        CancellationToken ct)
+    {
+        // The null-check here would only fire in a misconfigured test DI; production
+        // comes through AddRoslynMcpCoreServices which always wires CompileCheckService.
+        // The CapturePreEditBaselineAsync path would have already thrown.
+        ArgumentNullException.ThrowIfNull(_compileCheckService);
+
+        var postCheck = await _compileCheckService.CheckAsync(
+            workspaceId,
+            new CompileCheckOptions(ProjectFilter: projectFilter, SeverityFilter: "error", Limit: 500),
+            ct).ConfigureAwait(false);
+
+        var newDiagnostics = new List<DiagnosticDto>();
+        foreach (var d in postCheck.Diagnostics)
+        {
+            if (!string.Equals(d.Severity, "Error", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            var fingerprint = FormatErrorFingerprint(d);
+            if (!preEditBaseline.ErrorFingerprints.Contains(fingerprint))
+            {
+                newDiagnostics.Add(d);
+            }
+        }
+
+        if (newDiagnostics.Count == 0)
+        {
+            return new VerifyOutcomeDto(
+                Status: "clean",
+                PreErrorCount: preEditBaseline.ErrorCount,
+                PostErrorCount: postCheck.ErrorCount,
+                NewDiagnostics: Array.Empty<DiagnosticDto>(),
+                ProjectFilter: projectFilter,
+                Message: null);
+        }
+
+        if (!autoRevertOnError)
+        {
+            return new VerifyOutcomeDto(
+                Status: "errors_introduced",
+                PreErrorCount: preEditBaseline.ErrorCount,
+                PostErrorCount: postCheck.ErrorCount,
+                NewDiagnostics: newDiagnostics,
+                ProjectFilter: projectFilter,
+                Message: "The edit applied but introduced new compile errors. autoRevertOnError was false, " +
+                        "so the workspace is preserved for inspection. Call revert_last_apply to roll back this edit.");
+        }
+
+        // autoRevertOnError=true AND new errors appeared. Roll back the single-slot
+        // snapshot this call captured. _undoService may legitimately be null in
+        // test contexts that construct EditService without an undo stack — surface
+        // that as a structured outcome rather than a NullReferenceException.
+        if (_undoService is null)
+        {
+            return new VerifyOutcomeDto(
+                Status: "revert_failed",
+                PreErrorCount: preEditBaseline.ErrorCount,
+                PostErrorCount: postCheck.ErrorCount,
+                NewDiagnostics: newDiagnostics,
+                ProjectFilter: projectFilter,
+                Message: "autoRevertOnError=true but IUndoService is not registered on this EditService. " +
+                        "The edit remained applied. Wire IUndoService via AddRoslynMcpCoreServices.");
+        }
+
+        var reverted = await _undoService.RevertAsync(workspaceId, ct).ConfigureAwait(false);
+        if (reverted)
+        {
+            return new VerifyOutcomeDto(
+                Status: "reverted",
+                PreErrorCount: preEditBaseline.ErrorCount,
+                PostErrorCount: postCheck.ErrorCount,
+                NewDiagnostics: newDiagnostics,
+                ProjectFilter: projectFilter,
+                Message: "The edit introduced new compile errors and was reverted. " +
+                        "The workspace is back to the pre-edit state.");
+        }
+
+        return new VerifyOutcomeDto(
+            Status: "revert_failed",
+            PreErrorCount: preEditBaseline.ErrorCount,
+            PostErrorCount: postCheck.ErrorCount,
+            NewDiagnostics: newDiagnostics,
+            ProjectFilter: projectFilter,
+            Message: "The edit introduced new compile errors AND the auto-revert failed. " +
+                    "The workspace is in an inconsistent state — inspect and call revert_last_apply manually.");
+    }
+
+    private static string FormatErrorFingerprint(DiagnosticDto d)
+        => $"{d.Id}|{d.FilePath}:{d.StartLine}:{d.StartColumn}|{d.Message}";
+
+    /// <summary>
+    /// Holds the pre-edit fingerprint set plus the total pre-existing error count so the
+    /// verify outcome can report both the delta and the baseline headline number.
+    /// </summary>
+    private sealed record PreEditBaseline(
+        HashSet<string> ErrorFingerprints,
+        int ErrorCount);
 }
