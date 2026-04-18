@@ -126,4 +126,27 @@ public static class ScaffoldingTools
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
+
+    [McpServerTool(Name = "scaffold_first_test_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("scaffolding", "experimental", true, false,
+        "Preview scaffolding the first <Service>Tests.cs fixture for a service that has no existing test file."),
+     Description("Preview scaffolding the FIRST <Service>Tests.cs fixture for a service that has no existing test file in the destination test project. Distinct from scaffold_test_preview (which adds a single method-focused test to an existing fixture): this tool inspects the service's constructor + all public methods and emits one fixture with a ClassInitialize / setup hook + one smoke-test per public method. The boilerplate shape is derived from up to 3 most-recently-modified sibling *Tests.cs fixtures so ClassInit / base-class conventions carry over. Resolves the service via metadata name (Namespace.TypeName). Errors when the destination file already exists — use scaffold_test_preview for follow-on tests.")]
+    public static Task<string> PreviewScaffoldFirstTestFile(
+        IWorkspaceExecutionGate gate,
+        IScaffoldingService scaffoldingService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Fully-qualified type name of the production service (e.g. RoslynMcp.Roslyn.Services.RestructureService)")] string serviceMetadataName,
+        [Description("Optional: name or absolute path of the destination test project. When omitted, the scaffolder picks the unique project that references the service's containing project AND whose name ends in '.Tests'.")] string? testProjectName = null,
+        [Description("Test framework: mstest, xunit, nunit, or auto (infer from PackageReference in the test csproj)")] string testFramework = "auto",
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await scaffoldingService.PreviewScaffoldFirstTestFileAsync(
+                workspaceId,
+                new ScaffoldFirstTestFileDto(serviceMetadataName, testProjectName, testFramework),
+                c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
+    }
 }

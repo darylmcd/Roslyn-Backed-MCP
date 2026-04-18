@@ -270,6 +270,476 @@ public sealed class ScaffoldingService : IScaffoldingService
         return combinedWarnings.Count == 0 ? preview : preview with { Warnings = combinedWarnings };
     }
 
+    /// <summary>
+    /// Previews scaffolding the FIRST <c>&lt;Service&gt;Tests.cs</c> file for a service that
+    /// has no existing fixture in the destination test project. Resolves the service via
+    /// fully-qualified <see cref="ScaffoldFirstTestFileDto.ServiceMetadataName"/> (so two services
+    /// with the same simple name in different namespaces are unambiguous), infers the
+    /// destination test project when not supplied, captures the boilerplate shape from up to
+    /// three most-recently-modified <c>*Tests.cs</c> sibling fixtures, and emits a fixture with
+    /// one smoke-test per public method on the service.
+    /// </summary>
+    public async Task<RefactoringPreviewDto> PreviewScaffoldFirstTestFileAsync(
+        string workspaceId, ScaffoldFirstTestFileDto request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.ServiceMetadataName))
+            throw new InvalidOperationException("scaffold_first_test_file_preview requires a non-empty serviceMetadataName.");
+
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var (serviceSymbol, sourceProject) = await ResolveServiceByMetadataNameAsync(solution, request.ServiceMetadataName, ct).ConfigureAwait(false);
+        if (serviceSymbol is null || sourceProject is null)
+        {
+            throw new InvalidOperationException(
+                $"Service '{request.ServiceMetadataName}' was not found by metadata name in any loaded project. " +
+                "Pass the fully-qualified type name (Namespace.TypeName).");
+        }
+
+        var simpleTypeName = serviceSymbol.Name;
+        IdentifierValidation.ThrowIfInvalidIdentifier(simpleTypeName, "service type name");
+
+        var testProject = ResolveDestinationTestProject(workspaceId, request.TestProjectName, sourceProject);
+        ValidateIsTestProject(testProject);
+        var projectDirectory = Path.GetDirectoryName(testProject.FilePath)
+            ?? throw new InvalidOperationException($"Project directory could not be resolved for '{testProject.FilePath}'.");
+
+        var testFilePath = Path.Combine(projectDirectory, $"{simpleTypeName}Tests.cs");
+        if (File.Exists(testFilePath))
+        {
+            throw new InvalidOperationException(
+                $"Destination file '{testFilePath}' already exists. " +
+                "scaffold_first_test_file_preview is for brand-new fixtures only — use scaffold_test_preview to add tests to an existing fixture.");
+        }
+
+        var framework = ResolveTestFramework(request.TestFramework, testProject.FilePath);
+        var siblingInference = InferSiblingPatternFromRecent(projectDirectory, testFilePath, maxSiblings: 3);
+
+        var serviceNamespace = serviceSymbol.ContainingNamespace.IsGlobalNamespace
+            ? string.Empty
+            : serviceSymbol.ContainingNamespace.ToDisplayString();
+        var constructorArgs = BuildConstructorArgs(serviceSymbol);
+        var publicMethods = CollectPublicTestableMethods(serviceSymbol);
+
+        var content = BuildFirstTestFileContent(
+            testProject.Name,
+            serviceNamespace,
+            simpleTypeName,
+            constructorArgs,
+            publicMethods,
+            framework,
+            siblingInference.Pattern);
+
+        var warnings = new List<string>();
+        warnings.AddRange(siblingInference.Warnings);
+        if (publicMethods.Count == 0)
+        {
+            warnings.Add(
+                $"Service '{simpleTypeName}' has no public/internal instance methods to scaffold smoke tests for — emitted a single placeholder test.");
+        }
+
+        var preview = await _fileOperationService
+            .PreviewCreateFileAsync(workspaceId, new CreateFileDto(testProject.Name, testFilePath, content), ct)
+            .ConfigureAwait(false);
+
+        return warnings.Count == 0 ? preview : preview with { Warnings = warnings };
+    }
+
+    private static async Task<(INamedTypeSymbol? Symbol, Project? Project)> ResolveServiceByMetadataNameAsync(
+        Solution solution, string serviceMetadataName, CancellationToken ct)
+    {
+        // Parse the metadata name into "Namespace.Simple" pieces so we can fall back to
+        // GetSymbolsWithName(simpleName) when GetTypeByMetadataName fails. The fast-path
+        // (GetTypeByMetadataName) is the common case; the fallbacks handle transient
+        // compilation-state gaps where the type-by-metadata-name lookup returns null for
+        // a type that is still reachable via the slower symbol-enumeration path — observed
+        // under fresh-load + immediate-query timing in MSBuild-backed test workspaces.
+        var simpleName = serviceMetadataName.Contains('.', StringComparison.Ordinal)
+            ? serviceMetadataName[(serviceMetadataName.LastIndexOf('.') + 1)..]
+            : serviceMetadataName;
+
+        // Walk every project, but accept ONLY when the symbol is declared in source within
+        // that project (not merely visible via a project/metadata reference). Using
+        // ContainingAssembly identity means we land on the owning project — critical for
+        // ResolveDestinationTestProject which walks ProjectReferences from the OWNER.
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            // Fast path.
+            var byMetadataName = compilation.GetTypeByMetadataName(serviceMetadataName);
+            if (byMetadataName is { TypeKind: TypeKind.Class } &&
+                SymbolEqualityComparer.Default.Equals(byMetadataName.ContainingAssembly, compilation.Assembly))
+            {
+                return (byMetadataName, project);
+            }
+
+            // Fallback 1: enumerate source-declared types with the simple name and pick the
+            // one whose full display string matches. GetSymbolsWithName walks declared syntax
+            // names, which can return results even in edge cases where the metadata-name
+            // lookup has not yet published the type to the global cache.
+            if (string.IsNullOrEmpty(simpleName)) continue;
+            var candidates = compilation.GetSymbolsWithName(simpleName, SymbolFilter.Type, ct)
+                .OfType<INamedTypeSymbol>()
+                .Where(t => t.TypeKind == TypeKind.Class &&
+                            SymbolEqualityComparer.Default.Equals(t.ContainingAssembly, compilation.Assembly) &&
+                            string.Equals(t.ToDisplayString(), serviceMetadataName, StringComparison.Ordinal))
+                .ToList();
+            if (candidates.Count == 1)
+            {
+                return (candidates[0], project);
+            }
+
+            // Fallback 2: walk the project's syntax trees directly for a matching class
+            // declaration. Only used when both symbol-index paths miss — typically because
+            // the compilation's symbol table has not yet caught up with a freshly-loaded
+            // MSBuildWorkspace. Uses the SemanticModel on the tree that contains a
+            // matching class declaration, which forces that tree's symbols to materialize.
+            var syntaxFound = await FindByDeclaredClassSyntaxAsync(project, compilation, simpleName, serviceMetadataName, ct).ConfigureAwait(false);
+            if (syntaxFound is not null)
+            {
+                return (syntaxFound, project);
+            }
+        }
+        return (null, null);
+    }
+
+    private static async Task<INamedTypeSymbol?> FindByDeclaredClassSyntaxAsync(
+        Project project, Compilation compilation, string simpleName, string fullMetadataName, CancellationToken ct)
+    {
+        foreach (var document in project.Documents)
+        {
+            ct.ThrowIfCancellationRequested();
+            var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
+            if (tree is null) continue;
+            var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+            var classDecls = root.DescendantNodes()
+                .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax>()
+                .Where(c => string.Equals(c.Identifier.ValueText, simpleName, StringComparison.Ordinal));
+            foreach (var decl in classDecls)
+            {
+                var model = compilation.GetSemanticModel(tree);
+                var symbol = model.GetDeclaredSymbol(decl, ct);
+                if (symbol is INamedTypeSymbol named &&
+                    string.Equals(named.ToDisplayString(), fullMetadataName, StringComparison.Ordinal))
+                {
+                    return named;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Picks the destination test project. When the caller supplies a name/path, we resolve
+    /// directly. When omitted, we look for a project that (a) references the source production
+    /// project and (b) has a project name ending in <c>.Tests</c> — the canonical convention
+    /// used across this repo and most .NET solutions. Throws when no candidate is found.
+    /// </summary>
+    private ProjectStatusDto ResolveDestinationTestProject(string workspaceId, string? requestedName, Project sourceProject)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedName))
+            return ResolveProject(workspaceId, requestedName);
+
+        var status = _workspace.GetStatus(workspaceId);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var sourceId = sourceProject.Id;
+
+        var candidates = solution.Projects
+            .Where(p => p.ProjectReferences.Any(r => r.ProjectId == sourceId))
+            .Where(p => p.Name.EndsWith(".Tests", StringComparison.Ordinal))
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Could not infer a destination test project for service in project '{sourceProject.Name}'. " +
+                "No project ending in '.Tests' references this project. Pass testProjectName explicitly.");
+        }
+
+        if (candidates.Count > 1)
+        {
+            var names = string.Join(", ", candidates.Select(c => c.Name));
+            throw new InvalidOperationException(
+                $"Multiple test projects reference '{sourceProject.Name}': {names}. Pass testProjectName explicitly.");
+        }
+
+        var picked = candidates[0];
+        return status.Projects.FirstOrDefault(p => string.Equals(p.Name, picked.Name, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException($"Inferred test project '{picked.Name}' is not in workspace status — cannot resolve file path.");
+    }
+
+    /// <summary>
+    /// Returns public + internal instance methods declared on the service (excluding inherited
+    /// <see cref="object"/> members, property accessors, constructors, and operators) — the set
+    /// we emit smoke tests for in a first-test-file scaffold.
+    /// </summary>
+    private static IReadOnlyList<IMethodSymbol> CollectPublicTestableMethods(INamedTypeSymbol service)
+    {
+        return service.GetMembers()
+            .OfType<IMethodSymbol>()
+            .Where(m => m.MethodKind == MethodKind.Ordinary)
+            .Where(m => !m.IsStatic)
+            .Where(m => m.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
+            .Where(m => m.AssociatedSymbol is null) // skip property/event accessors
+            .ToList();
+    }
+
+    /// <summary>
+    /// Inspects up to <paramref name="maxSiblings"/> most-recently-modified <c>*Tests.cs</c>
+    /// fixtures in <paramref name="projectDirectory"/> and returns the pattern captured from
+    /// the most recent one (used as the "primary" boilerplate template). Falls back to
+    /// repo-convention defaults (returns <see cref="SiblingInferenceResult.None"/>) when no
+    /// sibling fixtures exist — the per-framework emitter then writes the framework's standard
+    /// boilerplate.
+    /// </summary>
+    private static SiblingInferenceResult InferSiblingPatternFromRecent(
+        string projectDirectory, string destinationFilePath, int maxSiblings)
+    {
+        if (!Directory.Exists(projectDirectory))
+            return SiblingInferenceResult.None;
+
+        var destinationNormalized = Path.GetFullPath(destinationFilePath);
+        var siblings = Directory.EnumerateFiles(projectDirectory, "*Tests.cs", SearchOption.AllDirectories)
+            .Where(p =>
+            {
+                var normalized = Path.GetFullPath(p);
+                if (string.Equals(normalized, destinationNormalized, StringComparison.OrdinalIgnoreCase))
+                    return false;
+                var rel = Path.GetRelativePath(projectDirectory, normalized);
+                return !rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    .Any(seg => string.Equals(seg, "obj", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(seg, "bin", StringComparison.OrdinalIgnoreCase));
+            })
+            .Select(p => new FileInfo(p))
+            .OrderByDescending(fi => fi.LastWriteTimeUtc)
+            .Take(maxSiblings)
+            .ToList();
+
+        if (siblings.Count == 0)
+            return SiblingInferenceResult.None;
+
+        var warnings = new List<string>();
+        // Use the most-recently-modified sibling as the primary pattern source. The maxSiblings
+        // window above is a forward-compatible hook — today only the freshest sibling drives the
+        // scaffolded shape; future revisions can union attribute lists across the window.
+        try
+        {
+            var primary = siblings[0];
+            var sourceText = File.ReadAllText(primary.FullName);
+            var pattern = ExtractPatternFromSource(sourceText, primary.Name);
+            return new SiblingInferenceResult(pattern, warnings);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            warnings.Add(
+                $"Could not read sibling fixture '{siblings[0].Name}' ({ex.GetType().Name}: {ex.Message}) — scaffolded without pattern inference.");
+            return new SiblingInferenceResult(null, warnings);
+        }
+    }
+
+    /// <summary>
+    /// Builds a brand-new <c>&lt;Service&gt;Tests.cs</c> fixture: emits the framework header,
+    /// a class-level <c>ClassInitialize</c> hook (MSTest only — xUnit/NUnit get equivalent
+    /// constructor/<c>OneTimeSetUp</c> patterns), a single <c>subject</c> field of the service
+    /// type wired up via the inferred constructor args, and one smoke-test method per public
+    /// instance method. Sibling fragments (extra usings, class attributes, base class) are
+    /// layered onto the default template.
+    /// </summary>
+    private static string BuildFirstTestFileContent(
+        string testNamespace,
+        string serviceNamespace,
+        string serviceTypeName,
+        string constructorArgs,
+        IReadOnlyList<IMethodSymbol> publicMethods,
+        string framework,
+        SiblingTestPattern? siblingPattern)
+    {
+        var usingDirective = string.IsNullOrWhiteSpace(serviceNamespace)
+            ? string.Empty
+            : $"using {serviceNamespace};\n";
+
+        var ctorCall = string.IsNullOrWhiteSpace(constructorArgs)
+            ? $"new {serviceTypeName}()"
+            : $"new {serviceTypeName}({constructorArgs})";
+
+        return framework switch
+        {
+            "xunit" => BuildFirstTestFileXunit(testNamespace, usingDirective, serviceTypeName, ctorCall, publicMethods, siblingPattern),
+            "nunit" => BuildFirstTestFileNUnit(testNamespace, usingDirective, serviceTypeName, ctorCall, publicMethods, siblingPattern),
+            _ => BuildFirstTestFileMSTest(testNamespace, usingDirective, serviceTypeName, ctorCall, publicMethods, siblingPattern),
+        };
+    }
+
+    private static string BuildFirstTestFileMSTest(
+        string testNamespace,
+        string usingDirective,
+        string serviceTypeName,
+        string ctorCall,
+        IReadOnlyList<IMethodSymbol> publicMethods,
+        SiblingTestPattern? siblingPattern)
+    {
+        var (extraUsings, extraAttributes, baseClause, _ctorBlock) =
+            BuildSiblingFragments(siblingPattern, serviceTypeName, testNamespace, usingDirective);
+
+        // First-test-file skips the sibling ctor-block: ClassInitialize takes the role of
+        // shared setup, and we don't want to inherit a fixture-injection ctor from a sibling
+        // that happens to use IClassFixture<T>. The base-class clause is preserved so users
+        // who base their fixtures on SharedWorkspaceTestBase keep that linkage.
+        var fixtureName = serviceTypeName + "Tests";
+        var sb = new System.Text.StringBuilder();
+        sb.Append("using Microsoft.VisualStudio.TestTools.UnitTesting;\n");
+        sb.Append(usingDirective);
+        sb.Append(extraUsings);
+        sb.Append('\n');
+        sb.Append("namespace ").Append(testNamespace).Append(";\n\n");
+        sb.Append(extraAttributes);
+        sb.Append("[TestClass]\n");
+        sb.Append("public sealed class ").Append(fixtureName).Append(baseClause).Append('\n');
+        sb.Append("{\n");
+        sb.Append("    private static ").Append(serviceTypeName).Append("? _subject;\n\n");
+        sb.Append("    [ClassInitialize]\n");
+        sb.Append("    public static void ClassInit(TestContext _)\n");
+        sb.Append("    {\n");
+        sb.Append("        _subject = ").Append(ctorCall).Append(";\n");
+        sb.Append("    }\n\n");
+
+        if (publicMethods.Count == 0)
+        {
+            sb.Append("    [TestMethod]\n");
+            sb.Append("    public void Subject_Is_Constructible()\n");
+            sb.Append("    {\n");
+            sb.Append("        Assert.IsNotNull(_subject);\n");
+            sb.Append("    }\n");
+        }
+        else
+        {
+            for (var i = 0; i < publicMethods.Count; i++)
+            {
+                var method = publicMethods[i];
+                sb.Append("    [TestMethod]\n");
+                sb.Append("    public void ").Append(method.Name).Append("_Smoke_Needs_Real_Test()\n");
+                sb.Append("    {\n");
+                sb.Append("        Assert.IsNotNull(_subject);\n");
+                sb.Append("        // TODO: invoke _subject!.").Append(method.Name).Append("(...) and assert.\n");
+                sb.Append("    }\n");
+                if (i < publicMethods.Count - 1) sb.Append('\n');
+            }
+        }
+
+        sb.Append("}\n");
+        return sb.ToString();
+    }
+
+    private static string BuildFirstTestFileXunit(
+        string testNamespace,
+        string usingDirective,
+        string serviceTypeName,
+        string ctorCall,
+        IReadOnlyList<IMethodSymbol> publicMethods,
+        SiblingTestPattern? siblingPattern)
+    {
+        var (extraUsings, extraAttributes, baseClause, _ctorBlock) =
+            BuildSiblingFragments(siblingPattern, serviceTypeName, testNamespace, usingDirective);
+
+        var fixtureName = serviceTypeName + "Tests";
+        var sb = new System.Text.StringBuilder();
+        sb.Append("using Xunit;\n");
+        sb.Append(usingDirective);
+        sb.Append(extraUsings);
+        sb.Append('\n');
+        sb.Append("namespace ").Append(testNamespace).Append(";\n\n");
+        sb.Append(extraAttributes);
+        sb.Append("public sealed class ").Append(fixtureName).Append(baseClause).Append('\n');
+        sb.Append("{\n");
+        sb.Append("    private readonly ").Append(serviceTypeName).Append(" _subject;\n\n");
+        sb.Append("    public ").Append(fixtureName).Append("()\n");
+        sb.Append("    {\n");
+        sb.Append("        _subject = ").Append(ctorCall).Append(";\n");
+        sb.Append("    }\n\n");
+
+        if (publicMethods.Count == 0)
+        {
+            sb.Append("    [Fact]\n");
+            sb.Append("    public void Subject_Is_Constructible()\n");
+            sb.Append("    {\n");
+            sb.Append("        Assert.NotNull(_subject);\n");
+            sb.Append("    }\n");
+        }
+        else
+        {
+            for (var i = 0; i < publicMethods.Count; i++)
+            {
+                var method = publicMethods[i];
+                sb.Append("    [Fact]\n");
+                sb.Append("    public void ").Append(method.Name).Append("_Smoke_Needs_Real_Test()\n");
+                sb.Append("    {\n");
+                sb.Append("        Assert.NotNull(_subject);\n");
+                sb.Append("        // TODO: invoke _subject.").Append(method.Name).Append("(...) and assert.\n");
+                sb.Append("    }\n");
+                if (i < publicMethods.Count - 1) sb.Append('\n');
+            }
+        }
+
+        sb.Append("}\n");
+        return sb.ToString();
+    }
+
+    private static string BuildFirstTestFileNUnit(
+        string testNamespace,
+        string usingDirective,
+        string serviceTypeName,
+        string ctorCall,
+        IReadOnlyList<IMethodSymbol> publicMethods,
+        SiblingTestPattern? siblingPattern)
+    {
+        var (extraUsings, extraAttributes, baseClause, _ctorBlock) =
+            BuildSiblingFragments(siblingPattern, serviceTypeName, testNamespace, usingDirective);
+
+        var fixtureName = serviceTypeName + "Tests";
+        var sb = new System.Text.StringBuilder();
+        sb.Append("using NUnit.Framework;\n");
+        sb.Append(usingDirective);
+        sb.Append(extraUsings);
+        sb.Append('\n');
+        sb.Append("namespace ").Append(testNamespace).Append(";\n\n");
+        sb.Append(extraAttributes);
+        sb.Append("[TestFixture]\n");
+        sb.Append("public sealed class ").Append(fixtureName).Append(baseClause).Append('\n');
+        sb.Append("{\n");
+        sb.Append("    private ").Append(serviceTypeName).Append("? _subject;\n\n");
+        sb.Append("    [OneTimeSetUp]\n");
+        sb.Append("    public void OneTimeSetUp()\n");
+        sb.Append("    {\n");
+        sb.Append("        _subject = ").Append(ctorCall).Append(";\n");
+        sb.Append("    }\n\n");
+
+        if (publicMethods.Count == 0)
+        {
+            sb.Append("    [Test]\n");
+            sb.Append("    public void Subject_Is_Constructible()\n");
+            sb.Append("    {\n");
+            sb.Append("        Assert.That(_subject, Is.Not.Null);\n");
+            sb.Append("    }\n");
+        }
+        else
+        {
+            for (var i = 0; i < publicMethods.Count; i++)
+            {
+                var method = publicMethods[i];
+                sb.Append("    [Test]\n");
+                sb.Append("    public void ").Append(method.Name).Append("_Smoke_Needs_Real_Test()\n");
+                sb.Append("    {\n");
+                sb.Append("        Assert.That(_subject, Is.Not.Null);\n");
+                sb.Append("        // TODO: invoke _subject!.").Append(method.Name).Append("(...) and assert.\n");
+                sb.Append("    }\n");
+                if (i < publicMethods.Count - 1) sb.Append('\n');
+            }
+        }
+
+        sb.Append("}\n");
+        return sb.ToString();
+    }
+
     private static IReadOnlyList<string> CombineWarnings(List<string>? a, IReadOnlyList<string>? b)
     {
         if ((a is null || a.Count == 0) && (b is null || b.Count == 0))

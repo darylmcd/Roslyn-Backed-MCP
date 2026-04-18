@@ -110,6 +110,7 @@ public static class ServerSurfaceCatalog
         Tool("scaffold_type_apply", "scaffolding", "experimental", false, true, "Apply a previously previewed type scaffolding operation."),
         Tool("scaffold_test_preview", "scaffolding", "stable", true, false, "Preview scaffolding a new test file (MSTest, xUnit, or NUnit; auto-detect or specify testFramework)."),
         Tool("scaffold_test_batch_preview", "scaffolding", "experimental", true, false, "Preview scaffolding multiple test files for related target types in one composite preview."),
+        Tool("scaffold_first_test_file_preview", "scaffolding", "experimental", true, false, "Preview scaffolding the first <Service>Tests.cs fixture for a service that has no existing test file."),
         Tool("scaffold_test_apply", "scaffolding", "experimental", false, true, "Apply a previously previewed test scaffolding operation."),
         Tool("remove_dead_code_preview", "dead-code", "stable", true, false, "Preview removing unused symbols by handle."),
         Tool("remove_dead_code_apply", "dead-code", "experimental", false, true, "Apply a previously previewed dead-code removal operation."),
