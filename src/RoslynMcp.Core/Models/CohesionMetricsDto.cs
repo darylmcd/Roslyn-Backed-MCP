@@ -15,6 +15,22 @@ public sealed record CohesionMetricsDto(
 {
     /// <summary>The kind of type: Class, Struct, Interface, Enum, etc.</summary>
     public string TypeKind { get; init; } = "Class";
+
+    /// <summary>
+    /// Well-known lifecycle pattern detected on the type, or <c>null</c> if none.
+    /// Types matching a known lifecycle pattern are expected to have high LCOM4 by design
+    /// (their public methods are orthogonal on fields), so the split recommendation is downgraded.
+    /// Current values: <c>"action-triad"</c> (type name ending in Action/Handler/Command/Stage
+    /// with a Describe + Validate* + Execute* method triad). Reserved for future patterns.
+    /// </summary>
+    public string? LifecyclePattern { get; init; }
+
+    /// <summary>
+    /// Human-readable recommendation for the LCOM4 score. When a lifecycle pattern is detected,
+    /// this is softened to explain that a high LCOM4 is expected by design. <c>null</c> when no
+    /// special-case guidance applies (callers should fall back to the default "split" suggestion).
+    /// </summary>
+    public string? Recommendation { get; init; }
 }
 
 /// <summary>
