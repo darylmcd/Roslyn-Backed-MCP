@@ -58,6 +58,12 @@ foreach ($file in $markdownFiles) {
             continue
         }
 
+        # Skip template placeholder links like ([#{prNumber}]({prUrl})) — doc authors
+        # use these in example blocks; they are not resolvable filesystem paths.
+        if ($target -match '\{[^}]+\}') {
+            continue
+        }
+
         $pathPart = $target.Split('#')[0].Split('?')[0] -replace '%20', ' '
         if ([string]::IsNullOrWhiteSpace($pathPart)) {
             continue
