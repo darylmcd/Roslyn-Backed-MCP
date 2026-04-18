@@ -112,7 +112,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 5. `composite-split-service-di-registration` — Composite preview with DI registration deltas
 
-**Status:** pending · **Order:** 5 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
+**Status:** deferred (subagent stalled mid-work; branch `remediation/composite-split-service-di-registration` preserved — see state.json notes) · **Order:** 5 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -130,7 +130,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 6. `duplicate-method-body-detector` — find_duplicated_methods
 
-**Status:** pending · **Order:** 6 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #245, 2026-04-18) · **Order:** 6 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -148,7 +148,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 7. `change-type-namespace-preview` — Same-project namespace relocation
 
-**Status:** pending · **Order:** 7 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #244, 2026-04-18) · **Order:** 7 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
