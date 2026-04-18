@@ -15,7 +15,37 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      # Doc-only PRs (markdown + ai_docs/*.json plan-state) don't change compiled
+      # code, so skipping verify-release.ps1 and artifact uploads saves ~10 minutes
+      # per reconcile-PR wave. verify-ai-docs.ps1 still runs — it catches the
+      # doc-side drift class. Push-to-main and workflow_dispatch always run the
+      # full pipeline so nothing lands on main without a green full build.
+      - name: Detect docs-only pull request
+        id: detect
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr="${{ github.event.pull_request.number }}"
+          changed=$(gh pr diff "$pr" --name-only)
+          echo "Changed files:"
+          echo "$changed"
+          if [ -z "$changed" ]; then
+            echo "Empty diff — treating as non-docs-only."
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          non_docs=$(echo "$changed" | grep -vE '^(.*\.md|ai_docs/.*\.json)$' || true)
+          if [ -z "$non_docs" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Docs-only PR::All changed files match **/*.md or ai_docs/**/*.json — skipping verify-release.ps1 and artifact uploads."
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up .NET
+        if: steps.detect.outputs.docs_only != 'true'
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: 10.0.x
@@ -24,6 +54,7 @@ jobs:
       # download of unchanged packages. Key on the central version file plus any
       # csproj or props file so cache invalidates whenever dependencies move.
       - name: Cache NuGet packages
+        if: steps.detect.outputs.docs_only != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
@@ -36,10 +67,12 @@ jobs:
         run: ./eng/verify-ai-docs.ps1
 
       - name: Verify release build
+        if: steps.detect.outputs.docs_only != 'true'
         shell: pwsh
         run: ./eng/verify-release.ps1 -Configuration Release
 
       - name: Generate coverage HTML summary
+        if: steps.detect.outputs.docs_only != 'true'
         shell: pwsh
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.7 --no-cache
@@ -52,22 +85,26 @@ jobs:
           reportgenerator "-reports:$reports" "-targetdir:$target" -reporttypes:HtmlSummary
 
       - name: Audit packages for known vulnerabilities
+        if: steps.detect.outputs.docs_only != 'true'
         shell: pwsh
         run: dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive
 
       - name: Upload published host artifact
+        if: steps.detect.outputs.docs_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: host-stdio-publish
           path: artifacts/publish/host-stdio
 
       - name: Upload release manifest
+        if: steps.detect.outputs.docs_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: release-manifests
           path: artifacts/manifests
 
       - name: Upload code coverage
+        if: steps.detect.outputs.docs_only != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: code-coverage

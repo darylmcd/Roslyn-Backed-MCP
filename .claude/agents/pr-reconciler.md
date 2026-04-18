@@ -1,6 +1,6 @@
 ---
 name: pr-reconciler
-description: Ship a single open PR through to merge + cleanup — poll `gh pr view` for green checks, squash-merge when clean, remove the worktree, delete the remote branch, update the plan.md Status row, return a compact status block. Use when an initiative-executor has returned a PR URL and the orchestrator wants the merge-and-cleanup loop isolated from its context. Does NOT edit CHANGELOG.md or backlog.md.
+description: Ship a single open PR through to merge + cleanup — poll `gh pr view` for green checks, squash-merge when clean, remove the worktree, delete the remote branch, return a compact status block. Use when an initiative-executor has returned a PR URL and the orchestrator wants the merge-and-cleanup loop isolated from its context. Does NOT edit CHANGELOG.md, backlog.md, state.json, or plan.md — the orchestrator handles plan-state edits in the batch-boundary reconcile PR.
 model: haiku
 ---
 
@@ -13,10 +13,14 @@ The orchestrator provides:
 - `prNumberOrUrl` — PR number or full URL
 - `branch` — typically `remediation/<initiative.id>`
 - `worktreePath` — typically `.worktrees/<initiative.id>` (or `null` if branch-only)
-- `planPath` — path to `plan.md` for Status-row update
-- `initiativeId` — id to locate in plan.md
 
-If any field is missing, emit `STATUS: error` with the missing field named.
+Legacy / accepted but ignored (kept for backwards compatibility with older
+orchestrator briefs that still pass them):
+
+- `planPath` — ignored; orchestrator owns plan.md edits.
+- `initiativeId` — ignored for state mutation; may appear in log output.
+
+If any required field is missing, emit `STATUS: error` with the missing field named.
 
 ## Steps
 
@@ -59,13 +63,21 @@ git remote prune origin
 
 The `reset --hard origin/main` is required because `gh pr merge --squash` creates a new commit SHA on origin unrelated to any local commit, so `git pull --ff-only` can refuse or silently no-op.
 
-### 4. Update plan.md Status row
+### 4. Plan-state handoff
 
-Find the row whose id cell matches `initiativeId` in `<planPath>`. Update its Status cell to `merged (PR #<n>, <YYYY-MM-DD>)` using today's date. Commit on `main` with message:
+**Do NOT edit `plan.md` or `state.json`.** The orchestrator owns the plan-state
+transition in the batch-boundary reconcile PR, which atomically updates:
 
-```
-chore(plan): mark {initiativeId} merged (PR #<n>)
-```
+- `plan.md` Status rows for every initiative in the batch,
+- `state.json` `status → merged` + `prUrl` + `mergedAt` per initiative,
+- `ai_docs/backlog.md` row closures,
+- `CHANGELOG.md` `[Unreleased]` entries + Maintenance tallies.
+
+Rationale: `main` is branch-protected, so any local `plan.md` commit you make
+cannot be pushed — and the next reconciler's Step 3 `git reset --hard origin/main`
+would wipe it anyway. The 2026-04-18 backlog-sweep pass-4 retrospective confirmed
+5/5 reconciler plan.md commits were discarded in this way. The orchestrator does
+the work correctly once in the reconcile PR; reconcilers stay focused on merge + cleanup.
 
 ## Output contract
 
@@ -76,7 +88,6 @@ STATUS: merged | not-ready | closed-without-merge | error
 PR: <url>
 MERGE_SHA: <sha>           # if merged, else "n/a"
 CLEANUP: worktree=removed|n/a branch=deleted|n/a remote=pruned
-PLAN_UPDATE: committed <sha> | skipped ({reason})
 NOTES: <one line if anything unusual, else omit>
 ```
 
