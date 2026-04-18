@@ -150,6 +150,7 @@ public static class ServerSurfaceCatalog
 
         Tool("extract_method_preview", "refactoring", "stable", true, false, "Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values."),
         Tool("extract_method_apply", "refactoring", "experimental", false, true, "Apply a previously previewed extract method refactoring."),
+        Tool("extract_shared_expression_to_helper_preview", "refactoring", "experimental", true, false, "Preview extracting a shared sub-expression into a synthesized private static helper and rewriting every structurally-identical call site in the scope."),
 
         Tool("revert_last_apply", "undo", "stable", false, true, "Revert the most recent Roslyn solution-level apply operation for a workspace."),
         Tool("apply_with_verify", "undo", "experimental", false, true, "Apply a preview AND immediately verify via compile_check; auto-revert on new errors."),
