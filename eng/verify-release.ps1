@@ -5,8 +5,18 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# PowerShell does not honor $ErrorActionPreference = "Stop" for native commands.
+# Every dotnet invocation below must call this after returning.
+function Invoke-DotnetStep {
+    param([string]$Description)
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed with exit code $LASTEXITCODE."
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $solutionPath = Join-Path $repoRoot "RoslynMcp.slnx"
+$sampleSolutionPath = Join-Path $repoRoot "samples\SampleSolution\SampleSolution.slnx"
 $hostProject = Join-Path $repoRoot "src\RoslynMcp.Host.Stdio\RoslynMcp.Host.Stdio.csproj"
 $publishDir = Join-Path $repoRoot "$OutputRoot\publish\host-stdio"
 $manifestDir = Join-Path $repoRoot "$OutputRoot\manifests"
@@ -26,15 +36,32 @@ New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null
 & (Join-Path $PSScriptRoot 'verify-skills-are-generic.ps1')
 
 dotnet restore $solutionPath --nologo
+Invoke-DotnetStep "dotnet restore (main solution)"
+
+# Sample solution restore: integration tests load samples/SampleSolution/SampleSolution.slnx
+# via MSBuildWorkspace and then run CompileCheckService. That project tree references
+# MSTest (for SampleLib.Tests) and the packages must be resolved in the NuGet global-packages
+# cache before the workspace compiles — otherwise the sample tests project emits CS0234/CS0246
+# for Microsoft.VisualStudio.TestTools and the ExtractMethod integration tests fail.
+dotnet restore $sampleSolutionPath --nologo
+Invoke-DotnetStep "dotnet restore (sample solution)"
+
 dotnet build $solutionPath -c $Configuration --no-restore --nologo
+Invoke-DotnetStep "dotnet build"
+
+# Logger verbosity `minimal` emits the run summary and failure details but skips
+# the per-test "Passed X [N ms]" lines that dominated the previous console output.
 dotnet test $solutionPath -c $Configuration --no-build --nologo `
     --collect:"XPlat Code Coverage" `
     --results-directory $coverageDir `
-    --logger "console;verbosity=normal"
+    --logger "console;verbosity=minimal"
+Invoke-DotnetStep "dotnet test"
+
 # PublishReadyToRun (CrossGen) can fail on CI runners when the SDK's crossgen2
 # tooling has platform-specific issues. Disable for the verification publish step;
 # the NuGet pack step produces the distributable package independently.
 dotnet publish $hostProject -c $Configuration --no-build -o $publishDir -p:PublishReadyToRun=false
+Invoke-DotnetStep "dotnet publish"
 
 $hashLines = Get-ChildItem -Path $publishDir -File -Recurse |
     Sort-Object FullName |
