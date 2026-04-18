@@ -50,4 +50,46 @@ public static class SuppressionTools
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
+
+    [McpServerTool(Name = "verify_pragma_suppresses", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("validation", "stable", true, false,
+        "Verify an existing #pragma warning disable/restore pair covers a fire line."),
+     Description("Check whether a '#pragma warning disable/restore' pair for the given diagnostic id actually covers the specified 1-based line. Detects 'cosmetic pragma' bugs where the pragma pair wraps the wrong span (e.g. pair wraps line 68 but the diagnostic actually fires at line 78). Read-only — no edits.")]
+    public static Task<string> VerifyPragmaSuppresses(
+        IWorkspaceExecutionGate gate,
+        ISuppressionService suppressionService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Absolute path to the C# source file to inspect")] string filePath,
+        [Description("1-based line number that should be covered (the diagnostic fire site)")] int line,
+        [Description("Diagnostic id whose suppression to check (e.g. CA2025)")] string diagnosticId,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var result = await suppressionService.VerifyPragmaSuppressesAsync(
+                workspaceId, filePath, line, diagnosticId, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
+    }
+
+    [McpServerTool(Name = "pragma_scope_widen", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("editing", "stable", false, false,
+        "Extend an existing #pragma warning restore past a target line."),
+     Description("Extend a matching '#pragma warning restore &lt;id&gt;' down to cover a previously-uncovered fire site. Refuses the edit when relocating the restore would cross a #region/#endregion boundary or nest into another '#pragma warning disable &lt;id&gt;' for the same id (both would silently change the effective scope of other suppressions). Idempotent no-op when the existing pair already covers the target.")]
+    public static Task<string> PragmaScopeWiden(
+        IWorkspaceExecutionGate gate,
+        ISuppressionService suppressionService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Absolute path to the C# source file to modify")] string filePath,
+        [Description("1-based line number that must be covered after the widen (the diagnostic fire site)")] int line,
+        [Description("Diagnostic id whose 'restore' is being moved (e.g. CA2025)")] string diagnosticId,
+        CancellationToken ct = default)
+    {
+        return gate.RunWriteAsync(workspaceId, async c =>
+        {
+            var result = await suppressionService.WidenPragmaScopeAsync(
+                workspaceId, filePath, line, diagnosticId, c);
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
+    }
 }

@@ -173,7 +173,9 @@ public static class ServerSurfaceCatalog
         Tool("evaluate_msbuild_items", "project-mutation", "stable", true, false, "List MSBuild items of a type with evaluated includes and metadata."),
         Tool("get_msbuild_properties", "project-mutation", "stable", true, false, "Dump evaluated MSBuild properties for a project."),
         Tool("set_diagnostic_severity", "configuration", "stable", false, false, "Set dotnet_diagnostic severity in .editorconfig."),
-        Tool("add_pragma_suppression", "editing", "stable", false, false, "Insert a #pragma warning disable before a line.")
+        Tool("add_pragma_suppression", "editing", "stable", false, false, "Insert a #pragma warning disable before a line."),
+        Tool("verify_pragma_suppresses", "validation", "stable", true, false, "Verify an existing #pragma warning disable/restore pair covers a fire line."),
+        Tool("pragma_scope_widen", "editing", "stable", false, false, "Extend an existing #pragma warning restore past a target line.")
     ];
 
     public static IReadOnlyList<SurfaceEntry> Resources { get; } =
