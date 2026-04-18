@@ -23,10 +23,41 @@ Call `discover_capabilities` with a category to get contextual guidance, or use 
 
 **"I need to build/test"** → `build_workspace` (compile), `test_run` (run tests), `test_related_files` (targeted tests after changes)
 
+**"I need to verify after a multi-file edit"** → `validate_recent_git_changes` (auto-scoped to `git status`), or `validate_workspace` with an explicit `changedFilePaths` — see [Verification workflow](#verification-workflow-post-edit-default)
+
 ## Verification workflow (post-edit default)
 
-After any C# edit — `Edit`, `Write`, or `*_apply` — the default verification loop is the
-Roslyn MCP **verify triple**, in order:
+After any C# edit — `Edit`, `Write`, or `*_apply` — the canonical verify for
+**multi-file semantic edits** is the `validate_workspace` bundle, scoped to the
+touched-file set. Prefer the auto-scoped companion `validate_recent_git_changes`
+when you have uncommitted edits in a git working tree; it derives the touched-file
+set from `git status --porcelain` so you don't need to enumerate paths by hand.
+
+**Single call, scoped verify (preferred):**
+
+```text
+validate_recent_git_changes(workspaceId)
+  → derives changedFilePaths from `git status --porcelain`
+  → runs compile_check + project_diagnostics (errors) + test_related_files
+  → scoped to the projects that own the touched files
+  → returns an aggregate envelope: overallStatus = clean | compile-error | analyzer-error | test-failure
+```
+
+Falls back to full-workspace scope with a `Warnings` entry when git is not
+available on PATH, the solution directory is not inside a git repository, or
+`git status` exits non-zero. In that case callers should trust
+`OverallStatus` as usual — the bundle still runs — but know the scope is wider
+than the touched-file set.
+
+**Explicit file list (when not in a git repo or for targeted verify):**
+
+```text
+validate_workspace(workspaceId, changedFilePaths: ["src/.../Foo.cs", "src/.../Bar.cs"])
+```
+
+**Primitive-level verify triple** (when you need one primitive at a time —
+e.g. compile-only verify after a trivial single-line edit, or running tests
+for an arbitrary filter):
 
 1. `compile_check` — structured diagnostics on the loaded workspace. Sub-second on a
    warm workspace; identical diagnostic coverage to `dotnet build` modulo analyzer
@@ -46,6 +77,11 @@ test_related_files(workspaceId, filePaths: ["src/RoslynMcp.Roslyn/Services/Symbo
 test_run(workspaceId, filter: "FullyQualifiedName~SymbolSearch")
 format_check(workspaceId, filePaths: ["src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs"])
 ```
+
+**Rule of thumb:** for multi-file edits, reach for `validate_recent_git_changes`
+first — one call, scoped to touched files, aggregate pass/fail. Drop to the
+primitive triple only when the bundle's shape doesn't fit (e.g. you need
+compile-only verify without test discovery, or want to run a custom test filter).
 
 ### Shell fallbacks — CI-parity only
 
