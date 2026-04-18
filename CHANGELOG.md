@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [1.23.0] - 2026-04-18
+
+Backlog sweep `20260417T120000Z` execution passes 2 + 3 — 7 initiatives shipped across 14 PRs (features #234, #237, #238, #239, #244, #245, #247, #248, #249; reconciles #240, #242, #246, #250, #251) closing **7 backlog rows** (P3: 3, P4: 4). Adds four new MCP tools (`trace_exception_flow`, `find_duplicated_methods`, `change_type_namespace_preview`, `validate_recent_git_changes`) and `scaffold_test_preview` sibling-test pattern inference; extends `get_cohesion_metrics` with action-triad lifecycle-pattern detection; adds a `server_info` connectivity precheck to the four most-run `roslyn-mcp` skills (`analyze`, `review`, `complexity`, `test-coverage`). Breaking: PostToolUse `*_apply` verification-reminder batching; two DTO field additions (`Warnings` on `WorkspaceValidationDto`, `LifecyclePattern` + `Recommendation` on `CohesionMetricsDto`). Internal: planner prompt refactored to v3 (per-initiative `toolPolicy` + new-MCP-tool structural-unit exemption) and executor prompt to v4 (concurrent-session safety + subagent result-protocol hardening); PreToolUse hook widened to accept composite-preview-redeemed evidence; `discover_capabilities` parameter-name drift fixed.
+
 ### Fixed
 
 - **Fixed:** `roslyn-mcp:analyze`/`review`/`complexity`/`test-coverage` now include a `server_info` connectivity precheck and bail with a clear message when the server is disconnected, replacing silent-loop failures (`dr-9-2-medium-and-related-skills-have-no-graceful-degra`).
