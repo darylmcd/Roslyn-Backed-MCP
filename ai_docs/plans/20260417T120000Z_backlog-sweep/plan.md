@@ -436,7 +436,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 23. `position-probe-for-test-fixture-authoring` — probe_position tool
 
-**Status:** pending · **Order:** 23 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #266, 2026-04-18) · **Order:** 23 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -526,7 +526,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 28. `workspace-stale-after-external-edit-feedback` — FileSystemWatcher-driven isStale
 
-**Status:** pending · **Order:** 28 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #267, 2026-04-18) · **Order:** 28 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -562,7 +562,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 30. `pragma-directive-scope-manipulation` — pragma_scope_widen / verify_pragma_suppresses
 
-**Status:** pending · **Order:** 30 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #268, 2026-04-18) · **Order:** 30 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
