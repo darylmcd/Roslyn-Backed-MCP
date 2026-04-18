@@ -85,6 +85,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IConsumerAnalysisService, ConsumerAnalysisService>();
         services.AddSingleton<ICohesionAnalysisService, CohesionAnalysisService>();
         services.AddSingleton<ITypeMoveService, TypeMoveService>();
+        services.AddSingleton<INamespaceRelocationService, NamespaceRelocationService>();
         services.AddSingleton<IInterfaceExtractionService, InterfaceExtractionService>();
         services.AddSingleton<IBulkRefactoringService, BulkRefactoringService>();
         services.AddSingleton<ITypeExtractionService, TypeExtractionService>();
