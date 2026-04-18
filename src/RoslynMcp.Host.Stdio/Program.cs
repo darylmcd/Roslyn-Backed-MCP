@@ -130,6 +130,11 @@ static WorkspaceManagerOptions BindWorkspaceManagerOptions()
         opts = opts with { MaxConcurrentWorkspaces = maxWs };
     if (int.TryParse(ReadEnv("ROSLYNMCP_MAX_SOURCE_GENERATED_DOCS"), out var maxGen) && maxGen > 0)
         opts = opts with { MaxSourceGeneratedDocuments = maxGen };
+    // dr-9-10-initial-does-not-wait-for-concurrent-to-finaliz: upper bound (ms) for the
+    // restore-race wait inside WorkspaceManager.LoadAsync. 0 disables. Accept 0 explicitly
+    // so operators can opt out at runtime without editing code.
+    if (int.TryParse(ReadEnv("ROSLYNMCP_RESTORE_RACE_WAIT_MS"), out var waitMs) && waitMs >= 0)
+        opts = opts with { RestoreRaceWaitMs = waitMs };
     return opts;
 }
 
