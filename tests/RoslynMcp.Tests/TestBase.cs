@@ -21,6 +21,7 @@ public abstract class TestBase
 
     protected static IPreviewStore PreviewStore { get; private set; } = null!;
     protected static WorkspaceManager WorkspaceManager { get; private set; } = null!;
+    protected static IFileWatcherService FileWatcher { get; private set; } = null!;
     protected static SymbolNavigationService SymbolNavigationService { get; private set; } = null!;
     protected static SymbolSearchService SymbolSearchService { get; private set; } = null!;
     protected static ReferenceService ReferenceService { get; private set; } = null!;
@@ -114,6 +115,7 @@ public abstract class TestBase
         // will fail loudly rather than exhaust memory.
         PreviewStore = services.PreviewStore;
         WorkspaceManager = services.WorkspaceManager;
+        FileWatcher = services.FileWatcher;
         SymbolNavigationService = services.SymbolNavigationService;
         SymbolSearchService = services.SymbolSearchService;
         ReferenceService = services.ReferenceService;
