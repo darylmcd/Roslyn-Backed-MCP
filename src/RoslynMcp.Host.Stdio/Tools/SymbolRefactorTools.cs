@@ -31,4 +31,26 @@ public static class SymbolRefactorTools
             return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
         }, ct);
     }
+
+    [McpServerTool(Name = "split_service_with_di_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", true, false,
+        "Composite preview splitting a service into partitions + forwarding facade + DI-registration deltas."),
+     Description("Composite preset (composite-split-service-di-registration) built on symbol_refactor_preview primitives: splits a service type into N partition implementations + a forwarding facade, and emits DI-registration deltas (Transient/Scoped/Singleton inferred from the existing registration) in one preview token. When the host registration file is null or the registration is missing, the preview falls back to a warning rather than crashing.")]
+    public static Task<string> PreviewSplitServiceWithDi(
+        IWorkspaceExecutionGate gate,
+        ISymbolRefactorService symbolRefactorService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Absolute path to the source file containing the type to split")] string sourceFilePath,
+        [Description("Name of the concrete type to split (e.g., 'Foo')")] string sourceType,
+        [Description("Partition specs: each { typeName, memberNames[] } — every MemberName must exist on sourceType and each member must belong to exactly one partition.")] SplitServicePartition[] partitions,
+        [Description("Absolute path to the file containing the existing services.Add* registration for sourceType; pass null to scan the workspace for any matching registration.")] string? hostRegistrationFile = null,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var dto = await symbolRefactorService.PreviewSplitServiceWithDiAsync(
+                workspaceId, sourceFilePath, sourceType, partitions ?? [], hostRegistrationFile, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
+    }
 }
