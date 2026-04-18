@@ -353,6 +353,28 @@ public static class SymbolTools
         }, ct);
     }
 
+    [McpServerTool(Name = "probe_position", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("position-probe-for-test-fixture-authoring: return the raw lexical + containing-symbol state at a source position without applying the lenient adjacent-identifier fallback used by symbol resolvers. Intended for test-fixture authoring — a caret on whitespace returns tokenKind='Whitespace' + leadingTriviaBefore=true instead of silently resolving to the next identifier. Response shape: { filePath, line, column, tokenKind, syntaxKind, tokenText, containingSymbol, containingSymbolKind, leadingTriviaBefore }.")]
+    [McpToolMetadata("symbols", "experimental", true, false,
+        "Probe the raw lexical token and containing symbol at a source position.")]
+    public static Task<string> ProbePosition(
+        McpServer server,
+        IWorkspaceExecutionGate gate,
+        ISymbolNavigationService symbolNavigationService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Absolute path to the source file")] string filePath,
+        [Description("1-based line number")] int line,
+        [Description("1-based column number")] int column,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+            var result = await symbolNavigationService.ProbePositionAsync(workspaceId, filePath, line, column, c);
+            if (result is null) throw new KeyNotFoundException($"File '{filePath}' is not part of the loaded workspace.");
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
+    }
+
     [McpServerTool(Name = "enclosing_symbol", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the enclosing symbol (method, property, type) at a given file position — useful for understanding the context of a cursor position")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Return the enclosing symbol for a source position.")]
