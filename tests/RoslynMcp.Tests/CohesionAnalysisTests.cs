@@ -243,6 +243,142 @@ public class AdapterUnderTest
     }
 
     [TestMethod]
+    public async Task GetCohesionMetrics_ActionTriadPattern_ClassifiesAsActionTriad_AndDowngradesRecommendation()
+    {
+        // lcom4-lifecycle-pattern-false-positive: A type ending in `Action`/`Handler`/`Command`/`Stage`
+        // with the exact Describe + Validate* + Execute* triad is a lifecycle pattern whose
+        // public methods are orthogonal on fields by design. LCOM4 should still report the
+        // real cluster count, but the DTO carries LifecyclePattern="action-triad" and a
+        // softened Recommendation so callers can suppress the "split" suggestion.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        string? workspaceId = null;
+
+        try
+        {
+            var filePath = Path.Combine(copiedRoot, "SampleLib", "FooAction.cs");
+            await File.WriteAllTextAsync(filePath, """
+namespace SampleLib;
+
+public class FooAction
+{
+    private readonly string _name;
+    private readonly int _limit;
+    private readonly bool _strict;
+
+    public FooAction(string name, int limit, bool strict)
+    {
+        _name = name;
+        _limit = limit;
+        _strict = strict;
+    }
+
+    public string Describe() => _name;
+
+    public bool Validate() => _limit > 0;
+
+    public int Execute() => _strict ? 1 : 0;
+}
+""", CancellationToken.None);
+
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            workspaceId = status.WorkspaceId;
+
+            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+                workspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+
+            var action = metrics.FirstOrDefault(m => m.TypeName == "FooAction");
+            Assert.IsNotNull(action, "FooAction should appear in cohesion metrics.");
+            Assert.AreEqual("action-triad", action.LifecyclePattern,
+                "FooAction with Describe/Validate/Execute triad should be classified as action-triad.");
+            Assert.IsNotNull(action.Recommendation,
+                "Recommendation should be populated for a detected lifecycle pattern.");
+            StringAssert.Contains(action.Recommendation, "action-triad",
+                "Recommendation should mention the action-triad pattern so callers can downgrade the split suggestion.");
+            // Triad methods are orthogonal on fields — each uses a different private field and
+            // forms its own LCOM4 cluster. Lcom4Score = 3 confirms this is exactly the shape the
+            // detector is designed to de-emphasize (without suppressing the raw score itself).
+            Assert.AreEqual(3, action.Lcom4Score,
+                "Describe/_name, Validate/_limit, Execute/_strict are orthogonal → expect Lcom4Score=3.");
+        }
+        finally
+        {
+            if (workspaceId is not null)
+            {
+                WorkspaceManager.Close(workspaceId);
+            }
+
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
+    public async Task GetCohesionMetrics_ActionSuffixWithoutTriad_DoesNotClassifyAsActionTriad()
+    {
+        // lcom4-lifecycle-pattern-false-positive: A type whose name ends in `Action` but whose
+        // methods are NOT the Describe/Validate*/Execute* triad should still report a regular
+        // LCOM4 score with no LifecyclePattern and no softened Recommendation — ensuring the
+        // detector is conservative and does not suppress real low-cohesion signals.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        string? workspaceId = null;
+
+        try
+        {
+            var filePath = Path.Combine(copiedRoot, "SampleLib", "NotATriadAction.cs");
+            await File.WriteAllTextAsync(filePath, """
+namespace SampleLib;
+
+public class NotATriadAction
+{
+    private readonly string _a;
+    private readonly int _b;
+    private readonly bool _c;
+
+    public NotATriadAction(string a, int b, bool c)
+    {
+        _a = a;
+        _b = b;
+        _c = c;
+    }
+
+    public string Describe() => _a;
+
+    public int Foo() => _b;
+
+    public bool Bar() => _c;
+}
+""", CancellationToken.None);
+
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            workspaceId = status.WorkspaceId;
+
+            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+                workspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+
+            var notTriad = metrics.FirstOrDefault(m => m.TypeName == "NotATriadAction");
+            Assert.IsNotNull(notTriad, "NotATriadAction should appear in cohesion metrics.");
+            Assert.IsNull(notTriad.LifecyclePattern,
+                "LifecyclePattern must be null when the Describe/Validate/Execute triad is incomplete (only Describe + Foo + Bar).");
+            Assert.IsNull(notTriad.Recommendation,
+                "Recommendation must be null when no lifecycle pattern applies, so callers fall back to the default split suggestion.");
+            Assert.AreEqual(3, notTriad.Lcom4Score,
+                "Three orthogonal methods with no shared fields should yield Lcom4Score=3 (default message applies).");
+        }
+        finally
+        {
+            if (workspaceId is not null)
+            {
+                WorkspaceManager.Close(workspaceId);
+            }
+
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
     public async Task FindSharedMembers_Supports_StaticClasses()
     {
         var copiedSolutionPath = CreateSampleSolutionCopy();

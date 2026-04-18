@@ -119,6 +119,9 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         var (methodFieldMap, methodCallMap) = BuildMethodAccessMaps(instanceMethods, typeSymbol, typeDecl, semanticModel, ct);
         var clusters = ComputeClusters(methodFieldMap, methodCallMap);
 
+        var lifecyclePattern = DetectLifecyclePattern(typeSymbol);
+        var recommendation = BuildRecommendation(lifecyclePattern);
+
         return new CohesionMetricsDto(
             TypeName: typeSymbol.Name,
             FullyQualifiedName: typeSymbol.ToDisplayString(),
@@ -128,8 +131,67 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             FieldCount: instanceFields.Count,
             Lcom4Score: clusters.Count,
             Clusters: clusters)
-        { TypeKind = typeSymbol.TypeKind.ToString() };
+        {
+            TypeKind = typeSymbol.TypeKind.ToString(),
+            LifecyclePattern = lifecyclePattern,
+            Recommendation = recommendation,
+        };
     }
+
+    /// <summary>
+    /// Detects well-known lifecycle patterns on a type whose public methods are orthogonal on
+    /// fields by design. When matched, the caller should expect a high LCOM4 score and should
+    /// NOT treat it as a code smell.
+    ///
+    /// Returns <c>"action-triad"</c> when ALL of the following hold (conservative, strict AND):
+    /// <list type="bullet">
+    ///   <item><description>Type name ends in <c>Action</c>, <c>Handler</c>, <c>Command</c>, or <c>Stage</c> (suffix match).</description></item>
+    ///   <item><description>Has a public method exactly named <c>Describe</c> (case-sensitive).</description></item>
+    ///   <item><description>Has at least one public method whose name is <c>Validate</c> or starts with <c>Validate</c>.</description></item>
+    ///   <item><description>Has at least one public method whose name is <c>Execute</c> or starts with <c>Execute</c>.</description></item>
+    /// </list>
+    /// Returns <c>null</c> otherwise. The conservative predicate avoids false-negatives where
+    /// real low-cohesion types happen to loosely match a lifecycle-style naming.
+    /// </summary>
+    private static string? DetectLifecyclePattern(INamedTypeSymbol typeSymbol)
+    {
+        var name = typeSymbol.Name;
+        var suffixMatch =
+            name.EndsWith("Action", StringComparison.Ordinal) ||
+            name.EndsWith("Handler", StringComparison.Ordinal) ||
+            name.EndsWith("Command", StringComparison.Ordinal) ||
+            name.EndsWith("Stage", StringComparison.Ordinal);
+        if (!suffixMatch) return null;
+
+        var publicMethods = typeSymbol.GetMembers()
+            .OfType<IMethodSymbol>()
+            .Where(m => m.MethodKind == MethodKind.Ordinary
+                        && m.DeclaredAccessibility == Accessibility.Public
+                        && !m.IsImplicitlyDeclared)
+            .ToList();
+
+        var hasDescribe = publicMethods.Any(m => string.Equals(m.Name, "Describe", StringComparison.Ordinal));
+        if (!hasDescribe) return null;
+
+        var hasValidate = publicMethods.Any(m => m.Name.StartsWith("Validate", StringComparison.Ordinal));
+        if (!hasValidate) return null;
+
+        var hasExecute = publicMethods.Any(m => m.Name.StartsWith("Execute", StringComparison.Ordinal));
+        if (!hasExecute) return null;
+
+        return "action-triad";
+    }
+
+    /// <summary>
+    /// Builds the softened LCOM4 recommendation text for a detected lifecycle pattern. Returns
+    /// <c>null</c> when no pattern applies, leaving consumers free to emit their default
+    /// "split into cohesive types" guidance.
+    /// </summary>
+    private static string? BuildRecommendation(string? lifecyclePattern) => lifecyclePattern switch
+    {
+        "action-triad" => "Lifecycle pattern: action-triad — LCOM4 is expected to be high by design because Describe/Validate*/Execute* are orthogonal on fields. Do not split.",
+        _ => null,
+    };
 
     /// <summary>
     /// For each method, build two maps:
