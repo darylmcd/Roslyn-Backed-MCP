@@ -430,4 +430,374 @@ public sealed class ExtractMethodService : IExtractMethodService
         IParameterSymbol param => param.Type,
         _ => null
     };
+
+    // ============================================================================
+    // extract_shared_expression_to_helper_preview
+    // ----------------------------------------------------------------------------
+    // Detects the expression at the example span, scans the enclosing type (or
+    // project when allowCrossFile=true) for structurally-identical expressions, and
+    // synthesizes a private static helper that every hit is rewritten to call.
+    // See IExtractMethodService.PreviewExtractSharedExpressionToHelperAsync for the
+    // full contract.
+    // ============================================================================
+
+    public async Task<RefactoringPreviewDto> PreviewExtractSharedExpressionToHelperAsync(
+        string workspaceId,
+        string exampleFilePath,
+        int exampleStartLine, int exampleStartColumn,
+        int exampleEndLine, int exampleEndColumn,
+        string helperName,
+        string helperAccessibility,
+        bool allowCrossFile,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(helperName))
+            throw new ArgumentException("Helper name must not be empty.", nameof(helperName));
+        if (exampleStartLine > exampleEndLine
+            || (exampleStartLine == exampleEndLine && exampleStartColumn > exampleEndColumn))
+            throw new ArgumentException("Start position must be before end position.");
+
+        var accessibilityToken = ParseAccessibility(helperAccessibility);
+
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var exampleDocument = SymbolResolver.FindDocument(solution, exampleFilePath)
+            ?? throw new InvalidOperationException($"Document not found: {exampleFilePath}");
+
+        var exampleRoot = await exampleDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
+            ?? throw new InvalidOperationException("Source document must be a C# compilation unit.");
+        var exampleModel = await exampleDocument.GetSemanticModelAsync(ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Semantic model could not be created for the example document.");
+        var exampleText = await exampleDocument.GetTextAsync(ct).ConfigureAwait(false);
+
+        var exampleSpan = BuildSelectionSpan(
+            exampleText, exampleStartLine, exampleStartColumn, exampleEndLine, exampleEndColumn);
+
+        var exampleExpression = FindContainedExpression(exampleRoot, exampleSpan);
+        var exampleType = exampleExpression.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().FirstOrDefault()
+            ?? throw new InvalidOperationException(
+                "Example expression must be inside a type declaration.");
+
+        // Derive the helper signature from free variables (locals + parameters) referenced by
+        // the example expression. Each free variable becomes an ordered parameter; the expression's
+        // inferred type becomes the helper's return type. Order-stable: first appearance wins.
+        var exampleFreeVars = CollectFreeVariables(exampleExpression, exampleModel);
+        var exampleTypeInfo = exampleModel.GetTypeInfo(exampleExpression, ct);
+        var returnType = exampleTypeInfo.ConvertedType ?? exampleTypeInfo.Type
+            ?? throw new InvalidOperationException(
+                "Could not infer the expression's return type. The example span must resolve to a typed expression.");
+        if (returnType.SpecialType == SpecialType.System_Void)
+            throw new InvalidOperationException(
+                "Cannot extract a void expression to a helper. Select a typed sub-expression instead.");
+
+        // Scan candidate documents for structurally-identical expressions. Scope is the example's
+        // containing type unless allowCrossFile=true, in which case we scan the whole project.
+        var scope = allowCrossFile
+            ? exampleDocument.Project.Documents
+            : new[] { exampleDocument };
+        var hits = new List<ExpressionHit>();
+        foreach (var doc in scope)
+        {
+            ct.ThrowIfCancellationRequested();
+            var docRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+            if (docRoot is null) continue;
+            var docModel = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (docModel is null) continue;
+
+            foreach (var candidate in docRoot.DescendantNodes().OfType<ExpressionSyntax>())
+            {
+                if (!SyntaxFactory.AreEquivalent(exampleExpression, candidate, topLevel: false))
+                    continue;
+
+                // Apply containing-type guard when allowCrossFile=false. Different containing
+                // types would force the helper to sit across a type boundary that the plan's
+                // guard explicitly forbids.
+                var candidateType = candidate.AncestorsAndSelf().OfType<TypeDeclarationSyntax>().FirstOrDefault();
+                if (candidateType is null) continue;
+                if (!allowCrossFile && candidateType != exampleType) continue;
+
+                // Semantic-type guard: every free variable must have the same ITypeSymbol as the
+                // example. Matches by position (structural equivalence aligns them 1:1).
+                var candidateFreeVars = CollectFreeVariables(candidate, docModel);
+                if (candidateFreeVars.Count != exampleFreeVars.Count)
+                    throw new InvalidOperationException(
+                        $"Structurally-identical match in '{doc.FilePath ?? doc.Name}' has {candidateFreeVars.Count} free variables; " +
+                        $"the example has {exampleFreeVars.Count}. Cannot extract — the capture sets differ.");
+                for (var i = 0; i < candidateFreeVars.Count; i++)
+                {
+                    var a = exampleFreeVars[i].Type;
+                    var b = candidateFreeVars[i].Type;
+                    if (!SymbolEqualityComparer.Default.Equals(a, b))
+                        throw new InvalidOperationException(
+                            $"Free-variable semantic-type mismatch at match in '{doc.FilePath ?? doc.Name}': " +
+                            $"example variable '{exampleFreeVars[i].Name}' is '{a?.ToDisplayString() ?? "<null>"}' but " +
+                            $"candidate variable '{candidateFreeVars[i].Name}' is '{b?.ToDisplayString() ?? "<null>"}'. " +
+                            "Cannot synthesize a shared helper with different parameter types.");
+                }
+
+                hits.Add(new ExpressionHit(doc, candidate, candidateFreeVars, candidateType));
+            }
+        }
+
+        if (hits.Count == 0)
+            throw new InvalidOperationException(
+                "No structurally-identical expressions found — even the example span did not match. " +
+                "Verify the span covers a complete expression.");
+        if (hits.Count < 2)
+            throw new InvalidOperationException(
+                "Only one occurrence of the expression was found. Use `extract_method_preview` for a single-site extraction; " +
+                "`extract_shared_expression_to_helper_preview` is intended for 2+ call sites.");
+
+        // Build the helper method. Place it on the example's containing type; every hit gets
+        // rewritten to call it via {helperName}(arg1, arg2, ...). When allowCrossFile is true
+        // and hits reside outside the example type, those call sites reach the helper via the
+        // example-type's fully-qualified name.
+        var helperTypeName = exampleType.Identifier.Text;
+        var helperNamespace = exampleType.Ancestors().OfType<BaseNamespaceDeclarationSyntax>()
+            .FirstOrDefault()?.Name.ToString();
+        var helperFullyQualifiedType = string.IsNullOrEmpty(helperNamespace)
+            ? helperTypeName
+            : $"{helperNamespace}.{helperTypeName}";
+
+        var helperMethod = BuildHelperMethod(
+            helperName, accessibilityToken, returnType, exampleFreeVars, exampleExpression);
+
+        // Rewrite hits grouped by document. Each document's edit is independent; the helper
+        // insertion happens on the example doc in a second pass.
+        var hitsByDocument = hits.GroupBy(h => h.Document.Id).ToList();
+        var accumulator = solution;
+        var fileChanges = new List<FileChangeDto>();
+
+        foreach (var group in hitsByDocument)
+        {
+            ct.ThrowIfCancellationRequested();
+            var doc = group.First().Document;
+            var docRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"Could not read syntax root for '{doc.FilePath ?? doc.Name}'.");
+            var oldText = docRoot.ToFullString();
+
+            var rewrites = group.ToDictionary(
+                h => (SyntaxNode)h.Expression,
+                h => BuildInvocation(
+                    helperName,
+                    h.FreeVariables,
+                    allowCrossFile && h.ContainingType != exampleType ? helperFullyQualifiedType : null));
+
+            var newDocRoot = docRoot.ReplaceNodes(
+                rewrites.Keys,
+                (original, _) => rewrites[original]
+                    .WithTriviaFrom(original)
+                    .WithAdditionalAnnotations(Formatter.Annotation));
+
+            if (doc.Id == exampleDocument.Id)
+            {
+                newDocRoot = InsertHelperIntoType(newDocRoot, exampleType, helperMethod);
+            }
+
+            // Route the rewritten root through `Formatter.FormatAsync` so the synthesized helper
+            // and the Formatter.Annotation-tagged invocation sites pick up editorconfig-driven
+            // indentation and spacing. Without this, the raw SyntaxFactory output emits
+            // `privatestaticstringHelper(stringarg)` (no whitespace between modifiers/tokens)
+            // and the synthesized helper fails CS1520 at apply time.
+            var documentWithEdit = doc.WithSyntaxRoot(newDocRoot);
+            var formattedDocument = await Formatter.FormatAsync(
+                documentWithEdit,
+                Formatter.Annotation,
+                options: null,
+                cancellationToken: ct).ConfigureAwait(false);
+            var formattedRoot = await formattedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException(
+                    $"Formatter produced no syntax root for '{doc.FilePath ?? doc.Name}'.");
+
+            var newText = formattedRoot.ToFullString();
+            accumulator = accumulator.WithDocumentSyntaxRoot(doc.Id, formattedRoot);
+
+            var docPath = doc.FilePath ?? doc.Name;
+            fileChanges.Add(new FileChangeDto(
+                FilePath: docPath,
+                UnifiedDiff: DiffGenerator.GenerateUnifiedDiff(oldText, newText, docPath)));
+        }
+
+        // If the example doc wasn't among the rewrite groups (can't actually happen since we
+        // always include the example hit — but kept as defense-in-depth), still insert the
+        // helper so the diff is legal.
+        if (!hitsByDocument.Any(g => g.First().Document.Id == exampleDocument.Id))
+        {
+            var docRoot = await exampleDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
+                ?? throw new InvalidOperationException("Could not re-read example document root.");
+            var oldText = docRoot.ToFullString();
+            var newDocRoot = InsertHelperIntoType(docRoot, exampleType, helperMethod);
+            var documentWithEdit = exampleDocument.WithSyntaxRoot(newDocRoot);
+            var formattedDocument = await Formatter.FormatAsync(
+                documentWithEdit,
+                Formatter.Annotation,
+                options: null,
+                cancellationToken: ct).ConfigureAwait(false);
+            var formattedRoot = await formattedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException("Formatter produced no syntax root for the example document.");
+            var newText = formattedRoot.ToFullString();
+            accumulator = accumulator.WithDocumentSyntaxRoot(exampleDocument.Id, formattedRoot);
+            var docPath = exampleDocument.FilePath ?? exampleDocument.Name;
+            fileChanges.Add(new FileChangeDto(
+                FilePath: docPath,
+                UnifiedDiff: DiffGenerator.GenerateUnifiedDiff(oldText, newText, docPath)));
+        }
+
+        var description =
+            $"Extract shared expression into helper '{helperName}' and rewrite {hits.Count} site(s) across {fileChanges.Count} file(s)";
+        var token = _previewStore.Store(
+            workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+
+        _logger.LogDebug("Extract shared expression preview: {Description}", description);
+
+        return new RefactoringPreviewDto(token, description, fileChanges, null);
+    }
+
+    private static SyntaxToken ParseAccessibility(string accessibility)
+    {
+        if (string.IsNullOrWhiteSpace(accessibility))
+            return SyntaxFactory.Token(SyntaxKind.PrivateKeyword);
+
+        return accessibility.Trim().ToLowerInvariant() switch
+        {
+            "private" => SyntaxFactory.Token(SyntaxKind.PrivateKeyword),
+            "internal" => SyntaxFactory.Token(SyntaxKind.InternalKeyword),
+            "public" => SyntaxFactory.Token(SyntaxKind.PublicKeyword),
+            _ => throw new ArgumentException(
+                $"Unsupported accessibility '{accessibility}'. Use private, internal, or public.",
+                nameof(accessibility))
+        };
+    }
+
+    private static ExpressionSyntax FindContainedExpression(
+        CompilationUnitSyntax root, Microsoft.CodeAnalysis.Text.TextSpan selectionSpan)
+    {
+        // Prefer the deepest expression fully contained by the selection span; fall back to the
+        // innermost expression touching the span. The caller supplies an example span that
+        // should bracket a complete sub-expression.
+        ExpressionSyntax? best = null;
+        foreach (var expr in root.DescendantNodes().OfType<ExpressionSyntax>())
+        {
+            if (!selectionSpan.Contains(expr.Span)) continue;
+            if (best is null || expr.Span.Length > best.Span.Length) best = expr;
+        }
+
+        if (best is not null) return best;
+
+        // Fall back: find innermost expression overlapping the span.
+        var startNode = root.FindNode(selectionSpan, getInnermostNodeForTie: true);
+        var innermost = startNode.AncestorsAndSelf().OfType<ExpressionSyntax>().FirstOrDefault();
+        return innermost
+            ?? throw new InvalidOperationException(
+                "Example span does not resolve to any C# expression. Select a complete sub-expression.");
+    }
+
+    private static List<FreeVariable> CollectFreeVariables(ExpressionSyntax expression, SemanticModel model)
+    {
+        // A "free variable" is a local/parameter symbol that is REFERENCED by the expression but
+        // is DECLARED OUTSIDE the expression's own lexical boundary. Order-preserving by the
+        // syntactic position of the first reference — matches how invocation arguments will be
+        // emitted at each rewrite site.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var list = new List<FreeVariable>();
+        foreach (var identifier in expression.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>())
+        {
+            var symbol = model.GetSymbolInfo(identifier).Symbol;
+            if (symbol is not ILocalSymbol and not IParameterSymbol) continue;
+
+            // `this` parameter is implicit; not a free variable the caller should supply.
+            if (symbol is IParameterSymbol p && p.IsThis) continue;
+
+            var name = symbol.Name;
+            if (!seen.Add(name)) continue;
+
+            var type = symbol switch
+            {
+                ILocalSymbol local => local.Type,
+                IParameterSymbol parameter => parameter.Type,
+                _ => null
+            };
+            if (type is null) continue;
+            list.Add(new FreeVariable(name, type));
+        }
+        return list;
+    }
+
+    private static MethodDeclarationSyntax BuildHelperMethod(
+        string helperName,
+        SyntaxToken accessibility,
+        ITypeSymbol returnType,
+        IReadOnlyList<FreeVariable> freeVariables,
+        ExpressionSyntax expression)
+    {
+        var returnTypeSyntax = SyntaxFactory.ParseTypeName(
+            returnType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat));
+        var parameterList = SyntaxFactory.ParameterList(
+            SyntaxFactory.SeparatedList(
+                freeVariables.Select(v =>
+                    SyntaxFactory.Parameter(SyntaxFactory.Identifier(v.Name))
+                        .WithType(SyntaxFactory.ParseTypeName(
+                            v.Type.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat))))));
+        // Strip trivia from the expression clone: the helper's body sits on its own line and
+        // should not inherit leading/trailing comments or whitespace from its first appearance.
+        var bodyExpression = expression.WithoutTrivia();
+        var body = SyntaxFactory.Block(
+            SyntaxFactory.List<StatementSyntax>(new[]
+            {
+                (StatementSyntax)SyntaxFactory.ReturnStatement(bodyExpression)
+                    .WithAdditionalAnnotations(Formatter.Annotation)
+            }));
+
+        return SyntaxFactory.MethodDeclaration(returnTypeSyntax, SyntaxFactory.Identifier(helperName))
+            .WithModifiers(SyntaxFactory.TokenList(
+                accessibility,
+                SyntaxFactory.Token(SyntaxKind.StaticKeyword)))
+            .WithParameterList(parameterList)
+            .WithBody(body)
+            .WithLeadingTrivia(SyntaxFactory.ElasticCarriageReturnLineFeed)
+            .WithAdditionalAnnotations(Formatter.Annotation);
+    }
+
+    private static InvocationExpressionSyntax BuildInvocation(
+        string helperName,
+        IReadOnlyList<FreeVariable> freeVariables,
+        string? fullyQualifiedTypePrefix)
+    {
+        var argumentList = SyntaxFactory.ArgumentList(
+            SyntaxFactory.SeparatedList(
+                freeVariables.Select(v => SyntaxFactory.Argument(SyntaxFactory.IdentifierName(v.Name)))));
+
+        ExpressionSyntax target = string.IsNullOrEmpty(fullyQualifiedTypePrefix)
+            ? SyntaxFactory.IdentifierName(helperName)
+            : SyntaxFactory.ParseExpression($"{fullyQualifiedTypePrefix}.{helperName}");
+
+        // Formatter.Annotation lets `Formatter.FormatAsync` re-flow spacing around commas,
+        // parentheses, and (when fully-qualified) dotted member-access chains per editorconfig.
+        return SyntaxFactory.InvocationExpression(target, argumentList)
+            .WithAdditionalAnnotations(Formatter.Annotation);
+    }
+
+    private static SyntaxNode InsertHelperIntoType(
+        SyntaxNode root, TypeDeclarationSyntax exampleType, MethodDeclarationSyntax helper)
+    {
+        // Locate the type in the possibly-rewritten tree by its identifier+position — the tree
+        // may already have been mutated (expression rewrites). Fall back to identifier-match
+        // when the span shifted.
+        var newType = root.DescendantNodes().OfType<TypeDeclarationSyntax>()
+            .FirstOrDefault(t => t.Identifier.Text == exampleType.Identifier.Text
+                                 && t.SpanStart == exampleType.SpanStart)
+            ?? root.DescendantNodes().OfType<TypeDeclarationSyntax>()
+                .FirstOrDefault(t => t.Identifier.Text == exampleType.Identifier.Text)
+            ?? throw new InvalidOperationException(
+                $"Could not re-locate type '{exampleType.Identifier.Text}' in the rewritten tree.");
+        var updatedType = newType.AddMembers(helper);
+        return root.ReplaceNode(newType, updatedType);
+    }
+
+    private sealed record FreeVariable(string Name, ITypeSymbol Type);
+
+    private sealed record ExpressionHit(
+        Document Document,
+        ExpressionSyntax Expression,
+        IReadOnlyList<FreeVariable> FreeVariables,
+        TypeDeclarationSyntax ContainingType);
 }
