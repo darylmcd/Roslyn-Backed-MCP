@@ -310,7 +310,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 16. `post-edit-validate-workspace-scoped-to-touched-files` — validate_recent_git_changes + doc promotion
 
-**Status:** pending · **Order:** 16 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #249, 2026-04-18) · **Order:** 16 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -364,7 +364,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 19. `dr-9-2-medium-and-related-skills-have-no-graceful-degra` — Skill degradation when server disconnected
 
-**Status:** pending · **Order:** 19 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Fixed
+**Status:** merged (PR #247, 2026-04-18) · **Order:** 19 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Fixed
 
 | Field | Content |
 |---|---|
@@ -400,7 +400,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 21. `lcom4-lifecycle-pattern-false-positive` — Lifecycle-pattern detection in cohesion metrics
 
-**Status:** pending · **Order:** 21 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 40000 tokens · **CHANGELOG category:** Fixed
+**Status:** merged (PR #248, 2026-04-18) · **Order:** 21 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 40000 tokens · **CHANGELOG category:** Fixed
 
 | Field | Content |
 |---|---|
