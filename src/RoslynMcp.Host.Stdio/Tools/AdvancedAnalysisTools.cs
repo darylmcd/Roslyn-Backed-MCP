@@ -163,6 +163,36 @@ public static class AdvancedAnalysisTools
         }, ct);
     }
 
+    [McpServerTool(Name = "find_duplicated_methods", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Find clusters of near-duplicate method bodies by AST-normalized hash."),
+     Description("Find clusters of method bodies whose AST-normalized structure is identical (or very close) — surfaces internal copy-paste that should be extracted to a shared helper. Normalization strips trivia, renames locals/parameters to ordinal placeholders, and compares the canonical SyntaxKind sequence, so cosmetic differences (formatting, local names, parameter names) don't affect bucketing. Overloads with identical bodies cluster; overloads with different bodies do not (bucketing is by body-shape, not method name). Auto-generated files (.g.cs, .Designer.cs, obj/), abstract declarations, and partial methods without bodies are excluded. Tune `minLines` up to reduce noise (default 10); narrow `projectFilter` for large solutions. `similarityThreshold` gates exact-structural matches only in the current implementation — near-miss bucketing is reserved for a future iteration, so any value in [0,1] behaves the same as 1.0.")]
+    public static Task<string> FindDuplicatedMethods(
+        IWorkspaceExecutionGate gate,
+        IDuplicateMethodDetectorService duplicateMethodDetectorService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Minimum body line count for a method to be considered (default: 10). Lower values produce more false-positive clusters.")] int minLines = 10,
+        [Description("Structural similarity threshold in [0.0, 1.0] (default: 0.85). Exact structural duplicates score 1.0; the current implementation reports only exact-structural matches, so any value <= 1.0 behaves identically.")] double similarityThreshold = 0.85,
+        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
+        [Description("Maximum number of groups to return (default: 50).")] int limit = 50,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await duplicateMethodDetectorService.FindDuplicatedMethodsAsync(
+                workspaceId,
+                new DuplicateMethodAnalysisOptions
+                {
+                    MinLines = minLines,
+                    SimilarityThreshold = similarityThreshold,
+                    ProjectFilter = projectFilter,
+                    Limit = limit
+                },
+                c);
+            return JsonSerializer.Serialize(new { count = results.Count, groups = results }, JsonDefaults.Indented);
+        }, ct);
+    }
+
     [McpServerTool(Name = "semantic_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Run semantic search over symbols and declarations."),

@@ -62,6 +62,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ICompletionService, CompletionService>();
         services.AddSingleton<ICodeActionService, CodeActionService>();
         services.AddSingleton<IUnusedCodeAnalyzer, UnusedCodeAnalyzer>();
+        services.AddSingleton<IDuplicateMethodDetectorService, DuplicateMethodDetectorService>();
         services.AddSingleton<ICodeMetricsService, CodeMetricsService>();
         services.AddSingleton<INamespaceDependencyService, NamespaceDependencyService>();
         services.AddSingleton<IDiRegistrationService, DiRegistrationService>();
