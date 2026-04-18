@@ -113,6 +113,13 @@ internal sealed class TestServiceContainer
             previewStore);
         var compositePreviewStore = new CompositePreviewStore();
 
+        // semantic-edit-with-compile-check-wrapper: hoist CompileCheckService construction
+        // above EditService so EditService can accept it as an optional dependency for
+        // the verify+autoRevertOnError pathway.
+        var compileCheckService = new CompileCheckService(
+            workspaceManager,
+            NullLogger<CompileCheckService>.Instance);
+
         return new TestServiceContainer
         {
             PreviewStore = previewStore,
@@ -179,7 +186,9 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 NullLogger<EditService>.Instance,
                 undoService,
-                changeTracker),
+                changeTracker,
+                previewStore: null,
+                compileCheckService: compileCheckService),
             FileOperationService = fileOperationService,
             ProjectMutationService = new ProjectMutationService(
                 workspaceManager,
@@ -229,9 +238,7 @@ internal sealed class TestServiceContainer
             FlowAnalysisService = new FlowAnalysisService(
                 workspaceManager,
                 NullLogger<FlowAnalysisService>.Instance),
-            CompileCheckService = new CompileCheckService(
-                workspaceManager,
-                NullLogger<CompileCheckService>.Instance),
+            CompileCheckService = compileCheckService,
             AnalyzerInfoService = new AnalyzerInfoService(
                 workspaceManager,
                 NullLogger<AnalyzerInfoService>.Instance),

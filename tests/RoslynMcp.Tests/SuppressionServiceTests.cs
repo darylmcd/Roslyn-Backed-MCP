@@ -84,13 +84,27 @@ public sealed class SuppressionServiceTests
     {
         public Func<string, string, IReadOnlyList<TextEditDto>, CancellationToken, bool, Task<TextEditResultDto>>? OnApply { get; init; }
 
+        // SuppressionService only forwards the default (verify=false, autoRevertOnError=false)
+        // parameter values to apply_text_edit. The stub ignores them — it verifies that the
+        // pragma-injection edit is wired up, not the verify pathway.
         public Task<TextEditResultDto> ApplyTextEditsAsync(
-            string workspaceId, string filePath, IReadOnlyList<TextEditDto> edits, CancellationToken ct, bool skipSyntaxCheck = false) =>
+            string workspaceId,
+            string filePath,
+            IReadOnlyList<TextEditDto> edits,
+            CancellationToken ct,
+            bool skipSyntaxCheck = false,
+            bool verify = false,
+            bool autoRevertOnError = false) =>
             OnApply?.Invoke(workspaceId, filePath, edits, ct, skipSyntaxCheck)
             ?? Task.FromResult(new TextEditResultDto(false, filePath, 0, []));
 
         public Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
-            string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false) =>
+            string workspaceId,
+            IReadOnlyList<FileEditsDto> fileEdits,
+            CancellationToken ct,
+            bool skipSyntaxCheck = false,
+            bool verify = false,
+            bool autoRevertOnError = false) =>
             throw new NotSupportedException();
 
         public Task<RefactoringPreviewDto> PreviewMultiFileTextEditsAsync(

@@ -75,8 +75,8 @@ public static class ServerSurfaceCatalog
         Tool("semantic_search", "advanced-analysis", "stable", true, false, "Run semantic search over symbols and declarations."),
         Tool("find_duplicated_methods", "advanced-analysis", "stable", true, false, "Find clusters of near-duplicate method bodies by AST-normalized hash."),
 
-        Tool("apply_text_edit", "editing", "stable", false, true, "Apply direct text edits to a single file."),
-        Tool("apply_multi_file_edit", "editing", "experimental", false, true, "Apply direct text edits to multiple files."),
+        Tool("apply_text_edit", "editing", "stable", false, true, "Apply direct text edits to a single file; optional verify + auto-revert on new compile errors."),
+        Tool("apply_multi_file_edit", "editing", "experimental", false, true, "Apply direct text edits to multiple files; optional verify + auto-revert on new compile errors."),
         Tool("preview_multi_file_edit", "editing", "experimental", true, false, "Preview a multi-file edit batch; returns per-file diffs and a preview token."),
         Tool("preview_multi_file_edit_apply", "editing", "experimental", false, true, "Apply a previously previewed multi-file edit."),
         Tool("restructure_preview", "refactoring", "experimental", true, false, "Preview a syntax-tree pattern-based find-and-replace using __placeholder__ captures."),

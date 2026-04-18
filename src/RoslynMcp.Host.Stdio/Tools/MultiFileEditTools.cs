@@ -14,8 +14,8 @@ public static class MultiFileEditTools
 
     [McpServerTool(Name = "apply_multi_file_edit", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "experimental", false, true,
-        "Apply direct text edits to multiple files."),
-     Description("Apply text edits to multiple files in the workspace sequentially. All edits share a single pre-apply snapshot — revert_last_apply rolls back the entire batch atomically. If a file validation or apply fails partway through, revert_last_apply restores the pre-call state for any files that were already written. Prefer preview_multi_file_edit + apply_composite_preview for agent workflows that need a review step.")]
+        "Apply direct text edits to multiple files; optional verify + auto-revert on new compile errors."),
+     Description("Apply text edits to multiple files in the workspace sequentially. All edits share a single pre-apply snapshot — revert_last_apply rolls back the entire batch atomically. If a file validation or apply fails partway through, revert_last_apply restores the pre-call state for any files that were already written. When verify=true, runs compile_check ONCE after the batch completes (scoped to the single owning project when the batch is single-project, or the full solution when it spans multiple) and attaches the new-error set as Verification. When autoRevertOnError=true AND new errors appeared, the whole batch is rolled back through the single batch-level undo snapshot. Prefer preview_multi_file_edit + apply_composite_preview for agent workflows that need a review step.")]
     public static Task<string> ApplyMultiFileEdit(
         McpServer server,
         IWorkspaceExecutionGate gate,
@@ -23,7 +23,9 @@ public static class MultiFileEditTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Array of file edits. Each has filePath (string) and edits (array of TextEditDto with startLine, startColumn, endLine, endColumn, newText)")] FileEditsDto[] fileEdits,
         CancellationToken ct = default,
-        [Description("When false (default), each C# file is parsed after edits; parser errors block that file's apply.")] bool skipSyntaxCheck = false)
+        [Description("When false (default), each C# file is parsed after edits; parser errors block that file's apply.")] bool skipSyntaxCheck = false,
+        [Description("When true, run compile_check once after the batch completes (scoped to the single owning project when possible) and attach the result under Verification. Pre-existing errors are filtered out, so only NEW errors appear in the outcome. Default false.")] bool verify = false,
+        [Description("When true AND verify surfaces new compile errors, automatically revert the entire batch through the single-slot undo path this call populated. Ignored when verify is false. Default false.")] bool autoRevertOnError = false)
     {
         return gate.RunWriteAsync(workspaceId, async c =>
         {
@@ -33,7 +35,7 @@ public static class MultiFileEditTools
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, fileEdit.FilePath, c).ConfigureAwait(false);
             }
 
-            var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, c, skipSyntaxCheck).ConfigureAwait(false);
+            var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, c, skipSyntaxCheck, verify, autoRevertOnError).ConfigureAwait(false);
             return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
         }, ct);
     }
