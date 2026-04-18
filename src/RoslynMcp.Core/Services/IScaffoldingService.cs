@@ -31,4 +31,18 @@ public interface IScaffoldingService
     /// <param name="request">The batch scaffolding parameters.</param>
     /// <param name="ct">Cancellation token.</param>
     Task<RefactoringPreviewDto> PreviewScaffoldTestBatchAsync(string workspaceId, ScaffoldTestBatchDto request, CancellationToken ct);
+
+    /// <summary>
+    /// Previews scaffolding the FIRST test file for a target service that has no existing
+    /// fixture in the destination test project. Inspects the service's constructor and public
+    /// methods, derives boilerplate shape from up to three most-recently-modified sibling
+    /// fixtures, and emits one <c>&lt;Service&gt;Tests.cs</c> with ClassInitialize / service
+    /// instantiation + one smoke-test per public method. Distinct from
+    /// <see cref="PreviewScaffoldTestAsync"/> which adds a single method-focused test to an
+    /// existing fixture.
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="request">The first-test-file scaffolding parameters.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<RefactoringPreviewDto> PreviewScaffoldFirstTestFileAsync(string workspaceId, ScaffoldFirstTestFileDto request, CancellationToken ct);
 }
