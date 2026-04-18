@@ -614,6 +614,9 @@ preferred over Grep / Bash: dotnet build — in particular:
   targeted test runs
 - mcp__roslyn__document_symbols for enumerating a file's public surface
 - mcp__roslyn__project_diagnostics for full-file diagnostic sweeps
+- For any pattern not covered above (trace-flow, impact, inheritance,
+  semantic-find, etc.), consult the pattern→tool table in
+  ai_docs/bootstrap-read-tool-primer.md before defaulting to Grep/Bash.
 
 { IF preview-then-apply: }
 For each intended *_apply, first call the corresponding *_preview in the SAME

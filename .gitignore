@@ -482,12 +482,16 @@ $RECYCLE.BIN/
 *.swp
 
 # Local AI/MCP client configuration (developer machine specific).
-# .claude/skills/ is the exception — it holds repo-only maintainer skills
-# that Claude Code auto-discovers in this checkout. They're tracked so
-# collaborators see them; they're not bundled with the marketplace plugin.
+# .claude/skills/ and .claude/agents/ are exceptions — they hold repo-only
+# maintainer skills and subagent definitions that Claude Code auto-discovers
+# in this checkout. They're tracked so collaborators see them (and so the
+# shipped prompts under ai_docs/prompts/ can reference subagent paths
+# accurately); they're not bundled with the marketplace plugin.
 .claude/*
 !.claude/skills/
 !.claude/skills/**
+!.claude/agents/
+!.claude/agents/**
 .mcp.json
 # ...except the plugin's own .mcp.json at the repo root, which is the
 # Claude Code plugin loader's canonical MCP-server descriptor and must
