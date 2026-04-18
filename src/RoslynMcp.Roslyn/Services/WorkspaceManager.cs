@@ -81,6 +81,36 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public bool IsStale(string workspaceId) =>
         ContainsWorkspace(workspaceId) && _fileWatcher.IsStale(workspaceId);
 
+    /// <inheritdoc />
+    public string? GetStaleReason(string workspaceId) =>
+        ContainsWorkspace(workspaceId) ? _fileWatcher.GetStaleReason(workspaceId) : null;
+
+    /// <inheritdoc />
+    public void EnsureFreshForWritePreview(string workspaceId)
+    {
+        // workspace-stale-after-external-edit-feedback: write-preview tools (change_signature_
+        // preview, move_type_to_file_preview, etc.) must refuse when the file watcher has
+        // observed an external edit the server did NOT produce. Applying against a drifted
+        // tree would compose edits from a snapshot that no longer matches disk, so the caller
+        // could silently clobber the external change at *_apply time. Auto-reload is the wrong
+        // remedy here — it would transparently swallow the drift. The caller must explicitly
+        // decide (workspace_reload to accept the new on-disk state, or revert the external
+        // edit and retry).
+        //
+        // The message contains "stale" so ToolErrorHandler.BuildExceptionMessage (which scans
+        // for stale-workspace indicators) appends the workspace_reload suggestion to the error
+        // envelope; the explicit workspace_reload mention below is the human-readable hint.
+        var reason = GetStaleReason(workspaceId);
+        if (reason == StaleReasons.ExternalEdit)
+        {
+            throw new InvalidOperationException(
+                $"Workspace '{workspaceId}' is stale due to an external edit (staleReason='{reason}'). " +
+                "A tracked .cs/.csproj/.slnx file changed on disk outside this server's apply channel. " +
+                "Write-preview tools refuse in this state to avoid composing edits against a drifted snapshot. " +
+                "Call workspace_reload to accept the on-disk state, then re-run the preview.");
+        }
+    }
+
     /// <summary>
     /// Returns the first live session whose <see cref="WorkspaceSession.LoadedPath"/> matches
     /// the given full path (case-insensitive on Windows where paths are case-insensitive).
@@ -518,6 +548,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         if (result)
         {
             session.IncrementVersion();
+            // workspace-stale-after-external-edit-feedback: attribute the pending watcher fire
+            // (MSBuildWorkspace.TryApplyChanges writes .cs/.csproj files to disk on its way
+            // out) to reason="apply" BEFORE the watcher event lands. Last-writer-wins inside
+            // the stale window, so a racing watcher event for an unrelated external edit may
+            // still overwrite "apply" with "external-edit" — which is the correct escalation.
+            _fileWatcher.MarkStale(workspaceId, StaleReasons.Apply);
             // preview-token-cross-coupling-bundle (BREAKING): do NOT InvalidateAll sibling
             // preview tokens on a successful apply. Each PreviewEntry holds its own immutable
             // Roslyn Solution snapshot captured at preview time; sibling `*_apply` calls must
@@ -941,6 +977,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private WorkspaceStatusDto BuildStatus(WorkspaceSession session)
     {
         var isStale = _fileWatcher.IsStale(session.WorkspaceId);
+        // workspace-stale-after-external-edit-feedback: emit the reason alongside the flag so
+        // callers can distinguish a self-apply from a genuine external edit. Serialization is
+        // gated on WhenWritingNull, so a fresh workspace doesn't pay a byte.
+        var staleReason = isStale ? _fileWatcher.GetStaleReason(session.WorkspaceId) : null;
 
         if (session.Workspace is null || session.LoadedPath is null)
         {
@@ -955,7 +995,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 Projects: [],
                 IsLoaded: false,
                 IsStale: isStale,
-                WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray());
+                WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray(),
+                StaleReason: staleReason);
         }
 
         var projects = session.ProjectStatuses;
@@ -971,7 +1012,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             Projects: projects,
             IsLoaded: true,
             IsStale: isStale,
-            WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray());
+            WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray(),
+            StaleReason: staleReason);
     }
 
     private WorkspaceSession GetRequiredSession(string workspaceId)

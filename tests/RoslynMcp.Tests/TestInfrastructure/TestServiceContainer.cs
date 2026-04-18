@@ -8,6 +8,7 @@ internal sealed class TestServiceContainer
 {
     public required IPreviewStore PreviewStore { get; init; }
     public required WorkspaceManager WorkspaceManager { get; init; }
+    public required IFileWatcherService FileWatcher { get; init; }
     public required SymbolNavigationService SymbolNavigationService { get; init; }
     public required SymbolSearchService SymbolSearchService { get; init; }
     public required ReferenceService ReferenceService { get; init; }
@@ -65,10 +66,11 @@ internal sealed class TestServiceContainer
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
         var previewStore = new PreviewStore();
+        var fileWatcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
         var workspaceManager = new WorkspaceManager(
             NullLogger<WorkspaceManager>.Instance,
             previewStore,
-            new FileWatcherService(NullLogger<FileWatcherService>.Instance),
+            fileWatcher,
             new WorkspaceManagerOptions { MaxConcurrentWorkspaces = 64 });
         var workspaceExecutionGate = new WorkspaceExecutionGate(new ExecutionGateOptions(), workspaceManager);
         var compilationCache = new CompilationCache(workspaceManager);
@@ -124,6 +126,7 @@ internal sealed class TestServiceContainer
         {
             PreviewStore = previewStore,
             WorkspaceManager = workspaceManager,
+            FileWatcher = fileWatcher,
             WorkspaceExecutionGate = workspaceExecutionGate,
             DotnetCommandRunner = dotnetCommandRunner,
             GatedCommandExecutor = gatedCommandExecutor,
