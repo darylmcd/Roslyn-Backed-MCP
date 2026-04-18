@@ -73,6 +73,7 @@ public static class ServerSurfaceCatalog
         Tool("get_namespace_dependencies", "advanced-analysis", "stable", true, false, "Build namespace dependency graphs."),
         Tool("get_nuget_dependencies", "advanced-analysis", "stable", true, false, "Inspect NuGet package references and versions."),
         Tool("semantic_search", "advanced-analysis", "stable", true, false, "Run semantic search over symbols and declarations."),
+        Tool("find_duplicated_methods", "advanced-analysis", "stable", true, false, "Find clusters of near-duplicate method bodies by AST-normalized hash."),
 
         Tool("apply_text_edit", "editing", "stable", false, true, "Apply direct text edits to a single file."),
         Tool("apply_multi_file_edit", "editing", "experimental", false, true, "Apply direct text edits to multiple files."),
