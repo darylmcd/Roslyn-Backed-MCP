@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Added
+
+- **Added:** `split_service_with_di_preview` composite preview splits a DI-consumed service type into N partition implementations + a forwarding facade and emits DI-registration deltas against the existing host registration (Transient/Scoped/Singleton inferred from the current `services.Add*` call). Built on top of v1.18 `symbol_refactor_preview` primitives (`restructure` + `edit` ops); when the host registration file is null or the registration is missing, the preview falls back to a warning rather than crashing (`composite-split-service-di-registration`). Includes `SplitServicePartition` DTO on `ISymbolRefactorService`.
+
+### Maintenance
+
+- Tests: 678 → 680 (+2 across 1 new regression test file, `CompositeSplitServiceDiPreviewTests.cs`).
+- Backlog: 1 row closed (P3: 1 — `composite-split-service-di-registration`).
+
 ## [1.24.0] - 2026-04-18
 
 Skill-surface expansion — **13 new shipped skills** across three waves (Tier 1: `version-bump`, `impact-assessment`, `semantic-find`, `architecture-review`, `nuget-preflight`; Tier 2: `trace-flow`, `di-audit`, `inheritance-explorer`, `format-sweep`, `generate-tests`, `workspace-health`; Tier 3: `exception-audit`, `modernize`) plus **15 existing-skill improvements** (ranked-issues, scaffold chain, preserve-list, bulk-paste, dry-run, personas, stale-doc, family-mode, safe-hardening, flake-detection, diff-view, explain-mode, decompose, safety-filter, validate-shape). Internal: skill-packaging clean-up moved 4 maintainer skills to `.claude/skills/`; `eng/verify-skills-are-generic.ps1` gates shipped skills against repo-specific references and wires into `just ci` + `verify-release.ps1`.
