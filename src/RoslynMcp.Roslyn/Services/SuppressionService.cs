@@ -15,23 +15,22 @@ public sealed class SuppressionService : ISuppressionService
     private readonly ICompileCheckService? _compileCheck;
 
     /// <summary>
-    /// Legacy constructor preserved for stub-based unit tests in
-    /// <see cref="RoslynMcp.Tests.SuppressionServiceTests"/>. Production DI wires the
-    /// overload that also takes <see cref="IWorkspaceManager"/> and
-    /// <see cref="ICompileCheckService"/>; without those the structural pragma-scope
-    /// operations still work but the fire-site confirmation in
-    /// <c>VerifyPragmaSuppressesAsync</c> reports <c>null</c>.
+    /// Constructs a <see cref="SuppressionService"/>. The <paramref name="workspace"/> and
+    /// <paramref name="compileCheck"/> dependencies are optional: when either is <c>null</c>
+    /// the structural pragma-scope operations (<c>AddPragmaWarningDisableAsync</c>,
+    /// <c>WidenPragmaScopeAsync</c>, and the directive-scan portion of
+    /// <c>VerifyPragmaSuppressesAsync</c>) continue to work, but the fire-site confirmation
+    /// inside <c>VerifyPragmaSuppressesAsync</c> — which replays the live compilation to
+    /// confirm the target diagnostic is actually reported at the target line — degrades to
+    /// <c>null</c> in the <see cref="PragmaVerifyResultDto.DiagnosticFiresAtLine"/> field.
+    /// Production DI supplies all four dependencies; stub-driven unit tests that exercise
+    /// only the editorconfig and edit-service wiring can omit the workspace pair.
     /// </summary>
-    public SuppressionService(IEditorConfigService editorConfig, IEditService editService)
-        : this(editorConfig, editService, workspace: null, compileCheck: null)
-    {
-    }
-
     public SuppressionService(
         IEditorConfigService editorConfig,
         IEditService editService,
-        IWorkspaceManager? workspace,
-        ICompileCheckService? compileCheck)
+        IWorkspaceManager? workspace = null,
+        ICompileCheckService? compileCheck = null)
     {
         _editorConfig = editorConfig;
         _editService = editService;
