@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Added:** `change_type_namespace_preview` relocates a type between namespaces in the same project — rewrites the namespace declaration, optionally relocates the file, and adjusts consumer `using` directives respecting ambient parent-namespace resolution (`change-type-namespace-preview`).
+- **Added:** `find_duplicated_methods` returns method-body clusters by AST-normalized hash across a workspace (or project scope) for internal-copy-paste discovery — trivia-stripped, local-renamed, syntax-kind-sequenced, overload-invariant, generated-file-excluding (`duplicate-method-body-detector`).
 - **Added:** `trace_exception_flow` returns every `catch` clause whose declared type is assignable from the input, with body excerpt and rethrow-as annotations — built to shorten error-classification refactor discovery (`exception-handler-classification-tracer`).
 - **Added:** `scaffold_test_preview` accepts an optional `referenceTestFile` and replicates sibling-test scaffolding (fixture class, `IClassFixture<T>`, attributes) when a pattern is inferable (`scaffold-test-sibling-pattern-inference`).
 
@@ -30,7 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Maintenance:** Documented that Claude Code's deferred-tool advertisement is not a connection signal; only `server_info` / `server_heartbeat` probes prove connectivity (`dr-9-3-medium-deferred-tool-advertisement-is-a-misleadi`).
 - **Maintenance:** Documented that `revert_last_apply` does not clean up file-creation side effects from `extract_*_apply`; suggested `delete_file_apply` follow-up (`dr-9-8-documented-limitation-interacts-poorly-with-side`).
 - **Maintenance:** Added "Self-edit recipe" section to `ai_docs/runtime.md` with worked example showing the `Edit` + read-side MCP + `compile_check` verify loop expected in bootstrap mode (`self-edit-bootstrap-mode-mcp-development`).
-- **Backlog (running tally, sweep execution pass 2):** P3: +1 (`exception-handler-classification-tracer`); P4: +1 (`dr-9-12-posttooluse-hook-adds-n-1-verification-step-per`). Test-file tally: +1 (`ExceptionFlowServiceTests.cs`).
+- **Backlog (running tally, sweep execution passes 2 + 3):** P3: +3 (`change-type-namespace-preview`, `duplicate-method-body-detector`, `exception-handler-classification-tracer`); P4: +1 (`dr-9-12-posttooluse-hook-adds-n-1-verification-step-per`). Test-file tally: +3 (`DuplicateMethodDetectorTests.cs`, `ExceptionFlowServiceTests.cs`, `NamespaceRelocationTests.cs`).
 
 ## [1.22.0] - 2026-04-17
 

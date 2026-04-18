@@ -91,15 +91,15 @@
       "estimatedContextTokens": 50000,
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
-      "status": "pending",
+      "status": "deferred",
       "correctnessClass": "P3-UX",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": null,
+      "branch": "remediation/composite-split-service-di-registration",
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": ""
+      "notes": "Subagent (batch-2, 2026-04-18) stalled mid-reasoning — final message was the thought fragment 'Actually, let me just try inspecting the file:' with NO <<<RESULT>>> sentinel (matches Appendix C step 1 malformed-result failure). Subagent had written 4 modified prod files + 1 new test (729 insertions) but did not commit / validate / open PR. Partial work preserved as WIP commit 3b56517 on branch remediation/composite-split-service-di-registration. DO NOT re-dispatch to a subagent without human review — the stall point is unknown, re-pickup may need restart rather than completion. Backlog row `composite-split-service-di-registration` remains open in ai_docs/backlog.md P3 table."
     },
     {
       "id": "duplicate-method-body-detector",
@@ -110,15 +110,15 @@
       "estimatedContextTokens": 55000,
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P3-UX",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": null,
+      "branch": "remediation/duplicate-method-body-detector",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/245",
+      "mergedAt": "2026-04-18T00:59:14Z",
+      "notes": "Scope expanded beyond planned 2 prod + 1 test to 6 prod + 1 test via the planner v3 new-MCP-tool structural-unit exemption: Core contract split (IDuplicateMethodDetectorService + DuplicatedMethodGroupDto + DuplicateMethodAnalysisOptions) + Roslyn impl (DuplicateMethodDetectorService) + Host.Stdio surface (AdvancedAnalysisTools + ServerSurfaceCatalog) + DI registration (ServiceCollectionExtensions.cs). The plan cited Build*Diff helpers across ChangeSignatureService/RestructureService/StringLiteralReplaceService/EditService as real-world validation; those had been consolidated into DiffGenerator.GenerateUnifiedDiff pre-session so subagent pivoted to 9 synthetic unit tests. verify-ai-docs and verify-release both green; unrelated MSBuild file-lock flakes under concurrent test load passed in isolation."
     },
     {
       "id": "change-type-namespace-preview",
@@ -129,15 +129,15 @@
       "estimatedContextTokens": 55000,
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P3-UX",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": null,
+      "branch": "remediation/change-type-namespace-preview",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/244",
+      "mergedAt": "2026-04-18T00:56:26Z",
+      "notes": "Scope was 5 prod + 1 test (planned 2 prod + 1 test): INamespaceRelocationService co-located in the service file; DI registration added to ServiceCollectionExtensions.cs. Fits the planner v3 new-MCP-tool structural-unit exemption (4 units: Core contract / Roslyn impl / Host.Stdio tool surface / Registration). verify-ai-docs and verify-release both green; unrelated pre-existing flaky tests passed in isolation."
     },
     {
       "id": "observation-rows-obsoletion-sweep",
