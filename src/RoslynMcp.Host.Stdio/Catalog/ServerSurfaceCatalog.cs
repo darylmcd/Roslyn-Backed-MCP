@@ -36,6 +36,7 @@ public static class ServerSurfaceCatalog
         Tool("symbol_relationships", "symbols", "stable", true, false, "Combine definition, reference, base, and implementation relationships."),
         Tool("find_references_bulk", "symbols", "stable", true, false, "Resolve references for multiple symbols in one request."),
         Tool("find_property_writes", "symbols", "stable", true, false, "Find property write sites and classify object-initializer writes."),
+        Tool("probe_position", "symbols", "experimental", true, false, "Probe the raw lexical token and containing symbol at a source position."),
         Tool("enclosing_symbol", "symbols", "stable", true, false, "Return the enclosing symbol for a source position."),
         Tool("goto_type_definition", "symbols", "stable", true, false, "Navigate from a symbol usage to its type definition."),
         Tool("get_completions", "symbols", "stable", true, false, "Return IntelliSense-style completion items at a position."),
