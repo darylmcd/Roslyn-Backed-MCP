@@ -607,6 +607,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     args.Diagnostic.Message);
             });
 
+            // dr-9-10-initial-does-not-wait-for-concurrent-to-finaliz: if a concurrent
+            // out-of-process `dotnet restore` is mutating `obj/project.assets.json` or
+            // `obj/*.dgspec.json` while we call OpenSolutionAsync, MSBuild latches onto an
+            // in-flight assets file and Roslyn captures stale MetadataReference handles
+            // (surfacing as CS1705 later, per the 2026-04-15 samplesolution experimental
+            // promotion audit). Poll the relevant obj/ artefacts and wait for their mtimes
+            // to stabilise before opening. Bounded by RestoreRaceWaitMs (default 2000 ms,
+            // 0 disables entirely); no-op when no such files exist.
+            await WaitForStableRestoreArtifactsAsync(fullPath, ct).ConfigureAwait(false);
+
             if (fullPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
                 fullPath.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
             {
@@ -639,6 +649,184 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         finally
         {
             session.LoadLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Interval between mtime samples inside the restore-race stability probe. Chosen so the
+    /// stable window is roughly 250 ms (two samples separated by this interval) — long enough
+    /// that a `dotnet restore` in its final write phase cannot squeeze an asset rewrite inside
+    /// it, short enough that a no-op pre-check returns within ~1.5 × <c>StableWindowMs</c>.
+    /// </summary>
+    private const int RestoreRaceSampleIntervalMs = 125;
+
+    /// <summary>
+    /// Required stable window (in milliseconds) that every detected restore artefact must
+    /// hold its mtime for before <see cref="LoadIntoSessionAsync"/> hands the solution to
+    /// MSBuild. Two consecutive samples separated by <see cref="RestoreRaceSampleIntervalMs"/>
+    /// produce a ~250 ms window.
+    /// </summary>
+    private const int RestoreRaceStableWindowMs = 250;
+
+    /// <summary>
+    /// dr-9-10-initial-does-not-wait-for-concurrent-to-finaliz — best-effort wait for a
+    /// concurrent out-of-process <c>dotnet restore</c> to finish before MSBuild opens the
+    /// solution.
+    /// </summary>
+    /// <remarks>
+    /// Enumerates <c>obj/project.assets.json</c> and <c>obj/*.dgspec.json</c> under the
+    /// workspace root, polls their <see cref="File.GetLastWriteTimeUtc"/>, and returns once
+    /// every file's mtime has been stable for
+    /// <see cref="RestoreRaceStableWindowMs"/> ms — or the
+    /// <see cref="WorkspaceManagerOptions.RestoreRaceWaitMs"/> cap fires. No-op when the cap
+    /// is zero, when no artefacts exist (typical on a pristine checkout before first build),
+    /// or when all artefacts are already stable on the first sample (typical on a healthy
+    /// load after a completed restore).
+    /// </remarks>
+    private async Task WaitForStableRestoreArtifactsAsync(string fullPath, CancellationToken ct)
+    {
+        var capMs = _options.RestoreRaceWaitMs;
+        if (capMs <= 0)
+        {
+            return;
+        }
+
+        var rootDirectory = fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+            ? Path.GetDirectoryName(fullPath)
+            : Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrWhiteSpace(rootDirectory) || !Directory.Exists(rootDirectory))
+        {
+            return;
+        }
+
+        // Enumerate each project's obj/ directory artefacts once up-front and track their
+        // timestamps in a small dictionary. EnumerateFiles is recursive but bounded by the
+        // solution's own directory tree, so on real solutions this is a few dozen tiny stats.
+        var artefacts = EnumerateRestoreArtefacts(rootDirectory);
+        if (artefacts.Count == 0)
+        {
+            return;
+        }
+
+        var deadline = DateTime.UtcNow.AddMilliseconds(capMs);
+        var lastSnapshot = new Dictionary<string, DateTime>(artefacts.Count, StringComparer.OrdinalIgnoreCase);
+        var stableSince = new Dictionary<string, DateTime>(artefacts.Count, StringComparer.OrdinalIgnoreCase);
+
+        // Seed the snapshot. A file that does not exist yet is tracked as DateTime.MinValue
+        // so the stability check catches the "appears mid-poll" case (restore creating the
+        // first project.assets.json while we race it).
+        var seedNow = DateTime.UtcNow;
+        foreach (var path in artefacts)
+        {
+            lastSnapshot[path] = SafeGetLastWriteTimeUtc(path);
+            stableSince[path] = seedNow;
+        }
+
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var now = DateTime.UtcNow;
+            var allStable = true;
+
+            foreach (var path in artefacts)
+            {
+                var currentMtime = SafeGetLastWriteTimeUtc(path);
+                if (currentMtime != lastSnapshot[path])
+                {
+                    // Mtime moved — reset the stability window for this file.
+                    lastSnapshot[path] = currentMtime;
+                    stableSince[path] = now;
+                    allStable = false;
+                    continue;
+                }
+
+                if ((now - stableSince[path]).TotalMilliseconds < RestoreRaceStableWindowMs)
+                {
+                    allStable = false;
+                }
+            }
+
+            if (allStable)
+            {
+                return;
+            }
+
+            if (now >= deadline)
+            {
+                _logger.LogWarning(
+                    "workspace_load: restore-race wait hit {CapMs} ms cap for '{Path}' without reaching a stable mtime window. Proceeding with load — callers may observe CS1705 drift; re-run workspace_reload after the concurrent restore finishes if so.",
+                    capMs,
+                    fullPath);
+                return;
+            }
+
+            // Bound the delay so we never overshoot the deadline by more than one interval.
+            var remainingMs = (int)Math.Max(0, (deadline - now).TotalMilliseconds);
+            var delayMs = Math.Min(RestoreRaceSampleIntervalMs, remainingMs);
+            if (delayMs == 0)
+            {
+                // Last-iteration guard: if we've arrived at the deadline, take one final
+                // reading on the next loop and exit via the deadline branch.
+                continue;
+            }
+
+            await Task.Delay(delayMs, ct).ConfigureAwait(false);
+        }
+    }
+
+    private static List<string> EnumerateRestoreArtefacts(string rootDirectory)
+    {
+        // Enumerate every obj/ directory under the solution root. EnumerateDirectories with
+        // SearchOption.AllDirectories is bounded by the solution tree; a typical solution
+        // has one obj/ directory per project. We then look only for the two files Roslyn /
+        // MSBuild actually consume during OpenSolutionAsync — project.assets.json and the
+        // project's <Project>.dgspec.json — so deep nested Debug/Release/TFM subdirectories
+        // do not inflate the probe set.
+        var results = new List<string>();
+        try
+        {
+            foreach (var objDir in Directory.EnumerateDirectories(rootDirectory, "obj", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var assetsPath = Path.Combine(objDir, "project.assets.json");
+                    if (File.Exists(assetsPath))
+                    {
+                        results.Add(assetsPath);
+                    }
+
+                    foreach (var dgspec in Directory.EnumerateFiles(objDir, "*.dgspec.json", SearchOption.TopDirectoryOnly))
+                    {
+                        results.Add(dgspec);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Tolerate transient IO errors (a concurrent restore may delete/recreate
+                    // subdirectories). The probe is best-effort; skip and continue.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort: if we cannot enumerate at all, skip the wait entirely.
+        }
+
+        return results;
+    }
+
+    private static DateTime SafeGetLastWriteTimeUtc(string path)
+    {
+        try
+        {
+            // File.Exists check collapses the "file deleted mid-probe" case into MinValue,
+            // which the caller treats as a change in the next sample (restore rewrote it).
+            return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return DateTime.MinValue;
         }
     }
 
