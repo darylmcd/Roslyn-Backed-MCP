@@ -87,7 +87,7 @@ Don't invent middleware; use the filter slots the SDK provides (`AddCallToolFilt
 
 | Concern | Location | Why |
 |---|---|---|
-| Pre-binding / binding / post-binding exception classification | A single `AddCallToolFilter` in [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs) — see § 2 above | One boundary for 142 tools; covers every failure mode |
+| Pre-binding / binding / post-binding exception classification | A single `AddCallToolFilter` in [Program.cs](../../src/RoslynMcp.Host.Stdio/Program.cs) — see § 2 above | One boundary for 147 tools; covers every failure mode |
 | Error taxonomy (`InvalidArgument`, `NotFound`, `WorkspaceReloadedDuringCall`, `InternalError`, `RateLimited`, `Timeout`, ...) | [`ToolErrorHandler.ClassifyError`](../../src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs) | Pure classification; reused by filter + resource wrappers |
 | Response envelope shape (`error: true, category, tool, message, exceptionType`) | `ToolErrorHandler.FormatErrorResponse` | Shared shape across tool-execution errors and resource errors |
 | Metrics / `_meta` injection | The same filter (cross-cutting, not per-tool) | Prevents per-tool duplication; guarantees coverage |

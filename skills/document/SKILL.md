@@ -27,6 +27,22 @@ Use **`server_info`** or **`roslyn://server/catalog`**. Navigation helpers inclu
 
 ## Workflow
 
+### Step 0 (optional): Stale-Doc Detection Mode
+
+If the user invokes this skill with `--audit-stale`, `check-stale-docs`, or asks "which docs are outdated?", run in detection-only mode:
+
+1. Enumerate every documented public member via `document_symbols` on each source file (filter to members with XML doc comments).
+2. For each documented member, call `symbol_info` to get the current signature.
+3. Compare the existing `<summary>` and `<param>`/`<returns>` content against the current signature:
+   - **Missing `<param>` tags** for existing parameters → stale
+   - **Extra `<param>` tags** referencing parameters that no longer exist → stale
+   - **Parameter type changed** since doc was written (heuristic: doc mentions old type name) → possibly stale
+   - **Return type changed** from `Task` to `Task<T>` (or vice versa) with no `<returns>` update → stale
+   - **`<inheritdoc/>`** on a member whose base doc is empty or mismatched → broken
+   - **Single `<summary>`** for a method that now throws (heuristic: body contains `throw new ...` and summary says nothing about exceptions) → incomplete
+4. Emit a table: member, file:line, staleness signal, suggested rewrite tool (this skill's Step 3).
+5. Offer to proceed through Steps 1-5 to fix the flagged members; otherwise exit reporting the table.
+
 ### Step 1: Discover Undocumented APIs
 
 1. Ensure a workspace is loaded.

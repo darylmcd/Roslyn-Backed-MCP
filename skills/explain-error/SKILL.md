@@ -22,6 +22,22 @@ Use **`server_info`** or **`roslyn://server/catalog`**. To pull diagnostic detai
 
 ## Workflow
 
+### Step 0 (optional): Bulk Paste Mode
+
+If `$ARGUMENTS` is a multi-line build/test output dump rather than a single ID or location, enter bulk mode:
+
+1. Parse each line for one of:
+   - MSBuild: `<file>(<line>,<col>): error|warning <DiagID>: <message>`
+   - GCC-style: `<file>:<line>:<col>: error|warning: <DiagID>: <message>`
+   - xUnit/NUnit failure blocks (test name + stack trace with file:line)
+2. Deduplicate by `(DiagID, file, line, column)`.
+3. Group by `DiagID` and summarize: "{N} instances of {DiagID} across {M} files."
+4. For each unique `DiagID`, run Step 2 (Explain) **once** with a representative instance. Do not repeat per-instance.
+5. Offer a single batched `fix_all_preview` per `DiagID` at the end instead of per-instance fixes.
+6. Produce one explanation per `DiagID` plus a consolidated batch-fix plan.
+
+Skip to Step 1 if `$ARGUMENTS` is a single ID/location.
+
 ### Step 1: Find the Diagnostic
 
 **If a diagnostic ID was given:**

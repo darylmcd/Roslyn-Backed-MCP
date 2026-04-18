@@ -50,7 +50,7 @@ Plugin components:
 | Directory | Contents |
 |-----------|----------|
 | `.claude-plugin/` | Plugin manifest (`plugin.json`) and marketplace descriptor (`marketplace.json`) |
-| `skills/` | 10 SKILL.md files: analyze, refactor, review, document, security, dead-code, test-coverage, migrate-package, explain-error, complexity |
+| `skills/` | 31 SKILL.md files. Analysis/review: analyze, review, complexity, security, test-coverage, dead-code, explain-error, architecture-review, impact-assessment, trace-flow, di-audit, inheritance-explorer, exception-audit. Refactor: refactor, refactor-loop, extract-method, code-actions, migrate-package, modernize. Search: semantic-find. Tests: test-triage, generate-tests. Session / workspace: session-undo, snippet-eval, project-inspection, workspace-health, format-sweep. Documentation: document. Release: update, version-bump, nuget-preflight. |
 | `hooks/` | `hooks.json` with PreToolUse (preview-before-apply guard) and PostToolUse (compile-check reminder) |
 
 See `README.md` § *Claude Code Plugin Installation* for the full skill table.

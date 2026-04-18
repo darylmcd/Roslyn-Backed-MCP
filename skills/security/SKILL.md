@@ -86,6 +86,30 @@ If time and scope permit:
 1. Call `project_diagnostics` and filter for security-adjacent warnings (CA2100, CA2300-CA2399, CA3000-CA3147, CA5300-CA5405).
 2. For top findings, call `diagnostic_details` to get curated fix options.
 
+### Step 8 (optional): Safe Hardening Auto-fix
+
+For diagnostics with **curated auto-fixes that are safe by construction** (no behavioral change, just style/safety hardening), offer to apply via `code_fix_preview` → `code_fix_apply`. Only auto-apply fixes on this allowlist without explicit user confirmation; anything else requires confirm-per-fix.
+
+| Safe-to-auto-apply | Diagnostic IDs | Why |
+|--------------------|----------------|-----|
+| Enable nullable warnings | — (project property) | Pre-fix hardening; surfaces latent bugs |
+| `ConfigureAwait(false)` on library code | CA2007 | Avoids deadlocks in sync-over-async callers |
+| Seal internal types | CA1852 | No external consumers can break |
+| Use `Uri` instead of string for URLs | CA1054, CA1055, CA1056 | Structural correctness; purely typed |
+| Avoid `CreateFile` / `FileOpen` without `FileShare` | CA2000 | Resource safety |
+| Mark assemblies with `CLSCompliant` | CA1014 | Metadata-only |
+| `StringComparison` on string operations | CA1304, CA1305, CA1307, CA1310 | Deterministic behavior |
+| `Environment.NewLine` usage | CA1865 | Portability |
+
+**NOT safe to auto-apply** (always confirm per-fix even in this step): SQL/command-injection fixes (CA2100, CA3001-CA3147), cryptographic remediation (CA5300-CA5405), deserialization hardening (CA2300-CA2362) — these need human review because a naive fix can change behavior or break dependent systems.
+
+Workflow:
+1. Collect allowlisted diagnostic IDs that have non-zero instances in this solution.
+2. For each, call `fix_all_preview` with `scope: "solution"` (or narrower if the user specified scope).
+3. Show the preview: files affected, change count.
+4. After confirmation (or `--auto-apply-safe` flag), call `fix_all_apply` followed by `compile_check`. If compile breaks, call `revert_last_apply` and surface the issue.
+5. Re-run `security_diagnostics` to confirm counts dropped as expected.
+
 ## Output Format
 
 ```

@@ -17,8 +17,6 @@ You are a C# solution analyst. Your job is to load a workspace and produce a com
 
 When the tool list or workflows are unclear, call **`server_info`**, read the **`server_catalog`** resource (`roslyn://server/catalog`), or use MCP prompt **`discover_capabilities`** with category `analysis` or `all`.
 
-**Repo shortcut:** from this repository root, `just verify-docs` and `just verify-version-drift` align with contributor doc/version checks (optional; not a substitute for loading the user's solution).
-
 ## Connectivity precheck
 
 Before running any `mcp__roslyn__*` tool call, probe the server once:
@@ -26,7 +24,7 @@ Before running any `mcp__roslyn__*` tool call, probe the server once:
 1. Call `mcp__roslyn__server_info` — confirm the response includes `connection.state: "ready"`.
 2. If the call fails OR `connection.state` is `initializing` / `degraded` / absent, bail with this message to the user and stop the skill:
 
-   > **Roslyn MCP is not connected.** This skill requires an active Roslyn MCP server. Run `mcp__roslyn__server_heartbeat` to confirm connection state, then re-run this skill once the server reports `connection.state: "ready"`. See `ai_docs/runtime.md` § *Connection-state signals* for the canonical probes (`server_info` / `server_heartbeat`) and for the `mcp-connection-session-resilience` background.
+   > **Roslyn MCP is not connected.** This skill requires an active Roslyn MCP server. Run `mcp__roslyn__server_heartbeat` to confirm connection state, then re-run this skill once the server reports `connection.state: "ready"`. See the [Connection-state signals reference](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/ai_docs/runtime.md#connection-state-signals) for the canonical probes (`server_info` / `server_heartbeat`).
 
 3. If `connection.state` is `"ready"`, proceed with the rest of the workflow. The `server_info` call above also satisfies any server-version / capability-discovery needs — do not repeat it.
 
@@ -70,7 +68,20 @@ Execute these steps in order. Use the Roslyn MCP tools — do not shell out for 
 2. Call `security_diagnostics` to get security-related compiler findings.
 3. Summarize any findings by severity.
 
-### Step 7: Close Workspace
+### Step 7: Rank Top Issues
+
+Aggregate every finding from Steps 3-6 into a single ranked list using this priority rubric:
+
+| Tier | Weight | Source |
+|------|--------|--------|
+| P0 — Blockers | 100 | Compilation errors; Critical/High-severity NuGet CVEs; High-severity security diagnostics |
+| P1 — High impact | 40-60 | Maintainability index < 40 OR cyclomatic complexity > 20; Medium-severity CVEs; Medium-severity security diagnostics |
+| P2 — Medium impact | 15-30 | Cyclomatic complexity 10-20; LCOM4 > 1 with 3+ method clusters; most-frequent compiler warnings (top-5 IDs) |
+| P3 — Low impact | 5-10 | Other warnings; LCOM4 > 1 with 2 clusters; informational analyzer hits |
+
+Compose the Top-N Actionable Issues list: sort by tier then weight descending, break ties by file:line ascending, cap at 10-15 items. Each entry includes: tier, one-line description, file:line, suggested fix tool (e.g., `code_fix_preview` for a diagnostic ID, `refactor` skill for extract/rename, `dead-code` skill for unused).
+
+### Step 8: Close Workspace
 
 1. Call `workspace_close` to release resources.
 
@@ -90,6 +101,9 @@ Present a structured report with these sections:
 - Security Findings: {count}
 - NuGet Vulnerabilities: {count}
 
+### Top-N Actionable Issues (ranked)
+{table: #, tier (P0-P3), issue, file:line, suggested tool/skill}
+
 ### Compilation Issues
 {table of top errors and warnings with file, line, diagnostic ID, message}
 
@@ -103,7 +117,5 @@ Present a structured report with these sections:
 {list of findings with severity and remediation guidance}
 
 ### Recommendations
-{prioritized list of actionable items}
+{the Top-N list above is the recommendation; restate the top 3 with next-action tool call}
 ```
-
-Rank recommendations by impact: errors first, then security, then complexity, then cohesion.

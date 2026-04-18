@@ -11,6 +11,7 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | `../CI_POLICY.md` | Validation and merge-gating policy |
 | `workflow.md` | Git/branch/worktree/PR workflow |
 | `runtime.md` | Build, test, run commands; execution context; **Roslyn MCP client policy** (use server for C# refactoring, not discovery-only) |
+| `bootstrap-read-tool-primer.md` | Canonical pattern→tool cheat sheet; session-verb triggers; read-side-tool-first discipline for every session incl. bootstrap self-edit |
 | `backlog.md` | Open work only; **sync when closing items** (same PR or immediate follow-up). See § Agent contract. |
 | `architecture.md` | System layers, data flow, key abstractions |
 

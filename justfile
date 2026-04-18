@@ -48,6 +48,10 @@ verify-docs:
 verify-version-drift:
     ./eng/verify-version-drift.ps1
 
+# Check shipped skills (./skills/) have no repo-specific references
+verify-skills:
+    ./eng/verify-skills-are-generic.ps1
+
 # --- Run ---
 
 # Run the stdio host process locally
@@ -59,11 +63,11 @@ run:
 # Fast local sanity check before pushing (build + test)
 validate: build test
 
-# Local equivalent of the CI pipeline (docs + release validation + vuln audit)
-ci: verify-docs verify-release vuln-audit
+# Local equivalent of the CI pipeline (docs + skills + release validation + vuln audit)
+ci: verify-docs verify-skills verify-release vuln-audit
 
 # Everything including full release validation
-full: verify-docs verify-release vuln-audit
+full: verify-docs verify-skills verify-release vuln-audit
 
 # --- Clean ---
 

@@ -5,7 +5,7 @@
      This is a companion to deep-review-and-refactor.md. It should be maintained
      whenever experimental tools are promoted or added. When the deep-review appendix
      updates, verify the experimental-only subset in this prompt still matches.
-   Last surface audit: 2026-04-14 (catalog 2026.04, post-v1.18.0; 40 experimental tools, 20 experimental prompts, 1 experimental resource). v1.15.0 added `apply_with_verify`, `remove_interface_member_preview`, and the `source_file_lines` resource template; v1.16.0 added `format_check` (experimental) and promoted 25 experimental tools to stable; v1.17.0 added 7 experimental tools (`preview_multi_file_edit`, `preview_multi_file_edit_apply`, `restructure_preview`, `replace_string_literals_preview`, `scaffold_test_batch_preview`, `symbol_impact_sweep`, `test_reference_map`); v1.18.0 added 4 experimental tools (`change_signature_preview`, `symbol_refactor_preview`, `validate_workspace`, `get_prompt_text`) and the `refactor_loop` experimental prompt. Check the Phase sections below for updated counts. -->
+   Last surface audit: 2026-04-17 (catalog 2026.04, post-v1.23.0; 43 experimental tools, 20 experimental prompts, 4 experimental resources). v1.15.0 added `apply_with_verify`, `remove_interface_member_preview`, and the `source_file_lines` resource template; v1.16.0 added `format_check` (experimental) and promoted 25 experimental tools to stable; v1.17.0 added 7 experimental tools (`preview_multi_file_edit`, `preview_multi_file_edit_apply`, `restructure_preview`, `replace_string_literals_preview`, `scaffold_test_batch_preview`, `symbol_impact_sweep`, `test_reference_map`); v1.18.0 added 4 experimental tools (`change_signature_preview`, `symbol_refactor_preview`, `validate_workspace`, `get_prompt_text`) and the `refactor_loop` experimental prompt; v1.19.x–v1.23.x added 3 experimental tools (`change_type_namespace_preview`, `trace_exception_flow`, `validate_recent_git_changes`) plus 3 experimental resources (stable tier also gained `server_heartbeat` and `find_duplicated_methods`). Check the Phase sections below for updated counts. -->
 
 > Use this prompt with an AI coding agent that has access to the Roslyn MCP server.
 > **Primary purpose:** systematically exercise every experimental tool and prompt to produce an **experimental promotion scorecard** with evidence for promote / keep-experimental / needs-more-evidence / deprecate decisions. Also produces a minimal coverage ledger for the experimental surface.
@@ -628,7 +628,7 @@ The file must exist at the canonical path. The task is **incomplete** without th
 ## Appendix — Experimental surface reference (2026.04, post-v1.18.0)
 
 > **Maintenance note:** This appendix mirrors the experimental entries from the live catalog. The live catalog from Phase 0 is authoritative. Treat this as a convenience snapshot.
-> Last verified: 2026-04-14 against catalog version 2026.04 (post-v1.18.0) — **40 experimental tools, 20 experimental prompts, 1 experimental resource** (v1.16.0 25-tool promotion batch + `format_check`; v1.17.0 added 7 experimental tools; v1.18.0 added 4 experimental tools + 1 prompt + 1 skill).
+> Last verified: 2026-04-17 against catalog version 2026.04 (post-v1.23.0) — **43 experimental tools, 20 experimental prompts, 4 experimental resources** (v1.16.0 25-tool promotion batch + `format_check`; v1.17.0 added 7 experimental tools; v1.18.0 added 4 experimental tools + 1 prompt + 1 skill; v1.19.x–v1.23.x added 3 experimental tools + 3 experimental resources).
 
 ### Experimental tools by category
 
