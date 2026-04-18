@@ -497,15 +497,15 @@
       "estimatedContextTokens": 50000,
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "branch": "remediation/dr-9-10-restore-race-wait",
+      "worktreePath": ".worktrees/dr-9-10-restore-race-wait",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/262",
+      "mergedAt": "2026-04-18T14:48:24Z",
+      "notes": "Scope grew from planned 2 prod + 1 test to 3 prod + 1 test \u2014 added `WorkspaceManagerOptions.cs` to surface the restore-race tunable. Env var `ROSLYNMCP_RESTORE_RACE_WAIT_MS` read in `Program.cs` (default 2000ms, 0 disables); mtime-stability probe on `obj/project.assets.json`/`obj/*.dgspec.json` with 250ms repeatable-stable check and 2s cap. Workspace-scoped + targeted race-test filters green; full-suite surfaced 1-5 pre-existing SharedWorkspaceTestBase flakes reproducible on pristine main (ci-test-parallelization-audit)."
     },
     {
       "id": "semantic-edit-with-compile-check-wrapper",
@@ -630,15 +630,15 @@
       "estimatedContextTokens": 60000,
       "productionFilesTouched": 3,
       "testFilesAdded": 1,
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "branch": "remediation/extract-shared-expression-to-helper-across-call-sites",
+      "worktreePath": ".worktrees/extract-shared-expression-to-helper-across-call-sites",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/263",
+      "mergedAt": "2026-04-18T14:57:24Z",
+      "notes": "3 prod + 1 test + 1 sample file + ServerSurfaceCatalog + IExtractMethodService (structural-unit exemption). The plan listed `RestructureService.cs` as a reuse target but inline `SyntaxFactory.AreEquivalent` sufficed; `RestructureService.cs` was not modified, keeping the non-exempt prod count at 3. Added `samples/SampleSolution/SampleLib/SharedExpressionProbe.cs` as a real-world validation target. Verify-release full run ended green 700/700 after occasional pre-existing shared-workspace flakes passed on retry."
     },
     {
       "id": "replace-invocation-pattern-refactor",
