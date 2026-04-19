@@ -554,15 +554,15 @@
       "estimatedContextTokens": 55000,
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "branch": "remediation/dead-local-variable-detector",
+      "worktreePath": ".worktrees/dead-local-variable-detector",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/275",
+      "mergedAt": "2026-04-19T13:54:04Z",
+      "notes": "Scope grew to 5 prod + 1 test via the planner v3 new-MCP-tool structural-unit exemption: IUnusedCodeAnalyzer contract + DeadLocalDto + DeadLocalsAnalysisOptions + ServerSurfaceCatalog entry + AdvancedAnalysisTools host extension alongside the UnusedCodeAnalyzer impl extension. Non-exempt prod count = 2. verify-release.ps1 surfaced 3 known rotating shared-workspace flakes (DiLifetimeOverrideTests.Last_Wins_Add_Then_Add_Marks_Earlier_Singleton_As_Overridden_With_Scoped_Winner, OrchestrationIntegrationTests.Migrate_Package_Preview..., RefactoringToolsIntegrationTests.OrganizeUsings_RemovesUnusedUsings_DoesNotLeaveBlankLines); all 3 pass in isolation per the known-flake list."
     },
     {
       "id": "pragma-directive-scope-manipulation",
@@ -592,15 +592,15 @@
       "estimatedContextTokens": 55000,
       "productionFilesTouched": 3,
       "testFilesAdded": 1,
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "branch": "remediation/breaking-change-impact-preview-for-positional-records",
+      "worktreePath": ".worktrees/breaking-change-impact-preview-for-positional-records",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/276",
+      "mergedAt": "2026-04-19T14:16:37Z",
+      "notes": "Scope grew to 6 prod + 3 test files via planner v3 new-MCP-tool structural-unit exemption: IRecordFieldAdditionService contract + RecordFieldAdditionImpactDto + RecordImpactTools host (new file, matches CouplingAnalysisTools precedent) + ServerSurfaceCatalog entry + ServiceCollectionExtensions DI + RecordFieldAdditionService impl. Non-exempt prod count = 2 (RecordFieldAdditionService, RecordImpactTools). TestBase + TestServiceContainer updated for new service registration. First verify-release.ps1 run hit the known rotating shared-workspace flakes (DiLifetimeOverrideTests.Single_Registration_Service_Type_Is_Excluded_From_Override_Chains, ExceptionFlowServiceTests.TraceExceptionFlow_FindsTypedCatch_WithRethrowAsAndBodyExcerpt); both passed in isolation and in a subsequent clean run (747/747). verify-ai-docs.ps1 green."
     },
     {
       "id": "coupling-metrics-tool",
