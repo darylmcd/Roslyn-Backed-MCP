@@ -136,6 +136,7 @@ public static class ServerSurfaceCatalog
         Tool("find_consumers", "analysis", "stable", true, false, "Find all types that depend on a given type or interface, classified by dependency kind."),
         Tool("get_cohesion_metrics", "analysis", "stable", true, false, "Measure type cohesion via LCOM4 metrics, identifying independent method clusters."),
         Tool("get_coupling_metrics", "analysis", "stable", true, false, "Measure per-type afferent/efferent coupling + Martin's instability index."),
+        Tool("preview_record_field_addition", "analysis", "experimental", true, false, "Pre-flight audit: every site impacted by adding a positional field to a record."),
         Tool("find_shared_members", "analysis", "stable", true, false, "Find private members used by multiple public methods to inform type extractions."),
 
         Tool("move_type_to_file_preview", "refactoring", "stable", true, false, "Preview moving a type declaration into its own file."),

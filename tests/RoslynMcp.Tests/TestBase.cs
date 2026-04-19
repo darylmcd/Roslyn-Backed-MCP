@@ -57,6 +57,7 @@ public abstract class TestBase
     protected static BulkRefactoringService BulkRefactoringService { get; private set; } = null!;
     protected static CohesionAnalysisService CohesionAnalysisService { get; private set; } = null!;
     protected static CouplingAnalysisService CouplingAnalysisService { get; private set; } = null!;
+    protected static RecordFieldAdditionService RecordFieldAdditionService { get; private set; } = null!;
     protected static ConsumerAnalysisService ConsumerAnalysisService { get; private set; } = null!;
     protected static TypeExtractionService TypeExtractionService { get; private set; } = null!;
     protected static TypeMoveService TypeMoveService { get; private set; } = null!;
@@ -152,6 +153,7 @@ public abstract class TestBase
         BulkRefactoringService = services.BulkRefactoringService;
         CohesionAnalysisService = services.CohesionAnalysisService;
         CouplingAnalysisService = services.CouplingAnalysisService;
+        RecordFieldAdditionService = services.RecordFieldAdditionService;
         ConsumerAnalysisService = services.ConsumerAnalysisService;
         TypeExtractionService = services.TypeExtractionService;
         TypeMoveService = services.TypeMoveService;

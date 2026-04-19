@@ -90,6 +90,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IConsumerAnalysisService, ConsumerAnalysisService>();
         services.AddSingleton<ICohesionAnalysisService, CohesionAnalysisService>();
         services.AddSingleton<ICouplingAnalysisService, CouplingAnalysisService>();
+        services.AddSingleton<IRecordFieldAdditionService, RecordFieldAdditionService>();
         services.AddSingleton<ITypeMoveService, TypeMoveService>();
         services.AddSingleton<INamespaceRelocationService, NamespaceRelocationService>();
         services.AddSingleton<IInterfaceExtractionService, InterfaceExtractionService>();
