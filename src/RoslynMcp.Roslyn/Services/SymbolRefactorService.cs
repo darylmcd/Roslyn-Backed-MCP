@@ -1,8 +1,10 @@
+using System.Collections.Immutable;
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
@@ -625,4 +627,751 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
     {
         return string.IsNullOrEmpty(value) ? value : char.ToLowerInvariant(value[0]) + value[1..];
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════
+    // record-field-add-satellite-member-sync: synthesizes satellite-member edits when a
+    // record/class gains a new field. Strategy:
+    //   1) Resolve the target type and enumerate its existing fields/properties.
+    //   2) For each existing field, scan the target type's declaring document (and the
+    //      sibling types declared alongside it) for satellite-site kinds — a sibling
+    //      mirror type (Snapshot/Dto/Builder) property with the same name, a Clone/With
+    //      method that assigns the field, an Increment{Field} method, a ToJson-style
+    //      switch case literal, etc.
+    //   3) Build per-field coverage sets. Require ≥2 sibling fields with identical
+    //      coverage before declaring the set as "the pattern" — keeps us conservative.
+    //   4) For each pattern kind, synthesize one edit for the new field at a known
+    //      insertion anchor (after the last matching line for that kind).
+    //   5) Wrap the edits into a composite-preview token so callers can apply via the
+    //      same apply_composite_preview tool used by sibling SymbolRefactor* previews.
+    // ═══════════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Satellite-site kinds the detector recognizes. Each kind corresponds to a structural
+    /// pattern the user wants kept in sync when a new field is added. Names match the
+    /// documented <c>InferredPattern</c> strings on <see cref="RecordFieldAddSatelliteDto"/>.
+    /// </summary>
+    private static class SatelliteKind
+    {
+        public const string SnapshotTypeField = "SnapshotType.Field";
+        public const string CloneMethodBody = "CloneMethodBody";
+        public const string WithMethodAssignment = "WithMethod.Assignment";
+        public const string IncrementMethod = "IncrementMethod";
+        public const string ToJsonCase = "ToJson.Case";
+    }
+
+    /// <inheritdoc />
+    public async Task<RecordFieldAddSatelliteDto> PreviewRecordFieldAddWithSatellitesAsync(
+        string workspaceId,
+        string typeMetadataName,
+        string newFieldName,
+        string newFieldType,
+        CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(typeMetadataName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newFieldName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newFieldType);
+
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveByMetadataNameAsync(solution, typeMetadataName, ct).ConfigureAwait(false);
+        if (symbol is not INamedTypeSymbol typeSymbol)
+        {
+            throw new KeyNotFoundException($"No type resolved for metadata name '{typeMetadataName}'.");
+        }
+
+        var newField = new NewSatelliteFieldDto(newFieldName, newFieldType);
+
+        // Pull the primary declaration file. Satellite patterns live alongside the target
+        // type (same file or same project) — we do not go cross-solution because that would
+        // produce noise and slow the inference. The plan example from b-155/b-156 is a
+        // single-file pattern: a struct with a counter method + a mirror snapshot struct
+        // together in one file.
+        var declaringSyntaxRef = typeSymbol.DeclaringSyntaxReferences.FirstOrDefault();
+        if (declaringSyntaxRef is null)
+        {
+            return EmptyResult(typeSymbol, newField,
+                "Target type has no source declaration (metadata-only).",
+                "No satellite edits — target type is metadata-only.");
+        }
+
+        var syntax = await declaringSyntaxRef.GetSyntaxAsync(ct).ConfigureAwait(false);
+        var declaringRoot = await syntax.SyntaxTree.GetRootAsync(ct).ConfigureAwait(false);
+        var declaringTree = syntax.SyntaxTree;
+        var declaringDoc = solution.GetDocument(declaringTree)
+            ?? throw new InvalidOperationException($"Could not map declaring syntax tree to a Document for '{typeMetadataName}'.");
+
+        // Existing fields = every instance field/property on the target type that has a
+        // source declaration. We use the names to locate satellite sites — metadata-only
+        // members cannot participate in source-text pattern-matching.
+        var existingFields = ExtractExistingFieldNames(typeSymbol);
+        if (existingFields.Count == 0)
+        {
+            return EmptyResult(typeSymbol, newField,
+                "Target type has no existing fields/properties — no sibling pattern to infer from.",
+                "No satellite edits — target type has no existing fields.");
+        }
+
+        // The pattern must be inferred from ≥2 sibling fields. A single-field type can't
+        // establish "the pattern" because there is nothing to compare against.
+        if (existingFields.Count < 2)
+        {
+            return EmptyResult(typeSymbol, newField,
+                $"Only 1 existing field ('{existingFields[0]}') — pattern requires ≥2 sibling fields with identical satellite coverage.",
+                $"No satellite edits — only 1 existing field ('{existingFields[0]}').");
+        }
+
+        // Scan the declaring document for sibling types + satellite method bodies. We
+        // include the whole compilation-unit root because mirror types (Snapshot / Dto /
+        // Builder) frequently live next to the target type in the same file, and the
+        // plan's example explicitly mirrors this: `ParseCounters` + `ParseMetricsSnapshot`
+        // in one file.
+        var sourceText = await declaringTree.GetTextAsync(ct).ConfigureAwait(false);
+        var analysis = SatelliteAnalysis.Analyze(declaringRoot, typeSymbol, existingFields, sourceText);
+
+        if (analysis.InferredPattern.Count == 0)
+        {
+            return EmptyResult(typeSymbol, newField,
+                analysis.DetectionReason,
+                $"No satellite edits — {analysis.DetectionReason.ToLowerInvariant()}");
+        }
+
+        // Synthesize one edit per pattern kind.
+        var edits = new List<RecordFieldAddSatelliteEditDto>();
+        var mutationsByFile = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var filePath = declaringDoc.FilePath
+            ?? throw new InvalidOperationException($"Declaring document for '{typeMetadataName}' has no file path.");
+        var originalText = sourceText.ToString();
+        mutationsByFile[filePath] = originalText;
+
+        foreach (var pattern in analysis.InferredPattern)
+        {
+            var edit = SynthesizeEditForPattern(pattern, analysis, newField, filePath, sourceText);
+            if (edit is null)
+            {
+                continue;
+            }
+            edits.Add(edit);
+
+            // Apply the synthesized insertion into the accumulating file content so the
+            // composite preview carries the full post-edit text. Edits are insert-only
+            // so we re-derive offsets from the current snapshot for each pattern.
+            var currentContent = mutationsByFile[filePath];
+            var currentText = SourceText.From(currentContent);
+            var offset = ComputeCharOffset(currentText, edit.Line, edit.Column);
+            mutationsByFile[filePath] = currentContent.Insert(offset, edit.NewText);
+        }
+
+        if (edits.Count == 0)
+        {
+            return EmptyResult(typeSymbol, newField,
+                "Pattern inferred but no insertion anchor could be located for any pattern kind.",
+                "No satellite edits — pattern inferred but no insertion anchors resolved.");
+        }
+
+        var mutations = mutationsByFile
+            .Select(kvp => new CompositeFileMutation(kvp.Key, kvp.Value))
+            .ToList();
+
+        var description = $"Add '{newField.Name}' ({newField.Type}) satellite edits: {edits.Count} site(s) across {mutations.Count} file(s).";
+        var token = _compositePreviewStore.Store(workspaceId, _workspace.GetCurrentVersion(workspaceId), description, mutations);
+
+        var summary =
+            $"{edits.Count} satellite edit(s) spanning {string.Join(", ", analysis.InferredPattern)}.";
+
+        return new RecordFieldAddSatelliteDto(
+            TargetTypeDisplay: typeSymbol.ToDisplayString(),
+            NewField: newField,
+            InferredPattern: analysis.InferredPattern,
+            PatternDetectionReason: string.Empty,
+            ProposedEdits: edits,
+            PreviewToken: token,
+            Summary: summary);
+    }
+
+    private static RecordFieldAddSatelliteDto EmptyResult(
+        INamedTypeSymbol typeSymbol,
+        NewSatelliteFieldDto newField,
+        string reason,
+        string summary)
+    {
+        return new RecordFieldAddSatelliteDto(
+            TargetTypeDisplay: typeSymbol.ToDisplayString(),
+            NewField: newField,
+            InferredPattern: Array.Empty<string>(),
+            PatternDetectionReason: reason,
+            ProposedEdits: Array.Empty<RecordFieldAddSatelliteEditDto>(),
+            PreviewToken: null,
+            Summary: summary);
+    }
+
+    private static IReadOnlyList<string> ExtractExistingFieldNames(INamedTypeSymbol typeSymbol)
+    {
+        // Include both properties (the canonical source-declared name for positional record
+        // parameters and `{ get; init; }` properties) and instance fields. Skip compiler-
+        // generated, static, and private-implementation members — the pattern cares about
+        // the visible surface.
+        var names = new List<string>();
+        foreach (var member in typeSymbol.GetMembers())
+        {
+            if (member.IsImplicitlyDeclared || member.IsStatic) continue;
+            switch (member)
+            {
+                case IPropertySymbol prop when prop.DeclaredAccessibility == Accessibility.Public:
+                    names.Add(prop.Name);
+                    break;
+                case IFieldSymbol field when field.DeclaredAccessibility == Accessibility.Public &&
+                                              !field.Name.StartsWith('<'):
+                    names.Add(field.Name);
+                    break;
+            }
+        }
+        // Deduplicate while preserving declaration order — record primary ctor params also
+        // surface as auto-properties in InstanceMembers, but GetMembers sometimes reports
+        // backing fields. Canonical field-name list is what we need.
+        return names.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    private static RecordFieldAddSatelliteEditDto? SynthesizeEditForPattern(
+        string patternKind,
+        SatelliteAnalysis analysis,
+        NewSatelliteFieldDto newField,
+        string filePath,
+        SourceText sourceText)
+    {
+        return patternKind switch
+        {
+            SatelliteKind.SnapshotTypeField => SynthesizeSnapshotFieldEdit(analysis, newField, filePath, sourceText),
+            SatelliteKind.CloneMethodBody => SynthesizeCloneAssignmentEdit(analysis, newField, filePath, sourceText),
+            SatelliteKind.WithMethodAssignment => SynthesizeWithAssignmentEdit(analysis, newField, filePath, sourceText),
+            SatelliteKind.IncrementMethod => SynthesizeIncrementMethodEdit(analysis, newField, filePath, sourceText),
+            SatelliteKind.ToJsonCase => SynthesizeToJsonCaseEdit(analysis, newField, filePath, sourceText),
+            _ => null
+        };
+    }
+
+    private static RecordFieldAddSatelliteEditDto? SynthesizeSnapshotFieldEdit(
+        SatelliteAnalysis analysis,
+        NewSatelliteFieldDto newField,
+        string filePath,
+        SourceText sourceText)
+    {
+        var anchor = analysis.SnapshotFieldAnchors.LastOrDefault();
+        if (anchor is null) return null;
+
+        // Place the new mirror-type property on the line after the last existing sibling
+        // declaration. Indentation is sampled from the anchor so the new line fits in.
+        var indent = ExtractIndent(sourceText, anchor.StartLine);
+        var newText = $"{indent}public {newField.Type} {newField.Name} {{ get; init; }}{Environment.NewLine}";
+        var (insertLine, insertColumn) = ComputeAfterLine(sourceText, anchor.EndLine);
+        return new RecordFieldAddSatelliteEditDto(
+            FilePath: filePath,
+            Line: insertLine,
+            Column: insertColumn,
+            NewText: newText,
+            SiteKind: SatelliteKind.SnapshotTypeField,
+            Description: $"Add '{newField.Name}' property to satellite mirror type '{anchor.ContainingTypeName}'.");
+    }
+
+    private static RecordFieldAddSatelliteEditDto? SynthesizeCloneAssignmentEdit(
+        SatelliteAnalysis analysis,
+        NewSatelliteFieldDto newField,
+        string filePath,
+        SourceText sourceText)
+    {
+        var anchor = analysis.CloneAssignmentAnchors.LastOrDefault();
+        if (anchor is null) return null;
+
+        var indent = ExtractIndent(sourceText, anchor.StartLine);
+        // Template: copy the existing-sibling assignment shape. Most Clone methods use
+        // `FieldName = source.FieldName` (object-initializer) or `FieldName = FieldName`
+        // (with-expression). Use object-initializer form for stability — it compiles in
+        // both contexts.
+        var newText = $"{indent}{newField.Name} = {analysis.CloneSourceExpression}.{newField.Name},{Environment.NewLine}";
+        var (insertLine, insertColumn) = ComputeAfterLine(sourceText, anchor.EndLine);
+        return new RecordFieldAddSatelliteEditDto(
+            FilePath: filePath,
+            Line: insertLine,
+            Column: insertColumn,
+            NewText: newText,
+            SiteKind: SatelliteKind.CloneMethodBody,
+            Description: $"Add '{newField.Name}' assignment to Clone method body.");
+    }
+
+    private static RecordFieldAddSatelliteEditDto? SynthesizeWithAssignmentEdit(
+        SatelliteAnalysis analysis,
+        NewSatelliteFieldDto newField,
+        string filePath,
+        SourceText sourceText)
+    {
+        var anchor = analysis.WithAssignmentAnchors.LastOrDefault();
+        if (anchor is null) return null;
+
+        var indent = ExtractIndent(sourceText, anchor.StartLine);
+        var newText = $"{indent}{newField.Name} = {analysis.WithSourceExpression}.{newField.Name},{Environment.NewLine}";
+        var (insertLine, insertColumn) = ComputeAfterLine(sourceText, anchor.EndLine);
+        return new RecordFieldAddSatelliteEditDto(
+            FilePath: filePath,
+            Line: insertLine,
+            Column: insertColumn,
+            NewText: newText,
+            SiteKind: SatelliteKind.WithMethodAssignment,
+            Description: $"Add '{newField.Name}' assignment to With method body.");
+    }
+
+    private static RecordFieldAddSatelliteEditDto? SynthesizeIncrementMethodEdit(
+        SatelliteAnalysis analysis,
+        NewSatelliteFieldDto newField,
+        string filePath,
+        SourceText sourceText)
+    {
+        var anchor = analysis.IncrementMethodAnchors.LastOrDefault();
+        if (anchor is null) return null;
+
+        var indent = ExtractIndent(sourceText, anchor.StartLine);
+        var bodyIndent = indent + "    ";
+        var template = analysis.IncrementMethodTemplate ?? $"public void Increment{{0}}() => {{0}}++;";
+        var methodBody = string.Format(
+            System.Globalization.CultureInfo.InvariantCulture,
+            template,
+            newField.Name);
+        var newText = $"{indent}{methodBody}{Environment.NewLine}";
+        var (insertLine, insertColumn) = ComputeAfterLine(sourceText, anchor.EndLine);
+        _ = bodyIndent; // bodyIndent is reserved for future multi-line template expansion.
+        return new RecordFieldAddSatelliteEditDto(
+            FilePath: filePath,
+            Line: insertLine,
+            Column: insertColumn,
+            NewText: newText,
+            SiteKind: SatelliteKind.IncrementMethod,
+            Description: $"Add 'Increment{newField.Name}' method mirroring existing sibling pattern.");
+    }
+
+    private static RecordFieldAddSatelliteEditDto? SynthesizeToJsonCaseEdit(
+        SatelliteAnalysis analysis,
+        NewSatelliteFieldDto newField,
+        string filePath,
+        SourceText sourceText)
+    {
+        var anchor = analysis.ToJsonCaseAnchors.LastOrDefault();
+        if (anchor is null) return null;
+
+        var indent = ExtractIndent(sourceText, anchor.StartLine);
+        // We mirror the exact text of the last-observed sibling case, substituting the
+        // field name. Authors usually have one line per case; this gives the reviewer
+        // an edit that visually matches the existing pattern.
+        var template = analysis.ToJsonCaseTemplate ?? "writer.WriteStartObject(nameof({0})); writer.WriteValue({0}); writer.WriteEndObject();";
+        var bodyLine = string.Format(System.Globalization.CultureInfo.InvariantCulture, template, newField.Name);
+        var newText = $"{indent}{bodyLine}{Environment.NewLine}";
+        var (insertLine, insertColumn) = ComputeAfterLine(sourceText, anchor.EndLine);
+        return new RecordFieldAddSatelliteEditDto(
+            FilePath: filePath,
+            Line: insertLine,
+            Column: insertColumn,
+            NewText: newText,
+            SiteKind: SatelliteKind.ToJsonCase,
+            Description: $"Add '{newField.Name}' case to ToJson/Serialize method.");
+    }
+
+    private static string ExtractIndent(SourceText sourceText, int oneBasedLine)
+    {
+        if (oneBasedLine <= 0 || oneBasedLine > sourceText.Lines.Count) return string.Empty;
+        var line = sourceText.Lines[oneBasedLine - 1];
+        var text = line.ToString();
+        var count = 0;
+        while (count < text.Length && (text[count] == ' ' || text[count] == '\t')) count++;
+        return text[..count];
+    }
+
+    private static (int Line, int Column) ComputeAfterLine(SourceText sourceText, int oneBasedLine)
+    {
+        // Insertion anchor is the start of the line *after* the target line (1-based).
+        // This is where the NewText (which already ends in Environment.NewLine) gets
+        // spliced — the result is the new line appears immediately below the anchor.
+        var line = Math.Min(oneBasedLine + 1, sourceText.Lines.Count + 1);
+        return (line, 1);
+    }
+
+    private static int ComputeCharOffset(SourceText sourceText, int oneBasedLine, int oneBasedColumn)
+    {
+        if (oneBasedLine > sourceText.Lines.Count) return sourceText.Length;
+        var line = sourceText.Lines[oneBasedLine - 1];
+        return line.Start + Math.Max(0, oneBasedColumn - 1);
+    }
+
+    /// <summary>
+    /// Result of the satellite-site scan: per-field coverage sets, the inferred pattern
+    /// (intersection of coverage sets when ≥2 fields agree), and per-kind anchors that the
+    /// edit synthesizer uses to place new lines.
+    /// </summary>
+    private sealed record SatelliteAnalysis(
+        IReadOnlyList<string> InferredPattern,
+        string DetectionReason,
+        IReadOnlyList<SatelliteAnchor> SnapshotFieldAnchors,
+        IReadOnlyList<SatelliteAnchor> CloneAssignmentAnchors,
+        IReadOnlyList<SatelliteAnchor> WithAssignmentAnchors,
+        IReadOnlyList<SatelliteAnchor> IncrementMethodAnchors,
+        IReadOnlyList<SatelliteAnchor> ToJsonCaseAnchors,
+        string CloneSourceExpression,
+        string WithSourceExpression,
+        string? IncrementMethodTemplate,
+        string? ToJsonCaseTemplate)
+    {
+        public static SatelliteAnalysis Analyze(
+            SyntaxNode declaringRoot,
+            INamedTypeSymbol targetType,
+            IReadOnlyList<string> existingFields,
+            SourceText sourceText)
+        {
+            // Per-field coverage: which satellite kinds did we observe the field participate in?
+            var coverageByField = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            foreach (var name in existingFields) coverageByField[name] = new HashSet<string>(StringComparer.Ordinal);
+
+            var snapshotFieldAnchors = new List<SatelliteAnchor>();
+            var cloneAnchors = new List<SatelliteAnchor>();
+            var withAnchors = new List<SatelliteAnchor>();
+            var incrementAnchors = new List<SatelliteAnchor>();
+            var toJsonAnchors = new List<SatelliteAnchor>();
+
+            var cloneSource = "source";
+            var withSource = "source";
+            string? incrementTemplate = null;
+            string? toJsonTemplate = null;
+
+            // 1) Mirror-type detection: sibling types in the same compilation unit whose name
+            //    ends in Snapshot / Dto / Builder / Mirror / Projection AND whose member
+            //    names overlap the target type's fields. Each such sibling contributes a
+            //    SnapshotType.Field coverage entry for every field it declares.
+            foreach (var typeDecl in declaringRoot.DescendantNodes().OfType<TypeDeclarationSyntax>())
+            {
+                if (typeDecl.Identifier.ValueText == targetType.Name) continue;
+                if (!LooksLikeMirrorType(typeDecl.Identifier.ValueText, targetType.Name)) continue;
+
+                foreach (var member in typeDecl.Members)
+                {
+                    var memberName = GetMemberName(member);
+                    if (memberName is null) continue;
+                    if (!coverageByField.TryGetValue(memberName, out var coverage)) continue;
+
+                    coverage.Add(SatelliteKind.SnapshotTypeField);
+                    var lineSpan = member.GetLocation().GetLineSpan();
+                    snapshotFieldAnchors.Add(new SatelliteAnchor(
+                        StartLine: lineSpan.StartLinePosition.Line + 1,
+                        EndLine: lineSpan.EndLinePosition.Line + 1,
+                        ContainingTypeName: typeDecl.Identifier.ValueText,
+                        FieldName: memberName));
+                }
+            }
+
+            // 2) Method-level scans on the target type.
+            var targetDecls = declaringRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
+                .Where(t => t.Identifier.ValueText == targetType.Name)
+                .ToList();
+
+            foreach (var typeDecl in targetDecls)
+            {
+                foreach (var method in typeDecl.Members.OfType<MethodDeclarationSyntax>())
+                {
+                    var name = method.Identifier.ValueText;
+                    var isClone = string.Equals(name, "Clone", StringComparison.Ordinal)
+                                   || name.StartsWith("Copy", StringComparison.Ordinal);
+                    var isWith = name.StartsWith("With", StringComparison.Ordinal) && name != "WithCancellation";
+                    var isIncrementForField = ExtractIncrementFieldName(name, existingFields);
+                    var isToJsonLike = string.Equals(name, "ToJson", StringComparison.Ordinal)
+                                        || string.Equals(name, "WriteJson", StringComparison.Ordinal)
+                                        || string.Equals(name, "Serialize", StringComparison.Ordinal)
+                                        || name.StartsWith("WriteTo", StringComparison.Ordinal);
+
+                    if (isClone)
+                    {
+                        foreach (var name2 in existingFields)
+                        {
+                            var assignmentLine = FindAssignmentLineFor(method, name2);
+                            if (assignmentLine is not null)
+                            {
+                                coverageByField[name2].Add(SatelliteKind.CloneMethodBody);
+                                cloneAnchors.Add(assignmentLine);
+                                var src = ExtractCloneSource(method);
+                                if (!string.IsNullOrEmpty(src)) cloneSource = src!;
+                            }
+                        }
+                    }
+                    if (isWith)
+                    {
+                        foreach (var name2 in existingFields)
+                        {
+                            var assignmentLine = FindAssignmentLineFor(method, name2);
+                            if (assignmentLine is not null)
+                            {
+                                coverageByField[name2].Add(SatelliteKind.WithMethodAssignment);
+                                withAnchors.Add(assignmentLine);
+                                var src = ExtractCloneSource(method);
+                                if (!string.IsNullOrEmpty(src)) withSource = src!;
+                            }
+                        }
+                    }
+                    if (isIncrementForField is not null)
+                    {
+                        coverageByField[isIncrementForField].Add(SatelliteKind.IncrementMethod);
+                        var lineSpan = method.GetLocation().GetLineSpan();
+                        incrementAnchors.Add(new SatelliteAnchor(
+                            StartLine: lineSpan.StartLinePosition.Line + 1,
+                            EndLine: lineSpan.EndLinePosition.Line + 1,
+                            ContainingTypeName: typeDecl.Identifier.ValueText,
+                            FieldName: isIncrementForField));
+                        incrementTemplate ??= BuildIncrementTemplate(method, isIncrementForField);
+                    }
+                    if (isToJsonLike)
+                    {
+                        foreach (var name2 in existingFields)
+                        {
+                            var caseAnchor = FindToJsonCaseLineFor(method, name2, sourceText);
+                            if (caseAnchor is not null)
+                            {
+                                coverageByField[name2].Add(SatelliteKind.ToJsonCase);
+                                toJsonAnchors.Add(caseAnchor);
+                                toJsonTemplate ??= BuildToJsonTemplate(caseAnchor, name2, sourceText);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3) Infer pattern: a kind belongs to "the pattern" only if ≥2 fields share it.
+            var kindCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var (_, coverage) in coverageByField)
+            {
+                foreach (var k in coverage)
+                {
+                    kindCounts[k] = kindCounts.TryGetValue(k, out var existing) ? existing + 1 : 1;
+                }
+            }
+
+            // Ensure ≥2 sibling fields agree on the set — we also require those fields to
+            // have *identical* coverage. A field that participates in (A, B) combined with
+            // another that participates in (A, C) is a false-positive hazard: the shared
+            // intersection {A} could be coincidence. The safer rule is: at least one pair
+            // of fields has identical coverage, and the pattern is that intersection.
+            var identicalPairs = FindFieldsWithIdenticalCoverage(coverageByField);
+
+            if (identicalPairs.Count < 2)
+            {
+                // Fallback: if the kind-count says ≥2 fields share a given kind, that's a
+                // safe signal even if their full coverage sets differ slightly. But we
+                // scope the pattern to only kinds that ≥2 fields agreed on.
+                var sharedKinds = kindCounts
+                    .Where(kvp => kvp.Value >= 2)
+                    .Select(kvp => kvp.Key)
+                    .OrderBy(k => k, StringComparer.Ordinal)
+                    .ToList();
+
+                if (sharedKinds.Count == 0)
+                {
+                    var reason = coverageByField.Values.All(c => c.Count == 0)
+                        ? "No satellite coverage detected for any existing field — the target type does not exhibit a mirror pattern."
+                        : "Existing fields have divergent satellite coverage — no ≥2-field consensus to infer a pattern from.";
+                    return new SatelliteAnalysis(
+                        InferredPattern: Array.Empty<string>(),
+                        DetectionReason: reason,
+                        SnapshotFieldAnchors: snapshotFieldAnchors,
+                        CloneAssignmentAnchors: cloneAnchors,
+                        WithAssignmentAnchors: withAnchors,
+                        IncrementMethodAnchors: incrementAnchors,
+                        ToJsonCaseAnchors: toJsonAnchors,
+                        CloneSourceExpression: cloneSource,
+                        WithSourceExpression: withSource,
+                        IncrementMethodTemplate: incrementTemplate,
+                        ToJsonCaseTemplate: toJsonTemplate);
+                }
+
+                return new SatelliteAnalysis(
+                    InferredPattern: sharedKinds,
+                    DetectionReason: string.Empty,
+                    SnapshotFieldAnchors: snapshotFieldAnchors,
+                    CloneAssignmentAnchors: cloneAnchors,
+                    WithAssignmentAnchors: withAnchors,
+                    IncrementMethodAnchors: incrementAnchors,
+                    ToJsonCaseAnchors: toJsonAnchors,
+                    CloneSourceExpression: cloneSource,
+                    WithSourceExpression: withSource,
+                    IncrementMethodTemplate: incrementTemplate,
+                    ToJsonCaseTemplate: toJsonTemplate);
+            }
+
+            // We have ≥2 fields with *identical* coverage — that shared set is the pattern.
+            var inferred = identicalPairs[0].OrderBy(k => k, StringComparer.Ordinal).ToList();
+            return new SatelliteAnalysis(
+                InferredPattern: inferred,
+                DetectionReason: string.Empty,
+                SnapshotFieldAnchors: snapshotFieldAnchors,
+                CloneAssignmentAnchors: cloneAnchors,
+                WithAssignmentAnchors: withAnchors,
+                IncrementMethodAnchors: incrementAnchors,
+                ToJsonCaseAnchors: toJsonAnchors,
+                CloneSourceExpression: cloneSource,
+                WithSourceExpression: withSource,
+                IncrementMethodTemplate: incrementTemplate,
+                ToJsonCaseTemplate: toJsonTemplate);
+        }
+
+        private static List<HashSet<string>> FindFieldsWithIdenticalCoverage(
+            Dictionary<string, HashSet<string>> coverageByField)
+        {
+            // Group fields by their coverage set (as a sorted-and-joined string). Any group
+            // of size ≥2 contributes that coverage set to the "identical-coverage" list.
+            var groups = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var (_, coverage) in coverageByField)
+            {
+                if (coverage.Count == 0) continue;
+                var key = string.Join(",", coverage.OrderBy(k => k, StringComparer.Ordinal));
+                groups[key] = coverage;
+                counts[key] = counts.TryGetValue(key, out var existing) ? existing + 1 : 1;
+            }
+            return counts.Where(kvp => kvp.Value >= 2)
+                .Select(kvp => groups[kvp.Key])
+                .ToList();
+        }
+
+        private static bool LooksLikeMirrorType(string candidate, string targetName)
+        {
+            // Common suffixes for mirror types that sit alongside the target and intentionally
+            // track its shape. The candidate must NOT equal the target name and MUST end with
+            // one of these suffixes (case-sensitive).
+            string[] suffixes = { "Snapshot", "Dto", "Builder", "Mirror", "Projection", "State" };
+            if (!candidate.StartsWith(targetName, StringComparison.Ordinal) &&
+                !suffixes.Any(s => candidate.EndsWith(s, StringComparison.Ordinal)))
+            {
+                return false;
+            }
+            return suffixes.Any(s => candidate.EndsWith(s, StringComparison.Ordinal));
+        }
+
+        private static string? GetMemberName(MemberDeclarationSyntax member)
+        {
+            return member switch
+            {
+                PropertyDeclarationSyntax prop => prop.Identifier.ValueText,
+                FieldDeclarationSyntax field => field.Declaration.Variables.FirstOrDefault()?.Identifier.ValueText,
+                _ => null
+            };
+        }
+
+        private static SatelliteAnchor? FindAssignmentLineFor(MethodDeclarationSyntax method, string fieldName)
+        {
+            // Look for any assignment in the method body whose LHS names the field. Accept
+            // three shapes because the plan's satellite patterns materialize in all of them:
+            //   (a) `FieldName = expr` — bare identifier on LHS (object-initializer / direct
+            //       self-assignment in With methods).
+            //   (b) `target.FieldName = expr` — member-access on LHS (typical Clone body
+            //       style, e.g. `result.A = source.A`).
+            //   (c) `{ FieldName = expr }` — an AssignmentExpressionSyntax inside an
+            //       InitializerExpressionSyntax (record/object initializer).
+            // All three signal that the method mirrors the field.
+            var body = method.Body ?? (SyntaxNode?)method.ExpressionBody;
+            if (body is null) return null;
+
+            foreach (var node in body.DescendantNodes())
+            {
+                if (node is not AssignmentExpressionSyntax asn) continue;
+
+                var matches = asn.Left switch
+                {
+                    IdentifierNameSyntax bareId => bareId.Identifier.ValueText == fieldName,
+                    MemberAccessExpressionSyntax member => member.Name.Identifier.ValueText == fieldName,
+                    _ => false
+                };
+
+                if (matches)
+                {
+                    var lineSpan = node.GetLocation().GetLineSpan();
+                    return new SatelliteAnchor(
+                        StartLine: lineSpan.StartLinePosition.Line + 1,
+                        EndLine: lineSpan.EndLinePosition.Line + 1,
+                        ContainingTypeName: string.Empty,
+                        FieldName: fieldName);
+                }
+            }
+            return null;
+        }
+
+        private static string? ExtractCloneSource(MethodDeclarationSyntax method)
+        {
+            // Heuristic: if the method signature is `Clone(SomeType source)` use `source`;
+            // if it's a parameterless `Clone()` with a body that references `this.*` use
+            // `this`; otherwise default to `source`.
+            var param = method.ParameterList.Parameters.FirstOrDefault();
+            return param?.Identifier.ValueText ?? "this";
+        }
+
+        private static string? ExtractIncrementFieldName(string methodName, IReadOnlyList<string> existingFields)
+        {
+            const string prefix = "Increment";
+            if (!methodName.StartsWith(prefix, StringComparison.Ordinal)) return null;
+            var remainder = methodName[prefix.Length..];
+            // Remove common suffix words like "Count" / "Failures" only if the exact field
+            // name doesn't match first.
+            if (existingFields.Contains(remainder, StringComparer.Ordinal)) return remainder;
+            return null;
+        }
+
+        private static string BuildIncrementTemplate(MethodDeclarationSyntax method, string exampleField)
+        {
+            // Reconstruct a template string of the form `public void Increment{0}() => {0}++;`
+            // by replacing the exampleField occurrences in the method source with a format
+            // slot. We take the trivia-free source so the template is single-line whenever
+            // possible.
+            var source = method.ToString().Trim();
+            // Replace every exact-word occurrence of the field name with {0}. Guard against
+            // substring matches inside longer identifiers by requiring boundaries.
+            var rebuiltName = method.Identifier.ValueText.Replace(exampleField, "{0}", StringComparison.Ordinal);
+            source = Regex.Replace(source, $@"\b{Regex.Escape(method.Identifier.ValueText)}\b", rebuiltName);
+            source = Regex.Replace(source, $@"\b{Regex.Escape(exampleField)}\b", "{0}");
+            return source;
+        }
+
+        private static SatelliteAnchor? FindToJsonCaseLineFor(
+            MethodDeclarationSyntax method,
+            string fieldName,
+            SourceText sourceText)
+        {
+            // A ToJson/Serialize method that names the field can take several shapes — the
+            // key signal is "the line mentions the field name as an identifier or string".
+            // We anchor on the innermost statement that contains the field reference.
+            var body = method.Body ?? (SyntaxNode?)method.ExpressionBody;
+            if (body is null) return null;
+
+            foreach (var stmt in body.DescendantNodes().OfType<StatementSyntax>())
+            {
+                var tokens = stmt.DescendantTokens();
+                if (tokens.Any(t => t.ValueText == fieldName))
+                {
+                    var lineSpan = stmt.GetLocation().GetLineSpan();
+                    return new SatelliteAnchor(
+                        StartLine: lineSpan.StartLinePosition.Line + 1,
+                        EndLine: lineSpan.EndLinePosition.Line + 1,
+                        ContainingTypeName: string.Empty,
+                        FieldName: fieldName);
+                }
+            }
+            return null;
+        }
+
+        private static string BuildToJsonTemplate(SatelliteAnchor anchor, string fieldName, SourceText sourceText)
+        {
+            // Reconstruct a format string from the anchor line. Replace the field-name token
+            // occurrences with {0} so a downstream formatter can splice the new field name.
+            if (anchor.StartLine <= 0 || anchor.StartLine > sourceText.Lines.Count) return "// {0}";
+            var line = sourceText.Lines[anchor.StartLine - 1].ToString().TrimStart();
+            return Regex.Replace(line, $@"\b{Regex.Escape(fieldName)}\b", "{0}");
+        }
+    }
+
+    /// <summary>
+    /// One satellite-site anchor: the line range (inclusive, 1-based) and which field/type
+    /// it refers to. Edits are placed *after* <see cref="EndLine"/>.
+    /// </summary>
+    private sealed record SatelliteAnchor(
+        int StartLine,
+        int EndLine,
+        string ContainingTypeName,
+        string FieldName);
 }

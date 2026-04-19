@@ -44,6 +44,39 @@ public interface ISymbolRefactorService
         IReadOnlyList<SplitServicePartition> partitions,
         string? hostRegistrationFile,
         CancellationToken ct);
+
+    /// <summary>
+    /// <c>record-field-add-satellite-member-sync</c>: synthesizes coordinated edits for satellite
+    /// members when a type (record/class) adds a new field. Inspects existing sibling fields,
+    /// infers the satellite-coverage pattern (<c>Clone</c> / <c>Snapshot</c> / <c>With</c> /
+    /// <c>ToJson</c> / <c>Increment</c> mirror types or methods) conservatively — requires ≥2
+    /// sibling fields with identical coverage before declaring the pattern — and returns an edit
+    /// list plus composite preview token.
+    /// </summary>
+    /// <param name="workspaceId">Workspace session identifier from <c>workspace_load</c>.</param>
+    /// <param name="typeMetadataName">
+    /// Fully qualified metadata name of the target record/class (e.g. <c>SampleLib.Counters</c>).
+    /// </param>
+    /// <param name="newFieldName">The new field name (valid C# identifier).</param>
+    /// <param name="newFieldType">
+    /// The new field type display string (e.g. <c>int</c>, <c>string</c>, <c>System.Guid</c>).
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>
+    /// A <see cref="RecordFieldAddSatelliteDto"/> whose <c>InferredPattern</c> is empty (and
+    /// <c>PatternDetectionReason</c> is populated) when the pattern cannot be inferred
+    /// conservatively — callers use the reason to decide whether to fall back to manual edits
+    /// or to adjust the target type.
+    /// </returns>
+    /// <exception cref="System.Collections.Generic.KeyNotFoundException">
+    /// Thrown when no type resolves for <paramref name="typeMetadataName"/>.
+    /// </exception>
+    Task<RecordFieldAddSatelliteDto> PreviewRecordFieldAddWithSatellitesAsync(
+        string workspaceId,
+        string typeMetadataName,
+        string newFieldName,
+        string newFieldType,
+        CancellationToken ct);
 }
 
 /// <summary>

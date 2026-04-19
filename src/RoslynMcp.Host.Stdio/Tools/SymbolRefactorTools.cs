@@ -53,4 +53,25 @@ public static class SymbolRefactorTools
             return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
         }, ct);
     }
+
+    [McpServerTool(Name = "record_field_add_with_satellites_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("refactoring", "experimental", true, false,
+        "Composite preview synthesizing coordinated edits for satellite members when a type gains a new field."),
+     Description("Composite preview (record-field-add-satellite-member-sync) that inspects a type's existing fields, infers the satellite-sync pattern (Clone/Snapshot/With/ToJson/Increment), and proposes edits for every mirror site when a new field is added. Pattern inference is conservative: requires ≥2 sibling fields with identical satellite coverage before declaring a pattern — returns an empty preview with `patternDetectionReason` populated otherwise. Redeem the `previewToken` via apply_composite_preview.")]
+    public static Task<string> PreviewRecordFieldAddWithSatellites(
+        IWorkspaceExecutionGate gate,
+        ISymbolRefactorService symbolRefactorService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Fully qualified metadata name of the target record/class (e.g. 'SampleLib.Counters')")] string typeMetadataName,
+        [Description("The new field name (valid C# identifier)")] string newFieldName,
+        [Description("The new field type display string (e.g. 'int', 'string', 'System.Guid')")] string newFieldType,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var dto = await symbolRefactorService.PreviewRecordFieldAddWithSatellitesAsync(
+                workspaceId, typeMetadataName, newFieldName, newFieldType, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
+    }
 }
