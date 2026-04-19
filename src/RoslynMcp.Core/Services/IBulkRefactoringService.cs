@@ -25,4 +25,30 @@ public interface IBulkRefactoringService
     /// <param name="ct">Cancellation token.</param>
     Task<RefactoringPreviewDto> PreviewBulkReplaceTypeAsync(
         string workspaceId, string oldTypeName, string newTypeName, string? scope, CancellationToken ct);
+
+    /// <summary>
+    /// Previews rewriting every call-site of a method to call a different method with a
+    /// declared argument-reorder mapping. The <paramref name="oldMethod"/> and
+    /// <paramref name="newMethod"/> parameters use the <c>FQ.TypeName.MethodName(P1,P2,P3)</c>
+    /// syntax — the parameter-type list disambiguates overloads. The new method's parameter
+    /// names must be drawn from the old method's parameter names; the position of each old
+    /// parameter name in the new list describes the reorder. Every positional call is rewritten
+    /// per the positional mapping; named-argument calls keep their names and the reorder only
+    /// applies when the caller mixes positional + named args or uses only positional form.
+    /// </summary>
+    /// <param name="workspaceId">The workspace session identifier.</param>
+    /// <param name="oldMethod">
+    /// FQ signature of the method whose call-sites are being rewritten, in the form
+    /// <c>Namespace.Type.Method(ParamType1, ParamType2, ...)</c>. The parameter-type list is
+    /// required and disambiguates overloads.
+    /// </param>
+    /// <param name="newMethod">
+    /// FQ signature of the replacement method, in the form
+    /// <c>Namespace.Type.OtherMethod(ParamTypeA, ParamTypeB, ...)</c>. The new parameter-type
+    /// list must be a permutation of the old list so a positional mapping can be derived.
+    /// </param>
+    /// <param name="scope">Reserved for future scope filters. Currently only <c>null</c>/<c>all</c> is accepted.</param>
+    /// <param name="ct">Cancellation token.</param>
+    Task<RefactoringPreviewDto> PreviewReplaceInvocationAsync(
+        string workspaceId, string oldMethod, string newMethod, string? scope, CancellationToken ct);
 }

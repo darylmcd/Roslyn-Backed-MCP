@@ -9,6 +9,7 @@ internal static class ParameterValidation
     private static readonly string[] SeverityValues = ["Error", "Warning", "Info", "Hidden"];
     private static readonly string[] TypeKindValues = ["class", "interface", "record", "enum"];
     private static readonly string[] BulkReplaceScopeValues = ["parameters", "fields", "all"];
+    private static readonly string[] ReplaceInvocationScopeValues = ["all"];
 
     /// <summary>Validates severity filter if provided.</summary>
     public static void ValidateSeverity(string? severity)
@@ -32,6 +33,17 @@ internal static class ParameterValidation
         if (scope is not null && !BulkReplaceScopeValues.Contains(scope, StringComparer.OrdinalIgnoreCase))
             throw new ArgumentException(
                 $"Invalid scope '{scope}'. Must be one of: {string.Join(", ", BulkReplaceScopeValues)}");
+    }
+
+    /// <summary>
+    /// Validates replace_invocation_preview scope if provided. Only "all" is accepted today —
+    /// the parameter is reserved for future scope filters (per-project / changed-files).
+    /// </summary>
+    public static void ValidateReplaceInvocationScope(string? scope)
+    {
+        if (scope is not null && !ReplaceInvocationScopeValues.Contains(scope, StringComparer.OrdinalIgnoreCase))
+            throw new ArgumentException(
+                $"Invalid scope '{scope}'. Must be one of: {string.Join(", ", ReplaceInvocationScopeValues)}");
     }
 
     /// <summary>Validates pagination parameters.</summary>
