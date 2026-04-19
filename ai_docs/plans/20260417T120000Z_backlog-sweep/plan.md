@@ -544,7 +544,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 29. `dead-local-variable-detector` — find_dead_locals
 
-**Status:** pending · **Order:** 29 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #275, 2026-04-19) · **Order:** 29 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -580,7 +580,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 31. `breaking-change-impact-preview-for-positional-records` — preview_record_field_addition
 
-**Status:** pending · **Order:** 31 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #276, 2026-04-19) · **Order:** 31 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
