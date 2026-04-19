@@ -657,4 +657,237 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         // Higher enum value = more visible (Public=6, Internal=4, Private=1).
         return ((int)a < (int)b) ? a : b;
     }
+
+    /// <summary>
+    /// Finds method-local variables whose only write is not followed by any read. See
+    /// <see cref="IUnusedCodeAnalyzer.FindDeadLocalsAsync"/> for the contract.
+    /// </summary>
+    public async Task<IReadOnlyList<DeadLocalDto>> FindDeadLocalsAsync(
+        string workspaceId,
+        DeadLocalsAnalysisOptions options,
+        CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var results = new List<DeadLocalDto>();
+
+        var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
+        foreach (var project in projects)
+        {
+            if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
+
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            foreach (var tree in compilation.SyntaxTrees)
+            {
+                if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
+                if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
+
+                var semanticModel = compilation.GetSemanticModel(tree);
+                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+
+                CollectDeadLocalsInTree(root, semanticModel, project.Name, options.Limit, results, ct);
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Walks a syntax tree's method-like bodies (methods, constructors, accessors,
+    /// local functions) and appends a <see cref="DeadLocalDto"/> for each local that
+    /// is written-but-not-read inside the body. Each body runs through
+    /// <see cref="SemanticModel.AnalyzeDataFlow(SyntaxNode)"/> exactly once.
+    /// </summary>
+    private static void CollectDeadLocalsInTree(
+        SyntaxNode root,
+        SemanticModel semanticModel,
+        string projectName,
+        int limit,
+        List<DeadLocalDto> results,
+        CancellationToken ct)
+    {
+        foreach (var bodyOwner in EnumerateMethodLikeBodyOwners(root))
+        {
+            if (ct.IsCancellationRequested || results.Count >= limit) break;
+
+            var (body, methodName, containingTypeName) = ResolveBodyAndOwnerNames(bodyOwner, semanticModel, ct);
+            if (body is null) continue;
+
+            DataFlowAnalysis? flow;
+            try
+            {
+                // SemanticModel.AnalyzeDataFlow throws ArgumentException for bodies
+                // it can't analyze (zero-statement blocks, unreachable code, etc.).
+                // Treat those as "no dead locals" rather than aborting the scan.
+                flow = semanticModel.AnalyzeDataFlow(body);
+            }
+            catch (ArgumentException)
+            {
+                continue;
+            }
+
+            if (flow is null || !flow.Succeeded) continue;
+
+            // Build a lookup of locals that are written inside the body. We then check
+            // each one against ReadInside; absence ⇒ dead-local candidate.
+            var readInside = new HashSet<ISymbol>(flow.ReadInside, SymbolEqualityComparer.Default);
+
+            foreach (var symbol in flow.WrittenInside)
+            {
+                if (ct.IsCancellationRequested || results.Count >= limit) break;
+
+                if (symbol is not ILocalSymbol local) continue;
+                if (readInside.Contains(symbol)) continue;
+                if (ShouldSkipLocalForDeadLocalAnalysis(local)) continue;
+
+                var dto = BuildDeadLocalDto(local, methodName, containingTypeName, projectName);
+                if (dto is null) continue;
+
+                results.Add(dto);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Enumerates every node in the tree that owns a method-like body whose locals we
+    /// want to scan. Includes ordinary methods, constructors, accessors (property /
+    /// indexer / event), conversion / operator declarations, and local functions.
+    /// Lambdas and anonymous-method expressions are intentionally excluded — their
+    /// captured locals overlap with the enclosing method's data-flow scope, and
+    /// running data-flow on the same locals from two scopes produces double-counted
+    /// hits.
+    /// </summary>
+    private static IEnumerable<SyntaxNode> EnumerateMethodLikeBodyOwners(SyntaxNode root)
+    {
+        foreach (var node in root.DescendantNodes())
+        {
+            switch (node)
+            {
+                case BaseMethodDeclarationSyntax:
+                case AccessorDeclarationSyntax:
+                case LocalFunctionStatementSyntax:
+                    yield return node;
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns the analyzable body (block or expression body), plus a friendly method
+    /// name and containing type name for the DTO. Returns <c>(null, ...)</c> when the
+    /// node has no body to analyze (abstract methods, partial declarations without
+    /// implementation, expression-bodied member accessors with null bodies).
+    /// </summary>
+    private static (SyntaxNode? Body, string MethodName, string? ContainingTypeName) ResolveBodyAndOwnerNames(
+        SyntaxNode bodyOwner,
+        SemanticModel semanticModel,
+        CancellationToken ct)
+    {
+        SyntaxNode? body = bodyOwner switch
+        {
+            BaseMethodDeclarationSyntax m => (SyntaxNode?)m.Body ?? m.ExpressionBody?.Expression,
+            AccessorDeclarationSyntax a => (SyntaxNode?)a.Body ?? a.ExpressionBody?.Expression,
+            LocalFunctionStatementSyntax lf => (SyntaxNode?)lf.Body ?? lf.ExpressionBody?.Expression,
+            _ => null
+        };
+        if (body is null) return (null, string.Empty, null);
+
+        var declaredSymbol = semanticModel.GetDeclaredSymbol(bodyOwner, ct);
+        var methodName = declaredSymbol?.Name ?? bodyOwner switch
+        {
+            MethodDeclarationSyntax md => md.Identifier.ValueText,
+            ConstructorDeclarationSyntax cd => cd.Identifier.ValueText,
+            DestructorDeclarationSyntax dd => "~" + dd.Identifier.ValueText,
+            LocalFunctionStatementSyntax lfn => lfn.Identifier.ValueText,
+            AccessorDeclarationSyntax ad => ad.Keyword.ValueText,
+            _ => "<anonymous>"
+        };
+
+        var containingTypeName = declaredSymbol?.ContainingType?.Name;
+        return (body, methodName, containingTypeName);
+    }
+
+    /// <summary>
+    /// True for locals we deliberately do NOT flag as dead even when they are
+    /// written-but-not-read. The exclusions cover language shapes where a name is
+    /// required by syntax even when the value is unused, plus shapes where IDE0059
+    /// separately suggests a different rewrite (e.g. <c>out _</c> discards).
+    /// </summary>
+    private static bool ShouldSkipLocalForDeadLocalAnalysis(ILocalSymbol local)
+    {
+        // Discards (`_`) intentionally never read. Two shapes: explicit `_` name on
+        // the synthesized local, or compiler-marked discard symbol.
+        if (local.Name is "_") return true;
+
+        // Implicit / compiler-generated locals (e.g. iterator state machine internals,
+        // pattern-matching scratch slots) are not user-declared.
+        if (local.IsImplicitlyDeclared) return true;
+
+        // foreach (var x in ...) — the "write" is the loop step, not user intent.
+        if (local.IsForEach) return true;
+
+        // using var x = ... — the local exists to scope a Dispose call; "unread" is
+        // expected in the resource-management idiom.
+        if (local.IsUsing) return true;
+
+        // const locals are compile-time named constants whose only "write" is the
+        // initializer. Removing them changes API shape (visible name in nameof, etc.).
+        if (local.IsConst) return true;
+
+        // Inspect the declaration syntax to filter the call-site / catch / pattern shapes.
+        foreach (var declRef in local.DeclaringSyntaxReferences)
+        {
+            var node = declRef.GetSyntax();
+
+            // out var x in Foo(out var x). Bare declaration of an out parameter at
+            // the call site — required to invoke the API. IDE0059 separately
+            // suggests collapsing to `out _`.
+            if (node is SingleVariableDesignationSyntax { Parent: DeclarationExpressionSyntax { Parent: ArgumentSyntax } })
+                return true;
+
+            // Pattern-matching designations: `if (x is Foo y)`, `switch (x) { case Foo y: ... }`.
+            // The local is required by the pattern shape; "unread" patterns are
+            // legitimately a type-test idiom (e.g. caller only cares about the success).
+            if (node is SingleVariableDesignationSyntax { Parent: DeclarationPatternSyntax }
+                or SingleVariableDesignationSyntax { Parent: VarPatternSyntax }
+                or SingleVariableDesignationSyntax { Parent: RecursivePatternSyntax })
+                return true;
+
+            // Tuple deconstruction designations: `var (_, b) = Foo();` — the named
+            // half is reachable for the user but the "unused" half is positionally
+            // required by the deconstruction shape, so flagging produces noise.
+            if (node is SingleVariableDesignationSyntax { Parent: ParenthesizedVariableDesignationSyntax })
+                return true;
+
+            // catch (Exception ex) — the local is required by the catch syntax.
+            if (node is CatchDeclarationSyntax) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Builds a <see cref="DeadLocalDto"/> for a flagged dead local. Returns <c>null</c>
+    /// if the local has no source location (compiler-generated, source-generator-emitted).
+    /// </summary>
+    private static DeadLocalDto? BuildDeadLocalDto(
+        ILocalSymbol local,
+        string methodName,
+        string? containingTypeName,
+        string projectName)
+    {
+        var location = local.Locations.FirstOrDefault(l => l.IsInSource);
+        if (location is null) return null;
+
+        var lineSpan = location.GetLineSpan();
+        return new DeadLocalDto(
+            SymbolName: local.Name,
+            ContainingMethod: methodName,
+            ContainingType: containingTypeName,
+            FilePath: lineSpan.Path,
+            Line: lineSpan.StartLinePosition.Line + 1,
+            Column: lineSpan.StartLinePosition.Character + 1,
+            ProjectName: projectName);
+    }
 }
