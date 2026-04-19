@@ -56,6 +56,7 @@ public abstract class TestBase
     protected static GatedCommandExecutor GatedCommandExecutor { get; private set; } = null!;
     protected static BulkRefactoringService BulkRefactoringService { get; private set; } = null!;
     protected static CohesionAnalysisService CohesionAnalysisService { get; private set; } = null!;
+    protected static CouplingAnalysisService CouplingAnalysisService { get; private set; } = null!;
     protected static ConsumerAnalysisService ConsumerAnalysisService { get; private set; } = null!;
     protected static TypeExtractionService TypeExtractionService { get; private set; } = null!;
     protected static TypeMoveService TypeMoveService { get; private set; } = null!;
@@ -150,6 +151,7 @@ public abstract class TestBase
         GatedCommandExecutor = services.GatedCommandExecutor;
         BulkRefactoringService = services.BulkRefactoringService;
         CohesionAnalysisService = services.CohesionAnalysisService;
+        CouplingAnalysisService = services.CouplingAnalysisService;
         ConsumerAnalysisService = services.ConsumerAnalysisService;
         TypeExtractionService = services.TypeExtractionService;
         TypeMoveService = services.TypeMoveService;

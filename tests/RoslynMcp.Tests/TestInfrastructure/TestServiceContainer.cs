@@ -43,6 +43,7 @@ internal sealed class TestServiceContainer
     public required GatedCommandExecutor GatedCommandExecutor { get; init; }
     public required BulkRefactoringService BulkRefactoringService { get; init; }
     public required CohesionAnalysisService CohesionAnalysisService { get; init; }
+    public required CouplingAnalysisService CouplingAnalysisService { get; init; }
     public required ConsumerAnalysisService ConsumerAnalysisService { get; init; }
     public required TypeExtractionService TypeExtractionService { get; init; }
     public required TypeMoveService TypeMoveService { get; init; }
@@ -223,6 +224,9 @@ internal sealed class TestServiceContainer
             CohesionAnalysisService = new CohesionAnalysisService(
                 workspaceManager,
                 NullLogger<CohesionAnalysisService>.Instance),
+            CouplingAnalysisService = new CouplingAnalysisService(
+                workspaceManager,
+                NullLogger<CouplingAnalysisService>.Instance),
             ConsumerAnalysisService = new ConsumerAnalysisService(
                 workspaceManager,
                 NullLogger<ConsumerAnalysisService>.Instance),
