@@ -481,4 +481,180 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
 
         return false;
     }
+
+    /// <summary>
+    /// Surfaces private/internal static helper methods that delegate in ≤ 2 body
+    /// statements to a symbol declared in a non-source (BCL/NuGet) assembly — the
+    /// "reinvented <c>string.IsNullOrWhiteSpace</c>" pattern. See
+    /// <see cref="IUnusedCodeAnalyzer.FindDuplicateHelpersAsync"/> for the contract.
+    /// </summary>
+    public async Task<IReadOnlyList<DuplicateHelperDto>> FindDuplicateHelpersAsync(
+        string workspaceId,
+        DuplicateHelperAnalysisOptions options,
+        CancellationToken ct)
+    {
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var results = new List<DuplicateHelperDto>();
+
+        var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
+        foreach (var project in projects)
+        {
+            if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
+
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            foreach (var tree in compilation.SyntaxTrees)
+            {
+                if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
+                if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
+
+                var semanticModel = compilation.GetSemanticModel(tree);
+                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+
+                foreach (var methodDecl in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+                {
+                    if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
+
+                    var hit = TryClassifyHelperAsDuplicate(methodDecl, semanticModel, project, ct);
+                    if (hit is not null) results.Add(hit);
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Inspects a method declaration and, when its host is a static helper class,
+    /// its effective accessibility is non-public, and its body is a single
+    /// ≤ 2-statement delegation to a non-source-declared method, returns a
+    /// <see cref="DuplicateHelperDto"/>. Returns <see langword="null"/> otherwise.
+    /// </summary>
+    private static DuplicateHelperDto? TryClassifyHelperAsDuplicate(
+        MethodDeclarationSyntax methodDecl,
+        SemanticModel semanticModel,
+        Project project,
+        CancellationToken ct)
+    {
+        if (semanticModel.GetDeclaredSymbol(methodDecl, ct) is not IMethodSymbol methodSymbol)
+            return null;
+
+        // Only methods on static helper classes — the idiomatic "StringHelper" /
+        // "StringExtensions" shape. Filters out random static utilities that are not
+        // re-wrappers of library primitives.
+        if (methodSymbol.ContainingType is not { IsStatic: true } hostType)
+            return null;
+
+        // Effective accessibility: min(method, type). Public method on an internal
+        // static class still surfaces here because the containing type clamps the
+        // exposure. Public-on-public is intentionally excluded (library-API surface,
+        // not a reinvented helper).
+        var effective = MinAccessibility(methodSymbol.DeclaredAccessibility, hostType.DeclaredAccessibility);
+        if (effective == Accessibility.Public) return null;
+
+        // Skip the method kinds that cannot be a single-delegation shape.
+        if (methodSymbol.MethodKind is not MethodKind.Ordinary) return null;
+
+        // Extract the delegation target. Accepts:
+        //   (a) expression-bodied method:  => Target(...);
+        //   (b) single-statement body:     { return Target(...); } OR { Target(...); }
+        //   (c) two-statement body:        { if (s is null) throw ...; return Target(...); }
+        //                                  (any first statement that is NOT an invocation)
+        var (invocation, statementCount) = ExtractDelegationInvocation(methodDecl);
+        if (invocation is null) return null;
+
+        // Resolve the target symbol. It must live in a NON-source assembly (BCL or
+        // NuGet). A target that resolves to another project in the same solution is
+        // an internal refactoring artifact, not a library-reinvention.
+        if (semanticModel.GetSymbolInfo(invocation, ct).Symbol is not IMethodSymbol targetSymbol)
+            return null;
+
+        // Unwrap reduced extension methods — we want the original library-defined
+        // form so an assembly check reflects the true canonical target.
+        targetSymbol = targetSymbol.ReducedFrom ?? targetSymbol;
+
+        var targetAssembly = targetSymbol.ContainingAssembly;
+        if (targetAssembly is null) return null;
+
+        // Skip self-delegation: the helper calls into a method defined in the same
+        // solution (could be a legitimate internal re-export, not a reinvented BCL).
+        var projectAssemblyNames = new HashSet<string>(
+            project.Solution.Projects.Select(p => p.AssemblyName),
+            StringComparer.Ordinal);
+        if (projectAssemblyNames.Contains(targetAssembly.Name)) return null;
+
+        // Skip delegations to the helper's own containing type (recursion / self-call).
+        if (SymbolEqualityComparer.Default.Equals(targetSymbol.ContainingType, hostType))
+            return null;
+
+        var lineSpan = methodDecl.Identifier.GetLocation().GetLineSpan();
+        var confidence = statementCount <= 1 ? "high" : "medium";
+
+        return new DuplicateHelperDto(
+            SymbolName: methodSymbol.Name,
+            ContainingType: hostType.Name,
+            FilePath: lineSpan.Path,
+            Line: lineSpan.StartLinePosition.Line + 1,
+            Column: lineSpan.StartLinePosition.Character + 1,
+            ProjectName: project.Name,
+            CanonicalTarget: targetSymbol.ToDisplayString(),
+            CanonicalTargetAssembly: targetAssembly.Name,
+            Confidence: confidence);
+    }
+
+    /// <summary>
+    /// Extracts the single delegation invocation from a method declaration, if the
+    /// body shape qualifies as "≤ 2 statements ending in a single method call".
+    /// Returns the invocation plus the statement count (1 for expression-bodied or
+    /// single-statement, 2 for two-statement-with-guard). Returns null otherwise.
+    /// </summary>
+    private static (InvocationExpressionSyntax? Invocation, int StatementCount) ExtractDelegationInvocation(
+        MethodDeclarationSyntax methodDecl)
+    {
+        // Expression-bodied: public static bool X(string s) => string.IsNullOrWhiteSpace(s);
+        if (methodDecl.ExpressionBody is { Expression: InvocationExpressionSyntax inv })
+            return (inv, 1);
+
+        if (methodDecl.Body is not { } block) return (null, 0);
+
+        var statements = block.Statements;
+        if (statements.Count == 0 || statements.Count > 2) return (null, 0);
+
+        // Find the "delegation" statement — the last one, which must be a return of
+        // an invocation or a bare invocation (void-returning helpers). Roslyn parses
+        // `return X(...);` as ReturnStatementSyntax with Expression == InvocationExpressionSyntax.
+        var last = statements[^1];
+        InvocationExpressionSyntax? delegationInv = last switch
+        {
+            ReturnStatementSyntax { Expression: InvocationExpressionSyntax retInv } => retInv,
+            ExpressionStatementSyntax { Expression: InvocationExpressionSyntax exprInv } => exprInv,
+            _ => null
+        };
+
+        if (delegationInv is null) return (null, 0);
+
+        // Two-statement shape: the first statement may NOT be another invocation
+        // (else it's a helper that does work and then delegates — not a pure
+        // re-wrapper). It's typically a null-guard / throw: `if (s is null) throw ...;`.
+        if (statements.Count == 2)
+        {
+            var first = statements[0];
+            if (first is ExpressionStatementSyntax { Expression: InvocationExpressionSyntax })
+                return (null, 0);
+        }
+
+        return (delegationInv, statements.Count);
+    }
+
+    /// <summary>
+    /// Returns the more-restrictive of two accessibility values. Accessibility is
+    /// ordered Public > Protected-or-Internal > Internal == Protected >
+    /// Private-Protected > Private, so we take the smaller enum value.
+    /// </summary>
+    private static Accessibility MinAccessibility(Accessibility a, Accessibility b)
+    {
+        // Higher enum value = more visible (Public=6, Internal=4, Private=1).
+        return ((int)a < (int)b) ? a : b;
+    }
 }

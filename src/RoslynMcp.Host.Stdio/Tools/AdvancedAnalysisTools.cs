@@ -178,6 +178,32 @@ public static class AdvancedAnalysisTools
         }, ct);
     }
 
+    [McpServerTool(Name = "find_duplicate_helpers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "experimental", true, false,
+        "Flag private/internal helper methods whose body duplicates a reachable BCL/NuGet symbol."),
+     Description("Find private/internal static helpers (on `static class` hosts) whose body is a single ≤ 2-statement delegation to a method declared in a non-source assembly (BCL or referenced NuGet) — the \"reinvented `string.IsNullOrWhiteSpace` / `ArgumentNullException.ThrowIfNull`\" pattern that `find_unused_symbols` misses because the helper IS used locally. Conservative: expression-bodied forwarders and `{ return Target(...); }` bodies return Confidence=high; a single null-guard followed by the delegation returns Confidence=medium. Any body that calls the solution's own code (same-solution assembly), or does more than a pure re-wrap, is not flagged. Intentionally distinct from `find_duplicated_methods` (which buckets internal-to-internal structural duplicates); this tool targets internal-vs-referenced-library duplicates.")]
+    public static Task<string> FindDuplicateHelpers(
+        IWorkspaceExecutionGate gate,
+        IUnusedCodeAnalyzer unusedCodeAnalyzer,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
+        [Description("Maximum number of hits to return (default: 50).")] int limit = 50,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await unusedCodeAnalyzer.FindDuplicateHelpersAsync(
+                workspaceId,
+                new DuplicateHelperAnalysisOptions
+                {
+                    ProjectFilter = projectFilter,
+                    Limit = limit
+                },
+                c);
+            return JsonSerializer.Serialize(new { count = results.Count, helpers = results }, JsonDefaults.Indented);
+        }, ct);
+    }
+
     [McpServerTool(Name = "find_duplicated_methods", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Find clusters of near-duplicate method bodies by AST-normalized hash."),
