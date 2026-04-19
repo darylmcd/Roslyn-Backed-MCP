@@ -44,6 +44,7 @@ internal sealed class TestServiceContainer
     public required BulkRefactoringService BulkRefactoringService { get; init; }
     public required CohesionAnalysisService CohesionAnalysisService { get; init; }
     public required CouplingAnalysisService CouplingAnalysisService { get; init; }
+    public required RecordFieldAdditionService RecordFieldAdditionService { get; init; }
     public required ConsumerAnalysisService ConsumerAnalysisService { get; init; }
     public required TypeExtractionService TypeExtractionService { get; init; }
     public required TypeMoveService TypeMoveService { get; init; }
@@ -227,6 +228,9 @@ internal sealed class TestServiceContainer
             CouplingAnalysisService = new CouplingAnalysisService(
                 workspaceManager,
                 NullLogger<CouplingAnalysisService>.Instance),
+            RecordFieldAdditionService = new RecordFieldAdditionService(
+                workspaceManager,
+                NullLogger<RecordFieldAdditionService>.Instance),
             ConsumerAnalysisService = new ConsumerAnalysisService(
                 workspaceManager,
                 NullLogger<ConsumerAnalysisService>.Instance),
