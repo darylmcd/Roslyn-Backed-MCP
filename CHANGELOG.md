@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [1.25.0] - 2026-04-19
+
+Batch-9 backlog sweep — ships the final non-heroic initiative from plan `20260417T120000Z_backlog-sweep` (`record-field-add-satellite-member-sync`), bringing the plan to 34/37 merged (2 heroic-last + 1 deferred remaining). Rolls up the multi-batch Unreleased accumulation: 13 new MCP tools (`split_service_with_di_preview`, `scaffold_first_test_file_preview`, `get_di_registrations` lifetime-overrides, `apply_text_edit`/`apply_multi_file_edit` verify hooks, `extract_shared_expression_to_helper_preview`, `probe_position`, external-edit stale tracking, `verify_pragma_suppresses` + `pragma_scope_widen`, `get_coupling_metrics`, `find_duplicate_helpers`, `replace_invocation_preview`, `find_dead_locals`, `preview_record_field_addition`, `record_field_add_with_satellites_preview`), one workspace-load restore-race fix, and +86 regression tests across 15 new files.
+
+### Added
+
 - **Added:** `split_service_with_di_preview` composite preview splits a DI-consumed service type into N partition implementations + a forwarding facade and emits DI-registration deltas against the existing host registration (Transient/Scoped/Singleton inferred from the current `services.Add*` call). Built on top of v1.18 `symbol_refactor_preview` primitives (`restructure` + `edit` ops); when the host registration file is null or the registration is missing, the preview falls back to a warning rather than crashing (`composite-split-service-di-registration`). Includes `SplitServicePartition` DTO on `ISymbolRefactorService`.
 - **Added:** `scaffold_first_test_file_preview` inspects a target service's constructor + public methods and emits a new `<Service>Tests.cs` fixture with `ClassInitialize` + service instantiation + one smoke-test method per public method. Derives the boilerplate shape from the 2-3 most-recently-modified sibling test fixtures in the target test project, falling back to repo-convention defaults for projects with zero existing fixtures. Hardened with three type-resolution fallbacks (`GetTypeByMetadataName` → `GetSymbolsWithName` → `ClassDeclarationSyntax` walk) against fresh-load + immediate-query timing gaps in MSBuildWorkspace (`first-test-for-new-service-scaffold`).
 - **Added:** `get_di_registrations` gains a `showLifetimeOverrides: true` opt-in that emits per-interface override chains, the winning registration's lifetime, whether lifetimes differ across overrides (Singleton→Scoped etc.), and a dead-registration count for registrations overridden by a later-wins composition-root call. `DiRegistrationDto` grows a `LifetimeOverrides` section; default output shape unchanged (`di-lifetime-mismatch-detection`).
