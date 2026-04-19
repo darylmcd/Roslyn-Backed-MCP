@@ -32,6 +32,7 @@ See `justfile` in the repo root for the complete recipe list including packaging
 - .NET SDK: 10.0.100 (rollForward: latestFeature) — see `global.json`
 - Primary v1 operating system target: Windows. Cross-platform (macOS, Linux) supported wherever .NET 10 SDK is available.
 - Main local validation entry point: `just ci` (or `./eng/verify-release.ps1` directly)
+- **Test framework: MSTest** (`[TestClass]` + `[TestMethod]` / `[ClassInitialize]`), not xUnit or NUnit. Attribute-based method counts: `grep -c '\[TestMethod\]' <file>`.
 - Fast manual commands:
   - `just build` / `dotnet build RoslynMcp.slnx --nologo`
   - `just test` / `dotnet test RoslynMcp.slnx --nologo`

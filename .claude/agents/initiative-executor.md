@@ -72,6 +72,7 @@ You are a fresh subagent with zero prior turns. The PreToolUse hook guarding `mc
 - Stay inside the worktree for steps 2–4. `gh pr merge` (only if orchestrator explicitly authorizes self-merge) runs from the primary repo root: `cd "$(git rev-parse --git-common-dir)/.."` first. `gh pr merge` fails inside a worktree.
 - If a PreToolUse hook blocks mid-session, STOP and report — do not retry blindly and do not switch tool-policy.
 - If validation fails, fix and recommit before opening the PR — do not push broken work.
+- **DO NOT add backwards-compat constructors, overloads, null-gated degraded paths, or any shim whose sole purpose is to avoid updating existing tests or callers.** Session policy is "Correctness over cheapness — reject band-aid fixes even when they'd close the row faster." If a scope expansion would require updating N test stub-sites to track a new constructor parameter or service dependency, update them. Breaking changes in internal services are allowed per session policy. A shim is load-bearing only when a documented external-caller contract requires backward compatibility; if you cannot name the external caller, do not add the shim. Exception: optional nullable parameters that provide documented graceful degradation (e.g. `IWorkspaceManager? workspace = null` where the downstream feature cleanly reports "degraded because workspace is null") are fine — that is graceful degradation, not a shim. The test is: if removing the new parameter makes the code simpler AND the tests still compile (with updates), it was a shim.
 
 ## Output contract — strict
 
@@ -84,6 +85,7 @@ success: https://github.com/<owner>/<repo>/pull/<n>
 files:
   - path/to/file1
   - path/to/file2
+shims-added: 0
 notes: {optional one-sentence caveat}
 ```
 
@@ -93,5 +95,7 @@ Failure:
 failure: {one-sentence blocker description}
 partial-work: {branch name if any commits, else "none"}
 ```
+
+**`shims-added`**: count of backwards-compat constructors, overloads, or null-gated degraded paths added in this PR. Expected value is `0`. If non-zero, each shim must be justified on its own line: `shims-added: 2 (LegacyService 2-arg ctor: external caller Foo.Bar still uses it; LegacyDto.Parse(string): public API stability for v1 consumers)`. If you cannot name an external caller or a versioned API-stability contract, the count should be 0 — update the internal callers instead. The orchestrator scans this field; a non-zero count with weak justification triggers a fix-up round-trip.
 
 The orchestrator verifies the PR URL via `gh pr view <n> --json state,mergeable`. Hallucinated URLs are detected and marked `verification-blocked`.
