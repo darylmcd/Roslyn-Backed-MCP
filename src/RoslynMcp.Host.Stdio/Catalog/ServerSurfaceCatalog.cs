@@ -92,6 +92,7 @@ public static class ServerSurfaceCatalog
         Tool("change_signature_preview", "refactoring", "experimental", true, false, "Preview adding/removing/renaming a method parameter with all callsites updated atomically."),
         Tool("symbol_refactor_preview", "refactoring", "experimental", true, false, "Composite preview chaining rename + edit + restructure operations into a single token."),
         Tool("split_service_with_di_preview", "refactoring", "experimental", true, false, "Composite preview splitting a service into partitions + forwarding facade + DI-registration deltas."),
+        Tool("record_field_add_with_satellites_preview", "refactoring", "experimental", true, false, "Composite preview synthesizing coordinated edits for satellite members when a type gains a new field."),
         Tool("create_file_preview", "file-operations", "stable", true, false, "Preview creating a new source file in a project."),
         Tool("create_file_apply", "file-operations", "experimental", false, true, "Apply a previously previewed file creation."),
         Tool("delete_file_preview", "file-operations", "stable", true, false, "Preview deleting an existing source file."),
