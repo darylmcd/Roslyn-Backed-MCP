@@ -472,7 +472,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 25. `duplicate-helper-detection-across-modules` — find_duplicate_helpers
 
-**Status:** pending · **Order:** 25 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #272, 2026-04-19) · **Order:** 25 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -598,7 +598,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 32. `coupling-metrics-tool` — get_coupling_metrics
 
-**Status:** pending · **Order:** 32 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 60000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #271, 2026-04-19) · **Order:** 32 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 60000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -634,7 +634,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 34. `replace-invocation-pattern-refactor` — replace_invocation_preview
 
-**Status:** pending · **Order:** 34 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 60000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #273, 2026-04-19) · **Order:** 34 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 60000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
