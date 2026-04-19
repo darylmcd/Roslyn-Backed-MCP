@@ -27,19 +27,21 @@ If any required field is missing, emit `STATUS: error` with the missing field na
 ### 1. Verify PR is ready to merge
 
 ```
-gh pr view <n> --json state,mergeable,mergeStateStatus,statusCheckRollup,reviewDecision
+gh pr view <n> --json state,mergeable,mergeStateStatus,mergeCommit,statusCheckRollup,reviewDecision
 ```
 
 Decision table:
 
-| Condition | Action |
-|---|---|
-| `state == "OPEN"` AND `mergeable == "MERGEABLE"` AND `mergeStateStatus == "CLEAN"` | proceed to step 2 |
-| `mergeStateStatus == "BLOCKED"` due to pending checks | wait 60s, retry once; if still not green, emit `STATUS: not-ready` and exit |
-| Any check is failing | emit `STATUS: not-ready` with the failing check names and exit |
-| `reviewDecision == "CHANGES_REQUESTED"` | emit `STATUS: not-ready` (review gate) and exit |
-| `state == "MERGED"` | skip to step 3 (cleanup only) |
-| `state == "CLOSED"` (not merged) | emit `STATUS: closed-without-merge` and exit |
+| Condition | Action | `MERGED_BY` in report |
+|---|---|---|
+| `state == "OPEN"` AND `mergeable == "MERGEABLE"` AND `mergeStateStatus == "CLEAN"` | proceed to step 2 | `pr-reconciler` |
+| `mergeStateStatus == "BLOCKED"` due to pending checks | wait 60s, retry once; if still not green, emit `STATUS: not-ready` and exit | — |
+| Any check is failing | emit `STATUS: not-ready` with the failing check names and exit | — |
+| `reviewDecision == "CHANGES_REQUESTED"` | emit `STATUS: not-ready` (review gate) and exit | — |
+| `state == "MERGED"` (pre-existing) | **skip the `gh pr merge` call entirely**; proceed to step 3 (cleanup only) | `preexisting` (capture `mergeCommit.oid` as `MERGE_SHA`) |
+| `state == "CLOSED"` (not merged) | emit `STATUS: closed-without-merge` and exit | — |
+
+**Pre-existing merge signal**: if the PR is already MERGED when you inspect it, do not call `gh pr merge` — report `MERGED_BY: preexisting` and the pre-existing `mergeCommit.oid` as the `MERGE_SHA`. Historically this branch surfaced as confusing "PR was already merged when merge command executed" prose in NOTES; the distinction is now structured. A pre-existing MERGED state is either a concurrent actor (unlikely — this repo has `allow_auto_merge: false`) or a silent-success from your own earlier `gh pr merge` attempt whose stderr was misread as failure (e.g. worktree-lock error after a real merge). Either way, skip the second merge call — `gh pr merge` on an already-merged PR errors and muddies your return envelope.
 
 ### 2. Squash-merge (from primary repo root)
 
@@ -86,10 +88,13 @@ Emit a single final block:
 ```
 STATUS: merged | not-ready | closed-without-merge | error
 PR: <url>
-MERGE_SHA: <sha>           # if merged, else "n/a"
+MERGE_SHA: <sha>                           # if merged, else "n/a"
+MERGED_BY: pr-reconciler | preexisting     # if STATUS == merged, else omit
 CLEANUP: worktree=removed|n/a branch=deleted|n/a remote=pruned
 NOTES: <one line if anything unusual, else omit>
 ```
+
+**`MERGED_BY`**: `pr-reconciler` when you performed the merge this run; `preexisting` when the PR was already MERGED at step 1 pre-check time and you skipped the `gh pr merge` call. The orchestrator uses this to distinguish "I merged it" from "it merged before I got there" — replaces the legacy freeform "likely due to concurrent CI automation" guesses in NOTES.
 
 ## Hard rules
 
