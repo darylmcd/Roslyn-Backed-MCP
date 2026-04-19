@@ -178,6 +178,32 @@ public static class AdvancedAnalysisTools
         }, ct);
     }
 
+    [McpServerTool(Name = "find_dead_locals", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "experimental", true, false,
+        "Find method-local variables whose only write is not followed by any read."),
+     Description("Find method-local variables whose only write is not followed by any read — the class of waste IDE0059 (\"Unnecessary assignment of a value\") covers when the diagnostic is at default severity. Walks every method-like body (methods, constructors, accessors, local functions) and runs SemanticModel.AnalyzeDataFlow once per body, collecting ILocalSymbols that appear in WrittenInside but not in ReadInside. Conservative exclusions: discards (`_`), `foreach` iteration variables, `using`/`await using` resource locals, `catch (Exception ex)` exception locals, pattern-matching designations (`is T x`, `var p`), tuple-deconstruction designations (`var (_, b) = Foo()`), and `out var` declarations at call sites are NOT flagged — those shapes routinely require a name even when the value is unused, and IDE0059 separately suggests the `out _` rewrite. `const` locals are also skipped (removing them changes nameof shape).")]
+    public static Task<string> FindDeadLocals(
+        IWorkspaceExecutionGate gate,
+        IUnusedCodeAnalyzer unusedCodeAnalyzer,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
+        [Description("Maximum number of hits to return (default: 50).")] int limit = 50,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await unusedCodeAnalyzer.FindDeadLocalsAsync(
+                workspaceId,
+                new DeadLocalsAnalysisOptions
+                {
+                    ProjectFilter = projectFilter,
+                    Limit = limit
+                },
+                c);
+            return JsonSerializer.Serialize(new { count = results.Count, deadLocals = results }, JsonDefaults.Indented);
+        }, ct);
+    }
+
     [McpServerTool(Name = "find_duplicate_helpers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Flag private/internal helper methods whose body duplicates a reachable BCL/NuGet symbol."),
