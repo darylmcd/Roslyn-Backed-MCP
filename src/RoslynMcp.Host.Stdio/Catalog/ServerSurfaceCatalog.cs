@@ -75,6 +75,7 @@ public static class ServerSurfaceCatalog
         Tool("get_nuget_dependencies", "advanced-analysis", "stable", true, false, "Inspect NuGet package references and versions."),
         Tool("semantic_search", "advanced-analysis", "stable", true, false, "Run semantic search over symbols and declarations."),
         Tool("find_duplicated_methods", "advanced-analysis", "stable", true, false, "Find clusters of near-duplicate method bodies by AST-normalized hash."),
+        Tool("find_duplicate_helpers", "advanced-analysis", "experimental", true, false, "Flag private/internal helper methods whose body duplicates a reachable BCL/NuGet symbol."),
 
         Tool("apply_text_edit", "editing", "stable", false, true, "Apply direct text edits to a single file; optional verify + auto-revert on new compile errors."),
         Tool("apply_multi_file_edit", "editing", "experimental", false, true, "Apply direct text edits to multiple files; optional verify + auto-revert on new compile errors."),
