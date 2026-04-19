@@ -91,15 +91,15 @@
       "estimatedContextTokens": 50000,
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
-      "status": "deferred",
+      "status": "merged",
       "correctnessClass": "P3-UX",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": "remediation/composite-split-service-di-registration",
+      "branch": "remediation/composite-split-service-di-registration-v2",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Subagent (batch-2, 2026-04-18) stalled mid-reasoning — final message was the thought fragment 'Actually, let me just try inspecting the file:' with NO <<<RESULT>>> sentinel (matches Appendix C step 1 malformed-result failure). Subagent had written 4 modified prod files + 1 new test (729 insertions) but did not commit / validate / open PR. Partial work preserved as WIP commit 3b56517 on branch remediation/composite-split-service-di-registration. DO NOT re-dispatch to a subagent without human review — the stall point is unknown, re-pickup may need restart rather than completion. Backlog row `composite-split-service-di-registration` remains open in ai_docs/backlog.md P3 table."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/257",
+      "mergedAt": "2026-04-18T06:33:33Z",
+      "notes": "Originally stalled 2026-04-17 (WIP commit 3b56517). Picked up in a follow-up session on branch remediation/composite-split-service-di-registration-v2; shipped via PR #257 on 2026-04-18 as `split_service_with_di_preview` composite preview (ISymbolRefactorService.PreviewSplitServiceWithDiAsync + SplitServicePartition DTO + SymbolRefactorService impl + SymbolRefactorTools host + CompositeSplitServiceDiPreviewTests). State.json re-flipped deferred → merged by the 2026-04-19 concurrent-mcp-instances-no-tools session (#36) after cross-referencing git log and gh pr view #257."
     },
     {
       "id": "duplicate-method-body-detector",

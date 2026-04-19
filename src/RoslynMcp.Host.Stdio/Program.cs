@@ -3,6 +3,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
@@ -83,11 +84,23 @@ var host = builder.Build();
 var server = host.Services.GetRequiredService<McpServer>();
 mcpLoggingProvider.SetServer(server);
 
+// concurrent-mcp-instances-no-tools: cross-check SDK-registered vs reflection vs
+// catalog surface counts and publish the snapshot for server_info. When multiple
+// roslynmcp processes start in parallel and the client reports "no tools available"
+// on one, each process's stderr carries a "Startup surface: …" line that tells the
+// operator whether the problem is server-side (registered=0 here) or client-side
+// (registered=N on every instance but the host presented an empty tool list).
+var startupLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+var surfaceReport = StartupDiagnostics.Capture(host.Services, typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly);
+var assemblyVersion = typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly
+    .GetName().Version?.ToString() ?? "unknown";
+StartupDiagnostics.LogStartup(startupLogger, surfaceReport, assemblyVersion);
+SurfaceRegistrationSnapshot.Value = surfaceReport;
+
 // FLAG-D: Emit a structured Information event when the host starts with no loaded workspaces.
 // Clients that surface MCP `notifications/message` (via McpLoggingProvider) will see this
 // proactively after a transparent subprocess restart instead of discovering the missing
 // workspace tool-by-tool through cascading KeyNotFoundException errors.
-var startupLogger = host.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
 var startupWorkspaceManager = host.Services.GetRequiredService<IWorkspaceManager>();
 if (startupWorkspaceManager.ListWorkspaces().Count == 0)
 {

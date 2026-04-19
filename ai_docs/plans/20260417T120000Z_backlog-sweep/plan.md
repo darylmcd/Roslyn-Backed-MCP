@@ -112,7 +112,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 5. `composite-split-service-di-registration` — Composite preview with DI registration deltas
 
-**Status:** deferred (subagent stalled mid-work; branch `remediation/composite-split-service-di-registration` preserved — see state.json notes) · **Order:** 5 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #257, 2026-04-18) · **Order:** 5 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
