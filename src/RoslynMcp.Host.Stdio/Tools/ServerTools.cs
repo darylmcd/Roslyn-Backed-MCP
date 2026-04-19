@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Services;
 using ModelContextProtocol.Server;
@@ -119,7 +120,21 @@ public static class ServerTools
                 {
                     stable = catalogSummary.StablePrompts,
                     experimental = catalogSummary.ExperimentalPrompts
-                }
+                },
+                // concurrent-mcp-instances-no-tools: runtime-observed counts captured at
+                // host.Build() from McpServer.ServerOptions.{Tool,Resource,Prompt}Collection.
+                // A client that sees `surface.tools.registered == 0` here has reached a
+                // process where WithToolsFromAssembly() found no attributed methods —
+                // an unambiguous server-side failure distinct from catalog drift. Null
+                // when the snapshot was not populated (unit-test paths that construct
+                // ServerTools directly without booting the host).
+                registered = SurfaceRegistrationSnapshot.Value is { } snapshot ? new
+                {
+                    tools = snapshot.ToolsRegistered,
+                    resources = snapshot.ResourcesRegistered,
+                    prompts = snapshot.PromptsRegistered,
+                    parityOk = snapshot.AllParityOk
+                } : null
             },
             productBoundaries = new[]
             {

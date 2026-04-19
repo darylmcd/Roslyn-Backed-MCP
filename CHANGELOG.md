@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Added:** Startup surface diagnostic — the stdio host now cross-checks SDK-registered vs reflection vs `ServerSurfaceCatalog` counts at `host.Build()` and emits a single `Information`-level log line per process (`Startup surface: pid=… version=… tools=N/N resources=N/N prompts=N/N parity=ok`), flipping to `Error` level with structured mismatch details when any category disagrees. `server_info` gains a `surface.registered` block carrying runtime tool/resource/prompt counts + a `parityOk` flag so clients can distinguish a server-side registration failure (`registered=0`) from a client-side tool-listing issue even when stderr is unreachable. Makes the "N-th concurrent instance has no tools" failure mode observable end-to-end (`concurrent-mcp-instances-no-tools`).
+
 ### Changed
 
 ### Fixed
