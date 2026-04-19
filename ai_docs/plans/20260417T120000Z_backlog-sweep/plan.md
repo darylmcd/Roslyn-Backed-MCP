@@ -652,7 +652,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 35. `record-field-add-satellite-member-sync` — record_field_add_with_satellites_preview
 
-**Status:** pending · **Order:** 35 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 60000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #278, 2026-04-19) · **Order:** 35 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 60000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|

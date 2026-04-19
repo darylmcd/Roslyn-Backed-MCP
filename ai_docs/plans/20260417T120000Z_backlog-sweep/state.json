@@ -668,15 +668,15 @@
       "estimatedContextTokens": 60000,
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "branch": "remediation/record-field-add-satellite-member-sync",
+      "worktreePath": ".worktrees/record-field-add-satellite-member-sync",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/278",
+      "mergedAt": "2026-04-19T15:29:58Z",
+      "notes": "Scope = 2 prod (SymbolRefactorService.cs, SymbolRefactorTools.cs) + 1 test + 3 structural-unit files (RecordFieldAddSatelliteDto, ISymbolRefactorService interface extension, ServerSurfaceCatalog entry) via planner v3 new-MCP-tool structural-unit exemption. Non-exempt prod count = 2 (≤ 3). No DI-registration changes — ISymbolRefactorService/SymbolRefactorService already wired; new method extends the existing service. toolPolicy fallback → edit-only (reason: 2 prod ≤ 3 + new-MCP-tool Approach). Validation: 3/3 new RecordFieldAddSatelliteTests pass, 12/12 surface-catalog parity tests pass, verify-ai-docs green, verify-release.ps1 -Configuration Release green (764/764 tests, 0 errors / 0 warnings). Debug-mode full-suite surfaced 3 pre-existing shared-workspace flakes (ExtractMethodTests / ExtractSharedExpressionTests) tracked by ci-test-parallelization-audit; pass in isolation and in Release."
     },
     {
       "id": "concurrent-mcp-instances-no-tools",
