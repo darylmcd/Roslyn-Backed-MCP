@@ -22,7 +22,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task GetWorkspaceStatus_Resource_Returns_Json()
     {
-        var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, WorkspaceId, CancellationToken.None);
+        var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.GetProperty("projectCount").GetInt32() >= 1);
     }
@@ -30,7 +30,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task GetWorkspaceStatus_Resource_Default_Is_Summary()
     {
-        var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, WorkspaceId, CancellationToken.None);
+        var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsFalse(doc.RootElement.TryGetProperty("projects", out _),
             "Default workspace_status resource must return the summary shape (no per-project tree).");
@@ -41,7 +41,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task GetWorkspaceStatusVerbose_Resource_Includes_Projects()
     {
-        var json = await WorkspaceResources.GetWorkspaceStatusVerbose(WorkspaceManager, WorkspaceId, CancellationToken.None);
+        var json = await WorkspaceResources.GetWorkspaceStatusVerbose(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("projects", out var projects),
             "Verbose workspace_status resource must include the per-project tree.");
@@ -71,9 +71,9 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public void GetProjects_Resource_Returns_Graph()
+    public async Task GetProjects_Resource_Returns_Graph()
     {
-        var json = WorkspaceResources.GetProjects(WorkspaceManager, WorkspaceId);
+        var json = await WorkspaceResources.GetProjects(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.GetProperty("projects").GetArrayLength() >= 1);
     }
@@ -81,7 +81,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task GetDiagnostics_Resource_Returns_Result()
     {
-        var json = await WorkspaceResources.GetDiagnostics(DiagnosticService, WorkspaceId, CancellationToken.None);
+        var json = await WorkspaceResources.GetDiagnostics(WorkspaceExecutionGate, DiagnosticService, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("compilerDiagnostics", out _));
     }
@@ -92,7 +92,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
         // diagnostics-resource-timeout: the resource caps at 500 entries and applies a Warning
         // floor by default. Verify the new envelope includes severityFloor + cap + hasMore so
         // callers know to switch to project_diagnostics for fuller scopes.
-        var json = await WorkspaceResources.GetDiagnostics(DiagnosticService, WorkspaceId, CancellationToken.None);
+        var json = await WorkspaceResources.GetDiagnostics(WorkspaceExecutionGate, DiagnosticService, WorkspaceId, CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
 
         Assert.IsTrue(doc.RootElement.TryGetProperty("severityFloor", out var floor));
@@ -113,7 +113,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     public async Task GetSourceFile_Resource_Returns_Text()
     {
         var path = FindDocumentPath("AnimalService.cs");
-        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, path, CancellationToken.None);
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, path, CancellationToken.None);
         StringAssert.Contains(text, "GetAllAnimals");
     }
 
@@ -122,7 +122,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     {
         var path = FindDocumentPath("AnimalService.cs");
         var encoded = Uri.EscapeDataString(path);
-        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, encoded, CancellationToken.None);
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, encoded, CancellationToken.None);
         StringAssert.Contains(text, "GetAllAnimals");
     }
 
@@ -137,7 +137,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
         }
 
         var forward = path.Replace('\\', '/');
-        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, forward, CancellationToken.None);
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, forward, CancellationToken.None);
         StringAssert.Contains(text, "GetAllAnimals");
     }
 
@@ -145,7 +145,7 @@ public sealed class WorkspaceResourceTests : SharedWorkspaceTestBase
     public async Task GetSourceFile_Resource_Rejects_Relative_Path()
     {
         var ex = await Assert.ThrowsExceptionAsync<McpToolException>(() =>
-            WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, "AnimalService.cs", CancellationToken.None));
+            WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, "AnimalService.cs", CancellationToken.None));
         StringAssert.Contains(ex.Message, "Invalid operation");
         StringAssert.Contains(ex.Message, "absolute path");
     }

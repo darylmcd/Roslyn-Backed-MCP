@@ -33,7 +33,7 @@ public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
     public async Task GetSourceFile_UnencodedWindowsPath_Resolves()
     {
         var path = FindAnimalServicePath();
-        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, path, CancellationToken.None);
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, path, CancellationToken.None);
         StringAssert.Contains(text, "AnimalService");
     }
 
@@ -48,7 +48,7 @@ public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
         {
             Assert.AreNotEqual(path, encoded, "encoded path must differ from raw on Windows");
         }
-        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, encoded, CancellationToken.None);
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, encoded, CancellationToken.None);
         StringAssert.Contains(text, "AnimalService");
     }
 
@@ -57,7 +57,7 @@ public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
     {
         var path = FindAnimalServicePath();
         var forward = path.Replace('\\', '/');
-        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, forward, CancellationToken.None);
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, forward, CancellationToken.None);
         StringAssert.Contains(text, "AnimalService");
     }
 
@@ -67,7 +67,7 @@ public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
         // Some clients only encode the separators (\\ and :) but not other characters.
         var path = FindAnimalServicePath();
         var partiallyEncoded = path.Replace(":", "%3A").Replace("\\", "%5C");
-        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, partiallyEncoded, CancellationToken.None);
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, partiallyEncoded, CancellationToken.None);
         StringAssert.Contains(text, "AnimalService");
     }
 
@@ -79,7 +79,7 @@ public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
         var path = FindAnimalServicePath();
         var forward = path.Replace('\\', '/');
         var encodedForward = forward.Replace("/", "%2F").Replace(":", "%3A");
-        var text = await WorkspaceResources.GetSourceFile(WorkspaceManager, WorkspaceId, encodedForward, CancellationToken.None);
+        var text = await WorkspaceResources.GetSourceFile(WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, encodedForward, CancellationToken.None);
         StringAssert.Contains(text, "AnimalService");
     }
 
@@ -90,7 +90,7 @@ public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
         var path = FindAnimalServicePath();
         var encoded = Uri.EscapeDataString(path);
         var text = await WorkspaceResources.GetSourceFileLines(
-            WorkspaceManager, WorkspaceId, encoded, "1-3", CancellationToken.None);
+            WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, encoded, "1-3", CancellationToken.None);
         Assert.IsFalse(string.IsNullOrWhiteSpace(text));
         StringAssert.Contains(text, "// roslyn://workspace/");
     }

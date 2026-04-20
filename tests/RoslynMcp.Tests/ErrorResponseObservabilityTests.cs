@@ -59,7 +59,7 @@ public sealed class ErrorResponseObservabilityTests : SharedWorkspaceTestBase
         // Pre-fix: a resource exception bubbled to the framework which labelled it
         // tool: "unknown". Post-fix: ExecuteResource catches the exception and emits
         // the canonical error envelope with the resource URI as the tool field.
-        var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None);
+        var json = await WorkspaceResources.GetWorkspaceStatus(WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
@@ -72,9 +72,9 @@ public sealed class ErrorResponseObservabilityTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public void Resource_GetProjects_WithUnknownWorkspaceId_ReturnsErrorEnvelopeWithSourceUri()
+    public async Task Resource_GetProjects_WithUnknownWorkspaceId_ReturnsErrorEnvelopeWithSourceUri()
     {
-        var json = WorkspaceResources.GetProjects(WorkspaceManager, "ffffffffffffffffffffffffffffffff");
+        var json = await WorkspaceResources.GetProjects(WorkspaceExecutionGate, WorkspaceManager, "ffffffffffffffffffffffffffffffff", CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out _));
