@@ -584,6 +584,17 @@ initiatives are taken. **Therefore:**
 7. After all batch PRs merge: open ONE reconcile PR per Step 7 parallel variant,
    merge it, run the post-merge main-sync idiom.
 8. Worktree cleanup:
+   - `dotnet build-server shutdown` **before** any worktree-removal command.
+     This releases `testhost.exe` / `VBCSCompiler.exe` file locks on
+     `tests/RoslynMcp.Tests/bin/{Debug,Release}/net10.0/` that verify-release.ps1
+     leaves behind on Windows. The command is a no-op when no servers are
+     running, so it is always safe to prepend unconditionally. It prints one
+     informational line to stdout (e.g. `Build server didn't shut down due to an
+     error or it wasn't running.`) — this is not an error; do not let cleanup
+     scripts treat non-zero-length stdout as failure. Without this step,
+     `git worktree remove --force` / `rm -rf .worktrees/<id>` fail with
+     `Device or resource busy` on Windows and leave stale `.worktrees/*`
+     directories (hit twice in the 2026-04-18 pass-3 retrospective).
    - `git worktree remove --force .worktrees/<id>` for each.
    - `git push origin --delete remediation/<id>` for each merged branch.
    - `git remote prune origin`.
