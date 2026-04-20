@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed
+
+### Changed
+
+### Added
+
+### Maintenance
+
+## [1.26.0] - 2026-04-20
+
+Batches 10, 11, and 12 of backlog-sweep plan `20260419T230057Z_backlog-sweep` — 12 of 15 actionable initiatives merged (80%). Ships `concurrent-mcp-instances-no-tools` startup surface diagnostic + `server_info` `surface.registered` block, a `fetch_mcp_resource` readiness-gate fix via `IWorkspaceExecutionGate.RunReadAsync`, the same-turn `*_preview`→`*_apply` hook accept-case, CI coverage split (PR skip / main collect), CI docs-only skip expansion, `.claude/agents/plan-vetter.md` + `.claude/agents/workspace-health-triage.md` subagents, `/recover-stalled-subagent` skill, `ReadmeSurfaceCountTests.cs` regression (+README count refresh to 159/107/52), and five `ai_docs/`-side process improvements (workflow worktree-cd discipline, backlog-sweep-execute reconciler brief cleanup + Appendix A `dotnet build-server shutdown`, planner anchor-verification sub-step).
+
 ### Added
 
 - **Added:** Startup surface diagnostic — the stdio host now cross-checks SDK-registered vs reflection vs `ServerSurfaceCatalog` counts at `host.Build()` and emits a single `Information`-level log line per process (`Startup surface: pid=… version=… tools=N/N resources=N/N prompts=N/N parity=ok`), flipping to `Error` level with structured mismatch details when any category disagrees. `server_info` gains a `surface.registered` block carrying runtime tool/resource/prompt counts + a `parityOk` flag so clients can distinguish a server-side registration failure (`registered=0`) from a client-side tool-listing issue even when stderr is unreachable. Makes the "N-th concurrent instance has no tools" failure mode observable end-to-end (`concurrent-mcp-instances-no-tools`).
