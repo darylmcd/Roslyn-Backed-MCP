@@ -1,12 +1,18 @@
 # CodeQL static analysis for C#. The job "Analyze C#" always completes successfully on every PR
 # (doc-only PRs skip init/build/analyze but still report green) so required checks stay satisfied.
+#
+# Trigger model (see CI_POLICY.md § Repository Evidence):
+#   - pull_request       — path-filtered; skips init/build/analyze when no code files change
+#   - workflow_dispatch  — manual re-run
+#   - schedule (weekly)  — full security-and-quality scan
+#
+# push-to-main was removed: the squash-merged commit was already analyzed seconds earlier
+# on its PR, and CodeQL re-running on every main push was pure duplicate work.
+# SARIF results upload to the repository Security tab.
 
 name: CodeQL
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
   workflow_dispatch:
   schedule:
@@ -18,6 +24,8 @@ concurrency:
 
 permissions:
   contents: read
+  # Required so github/codeql-action/analyze can upload SARIF to the Security tab.
+  security-events: write
 
 jobs:
   analyze:
@@ -83,6 +91,3 @@ jobs:
       - name: Perform CodeQL Analysis
         if: github.event_name != 'pull_request' || steps.filter.outputs.code == 'true'
         uses: github/codeql-action/analyze@v3
-        with:
-          upload: never
-          wait-for-processing: false
