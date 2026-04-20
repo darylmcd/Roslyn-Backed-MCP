@@ -90,3 +90,11 @@ if ($issues.Count -gt 0) {
 }
 
 Write-Host "AI docs validation passed."
+
+# Shipped-skill generality check runs as part of doc-side validation (not
+# release-side), so the check still gates a PR even when CI's detect-docs-only
+# step skips verify-release.ps1. Both `./skills/**/SKILL.md` markdown bodies and
+# any future `./skills/**/*.md` additions are validated by verify-skills-are-
+# generic.ps1. verify-release.ps1 invokes this script too, so local full-release
+# runs continue to catch the same violations.
+& (Join-Path $PSScriptRoot 'verify-skills-are-generic.ps1') -RepoRoot $RepoRoot
