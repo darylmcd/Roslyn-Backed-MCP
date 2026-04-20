@@ -11,6 +11,7 @@ namespace RoslynMcp.Tests;
 /// workspace on cleanup without invalidating the shared <c>SharedWorkspaceTestBase</c>
 /// cache that other test classes depend on.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceLoadDedupTests : SharedWorkspaceTestBase
 {

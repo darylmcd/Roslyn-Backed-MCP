@@ -3,6 +3,7 @@ using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public sealed class MutationAnalysisSideEffectsTests : SharedWorkspaceTestBase
 {

@@ -10,6 +10,7 @@ namespace RoslynMcp.Tests;
 /// symbol-search-payload-meta response shape wrap, the filePaths parameter on
 /// get_complexity_metrics, and the new format_check tool.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
 {

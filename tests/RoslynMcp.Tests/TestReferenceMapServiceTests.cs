@@ -7,6 +7,7 @@ namespace RoslynMcp.Tests;
 /// <see cref="TestReferenceMapService.BuildAsync"/> pagination + projectName scoping.
 /// Service shipped without tests — these are the first, scoped to the I-23 defects.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class TestReferenceMapServiceTests : SharedWorkspaceTestBase
 {

@@ -7,6 +7,7 @@ namespace RoslynMcp.Tests;
 /// type is a constructed generic from metadata (e.g. <c>List&lt;IAnimal&gt;</c>) lands on the
 /// in-source type argument (<c>IAnimal</c>) rather than failing with "No type definition found."
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class GoToTypeDefinitionTests : SharedWorkspaceTestBase
 {

@@ -4,6 +4,7 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
 {

@@ -3,6 +3,10 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
+// Tests assert wall-clock behavior of timer-based script-abandonment (budget + grace).
+// Under parallel class execution, CPU contention inflates elapsed times past the
+// assertion's upper bound. Serialize to keep the timing signal clean.
+[DoNotParallelize]
 [TestClass]
 public sealed class ScriptingServiceTests
 {

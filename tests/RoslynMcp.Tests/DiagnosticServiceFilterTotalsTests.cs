@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
 {

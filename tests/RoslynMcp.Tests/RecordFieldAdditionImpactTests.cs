@@ -1,5 +1,6 @@
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public sealed class RecordFieldAdditionImpactTests : SharedWorkspaceTestBase
 {

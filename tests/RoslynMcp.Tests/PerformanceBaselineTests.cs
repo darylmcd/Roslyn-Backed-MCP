@@ -9,6 +9,7 @@ namespace RoslynMcp.Tests;
 /// These are not micro-benchmarks — they verify that operations complete within
 /// a generous wall-clock budget to catch severe regressions.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
 {

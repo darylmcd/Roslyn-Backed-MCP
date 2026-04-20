@@ -15,6 +15,7 @@ namespace RoslynMcp.Tests;
 /// <c>find_unused_symbols</c>, etc.) had to fall back to <c>Grep</c> because the resolver
 /// path was hard-disabled by the tool schema. Tests below replicate that agent flow.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
 {

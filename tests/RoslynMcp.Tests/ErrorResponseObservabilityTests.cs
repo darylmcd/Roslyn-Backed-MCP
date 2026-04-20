@@ -6,16 +6,31 @@ using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
+// Uses an isolated workspace copy instead of the shared sample so the
+// FindReferences_WithUnresolvableHandle assertion (expecting category=NotFound)
+// is not racy against the shared-workspace auto-reload path. Under parallel
+// class execution, a prior SharedWorkspaceTestBase class can leave the shared
+// workspace flagged stale, causing the gate to auto-reload mid-call and
+// classify the KeyNotFoundException as WorkspaceReloadedDuringCall instead.
+// The isolated copy has no such cross-class pressure.
+[DoNotParallelize]
 [TestClass]
-public sealed class ErrorResponseObservabilityTests : SharedWorkspaceTestBase
+public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
 {
-    private static string WorkspaceId { get; set; } = null!;
+    private static IsolatedWorkspaceScope _scope = null!;
+    private static string WorkspaceId => _scope.WorkspaceId;
 
     [ClassInitialize]
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
+        _scope = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+    }
+
+    [ClassCleanup]
+    public static void ClassCleanup()
+    {
+        _scope?.Dispose();
     }
 
     [TestMethod]

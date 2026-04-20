@@ -5,6 +5,7 @@ namespace RoslynMcp.Tests;
 /// returns deterministic, trivia-aware lexical snapshots so fixture authors can pin 1-based
 /// line/column anchors without re-implementing Roslyn's token-boundary rules.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class PositionProbeTests : SharedWorkspaceTestBase
 {

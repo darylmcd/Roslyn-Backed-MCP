@@ -11,6 +11,7 @@ namespace RoslynMcp.Tests;
 /// <summary>
 /// Tests covering P0-P2 backlog fixes: error handling, defensive wrapping, and refactored services.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class BacklogFixTests : SharedWorkspaceTestBase
 {

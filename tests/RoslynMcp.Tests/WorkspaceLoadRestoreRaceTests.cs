@@ -17,6 +17,7 @@ namespace RoslynMcp.Tests;
 /// sample-solution copy so toggling <c>RestoreRaceWaitMs</c> cannot bleed into other
 /// test classes.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
 {

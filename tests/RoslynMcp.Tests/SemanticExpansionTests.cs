@@ -2,6 +2,7 @@ using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public class SemanticExpansionTests : SharedWorkspaceTestBase
 {

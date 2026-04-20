@@ -9,6 +9,7 @@ namespace RoslynMcp.Tests;
 /// with _meta.staleAction:auto-reloaded while the workspace still had real errors. The fix
 /// adds a completedProjects&gt;0 precondition to Success and a structured actionable hint.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class CompileCheckZeroProjectsTests : SharedWorkspaceTestBase
 {

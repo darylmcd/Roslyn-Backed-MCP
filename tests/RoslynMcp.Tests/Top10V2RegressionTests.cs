@@ -9,6 +9,7 @@ namespace RoslynMcp.Tests;
 /// Regression coverage for the v2 top-10 remediation pass (post-PR-#150). Smaller, focused
 /// asserts live alongside their feature; this file batches the cross-cutting smoke tests.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
 {

@@ -11,6 +11,7 @@ namespace RoslynMcp.Tests;
 /// defects surfaced in firewall-analyzer 2026-04-15 §9.1 (literal `__name__` emitted
 /// in goal output).
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class RestructureServiceTests : SharedWorkspaceTestBase
 {

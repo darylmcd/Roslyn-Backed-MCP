@@ -9,6 +9,7 @@ namespace RoslynMcp.Tests;
 ///   * The Debug payload must always be populated so callers can see the parsed tokens,
 ///     applied predicates, and fallback strategy.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class SemanticSearchFallbackTests : SharedWorkspaceTestBase
 {

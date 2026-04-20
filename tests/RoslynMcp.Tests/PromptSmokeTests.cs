@@ -10,6 +10,7 @@ using ModelContextProtocol.Protocol;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public sealed class PromptSmokeTests : SharedWorkspaceTestBase
 {

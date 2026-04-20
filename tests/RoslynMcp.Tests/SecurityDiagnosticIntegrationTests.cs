@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
 {

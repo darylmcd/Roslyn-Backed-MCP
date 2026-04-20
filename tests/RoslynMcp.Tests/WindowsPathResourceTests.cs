@@ -14,6 +14,7 @@ namespace RoslynMcp.Tests;
 /// reasonable client might send. Existing happy-path tests live in
 /// <c>WorkspaceResourceTests</c>; these extend coverage to additional edge cases.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
 {

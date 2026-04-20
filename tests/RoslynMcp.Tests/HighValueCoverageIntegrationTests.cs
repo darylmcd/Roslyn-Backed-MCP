@@ -6,6 +6,7 @@ namespace RoslynMcp.Tests;
 /// Targets P1/P2 coverage gaps: CompileCheckService, CodeActionService,
 /// DependencyAnalysisService, DeadCodeService (see docs/coverage-baseline.md).
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
 {
