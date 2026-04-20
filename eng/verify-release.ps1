@@ -1,6 +1,7 @@
 param(
     [string]$Configuration = "Release",
-    [string]$OutputRoot = "artifacts"
+    [string]$OutputRoot = "artifacts",
+    [switch]$NoCoverage
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,7 +26,9 @@ $hashManifestPath = Join-Path $manifestDir "host-stdio-sha256.txt"
 
 New-Item -ItemType Directory -Path $publishDir -Force | Out-Null
 New-Item -ItemType Directory -Path $manifestDir -Force | Out-Null
-New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null
+if (-not $NoCoverage) {
+    New-Item -ItemType Directory -Path $coverageDir -Force | Out-Null
+}
 
 # Version-string drift check across all 5 version files.
 # Runs before build so a drift-only mistake fails fast without waiting for compilation.
@@ -51,10 +54,19 @@ Invoke-DotnetStep "dotnet build"
 
 # Logger verbosity `minimal` emits the run summary and failure details but skips
 # the per-test "Passed X [N ms]" lines that dominated the previous console output.
-dotnet test $solutionPath -c $Configuration --no-build --nologo `
-    --collect:"XPlat Code Coverage" `
-    --results-directory $coverageDir `
-    --logger "console;verbosity=minimal"
+# Coverage collection adds coverlet IL-rewrite latency per test assembly (~60-90s total).
+# CI_POLICY.md treats coverage as informational — not a merge gate — so PR-time collection
+# is pure latency. `-NoCoverage` lets CI skip it on pull_request while push-to-main,
+# scheduled, and workflow_dispatch still collect for the uploaded artifact.
+if ($NoCoverage) {
+    dotnet test $solutionPath -c $Configuration --no-build --nologo `
+        --logger "console;verbosity=minimal"
+} else {
+    dotnet test $solutionPath -c $Configuration --no-build --nologo `
+        --collect:"XPlat Code Coverage" `
+        --results-directory $coverageDir `
+        --logger "console;verbosity=minimal"
+}
 Invoke-DotnetStep "dotnet test"
 
 # PublishReadyToRun (CrossGen) can fail on CI runners when the SDK's crossgen2
@@ -75,4 +87,8 @@ Set-Content -Path $hashManifestPath -Value $hashLines
 
 Write-Host "Publish directory: $publishDir"
 Write-Host "Hash manifest: $hashManifestPath"
-Write-Host "Code coverage (Cobertura): $coverageDir"
+if ($NoCoverage) {
+    Write-Host "Code coverage: skipped (-NoCoverage)"
+} else {
+    Write-Host "Code coverage (Cobertura): $coverageDir"
+}

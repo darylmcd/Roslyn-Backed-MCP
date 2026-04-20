@@ -66,13 +66,23 @@ jobs:
         shell: pwsh
         run: ./eng/verify-ai-docs.ps1
 
-      - name: Verify release build
-        if: steps.detect.outputs.docs_only != 'true'
+      # Coverage collection adds ~60-90s per run via coverlet IL-rewrite on every test
+      # assembly, and CI_POLICY.md treats coverage as informational — not a merge gate.
+      # Pass -NoCoverage on pull_request to skip the collection + HTML summary + upload;
+      # push-to-main, scheduled, and workflow_dispatch keep full collection so the
+      # artifact is still published and trend data continues on main.
+      - name: Verify release build (pull request — no coverage)
+        if: steps.detect.outputs.docs_only != 'true' && github.event_name == 'pull_request'
+        shell: pwsh
+        run: ./eng/verify-release.ps1 -Configuration Release -NoCoverage
+
+      - name: Verify release build (main / dispatch / schedule — with coverage)
+        if: steps.detect.outputs.docs_only != 'true' && github.event_name != 'pull_request'
         shell: pwsh
         run: ./eng/verify-release.ps1 -Configuration Release
 
       - name: Generate coverage HTML summary
-        if: steps.detect.outputs.docs_only != 'true'
+        if: steps.detect.outputs.docs_only != 'true' && github.event_name != 'pull_request'
         shell: pwsh
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.7 --no-cache
@@ -104,7 +114,7 @@ jobs:
           path: artifacts/manifests
 
       - name: Upload code coverage
-        if: steps.detect.outputs.docs_only != 'true'
+        if: steps.detect.outputs.docs_only != 'true' && github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: code-coverage
