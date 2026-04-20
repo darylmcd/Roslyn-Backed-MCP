@@ -207,6 +207,19 @@ Verify:
   initiative's Backlog sync field.
 - Identify root cause in code, not just symptoms (file:line references).
 
+**Anchor verification (SHOULD).** For each symbol, method, or helper name cited in an
+initiative's Validation or Diagnosis field, run `mcp__roslyn__symbol_search` (or an
+equivalent Grep pass) at plan-draft time to confirm the anchor still resolves. If
+the anchor does not resolve, **rewrite the field** to
+`[stale — cited anchor not found; executor may use synthetic examples]` rather than
+dropping the initiative. The plan still ships; the executor is informed up front and
+picks a fresh example. Budget: ~2K planner tokens per initiative with cited anchors.
+A cost-constrained sweep MAY skip this pass, but the skip must be explicit — log it in
+plan.md's preamble so the executor knows anchor freshness wasn't verified. Prevents
+the 2026-04-18 pass-3 init-6 class of failure where `Build*Diff` helpers had
+consolidated into `DiffGenerator.GenerateUnifiedDiff` between plan-draft and
+plan-execute (`plan-anchor-examples-go-stale-between-plan-and-execute`).
+
 **Adjacent perf smell check** on touched files: (a) repeated full-collection scans;
 (b) sync enumeration of large data sets; (c) redundant work in loops; (d) over-reads.
 Record findings. If a perf fix requires touching files outside the correctness work,
@@ -262,6 +275,8 @@ Before writing files, walk every initiative and confirm:
 - [ ] Every initiative has a `toolPolicy` set (Rule 3b). Prefer explicit
       `edit-only` / `preview-then-apply` classification; null only when genuinely
       ambiguous. New-MCP-tool initiatives MUST be `edit-only`.
+- [ ] Anchors in Validation/Diagnosis fields still resolve (Step 3 anchor-verification
+      pass complete), OR the skip is explicitly logged in plan.md's preamble.
 - [ ] At least one P2 or high-correctness P3 is in the top 5 by sort order.
 - [ ] Total initiative count is honest about backlog size (~1:1 with row count is
       expected, not a sign of failure).
