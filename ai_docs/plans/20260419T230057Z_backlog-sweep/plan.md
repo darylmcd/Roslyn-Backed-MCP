@@ -213,7 +213,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 9. `workspace-health-triage-subagent` — New `.claude/agents/workspace-health-triage.md`
 
-**Status:** pending · **Order:** 9 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #296, 2026-04-20) · **Order:** 9 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -234,7 +234,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 10. `subagent-malformed-result-orphans-uncommitted-work` — New `/recover-stalled-subagent` skill
 
-**Status:** pending · **Order:** 10 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #295, 2026-04-20) · **Order:** 10 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -255,7 +255,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 11. `readme-surface-counts-drift-from-live-catalog` — Regression test for README vs `ServerSurfaceCatalog`
 
-**Status:** pending · **Order:** 11 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #294, 2026-04-20) · **Order:** 11 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -276,7 +276,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 12. `plan-vetter-subagent` — New `.claude/agents/plan-vetter.md`
 
-**Status:** pending · **Order:** 12 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #293, 2026-04-20) · **Order:** 12 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
