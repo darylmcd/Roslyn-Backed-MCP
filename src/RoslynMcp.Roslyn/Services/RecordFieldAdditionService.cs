@@ -611,13 +611,6 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
         return "(" + string.Join(", ", args) + ")";
     }
 
-    private static string BuildSuggestedArgumentList(BaseArgumentListSyntax original, NewRecordFieldDto newField)
-    {
-        var args = original.Arguments.Select(a => a.ToString()).ToList();
-        args.Add(newField.DefaultValueExpression ?? $"/* TODO: {newField.Name} ({newField.Type}) */");
-        return "(" + string.Join(", ", args) + ")";
-    }
-
     private static string BuildSuggestedDeconstructionPattern(PositionalPatternClauseSyntax original, NewRecordFieldDto newField)
     {
         var parts = original.Subpatterns.Select(s => s.ToString()).ToList();

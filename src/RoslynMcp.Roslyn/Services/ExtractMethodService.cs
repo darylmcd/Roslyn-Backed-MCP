@@ -489,8 +489,75 @@ public sealed class ExtractMethodService : IExtractMethodService
             throw new InvalidOperationException(
                 "Cannot extract a void expression to a helper. Select a typed sub-expression instead.");
 
-        // Scan candidate documents for structurally-identical expressions. Scope is the example's
-        // containing type unless allowCrossFile=true, in which case we scan the whole project.
+        // Scan candidate documents for structurally-identical expressions (phase 2).
+        var hits = await CollectMatchingExpressionHitsAsync(
+            exampleDocument, exampleExpression, exampleType, exampleFreeVars, allowCrossFile, ct)
+            .ConfigureAwait(false);
+
+        if (hits.Count == 0)
+            throw new InvalidOperationException(
+                "No structurally-identical expressions found — even the example span did not match. " +
+                "Verify the span covers a complete expression.");
+        if (hits.Count < 2)
+            throw new InvalidOperationException(
+                "Only one occurrence of the expression was found. Use `extract_method_preview` for a single-site extraction; " +
+                "`extract_shared_expression_to_helper_preview` is intended for 2+ call sites.");
+
+        // Build the helper method and resolve the type-qualified call-target for cross-file hits.
+        var helperTypeName = exampleType.Identifier.Text;
+        var helperNamespace = exampleType.Ancestors().OfType<BaseNamespaceDeclarationSyntax>()
+            .FirstOrDefault()?.Name.ToString();
+        var helperFullyQualifiedType = string.IsNullOrEmpty(helperNamespace)
+            ? helperTypeName
+            : $"{helperNamespace}.{helperTypeName}";
+
+        var helperMethod = BuildHelperMethod(
+            helperName, accessibilityToken, returnType, exampleFreeVars, exampleExpression);
+
+        // Rewrite hits grouped by document (phase 3) and emit per-file change records.
+        var hitsByDocument = hits.GroupBy(h => h.Document.Id).ToList();
+        var (accumulator, fileChanges) = await RewriteHitsAndFormatDocumentsAsync(
+            solution, hitsByDocument, exampleDocument, exampleType,
+            helperName, helperMethod, helperFullyQualifiedType, allowCrossFile, ct)
+            .ConfigureAwait(false);
+
+        // Defense-in-depth: insert the helper if the example doc wasn't among the rewrite groups (phase 4).
+        if (!hitsByDocument.Any(g => g.First().Document.Id == exampleDocument.Id))
+        {
+            var (fallbackSolution, fallbackChange) = await EnsureHelperInsertedIntoExampleDocumentAsync(
+                accumulator, exampleDocument, exampleType, helperMethod, ct)
+                .ConfigureAwait(false);
+            accumulator = fallbackSolution;
+            fileChanges.Add(fallbackChange);
+        }
+
+        var description =
+            $"Extract shared expression into helper '{helperName}' and rewrite {hits.Count} site(s) across {fileChanges.Count} file(s)";
+        var token = _previewStore.Store(
+            workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+
+        _logger.LogDebug("Extract shared expression preview: {Description}", description);
+
+        return new RefactoringPreviewDto(token, description, fileChanges, null);
+    }
+
+    /// <summary>
+    /// Phase 2 of <see cref="PreviewExtractSharedExpressionToHelperAsync"/>: scan documents in the
+    /// effective scope (the example document when <paramref name="allowCrossFile"/> is false; the
+    /// whole project otherwise) for expressions structurally equivalent to <paramref name="exampleExpression"/>.
+    /// Applies the containing-type guard (same-type unless cross-file) and the semantic-type guard
+    /// (every free variable must carry the same <see cref="ITypeSymbol"/> as the example's).
+    /// Throws <see cref="InvalidOperationException"/> when capture sets disagree — the caller
+    /// cannot synthesize a shared helper in that case.
+    /// </summary>
+    private static async Task<List<ExpressionHit>> CollectMatchingExpressionHitsAsync(
+        Document exampleDocument,
+        ExpressionSyntax exampleExpression,
+        TypeDeclarationSyntax exampleType,
+        IReadOnlyList<FreeVariable> exampleFreeVars,
+        bool allowCrossFile,
+        CancellationToken ct)
+    {
         var scope = allowCrossFile
             ? exampleDocument.Project.Documents
             : new[] { exampleDocument };
@@ -537,33 +604,29 @@ public sealed class ExtractMethodService : IExtractMethodService
                 hits.Add(new ExpressionHit(doc, candidate, candidateFreeVars, candidateType));
             }
         }
+        return hits;
+    }
 
-        if (hits.Count == 0)
-            throw new InvalidOperationException(
-                "No structurally-identical expressions found — even the example span did not match. " +
-                "Verify the span covers a complete expression.");
-        if (hits.Count < 2)
-            throw new InvalidOperationException(
-                "Only one occurrence of the expression was found. Use `extract_method_preview` for a single-site extraction; " +
-                "`extract_shared_expression_to_helper_preview` is intended for 2+ call sites.");
-
-        // Build the helper method. Place it on the example's containing type; every hit gets
-        // rewritten to call it via {helperName}(arg1, arg2, ...). When allowCrossFile is true
-        // and hits reside outside the example type, those call sites reach the helper via the
-        // example-type's fully-qualified name.
-        var helperTypeName = exampleType.Identifier.Text;
-        var helperNamespace = exampleType.Ancestors().OfType<BaseNamespaceDeclarationSyntax>()
-            .FirstOrDefault()?.Name.ToString();
-        var helperFullyQualifiedType = string.IsNullOrEmpty(helperNamespace)
-            ? helperTypeName
-            : $"{helperNamespace}.{helperTypeName}";
-
-        var helperMethod = BuildHelperMethod(
-            helperName, accessibilityToken, returnType, exampleFreeVars, exampleExpression);
-
-        // Rewrite hits grouped by document. Each document's edit is independent; the helper
-        // insertion happens on the example doc in a second pass.
-        var hitsByDocument = hits.GroupBy(h => h.Document.Id).ToList();
+    /// <summary>
+    /// Phase 3 of <see cref="PreviewExtractSharedExpressionToHelperAsync"/>: rewrite each hit to a
+    /// helper invocation, insert the helper declaration into the example document (done here when
+    /// the example doc appears in the rewrite groups), and route the resulting root through
+    /// <see cref="Formatter.FormatAsync(Document, SyntaxAnnotation, Microsoft.CodeAnalysis.Options.OptionSet?, CancellationToken)"/>
+    /// so editorconfig-driven indentation/spacing is applied. Returns the mutated solution and the
+    /// per-file <see cref="FileChangeDto"/> list the caller will hand back to the preview store.
+    /// </summary>
+    private static async Task<(Solution Accumulator, List<FileChangeDto> FileChanges)>
+        RewriteHitsAndFormatDocumentsAsync(
+            Solution solution,
+            IReadOnlyList<IGrouping<DocumentId, ExpressionHit>> hitsByDocument,
+            Document exampleDocument,
+            TypeDeclarationSyntax exampleType,
+            string helperName,
+            MethodDeclarationSyntax helperMethod,
+            string helperFullyQualifiedType,
+            bool allowCrossFile,
+            CancellationToken ct)
+    {
         var accumulator = solution;
         var fileChanges = new List<FileChangeDto>();
 
@@ -617,39 +680,44 @@ public sealed class ExtractMethodService : IExtractMethodService
                 UnifiedDiff: DiffGenerator.GenerateUnifiedDiff(oldText, newText, docPath)));
         }
 
-        // If the example doc wasn't among the rewrite groups (can't actually happen since we
-        // always include the example hit — but kept as defense-in-depth), still insert the
-        // helper so the diff is legal.
-        if (!hitsByDocument.Any(g => g.First().Document.Id == exampleDocument.Id))
-        {
-            var docRoot = await exampleDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
-                ?? throw new InvalidOperationException("Could not re-read example document root.");
-            var oldText = docRoot.ToFullString();
-            var newDocRoot = InsertHelperIntoType(docRoot, exampleType, helperMethod);
-            var documentWithEdit = exampleDocument.WithSyntaxRoot(newDocRoot);
-            var formattedDocument = await Formatter.FormatAsync(
-                documentWithEdit,
-                Formatter.Annotation,
-                options: null,
-                cancellationToken: ct).ConfigureAwait(false);
-            var formattedRoot = await formattedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
-                ?? throw new InvalidOperationException("Formatter produced no syntax root for the example document.");
-            var newText = formattedRoot.ToFullString();
-            accumulator = accumulator.WithDocumentSyntaxRoot(exampleDocument.Id, formattedRoot);
-            var docPath = exampleDocument.FilePath ?? exampleDocument.Name;
-            fileChanges.Add(new FileChangeDto(
-                FilePath: docPath,
-                UnifiedDiff: DiffGenerator.GenerateUnifiedDiff(oldText, newText, docPath)));
-        }
+        return (accumulator, fileChanges);
+    }
 
-        var description =
-            $"Extract shared expression into helper '{helperName}' and rewrite {hits.Count} site(s) across {fileChanges.Count} file(s)";
-        var token = _previewStore.Store(
-            workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
-
-        _logger.LogDebug("Extract shared expression preview: {Description}", description);
-
-        return new RefactoringPreviewDto(token, description, fileChanges, null);
+    /// <summary>
+    /// Phase 4 (defense-in-depth) of <see cref="PreviewExtractSharedExpressionToHelperAsync"/>:
+    /// when the example document is not among the rewrite groups — a case that cannot actually
+    /// occur because the example span itself is always a hit, but kept for safety — insert the
+    /// helper directly into the example document on the already-accumulated solution and return
+    /// the per-file change. Mirrors the <see cref="Formatter.FormatAsync(Document, SyntaxAnnotation, Microsoft.CodeAnalysis.Options.OptionSet?, CancellationToken)"/>
+    /// pipeline used by the primary rewrite path so the output is indistinguishable.
+    /// </summary>
+    private static async Task<(Solution Accumulator, FileChangeDto Change)>
+        EnsureHelperInsertedIntoExampleDocumentAsync(
+            Solution solution,
+            Document exampleDocument,
+            TypeDeclarationSyntax exampleType,
+            MethodDeclarationSyntax helperMethod,
+            CancellationToken ct)
+    {
+        var docRoot = await exampleDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax
+            ?? throw new InvalidOperationException("Could not re-read example document root.");
+        var oldText = docRoot.ToFullString();
+        var newDocRoot = InsertHelperIntoType(docRoot, exampleType, helperMethod);
+        var documentWithEdit = exampleDocument.WithSyntaxRoot(newDocRoot);
+        var formattedDocument = await Formatter.FormatAsync(
+            documentWithEdit,
+            Formatter.Annotation,
+            options: null,
+            cancellationToken: ct).ConfigureAwait(false);
+        var formattedRoot = await formattedDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Formatter produced no syntax root for the example document.");
+        var newText = formattedRoot.ToFullString();
+        var accumulator = solution.WithDocumentSyntaxRoot(exampleDocument.Id, formattedRoot);
+        var docPath = exampleDocument.FilePath ?? exampleDocument.Name;
+        var change = new FileChangeDto(
+            FilePath: docPath,
+            UnifiedDiff: DiffGenerator.GenerateUnifiedDiff(oldText, newText, docPath));
+        return (accumulator, change);
     }
 
     private static SyntaxToken ParseAccessibility(string accessibility)

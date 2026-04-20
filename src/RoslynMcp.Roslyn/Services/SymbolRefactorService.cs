@@ -1036,10 +1036,36 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
             string? incrementTemplate = null;
             string? toJsonTemplate = null;
 
-            // 1) Mirror-type detection: sibling types in the same compilation unit whose name
-            //    ends in Snapshot / Dto / Builder / Mirror / Projection AND whose member
-            //    names overlap the target type's fields. Each such sibling contributes a
-            //    SnapshotType.Field coverage entry for every field it declares.
+            // 1) Mirror-type detection (phase 1).
+            DetectMirrorTypeFields(declaringRoot, targetType, coverageByField, snapshotFieldAnchors);
+
+            // 2) Method-level scans on the target type (phase 2).
+            ScanMethodsForCloneWithIncrementToJson(
+                declaringRoot, targetType, existingFields, sourceText,
+                coverageByField, cloneAnchors, withAnchors, incrementAnchors, toJsonAnchors,
+                ref cloneSource, ref withSource, ref incrementTemplate, ref toJsonTemplate);
+
+            // 3) Infer pattern and build the final analysis record (phase 3).
+            return ComputeInferredPattern(
+                coverageByField,
+                snapshotFieldAnchors, cloneAnchors, withAnchors, incrementAnchors, toJsonAnchors,
+                cloneSource, withSource, incrementTemplate, toJsonTemplate);
+        }
+
+        /// <summary>
+        /// Phase 1 of <see cref="Analyze"/>: sibling types in the same compilation unit whose name
+        /// ends in Snapshot / Dto / Builder / Mirror / Projection / State AND whose member names
+        /// overlap the target type's fields are treated as mirror types. Each overlapping member
+        /// contributes a <see cref="SatelliteKind.SnapshotTypeField"/> coverage entry and a
+        /// <see cref="SatelliteAnchor"/>. Mutates <paramref name="coverageByField"/> and
+        /// <paramref name="snapshotFieldAnchors"/> in place.
+        /// </summary>
+        private static void DetectMirrorTypeFields(
+            SyntaxNode declaringRoot,
+            INamedTypeSymbol targetType,
+            Dictionary<string, HashSet<string>> coverageByField,
+            List<SatelliteAnchor> snapshotFieldAnchors)
+        {
             foreach (var typeDecl in declaringRoot.DescendantNodes().OfType<TypeDeclarationSyntax>())
             {
                 if (typeDecl.Identifier.ValueText == targetType.Name) continue;
@@ -1060,8 +1086,33 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
                         FieldName: memberName));
                 }
             }
+        }
 
-            // 2) Method-level scans on the target type.
+        /// <summary>
+        /// Phase 2 of <see cref="Analyze"/>: walk the target type's method declarations and
+        /// classify each method against four satellite-patterns — Clone/Copy, With*,
+        /// Increment&lt;Field&gt;, and ToJson/WriteJson/Serialize/WriteTo*. For every method that
+        /// matches a pattern, record the per-field assignment/case anchor and accumulate a
+        /// coverage entry for the field. Mutates all accumulator collections (and the four
+        /// template-string <c>ref</c> parameters) in place. Per-shape handling is delegated to
+        /// <c>RecordCloneFieldAssignments</c>, <c>RecordWithFieldAssignments</c>,
+        /// <c>RecordIncrementMethod</c>, and <c>RecordToJsonFieldCases</c>.
+        /// </summary>
+        private static void ScanMethodsForCloneWithIncrementToJson(
+            SyntaxNode declaringRoot,
+            INamedTypeSymbol targetType,
+            IReadOnlyList<string> existingFields,
+            SourceText sourceText,
+            Dictionary<string, HashSet<string>> coverageByField,
+            List<SatelliteAnchor> cloneAnchors,
+            List<SatelliteAnchor> withAnchors,
+            List<SatelliteAnchor> incrementAnchors,
+            List<SatelliteAnchor> toJsonAnchors,
+            ref string cloneSource,
+            ref string withSource,
+            ref string? incrementTemplate,
+            ref string? toJsonTemplate)
+        {
             var targetDecls = declaringRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
                 .Where(t => t.Identifier.ValueText == targetType.Name)
                 .ToList();
@@ -1071,71 +1122,141 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
                 foreach (var method in typeDecl.Members.OfType<MethodDeclarationSyntax>())
                 {
                     var name = method.Identifier.ValueText;
-                    var isClone = string.Equals(name, "Clone", StringComparison.Ordinal)
-                                   || name.StartsWith("Copy", StringComparison.Ordinal);
-                    var isWith = name.StartsWith("With", StringComparison.Ordinal) && name != "WithCancellation";
-                    var isIncrementForField = ExtractIncrementFieldName(name, existingFields);
-                    var isToJsonLike = string.Equals(name, "ToJson", StringComparison.Ordinal)
-                                        || string.Equals(name, "WriteJson", StringComparison.Ordinal)
-                                        || string.Equals(name, "Serialize", StringComparison.Ordinal)
-                                        || name.StartsWith("WriteTo", StringComparison.Ordinal);
 
-                    if (isClone)
+                    if (string.Equals(name, "Clone", StringComparison.Ordinal)
+                        || name.StartsWith("Copy", StringComparison.Ordinal))
                     {
-                        foreach (var name2 in existingFields)
-                        {
-                            var assignmentLine = FindAssignmentLineFor(method, name2);
-                            if (assignmentLine is not null)
-                            {
-                                coverageByField[name2].Add(SatelliteKind.CloneMethodBody);
-                                cloneAnchors.Add(assignmentLine);
-                                var src = ExtractCloneSource(method);
-                                if (!string.IsNullOrEmpty(src)) cloneSource = src!;
-                            }
-                        }
+                        RecordCloneFieldAssignments(
+                            method, existingFields, coverageByField, cloneAnchors, ref cloneSource);
                     }
-                    if (isWith)
+                    if (name.StartsWith("With", StringComparison.Ordinal) && name != "WithCancellation")
                     {
-                        foreach (var name2 in existingFields)
-                        {
-                            var assignmentLine = FindAssignmentLineFor(method, name2);
-                            if (assignmentLine is not null)
-                            {
-                                coverageByField[name2].Add(SatelliteKind.WithMethodAssignment);
-                                withAnchors.Add(assignmentLine);
-                                var src = ExtractCloneSource(method);
-                                if (!string.IsNullOrEmpty(src)) withSource = src!;
-                            }
-                        }
+                        RecordWithFieldAssignments(
+                            method, existingFields, coverageByField, withAnchors, ref withSource);
                     }
-                    if (isIncrementForField is not null)
+                    var incrementForField = ExtractIncrementFieldName(name, existingFields);
+                    if (incrementForField is not null)
                     {
-                        coverageByField[isIncrementForField].Add(SatelliteKind.IncrementMethod);
-                        var lineSpan = method.GetLocation().GetLineSpan();
-                        incrementAnchors.Add(new SatelliteAnchor(
-                            StartLine: lineSpan.StartLinePosition.Line + 1,
-                            EndLine: lineSpan.EndLinePosition.Line + 1,
-                            ContainingTypeName: typeDecl.Identifier.ValueText,
-                            FieldName: isIncrementForField));
-                        incrementTemplate ??= BuildIncrementTemplate(method, isIncrementForField);
+                        RecordIncrementMethod(
+                            method, typeDecl, incrementForField,
+                            coverageByField, incrementAnchors, ref incrementTemplate);
                     }
-                    if (isToJsonLike)
+                    if (string.Equals(name, "ToJson", StringComparison.Ordinal)
+                        || string.Equals(name, "WriteJson", StringComparison.Ordinal)
+                        || string.Equals(name, "Serialize", StringComparison.Ordinal)
+                        || name.StartsWith("WriteTo", StringComparison.Ordinal))
                     {
-                        foreach (var name2 in existingFields)
-                        {
-                            var caseAnchor = FindToJsonCaseLineFor(method, name2, sourceText);
-                            if (caseAnchor is not null)
-                            {
-                                coverageByField[name2].Add(SatelliteKind.ToJsonCase);
-                                toJsonAnchors.Add(caseAnchor);
-                                toJsonTemplate ??= BuildToJsonTemplate(caseAnchor, name2, sourceText);
-                            }
-                        }
+                        RecordToJsonFieldCases(
+                            method, existingFields, sourceText,
+                            coverageByField, toJsonAnchors, ref toJsonTemplate);
                     }
                 }
             }
+        }
 
-            // 3) Infer pattern: a kind belongs to "the pattern" only if ≥2 fields share it.
+        /// <summary>Record Clone/Copy per-field assignments in <paramref name="coverageByField"/>
+        /// and append the source-expression string (e.g. <c>"source"</c>, <c>"this"</c>) to
+        /// <paramref name="cloneSource"/> when the method's body reveals one.</summary>
+        private static void RecordCloneFieldAssignments(
+            MethodDeclarationSyntax method,
+            IReadOnlyList<string> existingFields,
+            Dictionary<string, HashSet<string>> coverageByField,
+            List<SatelliteAnchor> cloneAnchors,
+            ref string cloneSource)
+        {
+            foreach (var fieldName in existingFields)
+            {
+                var assignmentLine = FindAssignmentLineFor(method, fieldName);
+                if (assignmentLine is null) continue;
+                coverageByField[fieldName].Add(SatelliteKind.CloneMethodBody);
+                cloneAnchors.Add(assignmentLine);
+                var src = ExtractCloneSource(method);
+                if (!string.IsNullOrEmpty(src)) cloneSource = src!;
+            }
+        }
+
+        /// <summary>Record With&lt;*&gt; per-field assignments — same shape as
+        /// <see cref="RecordCloneFieldAssignments"/> but under the <see cref="SatelliteKind.WithMethodAssignment"/>
+        /// bucket and writing to <paramref name="withSource"/> / <paramref name="withAnchors"/>.</summary>
+        private static void RecordWithFieldAssignments(
+            MethodDeclarationSyntax method,
+            IReadOnlyList<string> existingFields,
+            Dictionary<string, HashSet<string>> coverageByField,
+            List<SatelliteAnchor> withAnchors,
+            ref string withSource)
+        {
+            foreach (var fieldName in existingFields)
+            {
+                var assignmentLine = FindAssignmentLineFor(method, fieldName);
+                if (assignmentLine is null) continue;
+                coverageByField[fieldName].Add(SatelliteKind.WithMethodAssignment);
+                withAnchors.Add(assignmentLine);
+                var src = ExtractCloneSource(method);
+                if (!string.IsNullOrEmpty(src)) withSource = src!;
+            }
+        }
+
+        /// <summary>Record an Increment&lt;Field&gt; method anchor for the already-identified
+        /// <paramref name="incrementForField"/> and cache a reusable template emission via
+        /// <paramref name="incrementTemplate"/> (first-match-wins).</summary>
+        private static void RecordIncrementMethod(
+            MethodDeclarationSyntax method,
+            TypeDeclarationSyntax typeDecl,
+            string incrementForField,
+            Dictionary<string, HashSet<string>> coverageByField,
+            List<SatelliteAnchor> incrementAnchors,
+            ref string? incrementTemplate)
+        {
+            coverageByField[incrementForField].Add(SatelliteKind.IncrementMethod);
+            var lineSpan = method.GetLocation().GetLineSpan();
+            incrementAnchors.Add(new SatelliteAnchor(
+                StartLine: lineSpan.StartLinePosition.Line + 1,
+                EndLine: lineSpan.EndLinePosition.Line + 1,
+                ContainingTypeName: typeDecl.Identifier.ValueText,
+                FieldName: incrementForField));
+            incrementTemplate ??= BuildIncrementTemplate(method, incrementForField);
+        }
+
+        /// <summary>Record ToJson / WriteJson / Serialize / WriteTo* per-field case anchors and
+        /// cache a reusable case-template (first-match-wins) via <paramref name="toJsonTemplate"/>.</summary>
+        private static void RecordToJsonFieldCases(
+            MethodDeclarationSyntax method,
+            IReadOnlyList<string> existingFields,
+            SourceText sourceText,
+            Dictionary<string, HashSet<string>> coverageByField,
+            List<SatelliteAnchor> toJsonAnchors,
+            ref string? toJsonTemplate)
+        {
+            foreach (var fieldName in existingFields)
+            {
+                var caseAnchor = FindToJsonCaseLineFor(method, fieldName, sourceText);
+                if (caseAnchor is null) continue;
+                coverageByField[fieldName].Add(SatelliteKind.ToJsonCase);
+                toJsonAnchors.Add(caseAnchor);
+                toJsonTemplate ??= BuildToJsonTemplate(caseAnchor, fieldName, sourceText);
+            }
+        }
+
+        /// <summary>
+        /// Phase 3 of <see cref="Analyze"/>: given the populated coverage map and per-kind anchor
+        /// lists, infer the dominant satellite pattern and materialize the final
+        /// <see cref="SatelliteAnalysis"/>. A kind belongs to "the pattern" only if ≥2 fields share
+        /// it. When ≥2 fields have *identical* coverage, prefer that shared set (tightest signal);
+        /// otherwise fall back to "any kind ≥2 fields agreed on." Returns an empty-pattern result
+        /// with an explanatory <c>DetectionReason</c> when neither rule finds a pattern.
+        /// </summary>
+        private static SatelliteAnalysis ComputeInferredPattern(
+            Dictionary<string, HashSet<string>> coverageByField,
+            List<SatelliteAnchor> snapshotFieldAnchors,
+            List<SatelliteAnchor> cloneAnchors,
+            List<SatelliteAnchor> withAnchors,
+            List<SatelliteAnchor> incrementAnchors,
+            List<SatelliteAnchor> toJsonAnchors,
+            string cloneSource,
+            string withSource,
+            string? incrementTemplate,
+            string? toJsonTemplate)
+        {
             var kindCounts = new Dictionary<string, int>(StringComparer.Ordinal);
             foreach (var (_, coverage) in coverageByField)
             {

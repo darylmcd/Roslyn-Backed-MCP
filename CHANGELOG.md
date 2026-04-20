@@ -8,11 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+- **Fixed:** Deleted dead `SyntaxFormatter` helper at `src/RoslynMcp.Roslyn/Helpers/SyntaxFormatter.cs` — `find_unused_symbols` flagged the type as high-confidence unused and `find_references(metadataName=RoslynMcp.Roslyn.Helpers.SyntaxFormatter)` returned 0 hits solution-wide; the XML-doc "shared helper... centralizes the pattern so every synthesizer gets the same behavior" was aspirational with no call sites. Removes 54 LOC / 2 methods (2026-04-20 refactor audit F1).
+- **Fixed:** Removed dead `BuildSuggestedArgumentList(BaseArgumentListSyntax, NewRecordFieldDto)` overload at `src/RoslynMcp.Roslyn/Services/RecordFieldAdditionService.cs:614` — 0 references solution-wide; body was byte-identical to the still-used `ArgumentListSyntax` overload, whose two call sites at `:260` and `:275` continue to resolve correctly (`ObjectCreationExpressionSyntax.ArgumentList` / `ImplicitObjectCreationExpressionSyntax.ArgumentList` are both `ArgumentListSyntax`, not `BaseArgumentListSyntax`) (2026-04-20 refactor audit F2).
+
 ### Changed
 
 ### Added
 
 ### Maintenance
+
+- **Maintenance:** Extracted phase helpers from `ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync` — the worst hotspot in the repo (cc=44, MI=22, LOC=210) now delegates to `CollectMatchingExpressionHitsAsync` (scan + guard), `RewriteHitsAndFormatDocumentsAsync` (per-document rewrite + Formatter), and `EnsureHelperInsertedIntoExampleDocumentAsync` (defense-in-depth fallback). Outer method: cc=44→16, LOC=210→99, maxNesting=4→1, MI=22→36. Behavior-preserving refactor — all 4 applicable `ExtractSharedExpressionTests` pass (the 5th test `ExtractSharedExpression_ApplyAfterPreview_CompilationSucceeds` fails identically on `main` due to missing MSTest refs in the sample workspace — pre-existing) (2026-04-20 refactor audit F3).
+- **Maintenance:** Extracted phase helpers from `SymbolRefactorService.SatelliteAnalysis.Analyze` — the method's three numbered sections (`// 1) Mirror-type detection`, `// 2) Method-level scans`, `// 3) Infer pattern`) now each live in their own private static helpers: `DetectMirrorTypeFields`, `ScanMethodsForCloneWithIncrementToJson` (itself delegating per-shape to `RecordCloneFieldAssignments` / `RecordWithFieldAssignments` / `RecordIncrementMethod` / `RecordToJsonFieldCases`), and `ComputeInferredPattern`. Outer `Analyze`: cc=32→<5, LOC=196→17, maxNesting=6→1, MI=25→higher. Largest remaining helper (`ScanMethodsForCloneWithIncrementToJson`) sits at cc=12, maxNesting=3. All 3 applicable `SatelliteAnalysis`/`RecordFieldAddSatellite`/`SymbolRefactor` tests pass (2026-04-20 refactor audit F4).
+- **Maintenance:** Backlog drift cleanup — removed stale P3 row `ci-test-parallelization-audit` from `ai_docs/backlog.md`. The row's proposed step (1) `[assembly: Parallelize(Scope = ClassLevel, Workers = 0)]` is already at `tests/RoslynMcp.Tests/AssemblyInfo.cs:3`; step (2) `[DoNotParallelize]` opt-outs are already applied to every listed class (`SharedWorkspaceTestBase` children, `WorkspaceReloadedEventTests`, `Top10V2/V3RegressionTests`, `ScriptingServiceTests`); `CI_POLICY.md` line 10 documents the 8m→3.5m win. Shipped in PR #300 (commit 294ed9d). Added two new P3 rows surfacing deferred-but-real audit findings: `tools-dispatch-shim-boilerplate-duplication` (~200 LOC of duplicated `Apply*`/`Preview*` MCP tool shims under `src/RoslynMcp.Host.Stdio/Tools/*.cs`) and `top10-complexity-hotspots-not-yet-extracted` (17 methods at cc≥18 ranked with `ClassifySite`'s 12-param smell called out separately) (2026-04-20 refactor audit F5).
 
 ## [1.26.0] - 2026-04-20
 
