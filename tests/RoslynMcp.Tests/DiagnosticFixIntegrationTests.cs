@@ -1,5 +1,6 @@
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
 {

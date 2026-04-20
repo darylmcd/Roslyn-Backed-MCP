@@ -21,6 +21,7 @@ namespace RoslynMcp.Tests;
 ///   <item>A provider is registered but produces no <c>CodeAction</c>s.</item>
 /// </list>
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class FixAllServiceGuidanceTests : SharedWorkspaceTestBase
 {

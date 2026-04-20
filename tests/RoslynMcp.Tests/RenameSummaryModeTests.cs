@@ -11,6 +11,7 @@ namespace RoslynMcp.Tests;
 /// a summary mode that replaces per-file UnifiedDiff with one-line summaries while the
 /// stored Solution still carries every real edit.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class RenameSummaryModeTests : SharedWorkspaceTestBase
 {

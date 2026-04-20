@@ -3,6 +3,7 @@ using System.Text.Json;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public class IntegrationTests : SharedWorkspaceTestBase
 {

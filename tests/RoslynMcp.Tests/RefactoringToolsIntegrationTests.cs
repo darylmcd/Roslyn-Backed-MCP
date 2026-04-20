@@ -4,6 +4,7 @@ using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
 {

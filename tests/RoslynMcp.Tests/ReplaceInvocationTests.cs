@@ -9,6 +9,7 @@ namespace RoslynMcp.Tests;
 /// <c>Build(a, b, c)</c> migrate to <c>Generate(b, c, a)</c> with argument reorder; the
 /// fixture below replays that shape and asserts every call-form is rewritten correctly.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class ReplaceInvocationTests : SharedWorkspaceTestBase
 {

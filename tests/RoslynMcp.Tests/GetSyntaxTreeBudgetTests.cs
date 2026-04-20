@@ -8,6 +8,7 @@ namespace RoslynMcp.Tests;
 /// `maxNodes` caps total node count; `maxTotalBytes` caps estimated total response
 /// size. The walker stops at whichever cap is hit first and emits a TruncationNotice.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class GetSyntaxTreeBudgetTests : SharedWorkspaceTestBase
 {

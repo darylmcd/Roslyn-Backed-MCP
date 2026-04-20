@@ -9,6 +9,7 @@ namespace RoslynMcp.Tests;
 /// drops <c>ErrorDiagnostics</c> + <c>DiscoveredTests</c> when true; counts +
 /// <c>OverallStatus</c> still surface the verdict.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class ValidateWorkspaceSummaryTests : SharedWorkspaceTestBase
 {

@@ -10,6 +10,7 @@ namespace RoslynMcp.Tests;
 /// restore package upgrade), but they keep the invalidation plumbing honest so the
 /// symptom class doesn't regress.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class WorkspaceReloadedEventTests : TestBase
 {

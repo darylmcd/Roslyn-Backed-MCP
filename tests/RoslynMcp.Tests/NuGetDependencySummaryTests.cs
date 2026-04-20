@@ -8,6 +8,7 @@ namespace RoslynMcp.Tests;
 /// when true, only the compact per-package <c>NuGetPackageSummaryDto</c> list is
 /// populated and the verbose Packages + Projects arrays are emitted as empty.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class NuGetDependencySummaryTests : SharedWorkspaceTestBase
 {

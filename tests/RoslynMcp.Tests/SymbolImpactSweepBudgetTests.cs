@@ -10,6 +10,7 @@ namespace RoslynMcp.Tests;
 /// budgets: `summary=true` drops per-ref preview text; `maxItemsPerCategory` caps
 /// each list independently.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class SymbolImpactSweepBudgetTests : SharedWorkspaceTestBase
 {

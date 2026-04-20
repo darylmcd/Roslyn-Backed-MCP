@@ -20,6 +20,7 @@ namespace RoslynMcp.Tests;
 /// 6. <c>analyze-snippet-cs0029-literal-span</c> — regression test that the CS0029
 ///    span covers the entire string literal (start and end columns).
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
 {

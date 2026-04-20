@@ -32,6 +32,7 @@ namespace RoslynMcp.Tests;
 /// reload completes.
 /// </para>
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class FetchMcpResourceReadinessTests : SharedWorkspaceTestBase
 {

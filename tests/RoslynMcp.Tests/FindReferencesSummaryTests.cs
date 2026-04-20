@@ -12,6 +12,7 @@ namespace RoslynMcp.Tests;
 /// from each LocationDto when set; structural fields (filePath, line, column,
 /// classification) stay populated.
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class FindReferencesSummaryTests : SharedWorkspaceTestBase
 {

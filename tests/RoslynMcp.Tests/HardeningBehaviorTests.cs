@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
 {

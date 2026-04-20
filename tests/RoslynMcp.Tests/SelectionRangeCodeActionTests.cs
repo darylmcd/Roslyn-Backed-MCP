@@ -11,6 +11,7 @@ namespace RoslynMcp.Tests;
 ///   - Extract method: NOT AVAILABLE (provider requires internal IDE services)
 ///   - Introduce local variable: NOT AVAILABLE (provider requires internal IDE services)
 /// </summary>
+[DoNotParallelize]
 [TestClass]
 public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
 {

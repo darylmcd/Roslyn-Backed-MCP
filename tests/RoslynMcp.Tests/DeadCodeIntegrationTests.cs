@@ -2,6 +2,7 @@ using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
+[DoNotParallelize]
 [TestClass]
 public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
 {
