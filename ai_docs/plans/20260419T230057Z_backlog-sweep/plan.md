@@ -129,7 +129,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 5. `windows-testhost-file-lock-blocks-worktree-cleanup` — Add `dotnet build-server shutdown` to worktree cleanup
 
-**Status:** pending · **Order:** 5 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #288, 2026-04-20) · **Order:** 5 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -150,7 +150,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 6. `ci-skip-dotnet-test-on-docs-only-prs` — Expand docs-only regex; audit branch-protection
 
-**Status:** pending · **Order:** 6 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #291, 2026-04-20) · **Order:** 6 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -171,7 +171,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 7. `plan-anchor-examples-go-stale-between-plan-and-execute` — Planner-side `verifyAnchors` step
 
-**Status:** pending · **Order:** 7 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #289, 2026-04-20) · **Order:** 7 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -192,7 +192,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 8. `audit-remaining-pretooluse-hook-blocks-after-pr-230` — Cold-subagent-aware hook accept-list
 
-**Status:** pending · **Order:** 8 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Fixed
+**Status:** merged (PR #290, 2026-04-20) · **Order:** 8 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 25000 tokens · **CHANGELOG category:** Fixed
 
 | Field | Content |
 |---|---|
