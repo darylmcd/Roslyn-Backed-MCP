@@ -1,15 +1,33 @@
 name: ci
 
+# Trigger model (see CI_POLICY.md § Repository Evidence):
+#   - pull_request        — primary merge gate for every PR
+#   - workflow_dispatch   — manual re-run (keeps coverage + artifacts)
+#   - schedule (weekly)   — keeps coverage trend data and artifact freshness on main
+#
+# push-to-main was removed to eliminate the duplicate run that immediately follows
+# a squash-merge (the PR head commit was already validated seconds earlier).
 on:
   pull_request:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+  schedule:
+    - cron: "45 5 * * 1"
+
+# Cancel superseded PR runs so a rapid push sequence doesn't leave zombie runs
+# burning a runner slot. Workflow-dispatch and scheduled runs never cancel.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
 
 jobs:
   validate:
     runs-on: ubuntu-latest
+    # Current PR run is ~12 min (test suite dominates). 25 min gives headroom for
+    # runner variability without letting a hung test burn the 6-hour default.
+    timeout-minutes: 25
 
     steps:
       - name: Check out repository
@@ -17,15 +35,14 @@ jobs:
 
       # Doc-only PRs (any **/*.md + ai_docs/**/*.json plan-state) don't change
       # compiled code, so skipping verify-release.ps1 and artifact uploads saves
-      # ~10 minutes per reconcile-PR wave. The regex `^(.*\.md|ai_docs/.*\.json)$`
+      # ~12 minutes per reconcile-PR wave. The regex `^(.*\.md|ai_docs/.*\.json)$`
       # covers every .md file regardless of directory — including skills/**/*.md
       # (shipped plugin surface) and docs/**/*.md — plus ai_docs/*.json plan state.
       # verify-ai-docs.ps1 still runs unconditionally and now invokes
       # verify-skills-are-generic.ps1, so a skills/**/SKILL.md edit that introduces
       # a banned pattern is still caught even when verify-release.ps1 is skipped.
-      # Push-to-main and workflow_dispatch always run the full pipeline so nothing
-      # lands on main without a green full build. See CI_POLICY.md § Repository
-      # Evidence for the authoritative excluded-paths list.
+      # workflow_dispatch and schedule always run the full pipeline. See
+      # CI_POLICY.md § Repository Evidence for the authoritative excluded-paths list.
       - name: Detect docs-only pull request
         id: detect
         if: github.event_name == 'pull_request'
@@ -57,14 +74,17 @@ jobs:
           dotnet-version: 10.0.x
 
       # Cache the NuGet global-packages folder so repeated CI runs skip the ~5s
-      # download of unchanged packages. Key on the central version file plus any
-      # csproj or props file so cache invalidates whenever dependencies move.
+      # download of unchanged packages. The cache key keys off only the files
+      # that actually drive the package graph (central version pin + root build
+      # props + SDK version). Project-file edits no longer create a new cache
+      # entry, which keeps the repo under the 10 GB Actions cache cap instead
+      # of producing a fresh ~33 MB entry on every csproj tweak.
       - name: Cache NuGet packages
         if: steps.detect.outputs.docs_only != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/*.csproj', '**/*.props') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/global.json') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -75,20 +95,20 @@ jobs:
       # Coverage collection adds ~60-90s per run via coverlet IL-rewrite on every test
       # assembly, and CI_POLICY.md treats coverage as informational — not a merge gate.
       # Pass -NoCoverage on pull_request to skip the collection + HTML summary + upload;
-      # push-to-main, scheduled, and workflow_dispatch keep full collection so the
-      # artifact is still published and trend data continues on main.
+      # workflow_dispatch and the weekly schedule keep full collection so the artifact
+      # is still published and trend data continues.
       - name: Verify release build (pull request — no coverage)
         if: steps.detect.outputs.docs_only != 'true' && github.event_name == 'pull_request'
         shell: pwsh
         run: ./eng/verify-release.ps1 -Configuration Release -NoCoverage
 
-      - name: Verify release build (main / dispatch / schedule — with coverage)
-        if: steps.detect.outputs.docs_only != 'true' && github.event_name != 'pull_request'
+      - name: Verify release build (dispatch / schedule — with coverage)
+        if: github.event_name != 'pull_request'
         shell: pwsh
         run: ./eng/verify-release.ps1 -Configuration Release
 
       - name: Generate coverage HTML summary
-        if: steps.detect.outputs.docs_only != 'true' && github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         shell: pwsh
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.4.7 --no-cache
@@ -111,6 +131,7 @@ jobs:
         with:
           name: host-stdio-publish
           path: artifacts/publish/host-stdio
+          retention-days: 14
 
       - name: Upload release manifest
         if: steps.detect.outputs.docs_only != 'true'
@@ -118,10 +139,12 @@ jobs:
         with:
           name: release-manifests
           path: artifacts/manifests
+          retention-days: 14
 
       - name: Upload code coverage
-        if: steps.detect.outputs.docs_only != 'true' && github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: code-coverage
           path: artifacts/coverage
+          retention-days: 30

@@ -56,13 +56,21 @@ Invoke-DotnetStep "dotnet build"
 # the per-test "Passed X [N ms]" lines that dominated the previous console output.
 # Coverage collection adds coverlet IL-rewrite latency per test assembly (~60-90s total).
 # CI_POLICY.md treats coverage as informational — not a merge gate — so PR-time collection
-# is pure latency. `-NoCoverage` lets CI skip it on pull_request while push-to-main,
-# scheduled, and workflow_dispatch still collect for the uploaded artifact.
+# is pure latency. `-NoCoverage` lets CI skip it on pull_request while workflow_dispatch
+# and the weekly schedule still collect for the uploaded artifact.
+#
+# --filter "TestCategory!=Benchmark" excludes the WorkspaceReadConcurrencyBenchmark
+# test, which measures wall-clock RW-lock behavior. Its docstring declares it
+# opt-in via `dotnet test --filter "TestCategory=Benchmark"` — this filter aligns
+# the default invocation with that contract.
+$testFilter = "TestCategory!=Benchmark"
 if ($NoCoverage) {
     dotnet test $solutionPath -c $Configuration --no-build --nologo `
+        --filter $testFilter `
         --logger "console;verbosity=minimal"
 } else {
     dotnet test $solutionPath -c $Configuration --no-build --nologo `
+        --filter $testFilter `
         --collect:"XPlat Code Coverage" `
         --results-directory $coverageDir `
         --logger "console;verbosity=minimal"
