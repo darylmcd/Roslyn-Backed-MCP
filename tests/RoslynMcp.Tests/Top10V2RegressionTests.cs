@@ -67,7 +67,7 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         var encoded = Uri.EscapeDataString(animalServicePath);
 
         var content = await WorkspaceResources.GetSourceFileLines(
-            WorkspaceManager, _workspaceId, encoded, lineRange: "5-10", CancellationToken.None);
+            WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "5-10", CancellationToken.None);
 
         StringAssert.Contains(content, "// roslyn://", "Marker comment must prefix the slice.");
         StringAssert.Contains(content, "lines/5-", "Marker must reference the requested range.");
@@ -89,7 +89,7 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         var encoded = Uri.EscapeDataString(animalServicePath);
 
         var json = await WorkspaceResources.GetSourceFileLines(
-            WorkspaceManager, _workspaceId, encoded, lineRange: "10-5", CancellationToken.None);
+            WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "10-5", CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
@@ -108,7 +108,7 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         var encoded = Uri.EscapeDataString(animalServicePath);
 
         var json = await WorkspaceResources.GetSourceFileLines(
-            WorkspaceManager, _workspaceId, encoded, lineRange: "abc-def", CancellationToken.None);
+            WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "abc-def", CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
@@ -125,7 +125,7 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
 
         // AnimalService.cs is ~30 lines; 9999 is safely past EOF.
         var json = await WorkspaceResources.GetSourceFileLines(
-            WorkspaceManager, _workspaceId, encoded, lineRange: "9999-10000", CancellationToken.None);
+            WorkspaceExecutionGate, WorkspaceManager, _workspaceId, encoded, lineRange: "9999-10000", CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
