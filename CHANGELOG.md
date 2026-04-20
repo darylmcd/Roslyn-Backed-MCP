@@ -12,7 +12,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Changed
 
+- **Changed:** CI skips code-coverage collection on `pull_request` events — `eng/verify-release.ps1` gains `[switch]$NoCoverage` and `.github/workflows/ci.yml` passes it on PR events; coverage now runs only on push-to-main and scheduled runs, saving ~1–2 minutes of coverlet IL-rewrite per PR. `CI_POLICY.md` § Repository Evidence documents the PR-vs-main split (`ci-verify-release-coverage-on-main-only`).
+
 ### Fixed
+
+- **Fixed:** `fetch_mcp_resource` no longer returns `"server not ready"` for `roslyn://` workspace URIs when called immediately after `workspace_load` — workspace-scoped resource handlers in `src/RoslynMcp.Host.Stdio/Resources/WorkspaceResources.cs` now dispatch through `IWorkspaceExecutionGate.RunReadAsync`, the same gate sibling tools use, eliminating the TOCTOU race with concurrent `workspace_reload` (`roslyn-fetch-resource-timing`).
+
+### Maintenance
+
+- **Maintenance:** `ai_docs/workflow.md` documents the `cd "$(git rev-parse --git-common-dir)/.."` preamble required before `gh pr merge` from inside a git worktree; eliminates the obscure `fatal: 'main' is already used by worktree` failure that bit every worktree-origin merge (`gh-pr-merge-from-worktree-fails-uses-local-main`).
+- **Maintenance:** `ai_docs/prompts/backlog-sweep-execute.md` Step 8 now specifies the minimal three-field pr-reconciler brief (`prNumberOrUrl`, `branch`, `worktreePath`) and corrects a stale "updates plan.md's Status row" claim; drops the dead `planPath` / `initiativeId` fields that the reconciler has ignored since the 2026-04-18 Step-4 commit removal (`pr-reconciler-plan-md-commit-is-write-only-dead-code`).
+- Backlog: 4 rows closed (P3: 1 — `ci-verify-release-coverage-on-main-only`; P4: 3 — `gh-pr-merge-from-worktree-fails-uses-local-main`, `pr-reconciler-plan-md-commit-is-write-only-dead-code`, `roslyn-fetch-resource-timing`).
 
 ## [1.25.0] - 2026-04-19
 

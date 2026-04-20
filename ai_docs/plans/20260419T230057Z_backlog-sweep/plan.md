@@ -45,7 +45,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 1. `roslyn-fetch-resource-timing` — Diagnose `fetch_mcp_resource` "server not ready" on `roslyn://` URIs
 
-**Status:** pending · **Order:** 1 · **Correctness class:** P3-correctness · **Schedule hint:** — · **Estimated context:** 40000 tokens · **CHANGELOG category:** Fixed
+**Status:** merged (PR #286, 2026-04-20) · **Order:** 1 · **Correctness class:** P3-correctness · **Schedule hint:** — · **Estimated context:** 40000 tokens · **CHANGELOG category:** Fixed
 
 | Field | Content |
 |---|---|
@@ -66,7 +66,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 2. `ci-verify-release-coverage-on-main-only` — Skip coverlet coverage on PRs; collect only on main
 
-**Status:** pending · **Order:** 2 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Changed
+**Status:** merged (PR #285, 2026-04-20) · **Order:** 2 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|
@@ -87,7 +87,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 3. `gh-pr-merge-from-worktree-fails-uses-local-main` — Document worktree-cd discipline for `gh pr merge`
 
-**Status:** pending · **Order:** 3 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #283, 2026-04-20) · **Order:** 3 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -108,7 +108,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 4. `pr-reconciler-plan-md-commit-is-write-only-dead-code` — Drop dead `planPath`/`initiativeId` fields from subagent briefs
 
-**Status:** pending · **Order:** 4 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
+**Status:** merged (PR #284, 2026-04-20) · **Order:** 4 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 20000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
