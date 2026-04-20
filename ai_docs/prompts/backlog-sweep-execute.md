@@ -412,9 +412,25 @@ Use the `ship` skill if available, otherwise `Bash: gh pr create ...` and
 **For the merge + cleanup leg specifically:** once the PR is open, invoke the
 `pr-reconciler` subagent (`.claude/agents/pr-reconciler.md`). It polls `gh pr view`
 for green checks, squash-merges from the primary repo root (the
-worktree-cd discipline is handled inside the subagent), cleans up the worktree +
-remote branch, and updates plan.md's Status row — all in isolated context.
-Falls through to manual `gh pr merge` if unavailable.
+worktree-cd discipline is handled inside the subagent), and cleans up the worktree +
+remote branch — all in isolated context. Falls through to manual `gh pr merge` if
+unavailable.
+
+**Reconciler brief — minimal fields only:** pass exactly these three fields and
+NOTHING ELSE:
+
+- `prNumberOrUrl` — PR number or full URL
+- `branch` — `remediation/<initiative.id>`
+- `worktreePath` — `.worktrees/<initiative.id>` (or `null` if branch-only)
+
+The reconciler does NOT touch `plan.md` or `state.json` — the orchestrator handles
+those in the batch-boundary reconcile PR (Step 7 parallel variant) or in Step 9
+(serial). Do NOT emit `planPath` or `initiativeId` in the brief: the reconciler's
+input contract lists them as "accepted but ignored for backwards compatibility,"
+but emitting them encourages the reconciler to try `plan.md` edits that cannot be
+pushed (main is branch-protected) and that the next reconciler's `git reset --hard
+origin/main` would wipe anyway. The 2026-04-18 pass-4 retrospective confirmed 5/5
+such commits were silently discarded.
 
 ### Worktree-cd discipline (both modes)
 
