@@ -41,78 +41,129 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
-        // Bucket every qualifying method-body by its canonical sequence. Identical
-        // canonical strings = exact structural duplicates; near-matches are detected
-        // post-hoc by comparing short-hash buckets and computing a length-scaled
-        // similarity.
-        var buckets = new Dictionary<string, List<MethodCandidate>>(StringComparer.Ordinal);
+        // Phase 1: bucket every qualifying method-body by its canonical sequence.
+        // Identical canonical strings = exact structural duplicates.
+        var buckets = await CollectMethodBucketsAsync(solution, options, ct).ConfigureAwait(false);
 
+        // Phase 2: emit exact-structural matches as DTOs (similarity = 1.0 by construction).
+        var results = EmitGroupsFromBuckets(buckets, options, ct);
+
+        // Phase 3: rank descending by MemberCount, then LineCount. Stable for determinism.
+        return RankGroups(results, options.Limit);
+    }
+
+    /// <summary>
+    /// Walks every project document, syntactically extracting every method-body that
+    /// passes the file-/length-filter gates, and buckets them by canonical AST string.
+    /// Pure syntax — no compilation binding required — so projects with unresolved
+    /// references still produce results.
+    /// </summary>
+    private async Task<Dictionary<string, List<MethodCandidate>>> CollectMethodBucketsAsync(
+        Solution solution,
+        DuplicateMethodAnalysisOptions options,
+        CancellationToken ct)
+    {
+        var buckets = new Dictionary<string, List<MethodCandidate>>(StringComparer.Ordinal);
         var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
+
         foreach (var project in projects)
         {
             if (ct.IsCancellationRequested) break;
-
-            // Skip generated/content trees via PathFilter. We do NOT require a compilation
-            // here — pure syntactic normalization is enough, and GetRootAsync on each
-            // tree avoids the compilation-binding cost for projects with unresolved
-            // references. The compilation cache remains injected for future extensions
-            // (e.g., adding a semantic-model filter to exclude partials without bodies).
-            foreach (var doc in project.Documents)
-            {
-                if (ct.IsCancellationRequested) break;
-                if (PathFilter.IsGeneratedOrContentFile(doc.FilePath)) continue;
-                if (IsLikelyGeneratedByName(doc.FilePath)) continue;
-
-                var tree = await doc.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
-                if (tree is null) continue;
-
-                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
-                foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
-                {
-                    if (ct.IsCancellationRequested) break;
-
-                    var body = (SyntaxNode?)method.Body ?? method.ExpressionBody;
-                    if (body is null) continue; // abstract, partial-no-body, interface declarations
-
-                    var lineSpan = method.GetLocation().GetLineSpan();
-                    var startLine = lineSpan.StartLinePosition.Line + 1;
-                    var endLine = lineSpan.EndLinePosition.Line + 1;
-                    var lineCount = endLine - startLine + 1;
-                    if (lineCount < options.MinLines) continue;
-
-                    var canonical = Canonicalize(body);
-                    if (string.IsNullOrEmpty(canonical)) continue;
-
-                    if (!buckets.TryGetValue(canonical, out var bucket))
-                    {
-                        bucket = new List<MethodCandidate>();
-                        buckets[canonical] = bucket;
-                    }
-
-                    bucket.Add(new MethodCandidate(
-                        FilePath: doc.FilePath ?? tree.FilePath ?? string.Empty,
-                        StartLine: startLine,
-                        EndLine: endLine,
-                        LineCount: lineCount,
-                        MethodName: method.Identifier.ValueText,
-                        ContainingType: ExtractContainingType(method),
-                        ProjectName: project.Name,
-                        Canonical: canonical));
-                }
-            }
+            await CollectProjectMethodsAsync(project, options, buckets, ct).ConfigureAwait(false);
         }
 
-        // Emit exact-structural matches first. For each bucket with >= 2 members, the
-        // group similarity is 1.0 (every member's canonical string is identical to the
-        // key, by construction).
+        return buckets;
+    }
+
+    /// <summary>
+    /// Per-project document walk. Skips generated/content trees via <see cref="PathFilter"/>
+    /// AND the filename-convention gate (generator outputs in src/ with <c>.g.cs</c> /
+    /// <c>.Designer.cs</c> suffixes). Buckets are accumulated into the shared dictionary.
+    /// </summary>
+    private static async Task CollectProjectMethodsAsync(
+        Project project,
+        DuplicateMethodAnalysisOptions options,
+        Dictionary<string, List<MethodCandidate>> buckets,
+        CancellationToken ct)
+    {
+        foreach (var doc in project.Documents)
+        {
+            if (ct.IsCancellationRequested) break;
+            if (PathFilter.IsGeneratedOrContentFile(doc.FilePath)) continue;
+            if (IsLikelyGeneratedByName(doc.FilePath)) continue;
+
+            var tree = await doc.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
+            if (tree is null) continue;
+
+            var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+            BucketDocumentMethods(doc, tree, root, project.Name, options, buckets, ct);
+        }
+    }
+
+    /// <summary>
+    /// Per-document loop: walk each <see cref="MethodDeclarationSyntax"/>, gate on body
+    /// presence + line-count threshold + non-empty canonical hash, and append the
+    /// resulting <see cref="MethodCandidate"/> to its bucket.
+    /// </summary>
+    private static void BucketDocumentMethods(
+        Document doc,
+        SyntaxTree tree,
+        SyntaxNode root,
+        string projectName,
+        DuplicateMethodAnalysisOptions options,
+        Dictionary<string, List<MethodCandidate>> buckets,
+        CancellationToken ct)
+    {
+        foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+        {
+            if (ct.IsCancellationRequested) break;
+
+            var body = (SyntaxNode?)method.Body ?? method.ExpressionBody;
+            if (body is null) continue; // abstract, partial-no-body, interface declarations
+
+            var lineSpan = method.GetLocation().GetLineSpan();
+            var startLine = lineSpan.StartLinePosition.Line + 1;
+            var endLine = lineSpan.EndLinePosition.Line + 1;
+            var lineCount = endLine - startLine + 1;
+            if (lineCount < options.MinLines) continue;
+
+            var canonical = Canonicalize(body);
+            if (string.IsNullOrEmpty(canonical)) continue;
+
+            if (!buckets.TryGetValue(canonical, out var bucket))
+            {
+                bucket = new List<MethodCandidate>();
+                buckets[canonical] = bucket;
+            }
+
+            bucket.Add(new MethodCandidate(
+                FilePath: doc.FilePath ?? tree.FilePath ?? string.Empty,
+                StartLine: startLine,
+                EndLine: endLine,
+                LineCount: lineCount,
+                MethodName: method.Identifier.ValueText,
+                ContainingType: ExtractContainingType(method),
+                ProjectName: projectName,
+                Canonical: canonical));
+        }
+    }
+
+    /// <summary>
+    /// Convert exact-structural buckets (>= 2 members) into <see cref="DuplicatedMethodGroupDto"/>
+    /// instances. Similarity is 1.0 by construction since every member's canonical string
+    /// is identical to the bucket key. Threshold &gt; 1.0 trivially excludes everything.
+    /// </summary>
+    private static List<DuplicatedMethodGroupDto> EmitGroupsFromBuckets(
+        Dictionary<string, List<MethodCandidate>> buckets,
+        DuplicateMethodAnalysisOptions options,
+        CancellationToken ct)
+    {
         var results = new List<DuplicatedMethodGroupDto>();
         foreach (var (canonical, members) in buckets)
         {
             if (ct.IsCancellationRequested) break;
             if (results.Count >= options.Limit) break;
             if (members.Count < 2) continue;
-
-            // Threshold gate: exact matches trivially clear any threshold in [0, 1].
             if (options.SimilarityThreshold > 1.0) continue;
 
             results.Add(new DuplicatedMethodGroupDto(
@@ -128,16 +179,20 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
                     ContainingType: m.ContainingType,
                     ProjectName: m.ProjectName)).ToList()));
         }
+        return results;
+    }
 
-        // Sort descending by MemberCount (largest clusters first), then by LineCount
-        // (larger methods are more valuable signal than 10-line clusters). Orderings
-        // are stable so determinism within a ranking tier is preserved.
-        return results
+    /// <summary>
+    /// Sort descending by <c>MemberCount</c> (largest clusters first), then by <c>LineCount</c>
+    /// (larger methods carry more signal than 10-line clusters). Orderings are stable
+    /// so determinism within a ranking tier is preserved.
+    /// </summary>
+    private static List<DuplicatedMethodGroupDto> RankGroups(List<DuplicatedMethodGroupDto> results, int limit)
+        => results
             .OrderByDescending(g => g.MemberCount)
             .ThenByDescending(g => g.LineCount)
-            .Take(options.Limit)
+            .Take(limit)
             .ToList();
-    }
 
     /// <summary>
     /// Excludes source-generator and designer files by filename convention — <c>PathFilter</c>
