@@ -1,15 +1,21 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for Roslyn interface-extraction refactorings. WS1 phase 1.4 —
+/// each shim body delegates to the corresponding <see cref="ToolDispatch"/> helper
+/// instead of carrying the 7-line dispatch boilerplate inline. See
+/// <c>CodeActionTools</c> (canary, PR #305), <c>BulkRefactoringTools</c> (phase 1.3),
+/// and <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the migration
+/// rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class InterfaceExtractionTools
 {
-
     [McpServerTool(Name = "extract_interface_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview extracting an interface from a concrete type within the same project. Optionally replaces concrete type references with the interface."),
@@ -24,14 +30,12 @@ public static class InterfaceExtractionTools
         [Description("Optional: specific member names to include. If omitted, all public instance members are included.")] string[]? memberNames = null,
         [Description("If true, replace parameter and field references to the concrete type with the interface (default: false)")] bool replaceUsages = false,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await interfaceExtractionService.PreviewExtractInterfaceAsync(
-                workspaceId, filePath, typeName, interfaceName, memberNames, replaceUsages, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => interfaceExtractionService.PreviewExtractInterfaceAsync(
+                workspaceId, filePath, typeName, interfaceName, memberNames, replaceUsages, c),
+            ct);
 
     [McpServerTool(Name = "extract_interface_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", false, true,
@@ -43,13 +47,10 @@ public static class InterfaceExtractionTools
         IPreviewStore previewStore,
         [Description("The preview token returned by extract_interface_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 }
