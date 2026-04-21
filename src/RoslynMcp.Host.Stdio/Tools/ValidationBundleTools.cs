@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using ModelContextProtocol.Server;
@@ -9,7 +8,10 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <summary>
 /// Item 5 (v1.18, <c>roslyn-mcp-post-edit-validation-bundle</c>): one-call composite that
 /// chains compile_check + project_diagnostics (errors) + test_related_files + optional
-/// test_run. Returns a single envelope with an aggregate <c>overallStatus</c>.
+/// test_run. Returns a single envelope with an aggregate <c>overallStatus</c>. WS1 phase
+/// 1.6 — each shim body delegates to
+/// <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/> instead of carrying the
+/// dispatch boilerplate inline.
 /// </summary>
 [McpServerToolType]
 public static class ValidationBundleTools
@@ -26,15 +28,11 @@ public static class ValidationBundleTools
         [Description("When true, runs the discovered related tests via dotnet test --filter. Default: false (discovery only).")] bool runTests = false,
         [Description("When true, drops the per-diagnostic ErrorDiagnostics list and per-test DiscoveredTests list to keep the response under the MCP cap on large solutions. OverallStatus + counts still surface the verdict. Default false preserves the v1.18 shape.")] bool summary = false,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var dto = await validationService
-                .ValidateAsync(workspaceId, changedFilePaths, runTests, c, summary)
-                .ConfigureAwait(false);
-            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => validationService.ValidateAsync(workspaceId, changedFilePaths, runTests, c, summary),
+            ct);
 
     [McpServerTool(Name = "validate_recent_git_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "experimental", true, false,
@@ -47,13 +45,9 @@ public static class ValidationBundleTools
         [Description("When true, runs the discovered related tests via dotnet test --filter. Default: false (discovery only).")] bool runTests = false,
         [Description("When true, drops the per-diagnostic ErrorDiagnostics list and per-test DiscoveredTests list to keep the response under the MCP cap on large solutions. OverallStatus + counts still surface the verdict. Default false preserves the full response shape.")] bool summary = false,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var dto = await validationService
-                .ValidateRecentGitChangesAsync(workspaceId, runTests, c, summary)
-                .ConfigureAwait(false);
-            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => validationService.ValidateRecentGitChangesAsync(workspaceId, runTests, c, summary),
+            ct);
 }

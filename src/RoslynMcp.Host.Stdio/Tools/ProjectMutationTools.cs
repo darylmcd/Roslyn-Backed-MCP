@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Core.Models;
 using ModelContextProtocol.Server;
@@ -7,6 +6,18 @@ using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for project-file mutation (Package/Project references,
+/// target frameworks, MSBuild properties, Directory.Packages.props entries).
+/// WS1 phase 1.6 — each <c>Preview*</c> shim delegates to
+/// <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>, and
+/// <c>ApplyProjectMutation</c> uses the phase-1.6 delegate overload of
+/// <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, Func{string, string?}, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+/// so it can reuse the shared dispatch body even though
+/// <see cref="IProjectMutationPreviewStore"/> doesn't derive from
+/// <c>IPreviewStore</c>. See <c>CodeActionTools</c> (canary, PR #305) and
+/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c>.
+/// </summary>
 [McpServerToolType]
 public static class ProjectMutationTools
 {
@@ -23,16 +34,14 @@ public static class ProjectMutationTools
         [Description("NuGet package id to add")] string packageId,
         [Description("NuGet package version to add")] string version,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewAddPackageReferenceAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewAddPackageReferenceAsync(
                 workspaceId,
                 new AddPackageReferenceDto(projectName, packageId, version),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "remove_package_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -45,16 +54,14 @@ public static class ProjectMutationTools
         [Description("Project name or project file path within the loaded workspace")] string projectName,
         [Description("NuGet package id to remove")] string packageId,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewRemovePackageReferenceAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewRemovePackageReferenceAsync(
                 workspaceId,
                 new RemovePackageReferenceDto(projectName, packageId),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "add_project_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -67,16 +74,14 @@ public static class ProjectMutationTools
         [Description("Project name or project file path within the loaded workspace")] string projectName,
         [Description("Referenced project name or project file path")] string referencedProjectName,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewAddProjectReferenceAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewAddProjectReferenceAsync(
                 workspaceId,
                 new AddProjectReferenceDto(projectName, referencedProjectName),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "remove_project_reference_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -89,16 +94,14 @@ public static class ProjectMutationTools
         [Description("Project name or project file path within the loaded workspace")] string projectName,
         [Description("Referenced project name or project file path")] string referencedProjectName,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewRemoveProjectReferenceAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewRemoveProjectReferenceAsync(
                 workspaceId,
                 new RemoveProjectReferenceDto(projectName, referencedProjectName),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "set_project_property_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -112,16 +115,14 @@ public static class ProjectMutationTools
         [Description("Allowlisted property name (Nullable, LangVersion, ImplicitUsings, TargetFramework)")] string propertyName,
         [Description("Property value to set")] string value,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewSetProjectPropertyAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewSetProjectPropertyAsync(
                 workspaceId,
                 new SetProjectPropertyDto(projectName, propertyName, value),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "add_target_framework_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -134,16 +135,14 @@ public static class ProjectMutationTools
         [Description("Project name or project file path within the loaded workspace")] string projectName,
         [Description("Target framework moniker to add, for example net8.0")] string targetFramework,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewAddTargetFrameworkAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewAddTargetFrameworkAsync(
                 workspaceId,
                 new AddTargetFrameworkDto(projectName, targetFramework),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "remove_target_framework_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -156,16 +155,14 @@ public static class ProjectMutationTools
         [Description("Project name or project file path within the loaded workspace")] string projectName,
         [Description("Target framework moniker to remove, for example net8.0")] string targetFramework,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewRemoveTargetFrameworkAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewRemoveTargetFrameworkAsync(
                 workspaceId,
                 new RemoveTargetFrameworkDto(projectName, targetFramework),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "set_conditional_property_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -180,16 +177,14 @@ public static class ProjectMutationTools
         [Description("Property value to set")] string value,
         [Description("Condition expression using $(Configuration), $(TargetFramework), or $(Platform)")] string condition,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewSetConditionalPropertyAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewSetConditionalPropertyAsync(
                 workspaceId,
                 new SetConditionalPropertyDto(projectName, propertyName, value, condition),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "add_central_package_version_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "experimental", true, false,
@@ -202,16 +197,14 @@ public static class ProjectMutationTools
         [Description("NuGet package id to add to Directory.Packages.props")] string packageId,
         [Description("NuGet package version to set in Directory.Packages.props")] string version,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewAddCentralPackageVersionAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewAddCentralPackageVersionAsync(
                 workspaceId,
                 new AddCentralPackageVersionDto(packageId, version),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "remove_central_package_version_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -223,16 +216,14 @@ public static class ProjectMutationTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("NuGet package id to remove from Directory.Packages.props")] string packageId,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await projectMutationService.PreviewRemoveCentralPackageVersionAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => projectMutationService.PreviewRemoveCentralPackageVersionAsync(
                 workspaceId,
                 new RemoveCentralPackageVersionDto(packageId),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "apply_project_mutation", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "experimental", false, true,
@@ -244,13 +235,10 @@ public static class ProjectMutationTools
         IProjectMutationPreviewStore projectMutationPreviewStore,
         [Description("The preview token returned by one of the project mutation preview tools")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = projectMutationPreviewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await projectMutationService.ApplyProjectMutationAsync(previewToken, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            projectMutationPreviewStore.PeekWorkspaceId,
+            previewToken,
+            c => projectMutationService.ApplyProjectMutationAsync(previewToken, c),
+            ct);
 }

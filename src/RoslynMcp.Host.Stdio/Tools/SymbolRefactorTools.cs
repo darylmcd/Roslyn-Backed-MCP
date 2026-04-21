@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using ModelContextProtocol.Server;
@@ -9,7 +8,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// <summary>
 /// Item 7 (v1.18, <c>agent-symbol-refactor-unified-preview</c>): one composite preview that
 /// chains rename + edit + restructure operations in order. Each op sees the rewritten state
-/// from earlier ops; the final accumulator is stored under one preview token.
+/// from earlier ops; the final accumulator is stored under one preview token. WS1 phase 1.6
+/// — each shim body delegates to <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>
+/// instead of carrying the dispatch boilerplate inline.
 /// </summary>
 [McpServerToolType]
 public static class SymbolRefactorTools
@@ -24,13 +25,11 @@ public static class SymbolRefactorTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Ordered list of operations. Each is { kind: 'rename'|'edit'|'restructure', ...kind-specific fields }. Order matters — later ops see earlier ops' rewritten state.")] SymbolRefactorOperation[] operations,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var dto = await symbolRefactorService.PreviewAsync(workspaceId, operations ?? [], c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => symbolRefactorService.PreviewAsync(workspaceId, operations ?? [], c),
+            ct);
 
     [McpServerTool(Name = "split_service_with_di_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
@@ -45,14 +44,12 @@ public static class SymbolRefactorTools
         [Description("Partition specs: each { typeName, memberNames[] } — every MemberName must exist on sourceType and each member must belong to exactly one partition.")] SplitServicePartition[] partitions,
         [Description("Absolute path to the file containing the existing services.Add* registration for sourceType; pass null to scan the workspace for any matching registration.")] string? hostRegistrationFile = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var dto = await symbolRefactorService.PreviewSplitServiceWithDiAsync(
-                workspaceId, sourceFilePath, sourceType, partitions ?? [], hostRegistrationFile, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => symbolRefactorService.PreviewSplitServiceWithDiAsync(
+                workspaceId, sourceFilePath, sourceType, partitions ?? [], hostRegistrationFile, c),
+            ct);
 
     [McpServerTool(Name = "record_field_add_with_satellites_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
@@ -66,12 +63,10 @@ public static class SymbolRefactorTools
         [Description("The new field name (valid C# identifier)")] string newFieldName,
         [Description("The new field type display string (e.g. 'int', 'string', 'System.Guid')")] string newFieldType,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var dto = await symbolRefactorService.PreviewRecordFieldAddWithSatellitesAsync(
-                workspaceId, typeMetadataName, newFieldName, newFieldType, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => symbolRefactorService.PreviewRecordFieldAddWithSatellitesAsync(
+                workspaceId, typeMetadataName, newFieldName, newFieldType, c),
+            ct);
 }

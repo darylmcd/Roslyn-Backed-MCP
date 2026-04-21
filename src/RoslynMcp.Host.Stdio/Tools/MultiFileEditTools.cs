@@ -8,6 +8,17 @@ using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for direct multi-file text-edit apply/preview operations.
+/// WS1 phase 1.6 — <c>ApplyMultiFilePreview</c> (pure dispatch) delegates to
+/// <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>;
+/// <c>ApplyMultiFileEdit</c> and <c>PreviewMultiFileEdit</c> keep their hand-written
+/// bodies because they perform per-file async path validation inside the gate
+/// before the service call (validation must run under the gate's cancellation
+/// token, so the single-lambda dispatch shape doesn't fit). See
+/// <c>CodeActionTools</c> (canary, PR #305) and
+/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c>.
+/// </summary>
 [McpServerToolType]
 public static class MultiFileEditTools
 {
@@ -74,13 +85,10 @@ public static class MultiFileEditTools
         IPreviewStore previewStore,
         [Description("The preview token returned by preview_multi_file_edit")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 }

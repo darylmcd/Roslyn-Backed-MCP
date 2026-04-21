@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -10,7 +9,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// Tools that audit record-shape changes (positional field addition, etc.). Distinct from
 /// <see cref="ImpactSweepTools"/> (which handles general symbol-impact sweeps) because record-shape
 /// breakage has its own structural categories — pattern matches, deconstructions, <c>with</c>
-/// expressions — that need separate buckets in the response.
+/// expressions — that need separate buckets in the response. WS1 phase 1.6 — the single shim
+/// body delegates to <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>.
 /// </summary>
 [McpServerToolType]
 public static class RecordImpactTools
@@ -28,12 +28,10 @@ public static class RecordImpactTools
         [Description("The proposed new field type display string (e.g. 'bool', 'System.Guid', 'string?')")] string newFieldType,
         [Description("Optional default-value expression to splice into rewritten construction sites (e.g. 'false', 'Guid.Empty'). When null, rewrites use a /* TODO */ placeholder.")] string? defaultValue = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var dto = await recordFieldAdditionService.PreviewAdditionAsync(
-                workspaceId, recordMetadataName, newFieldName, newFieldType, defaultValue, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => recordFieldAdditionService.PreviewAdditionAsync(
+                workspaceId, recordMetadataName, newFieldName, newFieldType, defaultValue, c),
+            ct);
 }

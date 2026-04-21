@@ -7,6 +7,14 @@ using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for security diagnostics and NuGet vulnerability scanning.
+/// WS1 phase 1.6 — <c>GetSecurityDiagnostics</c> and <c>GetSecurityAnalyzerStatus</c>
+/// (pure dispatch) delegate to <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>;
+/// <c>ScanNuGetVulnerabilities</c> keeps its hand-written body because it wraps
+/// <see cref="ProgressHelper.Report"/> calls around the service call (non-dispatch
+/// bookkeeping).
+/// </summary>
 [McpServerToolType]
 public static class SecurityTools
 {
@@ -21,13 +29,11 @@ public static class SecurityTools
         [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: filter by file path")] string? file = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var results = await securityService.GetSecurityDiagnosticsAsync(workspaceId, projectName, file, c);
-            return JsonSerializer.Serialize(results, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => securityService.GetSecurityDiagnosticsAsync(workspaceId, projectName, file, c),
+            ct);
 
     [McpServerTool(Name = "security_analyzer_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Check whether security analyzer packages are present in the workspace. Returns which analyzers are installed and recommends missing packages for improved security coverage.")]
     [McpToolMetadata("security", "stable", true, false,
@@ -37,13 +43,11 @@ public static class SecurityTools
         ISecurityDiagnosticService securityService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await securityService.GetAnalyzerStatusAsync(workspaceId, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => securityService.GetAnalyzerStatusAsync(workspaceId, c),
+            ct);
 
     [McpServerTool(Name = "nuget_vulnerability_scan", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("security", "stable", true, false,

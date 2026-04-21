@@ -1,11 +1,16 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for cross-project refactorings (move-type-to-project,
+/// extract-interface-cross-project, dependency-inversion). WS1 phase 1.6 — each
+/// shim body delegates to <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>
+/// instead of carrying the dispatch boilerplate inline.
+/// </summary>
 [McpServerToolType]
 public static class CrossProjectRefactoringTools
 {
@@ -24,20 +29,18 @@ public static class CrossProjectRefactoringTools
         [Description("Optional: explicit namespace for the moved type. When null and preserveNamespace is false, uses the target project's default namespace.")] string? targetNamespace = null,
         CancellationToken ct = default,
         [Description("When true, keep the type's current namespace if targetNamespace is null (legacy). When false (default), use targetNamespace or the target project's default namespace.")] bool preserveNamespace = false)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await crossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => crossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
                 workspaceId,
                 sourceFilePath,
                 typeName,
                 targetProjectName,
                 targetNamespace,
                 c,
-                preserveNamespace).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                preserveNamespace),
+            ct);
 
     [McpServerTool(Name = "extract_interface_cross_project_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("cross-project-refactoring", "experimental", true, false,
@@ -52,19 +55,17 @@ public static class CrossProjectRefactoringTools
         [Description("Optional: interface name. Defaults to I + type name")] string? interfaceName = null,
         [Description("Optional: target project name or project file path")] string? targetProjectName = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await crossProjectRefactoringService.PreviewExtractInterfaceAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => crossProjectRefactoringService.PreviewExtractInterfaceAsync(
                 workspaceId,
                 filePath,
                 typeName,
                 interfaceName,
                 targetProjectName,
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "dependency_inversion_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("cross-project-refactoring", "experimental", true, false,
@@ -79,17 +80,15 @@ public static class CrossProjectRefactoringTools
         [Description("Target project name or project file path for the extracted interface")] string interfaceProjectName,
         [Description("Optional: interface name. Defaults to I + type name")] string? interfaceName = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await crossProjectRefactoringService.PreviewDependencyInversionAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => crossProjectRefactoringService.PreviewDependencyInversionAsync(
                 workspaceId,
                 filePath,
                 typeName,
                 interfaceName,
                 interfaceProjectName,
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 }
