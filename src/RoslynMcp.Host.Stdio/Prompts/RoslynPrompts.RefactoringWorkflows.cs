@@ -104,7 +104,7 @@ public static partial class RoslynPrompts
                     ```
 
                     **Available Code Actions:**
-                    {PromptMessageBuilder.SummarizeCodeActions(codeActions)}
+                    {PromptMessageBuilder.SummarizeCodeActions(codeActions.Actions)}
 
                     **Current Diagnostics In File:**
                     {PromptMessageBuilder.SummarizeDiagnostics(diagnostics)}

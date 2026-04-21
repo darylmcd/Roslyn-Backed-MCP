@@ -62,7 +62,7 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task CodeAction_GetCodeActions_Unknown_File_Returns_Empty()
     {
-        var actions = await CodeActionService.GetCodeActionsAsync(
+        var result = await CodeActionService.GetCodeActionsAsync(
             SampleWorkspaceId,
             Path.Combine(Path.GetTempPath(), $"missing-{Guid.NewGuid():N}.cs"),
             startLine: 1,
@@ -71,7 +71,9 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
             endColumn: null,
             CancellationToken.None);
 
-        Assert.AreEqual(0, actions.Count);
+        Assert.AreEqual(0, result.Count);
+        Assert.AreEqual(0, result.Actions.Count);
+        Assert.IsNotNull(result.Hint, "Empty result must surface the FLAG-6B guidance hint.");
     }
 
     [TestMethod]

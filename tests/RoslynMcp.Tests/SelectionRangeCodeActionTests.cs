@@ -47,7 +47,7 @@ public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
         var filePath = FindDocumentPath("RefactoringProbe.cs");
 
         // Lines 13-15: var sum = ...; var doubled = ...; Console.WriteLine(doubled);
-        var actions = await CodeActionService.GetCodeActionsAsync(
+        var result = await CodeActionService.GetCodeActionsAsync(
             SampleWorkspaceId,
             filePath,
             startLine: 13,
@@ -56,7 +56,7 @@ public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
             endColumn: 39,
             CancellationToken.None);
 
-        var extractActions = actions
+        var extractActions = result.Actions
             .Where(a => a.Title.Contains("Extract", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
@@ -77,7 +77,7 @@ public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
 
         // Line 22: return Math.PI * radius * radius;
         // Select the expression: Math.PI * radius * radius
-        var actions = await CodeActionService.GetCodeActionsAsync(
+        var result = await CodeActionService.GetCodeActionsAsync(
             SampleWorkspaceId,
             filePath,
             startLine: 22,
@@ -86,10 +86,10 @@ public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
             endColumn: 41,
             CancellationToken.None);
 
-        Assert.IsTrue(actions.Count > 0,
+        Assert.IsTrue(result.Count > 0,
             "Expected at least one code action for an expression selection.");
 
-        var introduceParamActions = actions
+        var introduceParamActions = result.Actions
             .Where(a => a.Title.Contains("Introduce parameter", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
@@ -108,7 +108,7 @@ public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
         var filePath = FindDocumentPath("RefactoringProbe.cs");
 
         // Line 28: var greeting = $"Hello, {name}!";
-        var actions = await CodeActionService.GetCodeActionsAsync(
+        var result = await CodeActionService.GetCodeActionsAsync(
             SampleWorkspaceId,
             filePath,
             startLine: 28,
@@ -117,10 +117,10 @@ public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
             endColumn: 43,
             CancellationToken.None);
 
-        Assert.IsTrue(actions.Count > 0,
+        Assert.IsTrue(result.Count > 0,
             "Expected at least one code action for a variable declaration selection.");
 
-        var inlineActions = actions
+        var inlineActions = result.Actions
             .Where(a => a.Title.Contains("Inline temporary", StringComparison.OrdinalIgnoreCase))
             .ToList();
 

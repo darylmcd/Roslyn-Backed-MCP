@@ -29,7 +29,7 @@ public sealed class CodeActionService : ICodeActionService
         _codeRefactoringProviders = new Lazy<ImmutableArray<CodeRefactoringProvider>>(LoadCodeRefactoringProviders);
     }
 
-    public async Task<IReadOnlyList<CodeActionDto>> GetCodeActionsAsync(
+    public async Task<CodeActionListDto> GetCodeActionsAsync(
         string workspaceId, string filePath, int startLine, int startColumn, int? endLine, int? endColumn, CancellationToken ct)
     {
         // dr-get-code-actions-opaque-error-on-bad-contract: Validate 1-based parameters
@@ -45,7 +45,7 @@ public sealed class CodeActionService : ICodeActionService
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
-        if (document is null) return [];
+        if (document is null) return BuildResult([]);
 
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
         var span = CreateSpan(text, startLine, startColumn, endLine, endColumn);
@@ -76,7 +76,26 @@ public sealed class CodeActionService : ICodeActionService
                 Kind: ResolveKind(action, defaultKind: "Refactoring"),
                 EquivalenceKey: action.EquivalenceKey));
         }
-        return dtos;
+        return BuildResult(dtos);
+    }
+
+    /// <summary>
+    /// Wrap the action list with the FLAG-6B empty-result hint. The hint lives here (not
+    /// in the Tool shim) so the generated MCP dispatch shim can use the ordinary
+    /// ToolDispatch.ReadByWorkspaceIdAsync&lt;TDto&gt; path without custom result-shaping.
+    /// Serialized JSON shape is preserved byte-identical: { count, hint, actions } in camelCase.
+    /// </summary>
+    private static CodeActionListDto BuildResult(IReadOnlyList<CodeActionDto> actions)
+    {
+        string? hint = null;
+        if (actions.Count == 0)
+        {
+            hint = "No code fixes or refactorings were available at this position. " +
+                   "Code fixes only fire when a diagnostic is reported at the span; " +
+                   "refactorings typically need a wider selection (e.g. an expression or block) rather than a single caret position. " +
+                   "Try widening the range with endLine/endColumn or pointing at a diagnostic flagged by project_diagnostics.";
+        }
+        return new CodeActionListDto(actions.Count, hint, actions);
     }
 
     /// <summary>
@@ -87,14 +106,12 @@ public sealed class CodeActionService : ICodeActionService
     private static string ResolveKind(CodeAction action, string defaultKind)
     {
         if (action.Tags.IsDefault || action.Tags.Length == 0) return defaultKind;
-        // Prefer well-known semantic tags first.
         foreach (var preferred in new[] { "Refactoring", "CodeFix", "Style", "Quality" })
         {
             if (action.Tags.Contains(preferred)) return preferred;
         }
         return action.Tags[0];
     }
-
     public async Task<RefactoringPreviewDto> PreviewCodeActionAsync(
         string workspaceId, string filePath, int startLine, int startColumn, int? endLine, int? endColumn, int actionIndex, CancellationToken ct)
     {
