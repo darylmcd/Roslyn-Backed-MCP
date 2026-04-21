@@ -5,35 +5,61 @@ using RoslynMcp.Roslyn.Contracts;
 namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
-/// Runtime dispatch helper for MCP tool shims emitted by <c>McpToolShimGenerator</c>.
-/// Exists hand-written (as opposed to inline per-shim bodies) so reviewers can audit
-/// the shared lock / serialization path in one place — the generator delegates to
-/// these three methods and emits only the per-tool binding lambda.
+/// Shared runtime dispatch helper for MCP tool shims under
+/// <c>src/RoslynMcp.Host.Stdio/Tools/*Tools.cs</c>. Every <c>*_apply</c>, <c>*_preview</c>,
+/// and read-only tool method whose body is pure "resolve workspace → gate → service →
+/// serialize" delegates inline to one of the three methods below; 87+ of ~157 stable
+/// tool shims currently route through this helper.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Phase 1.1 status:</b> the helper exists and is unit-tested, but no hand-written
-/// shim delegates to it yet. Phase 1.2+ migrates tool groups one at a time; each
-/// migrated shim becomes a one-line call into one of the three helpers below.
+/// <b>Dispatch shapes</b> — one helper method per workspace-gating pattern:
+/// <list type="bullet">
+///   <item><see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+///     — <c>*_apply</c> tools that receive an opaque preview token; resolves the
+///     workspaceId via the store's <c>PeekWorkspaceId</c> peek and runs under the
+///     per-workspace write gate. Also has a delegate-peek overload for preview stores
+///     that don't derive from <see cref="IPreviewStore"/>
+///     (<c>ICompositePreviewStore</c>, <c>IProjectMutationPreviewStore</c>).
+///   </item>
+///   <item><see cref="PreviewWithWorkspaceIdAsync{TDto}(IWorkspaceExecutionGate, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+///     — <c>*_preview</c> tools that accept an explicit <c>workspaceId</c> and stage
+///     changes into the preview store under the per-workspace write gate.
+///   </item>
+///   <item><see cref="ReadByWorkspaceIdAsync{TDto}(IWorkspaceExecutionGate, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+///     — read-only tools that accept an explicit <c>workspaceId</c> and run under the
+///     per-workspace read gate.
+///   </item>
+/// </list>
+/// </para>
+///
+/// <para>
+/// <b>Why a hand-written helper, not a source generator?</b> The original WS1 plan
+/// (phase 1.1) built an <c>McpToolShimGenerator</c> to emit these dispatch bodies
+/// from service-interface attributes. The phase-1.2 canary discovered an
+/// irreconcilable conflict with <c>ModelContextProtocol.Analyzers.XmlToDescriptionGenerator</c>
+/// (shipped in the MCP SDK) — both generators claim the same <c>public static partial</c>
+/// declaration slot, causing CS0756. Phases 1.2-1.6 pivoted to inline delegation
+/// (each tool body becomes one call into this helper). Phase 1.7 retired the unused
+/// generator scaffolding. See <c>CHANGELOG.md</c> Unreleased §Maintenance.
 /// </para>
 ///
 /// <para>
 /// <b>API shape choice:</b> the helpers take a <see cref="Func{T, TResult}"/>
 /// (<c>Func&lt;CancellationToken, Task&lt;TDto&gt;&gt;</c>) rather than a generic
-/// <c>TArgs</c> + <c>Func&lt;string, TArgs, …&gt;</c>. The shim generator captures
-/// per-tool parameters via closure, so a <c>TArgs</c> bag would force a wrapper
-/// record per tool (~22 tools with different signatures) without reducing boilerplate.
-/// The closure shape matches the existing hand-written shim bodies byte-for-byte.
+/// <c>TArgs</c> + <c>Func&lt;string, TArgs, …&gt;</c>. Each tool body captures its
+/// own parameters via closure, so a <c>TArgs</c> bag would force a wrapper record
+/// per tool (~157 tools with different signatures) without reducing boilerplate.
 /// </para>
 /// </remarks>
 internal static class ToolDispatch
 {
     /// <summary>
-    /// Dispatch body for <c>*_apply</c> tools that receive an opaque preview token
-    /// (<see cref="DispatchKind.ApplyByToken"/>). Resolves the workspaceId from the
-    /// token via <see cref="IPreviewStore.PeekWorkspaceId"/>, acquires the
-    /// per-workspace write gate, invokes <paramref name="serviceCall"/>, and returns
-    /// the indented-JSON-serialized DTO.
+    /// Dispatch body for <c>*_apply</c> tools that receive an opaque preview token.
+    /// Resolves the workspaceId from the token via
+    /// <see cref="IPreviewStore.PeekWorkspaceId"/>, acquires the per-workspace write
+    /// gate, invokes <paramref name="serviceCall"/>, and returns the indented-JSON-
+    /// serialized DTO.
     /// </summary>
     /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
     /// <param name="gate">The workspace execution gate.</param>
@@ -116,7 +142,7 @@ internal static class ToolDispatch
     /// <summary>
     /// Dispatch body for <c>*_preview</c> tools that take an explicit
     /// <paramref name="workspaceId"/> and stage changes into the preview store under
-    /// the per-workspace write gate (<see cref="DispatchKind.PreviewWithWorkspaceId"/>).
+    /// the per-workspace write gate.
     /// </summary>
     /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
     /// <param name="gate">The workspace execution gate.</param>
@@ -141,8 +167,7 @@ internal static class ToolDispatch
 
     /// <summary>
     /// Dispatch body for read-only tools that take an explicit
-    /// <paramref name="workspaceId"/> and run under the per-workspace read gate
-    /// (<see cref="DispatchKind.ReadByWorkspaceId"/>).
+    /// <paramref name="workspaceId"/> and run under the per-workspace read gate.
     /// </summary>
     /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
     /// <param name="gate">The workspace execution gate.</param>

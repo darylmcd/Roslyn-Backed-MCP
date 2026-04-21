@@ -6,32 +6,18 @@ using RoslynMcp.Host.Stdio.Catalog;
 namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
-/// MCP tool entry points for Roslyn code-action operations. WS1 phase 1.2 canary —
-/// each shim body delegates to the corresponding <see cref="ToolDispatch"/> helper
-/// instead of carrying the 7-line dispatch boilerplate inline.
+/// MCP tool entry points for Roslyn code-action operations. Each shim body delegates
+/// to the corresponding <see cref="ToolDispatch"/> helper instead of carrying the
+/// 7-line dispatch boilerplate inline — the canary for the WS1 inline-dispatch pattern
+/// subsequently rolled out across 87+ tool methods in phases 1.3-1.6.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Generator-migration blocker recorded:</b> the phase-1.2 plan called for
-/// <see cref="McpToolShimGenerator"/> to emit the bodies from
-/// <c>[GeneratedDispatch]</c>-annotated <c>partial</c> declarations. That approach
-/// collides with <c>ModelContextProtocol.Analyzers.XmlToDescriptionGenerator</c>
-/// (shipped in the MCP SDK), which ALSO emits <c>public static partial</c>
-/// declarations for every <c>[McpServerTool]</c> method — CS0756 "A partial method
-/// may not have multiple defining declarations" fires when both generators target
-/// the same tool class. Until that conflict is resolved (phase 1.3+ problem — talk
-/// to the MCP SDK maintainers about a declarative opt-out, or have our generator
-/// emit into a non-<c>partial</c> sibling helper class), the canary keeps the
-/// hand-written shim shape and the win is strictly the LOC reduction from using
-/// <see cref="ToolDispatch"/> inline. See
-/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the full plan.
-/// </para>
-/// <para>
-/// The <see cref="ICodeActionService.GetCodeActionsAsync"/> result type changed from
-/// <c>IReadOnlyList&lt;CodeActionDto&gt;</c> to <see cref="RoslynMcp.Core.Models.CodeActionListDto"/>
-/// in this PR so the empty-result hint (FLAG-6B) moves out of the Tool shim and into
-/// the service — making every tool body in this file a pure dispatch. This is the
-/// prerequisite architectural shape the generator migration will eventually consume.
+/// The <see cref="ICodeActionService.GetCodeActionsAsync"/> result type is
+/// <see cref="RoslynMcp.Core.Models.CodeActionListDto"/> (a <c>count / hint / actions</c>
+/// record) rather than a raw <c>IReadOnlyList&lt;CodeActionDto&gt;</c> so the FLAG-6B
+/// empty-result hint lives in the service — making every tool body in this file a
+/// pure dispatch.
 /// </para>
 /// </remarks>
 [McpServerToolType]
