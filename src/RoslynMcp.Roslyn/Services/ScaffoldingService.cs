@@ -1016,12 +1016,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         if (normalizedKind is "interface" or "enum")
             return InterfaceResolutionResult.Empty;
 
-        var candidates = new List<string>();
-        if (!string.IsNullOrWhiteSpace(request.BaseType))
-            candidates.Add(request.BaseType!);
-        if (request.Interfaces is not null)
-            candidates.AddRange(request.Interfaces.Where(n => !string.IsNullOrWhiteSpace(n)));
-
+        var candidates = CollectInterfaceCandidates(request);
         if (candidates.Count == 0)
             return InterfaceResolutionResult.Empty;
 
@@ -1033,20 +1028,7 @@ public sealed class ScaffoldingService : IScaffoldingService
 
         foreach (var candidate in candidates)
         {
-            INamedTypeSymbol? resolved = null;
-            foreach (var project in solution.Projects)
-            {
-                var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
-                if (compilation is null) continue;
-                resolved = compilation.GetTypeByMetadataName(candidate)
-                    ?? compilation.GetSymbolsWithName(
-                            StripGenericArity(candidate), Microsoft.CodeAnalysis.SymbolFilter.Type, ct)
-                        .OfType<INamedTypeSymbol>()
-                        .FirstOrDefault(t => t.ToDisplayString().Equals(candidate, StringComparison.Ordinal) ||
-                                             t.Name.Equals(candidate, StringComparison.Ordinal));
-                if (resolved is not null) break;
-            }
-
+            var resolved = await ResolveTypeSymbolAsync(solution, candidate, ct).ConfigureAwait(false);
             if (resolved is null)
             {
                 warnings.Add(
@@ -1058,32 +1040,93 @@ public sealed class ScaffoldingService : IScaffoldingService
             if (resolved.TypeKind != TypeKind.Interface)
                 continue; // concrete base class — no stubs needed.
 
-            // AllInterfaces includes inherited interfaces (IFoo : IBar implements IBar's members too).
-            var interfacesToEmit = new List<INamedTypeSymbol> { resolved };
-            interfacesToEmit.AddRange(resolved.AllInterfaces);
-
-            foreach (var iface in interfacesToEmit)
-            {
-                foreach (var member in iface.GetMembers())
-                {
-                    // Skip static interface members (DIM entrypoints), property accessors (handled via property itself),
-                    // and members with a default implementation (not required of implementors).
-                    if (member.IsStatic) continue;
-                    if (member is IMethodSymbol methodSym &&
-                        methodSym.AssociatedSymbol is IPropertySymbol or IEventSymbol) continue;
-                    if (!member.IsAbstract && HasDefaultInterfaceImplementation(member)) continue;
-
-                    var signature = BuildMemberSignatureKey(member);
-                    if (!emittedSignatures.Add(signature)) continue;
-
-                    var stub = BuildInterfaceMemberStub(member, requiredUsings);
-                    if (stub is null) continue;
-                    stubs.AppendLine(stub);
-                }
-            }
+            EmitMembersForInterface(resolved, stubs, requiredUsings, emittedSignatures);
         }
 
         return new InterfaceResolutionResult(stubs.ToString(), requiredUsings, warnings);
+    }
+
+    /// <summary>
+    /// Collect candidate type names to resolve as interfaces: the optional <see cref="ScaffoldTypeDto.BaseType"/>
+    /// plus every non-blank entry in <see cref="ScaffoldTypeDto.Interfaces"/>. Base-type entries that turn out
+    /// to be concrete classes are filtered later in the resolution loop.
+    /// </summary>
+    private static List<string> CollectInterfaceCandidates(ScaffoldTypeDto request)
+    {
+        var candidates = new List<string>();
+        if (!string.IsNullOrWhiteSpace(request.BaseType))
+            candidates.Add(request.BaseType!);
+        if (request.Interfaces is not null)
+            candidates.AddRange(request.Interfaces.Where(n => !string.IsNullOrWhiteSpace(n)));
+        return candidates;
+    }
+
+    /// <summary>
+    /// Resolve a candidate type name across every project's compilation, preferring an exact metadata-name
+    /// match and falling back to <c>GetSymbolsWithName</c> with a display-name compare so short names
+    /// (e.g. <c>IDisposable</c>) still match without a leading namespace.
+    /// </summary>
+    private static async Task<INamedTypeSymbol?> ResolveTypeSymbolAsync(
+        Solution solution, string candidate, CancellationToken ct)
+    {
+        foreach (var project in solution.Projects)
+        {
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+            var resolved = compilation.GetTypeByMetadataName(candidate)
+                ?? compilation.GetSymbolsWithName(
+                        StripGenericArity(candidate), Microsoft.CodeAnalysis.SymbolFilter.Type, ct)
+                    .OfType<INamedTypeSymbol>()
+                    .FirstOrDefault(t => t.ToDisplayString().Equals(candidate, StringComparison.Ordinal) ||
+                                         t.Name.Equals(candidate, StringComparison.Ordinal));
+            if (resolved is not null) return resolved;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Emit stub text for every required-to-implement member of the resolved interface and all its
+    /// inherited interfaces (<see cref="INamedTypeSymbol.AllInterfaces"/>), deduped by signature so the
+    /// same member inherited via two paths is only emitted once.
+    /// </summary>
+    private static void EmitMembersForInterface(
+        INamedTypeSymbol resolved,
+        System.Text.StringBuilder stubs,
+        HashSet<string> requiredUsings,
+        HashSet<string> emittedSignatures)
+    {
+        // AllInterfaces includes inherited interfaces (IFoo : IBar implements IBar's members too).
+        var interfacesToEmit = new List<INamedTypeSymbol> { resolved };
+        interfacesToEmit.AddRange(resolved.AllInterfaces);
+
+        foreach (var iface in interfacesToEmit)
+        {
+            foreach (var member in iface.GetMembers())
+            {
+                if (ShouldSkipInterfaceMember(member)) continue;
+
+                var signature = BuildMemberSignatureKey(member);
+                if (!emittedSignatures.Add(signature)) continue;
+
+                var stub = BuildInterfaceMemberStub(member, requiredUsings);
+                if (stub is null) continue;
+                stubs.AppendLine(stub);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Skip static interface members (DIM entry points), property/event accessors (handled via the
+    /// owning property/event itself), and members with a default implementation (C# 8 DIM — not
+    /// required of implementors).
+    /// </summary>
+    private static bool ShouldSkipInterfaceMember(ISymbol member)
+    {
+        if (member.IsStatic) return true;
+        if (member is IMethodSymbol methodSym &&
+            methodSym.AssociatedSymbol is IPropertySymbol or IEventSymbol) return true;
+        if (!member.IsAbstract && HasDefaultInterfaceImplementation(member)) return true;
+        return false;
     }
 
     /// <summary>Rope generic arity (<c>`1</c>) from a display name like <c>IEnumerable`1</c>.</summary>

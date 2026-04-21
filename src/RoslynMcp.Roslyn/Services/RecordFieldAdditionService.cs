@@ -49,18 +49,7 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
         ArgumentException.ThrowIfNullOrWhiteSpace(newFieldType);
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveByMetadataNameAsync(solution, recordMetadataName, ct).ConfigureAwait(false);
-        if (symbol is not INamedTypeSymbol typeSymbol)
-        {
-            throw new KeyNotFoundException($"No type resolved for metadata name '{recordMetadataName}'.");
-        }
-        if (!typeSymbol.IsRecord)
-        {
-            throw new ArgumentException(
-                $"Type '{recordMetadataName}' is not a record. preview_record_field_addition only " +
-                "supports record class / record struct types.",
-                nameof(recordMetadataName));
-        }
+        var typeSymbol = await ResolveRecordTypeAsync(solution, recordMetadataName, ct).ConfigureAwait(false);
 
         var newField = new NewRecordFieldDto(newFieldName, newFieldType, defaultValueExpression);
         var existingPositionalParameters = ExtractPositionalParameters(typeSymbol);
@@ -89,8 +78,86 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
         var testFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var dedupeSpans = new HashSet<(string Path, int Line, int Col, string Kind)>();
 
-        // Pass A: per-reference-location classification (catches type-token uses like
-        // ObjectCreation, RecursivePattern-with-type).
+        ClassifyReferenceSites(
+            materialized, typeSymbol, existingPositionalParameters, newField,
+            constructionSites, deconstructionSites, propertyPatternSites, withExpressionSites,
+            testFiles, dedupeSpans, ct);
+
+        await WalkDocumentsForInferredSitesAsync(
+            materialized, typeSymbol, existingPositionalParameters, newField,
+            deconstructionSites, propertyPatternSites, withExpressionSites, dedupeSpans, ct).ConfigureAwait(false);
+
+        // Stable order: by file path then start line. Helps reviewers diff output across runs.
+        constructionSites.Sort(CompareByLocation);
+        deconstructionSites.Sort(CompareByLocation);
+        propertyPatternSites.Sort(CompareByLocation);
+        withExpressionSites.Sort(CompareByLocation);
+        var testFileList = testFiles.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToList();
+
+        var suggestedTasks = BuildSuggestedTasks(
+            isPositional,
+            constructionSites.Count,
+            deconstructionSites.Count,
+            propertyPatternSites.Count,
+            withExpressionSites.Count,
+            testFileList.Count);
+
+        return new RecordFieldAdditionImpactDto(
+            TargetRecordDisplay: typeSymbol.ToDisplayString(),
+            IsPositionalRecord: isPositional,
+            NewField: newField,
+            ExistingPositionalParameters: existingPositionalParameters,
+            PositionalConstructionSites: constructionSites,
+            DeconstructionSites: deconstructionSites,
+            PropertyPatternSites: propertyPatternSites,
+            WithExpressionSites: withExpressionSites,
+            TestFilesConstructing: testFileList,
+            SuggestedTasks: suggestedTasks);
+    }
+
+    /// <summary>
+    /// Resolve the metadata name to a record <see cref="INamedTypeSymbol"/>, throwing
+    /// <see cref="KeyNotFoundException"/> when nothing matches and <see cref="ArgumentException"/>
+    /// when the match is a non-record type (the preview tool only supports record class / record
+    /// struct, so classifying an arbitrary class would produce meaningless results).
+    /// </summary>
+    private static async Task<INamedTypeSymbol> ResolveRecordTypeAsync(
+        Solution solution, string recordMetadataName, CancellationToken ct)
+    {
+        var symbol = await SymbolResolver.ResolveByMetadataNameAsync(solution, recordMetadataName, ct).ConfigureAwait(false);
+        if (symbol is not INamedTypeSymbol typeSymbol)
+        {
+            throw new KeyNotFoundException($"No type resolved for metadata name '{recordMetadataName}'.");
+        }
+        if (!typeSymbol.IsRecord)
+        {
+            throw new ArgumentException(
+                $"Type '{recordMetadataName}' is not a record. preview_record_field_addition only " +
+                "supports record class / record struct types.",
+                nameof(recordMetadataName));
+        }
+        return typeSymbol;
+    }
+
+    /// <summary>
+    /// Pass A of the impact scan: iterate the materialized <see cref="SymbolFinder"/> reference
+    /// locations and dispatch each through <see cref="ClassifySite"/>. Records every test-project
+    /// document that hosts a reference (for the test-file task list) before classifying, because
+    /// a reference whose enclosing expression fails to classify still belongs in the test sweep.
+    /// </summary>
+    private static void ClassifyReferenceSites(
+        IReadOnlyList<MaterializedReference> materialized,
+        INamedTypeSymbol typeSymbol,
+        IReadOnlyList<ExistingPositionalParameterDto> existingPositionalParameters,
+        NewRecordFieldDto newField,
+        List<RecordPositionalConstructionSiteDto> constructionSites,
+        List<RecordDeconstructionSiteDto> deconstructionSites,
+        List<RecordPropertyPatternSiteDto> propertyPatternSites,
+        List<RecordWithExpressionSiteDto> withExpressionSites,
+        HashSet<string> testFiles,
+        HashSet<(string Path, int Line, int Col, string Kind)> dedupeSpans,
+        CancellationToken ct)
+    {
         foreach (var rich in materialized)
         {
             if (ct.IsCancellationRequested) break;
@@ -119,11 +186,26 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
 
             ClassifySite(node, rich.Dto, ctx, ct);
         }
+    }
 
-        // Pass B: document-level walk — catches deconstruction & with-expressions on variables
-        // whose inferred type is the target (these don't show up as type-name references). We
-        // only walk documents that already mentioned the type in pass A, so this is bounded by
-        // the same reference-density constant as pass A.
+    /// <summary>
+    /// Pass B of the impact scan: for every document that hosted a pass-A reference, walk its
+    /// descendant nodes looking for shapes that don't surface as type-name references — primarily
+    /// <c>var (a, b) = r</c> (references only the local), <c>x with { ... }</c> (same), and
+    /// <c>is</c>/<c>switch</c> recursive patterns whose type comes from the matched expression.
+    /// Bounded by the pass-A document set so overall cost stays linear in reference density.
+    /// </summary>
+    private static async Task WalkDocumentsForInferredSitesAsync(
+        IReadOnlyList<MaterializedReference> materialized,
+        INamedTypeSymbol typeSymbol,
+        IReadOnlyList<ExistingPositionalParameterDto> existingPositionalParameters,
+        NewRecordFieldDto newField,
+        List<RecordDeconstructionSiteDto> deconstructionSites,
+        List<RecordPropertyPatternSiteDto> propertyPatternSites,
+        List<RecordWithExpressionSiteDto> withExpressionSites,
+        HashSet<(string Path, int Line, int Col, string Kind)> dedupeSpans,
+        CancellationToken ct)
+    {
         var documentsToWalk = materialized
             .Where(m => m.Source.Document is not null)
             .Select(m => m.Source.Document)
@@ -140,52 +222,48 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
             foreach (var node in root.DescendantNodes())
             {
                 if (ct.IsCancellationRequested) break;
-                switch (node)
-                {
-                    case WithExpressionSyntax we when ResolvesToTargetExpression(we.Expression, semanticModel, typeSymbol, ct):
-                        AddUniqueWithSite(we, doc, withExpressionSites, dedupeSpans);
-                        break;
-                    case DeclarationExpressionSyntax decl when decl.Designation is ParenthesizedVariableDesignationSyntax pvd
-                                                                && InferredDeconstructionTargetMatches(decl, semanticModel, typeSymbol, ct):
-                        AddUniqueDeconstructionFromDesignation(decl, pvd, doc, existingPositionalParameters, newField, deconstructionSites, dedupeSpans);
-                        break;
-                    case AssignmentExpressionSyntax asn when asn.Left is TupleExpressionSyntax tuple
-                                                              && AssignmentTargetMatches(asn, semanticModel, typeSymbol, ct):
-                        AddUniqueDeconstructionFromTuple(asn, tuple, doc, existingPositionalParameters, newField, deconstructionSites, dedupeSpans);
-                        break;
-                    case RecursivePatternSyntax rp when PatternMatchesTarget(rp, semanticModel, typeSymbol, ct):
-                        AddUniqueRecursivePattern(rp, doc, existingPositionalParameters, newField, deconstructionSites, propertyPatternSites, dedupeSpans);
-                        break;
-                }
+                DispatchDocumentWalkNode(
+                    node, doc, semanticModel, typeSymbol, existingPositionalParameters, newField,
+                    deconstructionSites, propertyPatternSites, withExpressionSites, dedupeSpans, ct);
             }
         }
+    }
 
-        // Stable order: by file path then start line. Helps reviewers diff output across runs.
-        constructionSites.Sort(CompareByLocation);
-        deconstructionSites.Sort(CompareByLocation);
-        propertyPatternSites.Sort(CompareByLocation);
-        withExpressionSites.Sort(CompareByLocation);
-        var testFileList = testFiles.OrderBy(p => p, StringComparer.OrdinalIgnoreCase).ToList();
-
-        var suggestedTasks = BuildSuggestedTasks(
-            isPositional,
-            constructionSites.Count,
-            deconstructionSites.Count,
-            propertyPatternSites.Count,
-            withExpressionSites.Count,
-            testFileList.Count);
-
-        return new RecordFieldAdditionImpactDto(
-            TargetRecordDisplay: typeSymbol.ToDisplayString(),
-            IsPositionalRecord: isPositional,
-            NewField: newField,
-            ExistingPositionalParameters: existingPositionalParameters,
-            PositionalConstructionSites: constructionSites,
-            DeconstructionSites: deconstructionSites,
-            PropertyPatternSites: propertyPatternSites,
-            WithExpressionSites: withExpressionSites,
-            TestFilesConstructing: testFileList,
-            SuggestedTasks: suggestedTasks);
+    /// <summary>
+    /// Route a single document-walk node through the inferred-type matchers. Each case hits an
+    /// <c>AddUnique*</c> helper that is span-deduped, so overlapping pass-A / pass-B matches never
+    /// double-count.
+    /// </summary>
+    private static void DispatchDocumentWalkNode(
+        SyntaxNode node,
+        Document doc,
+        SemanticModel semanticModel,
+        INamedTypeSymbol typeSymbol,
+        IReadOnlyList<ExistingPositionalParameterDto> existingPositionalParameters,
+        NewRecordFieldDto newField,
+        List<RecordDeconstructionSiteDto> deconstructionSites,
+        List<RecordPropertyPatternSiteDto> propertyPatternSites,
+        List<RecordWithExpressionSiteDto> withExpressionSites,
+        HashSet<(string Path, int Line, int Col, string Kind)> dedupeSpans,
+        CancellationToken ct)
+    {
+        switch (node)
+        {
+            case WithExpressionSyntax we when ResolvesToTargetExpression(we.Expression, semanticModel, typeSymbol, ct):
+                AddUniqueWithSite(we, doc, withExpressionSites, dedupeSpans);
+                break;
+            case DeclarationExpressionSyntax decl when decl.Designation is ParenthesizedVariableDesignationSyntax pvd
+                                                        && InferredDeconstructionTargetMatches(decl, semanticModel, typeSymbol, ct):
+                AddUniqueDeconstructionFromDesignation(decl, pvd, doc, existingPositionalParameters, newField, deconstructionSites, dedupeSpans);
+                break;
+            case AssignmentExpressionSyntax asn when asn.Left is TupleExpressionSyntax tuple
+                                                      && AssignmentTargetMatches(asn, semanticModel, typeSymbol, ct):
+                AddUniqueDeconstructionFromTuple(asn, tuple, doc, existingPositionalParameters, newField, deconstructionSites, dedupeSpans);
+                break;
+            case RecursivePatternSyntax rp when PatternMatchesTarget(rp, semanticModel, typeSymbol, ct):
+                AddUniqueRecursivePattern(rp, doc, existingPositionalParameters, newField, deconstructionSites, propertyPatternSites, dedupeSpans);
+                break;
+        }
     }
 
     /// <summary>
