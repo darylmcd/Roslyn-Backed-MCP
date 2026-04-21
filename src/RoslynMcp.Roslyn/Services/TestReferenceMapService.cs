@@ -30,6 +30,61 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
         var status = _workspace.GetStatus(workspaceId);
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
+        // Phase 1: scope projects + classify test-vs-productive.
+        var (scopedProjects, testProjectIds, productiveScopeProjects) =
+            ScopeProjects(solution, status, projectName);
+
+        // Phase 2: collect every public/internal productive-symbol declaration from the
+        // productive-scope projects (all non-test projects by default, or the named project
+        // when projectName identifies a productive project).
+        var allProductive = await CollectProductiveSymbolsAsync(productiveScopeProjects, ct)
+            .ConfigureAwait(false);
+
+        // Phase 3: walk each test project's test methods and record references to
+        // productive symbols.
+        var (productiveSymbols, scannedTestProjects) = await RecordTestProjectReferencesAsync(
+            solution, scopedProjects, testProjectIds, allProductive, ct).ConfigureAwait(false);
+
+        var notes = new List<string>();
+        if (scannedTestProjects.Count == 0)
+        {
+            notes.Add("No test projects detected (IsTestProject=true). Coverage defaults to 0%.");
+        }
+        notes.Add(
+            "Static reference analysis misses reflection, DI-constructed calls, and mocks. " +
+            "Runtime coverage from test_coverage remains the authoritative view for those.");
+
+        // Item 9: detect NSubstitute mock-drift across the same test projects.
+        var mockDrift = await DetectMockDriftAsync(solution, scopedProjects, testProjectIds, ct).ConfigureAwait(false);
+
+        // Phase 4: compute ordered sets + stable pagination.
+        var coveredAll = productiveSymbols
+            .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv => new CoveredSymbolDto(kv.Key, kv.Value.OrderBy(x => x, StringComparer.Ordinal).ToArray()))
+            .ToArray();
+
+        var uncoveredAll = allProductive
+            .Where(sym => !productiveSymbols.ContainsKey(sym))
+            .OrderBy(sym => sym, StringComparer.Ordinal)
+            .ToArray();
+
+        return BuildPaginatedResult(
+            coveredAll, uncoveredAll, offset, limit, scannedTestProjects, notes, mockDrift);
+    }
+
+    /// <summary>
+    /// Resolve the project-scope triple used by the rest of <see cref="BuildAsync"/>:
+    /// (a) the set of projects covered by <paramref name="projectName"/> (or every project when
+    /// it is null/empty), (b) the test-project ids across the full solution, and (c) the
+    /// productive-scope subset (dr-9-5-bug-pagination-001: a productive <paramref name="projectName"/>
+    /// restricts the collected symbol set to that project alone). Throws when
+    /// <paramref name="projectName"/> matches nothing.
+    /// </summary>
+    private static (List<Project> ScopedProjects, HashSet<ProjectId> TestProjectIds, IReadOnlyList<Project> ProductiveScopeProjects) ScopeProjects(
+        Solution solution,
+        WorkspaceStatusDto status,
+        string? projectName)
+    {
         var scopedProjects = string.IsNullOrWhiteSpace(projectName)
             ? solution.Projects.ToList()
             : solution.Projects.Where(p =>
@@ -60,23 +115,46 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
             ? scopedProjects.Where(p => !testProjectIds.Contains(p.Id)).ToList()
             : (IReadOnlyList<Project>)solution.Projects.Where(p => !testProjectIds.Contains(p.Id)).ToList();
 
-        var productiveSymbols = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
-        var allProductive = new HashSet<string>(StringComparer.Ordinal);
-        var scannedTestProjects = new List<string>();
-        var notes = new List<string>();
+        return (scopedProjects, testProjectIds, productiveScopeProjects);
+    }
 
-        // First pass: collect every public/internal productive symbol declaration from the
-        // productive-scope projects (all non-test projects by default, or the named project
-        // when projectName identifies a productive project).
+    /// <summary>
+    /// Walk the compilation global-namespace of each productive-scope project and collect the
+    /// display string of every public/internal ordinary-method or constructor declared in
+    /// source. Projects that cannot produce a compilation are skipped (matches the pre-refactor
+    /// behavior).
+    /// </summary>
+    private static async Task<HashSet<string>> CollectProductiveSymbolsAsync(
+        IReadOnlyList<Project> productiveScopeProjects,
+        CancellationToken ct)
+    {
+        var allProductive = new HashSet<string>(StringComparer.Ordinal);
         foreach (var project in productiveScopeProjects)
         {
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null) continue;
             CollectProductiveSymbols(compilation.GlobalNamespace, allProductive);
         }
+        return allProductive;
+    }
 
-        // Second pass: walk each test project's test methods and record references to
-        // productive symbols.
+    /// <summary>
+    /// Walk every test project → document → method-declaration → invocation and record which
+    /// productive symbols each test method references. A reference is counted when the target
+    /// resolves to a source-declared method/property/constructor in a non-test project with
+    /// public/internal/protected accessibility and appears in <paramref name="allProductive"/>.
+    /// Returns the symbol→testMethodNames map plus the list of test projects actually scanned.
+    /// </summary>
+    private static async Task<(Dictionary<string, HashSet<string>> ProductiveSymbols, List<string> ScannedTestProjects)> RecordTestProjectReferencesAsync(
+        Solution solution,
+        IReadOnlyList<Project> scopedProjects,
+        HashSet<ProjectId> testProjectIds,
+        HashSet<string> allProductive,
+        CancellationToken ct)
+    {
+        var productiveSymbols = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var scannedTestProjects = new List<string>();
+
         foreach (var testProject in scopedProjects.Where(p => testProjectIds.Contains(p.Id)))
         {
             ct.ThrowIfCancellationRequested();
@@ -90,65 +168,84 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
                 var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (semanticModel is null || root is null) continue;
 
-                foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
-                {
-                    var testMethodSymbol = semanticModel.GetDeclaredSymbol(method, ct) as IMethodSymbol;
-                    if (testMethodSymbol is null) continue;
-                    var testMethodName = testMethodSymbol.ToDisplayString();
-
-                    foreach (var invocation in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
-                    {
-                        var symbolInfo = semanticModel.GetSymbolInfo(invocation, ct);
-                        var target = symbolInfo.Symbol as IMethodSymbol;
-                        if (target is null) continue;
-                        if (target.ContainingAssembly is null) continue;
-                        if (target.Locations.All(l => l.Kind == LocationKind.MetadataFile)) continue;
-                        if (testProjectIds.Contains(target.ContainingAssembly.GetProjectIdFromSolution(solution))) continue;
-                        if (target.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal or Accessibility.Protected or Accessibility.ProtectedOrInternal))
-                            continue;
-
-                        var display = target.OriginalDefinition.ToDisplayString();
-                        if (!allProductive.Contains(display)) continue;
-
-                        if (!productiveSymbols.TryGetValue(display, out var methods))
-                        {
-                            methods = new HashSet<string>(StringComparer.Ordinal);
-                            productiveSymbols[display] = methods;
-                        }
-                        methods.Add(testMethodName);
-                    }
-                }
+                RecordDocumentReferences(
+                    document: document,
+                    root: root,
+                    semanticModel: semanticModel,
+                    solution: solution,
+                    testProjectIds: testProjectIds,
+                    allProductive: allProductive,
+                    productiveSymbols: productiveSymbols,
+                    ct: ct);
             }
         }
 
-        if (scannedTestProjects.Count == 0)
+        return (productiveSymbols, scannedTestProjects);
+    }
+
+    /// <summary>
+    /// Per-document leaf of <see cref="RecordTestProjectReferencesAsync"/>. Kept synchronous — the
+    /// document's syntax root and semantic model are already materialized by the caller, so the
+    /// inner loop is a pure walk.
+    /// </summary>
+    private static void RecordDocumentReferences(
+        Document document,
+        SyntaxNode root,
+        SemanticModel semanticModel,
+        Solution solution,
+        HashSet<ProjectId> testProjectIds,
+        HashSet<string> allProductive,
+        Dictionary<string, HashSet<string>> productiveSymbols,
+        CancellationToken ct)
+    {
+        foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
         {
-            notes.Add("No test projects detected (IsTestProject=true). Coverage defaults to 0%.");
+            var testMethodSymbol = semanticModel.GetDeclaredSymbol(method, ct) as IMethodSymbol;
+            if (testMethodSymbol is null) continue;
+            var testMethodName = testMethodSymbol.ToDisplayString();
+
+            foreach (var invocation in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(invocation, ct);
+                var target = symbolInfo.Symbol as IMethodSymbol;
+                if (target is null) continue;
+                if (target.ContainingAssembly is null) continue;
+                if (target.Locations.All(l => l.Kind == LocationKind.MetadataFile)) continue;
+                if (testProjectIds.Contains(target.ContainingAssembly.GetProjectIdFromSolution(solution))) continue;
+                if (target.DeclaredAccessibility is not (Accessibility.Public or Accessibility.Internal or Accessibility.Protected or Accessibility.ProtectedOrInternal))
+                    continue;
+
+                var display = target.OriginalDefinition.ToDisplayString();
+                if (!allProductive.Contains(display)) continue;
+
+                if (!productiveSymbols.TryGetValue(display, out var methods))
+                {
+                    methods = new HashSet<string>(StringComparer.Ordinal);
+                    productiveSymbols[display] = methods;
+                }
+                methods.Add(testMethodName);
+            }
         }
-        notes.Add(
-            "Static reference analysis misses reflection, DI-constructed calls, and mocks. " +
-            "Runtime coverage from test_coverage remains the authoritative view for those.");
+    }
 
-        // Item 9: detect NSubstitute mock-drift across the same test projects.
-        var mockDrift = await DetectMockDriftAsync(solution, scopedProjects, testProjectIds, ct).ConfigureAwait(false);
-
-        var coveredAll = productiveSymbols
-            .OrderBy(kv => kv.Key, StringComparer.Ordinal)
-            .Select(kv => new CoveredSymbolDto(kv.Key, kv.Value.OrderBy(x => x, StringComparer.Ordinal).ToArray()))
-            .ToArray();
-
-        var uncoveredAll = allProductive
-            .Where(sym => !productiveSymbols.ContainsKey(sym))
-            .OrderBy(sym => sym, StringComparer.Ordinal)
-            .ToArray();
-
+    /// <summary>
+    /// dr-9-5-bug-pagination-001: page through the combined (covered-first, uncovered-next) list.
+    /// The combined ordering is stable between calls so callers can resume at
+    /// <c>offset + returnedCount</c>. <see cref="TestReferenceMapDto.CoveragePercent"/> stays pegged
+    /// to the full counts so the verdict doesn't wobble based on page window.
+    /// </summary>
+    private static TestReferenceMapDto BuildPaginatedResult(
+        CoveredSymbolDto[] coveredAll,
+        string[] uncoveredAll,
+        int offset,
+        int limit,
+        IReadOnlyList<string> scannedTestProjects,
+        IReadOnlyList<string> notes,
+        IReadOnlyList<MockDriftWarningDto> mockDrift)
+    {
         var denominator = coveredAll.Length + uncoveredAll.Length;
         var percent = denominator == 0 ? 0 : Math.Round(coveredAll.Length * 100.0 / denominator, 1);
 
-        // dr-9-5-bug-pagination-001: page through the combined (covered-first, uncovered-next)
-        // list. The combined ordering is stable between calls so callers can resume at
-        // (offset + returnedCount). CoveragePercent stays pegged to the full counts so the
-        // verdict doesn't wobble based on page window.
         var clampedOffset = Math.Clamp(offset, 0, denominator);
         var clampedLimit = Math.Clamp(limit, 1, 500);
 
