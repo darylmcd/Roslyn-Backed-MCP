@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Fixed
 
+### Changed
+
+### Added
+
+### Maintenance
+
+## [1.27.0] - 2026-04-21
+
+Comprehensive refactor completion — 17 PRs (#303–#319) closing both P3 backlog rows from the 2026-04-20 audit plan. **Workstream 1** (`tools-dispatch-shim-boilerplate-duplication`): 87+ tool-dispatch shims migrated to a shared `ToolDispatch` runtime helper (3 dispatch kinds: `ApplyByTokenAsync`, `PreviewWithWorkspaceIdAsync`, `ReadByWorkspaceIdAsync` + one `Func<string, string?>` peek-delegate overload for non-`IPreviewStore` stores); a source-generator approach was attempted in phase 1.1 but retired in phase 1.7 after phase 1.2 canary discovered an irreconcilable CS0756 conflict with the MCP SDK's `ModelContextProtocol.Analyzers.XmlToDescriptionGenerator` over `public static partial` declarations. **Workstream 2** (`top10-complexity-hotspots-not-yet-extracted`): 15 of 17 enumerated complexity hotspots extracted (all targets met, most cc<10 after); 2 dispositioned as defensible dense-switch-over-closed-kind-set patterns with MI=50. Highest-impact deltas: `BuildAsync` (cc 30→2, MI 27→49), `FindDuplicatedMethodsAsync` (cc 21→1, MI 35→64), `ApplyAddRemoveAsync` (cc 28→1, MI 28→48), `CheckAsync` (cc 28→5; hot-path timing: 15.7s→12.0s wall-clock — faster post-refactor), `PreviewSplitServiceWithDiAsync` (cc 22→3, MI 32→54). Added 5 characterization tests for `CodeMetricsService.VisitChildForNesting` recursion semantics. Critical-path `UndoService.RevertFromSolutionSnapshotAsync` (cc 21→4) verified with 25/25 pre+post test parity. 1 new P3 row filed (`cc-18-to-19-residuals-post-top10-extraction`) surfacing 13 cc=18–19 methods that fell below the original audit's cc=20 anchor line.
+
+### Fixed
+
 - **Fixed:** Deleted dead `SyntaxFormatter` helper at `src/RoslynMcp.Roslyn/Helpers/SyntaxFormatter.cs` — `find_unused_symbols` flagged the type as high-confidence unused and `find_references(metadataName=RoslynMcp.Roslyn.Helpers.SyntaxFormatter)` returned 0 hits solution-wide; the XML-doc "shared helper... centralizes the pattern so every synthesizer gets the same behavior" was aspirational with no call sites. Removes 54 LOC / 2 methods (2026-04-20 refactor audit F1).
 - **Fixed:** Removed dead `BuildSuggestedArgumentList(BaseArgumentListSyntax, NewRecordFieldDto)` overload at `src/RoslynMcp.Roslyn/Services/RecordFieldAdditionService.cs:614` — 0 references solution-wide; body was byte-identical to the still-used `ArgumentListSyntax` overload, whose two call sites at `:260` and `:275` continue to resolve correctly (`ObjectCreationExpressionSyntax.ArgumentList` / `ImplicitObjectCreationExpressionSyntax.ArgumentList` are both `ArgumentListSyntax`, not `BaseArgumentListSyntax`) (2026-04-20 refactor audit F2).
 
