@@ -7,19 +7,20 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Unit coverage for <see cref="ToolDispatch"/> — the runtime helper that the
-/// <c>McpToolShimGenerator</c> (phase 1.2+) will delegate generated MCP tool shim
-/// methods into. Verifies the three dispatch kinds end-to-end without needing a live
-/// workspace: the gate and preview-store dependencies are stubbed in-test so the
-/// assertions focus on the helper's own behavior (gate verb selection, token-to-ws
-/// mapping, JSON serialization, KeyNotFoundException shape).
+/// Unit coverage for <see cref="ToolDispatch"/> — the shared runtime helper that
+/// every inline-delegating MCP tool shim routes through. Verifies the three dispatch
+/// kinds end-to-end without needing a live workspace: the gate and preview-store
+/// dependencies are stubbed in-test so the assertions focus on the helper's own
+/// behavior (gate verb selection, token-to-ws mapping, JSON serialization,
+/// KeyNotFoundException shape).
 /// </summary>
 /// <remarks>
 /// <para>
-/// The generator's per-tool shim methods are not tested here — those land (with
-/// integration tests) in phase 1.2 when the first tool group (<c>CodeActionTools</c>)
-/// migrates. Phase 1.1's invariant is: the runtime helper is small, correct, and
-/// has the exact same observable behavior as the hand-written shims it will replace.
+/// Per-tool shim methods (e.g. <c>CodeActionTools.ApplyCodeAction</c>) are covered
+/// by the integration-test suite under <c>tests/RoslynMcp.Tests/Expanded*</c>; this
+/// unit file guards only the helper's own contract so that any future adjustment to
+/// the gate or serialization path trips a local test before surfacing through the
+/// larger integration suites.
 /// </para>
 /// </remarks>
 [TestClass]

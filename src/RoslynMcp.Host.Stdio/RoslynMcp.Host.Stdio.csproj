@@ -54,21 +54,8 @@
     from the hand-maintained ServerSurfaceCatalog.Tools / .Resources / .Prompts lists.
     OutputItemType="Analyzer" + ReferenceOutputAssembly="false" is the canonical way
     to treat an external csproj as an analyzer without shipping its runtime binary.
-
-    McpToolShimGenerator is an IIncrementalGenerator that will (in phase 1.2+) emit
-    the hand-written 7-line dispatch shims under Tools/*Tools.cs directly from
-    [GeneratedDispatch]-annotated service-interface methods. Phase 1.1 ships the
-    generator as a no-op; the MSBuild wiring lives here so later phases migrate one
-    tool group at a time without touching this file. PrivateAssets="all" mirrors the
-    sibling analyzer policy — the generator's runtime binary must NOT flow into
-    consumers. See ai_docs/plans/20260421T123658Z_post-audit-followups.md
-    § Workstream 1.
   -->
   <ItemGroup>
-    <ProjectReference Include="..\..\analyzers\McpToolShimGenerator\McpToolShimGenerator.csproj"
-                      OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false"
-                      PrivateAssets="all" />
     <ProjectReference Include="..\..\analyzers\ServerSurfaceCatalogAnalyzer\ServerSurfaceCatalogAnalyzer.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />

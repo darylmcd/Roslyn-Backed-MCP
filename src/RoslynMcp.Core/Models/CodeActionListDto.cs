@@ -9,10 +9,10 @@ namespace RoslynMcp.Core.Models;
 /// <remarks>
 /// The wrapping shape used to live inline in <c>CodeActionTools.GetCodeActions</c>
 /// (a <c>System.Text.Json</c> anonymous object). Lifting it into a typed DTO lets
-/// the generated MCP tool shim (<c>McpToolShimGenerator</c>) serialize the DTO
-/// through the ordinary <c>ToolDispatch.ReadByWorkspaceIdAsync&lt;TDto&gt;</c>
-/// path without any per-tool custom serialization. The serialized shape is
-/// preserved byte-identical: <c>{ count, hint, actions }</c> in camelCase.
+/// the MCP tool shim serialize the DTO through the ordinary
+/// <c>ToolDispatch.ReadByWorkspaceIdAsync&lt;TDto&gt;</c> path without any per-tool
+/// custom serialization. The serialized shape is preserved byte-identical:
+/// <c>{ count, hint, actions }</c> in camelCase.
 /// </remarks>
 /// <param name="Count">Number of actions available at the requested span.</param>
 /// <param name="Hint">
