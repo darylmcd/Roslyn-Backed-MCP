@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -10,7 +9,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// Surfaces <see cref="IExceptionFlowService"/> as the <c>trace_exception_flow</c> MCP tool —
 /// enumerates catch sites whose declared exception type is assignable from an input type so
 /// error-handling refactors can discover handling sites (<c>find_references</c> returns
-/// usage sites, not handling sites).
+/// usage sites, not handling sites). WS1 phase 1.5 — body delegates to
+/// <see cref="ToolDispatch.ReadByWorkspaceIdAsync"/> instead of carrying the dispatch
+/// boilerplate inline.
 /// </summary>
 [McpServerToolType]
 public static class ExceptionFlowTools
@@ -27,12 +28,10 @@ public static class ExceptionFlowTools
         [Description("Optional: restrict the walk to a specific project name")] string? scopeProjectFilter = null,
         [Description("Optional: cap the returned catch-site list. Defaults to 200; absolute upper bound is 2000 to keep the payload bounded.")] int? maxResults = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await exceptionFlowService.TraceExceptionFlowAsync(
-                workspaceId, exceptionTypeMetadataName, scopeProjectFilter, maxResults, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => exceptionFlowService.TraceExceptionFlowAsync(
+                workspaceId, exceptionTypeMetadataName, scopeProjectFilter, maxResults, c),
+            ct);
 }
