@@ -398,6 +398,14 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         return false;
     }
 
+    /// <summary>
+    /// Classifies a type-usage syntactic context into a mutation category after the ancestor walk.
+    /// </summary>
+    /// <remarks>
+    /// WS2 session 2.10 disposition (2026-04-21): considered-and-rejected for extraction.
+    /// cc=21, MI=50 — dense switch-over-closed-kind-set pattern; the high-cc/high-MI shape
+    /// signals the structure is already clear. See inline note above for rationale.
+    /// </remarks>
     // WS2 session 2.10 — rejected for extraction (2026-04-21). cc=21, MI=50. Same
     // dense-switch-over-closed-kind-set pattern as SideEffectClassifier.ClassifyMethod —
     // the switch arms classify a single syntactic usage into a mutation category. Each

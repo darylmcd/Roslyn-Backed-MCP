@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-21T18:31:17Z
+**updated_at:** 2026-04-21T20:00:00Z
 
 ## Agent contract
 
@@ -34,7 +34,9 @@ _No open P2 rows._
 
 Within P3, rows are **alphabetical by `id`**.
 
-_No open P3 rows._
+| id | pri | blocker | deps | do |
+|----|-----|---------|------|-----|
+| `cc-18-to-19-residuals-post-top10-extraction` | P3 | — | — | **Maintainability follow-on from 2026-04-21 comprehensive refactor execution:** after the top-17 complexity hotspots enumerated in the 2026-04-20 audit plan (`ai_docs/plans/20260421T123658Z_post-audit-followups.md`) shipped across WS2 sessions 2.1–2.10 (15 extracted + 2 disposition-rejected), `get_complexity_metrics(minComplexity=18, projectFilter=RoslynMcp.Roslyn)` still returns 13 methods in the cc=18–19 band that were NOT in the original plan's ranked top-17 list. The earlier audit used `minComplexity=20` to anchor the top-17; methods at cc=18–19 fell below that line and weren't enumerated. **Ranked by `cc / (MI/100)` (worst maintainability per unit complexity):** `ScriptingService.EvaluateAsync` (cc=19, MI=27.87, **LOC=182 — largest**), `RefactoringService.PersistDocumentSetChangesAsync` (cc=18, MI=27.45, LOC=191), `MutationAnalysisService.FindTypeMutationsAsync` (cc=18, MI=31.79, LOC=135), `ScaffoldingService.PreviewScaffoldTestBatchAsync` (cc=19, MI=35.49), `CodePatternAnalyzer.ParseSemanticQuery` (cc=19, MI=36.4), `TestDiscoveryService.FindRelatedTestsAsync` (cc=18, MI=37.88, **maxNesting=5**), `SecurityDiagnosticService.GetAnalyzerStatusAsync` (cc=18, MI=39.49), `RestructureService.StructuralRewriter.TryMatch` (cc=19, MI=40.19, **maxNesting=5**), `InterfaceExtractionService.BuildUsingDirectives` (cc=19, MI=40.75), `RefactoringService.CollapseBlankLineRunsInRange` (cc=19, MI=41.14), `TypeExtractionService.StripInheritanceOnlyModifiers` (cc=18, MI=41.73), `NuGetVulnerabilityJsonParser.AddPackagesFromFramework` (cc=18, MI=42.8, **paramCount=7**), `CohesionAnalysisService.FindAccessedMembers` (cc=18, MI=45.82). **Approach:** same 2-methods-per-session cadence as WS2 2.2–2.8 (shipped 9 PRs total this way — `/extract_method_preview` + hand-`Edit` fallback on CS0136/CS0841; full `verify-release.ps1` after each). **Expected sessions:** ~7 (6 pairs + 1 solo for the two largest `ScriptingService.EvaluateAsync` + `RefactoringService.PersistDocumentSetChangesAsync` — both >180 LOC). **Likely disposition-candidates after reading:** `NuGetVulnerabilityJsonParser.AddPackagesFromFramework` has MI=42.8 + paramCount=7 — review first; if it's a dense JSON-schema-case switch it likely joins the SideEffectClassifier/ClassifyTypeUsageAfterWalk rejection pattern rather than extraction. **Not urgent:** all 13 are below the cc=20 "hot" line that the 2026-04-20 audit prioritized; schedule when next audit pass picks them up. Closed companion row: `top10-complexity-hotspots-not-yet-extracted` (closed via PR #319, 2026-04-21). **Refs:** `ai_docs/plans/20260421T123658Z_post-audit-followups.md` § "Final state"; PRs #304, #307, #308, #310, #312, #314, #316, #317, #318, #319 for the shipped top-17 work. Raised by 2026-04-21 comprehensive refactor execution session's WS2 2.10 disposition check (`get_complexity_metrics(minComplexity=18)` exit-criterion verification). |
 
 ## P4 — open work
 
