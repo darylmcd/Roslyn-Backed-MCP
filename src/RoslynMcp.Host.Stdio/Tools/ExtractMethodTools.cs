@@ -1,11 +1,18 @@
 using System.ComponentModel;
-using System.Text.Json;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for extract-method refactorings (single-block and
+/// shared-sub-expression-to-helper). WS1 phase 1.3 — each shim body delegates to the
+/// corresponding <see cref="ToolDispatch"/> helper instead of carrying the 7-line
+/// dispatch boilerplate inline. See <c>CodeActionTools</c> (canary, PR #305) and
+/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the migration
+/// rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class ExtractMethodTools
 {
@@ -24,14 +31,12 @@ public static class ExtractMethodTools
         [Description("1-based end column of the selection")] int endColumn,
         [Description("Name for the extracted method")] string methodName,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await extractMethodService.PreviewExtractMethodAsync(
-                workspaceId, filePath, startLine, startColumn, endLine, endColumn, methodName, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => extractMethodService.PreviewExtractMethodAsync(
+                workspaceId, filePath, startLine, startColumn, endLine, endColumn, methodName, c),
+            ct);
 
     [McpServerTool(Name = "extract_method_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false)]
     [McpToolMetadata("refactoring", "experimental", false, true,
@@ -43,15 +48,12 @@ public static class ExtractMethodTools
         IPreviewStore previewStore,
         [Description("The preview token returned by extract_method_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "extract_shared_expression_to_helper_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
     [McpToolMetadata("refactoring", "experimental", true, false,
@@ -70,15 +72,13 @@ public static class ExtractMethodTools
         [Description("Accessibility for the synthesized helper: 'private', 'internal', or 'public'. Defaults to 'private'.")] string helperAccessibility = "private",
         [Description("When true, scans the entire project for structurally-identical matches. When false (default), the scan is restricted to the example expression's containing type.")] bool allowCrossFile = false,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await extractMethodService.PreviewExtractSharedExpressionToHelperAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => extractMethodService.PreviewExtractSharedExpressionToHelperAsync(
                 workspaceId, exampleFilePath,
                 exampleStartLine, exampleStartColumn,
                 exampleEndLine, exampleEndColumn,
-                helperName, helperAccessibility, allowCrossFile, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                helperName, helperAccessibility, allowCrossFile, c),
+            ct);
 }
