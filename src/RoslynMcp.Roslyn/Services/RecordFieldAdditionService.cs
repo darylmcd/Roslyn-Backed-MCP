@@ -106,19 +106,18 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
                 if (!string.IsNullOrEmpty(path)) testFiles.Add(path);
             }
 
-            ClassifySite(
-                node,
-                rich.Dto,
-                rich.SemanticModel,
-                typeSymbol,
-                existingPositionalParameters,
-                newField,
-                constructionSites,
-                deconstructionSites,
-                propertyPatternSites,
-                withExpressionSites,
-                dedupeSpans,
-                ct);
+            var ctx = new RecordFieldClassificationContext(
+                SemanticModel: rich.SemanticModel,
+                TargetType: typeSymbol,
+                ExistingParameters: existingPositionalParameters,
+                NewField: newField,
+                ConstructionSites: constructionSites,
+                DeconstructionSites: deconstructionSites,
+                PropertyPatternSites: propertyPatternSites,
+                WithExpressionSites: withExpressionSites,
+                DedupeSpans: dedupeSpans);
+
+            ClassifySite(node, rich.Dto, ctx, ct);
         }
 
         // Pass B: document-level walk — catches deconstruction & with-expressions on variables
@@ -218,20 +217,13 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
     private static void ClassifySite(
         SyntaxNode node,
         LocationDto baseDto,
-        SemanticModel semanticModel,
-        INamedTypeSymbol targetType,
-        IReadOnlyList<ExistingPositionalParameterDto> existingParameters,
-        NewRecordFieldDto newField,
-        List<RecordPositionalConstructionSiteDto> constructionSites,
-        List<RecordDeconstructionSiteDto> deconstructionSites,
-        List<RecordPropertyPatternSiteDto> propertyPatternSites,
-        List<RecordWithExpressionSiteDto> withExpressionSites,
-        HashSet<(string Path, int Line, int Col, string Kind)> dedupeSpans,
+        RecordFieldClassificationContext ctx,
         CancellationToken ct)
     {
         // Walk up the node ancestry looking for the syntactic shape that classifies the site.
         // We bound the walk because most matches are within 3-4 hops of the IdentifierNameSyntax
-        // ref, and a runaway walk on a deeply-nested expression would do useless work.
+        // ref, and a runaway walk on a deeply-nested expression would do useless work. Each
+        // TryClassify* helper returns true when it handled the site, which terminates the walk.
         var current = node;
         var depth = 0;
         const int maxDepth = 8;
@@ -241,96 +233,140 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
             ct.ThrowIfCancellationRequested();
             depth++;
 
-            switch (current)
+            if (current switch
             {
-                case ObjectCreationExpressionSyntax oc when ResolvesToTarget(oc.Type, semanticModel, targetType, ct):
-                {
-                    var argList = oc.ArgumentList;
-                    // Only flag when arity matches the existing positional-ctor count. A `new R()`
-                    // with zero args isn't an arity-match for a positional record with parameters
-                    // (so the compiler would already catch it). We focus on the "looks valid today,
-                    // breaks tomorrow" cases.
-                    if (argList is not null && existingParameters.Count > 0 &&
-                        argList.Arguments.Count == existingParameters.Count)
-                    {
-                        var loc = UpdateDtoSpan(baseDto, oc);
-                        if (dedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, nameof(ObjectCreationExpressionSyntax))))
-                        {
-                            var original = argList.ToString();
-                            var suggested = BuildSuggestedArgumentList(argList, newField);
-                            constructionSites.Add(new RecordPositionalConstructionSiteDto(loc, original, suggested));
-                        }
-                    }
-                    return;
-                }
-                case ImplicitObjectCreationExpressionSyntax ioc when InferredImplicitTargetMatches(ioc, semanticModel, targetType, ct):
-                {
-                    var argList = ioc.ArgumentList;
-                    if (existingParameters.Count > 0 && argList.Arguments.Count == existingParameters.Count)
-                    {
-                        var loc = UpdateDtoSpan(baseDto, ioc);
-                        if (dedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, nameof(ImplicitObjectCreationExpressionSyntax))))
-                        {
-                            var original = argList.ToString();
-                            var suggested = BuildSuggestedArgumentList(argList, newField);
-                            constructionSites.Add(new RecordPositionalConstructionSiteDto(loc, original, suggested));
-                        }
-                    }
-                    return;
-                }
-                case WithExpressionSyntax we when ResolvesToTargetExpression(we.Expression, semanticModel, targetType, ct):
-                {
-                    var loc = UpdateDtoSpan(baseDto, we);
-                    if (dedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, nameof(WithExpressionSyntax))))
-                    {
-                        var initializer = we.Initializer.ToString();
-                        withExpressionSites.Add(new RecordWithExpressionSiteDto(loc, initializer));
-                    }
-                    return;
-                }
-                case RecursivePatternSyntax rp when PatternMatchesTarget(rp, semanticModel, targetType, ct):
-                {
-                    var loc = UpdateDtoSpan(baseDto, rp);
-                    // A recursive pattern can carry both a positional sub-pattern AND a property
-                    // sub-pattern. We classify each independently (a single ref can yield two
-                    // entries) so callers see the full impact.
-                    if (rp.PositionalPatternClause is { } positional && existingParameters.Count > 0 &&
-                        positional.Subpatterns.Count == existingParameters.Count)
-                    {
-                        if (dedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, "Deconstruct:" + nameof(RecursivePatternSyntax))))
-                        {
-                            var original = positional.ToString();
-                            var suggested = BuildSuggestedDeconstructionPattern(positional, newField);
-                            deconstructionSites.Add(new RecordDeconstructionSiteDto(loc, original, suggested));
-                        }
-                    }
-                    if (rp.PropertyPatternClause is { } property)
-                    {
-                        if (dedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, "Property:" + nameof(RecursivePatternSyntax))))
-                        {
-                            var original = property.ToString();
-                            var missed = IsExhaustiveInSpirit(property, existingParameters, newField);
-                            propertyPatternSites.Add(new RecordPropertyPatternSiteDto(loc, original, missed));
-                        }
-                    }
-                    return;
-                }
-                case DeclarationExpressionSyntax decl when decl.Designation is ParenthesizedVariableDesignationSyntax pvd
-                                                          && InferredDeconstructionTargetMatches(decl, semanticModel, targetType, ct):
-                {
-                    AddUniqueDeconstructionFromDesignation(decl, pvd, baseDto, existingParameters, newField, deconstructionSites, dedupeSpans);
-                    return;
-                }
-                case AssignmentExpressionSyntax asn when asn.Left is TupleExpressionSyntax tuple
-                                                          && AssignmentTargetMatches(asn, semanticModel, targetType, ct):
-                {
-                    AddUniqueDeconstructionFromTuple(asn, tuple, baseDto, existingParameters, newField, deconstructionSites, dedupeSpans);
-                    return;
-                }
+                ObjectCreationExpressionSyntax oc => TryClassifyObjectCreationSite(oc, baseDto, ctx, ct),
+                ImplicitObjectCreationExpressionSyntax ioc => TryClassifyImplicitObjectCreationSite(ioc, baseDto, ctx, ct),
+                WithExpressionSyntax we => TryClassifyWithExpressionSite(we, baseDto, ctx, ct),
+                RecursivePatternSyntax rp => TryClassifyRecursivePatternSite(rp, baseDto, ctx, ct),
+                DeclarationExpressionSyntax decl => TryClassifyDeclarationExpressionSite(decl, baseDto, ctx, ct),
+                AssignmentExpressionSyntax asn => TryClassifyAssignmentExpressionSite(asn, baseDto, ctx, ct),
+                _ => false,
+            })
+            {
+                return;
             }
 
             current = current.Parent;
         }
+    }
+
+    private static bool TryClassifyObjectCreationSite(
+        ObjectCreationExpressionSyntax oc,
+        LocationDto baseDto,
+        RecordFieldClassificationContext ctx,
+        CancellationToken ct)
+    {
+        if (!ResolvesToTarget(oc.Type, ctx.SemanticModel, ctx.TargetType, ct)) return false;
+        var argList = oc.ArgumentList;
+        // Only flag when arity matches the existing positional-ctor count. A `new R()`
+        // with zero args isn't an arity-match for a positional record with parameters
+        // (so the compiler would already catch it). We focus on the "looks valid today,
+        // breaks tomorrow" cases.
+        if (argList is null || ctx.ExistingParameters.Count == 0 ||
+            argList.Arguments.Count != ctx.ExistingParameters.Count)
+        {
+            return true;
+        }
+        var loc = UpdateDtoSpan(baseDto, oc);
+        if (ctx.DedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, nameof(ObjectCreationExpressionSyntax))))
+        {
+            var original = argList.ToString();
+            var suggested = BuildSuggestedArgumentList(argList, ctx.NewField);
+            ctx.ConstructionSites.Add(new RecordPositionalConstructionSiteDto(loc, original, suggested));
+        }
+        return true;
+    }
+
+    private static bool TryClassifyImplicitObjectCreationSite(
+        ImplicitObjectCreationExpressionSyntax ioc,
+        LocationDto baseDto,
+        RecordFieldClassificationContext ctx,
+        CancellationToken ct)
+    {
+        if (!InferredImplicitTargetMatches(ioc, ctx.SemanticModel, ctx.TargetType, ct)) return false;
+        var argList = ioc.ArgumentList;
+        if (ctx.ExistingParameters.Count == 0 || argList.Arguments.Count != ctx.ExistingParameters.Count)
+        {
+            return true;
+        }
+        var loc = UpdateDtoSpan(baseDto, ioc);
+        if (ctx.DedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, nameof(ImplicitObjectCreationExpressionSyntax))))
+        {
+            var original = argList.ToString();
+            var suggested = BuildSuggestedArgumentList(argList, ctx.NewField);
+            ctx.ConstructionSites.Add(new RecordPositionalConstructionSiteDto(loc, original, suggested));
+        }
+        return true;
+    }
+
+    private static bool TryClassifyWithExpressionSite(
+        WithExpressionSyntax we,
+        LocationDto baseDto,
+        RecordFieldClassificationContext ctx,
+        CancellationToken ct)
+    {
+        if (!ResolvesToTargetExpression(we.Expression, ctx.SemanticModel, ctx.TargetType, ct)) return false;
+        var loc = UpdateDtoSpan(baseDto, we);
+        if (ctx.DedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, nameof(WithExpressionSyntax))))
+        {
+            var initializer = we.Initializer.ToString();
+            ctx.WithExpressionSites.Add(new RecordWithExpressionSiteDto(loc, initializer));
+        }
+        return true;
+    }
+
+    private static bool TryClassifyRecursivePatternSite(
+        RecursivePatternSyntax rp,
+        LocationDto baseDto,
+        RecordFieldClassificationContext ctx,
+        CancellationToken ct)
+    {
+        if (!PatternMatchesTarget(rp, ctx.SemanticModel, ctx.TargetType, ct)) return false;
+        var loc = UpdateDtoSpan(baseDto, rp);
+        // A recursive pattern can carry both a positional sub-pattern AND a property
+        // sub-pattern. We classify each independently (a single ref can yield two
+        // entries) so callers see the full impact.
+        if (rp.PositionalPatternClause is { } positional && ctx.ExistingParameters.Count > 0 &&
+            positional.Subpatterns.Count == ctx.ExistingParameters.Count &&
+            ctx.DedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, "Deconstruct:" + nameof(RecursivePatternSyntax))))
+        {
+            var original = positional.ToString();
+            var suggested = BuildSuggestedDeconstructionPattern(positional, ctx.NewField);
+            ctx.DeconstructionSites.Add(new RecordDeconstructionSiteDto(loc, original, suggested));
+        }
+        if (rp.PropertyPatternClause is { } property &&
+            ctx.DedupeSpans.Add((loc.FilePath, loc.StartLine, loc.StartColumn, "Property:" + nameof(RecursivePatternSyntax))))
+        {
+            var original = property.ToString();
+            var missed = IsExhaustiveInSpirit(property, ctx.ExistingParameters, ctx.NewField);
+            ctx.PropertyPatternSites.Add(new RecordPropertyPatternSiteDto(loc, original, missed));
+        }
+        return true;
+    }
+
+    private static bool TryClassifyDeclarationExpressionSite(
+        DeclarationExpressionSyntax decl,
+        LocationDto baseDto,
+        RecordFieldClassificationContext ctx,
+        CancellationToken ct)
+    {
+        if (decl.Designation is not ParenthesizedVariableDesignationSyntax pvd) return false;
+        if (!InferredDeconstructionTargetMatches(decl, ctx.SemanticModel, ctx.TargetType, ct)) return false;
+        AddUniqueDeconstructionFromDesignation(decl, pvd, baseDto, ctx.ExistingParameters, ctx.NewField, ctx.DeconstructionSites, ctx.DedupeSpans);
+        return true;
+    }
+
+    private static bool TryClassifyAssignmentExpressionSite(
+        AssignmentExpressionSyntax asn,
+        LocationDto baseDto,
+        RecordFieldClassificationContext ctx,
+        CancellationToken ct)
+    {
+        if (asn.Left is not TupleExpressionSyntax tuple) return false;
+        if (!AssignmentTargetMatches(asn, ctx.SemanticModel, ctx.TargetType, ct)) return false;
+        AddUniqueDeconstructionFromTuple(asn, tuple, baseDto, ctx.ExistingParameters, ctx.NewField, ctx.DeconstructionSites, ctx.DedupeSpans);
+        return true;
     }
 
     /// <summary>
@@ -687,4 +723,20 @@ public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
             tasks.Add("No impact detected. The record is unreferenced beyond its declaration.");
         return tasks;
     }
+
+    /// <summary>
+    /// Bundles the 9 cross-cutting inputs and accumulators that the pass-A classification helpers
+    /// all need, keeping their individual signatures narrow (3-4 parameters each). The lists are
+    /// reference-shared with <see cref="PreviewAdditionAsync"/> — each helper mutates them in place.
+    /// </summary>
+    private sealed record RecordFieldClassificationContext(
+        SemanticModel SemanticModel,
+        INamedTypeSymbol TargetType,
+        IReadOnlyList<ExistingPositionalParameterDto> ExistingParameters,
+        NewRecordFieldDto NewField,
+        List<RecordPositionalConstructionSiteDto> ConstructionSites,
+        List<RecordDeconstructionSiteDto> DeconstructionSites,
+        List<RecordPropertyPatternSiteDto> PropertyPatternSites,
+        List<RecordWithExpressionSiteDto> WithExpressionSites,
+        HashSet<(string Path, int Line, int Col, string Kind)> DedupeSpans);
 }
