@@ -167,6 +167,32 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
         string? hostRegistrationFile,
         CancellationToken ct)
     {
+        ValidateSplitServiceArgs(sourceFilePath, sourceType, partitions);
+
+        var context = await ResolveSplitServiceContextAsync(workspaceId, sourceFilePath, sourceType, partitions, ct).ConfigureAwait(false);
+
+        var warnings = new List<string>();
+        var mutations = new List<CompositeFileMutation>();
+        var changes = new List<FileChangeDto>();
+
+        EmitPartitionFiles(context, partitions, mutations, changes);
+        await EmitFacadeFileAsync(context, sourceFilePath, sourceType, partitions, mutations, changes, ct).ConfigureAwait(false);
+        var hasRegistrationRewrite = await EmitDiRegistrationDeltaAsync(
+            workspaceId, sourceType, hostRegistrationFile, partitions, mutations, changes, warnings, ct).ConfigureAwait(false);
+
+        var description = $"Split service '{sourceType}' into {partitions.Count} partition(s) with forwarding facade"
+            + (hasRegistrationRewrite ? " and DI-registration rewrite" : "");
+        var token = _compositePreviewStore.Store(workspaceId, _workspace.GetCurrentVersion(workspaceId), description, mutations);
+
+        return new RefactoringPreviewDto(
+            PreviewToken: token,
+            Description: description,
+            Changes: changes,
+            Warnings: warnings.Count == 0 ? null : warnings);
+    }
+
+    private static void ValidateSplitServiceArgs(string sourceFilePath, string sourceType, IReadOnlyList<SplitServicePartition> partitions)
+    {
         if (string.IsNullOrWhiteSpace(sourceFilePath))
             throw new ArgumentException("sourceFilePath is required.", nameof(sourceFilePath));
         if (string.IsNullOrWhiteSpace(sourceType))
@@ -188,7 +214,27 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
                 $"Each member must appear in exactly one partition. Duplicated: {string.Join(", ", duplicatedMembers)}",
                 nameof(partitions));
         }
+    }
 
+    /// <summary>
+    /// Resolved context for a split-service preview: the target type declaration, its methods,
+    /// the per-member partition mapping, and formatting scaffolding (namespace, directory, usings).
+    /// </summary>
+    private sealed record SplitServiceContext(
+        TypeDeclarationSyntax TypeDeclaration,
+        IReadOnlyList<MethodDeclarationSyntax> MethodDeclarations,
+        IReadOnlyDictionary<string, SplitServicePartition> MemberToPartition,
+        string NamespaceName,
+        string SourceDirectory,
+        SyntaxList<UsingDirectiveSyntax> Usings);
+
+    private async Task<SplitServiceContext> ResolveSplitServiceContextAsync(
+        string workspaceId,
+        string sourceFilePath,
+        string sourceType,
+        IReadOnlyList<SplitServicePartition> partitions,
+        CancellationToken ct)
+    {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, sourceFilePath)
             ?? throw new InvalidOperationException($"Document not found: {sourceFilePath}");
@@ -220,38 +266,72 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
                 $"Method(s) not found on '{sourceType}': {string.Join(", ", missingMembers)}");
         }
 
-        var namespaceName = GetNamespaceName(typeDeclaration);
         var sourceDirectory = Path.GetDirectoryName(sourceFilePath)
             ?? throw new InvalidOperationException($"Source file '{sourceFilePath}' must have a parent directory.");
-        var usings = StripLeadingTriviaFromFirstUsing(root.Usings);
-        var warnings = new List<string>();
-        var mutations = new List<CompositeFileMutation>();
-        var changes = new List<FileChangeDto>();
 
-        // 1) Create partition files.
+        return new SplitServiceContext(
+            typeDeclaration,
+            methodDeclarations,
+            memberToPartition,
+            GetNamespaceName(typeDeclaration),
+            sourceDirectory,
+            StripLeadingTriviaFromFirstUsing(root.Usings));
+    }
+
+    // 1) Create partition files.
+    private static void EmitPartitionFiles(
+        SplitServiceContext context,
+        IReadOnlyList<SplitServicePartition> partitions,
+        List<CompositeFileMutation> mutations,
+        List<FileChangeDto> changes)
+    {
         foreach (var partition in partitions)
         {
-            var partitionMethods = methodDeclarations
+            var partitionMethods = context.MethodDeclarations
                 .Where(method => partition.MemberNames.Contains(method.Identifier.ValueText, StringComparer.Ordinal))
                 .Select(method => NormalizeMemberForPartition(method))
                 .ToArray();
 
-            var partitionFilePath = Path.Combine(sourceDirectory, $"{partition.TypeName}.cs");
-            var partitionContent = BuildPartitionFile(namespaceName, partition.TypeName, partitionMethods, usings);
+            var partitionFilePath = Path.Combine(context.SourceDirectory, $"{partition.TypeName}.cs");
+            var partitionContent = BuildPartitionFile(context.NamespaceName, partition.TypeName, partitionMethods, context.Usings);
             mutations.Add(new CompositeFileMutation(partitionFilePath, partitionContent));
             changes.Add(new FileChangeDto(partitionFilePath, DiffGenerator.GenerateUnifiedDiff(string.Empty, partitionContent, partitionFilePath)));
         }
+    }
 
-        // 2) Rewrite the original file: the source type becomes a forwarding facade whose
-        //    members delegate to partition implementations held in private fields. Every
-        //    partition is injected via the facade's primary-style constructor.
+    // 2) Rewrite the original file: the source type becomes a forwarding facade whose
+    //    members delegate to partition implementations held in private fields. Every
+    //    partition is injected via the facade's primary-style constructor.
+    private static async Task EmitFacadeFileAsync(
+        SplitServiceContext context,
+        string sourceFilePath,
+        string sourceType,
+        IReadOnlyList<SplitServicePartition> partitions,
+        List<CompositeFileMutation> mutations,
+        List<FileChangeDto> changes,
+        CancellationToken ct)
+    {
         var originalContent = await File.ReadAllTextAsync(sourceFilePath, ct).ConfigureAwait(false);
-        var facadeContent = BuildFacadeFile(namespaceName, sourceType, typeDeclaration, methodDeclarations, memberToPartition, partitions, usings);
+        var facadeContent = BuildFacadeFile(
+            context.NamespaceName, sourceType, context.TypeDeclaration,
+            context.MethodDeclarations, context.MemberToPartition, partitions, context.Usings);
         mutations.Add(new CompositeFileMutation(sourceFilePath, facadeContent));
         changes.Add(new FileChangeDto(sourceFilePath, DiffGenerator.GenerateUnifiedDiff(originalContent, facadeContent, sourceFilePath)));
+    }
 
-        // 3) Rewrite the host DI registration file if provided. When hostRegistrationFile is
-        //    null we fall back to scanning the workspace for any registration of sourceType.
+    // 3) Rewrite the host DI registration file if provided. When hostRegistrationFile is
+    //    null we fall back to scanning the workspace for any registration of sourceType.
+    // Returns true when a textual rewrite was emitted (used to annotate the preview description).
+    private async Task<bool> EmitDiRegistrationDeltaAsync(
+        string workspaceId,
+        string sourceType,
+        string? hostRegistrationFile,
+        IReadOnlyList<SplitServicePartition> partitions,
+        List<CompositeFileMutation> mutations,
+        List<FileChangeDto> changes,
+        List<string> warnings,
+        CancellationToken ct)
+    {
         var registrationInfo = await TryResolveRegistrationAsync(workspaceId, sourceType, hostRegistrationFile, ct).ConfigureAwait(false);
         if (registrationInfo is null)
         {
@@ -259,33 +339,22 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
                 hostRegistrationFile is null
                     ? $"No DI registration for '{sourceType}' was discovered in the workspace; the preview omits DI-registration deltas."
                     : $"No DI registration for '{sourceType}' was found in '{hostRegistrationFile}'; the preview omits DI-registration deltas.");
+            return false;
         }
-        else
+
+        var (registrationFilePath, lifetime) = registrationInfo.Value;
+        var registrationContent = await File.ReadAllTextAsync(registrationFilePath, ct).ConfigureAwait(false);
+        var rewrittenRegistration = RewriteDiRegistrations(registrationContent, sourceType, lifetime, partitions);
+        if (string.Equals(registrationContent, rewrittenRegistration, StringComparison.Ordinal))
         {
-            var (registrationFilePath, lifetime) = registrationInfo.Value;
-            var registrationContent = await File.ReadAllTextAsync(registrationFilePath, ct).ConfigureAwait(false);
-            var rewrittenRegistration = RewriteDiRegistrations(registrationContent, sourceType, lifetime, partitions);
-            if (string.Equals(registrationContent, rewrittenRegistration, StringComparison.Ordinal))
-            {
-                warnings.Add(
-                    $"A '{sourceType}' DI registration was discovered in '{registrationFilePath}' but no textual rewrite matched. Inspect the file manually.");
-            }
-            else
-            {
-                mutations.Add(new CompositeFileMutation(registrationFilePath, rewrittenRegistration));
-                changes.Add(new FileChangeDto(registrationFilePath, DiffGenerator.GenerateUnifiedDiff(registrationContent, rewrittenRegistration, registrationFilePath)));
-            }
+            warnings.Add(
+                $"A '{sourceType}' DI registration was discovered in '{registrationFilePath}' but no textual rewrite matched. Inspect the file manually.");
+            return true;
         }
 
-        var description = $"Split service '{sourceType}' into {partitions.Count} partition(s) with forwarding facade"
-            + (registrationInfo is not null ? " and DI-registration rewrite" : "");
-        var token = _compositePreviewStore.Store(workspaceId, _workspace.GetCurrentVersion(workspaceId), description, mutations);
-
-        return new RefactoringPreviewDto(
-            PreviewToken: token,
-            Description: description,
-            Changes: changes,
-            Warnings: warnings.Count == 0 ? null : warnings);
+        mutations.Add(new CompositeFileMutation(registrationFilePath, rewrittenRegistration));
+        changes.Add(new FileChangeDto(registrationFilePath, DiffGenerator.GenerateUnifiedDiff(registrationContent, rewrittenRegistration, registrationFilePath)));
+        return true;
     }
 
     private async Task<(string FilePath, string Lifetime)?> TryResolveRegistrationAsync(

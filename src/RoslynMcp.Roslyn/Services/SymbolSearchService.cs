@@ -40,23 +40,53 @@ public sealed class SymbolSearchService : ISymbolSearchService
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<SymbolDto>();
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
-        HashSet<string>? allowedProjectPaths = null;
 
-        if (projectFilter is not null)
+        var (allowedProjectPaths, earlyEmpty) = ResolveAllowedProjectPaths(solution, projectFilter);
+        if (earlyEmpty)
+            return [];
+
+        await RunPrimaryPatternSearchAsync(
+            solution, query, limit, kindFilter, namespaceFilter, allowedProjectPaths, results, seenKeys, ct).ConfigureAwait(false);
+
+        // symbol-search-partial-match-gap: FQN-substring pass. Only runs when we still have
+        // budget under `limit` — most queries are single-word simple-name lookups and the
+        // primary pattern search already nails those.
+        if (results.Count < limit && !ct.IsCancellationRequested)
         {
-            allowedProjectPaths = solution.Projects
-                .Where(project => string.Equals(project.Name, projectFilter, StringComparison.OrdinalIgnoreCase))
-                .SelectMany(project => project.Documents)
-                .Where(document => !string.IsNullOrWhiteSpace(document.FilePath))
-                .Select(document => Path.GetFullPath(document.FilePath!))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            if (allowedProjectPaths.Count == 0)
-            {
-                return [];
-            }
+            await RunFqnSubstringFallbackAsync(
+                solution, query, limit, kindFilter, namespaceFilter, allowedProjectPaths, results, seenKeys, ct).ConfigureAwait(false);
         }
 
+        return results;
+    }
+
+    private static (HashSet<string>? AllowedProjectPaths, bool EarlyEmpty) ResolveAllowedProjectPaths(
+        Solution solution, string? projectFilter)
+    {
+        if (projectFilter is null)
+            return (null, false);
+
+        var allowedProjectPaths = solution.Projects
+            .Where(project => string.Equals(project.Name, projectFilter, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(project => project.Documents)
+            .Where(document => !string.IsNullOrWhiteSpace(document.FilePath))
+            .Select(document => Path.GetFullPath(document.FilePath!))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return (allowedProjectPaths, allowedProjectPaths.Count == 0);
+    }
+
+    private static async Task RunPrimaryPatternSearchAsync(
+        Solution solution,
+        string query,
+        int limit,
+        string? kindFilter,
+        string? namespaceFilter,
+        HashSet<string>? allowedProjectPaths,
+        List<SymbolDto> results,
+        HashSet<string> seenKeys,
+        CancellationToken ct)
+    {
         var symbols = await SymbolFinder.FindSourceDeclarationsWithPatternAsync(
             solution, query, SymbolFilter.All, ct).ConfigureAwait(false);
 
@@ -65,51 +95,76 @@ public sealed class SymbolSearchService : ISymbolSearchService
             if (!TryAddSymbol(symbol, limit, kindFilter, namespaceFilter, allowedProjectPaths, solution, results, seenKeys, ct))
                 break;
         }
+    }
 
-        // symbol-search-partial-match-gap: FQN-substring pass. Only runs when we still have
-        // budget under `limit` — most queries are single-word simple-name lookups and the
-        // primary pattern search already nails those.
-        if (results.Count < limit && !ct.IsCancellationRequested)
+    private static async Task RunFqnSubstringFallbackAsync(
+        Solution solution,
+        string query,
+        int limit,
+        string? kindFilter,
+        string? namespaceFilter,
+        HashSet<string>? allowedProjectPaths,
+        List<SymbolDto> results,
+        HashSet<string> seenKeys,
+        CancellationToken ct)
+    {
+        foreach (var project in solution.Projects)
         {
-            foreach (var project in solution.Projects)
+            if (ct.IsCancellationRequested) break;
+            if (results.Count >= limit) break;
+
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            if (!CollectFqnMatchesForCompilation(
+                compilation, query, limit, kindFilter, namespaceFilter, allowedProjectPaths, solution, results, seenKeys, ct))
             {
-                if (ct.IsCancellationRequested) break;
-                if (results.Count >= limit) break;
+                break;
+            }
+        }
+    }
 
-                var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
-                if (compilation is null) continue;
+    private static bool CollectFqnMatchesForCompilation(
+        Compilation compilation,
+        string query,
+        int limit,
+        string? kindFilter,
+        string? namespaceFilter,
+        HashSet<string>? allowedProjectPaths,
+        Solution solution,
+        List<SymbolDto> results,
+        HashSet<string> seenKeys,
+        CancellationToken ct)
+    {
+        foreach (var typeSymbol in EnumerateNamedTypes(compilation.GlobalNamespace))
+        {
+            if (ct.IsCancellationRequested) return false;
+            if (results.Count >= limit) return false;
 
-                foreach (var typeSymbol in EnumerateNamedTypes(compilation.GlobalNamespace))
-                {
-                    if (ct.IsCancellationRequested) break;
-                    if (results.Count >= limit) break;
+            var fqn = typeSymbol.ToDisplayString(QualifiedNameOnlyFormat);
+            if (fqn.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
+                continue;
 
-                    var fqn = typeSymbol.ToDisplayString(QualifiedNameOnlyFormat);
-                    if (fqn.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
-                        continue;
+            if (!TryAddSymbol(typeSymbol, limit, kindFilter, namespaceFilter, allowedProjectPaths, solution, results, seenKeys, ct))
+                return false;
 
-                    if (!TryAddSymbol(typeSymbol, limit, kindFilter, namespaceFilter, allowedProjectPaths, solution, results, seenKeys, ct))
-                        break;
+            // Also walk members whose FQN (Namespace.Type.Member) matches.
+            foreach (var member in typeSymbol.GetMembers())
+            {
+                if (ct.IsCancellationRequested) return false;
+                if (results.Count >= limit) return false;
+                if (member.IsImplicitlyDeclared) continue;
 
-                    // Also walk members whose FQN (Namespace.Type.Member) matches.
-                    foreach (var member in typeSymbol.GetMembers())
-                    {
-                        if (ct.IsCancellationRequested) break;
-                        if (results.Count >= limit) break;
-                        if (member.IsImplicitlyDeclared) continue;
+                var memberFqn = member.ToDisplayString(QualifiedNameOnlyFormat);
+                if (memberFqn.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
 
-                        var memberFqn = member.ToDisplayString(QualifiedNameOnlyFormat);
-                        if (memberFqn.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0)
-                            continue;
-
-                        if (!TryAddSymbol(member, limit, kindFilter, namespaceFilter, allowedProjectPaths, solution, results, seenKeys, ct))
-                            break;
-                    }
-                }
+                if (!TryAddSymbol(member, limit, kindFilter, namespaceFilter, allowedProjectPaths, solution, results, seenKeys, ct))
+                    return false;
             }
         }
 
-        return results;
+        return true;
     }
 
     private static bool TryAddSymbol(
