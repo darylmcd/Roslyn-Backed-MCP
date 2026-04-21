@@ -77,44 +77,17 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         var typeSymbol = semanticModel.GetDeclaredSymbol(typeDecl, ct) as INamedTypeSymbol;
         if (typeSymbol is null) return null;
 
-        var sourceLoc = typeSymbol.Locations.FirstOrDefault(l => l.IsInSource);
-        var lineSpan = sourceLoc?.GetLineSpan();
+        var (filePath, line) = GetSymbolSourceLineInfo(typeSymbol);
 
-        // Handle interfaces — LCOM4 is trivially equal to method count
         if (typeSymbol.TypeKind == TypeKind.Interface)
         {
-            if (!includeInterfaces) return null;
-            var methodCount = typeSymbol.GetMembers().OfType<IMethodSymbol>()
-                .Count(m => m.MethodKind == MethodKind.Ordinary && !m.IsImplicitlyDeclared && !IsSourceGenPartial(m));
-            if (minMethods.HasValue && methodCount < minMethods.Value) return null;
-            return new CohesionMetricsDto(
-                TypeName: typeSymbol.Name,
-                FullyQualifiedName: typeSymbol.ToDisplayString(),
-                FilePath: lineSpan?.Path,
-                Line: (lineSpan?.StartLinePosition.Line ?? 0) + 1,
-                MethodCount: methodCount,
-                FieldCount: 0,
-                Lcom4Score: methodCount,
-                Clusters: [])
-            { TypeKind = "Interface" };
+            return BuildInterfaceCohesionDto(typeSymbol, filePath, line, minMethods, includeInterfaces);
         }
 
-        // Filter out source-generator partial methods (e.g., [LoggerMessage], [GeneratedRegex])
-        // BEFORE clustering. They have no real body to read fields from, so they would each be
-        // their own LCOM4 cluster and falsely inflate the score for classes that wrap a single
-        // real method around generated logging or regex partials.
-        var instanceMethods = typeSymbol.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic && !m.IsImplicitlyDeclared && !IsSourceGenPartial(m))
-            .ToList();
+        var instanceMethods = TryCollectInstanceMethodsForCohesion(typeSymbol, minMethods);
+        if (instanceMethods is null) return null;
 
-        if (minMethods.HasValue && instanceMethods.Count < minMethods.Value) return null;
-        if (instanceMethods.Count < 2) return null;
-
-        var instanceFields = typeSymbol.GetMembers()
-            .Where(m => (m is IFieldSymbol f && !f.IsStatic && !f.IsImplicitlyDeclared) ||
-                        (m is IPropertySymbol p && !p.IsStatic && !p.IsImplicitlyDeclared))
-            .ToList();
+        var instanceFields = CollectInstanceFieldsAndProperties(typeSymbol);
 
         var (methodFieldMap, methodCallMap) = BuildMethodAccessMaps(instanceMethods, typeSymbol, typeDecl, semanticModel, ct);
         var clusters = ComputeClusters(methodFieldMap, methodCallMap);
@@ -125,8 +98,8 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         return new CohesionMetricsDto(
             TypeName: typeSymbol.Name,
             FullyQualifiedName: typeSymbol.ToDisplayString(),
-            FilePath: lineSpan?.Path,
-            Line: (lineSpan?.StartLinePosition.Line ?? 0) + 1,
+            FilePath: filePath,
+            Line: line,
             MethodCount: instanceMethods.Count,
             FieldCount: instanceFields.Count,
             Lcom4Score: clusters.Count,
@@ -136,6 +109,73 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             LifecyclePattern = lifecyclePattern,
             Recommendation = recommendation,
         };
+    }
+
+    /// <summary>
+    /// Builds the trivial LCOM4 DTO for an interface — LCOM4 is defined as the method count
+    /// because interface methods don't access instance state. Returns <c>null</c> when
+    /// <paramref name="includeInterfaces"/> is false or when the filtered method count is below
+    /// <paramref name="minMethods"/>.
+    /// </summary>
+    private static CohesionMetricsDto? BuildInterfaceCohesionDto(
+        INamedTypeSymbol typeSymbol, string? filePath, int line, int? minMethods, bool includeInterfaces)
+    {
+        if (!includeInterfaces) return null;
+        var methodCount = typeSymbol.GetMembers().OfType<IMethodSymbol>()
+            .Count(m => m.MethodKind == MethodKind.Ordinary && !m.IsImplicitlyDeclared && !IsSourceGenPartial(m));
+        if (minMethods.HasValue && methodCount < minMethods.Value) return null;
+        return new CohesionMetricsDto(
+            TypeName: typeSymbol.Name,
+            FullyQualifiedName: typeSymbol.ToDisplayString(),
+            FilePath: filePath,
+            Line: line,
+            MethodCount: methodCount,
+            FieldCount: 0,
+            Lcom4Score: methodCount,
+            Clusters: [])
+        { TypeKind = "Interface" };
+    }
+
+    /// <summary>
+    /// Collects ordinary instance methods for LCOM4 clustering, filtering out source-generator
+    /// partials (e.g., <c>[LoggerMessage]</c>, <c>[GeneratedRegex]</c>) BEFORE clustering so they
+    /// don't each form their own LCOM4 cluster and falsely inflate the score. Returns <c>null</c>
+    /// when the filtered list is below <paramref name="minMethods"/> or has fewer than 2 methods
+    /// (LCOM4 is undefined for single-method types).
+    /// </summary>
+    private static List<IMethodSymbol>? TryCollectInstanceMethodsForCohesion(
+        INamedTypeSymbol typeSymbol, int? minMethods)
+    {
+        var instanceMethods = typeSymbol.GetMembers()
+            .OfType<IMethodSymbol>()
+            .Where(m => m.MethodKind == MethodKind.Ordinary && !m.IsStatic && !m.IsImplicitlyDeclared && !IsSourceGenPartial(m))
+            .ToList();
+
+        if (minMethods.HasValue && instanceMethods.Count < minMethods.Value) return null;
+        if (instanceMethods.Count < 2) return null;
+        return instanceMethods;
+    }
+
+    /// <summary>
+    /// Returns the non-static, non-implicit instance fields and properties of the type — the
+    /// <c>FieldCount</c> surface for the cohesion DTO.
+    /// </summary>
+    private static List<ISymbol> CollectInstanceFieldsAndProperties(INamedTypeSymbol typeSymbol) =>
+        typeSymbol.GetMembers()
+            .Where(m => (m is IFieldSymbol f && !f.IsStatic && !f.IsImplicitlyDeclared) ||
+                        (m is IPropertySymbol p && !p.IsStatic && !p.IsImplicitlyDeclared))
+            .ToList();
+
+    /// <summary>
+    /// Returns the first in-source location of the symbol as a <c>(FilePath, Line)</c> tuple
+    /// (1-based line). Missing locations map to <c>(null, 1)</c>. Shared by both
+    /// <see cref="AnalyzeTypeCohesion"/> and <see cref="FindSharedMembersAsync"/>.
+    /// </summary>
+    private static (string? FilePath, int Line) GetSymbolSourceLineInfo(ISymbol symbol)
+    {
+        var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
+        var lineSpan = location?.GetLineSpan();
+        return (lineSpan?.Path, (lineSpan?.StartLinePosition.Line ?? 0) + 1);
     }
 
     /// <summary>
@@ -257,24 +297,55 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         var typeDecl = await FindTypeDeclarationAsync(typeSymbol, solution, ct).ConfigureAwait(false);
         if (typeDecl is null) return [];
 
-        // dr-find-shared-members-locator-invalidargument: Build a semantic model map
-        // for all partial declarations so MethodAccessesMember can use the correct
-        // model for each method's syntax tree (prevents "Syntax node is not within
-        // syntax tree" when members span multiple partial files).
-        var semanticModelMap = new Dictionary<SyntaxTree, SemanticModel>();
+        var semanticModelMap = await BuildSemanticModelMapAsync(typeSymbol, solution, ct).ConfigureAwait(false);
+        if (semanticModelMap.Count == 0) return [];
+
+        var (publicMethods, privateMembers) = CollectPublicMethodsAndPrivateMembers(typeSymbol);
+
+        var results = new List<SharedMemberDto>();
+        foreach (var privateMember in privateMembers)
+        {
+            var dto = BuildSharedMemberDtoIfShared(privateMember, publicMethods, typeDecl, semanticModelMap, ct);
+            if (dto is not null) results.Add(dto);
+        }
+
+        return results.OrderByDescending(r => r.CallingMethods.Count).ToList();
+    }
+
+    /// <summary>
+    /// Builds a <see cref="SyntaxTree"/>-keyed semantic-model map covering every in-source
+    /// declaration of <paramref name="typeSymbol"/>. Required for partial classes whose members
+    /// span multiple files — <see cref="MethodAccessesMember"/> must consult the model that owns
+    /// each method's syntax tree to avoid "Syntax node is not within syntax tree" exceptions
+    /// (dr-find-shared-members-locator-invalidargument).
+    /// </summary>
+    private static async Task<Dictionary<SyntaxTree, SemanticModel>> BuildSemanticModelMapAsync(
+        INamedTypeSymbol typeSymbol, Solution solution, CancellationToken ct)
+    {
+        var map = new Dictionary<SyntaxTree, SemanticModel>();
         foreach (var loc in typeSymbol.Locations.Where(l => l.IsInSource && l.SourceTree is not null))
         {
             var tree = loc.SourceTree!;
-            if (semanticModelMap.ContainsKey(tree)) continue;
+            if (map.ContainsKey(tree)) continue;
             var doc = solution.GetDocument(tree);
             if (doc is null) continue;
             var model = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
             if (model is not null)
-                semanticModelMap[tree] = model;
+                map[tree] = model;
         }
+        return map;
+    }
 
-        if (semanticModelMap.Count == 0) return [];
-
+    /// <summary>
+    /// Splits a type's members into the two surfaces used by shared-member analysis:
+    /// public/internal ordinary methods (potential callers) and private ordinary methods /
+    /// fields / properties (potential shared members). The static-gate
+    /// <c>(typeSymbol.IsStatic || !m.IsStatic)</c> keeps both static-type members and
+    /// instance-type members flowing through (FindSharedMembers_Supports_StaticClasses test).
+    /// </summary>
+    private static (List<IMethodSymbol> PublicMethods, List<ISymbol> PrivateMembers) CollectPublicMethodsAndPrivateMembers(
+        INamedTypeSymbol typeSymbol)
+    {
         var publicMethods = typeSymbol.GetMembers()
             .OfType<IMethodSymbol>()
             .Where(m => m.MethodKind == MethodKind.Ordinary && (typeSymbol.IsStatic || !m.IsStatic) &&
@@ -287,33 +358,36 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
                         m is IMethodSymbol { MethodKind: MethodKind.Ordinary } or IFieldSymbol or IPropertySymbol)
             .ToList();
 
-        // For each private member, find which public methods reference it
-        var results = new List<SharedMemberDto>();
-        foreach (var privateMember in privateMembers)
-        {
-            var callers = new List<string>();
-            foreach (var publicMethod in publicMethods)
-            {
-                if (MethodAccessesMember(publicMethod, privateMember, typeDecl, semanticModelMap, ct))
-                {
-                    callers.Add(publicMethod.Name);
-                }
-            }
+        return (publicMethods, privateMembers);
+    }
 
-            if (callers.Count >= 2)
+    /// <summary>
+    /// Returns a <see cref="SharedMemberDto"/> when 2+ of <paramref name="publicMethods"/> access
+    /// <paramref name="privateMember"/>, else <c>null</c>. Callers are enumerated in insertion
+    /// order and emitted sorted ascending for stable output.
+    /// </summary>
+    private static SharedMemberDto? BuildSharedMemberDtoIfShared(
+        ISymbol privateMember, List<IMethodSymbol> publicMethods,
+        TypeDeclarationSyntax typeDecl, Dictionary<SyntaxTree, SemanticModel> semanticModelMap, CancellationToken ct)
+    {
+        var callers = new List<string>();
+        foreach (var publicMethod in publicMethods)
+        {
+            if (MethodAccessesMember(publicMethod, privateMember, typeDecl, semanticModelMap, ct))
             {
-                var memberLoc = privateMember.Locations.FirstOrDefault(l => l.IsInSource);
-                var lineSpan = memberLoc?.GetLineSpan();
-                results.Add(new SharedMemberDto(
-                    MemberName: privateMember.Name,
-                    Kind: privateMember.Kind.ToString(),
-                    FilePath: lineSpan?.Path,
-                    Line: (lineSpan?.StartLinePosition.Line ?? 0) + 1,
-                    CallingMethods: callers.OrderBy(c => c).ToList()));
+                callers.Add(publicMethod.Name);
             }
         }
 
-        return results.OrderByDescending(r => r.CallingMethods.Count).ToList();
+        if (callers.Count < 2) return null;
+
+        var (filePath, line) = GetSymbolSourceLineInfo(privateMember);
+        return new SharedMemberDto(
+            MemberName: privateMember.Name,
+            Kind: privateMember.Kind.ToString(),
+            FilePath: filePath,
+            Line: line,
+            CallingMethods: callers.OrderBy(c => c).ToList());
     }
 
     /// <summary>
