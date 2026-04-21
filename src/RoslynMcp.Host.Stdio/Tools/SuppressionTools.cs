@@ -1,11 +1,16 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for diagnostic-severity and pragma-suppression operations.
+/// WS1 phase 1.5 — each shim body delegates to the corresponding
+/// <see cref="ToolDispatch"/> helper instead of carrying the dispatch boilerplate
+/// inline.
+/// </summary>
 [McpServerToolType]
 public static class SuppressionTools
 {
@@ -21,14 +26,12 @@ public static class SuppressionTools
         [Description("Severity: error, warning, suggestion, silent, or none")] string severity,
         [Description("(required) Absolute path to any C# file used to locate the applicable .editorconfig. Without this the server can't pick which .editorconfig to mutate.")] string filePath,
         CancellationToken ct = default)
-    {
-        return gate.RunWriteAsync(workspaceId, async c =>
-        {
-            var result = await suppressionService.SetDiagnosticSeverityAsync(
-                workspaceId, diagnosticId, severity, filePath, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.PreviewWithWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => suppressionService.SetDiagnosticSeverityAsync(
+                workspaceId, diagnosticId, severity, filePath, c),
+            ct);
 
     [McpServerTool(Name = "add_pragma_suppression", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "stable", false, false,
@@ -42,14 +45,12 @@ public static class SuppressionTools
         [Description("1-based line number: pragma is inserted before this line")] int line,
         [Description("Diagnostic id (e.g. CS0168)")] string diagnosticId,
         CancellationToken ct = default)
-    {
-        return gate.RunWriteAsync(workspaceId, async c =>
-        {
-            var result = await suppressionService.AddPragmaWarningDisableAsync(
-                workspaceId, filePath, line, diagnosticId, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.PreviewWithWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => suppressionService.AddPragmaWarningDisableAsync(
+                workspaceId, filePath, line, diagnosticId, c),
+            ct);
 
     [McpServerTool(Name = "verify_pragma_suppresses", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "stable", true, false,
@@ -63,14 +64,12 @@ public static class SuppressionTools
         [Description("1-based line number that should be covered (the diagnostic fire site)")] int line,
         [Description("Diagnostic id whose suppression to check (e.g. CA2025)")] string diagnosticId,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await suppressionService.VerifyPragmaSuppressesAsync(
-                workspaceId, filePath, line, diagnosticId, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => suppressionService.VerifyPragmaSuppressesAsync(
+                workspaceId, filePath, line, diagnosticId, c),
+            ct);
 
     [McpServerTool(Name = "pragma_scope_widen", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("editing", "stable", false, false,
@@ -84,12 +83,10 @@ public static class SuppressionTools
         [Description("1-based line number that must be covered after the widen (the diagnostic fire site)")] int line,
         [Description("Diagnostic id whose 'restore' is being moved (e.g. CA2025)")] string diagnosticId,
         CancellationToken ct = default)
-    {
-        return gate.RunWriteAsync(workspaceId, async c =>
-        {
-            var result = await suppressionService.WidenPragmaScopeAsync(
-                workspaceId, filePath, line, diagnosticId, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.PreviewWithWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => suppressionService.WidenPragmaScopeAsync(
+                workspaceId, filePath, line, diagnosticId, c),
+            ct);
 }

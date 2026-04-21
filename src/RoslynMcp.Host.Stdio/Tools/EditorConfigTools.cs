@@ -1,11 +1,18 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for .editorconfig inspection and mutation. WS1 phase 1.5 —
+/// each shim body delegates to the corresponding <see cref="ToolDispatch"/> helper
+/// instead of carrying the 5–7 line dispatch boilerplate inline. See
+/// <c>CodeActionTools</c> (canary, PR #305), phases 1.3/1.4, and
+/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the migration
+/// rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class EditorConfigTools
 {
@@ -19,13 +26,11 @@ public static class EditorConfigTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file to inspect")] string filePath,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await editorConfigService.GetOptionsAsync(workspaceId, filePath, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => editorConfigService.GetOptionsAsync(workspaceId, filePath, c),
+            ct);
 
     [McpServerTool(Name = "set_editorconfig_option", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("configuration", "stable", false, false,
@@ -39,11 +44,9 @@ public static class EditorConfigTools
         [Description("EditorConfig key (e.g. dotnet_diagnostic.CA1000.severity)")] string key,
         [Description("Value (e.g. warning, suggestion, silent, none)")] string value,
         CancellationToken ct = default)
-    {
-        return gate.RunWriteAsync(workspaceId, async c =>
-        {
-            var result = await editorConfigService.SetOptionAsync(workspaceId, filePath, key, value, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.PreviewWithWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => editorConfigService.SetOptionAsync(workspaceId, filePath, key, value, c),
+            ct);
 }

@@ -1,11 +1,16 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for Roslyn data-flow and control-flow analysis over a
+/// code region. WS1 phase 1.5 — each shim body delegates to
+/// <see cref="ToolDispatch.ReadByWorkspaceIdAsync"/> instead of carrying the dispatch
+/// boilerplate inline.
+/// </summary>
 [McpServerToolType]
 public static class FlowAnalysisTools
 {
@@ -21,13 +26,11 @@ public static class FlowAnalysisTools
         [Description("1-based start line of the code region to analyze")] int startLine,
         [Description("1-based end line of the code region to analyze")] int endLine,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await flowAnalysisService.AnalyzeDataFlowAsync(workspaceId, filePath, startLine, endLine, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => flowAnalysisService.AnalyzeDataFlowAsync(workspaceId, filePath, startLine, endLine, c),
+            ct);
 
     [McpServerTool(Name = "analyze_control_flow", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
@@ -41,11 +44,9 @@ public static class FlowAnalysisTools
         [Description("1-based start line of the code region to analyze")] int startLine,
         [Description("1-based end line of the code region to analyze")] int endLine,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await flowAnalysisService.AnalyzeControlFlowAsync(workspaceId, filePath, startLine, endLine, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => flowAnalysisService.AnalyzeControlFlowAsync(workspaceId, filePath, startLine, endLine, c),
+            ct);
 }

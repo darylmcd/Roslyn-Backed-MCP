@@ -1,11 +1,15 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for MSBuild property and item evaluation. WS1 phase 1.5 —
+/// each shim body delegates to <see cref="ToolDispatch.ReadByWorkspaceIdAsync"/>
+/// instead of carrying the dispatch boilerplate inline.
+/// </summary>
 [McpServerToolType]
 public static class MSBuildTools
 {
@@ -20,13 +24,11 @@ public static class MSBuildTools
         [Description("Project name as loaded in the workspace")] string projectName,
         [Description("Property name (e.g. TargetFramework)")] string propertyName,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await msbuildEvaluation.EvaluatePropertyAsync(workspaceId, projectName, propertyName, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => msbuildEvaluation.EvaluatePropertyAsync(workspaceId, projectName, propertyName, c),
+            ct);
 
     [McpServerTool(Name = "evaluate_msbuild_items", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -39,13 +41,11 @@ public static class MSBuildTools
         [Description("Project name as loaded in the workspace")] string projectName,
         [Description("Item type (e.g. Compile, PackageReference)")] string itemType,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await msbuildEvaluation.EvaluateItemsAsync(workspaceId, projectName, itemType, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => msbuildEvaluation.EvaluateItemsAsync(workspaceId, projectName, itemType, c),
+            ct);
 
     [McpServerTool(Name = "get_msbuild_properties", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
@@ -59,12 +59,10 @@ public static class MSBuildTools
         [Description("Optional: case-insensitive substring filter applied to property names (e.g., 'Nullable', 'Target')")] string? propertyNameFilter = null,
         [Description("Optional: explicit allowlist of property names to return. Takes precedence over propertyNameFilter when supplied.")] string[]? includedNames = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await msbuildEvaluation.GetEvaluatedPropertiesAsync(
-                workspaceId, projectName, propertyNameFilter, includedNames, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => msbuildEvaluation.GetEvaluatedPropertiesAsync(
+                workspaceId, projectName, propertyNameFilter, includedNames, c),
+            ct);
 }
