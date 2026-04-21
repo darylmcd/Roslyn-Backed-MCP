@@ -200,73 +200,124 @@ public sealed class CodeMetricsService : ICodeMetricsService
         }
     }
 
+    // WS2 session 2.9: dispatcher was cc 21 with 15 inline switch arms covering every
+    // control-flow statement kind. Split into per-shape helpers so the outer method
+    // reads as a small, obvious kind→helper table instead of a 68-line wall. Helpers
+    // are grouped by structural shape (single-body-at-depth+1, single-block-at-depth+1,
+    // and the special-cased kinds If/Switch/SwitchExpression/Try/LocalFunction/For).
+    // Recursion semantics unchanged — every depth increment and recursion call is
+    // byte-identical to the pre-refactor dispatcher.
     private static void VisitChildForNesting(SyntaxNode child, int depth, ref int maxDepth)
     {
         switch (child)
         {
             case IfStatementSyntax ifs:
-                VisitControlFlowNesting(ifs.Condition, depth, ref maxDepth);
-                VisitControlFlowNesting(ifs.Statement, depth + 1, ref maxDepth);
-                if (ifs.Else is not null)
-                    VisitControlFlowNesting(ifs.Else.Statement, depth + 1, ref maxDepth);
-                break;
-
+                VisitIfStatement(ifs, depth, ref maxDepth);
+                return;
             case ForStatementSyntax fs:
                 VisitForLoop(fs, depth, ref maxDepth);
-                break;
-
+                return;
             case SwitchStatementSyntax sw:
-                foreach (var section in sw.Sections)
-                    foreach (var stmt in section.Statements)
-                        VisitControlFlowNesting(stmt, depth + 1, ref maxDepth);
-                break;
-
+                VisitSwitchStatement(sw, depth, ref maxDepth);
+                return;
             case TryStatementSyntax tr:
                 VisitTryStatement(tr, depth, ref maxDepth);
-                break;
-
+                return;
             case SwitchExpressionSyntax se:
-                foreach (var arm in se.Arms)
-                    VisitControlFlowNesting(arm.Expression, depth + 1, ref maxDepth);
-                break;
-
+                VisitSwitchExpression(se, depth, ref maxDepth);
+                return;
             case LocalFunctionStatementSyntax lf:
-                if (lf.Body is not null)
-                    VisitControlFlowNesting(lf.Body, depth, ref maxDepth);
-                else if (lf.ExpressionBody is not null)
-                    VisitControlFlowNesting(lf.ExpressionBody.Expression, depth, ref maxDepth);
-                break;
-
-            // Statements that nest a single body at depth+1.
-            case WhileStatementSyntax ws:
-                VisitControlFlowNesting(ws.Statement, depth + 1, ref maxDepth);
-                break;
-            case DoStatementSyntax ds:
-                VisitControlFlowNesting(ds.Statement, depth + 1, ref maxDepth);
-                break;
-            case ForEachStatementSyntax fes:
-                VisitControlFlowNesting(fes.Statement, depth + 1, ref maxDepth);
-                break;
-            case LockStatementSyntax lk:
-                VisitControlFlowNesting(lk.Statement, depth + 1, ref maxDepth);
-                break;
-            case UsingStatementSyntax us:
-                VisitControlFlowNesting(us.Statement, depth + 1, ref maxDepth);
-                break;
-            case FixedStatementSyntax fx:
-                VisitControlFlowNesting(fx.Statement, depth + 1, ref maxDepth);
-                break;
-            case CheckedStatementSyntax chk:
-                VisitControlFlowNesting(chk.Block, depth + 1, ref maxDepth);
-                break;
-            case UnsafeStatementSyntax uns:
-                VisitControlFlowNesting(uns.Block, depth + 1, ref maxDepth);
-                break;
-
-            default:
-                VisitControlFlowNesting(child, depth, ref maxDepth);
-                break;
+                VisitLocalFunction(lf, depth, ref maxDepth);
+                return;
         }
+
+        // Statements that nest a single body at depth+1 (while/do/foreach/lock/using/fixed)
+        // or a single block at depth+1 (checked/unsafe) are structurally uniform — handle
+        // them in two small helpers instead of eight inline switch arms.
+        if (TryVisitSingleBodyAtDepthPlusOne(child, depth, ref maxDepth))
+            return;
+        if (TryVisitSingleBlockAtDepthPlusOne(child, depth, ref maxDepth))
+            return;
+
+        // Default fallthrough: not a control-flow statement — recurse into its children
+        // at the same depth so nested control flow further down is still discovered.
+        VisitControlFlowNesting(child, depth, ref maxDepth);
+    }
+
+    private static void VisitIfStatement(IfStatementSyntax ifs, int depth, ref int maxDepth)
+    {
+        VisitControlFlowNesting(ifs.Condition, depth, ref maxDepth);
+        VisitControlFlowNesting(ifs.Statement, depth + 1, ref maxDepth);
+        if (ifs.Else is not null)
+            VisitControlFlowNesting(ifs.Else.Statement, depth + 1, ref maxDepth);
+    }
+
+    private static void VisitSwitchStatement(SwitchStatementSyntax sw, int depth, ref int maxDepth)
+    {
+        foreach (var section in sw.Sections)
+            foreach (var stmt in section.Statements)
+                VisitControlFlowNesting(stmt, depth + 1, ref maxDepth);
+    }
+
+    private static void VisitSwitchExpression(SwitchExpressionSyntax se, int depth, ref int maxDepth)
+    {
+        foreach (var arm in se.Arms)
+            VisitControlFlowNesting(arm.Expression, depth + 1, ref maxDepth);
+    }
+
+    private static void VisitLocalFunction(LocalFunctionStatementSyntax lf, int depth, ref int maxDepth)
+    {
+        // Local functions DO NOT increment nesting depth — the body recurses at the
+        // same depth as the declaration site. This is the distinguishing contract vs
+        // other block-bearing statements (while/for/using etc).
+        if (lf.Body is not null)
+            VisitControlFlowNesting(lf.Body, depth, ref maxDepth);
+        else if (lf.ExpressionBody is not null)
+            VisitControlFlowNesting(lf.ExpressionBody.Expression, depth, ref maxDepth);
+    }
+
+    /// <summary>
+    /// Handles statements whose only nested control-flow attachment is a single
+    /// <c>Statement</c> child at depth+1: <see cref="WhileStatementSyntax"/>,
+    /// <see cref="DoStatementSyntax"/>, <see cref="ForEachStatementSyntax"/>,
+    /// <see cref="LockStatementSyntax"/>, <see cref="UsingStatementSyntax"/>,
+    /// <see cref="FixedStatementSyntax"/>. Returns true when the node was handled.
+    /// </summary>
+    private static bool TryVisitSingleBodyAtDepthPlusOne(SyntaxNode child, int depth, ref int maxDepth)
+    {
+        StatementSyntax? body = child switch
+        {
+            WhileStatementSyntax ws => ws.Statement,
+            DoStatementSyntax ds => ds.Statement,
+            ForEachStatementSyntax fes => fes.Statement,
+            LockStatementSyntax lk => lk.Statement,
+            UsingStatementSyntax us => us.Statement,
+            FixedStatementSyntax fx => fx.Statement,
+            _ => null
+        };
+
+        if (body is null) return false;
+        VisitControlFlowNesting(body, depth + 1, ref maxDepth);
+        return true;
+    }
+
+    /// <summary>
+    /// Handles statements whose only nested control-flow attachment is a single
+    /// <c>Block</c> child at depth+1: <see cref="CheckedStatementSyntax"/> and
+    /// <see cref="UnsafeStatementSyntax"/>. Returns true when the node was handled.
+    /// </summary>
+    private static bool TryVisitSingleBlockAtDepthPlusOne(SyntaxNode child, int depth, ref int maxDepth)
+    {
+        BlockSyntax? block = child switch
+        {
+            CheckedStatementSyntax chk => chk.Block,
+            UnsafeStatementSyntax uns => uns.Block,
+            _ => null
+        };
+
+        if (block is null) return false;
+        VisitControlFlowNesting(block, depth + 1, ref maxDepth);
+        return true;
     }
 
     private static void VisitForLoop(ForStatementSyntax fs, int depth, ref int maxDepth)
