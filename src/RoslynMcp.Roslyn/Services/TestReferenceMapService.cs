@@ -305,71 +305,137 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
             ct.ThrowIfCancellationRequested();
             foreach (var document in testProject.Documents)
             {
-                var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                if (semanticModel is null || root is null) continue;
-
-                foreach (var classDecl in root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax>())
-                {
-                    var classSymbol = semanticModel.GetDeclaredSymbol(classDecl, ct) as INamedTypeSymbol;
-                    if (classSymbol is null) continue;
-
-                    // 1. Find Substitute.For<T>() invocations within this class — yields the mocked
-                    //    interface symbols this test class works with.
-                    var mockedInterfaces = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-                    foreach (var invocation in classDecl.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>())
-                    {
-                        if (invocation.Expression is not Microsoft.CodeAnalysis.CSharp.Syntax.MemberAccessExpressionSyntax member) continue;
-                        if (member.Name is not Microsoft.CodeAnalysis.CSharp.Syntax.GenericNameSyntax generic) continue;
-                        if (!string.Equals(generic.Identifier.ValueText, "For", StringComparison.Ordinal)) continue;
-                        if (!member.Expression.ToString().EndsWith("Substitute", StringComparison.Ordinal)) continue;
-
-                        var typeArg = generic.TypeArgumentList.Arguments.FirstOrDefault();
-                        if (typeArg is null) continue;
-                        var typeInfo = semanticModel.GetTypeInfo(typeArg, ct);
-                        if (typeInfo.Type is INamedTypeSymbol named && named.TypeKind == TypeKind.Interface)
-                        {
-                            mockedInterfaces.Add(named);
-                        }
-                    }
-
-                    if (mockedInterfaces.Count == 0) continue;
-
-                    // 2. For each mocked interface, find every method called somewhere in the
-                    //    *solution* that we'd expect a stub for. Approximation: any method on the
-                    //    interface called outside the test project counts as "called by production".
-                    foreach (var iface in mockedInterfaces)
-                    {
-                        var methodsOnInterface = iface.GetMembers().OfType<IMethodSymbol>()
-                            .Where(m => m.MethodKind == MethodKind.Ordinary)
-                            .ToArray();
-                        if (methodsOnInterface.Length == 0) continue;
-
-                        // Find the production caller(s) for each method (cheap: scan the test class
-                        // imports + projects the test references, look for callsites; in practice
-                        // we just check non-test projects in the solution).
-                        var productionCallers = await FindProductionCallersAsync(solution, methodsOnInterface, testProjectIds, ct).ConfigureAwait(false);
-
-                        // Find stubbed methods within this test class. NSubstitute stubs look like
-                        // `mock.Method(...).Returns(value)` or `mock.Method(...).ReturnsForAnyArgs(value)`.
-                        var stubbedMethodNames = CollectStubbedMethodNames(classDecl, semanticModel, ct);
-
-                        foreach (var method in methodsOnInterface)
-                        {
-                            if (stubbedMethodNames.Contains(method.Name)) continue;
-                            if (!productionCallers.TryGetValue(method.Name, out var callerDisplay)) continue;
-                            warnings.Add(new MockDriftWarningDto(
-                                TestClassDisplay: classSymbol.ToDisplayString(),
-                                MockedInterfaceDisplay: iface.ToDisplayString(),
-                                MissingStubMethod: $"{iface.Name}.{method.Name}",
-                                ProductionCallerDisplay: callerDisplay));
-                        }
-                    }
-                }
+                await ScanDocumentForMockDriftAsync(document, solution, testProjectIds, warnings, ct).ConfigureAwait(false);
             }
         }
 
         return warnings;
+    }
+
+    /// <summary>
+    /// Per-document leaf of <see cref="DetectMockDriftAsync"/>. Materializes the syntax root +
+    /// semantic model once and walks every class declaration. Skips silently when either is
+    /// unavailable (binary-only references / source-generator-only documents).
+    /// </summary>
+    private static async Task ScanDocumentForMockDriftAsync(
+        Document document,
+        Solution solution,
+        HashSet<ProjectId> testProjectIds,
+        List<MockDriftWarningDto> warnings,
+        CancellationToken ct)
+    {
+        var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+        var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+        if (semanticModel is null || root is null) return;
+
+        foreach (var classDecl in root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax>())
+        {
+            await ScanClassForMockDriftAsync(classDecl, semanticModel, solution, testProjectIds, warnings, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Per-class leaf of <see cref="DetectMockDriftAsync"/>. Two phases:
+    /// (1) collect the interface symbols this test class mocks via <c>Substitute.For&lt;T&gt;()</c>;
+    /// (2) for each mocked interface, emit a warning for every interface method that production
+    /// code calls but the test class never stubs. No-ops when the class declares no mocks.
+    /// </summary>
+    private static async Task ScanClassForMockDriftAsync(
+        Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax classDecl,
+        SemanticModel semanticModel,
+        Solution solution,
+        HashSet<ProjectId> testProjectIds,
+        List<MockDriftWarningDto> warnings,
+        CancellationToken ct)
+    {
+        var classSymbol = semanticModel.GetDeclaredSymbol(classDecl, ct) as INamedTypeSymbol;
+        if (classSymbol is null) return;
+
+        // Phase 1: find Substitute.For<T>() invocations within this class — yields the mocked
+        // interface symbols this test class works with.
+        var mockedInterfaces = CollectMockedInterfaces(classDecl, semanticModel, ct);
+        if (mockedInterfaces.Count == 0) return;
+
+        // Phase 2: for each mocked interface, find every method called somewhere in the
+        // *solution* that we'd expect a stub for, and emit warnings for missing stubs.
+        foreach (var iface in mockedInterfaces)
+        {
+            await EmitWarningsForMockedInterfaceAsync(
+                iface, classDecl, classSymbol, semanticModel, solution, testProjectIds, warnings, ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Phase-1 helper for <see cref="ScanClassForMockDriftAsync"/>. Walks every invocation
+    /// inside the class body, matches the canonical NSubstitute shape
+    /// <c>Substitute.For&lt;TInterface&gt;()</c>, and returns the bound interface symbols.
+    /// </summary>
+    private static HashSet<INamedTypeSymbol> CollectMockedInterfaces(
+        Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax classDecl,
+        SemanticModel semanticModel,
+        CancellationToken ct)
+    {
+        var mockedInterfaces = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
+        foreach (var invocation in classDecl.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>())
+        {
+            if (invocation.Expression is not Microsoft.CodeAnalysis.CSharp.Syntax.MemberAccessExpressionSyntax member) continue;
+            if (member.Name is not Microsoft.CodeAnalysis.CSharp.Syntax.GenericNameSyntax generic) continue;
+            if (!string.Equals(generic.Identifier.ValueText, "For", StringComparison.Ordinal)) continue;
+            if (!member.Expression.ToString().EndsWith("Substitute", StringComparison.Ordinal)) continue;
+
+            var typeArg = generic.TypeArgumentList.Arguments.FirstOrDefault();
+            if (typeArg is null) continue;
+            var typeInfo = semanticModel.GetTypeInfo(typeArg, ct);
+            if (typeInfo.Type is INamedTypeSymbol named && named.TypeKind == TypeKind.Interface)
+            {
+                mockedInterfaces.Add(named);
+            }
+        }
+        return mockedInterfaces;
+    }
+
+    /// <summary>
+    /// Phase-2 helper for <see cref="ScanClassForMockDriftAsync"/>. For one mocked interface:
+    /// enumerate its ordinary methods, look up which ones production code calls
+    /// (via <see cref="FindProductionCallersAsync"/>) and which the test class stubs
+    /// (via <see cref="CollectStubbedMethodNames"/>), then emit a
+    /// <see cref="MockDriftWarningDto"/> for each method that production calls but the test
+    /// fails to stub.
+    /// </summary>
+    private static async Task EmitWarningsForMockedInterfaceAsync(
+        INamedTypeSymbol iface,
+        Microsoft.CodeAnalysis.CSharp.Syntax.ClassDeclarationSyntax classDecl,
+        INamedTypeSymbol classSymbol,
+        SemanticModel semanticModel,
+        Solution solution,
+        HashSet<ProjectId> testProjectIds,
+        List<MockDriftWarningDto> warnings,
+        CancellationToken ct)
+    {
+        var methodsOnInterface = iface.GetMembers().OfType<IMethodSymbol>()
+            .Where(m => m.MethodKind == MethodKind.Ordinary)
+            .ToArray();
+        if (methodsOnInterface.Length == 0) return;
+
+        // Find the production caller(s) for each method (cheap: scan the test class
+        // imports + projects the test references, look for callsites; in practice
+        // we just check non-test projects in the solution).
+        var productionCallers = await FindProductionCallersAsync(solution, methodsOnInterface, testProjectIds, ct).ConfigureAwait(false);
+
+        // Find stubbed methods within this test class. NSubstitute stubs look like
+        // `mock.Method(...).Returns(value)` or `mock.Method(...).ReturnsForAnyArgs(value)`.
+        var stubbedMethodNames = CollectStubbedMethodNames(classDecl, semanticModel, ct);
+
+        foreach (var method in methodsOnInterface)
+        {
+            if (stubbedMethodNames.Contains(method.Name)) continue;
+            if (!productionCallers.TryGetValue(method.Name, out var callerDisplay)) continue;
+            warnings.Add(new MockDriftWarningDto(
+                TestClassDisplay: classSymbol.ToDisplayString(),
+                MockedInterfaceDisplay: iface.ToDisplayString(),
+                MissingStubMethod: $"{iface.Name}.{method.Name}",
+                ProductionCallerDisplay: callerDisplay));
+        }
     }
 
     /// <summary>

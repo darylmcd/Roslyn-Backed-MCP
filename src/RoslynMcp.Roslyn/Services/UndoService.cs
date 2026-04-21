@@ -178,17 +178,56 @@ public sealed class UndoService : IUndoService, IDisposable
         }
 
         var currentSolution = workspace.GetCurrentSolution(workspaceId);
-        var targetSolution = currentSolution;
-
         var diskRestores = new List<(string FilePath, string Text)>();
+
+        // Phase 1 (primary): trust the Solution diff to tell us what changed.
+        var (targetSolution, changedDocumentCount) = await CollectChangesFromSolutionDiffAsync(
+            snapshot.PreApplySolution, currentSolution, diskRestores, cancellationToken).ConfigureAwait(false);
+
+        // Phase 2 (safety net, revert-last-apply-disk-consistency): if the Solution diff
+        // came up empty we cannot conclude "nothing changed" — MSBuildWorkspace may have
+        // quietly dropped the apply while leaving disk out of sync. Walk every document
+        // in the pre-apply snapshot, read the on-disk text, and restore any that drifted.
+        if (changedDocumentCount == 0)
+        {
+            changedDocumentCount = await CollectChangesFromDiskWalkAsync(
+                snapshot.PreApplySolution, diskRestores, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (changedDocumentCount == 0)
+        {
+            _logger.LogInformation(
+                "UndoService.RevertAsync: snapshot for '{WorkspaceId}' contained no document differences against the current solution or disk. " +
+                "Treating revert as a no-op success.",
+                workspaceId);
+            return true;
+        }
+
+        // Phase 3: persist the revert to workspace state + disk, reload, and restore version.
+        return await PersistRevertChangesAsync(
+            workspaceId, workspace, snapshot, targetSolution, diskRestores, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Phase-1 helper for <see cref="RevertFromSolutionSnapshotAsync"/>. Walks
+    /// <c>preApplySolution.GetChanges(currentSolution)</c> and, for every document the
+    /// diff flags as changed, schedules a workspace text revert and queues a disk
+    /// restore. Returns the updated target solution plus a count of documents touched.
+    /// </summary>
+    private static async Task<(Solution TargetSolution, int ChangedDocumentCount)> CollectChangesFromSolutionDiffAsync(
+        Solution preApplySolution,
+        Solution currentSolution,
+        List<(string FilePath, string Text)> diskRestores,
+        CancellationToken cancellationToken)
+    {
+        var targetSolution = currentSolution;
         var changedDocumentCount = 0;
 
-        // Primary pass: trust the Solution diff to tell us what changed.
-        foreach (var projectChange in snapshot.PreApplySolution.GetChanges(currentSolution).GetProjectChanges())
+        foreach (var projectChange in preApplySolution.GetChanges(currentSolution).GetProjectChanges())
         {
             foreach (var docId in projectChange.GetChangedDocuments())
             {
-                var oldDoc = snapshot.PreApplySolution.GetDocument(docId);
+                var oldDoc = preApplySolution.GetDocument(docId);
                 if (oldDoc is null) continue;
 
                 var oldText = await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false);
@@ -204,49 +243,68 @@ public sealed class UndoService : IUndoService, IDisposable
             }
         }
 
-        // Safety net (revert-last-apply-disk-consistency): if the Solution diff came up
-        // empty we cannot conclude "nothing changed" — MSBuildWorkspace may have quietly
-        // dropped the apply while leaving disk out of sync. Walk every document in the
-        // pre-apply snapshot, read the on-disk text, and restore any that drifted.
-        if (changedDocumentCount == 0)
+        return (targetSolution, changedDocumentCount);
+    }
+
+    /// <summary>
+    /// Phase-2 helper (safety net) for <see cref="RevertFromSolutionSnapshotAsync"/>.
+    /// Invoked only when the Solution diff returned no changes. Walks every document in
+    /// the pre-apply snapshot, reads the on-disk text, and queues a disk restore for any
+    /// file whose content drifted. Read failures are debug-logged and skipped.
+    /// </summary>
+    private async Task<int> CollectChangesFromDiskWalkAsync(
+        Solution preApplySolution,
+        List<(string FilePath, string Text)> diskRestores,
+        CancellationToken cancellationToken)
+    {
+        var changedDocumentCount = 0;
+
+        foreach (var project in preApplySolution.Projects)
         {
-            foreach (var project in snapshot.PreApplySolution.Projects)
+            foreach (var oldDoc in project.Documents)
             {
-                foreach (var oldDoc in project.Documents)
+                if (oldDoc.FilePath is null) continue;
+                if (!File.Exists(oldDoc.FilePath)) continue;
+
+                string currentDiskText;
+                try
                 {
-                    if (oldDoc.FilePath is null) continue;
-                    if (!File.Exists(oldDoc.FilePath)) continue;
+                    currentDiskText = await File.ReadAllTextAsync(oldDoc.FilePath, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogDebug(ex, "UndoService.RevertAsync: disk-walk read failed for {FilePath}", oldDoc.FilePath);
+                    continue;
+                }
 
-                    string currentDiskText;
-                    try
-                    {
-                        currentDiskText = await File.ReadAllTextAsync(oldDoc.FilePath, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        _logger.LogDebug(ex, "UndoService.RevertAsync: disk-walk read failed for {FilePath}", oldDoc.FilePath);
-                        continue;
-                    }
-
-                    var oldText = (await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString();
-                    if (!string.Equals(currentDiskText, oldText, StringComparison.Ordinal))
-                    {
-                        diskRestores.Add((oldDoc.FilePath, oldText));
-                        changedDocumentCount++;
-                    }
+                var oldText = (await oldDoc.GetTextAsync(cancellationToken).ConfigureAwait(false)).ToString();
+                if (!string.Equals(currentDiskText, oldText, StringComparison.Ordinal))
+                {
+                    diskRestores.Add((oldDoc.FilePath, oldText));
+                    changedDocumentCount++;
                 }
             }
         }
 
-        if (changedDocumentCount == 0)
-        {
-            _logger.LogInformation(
-                "UndoService.RevertAsync: snapshot for '{WorkspaceId}' contained no document differences against the current solution or disk. " +
-                "Treating revert as a no-op success.",
-                workspaceId);
-            return true;
-        }
+        return changedDocumentCount;
+    }
 
+    /// <summary>
+    /// Phase-3 helper for <see cref="RevertFromSolutionSnapshotAsync"/>. Applies the
+    /// reverted solution to the workspace, writes every queued disk restore, reloads
+    /// the workspace if any disk write succeeded, and restores the pre-apply workspace
+    /// version. Returns <c>diskOk &amp;&amp; (workspaceApplied || anyDiskWrite)</c> — i.e.
+    /// success requires every queued disk write to succeed AND at least one of the two
+    /// state pathways (workspace apply / disk write) to land.
+    /// </summary>
+    private async Task<bool> PersistRevertChangesAsync(
+        string workspaceId,
+        IWorkspaceManager workspace,
+        UndoSnapshot snapshot,
+        Solution targetSolution,
+        IReadOnlyList<(string FilePath, string Text)> diskRestores,
+        CancellationToken cancellationToken)
+    {
         var workspaceApplied = workspace.TryApplyChanges(workspaceId, targetSolution);
         if (!workspaceApplied)
         {
