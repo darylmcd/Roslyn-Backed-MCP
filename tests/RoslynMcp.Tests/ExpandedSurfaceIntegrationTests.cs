@@ -507,7 +507,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
 
     private sealed class FakeCodeActionService : RoslynMcp.Core.Services.ICodeActionService
     {
-        public Task<IReadOnlyList<CodeActionDto>> GetCodeActionsAsync(
+        public Task<CodeActionListDto> GetCodeActionsAsync(
             string workspaceId,
             string filePath,
             int startLine,
@@ -516,7 +516,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             int? endColumn,
             CancellationToken ct)
         {
-            return Task.FromResult<IReadOnlyList<CodeActionDto>>([new CodeActionDto(0, "Demo action", "Refactor", "demo")]);
+            IReadOnlyList<CodeActionDto> actions = [new CodeActionDto(0, "Demo action", "Refactor", "demo")];
+            return Task.FromResult(new CodeActionListDto(actions.Count, Hint: null, actions));
         }
 
         public Task<RefactoringPreviewDto> PreviewCodeActionAsync(
