@@ -239,8 +239,6 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         Func<SeparatedSyntaxList<ArgumentSyntax>, bool, SeparatedSyntaxList<ArgumentSyntax>> updateCallsite,
         CancellationToken ct)
     {
-        var accumulator = solution;
-
         // Track original (pre-mutation) text per document so the final unified diff is computed
         // from original-to-final — not from whatever intermediate state the previous iteration
         // left behind. Earlier implementations recomputed a per-iteration "before/after" which
@@ -254,30 +252,84 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         // (declaration changes do not contribute).
         var perFileCallsites = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-        async Task<string> CaptureOriginalAsync(DocumentId docId)
-        {
-            if (originalTexts.TryGetValue(docId, out var cached)) return cached;
-            var doc = solution.GetDocument(docId);
-            if (doc is null) return string.Empty;
-            var text = (await doc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-            originalTexts[docId] = text;
-            return text;
-        }
-
         // change-signature-preview-callsite-summary (firewall-analyzer 2026-04-15):
-        // Build the related-symbol set ONCE — used for declaration rewrites in step 1
-        // AND for caller enumeration in step 2. SymbolFinder.FindCallersAsync(method)
+        // Build the related-symbol set ONCE — used for declaration rewrites in phase 1
+        // AND for caller enumeration in phase 2. SymbolFinder.FindCallersAsync(method)
         // returns callers that invoke through THIS exact symbol. For an interface
         // method, that misses callers invoking through implementing classes; for an
         // implementer, it misses callers invoking through the interface. Same shape for
         // declarations — when changing the signature on an interface method, every
         // implementer must also update its declaration to keep compiling.
-        var symbolsToScan = await CollectRelatedSymbolsAsync(method, accumulator, ct).ConfigureAwait(false);
+        var symbolsToScan = await CollectRelatedSymbolsAsync(method, solution, ct).ConfigureAwait(false);
 
-        // 1. Update every related symbol's declaration(s). Includes the interface method,
-        //    every implementing class, every override, and (for partial methods) both
-        //    definition + implementation. Without this pass, changing an interface method
-        //    would break every implementer at compile time.
+        // Phase 1: update every related symbol's declaration(s). Includes the interface method,
+        // every implementing class, every override, and (for partial methods) both definition +
+        // implementation. Without this pass, changing an interface method would break every
+        // implementer at compile time.
+        var accumulator = await RewriteRelatedDeclarationsAsync(
+            solution, symbolsToScan, updateDeclaration, originalTexts, ct).ConfigureAwait(false);
+
+        // Phase 2: collect all unique caller locations across the related-symbol set. Spans are
+        // captured against the ORIGINAL solution; accumulator's per-iteration mutations would
+        // shift the indices and break later span lookups.
+        var callerLocations = await CollectCallerSpansAsync(
+            solution, symbolsToScan, ct).ConfigureAwait(false);
+
+        // Phase 3: rewrite per document. Sort spans descending so each ReplaceNode preserves
+        // the validity of earlier (lower-offset) spans within the same document. Capture the
+        // original text on first visit per document so the end-of-pass diff is against the
+        // untouched baseline.
+        accumulator = await RewriteCallerArgumentsAsync(
+            accumulator, solution, callerLocations, updateCallsite, originalTexts, perFileCallsites, ct).ConfigureAwait(false);
+
+        // Phase 4: emit ONE unified diff per touched file, original → final. DiffGenerator
+        // applies a 16 KB cap with a truncation marker so the preview never blows past MCP
+        // payload budgets.
+        var changes = await BuildFileChangesAsync(accumulator, originalTexts, ct).ConfigureAwait(false);
+
+        var callsiteUpdates = perFileCallsites
+            .Select(kvp => new CallsiteUpdateDto(kvp.Key, kvp.Value))
+            .OrderBy(u => u.FilePath, StringComparer.Ordinal)
+            .ToList();
+
+        return (accumulator, changes, callsiteUpdates);
+    }
+
+    /// <summary>
+    /// Return the original (untouched-solution) text for <paramref name="docId"/>, caching the
+    /// read in <paramref name="originalTexts"/>. Subsequent reads are served from the dict so
+    /// the end-of-pass diff is computed against a stable baseline even after many mutations.
+    /// </summary>
+    private static async Task<string> CaptureOriginalTextAsync(
+        Dictionary<DocumentId, string> originalTexts,
+        Solution solution,
+        DocumentId docId,
+        CancellationToken ct)
+    {
+        if (originalTexts.TryGetValue(docId, out var cached)) return cached;
+        var doc = solution.GetDocument(docId);
+        if (doc is null) return string.Empty;
+        var text = (await doc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+        originalTexts[docId] = text;
+        return text;
+    }
+
+    /// <summary>
+    /// Phase 1 helper: walk every <paramref name="symbolsToScan"/> entry's declaring syntax
+    /// references, find the <see cref="BaseMethodDeclarationSyntax"/> for each, and apply
+    /// <paramref name="updateDeclaration"/> to its parameter list. De-dupes per
+    /// (document, parameter-list-span) so a partial method visited from two sides rewrites only
+    /// once. Captures each touched document's original text into
+    /// <paramref name="originalTexts"/>.
+    /// </summary>
+    private static async Task<Solution> RewriteRelatedDeclarationsAsync(
+        Solution solution,
+        IReadOnlyList<IMethodSymbol> symbolsToScan,
+        Func<ParameterListSyntax, ParameterListSyntax> updateDeclaration,
+        Dictionary<DocumentId, string> originalTexts,
+        CancellationToken ct)
+    {
+        var accumulator = solution;
         var visitedDeclarationSpans = new HashSet<(DocumentId DocId, TextSpan Span)>();
         foreach (var sym in symbolsToScan)
         {
@@ -289,7 +341,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 if (doc is null) continue;
                 if (!visitedDeclarationSpans.Add((doc.Id, mds.ParameterList.Span))) continue;
 
-                await CaptureOriginalAsync(doc.Id).ConfigureAwait(false);
+                await CaptureOriginalTextAsync(originalTexts, solution, doc.Id, ct).ConfigureAwait(false);
                 var oldRoot = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (oldRoot is null) continue;
 
@@ -304,14 +356,21 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 accumulator = accumulator.WithDocumentText(doc.Id, SourceText.From(newRoot.ToFullString()));
             }
         }
+        return accumulator;
+    }
 
-        // 2. Walk every caller and update its argument list. Capture the original text on first
-        //    visit per document so the end-of-pass diff is against the untouched baseline.
-        // Collect all unique caller locations across the related-symbol set. Spans are
-        // captured against the ORIGINAL solution; accumulator's per-iteration mutations
-        // would shift the indices and break later span lookups. The rewrite loop then
-        // processes per-document in REVERSE span order so each WithDocumentText doesn't
-        // invalidate spans of earlier callsites in the same document.
+    /// <summary>
+    /// Phase 2 helper: for every related symbol, call
+    /// <see cref="SymbolFinder.FindCallersAsync(ISymbol, Solution, CancellationToken)"/> against
+    /// the ORIGINAL solution and collect each caller's source location. Returns a per-document
+    /// list of unique source spans; the caller rewrites in phase 3 sort descending and replace
+    /// so that earlier spans stay valid under intra-document mutation.
+    /// </summary>
+    private static async Task<Dictionary<DocumentId, List<TextSpan>>> CollectCallerSpansAsync(
+        Solution solution,
+        IReadOnlyList<IMethodSymbol> symbolsToScan,
+        CancellationToken ct)
+    {
         var callerLocations = new Dictionary<DocumentId, List<TextSpan>>();
         foreach (var sym in symbolsToScan)
         {
@@ -335,16 +394,32 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 }
             }
         }
+        return callerLocations;
+    }
 
-        // Now rewrite per document. Sort spans descending so each ReplaceNode preserves
-        // the validity of earlier (lower-offset) spans within the same document.
+    /// <summary>
+    /// Phase 3 helper: rewrite each caller's argument list via <paramref name="updateCallsite"/>.
+    /// Per-document loop sorts spans descending so each <c>WithDocumentText</c> preserves the
+    /// validity of earlier (lower-offset) spans within the same document. Captures the original
+    /// text on first visit per document so the end-of-pass diff is against the untouched baseline,
+    /// and increments <paramref name="perFileCallsites"/> whenever an invocation actually changes.
+    /// </summary>
+    private static async Task<Solution> RewriteCallerArgumentsAsync(
+        Solution accumulator,
+        Solution solution,
+        Dictionary<DocumentId, List<TextSpan>> callerLocations,
+        Func<SeparatedSyntaxList<ArgumentSyntax>, bool, SeparatedSyntaxList<ArgumentSyntax>> updateCallsite,
+        Dictionary<DocumentId, string> originalTexts,
+        Dictionary<string, int> perFileCallsites,
+        CancellationToken ct)
+    {
         foreach (var (docId, spans) in callerLocations)
         {
             ct.ThrowIfCancellationRequested();
             var doc = accumulator.GetDocument(docId);
             if (doc is null) continue;
 
-            await CaptureOriginalAsync(doc.Id).ConfigureAwait(false);
+            await CaptureOriginalTextAsync(originalTexts, solution, doc.Id, ct).ConfigureAwait(false);
 
             spans.Sort((a, b) => b.Start.CompareTo(a.Start));
             foreach (var span in spans)
@@ -371,9 +446,20 @@ public sealed class ChangeSignatureService : IChangeSignatureService
                 perFileCallsites[filePath] = perFileCallsites.TryGetValue(filePath, out var count) ? count + 1 : 1;
             }
         }
+        return accumulator;
+    }
 
-        // 3. Emit ONE unified diff per touched file, original → final. DiffGenerator applies a
-        //    16 KB cap with a truncation marker so the preview never blows past MCP payload budgets.
+    /// <summary>
+    /// Phase 4 helper: emit ONE unified diff per touched file, original → final text. Documents
+    /// whose final text matches the captured original (e.g. a caller span that yielded
+    /// <c>newArgs.Equals(args)</c>) are skipped so the preview only lists documents that actually
+    /// changed.
+    /// </summary>
+    private static async Task<List<FileChangeDto>> BuildFileChangesAsync(
+        Solution accumulator,
+        Dictionary<DocumentId, string> originalTexts,
+        CancellationToken ct)
+    {
         var changes = new List<FileChangeDto>(originalTexts.Count);
         foreach (var (docId, originalText) in originalTexts)
         {
@@ -384,13 +470,7 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             var filePath = finalDoc.FilePath ?? finalDoc.Name;
             changes.Add(new FileChangeDto(filePath, DiffGenerator.GenerateUnifiedDiff(originalText, finalText, filePath)));
         }
-
-        var callsiteUpdates = perFileCallsites
-            .Select(kvp => new CallsiteUpdateDto(kvp.Key, kvp.Value))
-            .OrderBy(u => u.FilePath, StringComparer.Ordinal)
-            .ToList();
-
-        return (accumulator, changes, callsiteUpdates);
+        return changes;
     }
 
     /// <summary>
