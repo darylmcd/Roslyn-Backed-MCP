@@ -1,15 +1,21 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for Roslyn type-extraction refactorings. WS1 phase 1.4 —
+/// each shim body delegates to the corresponding <see cref="ToolDispatch"/> helper
+/// instead of carrying the 7-line dispatch boilerplate inline. See
+/// <c>CodeActionTools</c> (canary, PR #305), <c>BulkRefactoringTools</c> (phase 1.3),
+/// and <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the migration
+/// rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class TypeExtractionTools
 {
-
     [McpServerTool(Name = "extract_type_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
         "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
@@ -24,14 +30,12 @@ public static class TypeExtractionTools
         [Description("Name for the new type")] string newTypeName,
         [Description("Optional: target file path for the new type. If omitted, defaults to {NewTypeName}.cs in the same directory")] string? newFilePath = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await typeExtractionService.PreviewExtractTypeAsync(
-                workspaceId, filePath, typeName, memberNames, newTypeName, newFilePath, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => typeExtractionService.PreviewExtractTypeAsync(
+                workspaceId, filePath, typeName, memberNames, newTypeName, newFilePath, c),
+            ct);
 
     [McpServerTool(Name = "extract_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", false, true,
@@ -43,13 +47,10 @@ public static class TypeExtractionTools
         IPreviewStore previewStore,
         [Description("The preview token returned by extract_type_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 }

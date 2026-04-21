@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -7,10 +6,18 @@ using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for Roslyn type-relocation refactorings (move-type-to-file,
+/// change-type-namespace). WS1 phase 1.4 — each shim body delegates to the
+/// corresponding <see cref="ToolDispatch"/> helper instead of carrying the 7-line
+/// dispatch boilerplate inline. See <c>CodeActionTools</c> (canary, PR #305),
+/// <c>BulkRefactoringTools</c> (phase 1.3), and
+/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the migration
+/// rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class TypeMoveTools
 {
-
     [McpServerTool(Name = "move_type_to_file_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
         "Preview moving a type declaration into its own file."),
@@ -23,13 +30,11 @@ public static class TypeMoveTools
         [Description("Name of the type to move")] string typeName,
         [Description("Optional: target file path. If omitted, defaults to {TypeName}.cs in the same directory")] string? targetFilePath = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await typeMoveService.PreviewMoveTypeToFileAsync(workspaceId, sourceFilePath, typeName, targetFilePath, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => typeMoveService.PreviewMoveTypeToFileAsync(workspaceId, sourceFilePath, typeName, targetFilePath, c),
+            ct);
 
     [McpServerTool(Name = "move_type_to_file_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", false, true,
@@ -41,15 +46,12 @@ public static class TypeMoveTools
         IPreviewStore previewStore,
         [Description("The preview token returned by move_type_to_file_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "change_type_namespace_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
@@ -64,12 +66,10 @@ public static class TypeMoveTools
         [Description("Fully-qualified destination namespace inside the same project")] string toNamespace,
         [Description("Optional: absolute destination file path. If omitted, the file stays in place and only its namespace declaration is rewritten")] string? newFilePath = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await relocationService.PreviewChangeTypeNamespaceAsync(
-                workspaceId, typeName, fromNamespace, toNamespace, newFilePath, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => relocationService.PreviewChangeTypeNamespaceAsync(
+                workspaceId, typeName, fromNamespace, toNamespace, newFilePath, c),
+            ct);
 }

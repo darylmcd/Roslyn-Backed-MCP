@@ -1,15 +1,22 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for Roslyn refactorings (rename / organize-usings / format /
+/// code-fix). WS1 phase 1.4 — each shim body delegates to the corresponding
+/// <see cref="ToolDispatch"/> helper instead of carrying the 7-line dispatch
+/// boilerplate inline. See <c>CodeActionTools</c> (canary, PR #305),
+/// <c>BulkRefactoringTools</c> (phase 1.3), and
+/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the migration
+/// rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class RefactoringTools
 {
-
     [McpServerTool(Name = "rename_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a rename refactoring: shows all files and changes that would result from renaming a symbol. Prefer symbolHandle from enclosing_symbol or document_symbols for precise targeting — line/column can resolve an adjacent symbol on busy lines (tuple deconstruction, multiple declarations). Set summary=true for high-fan-out symbols (>150 refs) to replace per-file unified diffs with one-line summaries and keep the response under the MCP output cap; the apply path rewrites every reference correctly either way.")]
     [McpToolMetadata("refactoring", "stable", true, false,
         "Preview a rename refactoring.")]
@@ -25,13 +32,11 @@ public static class RefactoringTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         [Description("Item #8 — when true, replace per-file unified diffs with compact one-line summaries. The stored preview still carries every real edit, so rename_apply rewrites all references correctly. Use for high-fan-out symbols (>150 refs) where the full diff exceeds the MCP output cap.")] bool summary = false,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), newName, summary, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => refactoringService.PreviewRenameAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), newName, summary, c),
+            ct);
 
     [McpServerTool(Name = "rename_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed rename refactoring using its preview token. Rejects stale tokens if the workspace has changed.")]
     [McpToolMetadata("refactoring", "stable", false, true,
@@ -42,15 +47,12 @@ public static class RefactoringTools
         IPreviewStore previewStore,
         [Description("The preview token returned by rename_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "organize_usings_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview organizing using directives in a file: removes unused usings and sorts them")]
     [McpToolMetadata("refactoring", "stable", true, false,
@@ -61,13 +63,11 @@ public static class RefactoringTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await refactoringService.PreviewOrganizeUsingsAsync(workspaceId, filePath, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => refactoringService.PreviewOrganizeUsingsAsync(workspaceId, filePath, c),
+            ct);
 
     [McpServerTool(Name = "organize_usings_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed organize usings operation using its preview token")]
     [McpToolMetadata("refactoring", "stable", false, true,
@@ -78,15 +78,12 @@ public static class RefactoringTools
         IPreviewStore previewStore,
         [Description("The preview token returned by organize_usings_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "format_document_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview formatting a document: applies standard C# formatting rules")]
     [McpToolMetadata("refactoring", "stable", true, false,
@@ -97,13 +94,11 @@ public static class RefactoringTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await refactoringService.PreviewFormatDocumentAsync(workspaceId, filePath, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => refactoringService.PreviewFormatDocumentAsync(workspaceId, filePath, c),
+            ct);
 
     [McpServerTool(Name = "format_document_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed format document operation using its preview token")]
     [McpToolMetadata("refactoring", "stable", false, true,
@@ -114,15 +109,12 @@ public static class RefactoringTools
         IPreviewStore previewStore,
         [Description("The preview token returned by format_document_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "code_fix_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a curated code fix for a specific diagnostic occurrence")]
     [McpToolMetadata("refactoring", "stable", true, false,
@@ -137,13 +129,11 @@ public static class RefactoringTools
         [Description("1-based column number")] int column,
         [Description("Optional: curated fix identifier from diagnostic_details")] string? fixId = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await refactoringService.PreviewCodeFixAsync(workspaceId, diagnosticId, filePath, line, column, fixId, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => refactoringService.PreviewCodeFixAsync(workspaceId, diagnosticId, filePath, line, column, fixId, c),
+            ct);
 
     [McpServerTool(Name = "code_fix_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed code fix using its preview token")]
     [McpToolMetadata("refactoring", "stable", false, true,
@@ -154,15 +144,12 @@ public static class RefactoringTools
         IPreviewStore previewStore,
         [Description("The preview token returned by code_fix_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "format_range_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
@@ -178,13 +165,11 @@ public static class RefactoringTools
         [Description("1-based end line of the range to format")] int endLine,
         [Description("1-based end column of the range to format")] int endColumn,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await refactoringService.PreviewFormatRangeAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => refactoringService.PreviewFormatRangeAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c),
+            ct);
 
     [McpServerTool(Name = "format_range_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", false, true,
@@ -196,15 +181,12 @@ public static class RefactoringTools
         IPreviewStore previewStore,
         [Description("The preview token returned by format_range_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "format_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
@@ -216,11 +198,9 @@ public static class RefactoringTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: restrict the check to a specific project name. Defaults to all projects.")] string? projectName = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await formatVerifyService.CheckAsync(workspaceId, projectName, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => formatVerifyService.CheckAsync(workspaceId, projectName, c),
+            ct);
 }
