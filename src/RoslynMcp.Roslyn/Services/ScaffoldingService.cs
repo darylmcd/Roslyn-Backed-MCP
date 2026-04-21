@@ -1674,6 +1674,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         IMethodSymbol? targetMethod,
         bool useStaticScaffold)
     {
+        // Phase 1: input gate — bail out on missing/unresolved target.
         if (string.IsNullOrWhiteSpace(targetMethodName))
         {
             return "        // No target method specified.\n";
@@ -1684,41 +1685,83 @@ public sealed class ScaffoldingService : IScaffoldingService
             return $"        // Target method '{targetMethodName}' was not resolved on {targetTypeName}.\n";
         }
 
+        // Phase 2: static-only scaffold (utility-class shape) — emit `Type.Method()`.
         if (useStaticScaffold && targetMethod.IsStatic)
         {
-            if (targetMethod.Parameters.Length == 0 && !targetMethod.ReturnsVoid)
-                return $"        _ = {targetTypeName}.{targetMethodName}();\n";
-            if (targetMethod.Parameters.Length == 0 && targetMethod.ReturnsVoid)
-                return $"        {targetTypeName}.{targetMethodName}();\n";
-            return $"        // Add arguments for static method '{targetMethodName}'.\n";
+            return BuildStaticInvocation(targetTypeName, targetMethodName, targetMethod);
         }
 
+        // Phase 3: private accessibility — reflection-based invocation OR an
+        // unreachable-from-static-scaffold comment.
         if (targetMethod.DeclaredAccessibility == Accessibility.Private)
         {
-            if (useStaticScaffold && !targetMethod.IsStatic)
-            {
-                return "        // Private instance method — not reachable from a static-only scaffold; test via public API or InternalsVisibleTo.\n";
-            }
-
-            var assertNotNull = framework switch
-            {
-                "xunit" => "Assert.NotNull(__method);",
-                "nunit" => "Assert.That(__method, Is.Not.Null);",
-                _ => "Assert.IsNotNull(__method);",
-            };
-            var flags = targetMethod.IsStatic
-                ? "System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic"
-                : "System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic";
-            var invokeTarget = targetMethod.IsStatic ? "null" : "subject";
-            return
-                "        // Private method — invoke via reflection (replace with InternalsVisibleTo or a public API test if preferred).\n" +
-                $"        var __method = typeof({targetTypeName}).GetMethod(\n" +
-                $"            \"{targetMethodName}\",\n" +
-                $"            {flags});\n" +
-                "        " + assertNotNull + "\n" +
-                $"        __method!.Invoke({invokeTarget}, null);\n";
+            return BuildPrivateReflectionInvocation(framework, targetTypeName, targetMethodName, targetMethod, useStaticScaffold);
         }
 
+        // Phase 4: ordinary public/internal instance method — emit `subject.Method()`.
+        return BuildInstanceInvocation(targetMethodName, targetMethod);
+    }
+
+    /// <summary>
+    /// Static-scaffold branch: <c>useStaticScaffold &amp;&amp; targetMethod.IsStatic</c>.
+    /// Emits a parameterless static call, capturing the return value when non-void.
+    /// </summary>
+    private static string BuildStaticInvocation(
+        string targetTypeName,
+        string targetMethodName,
+        IMethodSymbol targetMethod)
+    {
+        if (targetMethod.Parameters.Length == 0 && !targetMethod.ReturnsVoid)
+            return $"        _ = {targetTypeName}.{targetMethodName}();\n";
+        if (targetMethod.Parameters.Length == 0 && targetMethod.ReturnsVoid)
+            return $"        {targetTypeName}.{targetMethodName}();\n";
+        return $"        // Add arguments for static method '{targetMethodName}'.\n";
+    }
+
+    /// <summary>
+    /// Private-method branch: reflection invocation with framework-specific not-null
+    /// assertion. When the scaffold is static-only and the method is a private instance
+    /// member, return an explanatory comment instead — the scaffold has no <c>subject</c>
+    /// instance to invoke against.
+    /// </summary>
+    private static string BuildPrivateReflectionInvocation(
+        string framework,
+        string targetTypeName,
+        string targetMethodName,
+        IMethodSymbol targetMethod,
+        bool useStaticScaffold)
+    {
+        if (useStaticScaffold && !targetMethod.IsStatic)
+        {
+            return "        // Private instance method — not reachable from a static-only scaffold; test via public API or InternalsVisibleTo.\n";
+        }
+
+        var assertNotNull = framework switch
+        {
+            "xunit" => "Assert.NotNull(__method);",
+            "nunit" => "Assert.That(__method, Is.Not.Null);",
+            _ => "Assert.IsNotNull(__method);",
+        };
+        var flags = targetMethod.IsStatic
+            ? "System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic"
+            : "System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic";
+        var invokeTarget = targetMethod.IsStatic ? "null" : "subject";
+        return
+            "        // Private method — invoke via reflection (replace with InternalsVisibleTo or a public API test if preferred).\n" +
+            $"        var __method = typeof({targetTypeName}).GetMethod(\n" +
+            $"            \"{targetMethodName}\",\n" +
+            $"            {flags});\n" +
+            "        " + assertNotNull + "\n" +
+            $"        __method!.Invoke({invokeTarget}, null);\n";
+    }
+
+    /// <summary>
+    /// Public/internal instance-method branch. Emits <c>subject.Method()</c> for
+    /// parameterless methods (capturing the return value when non-void) or a
+    /// commented-out example for methods that take parameters.
+    /// </summary>
+    private static string BuildInstanceInvocation(string targetMethodName, IMethodSymbol targetMethod)
+    {
         if (targetMethod.Parameters.Length == 0 && !targetMethod.ReturnsVoid)
         {
             return $"        _ = subject.{targetMethodName}();\n";
