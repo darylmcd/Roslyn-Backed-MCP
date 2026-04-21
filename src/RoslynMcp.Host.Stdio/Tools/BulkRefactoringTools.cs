@@ -1,15 +1,20 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for bulk type-replacement and invocation-rewrite refactorings.
+/// WS1 phase 1.3 — each shim body delegates to the corresponding <see cref="ToolDispatch"/>
+/// helper instead of carrying the 7-line dispatch boilerplate inline. See
+/// <c>CodeActionTools</c> (canary, PR #305) and <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c>
+/// for the migration rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class BulkRefactoringTools
 {
-
     [McpServerTool(Name = "bulk_replace_type_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
         "Preview replacing all references to one type with another across the solution. Scope can be 'parameters', 'fields', or 'all'. 'parameters' also covers generic arguments in implemented-interface / base-class declarations so the class's interface contract stays in sync. Useful after extracting an interface."),
@@ -24,11 +29,11 @@ public static class BulkRefactoringTools
         CancellationToken ct = default)
     {
         ParameterValidation.ValidateBulkReplaceScope(scope);
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await bulkRefactoringService.PreviewBulkReplaceTypeAsync(workspaceId, oldTypeName, newTypeName, scope, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
+        return ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => bulkRefactoringService.PreviewBulkReplaceTypeAsync(workspaceId, oldTypeName, newTypeName, scope, c),
+            ct);
     }
 
     [McpServerTool(Name = "bulk_replace_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
@@ -41,15 +46,12 @@ public static class BulkRefactoringTools
         IPreviewStore previewStore,
         [Description("The preview token returned by bulk_replace_type_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     // replace-invocation-pattern-refactor: method-level ergonomic pair to bulk_replace_type_preview.
     // Rewrites every invocation of FQ.Old(a,b,c) to FQ.New(b,c,a) with argument reorder derived
@@ -70,10 +72,10 @@ public static class BulkRefactoringTools
         CancellationToken ct = default)
     {
         ParameterValidation.ValidateReplaceInvocationScope(scope);
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await bulkRefactoringService.PreviewReplaceInvocationAsync(workspaceId, oldMethod, newMethod, scope, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
+        return ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => bulkRefactoringService.PreviewReplaceInvocationAsync(workspaceId, oldMethod, newMethod, scope, c),
+            ct);
     }
 }
