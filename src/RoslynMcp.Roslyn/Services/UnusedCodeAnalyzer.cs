@@ -55,109 +55,162 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         UnusedSymbolsAnalysisOptions options,
         CancellationToken ct)
     {
-        var projectFilter = options.ProjectFilter;
-        var includePublic = options.IncludePublic;
-        var limit = options.Limit;
-        var excludeEnums = options.ExcludeEnums;
-        var excludeRecordProperties = options.ExcludeRecordProperties;
-        var excludeTestProjects = options.ExcludeTestProjects;
-        var excludeTests = options.ExcludeTests;
-        var excludeConventionInvoked = options.ExcludeConventionInvoked;
-
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<UnusedSymbolDto>();
         var processedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
 
-        var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
+        var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
 
         foreach (var project in projects)
         {
-            if (ct.IsCancellationRequested || results.Count >= limit) break;
+            if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
 
-            if (excludeTestProjects && IsTestProjectName(project.Name))
+            if (options.ExcludeTestProjects && IsTestProjectName(project.Name))
                 continue;
 
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
-            // Phase 1 (sequential, cheap): walk syntax and collect candidates that survive
-            // the pre-filter. The HashSet de-dup must run on a single thread.
-            var candidates = new List<ISymbol>();
-            foreach (var tree in compilation.SyntaxTrees)
-            {
-                if (ct.IsCancellationRequested) break;
-                if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
-
-                var semanticModel = compilation.GetSemanticModel(tree);
-                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
-
-                foreach (var decl in root.DescendantNodes().OfType<MemberDeclarationSyntax>())
-                {
-                    if (ct.IsCancellationRequested) break;
-
-                    var symbol = semanticModel.GetDeclaredSymbol(decl, ct);
-                    if (symbol is null) continue;
-                    if (symbol is INamespaceSymbol) continue;
-                    if (symbol.IsImplicitlyDeclared) continue;
-                    if (!processedSymbols.Add(symbol)) continue;
-
-                    if (ShouldSkipSymbolForUnusedAnalysis(
-                            symbol, includePublic, excludeEnums, excludeRecordProperties, excludeTests, excludeConventionInvoked))
-                        continue;
-
-                    candidates.Add(symbol);
-                }
-            }
-
+            var candidates = await CollectUnusedCandidatesAsync(
+                compilation, options, processedSymbols, ct).ConfigureAwait(false);
             if (candidates.Count == 0) continue;
 
-            // Phase 2 (parallel, expensive): each candidate fans out to a SymbolFinder lookup
-            // (and possibly a cross-compilation fallback). Roslyn's Solution is immutable, so
-            // SymbolFinder is safe under concurrency. Bound parallelism by CPU count.
-            var parallelism = Math.Clamp(Environment.ProcessorCount, 4, 16);
-            using var semaphore = new SemaphoreSlim(parallelism, parallelism);
-            var capturedProject = project;
-            var capturedSolution = solution;
-
-            var tasks = candidates.Select(async symbol =>
-            {
-                await semaphore.WaitAsync(ct).ConfigureAwait(false);
-                try
-                {
-                    var refs = await SymbolFinder.FindReferencesAsync(symbol, capturedSolution, ct).ConfigureAwait(false);
-                    var refCount = refs.Sum(r => r.Locations.Count());
-
-                    // Fallback: cross-compilation re-resolution for symbols prone to
-                    // identity mismatches (extension methods, overloaded methods resolved
-                    // via implicit conversion). The project-local symbol from
-                    // GetDeclaredSymbol may not match the reduced/converted form that
-                    // callers bind to in other compilations.
-                    if (refCount == 0 && NeedsCrossCompilationCheck(symbol))
-                    {
-                        refCount = await CountCrossCompilationReferencesAsync(
-                            workspaceId, symbol, capturedProject, capturedSolution, ct).ConfigureAwait(false);
-                    }
-
-                    return refCount == 0 ? BuildUnusedDto(symbol) : null;
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            });
-
-            // Preserve original ordering (project → tree → declaration order) by awaiting
-            // in input order, not completion order.
-            var unusedDtos = await Task.WhenAll(tasks).ConfigureAwait(false);
-            foreach (var dto in unusedDtos)
-            {
-                if (dto is null) continue;
-                results.Add(dto);
-                if (results.Count >= limit) break;
-            }
+            await ScanCandidatesAndAppendResultsAsync(
+                workspaceId, project, solution, candidates, options.Limit, results, ct).ConfigureAwait(false);
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Phase 1 (sequential, cheap): walks every non-generated syntax tree in the
+    /// project, visits each <see cref="MemberDeclarationSyntax"/>, and returns the
+    /// subset that (a) has a declared symbol, (b) is not implicit/namespace,
+    /// (c) is not yet in <paramref name="processedSymbols"/>, and (d) does not
+    /// match the skip-filter in <see cref="ShouldSkipSymbolForUnusedAnalysis"/>.
+    /// The HashSet de-dup MUST run on a single thread, so this phase is not
+    /// parallelized.
+    /// </summary>
+    private static async Task<List<ISymbol>> CollectUnusedCandidatesAsync(
+        Compilation compilation,
+        UnusedSymbolsAnalysisOptions options,
+        HashSet<ISymbol> processedSymbols,
+        CancellationToken ct)
+    {
+        var candidates = new List<ISymbol>();
+
+        foreach (var tree in compilation.SyntaxTrees)
+        {
+            if (ct.IsCancellationRequested) break;
+            if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
+
+            var semanticModel = compilation.GetSemanticModel(tree);
+            var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+
+            foreach (var decl in root.DescendantNodes().OfType<MemberDeclarationSyntax>())
+            {
+                if (ct.IsCancellationRequested) break;
+
+                var symbol = semanticModel.GetDeclaredSymbol(decl, ct);
+                if (!IsCandidateSymbol(symbol, processedSymbols)) continue;
+                if (ShouldSkipSymbolForUnusedAnalysis(
+                        symbol!, options.IncludePublic, options.ExcludeEnums,
+                        options.ExcludeRecordProperties, options.ExcludeTests,
+                        options.ExcludeConventionInvoked))
+                    continue;
+
+                candidates.Add(symbol!);
+            }
+        }
+
+        return candidates;
+    }
+
+    /// <summary>
+    /// Returns true when the declared <paramref name="symbol"/> is eligible for
+    /// unused-analysis (non-null, non-implicit, non-namespace, and not already seen
+    /// in <paramref name="processedSymbols"/>). Adds the symbol to the set as a
+    /// side-effect when it's accepted so the caller does not need a separate
+    /// <c>Add</c>.
+    /// </summary>
+    private static bool IsCandidateSymbol(ISymbol? symbol, HashSet<ISymbol> processedSymbols)
+    {
+        if (symbol is null) return false;
+        if (symbol is INamespaceSymbol) return false;
+        if (symbol.IsImplicitlyDeclared) return false;
+        return processedSymbols.Add(symbol);
+    }
+
+    /// <summary>
+    /// Phase 2 (parallel, expensive): fans out a reference scan across every
+    /// candidate symbol using a bounded <see cref="SemaphoreSlim"/>, then appends
+    /// the zero-reference survivors to <paramref name="results"/> in declaration
+    /// order (project → tree → decl). Honors <paramref name="limit"/> once results
+    /// are collected. Roslyn's <see cref="Solution"/> is immutable, so
+    /// <see cref="SymbolFinder"/> is safe under concurrency.
+    /// </summary>
+    private async Task ScanCandidatesAndAppendResultsAsync(
+        string workspaceId,
+        Project project,
+        Solution solution,
+        List<ISymbol> candidates,
+        int limit,
+        List<UnusedSymbolDto> results,
+        CancellationToken ct)
+    {
+        var parallelism = Math.Clamp(Environment.ProcessorCount, 4, 16);
+        using var semaphore = new SemaphoreSlim(parallelism, parallelism);
+
+        var tasks = candidates.Select(symbol =>
+            TryBuildUnusedDtoAsync(workspaceId, symbol, project, solution, semaphore, ct));
+
+        // Preserve original ordering (project → tree → declaration order) by awaiting
+        // in input order, not completion order.
+        var unusedDtos = await Task.WhenAll(tasks).ConfigureAwait(false);
+        foreach (var dto in unusedDtos)
+        {
+            if (dto is null) continue;
+            results.Add(dto);
+            if (results.Count >= limit) break;
+        }
+    }
+
+    /// <summary>
+    /// Per-candidate reference count + cross-compilation fallback, gated by
+    /// <paramref name="semaphore"/>. Returns an <see cref="UnusedSymbolDto"/> when
+    /// the final reference count is zero, otherwise <see langword="null"/>.
+    ///
+    /// <para>Fallback note: cross-compilation re-resolution is required for
+    /// extension methods and overloaded methods whose callers bind via implicit
+    /// conversion — the project-local symbol from <c>GetDeclaredSymbol</c> may not
+    /// match the reduced/converted form other compilations see.</para>
+    /// </summary>
+    private async Task<UnusedSymbolDto?> TryBuildUnusedDtoAsync(
+        string workspaceId,
+        ISymbol symbol,
+        Project declaringProject,
+        Solution solution,
+        SemaphoreSlim semaphore,
+        CancellationToken ct)
+    {
+        await semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var refs = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
+            var refCount = refs.Sum(r => r.Locations.Count());
+
+            if (refCount == 0 && NeedsCrossCompilationCheck(symbol))
+            {
+                refCount = await CountCrossCompilationReferencesAsync(
+                    workspaceId, symbol, declaringProject, solution, ct).ConfigureAwait(false);
+            }
+
+            return refCount == 0 ? BuildUnusedDto(symbol) : null;
+        }
+        finally
+        {
+            semaphore.Release();
+        }
     }
 
     private static UnusedSymbolDto? BuildUnusedDto(ISymbol symbol)
