@@ -5,6 +5,7 @@
     <Project Path="src/RoslynMcp.Roslyn/RoslynMcp.Roslyn.csproj" />
   </Folder>
   <Folder Name="/analyzers/">
+    <Project Path="analyzers/McpToolShimGenerator/McpToolShimGenerator.csproj" />
     <Project Path="analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj" />
   </Folder>
   <Folder Name="/tests/">
