@@ -4,6 +4,17 @@
 **author:** Comprehensive refactor audit, 2026-04-20 session (PR #301 + #302)
 **closes (when fully shipped):** backlog rows `tools-dispatch-shim-boilerplate-duplication` (P3) and `top10-complexity-hotspots-not-yet-extracted` (P3)
 
+## Status (2026-04-21): COMPLETE
+
+Both workstreams shipped across 16 PRs. Both P3 backlog rows now closed.
+
+| Workstream | Sessions | PRs shipped | Status |
+|---|---|---|---|
+| WS1 — `tools-dispatch-shim-boilerplate-duplication` | 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7 | #303, #305, #306, #309, #311, #313, #315 | shipped |
+| WS2 — `top10-complexity-hotspots-not-yet-extracted` | 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 2.10 | #304, #307, #308, #310, #312, #314, #316, #317, #318, *this PR* | shipped |
+
+WS2 final disposition (session 2.10): 15 of 17 cc≥18 hotspots extracted across sessions 2.1–2.9; 2 methods (`SideEffectClassifier.ClassifyMethod` cc=22 MI=50, `MutationAnalysisService.ClassifyTypeUsageAfterWalk` cc=21 MI=50) rejected after counterargument review — both are dense switch-over-closed-kind-set patterns where high cc is offset by high MI, signalling the structure is already clear. Rejection rationale captured inline on each method; no backlog row needed per the open-work-only contract.
+
 This plan sequences two independent workstreams surfaced by the 2026-04-20 audit. Each workstream is gated by per-session caps from `ai_docs/prompts/deep-review-and-refactor.md` (5 findings, ≤2 high-risk).
 
 ---
@@ -227,3 +238,16 @@ When the last WS1 + WS2 session lands:
 1. **Workstream 1 phase 1.1 — accept the new `Microsoft.CodeAnalysis.CSharp` analyzer dependency in `analyzers/McpToolShimGenerator/`?** It's already in the repo via `ServerSurfaceCatalogAnalyzer` so this is consistent, but adds another netstandard2.0 project to maintain.
 2. **Workstream 1 phase 1.2 — pilot tool group?** I picked `CodeActionTools` (smallest, 2 methods). Acceptable, or pick a different one as the canary?
 3. **Workstream 2 — pursue sequentially or parallelize via subagent dispatch?** Sequential is safer (each session's `get_complexity_metrics` informs the next); parallel saves wall-clock at the cost of higher risk if two extractions touch overlapping helpers in the same file (sessions 2.6 + 2.7 both touch `CohesionAnalysisService.cs` and `ScaffoldingService.cs` respectively — fine; sessions 2.2 touches `TestReferenceMapService.cs` while 2.8 touches it again — must be sequenced).
+
+---
+
+## Closing note (2026-04-21): 10-wave arc summary
+
+The plan was executed over 10 days in an alternating WS1/WS2 cadence (1.1, 2.1, 1.2, 2.2, … 1.7, 2.9, 2.10). Final tally:
+
+- **16 PRs shipped** — 7 WS1 (#303, #305, #306, #309, #311, #313, #315) + 9 WS2 (#304, #307, #308, #310, #312, #314, #316, #317, #318) + this closeout PR.
+- **Both P3 rows closed** — `tools-dispatch-shim-boilerplate-duplication` closed after WS1 phase 1.7 (#315); `top10-complexity-hotspots-not-yet-extracted` closed with this PR after WS2 session 2.10.
+- **15 of 17 WS2 hotspots extracted** — cc reduced to <20 on each. 2 methods rejected after counterargument review (dense-switch-over-closed-kind-set pattern, high MI).
+- **WS1 course-correction captured** — phase 1.2 discovered MCP SDK conflict with source-generator emission approach (`ModelContextProtocol.Analyzers.XmlToDescriptionGenerator` owns the `public static partial` slot); pivoted to inline `ToolDispatch` helper pattern across phases 1.2–1.6, then phase 1.7 retired the unused generator scaffolding. The plan doc was updated in-flight to reflect the revised approach rather than rewriting history.
+- **Side-effect**: `server-surface-catalog-append-conflict-hotspot` (P4) remains open — the original hope that WS1 would eliminate the catalog hand-maintenance did not pan out (no generator means `ServerSurfaceCatalog.cs` stays hand-maintained). That row stays in the backlog.
+- **`CHANGELOG.md`** carries a per-PR entry under `## [Unreleased] ### Maintenance` for every session.
