@@ -2,7 +2,7 @@
 
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 
-**updated_at:** 2026-04-21T17:11:36Z
+**updated_at:** 2026-04-21T18:31:17Z
 
 ## Agent contract
 
@@ -34,9 +34,7 @@ _No open P2 rows._
 
 Within P3, rows are **alphabetical by `id`**.
 
-| id | pri | blocker | deps | do |
-|----|-----|---------|------|-----|
-| `top10-complexity-hotspots-not-yet-extracted` | P3 | — | — | **Maintainability:** After the 2026-04-20 audit extracted phase helpers from the top-2 complexity hotspots (`ExtractMethodService.PreviewExtractSharedExpressionToHelperAsync` cc=44→<20 and `SymbolRefactorService.SatelliteAnalysis.Analyze` cc=32→<20), 17 methods remain with cyclomatic complexity ≥18 per `get_complexity_metrics(minComplexity=18)`. Ranked: `TestReferenceMapService.BuildAsync` (cc=30, MI=28), `ChangeSignatureService.ApplyAddRemoveAsync` (cc=28, MI=28), `CompileCheckService.CheckAsync` (cc=28, MI=30), `RecordFieldAdditionService.ClassifySite` (cc=25, **12 params**), `UnusedCodeAnalyzer.FindUnusedSymbolsAsync` (cc=24), `ScaffoldingService.ResolveInterfaceMembersAsync` (cc=23), `SideEffectClassifier.ClassifyMethod` (cc=22), `RecordFieldAdditionService.PreviewAdditionAsync` (cc=22), `SymbolRefactorService.PreviewSplitServiceWithDiAsync` (cc=22), `SymbolSearchService.SearchSymbolsAsync` (cc=22), `CodeMetricsService.VisitChildForNesting` (cc=21), `CohesionAnalysisService.AnalyzeTypeCohesion`/`FindSharedMembersAsync` (cc=21 each), `DuplicateMethodDetectorService.FindDuplicatedMethodsAsync` (cc=21), `MutationAnalysisService.ClassifyTypeUsageAfterWalk` (cc=21), `ScaffoldingService.BuildMethodTargetInvocationBlock` (cc=21), `TestReferenceMapService.DetectMockDriftAsync` (cc=21), `UndoService.RevertFromSolutionSnapshotAsync` (cc=21). **`ClassifySite` 12-param smell** deserves its own companion action: the parameter list should become a record (`RecordFieldClassificationContext`) to eliminate the long parameter list before extracting helpers. **Approach:** tackle 2 per session as follow-up audits (same pattern as 2026-04-20); prefer `extract_method_preview/apply` + full-suite `test_run` after each. **Refs:** `src/RoslynMcp.Roslyn/Services/` (all files above); closed this session: top-2 hotspots via PR from 2026-04-20 audit. |
+_No open P3 rows._
 
 ## P4 — open work
 

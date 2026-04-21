@@ -398,6 +398,12 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         return false;
     }
 
+    // WS2 session 2.10 — rejected for extraction (2026-04-21). cc=21, MI=50. Same
+    // dense-switch-over-closed-kind-set pattern as SideEffectClassifier.ClassifyMethod —
+    // the switch arms classify a single syntactic usage into a mutation category. Each
+    // arm is a short match; extraction would raise helper count without reader benefit.
+    // See the closed backlog row top10-complexity-hotspots-not-yet-extracted for
+    // session-level disposition rationale.
     private static TypeUsageClassification ClassifyTypeUsageAfterWalk(SyntaxNode typeNode, SyntaxNode parent, ISymbol referencedSymbol)
     {
         // Static class usage at call sites: TypeName.Member (expression is the type identifier).

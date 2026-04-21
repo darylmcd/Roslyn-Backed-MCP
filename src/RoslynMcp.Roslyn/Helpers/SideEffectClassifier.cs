@@ -72,6 +72,18 @@ public static class SideEffectClassifier
     /// <summary>
     /// Classifies a single method symbol against the catalogued side-effect APIs.
     /// </summary>
+    /// <remarks>
+    /// WS2 session 2.10 disposition (2026-04-21): considered-and-rejected for extraction.
+    /// cc=22, MI=50 — dense switch-over-closed-kind-set pattern; the high-cc/high-MI shape
+    /// signals the structure is already clear. See inline note above for rationale.
+    /// </remarks>
+    // WS2 session 2.10 — rejected for extraction (2026-04-21). This method has cyclomatic
+    // complexity 22 but maintainability index 50 — a dense switch-over-closed-kind-set
+    // pattern classifying a single SyntaxKind into one of the side-effect buckets. Each
+    // switch arm is a 1-2 line match; extracting them into per-kind helpers would multiply
+    // method count by ~20 with no reader win. The high-cc/high-MI signature is the
+    // "wide switch is already clear" shape explicitly called out in the
+    // top10-complexity-hotspots-not-yet-extracted backlog row (now closed).
     private static string? ClassifyMethod(IMethodSymbol method)
     {
         var ns = method.ContainingType?.ContainingNamespace?.ToDisplayString() ?? string.Empty;
