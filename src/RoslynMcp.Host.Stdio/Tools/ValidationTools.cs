@@ -39,13 +39,11 @@ public static class ValidationTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Project name or project file path within the loaded workspace")] string projectName,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await buildService.BuildProjectAsync(workspaceId, projectName, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => buildService.BuildProjectAsync(workspaceId, projectName, c),
+            ct);
 
     [McpServerTool(Name = "test_discover", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Discover tests from test projects in the loaded workspace. Results are paginated to keep responses within MCP context budgets — large suites should be filtered with projectName and/or nameFilter (BUG-007). The response includes returnedCount/totalCount/hasMore so you can tell when more pages exist.")]
     [McpToolMetadata("validation", "stable", true, false,
@@ -192,11 +190,9 @@ public static class ValidationTools
         [Description("Array of absolute paths to changed source files")] string[] filePaths,
         [Description("Maximum number of test cases to return (default: 100)")] int maxResults = 100,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await testDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, filePaths, maxResults, c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => testDiscoveryService.FindRelatedTestsForFilesAsync(workspaceId, filePaths, maxResults, c),
+            ct);
 }

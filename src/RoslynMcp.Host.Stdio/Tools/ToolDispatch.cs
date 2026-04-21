@@ -63,8 +63,48 @@ internal static class ToolDispatch
         string previewToken,
         Func<CancellationToken, Task<TDto>> serviceCall,
         CancellationToken ct)
+        => ApplyByTokenAsync(gate, previewStore.PeekWorkspaceId, previewToken, serviceCall, ct);
+
+    /// <summary>
+    /// Overload for <c>*_apply</c> tools that use a non-<see cref="IPreviewStore"/> preview
+    /// store (e.g. <c>ICompositePreviewStore</c>, <c>IProjectMutationPreviewStore</c>) whose
+    /// only requirement from the dispatch helper is a token → workspaceId peek. Accepts the
+    /// peek as a <see cref="Func{T, TResult}"/> delegate so the helper stays decoupled from
+    /// the concrete store interface — phase-1.6 widening to cover
+    /// <c>ApplyCompositePreview</c> and <c>ApplyProjectMutation</c>, which otherwise match
+    /// the same 7-line dispatch pattern but can't consume the primary overload because their
+    /// store interfaces don't derive from <see cref="IPreviewStore"/>.
+    /// </summary>
+    /// <typeparam name="TDto">The DTO type returned by the underlying service call.</typeparam>
+    /// <param name="gate">The workspace execution gate.</param>
+    /// <param name="peekWorkspaceId">
+    /// A closure that returns the workspaceId for a given preview token without consuming
+    /// the entry, or <see langword="null"/> if the token is expired or not found. Typically
+    /// a method group reference to the store's <c>PeekWorkspaceId</c>.
+    /// </param>
+    /// <param name="previewToken">The opaque token returned by the paired <c>*_preview</c> tool.</param>
+    /// <param name="serviceCall">
+    /// A closure that invokes the service method with the <paramref name="previewToken"/>
+    /// and the gate-provided <see cref="CancellationToken"/>. Kept as
+    /// <c>Func&lt;CancellationToken, Task&lt;TDto&gt;&gt;</c> for the same reason as the
+    /// primary <see cref="ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+    /// overload: closure capture matches the existing hand-written shim bodies byte-for-byte.
+    /// </param>
+    /// <param name="ct">The caller's cancellation token.</param>
+    /// <returns>The DTO serialized with <see cref="JsonDefaults.Indented"/>.</returns>
+    /// <exception cref="KeyNotFoundException">
+    /// Thrown when <paramref name="peekWorkspaceId"/> returns <see langword="null"/>. The
+    /// exception message matches the format used by the existing hand-written shims so
+    /// existing error-envelope tests remain valid when shims migrate to this helper.
+    /// </exception>
+    public static Task<string> ApplyByTokenAsync<TDto>(
+        IWorkspaceExecutionGate gate,
+        Func<string, string?> peekWorkspaceId,
+        string previewToken,
+        Func<CancellationToken, Task<TDto>> serviceCall,
+        CancellationToken ct)
     {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
+        var wsId = peekWorkspaceId(previewToken)
             ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
         return gate.RunWriteAsync(wsId, async c =>
         {

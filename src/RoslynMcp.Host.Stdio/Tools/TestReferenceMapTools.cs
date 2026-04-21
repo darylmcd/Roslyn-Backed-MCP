@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using ModelContextProtocol.Server;
@@ -8,7 +7,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
 /// Item 10: static reference-based test coverage map. Fast alternative to the runtime
-/// <c>test_coverage</c> tool for "is this symbol tested at all" questions.
+/// <c>test_coverage</c> tool for "is this symbol tested at all" questions. WS1 phase 1.6 —
+/// the single shim body delegates to <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>
+/// instead of carrying the dispatch boilerplate inline.
 /// </summary>
 [McpServerToolType]
 public static class TestReferenceMapTools
@@ -25,11 +26,9 @@ public static class TestReferenceMapTools
         [Description("0-based start index. Clamped to [0, total]. Default 0.")] int offset = 0,
         [Description("Max entries returned per page. Clamped to [1, 500]. Default 200.")] int limit = 200,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await testReferenceMapService.BuildAsync(workspaceId, projectName, offset, limit, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => testReferenceMapService.BuildAsync(workspaceId, projectName, offset, limit, c),
+            ct);
 }

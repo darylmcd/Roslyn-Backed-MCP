@@ -7,6 +7,18 @@ using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for file-operation refactorings (create / delete / move).
+/// WS1 phase 1.6 — the three <c>Apply*</c> methods (pure dispatch) delegate to
+/// <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, IPreviewStore, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>;
+/// the <c>Preview*</c> methods keep their hand-written bodies because they
+/// perform async <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/>
+/// calls inside the gate before dispatching to the service (validation must run
+/// under the gate's cancellation token — the helper's single-lambda shape doesn't
+/// fit). See <c>CodeActionTools</c> (canary, PR #305) and
+/// <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c> for the migration
+/// rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class FileOperationTools
 {
@@ -43,15 +55,12 @@ public static class FileOperationTools
         IPreviewStore previewStore,
         [Description("The preview token returned by create_file_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "delete_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("file-operations", "stable", true, false,
@@ -83,15 +92,12 @@ public static class FileOperationTools
         IPreviewStore previewStore,
         [Description("The preview token returned by delete_file_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "move_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("file-operations", "stable", true, false,
@@ -130,13 +136,10 @@ public static class FileOperationTools
         IPreviewStore previewStore,
         [Description("The preview token returned by move_file_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 }

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -10,7 +9,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 
 /// <summary>
 /// Item 6 + Item 7: structural search/replace and string-literal-to-constant extraction tools.
-/// Both live here because they share the preview/apply pattern and scope filters.
+/// Both live here because they share the preview/apply pattern and scope filters. WS1 phase
+/// 1.6 — each shim body delegates to <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>
+/// instead of carrying the dispatch boilerplate inline.
 /// </summary>
 [McpServerToolType]
 public static class RestructureTools
@@ -28,15 +29,13 @@ public static class RestructureTools
         [Description("Optional: restrict scope to this file path")] string? filePath = null,
         [Description("Optional: restrict scope to this project (name or file path)")] string? projectName = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await restructureService.PreviewRestructureAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => restructureService.PreviewRestructureAsync(
                 workspaceId, pattern, goal,
-                new RestructureScope(filePath, projectName), c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                new RestructureScope(filePath, projectName), c),
+            ct);
 
     [McpServerTool(Name = "replace_string_literals_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
@@ -50,12 +49,10 @@ public static class RestructureTools
         [Description("Optional: restrict scope to this file path")] string? filePath = null,
         [Description("Optional: restrict scope to this project (name or file path)")] string? projectName = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await stringLiteralReplaceService.PreviewReplaceAsync(
-                workspaceId, replacements, new RestructureScope(filePath, projectName), c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => stringLiteralReplaceService.PreviewReplaceAsync(
+                workspaceId, replacements, new RestructureScope(filePath, projectName), c),
+            ct);
 }

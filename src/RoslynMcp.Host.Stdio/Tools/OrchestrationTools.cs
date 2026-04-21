@@ -7,6 +7,17 @@ using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for orchestration operations (migrate_package, split_class,
+/// extract_and_wire_interface, apply_composite_preview). WS1 phase 1.6 — the pure
+/// dispatch shims delegate to <see cref="ToolDispatch"/>; the
+/// <c>PreviewExtractAndWireInterface</c> shim keeps its hand-written body because
+/// it wraps <see cref="ProgressHelper.Report"/> calls around the service call
+/// (non-dispatch bookkeeping). <c>ApplyCompositePreview</c> uses the phase-1.6
+/// delegate overload of <see cref="ToolDispatch.ApplyByTokenAsync{TDto}(IWorkspaceExecutionGate, Func{string, string?}, string, Func{CancellationToken, Task{TDto}}, CancellationToken)"/>
+/// so it can reuse the shared dispatch body even though
+/// <c>ICompositePreviewStore</c> doesn't derive from <c>IPreviewStore</c>.
+/// </summary>
 [McpServerToolType]
 public static class OrchestrationTools
 {
@@ -23,13 +34,11 @@ public static class OrchestrationTools
         [Description("Replacement package id")] string newPackageId,
         [Description("Replacement package version")] string newVersion,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await packageMigrationOrchestrator.PreviewMigratePackageAsync(workspaceId, oldPackageId, newPackageId, newVersion, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => packageMigrationOrchestrator.PreviewMigratePackageAsync(workspaceId, oldPackageId, newPackageId, newVersion, c),
+            ct);
 
     [McpServerTool(Name = "split_class_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("orchestration", "experimental", true, false,
@@ -44,13 +53,11 @@ public static class OrchestrationTools
         [Description("Member names to move into the new partial class file")] string[] memberNames,
         [Description("File name for the new partial class file, for example Dog.Behavior.cs")] string newFileName,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await classSplitOrchestrator.PreviewSplitClassAsync(workspaceId, filePath, typeName, memberNames, newFileName, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => classSplitOrchestrator.PreviewSplitClassAsync(workspaceId, filePath, typeName, memberNames, newFileName, c),
+            ct);
 
     [McpServerTool(Name = "extract_and_wire_interface_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("orchestration", "experimental", true, false,
@@ -94,13 +101,10 @@ public static class OrchestrationTools
         ICompositePreviewStore compositePreviewStore,
         [Description("The preview token returned by an orchestration preview tool")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = compositePreviewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await compositeApplyOrchestrator.ApplyCompositeAsync(previewToken, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            compositePreviewStore.PeekWorkspaceId,
+            previewToken,
+            c => compositeApplyOrchestrator.ApplyCompositeAsync(previewToken, c),
+            ct);
 }

@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -7,6 +6,14 @@ using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for scaffolding refactorings (scaffold_type / scaffold_test /
+/// scaffold_test_batch / scaffold_first_test_file). WS1 phase 1.6 — each shim body
+/// delegates to the corresponding <see cref="ToolDispatch"/> helper instead of
+/// carrying the 7-line dispatch boilerplate inline. See <c>CodeActionTools</c>
+/// (canary, PR #305) and <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c>
+/// for the migration rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class ScaffoldingTools
 {
@@ -29,14 +36,14 @@ public static class ScaffoldingTools
         CancellationToken ct = default)
     {
         ParameterValidation.ValidateTypeKind(typeKind);
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await scaffoldingService.PreviewScaffoldTypeAsync(
+        return ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => scaffoldingService.PreviewScaffoldTypeAsync(
                 workspaceId,
                 new ScaffoldTypeDto(projectName, typeName, typeKind, @namespace, baseType, interfaces, implementInterface),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
+                c),
+            ct);
     }
 
     [McpServerTool(Name = "scaffold_test_batch_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -51,16 +58,14 @@ public static class ScaffoldingTools
         [Description("Array of targets. Each item: { targetTypeName: string, targetMethodName?: string }")] ScaffoldTestBatchTargetDto[] targets,
         [Description("Test framework: mstest, xunit, nunit, or auto (default — inferred from the test project's PackageReferences)")] string testFramework = "auto",
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await scaffoldingService.PreviewScaffoldTestBatchAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => scaffoldingService.PreviewScaffoldTestBatchAsync(
                 workspaceId,
                 new ScaffoldTestBatchDto(testProjectName, targets ?? [], testFramework),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "scaffold_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", false, true,
@@ -72,15 +77,12 @@ public static class ScaffoldingTools
         IPreviewStore previewStore,
         [Description("The preview token returned by scaffold_type_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "scaffold_test_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "stable", true, false,
@@ -96,16 +98,14 @@ public static class ScaffoldingTools
         [Description("Test framework: mstest, xunit, nunit, or auto (infer from PackageReference in the test csproj)")] string testFramework = "auto",
         [Description("Optional: absolute path to an existing sibling test file whose scaffolding (class attributes, base class, IClassFixture<T> constructor) should be replicated. When omitted, the most-recently-modified *Tests.cs in the target project is used. Pass an empty string to opt out of inference.")] string? referenceTestFile = null,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await scaffoldingService.PreviewScaffoldTestAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => scaffoldingService.PreviewScaffoldTestAsync(
                 workspaceId,
                 new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName, testFramework, referenceTestFile),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "scaffold_test_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", false, true,
@@ -117,15 +117,12 @@ public static class ScaffoldingTools
         IPreviewStore previewStore,
         [Description("The preview token returned by scaffold_test_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 
     [McpServerTool(Name = "scaffold_first_test_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", true, false,
@@ -139,14 +136,12 @@ public static class ScaffoldingTools
         [Description("Optional: name or absolute path of the destination test project. When omitted, the scaffolder picks the unique project that references the service's containing project AND whose name ends in '.Tests'.")] string? testProjectName = null,
         [Description("Test framework: mstest, xunit, nunit, or auto (infer from PackageReference in the test csproj)")] string testFramework = "auto",
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await scaffoldingService.PreviewScaffoldFirstTestFileAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => scaffoldingService.PreviewScaffoldFirstTestFileAsync(
                 workspaceId,
                 new ScaffoldFirstTestFileDto(serviceMetadataName, testProjectName, testFramework),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 }

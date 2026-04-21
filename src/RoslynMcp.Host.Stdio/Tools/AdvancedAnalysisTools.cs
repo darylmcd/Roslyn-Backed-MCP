@@ -170,13 +170,11 @@ public static class AdvancedAnalysisTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("When true, returns a compact per-package summary `{packageId, version, projectCount, distinctVersionCount}` instead of the full per-project graph. Default false preserves the verbose shape.")] bool summary = false,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, c, summary);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, c, summary),
+            ct);
 
     [McpServerTool(Name = "find_dead_locals", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,

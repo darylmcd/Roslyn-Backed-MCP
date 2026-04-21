@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
@@ -7,6 +6,13 @@ using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry point for the in-memory compile check. WS1 phase 1.6 — the shim
+/// body delegates to <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/>
+/// instead of carrying the dispatch boilerplate inline. Pre-gate
+/// <see cref="ParameterValidation"/> calls run synchronously before dispatch, matching
+/// the pattern established in <c>BulkRefactoringTools.PreviewBulkReplaceType</c>.
+/// </summary>
 [McpServerToolType]
 public static class CompileCheckTools
 {
@@ -28,13 +34,13 @@ public static class CompileCheckTools
     {
         ParameterValidation.ValidateSeverity(severity);
         ParameterValidation.ValidatePagination(offset, limit);
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await compileCheckService.CheckAsync(
+        return ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => compileCheckService.CheckAsync(
                 workspaceId,
                 new CompileCheckOptions(projectName, emitValidation, severity, file, offset, limit),
-                c);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
+                c),
+            ct);
     }
 }

@@ -1,9 +1,8 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
-using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
+using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -12,6 +11,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// confirms it has zero non-implementation callers, gathers every implementing class member,
 /// and produces a single dead-code removal preview spanning the interface declaration plus
 /// every implementation. Callers can then redeem the preview via <c>remove_dead_code_apply</c>.
+/// WS1 phase 1.6 — the shim body delegates to
+/// <see cref="ToolDispatch.ReadByWorkspaceIdAsync{TDto}"/> instead of carrying the
+/// dispatch boilerplate inline.
 /// </summary>
 [McpServerToolType]
 public static class RemoveInterfaceMemberTool
@@ -27,11 +29,9 @@ public static class RemoveInterfaceMemberTool
         [Description("Symbol handle from symbol_search/find_unused_symbols/etc. pointing at an interface method, property, or event.")] string interfaceMemberHandle,
         [Description("When true, also delete files left empty after the removal (default: false).")] bool removeEmptyFiles = false,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await orchestrator.PreviewRemoveAsync(workspaceId, interfaceMemberHandle, removeEmptyFiles, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => orchestrator.PreviewRemoveAsync(workspaceId, interfaceMemberHandle, removeEmptyFiles, c),
+            ct);
 }

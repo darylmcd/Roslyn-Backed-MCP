@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
@@ -7,6 +6,13 @@ using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
+/// <summary>
+/// MCP tool entry points for dead-code removal. WS1 phase 1.6 — each shim body
+/// delegates to the corresponding <see cref="ToolDispatch"/> helper instead of
+/// carrying the dispatch boilerplate inline. See <c>CodeActionTools</c> (canary,
+/// PR #305) and <c>ai_docs/plans/20260421T123658Z_post-audit-followups.md</c>
+/// for the migration rationale and the deferred-generator blocker.
+/// </summary>
 [McpServerToolType]
 public static class DeadCodeTools
 {
@@ -22,16 +28,14 @@ public static class DeadCodeTools
         [Description("Array of stable symbol handles returned by semantic tools")] string[] symbolHandles,
         [Description("When true, delete files whose remaining content is purely trivia or empty namespace shells after the removal (UX-005). False keeps the file and instead emits a warning")] bool removeEmptyFiles = false,
         CancellationToken ct = default)
-    {
-        return gate.RunReadAsync(workspaceId, async c =>
-        {
-            var result = await deadCodeService.PreviewRemoveDeadCodeAsync(
+        => ToolDispatch.ReadByWorkspaceIdAsync(
+            gate,
+            workspaceId,
+            c => deadCodeService.PreviewRemoveDeadCodeAsync(
                 workspaceId,
                 new DeadCodeRemovalDto(symbolHandles, removeEmptyFiles),
-                c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+                c),
+            ct);
 
     [McpServerTool(Name = "remove_dead_code_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("dead-code", "experimental", false, true,
@@ -43,13 +47,10 @@ public static class DeadCodeTools
         IPreviewStore previewStore,
         [Description("The preview token returned by remove_dead_code_preview")] string previewToken,
         CancellationToken ct = default)
-    {
-        var wsId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
-        return gate.RunWriteAsync(wsId, async c =>
-        {
-            var result = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
-        }, ct);
-    }
+        => ToolDispatch.ApplyByTokenAsync(
+            gate,
+            previewStore,
+            previewToken,
+            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            ct);
 }
