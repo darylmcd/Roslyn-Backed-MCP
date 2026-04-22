@@ -251,13 +251,19 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         return (tracked, Array.Empty<string>());
     }
 
-    private static string ComputeOverallStatus(
+    // validate-workspace-overallstatus-false-positive: compile_check can report Success=false
+    // with ErrorCount=0 when CompletedProjects==0 (e.g. empty project filter) — a distinct
+    // "no work" signal, not a compiler failure. Gating on !Success alone would emit
+    // overallStatus: compile-error with zero error diagnostics. Use ErrorCount and the
+    // merged error-severity rows instead.
+    internal static string ComputeOverallStatus(
         CompileCheckDto compile,
         IReadOnlyList<DiagnosticDto> errors,
         TestRunResultDto? testRunResult,
         bool runTests)
     {
-        if (!compile.Success || errors.Any(d => string.Equals(d.Category, "Compiler", StringComparison.Ordinal)))
+        if (compile.ErrorCount > 0
+            || errors.Any(d => string.Equals(d.Category, "Compiler", StringComparison.Ordinal)))
             return "compile-error";
         if (errors.Any(d => !string.Equals(d.Category, "Compiler", StringComparison.Ordinal)))
             return "analyzer-error";
