@@ -165,8 +165,13 @@ public sealed class ToolDispatchTests
             return await action(linked.Token).ConfigureAwait(false);
         }
 
-        public async Task<T> RunWriteAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
+        public async Task<T> RunWriteAsync<T>(
+            string workspaceId,
+            Func<CancellationToken, Task<T>> action,
+            CancellationToken ct,
+            bool applyStalenessPolicy = true)
         {
+            _ = applyStalenessPolicy;
             WriteCallCount++;
             LastWriteWorkspaceId = workspaceId;
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);

@@ -64,12 +64,16 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
 
     public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
     {
-        return RunPerWorkspaceAsync(workspaceId, isWrite: false, action, ct);
+        return RunPerWorkspaceAsync(workspaceId, isWrite: false, applyStalenessPolicy: true, action, ct);
     }
 
-    public Task<T> RunWriteAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
+    public Task<T> RunWriteAsync<T>(
+        string workspaceId,
+        Func<CancellationToken, Task<T>> action,
+        CancellationToken ct,
+        bool applyStalenessPolicy = true)
     {
-        return RunPerWorkspaceAsync(workspaceId, isWrite: true, action, ct);
+        return RunPerWorkspaceAsync(workspaceId, isWrite: true, applyStalenessPolicy, action, ct);
     }
 
     public async Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)
@@ -133,6 +137,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     private async Task<T> RunPerWorkspaceAsync<T>(
         string workspaceId,
         bool isWrite,
+        bool applyStalenessPolicy,
         Func<CancellationToken, Task<T>> action,
         CancellationToken ct)
     {
@@ -160,7 +165,12 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
         // acquired, so an auto-reload path runs under the same load gate as explicit
         // workspace_reload calls — the reload's own write-locking is handled by WorkspaceManager.
-        await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
+        // workspace_close skips this: reloading requires the on-disk solution, which may already
+        // be deleted while the in-memory session is still registered (F21 / missing worktree).
+        if (applyStalenessPolicy)
+        {
+            await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
+        }
 
         return await WithGlobalThrottle(async () =>
         {
