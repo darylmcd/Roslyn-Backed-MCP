@@ -3,7 +3,9 @@ namespace RoslynMcp.Core.Models;
 /// <summary>
 /// Represents the result of an in-memory compilation check without invoking dotnet build.
 /// </summary>
-/// <param name="Success">True when there are zero errors across the unfiltered total.</param>
+/// <param name="Success">True when there are zero errors, the run was not cancelled, and at least
+/// one project was evaluated (<c>CompletedProjects &gt; 0</c>). A vacuous result (e.g. zero
+/// projects after filtering) is <see langword="false"/> even when <see cref="ErrorCount"/> is 0.</param>
 /// <param name="ErrorCount">Total error count across the unfiltered solution (or filtered scope).</param>
 /// <param name="WarningCount">Total warning count across the unfiltered solution (or filtered scope).</param>
 /// <param name="TotalDiagnostics">Total diagnostics matching the filters before pagination is applied.</param>
