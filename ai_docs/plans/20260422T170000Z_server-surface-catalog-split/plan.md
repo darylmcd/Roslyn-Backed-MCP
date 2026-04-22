@@ -27,7 +27,7 @@ Actionable initiatives this sweep: **5**.
 Plan-time source reads, all present as of 2026-04-22T17:00Z:
 
 - `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog*.cs` — **Phase 2 (PR #334, 2026-04-22)**
-  plus **Phase 3 in review (PR #336, 2026-04-22):** W/S/R partials and, new in phase 3,
+  plus **Phase 3 shipped (PR #336, 2026-04-22):** W/S/R partials and, new in phase 3,
   `ServerSurfaceCatalog.Analysis.cs` and `ServerSurfaceCatalog.Editing.cs` with
   `s_allTools` = W+S+Analysis+Refactoring+Editing+`RemainingInlineTools` (tail). The main
   file holds the tail, Resources, Prompts, workflow hints, factories, and DTOs. The merged
@@ -113,12 +113,12 @@ ship in the order below.
 
 ### 3. `catalog-split-phase3-extract-analysis-and-editing` — Move Analysis, AdvancedAnalysis, Validation, Editing, FileOperations, DeadCode to partials
 
-**Status:** in-review (PR #336, 2026-04-22) · **Order:** 3 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Changed
+**Status:** merged (PR #336, 2026-04-22) · **Order:** 3 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|
 | Backlog rows closed | (none — Phase 4 continues) |
-| Diagnosis | Phase 2 left the remaining ~19 categories inline on the main file. The two clusters that still dominate by line count are the analysis cluster (`analysis` + `advanced-analysis` + `validation`, ~40 entries) and the editing cluster (`editing` + `file-operations` + `dead-code`, ~15 entries). Extracting both clusters in one PR keeps the file-count budget at 3 while removing the next ~55% of the remaining inline tools. |
+| Diagnosis | (Shipped in PR #336.) Phase 2 had left the remaining ~19 categories inline on the main file. The two clusters that dominated by line count were the analysis cluster (`analysis` + `advanced-analysis` + `validation`, ~40 entries) and the editing cluster (`editing` + `file-operations` + `dead-code`, ~15 entries). This phase extracted both clusters in one PR, keeping the file-count budget at 3 while moving the next ~55% of the remaining inline tools. |
 | Approach | (a) Create `ServerSurfaceCatalog.Analysis.cs` with `AnalysisTools` containing every `analysis` + `advanced-analysis` + `validation` category entry. (b) Create `ServerSurfaceCatalog.Editing.cs` with `EditingTools` containing every `editing` + `file-operations` + `dead-code` category entry. (c) Edit `ServerSurfaceCatalog.cs` Tools initializer to concatenate the two new slices before the unextracted tail: `[..WorkspaceTools, ..SymbolTools, ..AnalysisTools, ..RefactoringTools, ..EditingTools, ..RemainingInlineTools]`. Order is preserved: the sequence matches the original declaration order within each category. |
 | Scope | prod: 3 (`ServerSurfaceCatalog.cs` edit + 2 new partials). tests: 0 new. |
 | Tool policy | `edit-only` |
