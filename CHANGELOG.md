@@ -4,6 +4,8 @@ All notable changes to Roslyn-Backed MCP Server will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+> **New entries live in `changelog.d/<row-id>.md` fragments**, not in `## [Unreleased]` below. Release-cut (`/bump`) consumes the fragments and groups them into a new `## [X.Y.Z]` section, then `git rm`s the consumed files in the same commit. `## [Unreleased]` stays as a structural anchor with its empty subsection headers — it is no longer the write target. See `changelog.d/README.md` for the fragment-file pattern. (Migration: 2026-04-22, `parallel-pr-changelog-append-friction`.)
+
 ## [Unreleased]
 
 ### Fixed
