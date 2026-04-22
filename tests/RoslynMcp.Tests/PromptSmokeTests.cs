@@ -60,10 +60,13 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
 
     // dr-9-14-drift-001-param-name-mismatch-vs-experimental-p: guard against doc↔impl drift.
     // The `discover_capabilities` prompt's sole user-facing parameter must be named
-    // `taskCategory` so callers following the appendix in
-    // `ai_docs/prompts/experimental-promotion-exercise.md` (§7c.4) succeed.
+    // `taskCategory` so callers following Phase 16 of
+    // `ai_docs/prompts/deep-review-and-refactor.md` (which exercises `get_prompt_text`
+    // against this prompt) succeed. Originally filed against the retired
+    // `experimental-promotion-exercise.md` prompt; folded into deep-review Phase 16 in
+    // the 2026-04-22 audit-prompts refactor.
     [TestMethod]
-    public void DiscoverCapabilities_Parameter_Name_Matches_Experimental_Promotion_Appendix()
+    public void DiscoverCapabilities_Parameter_Name_Matches_Deep_Review_Phase_16()
     {
         const string expectedParameterName = "taskCategory";
 
@@ -78,8 +81,8 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         CollectionAssert.Contains(
             parameterNames,
             expectedParameterName,
-            $"discover_capabilities must expose parameter '{expectedParameterName}' to match the " +
-            "appendix in ai_docs/prompts/experimental-promotion-exercise.md. " +
+            $"discover_capabilities must expose parameter '{expectedParameterName}' to match " +
+            "the prompt invocation in ai_docs/prompts/deep-review-and-refactor.md Phase 16. " +
             $"Actual parameters: [{string.Join(", ", parameterNames)}]");
     }
 
