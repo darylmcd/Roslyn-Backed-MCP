@@ -26,10 +26,12 @@ Actionable initiatives this sweep: **5**.
 
 Plan-time source reads, all present as of 2026-04-22T17:00Z:
 
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs` — 448 lines, single
-  file, `public static class` (not currently `partial`). Tools property lines
-  11–187; Resources 189–204; Prompts 206–228; WorkflowHints 242–262;
-  factory helpers 347–357; DTOs 360–448.
+- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog*.cs` — **Phase 2 shipped
+  (PR #334, 2026-04-22):** `public static partial class` with domain slices in
+  `ServerSurfaceCatalog.Workspace.cs` / `.Symbols.cs` / `.Refactoring.cs`; the main
+  file holds `RemainingInlineTools` plus Resources, Prompts, workflow hints, factory
+  helpers, and DTOs. The merged `Tools` list is built with `Lazy<IReadOnlyList<SurfaceEntry>>`
+  so static field initializers are not order-dependent across partials.
 - `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs` —
   **Phase 1 shipped (PR #330, 2026-04-22):** `AnalyzeCatalogInvocation` no longer
   requires a `Tools` / `Resources` / `Prompts` property ancestor. Kind is inferred
@@ -90,7 +92,7 @@ ship in the order below.
 
 ### 2. `catalog-split-phase2-extract-three-large-domains` — Introduce `partial` keyword + move Workspace, Symbols, Refactoring tools to domain partials
 
-**Status:** in-review (PR #334) · **Order:** 2 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Changed
+**Status:** merged (PR #334, 2026-04-22) · **Order:** 2 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|

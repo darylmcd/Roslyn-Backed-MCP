@@ -36,14 +36,14 @@
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "toolPolicy": "edit-only",
-      "status": "in-review",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Changed",
       "branch": "remediation/catalog-split-phase2-extract-three-large-domains",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/334",
-      "mergedAt": null,
+      "mergedAt": "2026-04-22T16:14:29Z",
       "notes": "Depends on Phase 1 merged. Main file + 3 new partial files. Tools merged via Lazy from W+S+R+Remaining; domain ordering diverges from original line order by design."
     },
     {
