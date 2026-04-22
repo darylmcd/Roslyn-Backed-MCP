@@ -34,7 +34,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
+| **Status** | `merged` (PR [#349](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/349), 2026-04-22) |
 | **Backlog rows closed** | `preview-multi-file-edit-silent-syntax-acceptance` |
 | **Diagnosis** | `PreviewMultiFileTextEditsAsync` uses `GetCSharpSyntaxErrors` which parses and collects **only** `GetDiagnostics()` at `Error` (`src/RoslynMcp.Roslyn/Services/EditService.cs` ~503–518, ~234–247). Trivia/namespace-boundary insertions can yield a tree Roslyn recovers from without surfacing the expected errors — or errors at a severity not handled — so invalid C# can slip through with a clean diff. |
 | **Approach** | Tighten validation: e.g. require a full `GetDiagnostics()` pass for **all** severities that imply parse failure, or add an explicit parse of `CSharpSyntaxTree` + additional checks (root structure / `ContainsDiagnostics` for syntax-related ids). Reconcile with tool description in `MultiFileEditTools` and experimental catalog. Add regression from Jellyfin F17 shape (namespace + comment + `{`). |

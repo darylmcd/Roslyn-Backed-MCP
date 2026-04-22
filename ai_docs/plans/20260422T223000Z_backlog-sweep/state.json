@@ -36,15 +36,15 @@
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P3-correctness",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
+      "branch": "remediation/preview-multi-file-edit-silent-syntax-acceptance",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/349",
+      "mergedAt": "2026-04-22T18:37:46Z",
+      "notes": "Squash-merged; merge commit b80dacc. F17 / parser-recovery cases; EditService + PreviewMultiFileEditSyntaxRegressionTests."
     },
     {
       "id": "workspace-close-missing-solution-on-disk",
