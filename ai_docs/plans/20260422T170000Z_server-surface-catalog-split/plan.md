@@ -68,7 +68,7 @@ ship in the order below.
 
 ### 1. `catalog-split-phase1-relax-analyzer` — Extend `ServerSurfaceCatalogAnalyzer` to recognize `Tool()` calls outside the `Tools` property
 
-**Status:** pending · **Order:** 1 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Changed
+**Status:** in-review (branch: `remediation/catalog-split-phase1-relax-analyzer`) · **Order:** 1 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|
