@@ -14,7 +14,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `merged` (PR [#343](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/343), 2026-04-22) |
+| **Status** | `merged` (PR [#343](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/343) + follow-up [#346](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/346) — DTO doc + extra tests, 2026-04-22) |
 | **Backlog rows closed** | `validate-workspace-overallstatus-false-positive` |
 | **Diagnosis** | `CompileCheckService.CheckAsync` sets `Success: acc.ErrorCount == 0 && !acc.Cancelled && acc.CompletedProjects > 0` (`src/RoslynMcp.Roslyn/Services/CompileCheckService.cs` ~71–76). If **zero projects** complete (empty filter, cancellation edge, or all compilations null), `Success` is false with **zero** `ErrorCount`. `WorkspaceValidationService.ComputeOverallStatus` then returns `"compile-error"` when `!compile.Success` (`src/RoslynMcp.Roslyn/Services/WorkspaceValidationService.cs` ~254–266) even with no compiler/analyzer error rows. |
 | **Approach** | Align semantics: (a) either treat "no project completed" as a distinct `OverallStatus` / `Success` path, or (b) have `ComputeOverallStatus` return `"clean"` when `compile.ErrorCount == 0` and the error diagnostic union is empty — **without** conflating genuine compile failures. Prefer reusing `compile.ErrorCount` and explicit `TotalProjects`/`CompletedProjects` from `CompileCheckDto` so gating use cases only see `compile-error` when there are real compiler-failure-class diagnostics. Add/adjust tests in existing workspace validation / compile check test coverage. |
