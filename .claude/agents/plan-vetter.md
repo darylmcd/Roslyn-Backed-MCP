@@ -13,7 +13,7 @@ Mechanical operations only. If a rule's authoritative source disagrees with what
 
 The orchestrator provides:
 
-- `planPath` — filesystem path to `plan.md` (required, e.g. `ai_docs/plans/20260422T170000Z_server-surface-catalog-split/plan.md`).
+- `planPath` — filesystem path to `plan.md` (required, e.g. `ai_docs/plans/20260101T000000Z_example-sweep/plan.md`).
 
 Missing `planPath` → emit `VERDICT: error` with `reason: "missing planPath"` and exit.
 
