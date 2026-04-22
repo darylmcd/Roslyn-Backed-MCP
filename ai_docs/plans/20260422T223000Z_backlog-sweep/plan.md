@@ -54,7 +54,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
+| **Status** | `merged` (PR [#345](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/345), 2026-04-22) |
 | **Backlog rows closed** | `workspace-close-missing-solution-on-disk` |
 | **Diagnosis** | Per preamble, `Close` is lightweight; a `FileNotFound` likely comes from a **different** callsite in the `workspace_close` path (host notify, resource invalidation) or a race with reload. Reproduce and pin stack before or during implementation. |
 | **Approach** | After repro: ensure close **always** evicts the in-memory session and returns success JSON when the session id exists, even if on-disk `LoadedPath` is gone; no pre-close validation that re-opens the sln. Add test simulating missing file if feasible (temp dir + delete). |
