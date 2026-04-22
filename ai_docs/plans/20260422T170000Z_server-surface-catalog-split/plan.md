@@ -164,7 +164,7 @@ ship in the order below.
 
 ### 5. `catalog-split-phase5-cleanup-and-close` — Optional `SurfaceEntry`/DTO relocation + verify + close backlog row
 
-**Status:** in-review (PR opened from `remediation/catalog-split-phase5-cleanup-and-close`) · **Order:** 5 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Maintenance
+**Status:** in-review (PR #340) · **Order:** 5 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|

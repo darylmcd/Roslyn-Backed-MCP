@@ -102,7 +102,7 @@
       "changelogCategory": "Maintenance",
       "branch": "remediation/catalog-split-phase5-cleanup-and-close",
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/340",
       "mergedAt": null,
       "notes": "Closes the backlog row. DTO relocation skipped: post-Phase-4 `ServerSurfaceCatalog.cs` is a small aggregator; conflict driver was the monolithic tool list (addressed in Phases 1–4). `find_duplicated_methods` post-check deferred to CI/verify — no copy-paste clusters expected in Catalog after extraction. Changelog fragment + backlog row removal only."
     }
