@@ -56,14 +56,14 @@
       "productionFilesTouched": 3,
       "testFilesAdded": 0,
       "toolPolicy": "edit-only",
-      "status": "in-review",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Changed",
       "branch": "remediation/catalog-split-phase3-extract-analysis-and-editing",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/336",
-      "mergedAt": null,
+      "mergedAt": "2026-04-22T16:39:19Z",
       "notes": "Main file + 2 new partials. A/E/M partition of the former RemainingInline in original traversal order; s_allTools = W+S+Analysis+Refactoring+Editing+Remaining per plan §3."
     },
     {
