@@ -172,7 +172,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
+| **Status** | `merged` (PR [#350](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/350), 2026-04-22) — *order 4 in `state.json`* |
 | **Backlog rows closed** | `find-duplicate-helpers-framework-wrapper-false-positive` |
 | **Diagnosis** | `UnusedCodeAnalyzer.TryClassifyHelperAsDuplicate` and options (`src/RoslynMcp.Roslyn/Services/UnusedCodeAnalyzer.cs`); false positives for thin minimal-API / BCL wrappers (IT-Chat-Bot session). |
 | **Approach** | Add `excludeFrameworkWrappers` or heuristics for single-expression BCL `System.*` / `Microsoft.*` targets; may extend `DuplicateHelperAnalysisOptions` + `AdvancedAnalysisTools` parameter surface. |

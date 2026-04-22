@@ -76,15 +76,15 @@
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
+      "branch": "remediation/find-duplicate-helpers-framework-wrapper-false-positive",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/350",
+      "mergedAt": "2026-04-22T18:41:57Z",
+      "notes": "Squash-merged; merge commit 85b729f. ExcludeFrameworkWrappers on DuplicateHelperAnalysisOptions + find_duplicate_helpers param; UnusedCodeAnalyzer + tests."
     },
     {
       "id": "host-parallel-mcp-reads",
