@@ -35,6 +35,10 @@
 
 **Gate verdict:** proceed with a documented P2 caveat for resource-tier verification.
 
+**Side-observation (F23, client-side, P3).** The MCP client's tool-name prefix uses underscores (`mcp__plugin_roslyn-mcp_roslyn__*`) while `ListMcpResourcesTool` / `ReadMcpResourceTool` expect the server name formatted with colons (`plugin:roslyn-mcp:roslyn`). Attempts to read `roslyn://server/catalog` with either spelling failed with `Server "…" is not connected`. This is a client-side naming inconsistency — not a Roslyn MCP server defect — but it's why the Phase -1 catalog-parity check could not be independently verified on this run.
+
+**Side-observation (F24, contract, P3).** `connection.state == "initializing"` persisted for ~**2.5 minutes** between `serverStartedAt` (14:01:10 UTC) and the first `workspace_load` call (14:03:41 UTC) that flipped the state. Both `server_info` (15 ms) and `server_heartbeat` (1 ms) returned instantly throughout this window, so transport was healthy — only the state field was lagging. The Phase -1 gate doc says "If it never becomes ready, halt" — a caller interpreting that strictly would halt before ever issuing `workspace_load`, which is itself what flips the state to `ready`. The contract should either document "initializing is a normal pre-load state" or promote `ready` to mean "server process is up" rather than "workspace loaded".
+
 ---
 
 ## Phase 0: Setup
@@ -54,6 +58,11 @@
 - **Hub projects** (large consumer fan-in): `MediaBrowser.Controller`, `MediaBrowser.Common`, `MediaBrowser.Model`, `Jellyfin.Extensions`, `Jellyfin.CodeAnalysis`.
 - **Leaf projects**: `Jellyfin.CodeAnalysis`, `Jellyfin.Data` (only Jellyfin.Database.Implementations + CodeAnalysis), `Jellyfin.MediaEncoding.Keyframes`, `Jellyfin.Database.Implementations`.
 - **Test projects** (16 total): every production project has a sibling `*.Tests` project.
+
+**Findings (Phase 0):**
+- **F20 (P2, verified).** `workspace_reload` **unconditionally returns the full per-project verbose payload** — there is no `verbose=false` / `summary=true` option. On Jellyfin the reload response was **73,338 characters**, above the MCP token cap. I had to persist the response to disk and use PowerShell + `ConvertFrom-Json` to extract `elapsedMs`/`projectCount`/etc. Sibling defect to F11/F12/F18 (tools missing a payload reducer).
+- **F25 (P3, observation).** `workspace_reload._meta.heldMs = 23430` vs. `elapsedMs = 11719` — the lock-hold was **~2× the elapsed time** on this call, a ratio not observed on any other tool call in the run. Could indicate double-counting or a nested-hold bug in the rw-lock gate accounting; benign for correctness but worth investigating.
+- **F26 (P2, observation).** `workspace_warm` reports `projectsWarmed=40` and `coldCompilationCount=16`, but `workspace_health` run immediately after continues to report `analyzersReady=false` alongside `isReady=false`. **Warm-up primes the compilation + semantic-model caches but does not prime the analyzer pipeline.** Combined with F2 (AD0001 crashes) and the persistent `restoreHint`, analyzer-dependent tools under-reported for the entire run. Consider a `workspace_warm(warmAnalyzers=true)` option, or surface this as a distinct readiness dimension in the summary output.
 
 ---
 
@@ -103,6 +112,7 @@ Targets chosen (all in `MediaBrowser.Controller`, classic hub types): **`BaseIte
 - **F5 (win).** Paginated `find_references` caching is excellent: page-1 566 ms → page-2 11 ms on the same 1452-ref symbol. Reference-list pagination is cache-friendly.
 - **F6 (win).** Every post-warm lookup (symbol_info, small find_references) clocks in < 100 ms, hitting the "cache-hit-dominated" profile the `workspace_warm` docs promise.
 - **F7 (P2, verified).** `semantic_search` structural query ("returning Task<bool>") fails to narrow to the return-type shape — confirmed by paraphrase producing a completely disjoint result set. The `async` keyword gotcha noted in the docstring doesn't explain this case because the query asked for `Task<bool>` specifically. The tool would benefit from surfacing the **parse path** (structured vs. name-substring vs. token-or-match) in the response, not just logging it in Debug.
+- **F27 (P3, observation).** First-ever `symbol_search("BaseItem")` took **507 ms** on a workspace that had already been primed by `workspace_warm`. Subsequent searches for `IUserManager` (157 ms) and `ILibraryManager` (67 ms) showed a visible warming curve — meaning the substring-match index is **not** included in the `workspace_warm` pre-population pass. This is the only concrete cold-vs-warm delta captured in this run (Phase 2.3 was skipped). Consider extending `workspace_warm` to pre-populate the symbol-name index, or call it out explicitly in the tool's docstring.
 
 ---
 
@@ -123,6 +133,7 @@ Targets: `BaseItem` (hierarchy root), `IUserManager` (1 concrete impl), and `Bas
 **Findings:**
 - **F8 (P2, verified).** `get_syntax_tree` overshot `maxTotalBytes=30000` → persisted **76,600 bytes** (2.55×). The documented `~120 bytes per node` cost-model likely under-counts deeply-nested structural JSON on real C# files. Clients that rely on the hard-cap to size their output buffer will be surprised. Suggest either (a) calibrate the cost model, or (b) rename/describe the parameter as a **best-effort soft cap** and document an observed multiplier ceiling.
 - **F9 (win).** `go_to_definition` via `metadataName` is instantaneous (≤1 ms) on a hot workspace — this is the right path for scripted jumps that don't need a cursor.
+- **F22 (P2, verified).** `document_symbols` has **no payload reducer** (no `summary`, no `maxSymbols`, no `limit`). On `BaseItem.cs` (2694 lines) the response persisted at **74 KB** — unreadable inline. This is now the last holdout in the structural-tool family: `rename_preview`, `find_references`, `symbol_impact_sweep`, `validate_workspace`, `validate_recent_git_changes`, and all composites surface `summary=true`, but `document_symbols` does not. A `maxDepth` / `topLevelOnly` / `summary` option would close the gap.
 
 ---
 
@@ -219,12 +230,13 @@ All 30 calls were dispatched as a single parallel batch against a fully-primed w
 | 7.4 | `workspace_load` called again with the same `.sln` path | 4 | PASS (idempotent) | Returned the **same `workspaceId` (5fb19fc8…)** and `workspaceVersion:2` with no extra slot consumed — matches the documented idempotent-by-path contract. |
 | 7.5 | `find_references` with `symbolHandle="JUNK_HANDLE_FOR_TESTING_NOT_VALID_BASE64"` | 3 | `InvalidArgument` | **Actionable.** "symbolHandle is not valid base64." Specific failure mode, not silent empty. |
 | 7.6 | `symbol_search` with gibberish query `qqqqqqqqzzzzzzzzxxxxxxxxx` | 776 | PASS (empty set) | `count=0, symbols=[]`. **Clean** empty contract — no error, no fabricated matches. |
+| 7.7 | `workspace_close` after the underlying `.sln` file was deleted (worktree removed) | 2 | **UNEXPECTED** | `FileNotFound: Solution file not found: '…\Jellyfin.sln'. Verify the file path is absolute and the file exists on disk.` **The workspace ID was valid and the server held the in-memory session — closing a session shouldn't require the source artifact to still exist on disk.** Caller is left with a hanging registry entry until stdio host restarts. **Filing as F21 (P2 correctness bug).** |
 
 **Skipped (time budget):**
 - 7.7 Stale workspace / workspace_reload then compile_check. Already covered by the Phase 0 restore cycle.
 - 7.8 `find_references` on `BaseItem` with `limit=500` — would certainly exceed the MCP cap even with `summary=true` given 1452 total refs; skipped to avoid another payload-overflow incident that adds no new signal beyond F11/F12/F18.
 
-**Error-quality rating:** **6/6 actionable.** No vague/unhelpful cases encountered.
+**Error-quality rating:** **7/7 actionable** (the F21 `workspace_close` error message was also actionable — it was the *behavior* that was wrong, not the wording). No vague/unhelpful cases encountered.
 
 ---
 
@@ -248,12 +260,15 @@ Per-tool timings (from Phases 1–7, warm workspace, 40 projects / 2065 docs):
 ### 8.2 Bottleneck list (sorted by severity)
 
 1. **F13 (P1) — `validate_workspace` / `validate_recent_git_changes` report `overallStatus: "compile-error"` on a clean workspace (0 errors, 0 warnings).** Highest-impact defect: any CI-gating caller will reject provably-clean states. Must be fixed before these tools can be trusted for gating.
-2. **F1 (P2) — `project_diagnostics(severity=Warning, summary=true)` = 35 s** on a 40-project solution. Exceeds the 30 s budget on the cheapest code path (summary).
-3. **F2 (P1) — 2× `AD0001` (analyzer crashed)** surfaced but not investigated; eroded every analyzer-driven tool on this run.
-4. **F11/F12/F18 (P2)** — `get_namespace_dependencies`, `get_di_registrations`, `change_signature_preview` overflow the MCP token cap on a 40-project solution because none of them expose a payload-reducing `summary=true` option.
-5. **F8 (P2)** — `get_syntax_tree(maxTotalBytes=30000)` produced a 76 KB response (2.55×). The cost-model undercounts structural JSON.
-6. **F10 (P2)** — `find_duplicate_helpers` false-positive rate ≥ 50 % on domain-specific wrappers that terminate in a BCL call.
-7. **F7 (P2)** — `semantic_search` with a structural return-type query (`"returning Task<bool>"`) falls through to token-substring matching silently (no `warning` field populated).
+2. **F2 (P1) — 2× `AD0001` (analyzer crashed)** surfaced but not investigated; eroded every analyzer-driven tool on this run.
+3. **F1 (P2) — `project_diagnostics(severity=Warning, summary=true)` = 35 s** on a 40-project solution. Exceeds the 30 s budget on the cheapest code path (summary).
+4. **F21 (P2) — `workspace_close` returns `FileNotFound` when the solution file has been deleted.** Leaves a hanging registry entry with no cleanup path; forces stdio host restart.
+5. **F11/F12/F18/F20/F22 (P2) — Five tools lack a payload reducer and overflow the MCP cap on a 40-project solution:** `get_namespace_dependencies`, `get_di_registrations`, `change_signature_preview`, `workspace_reload`, `document_symbols`. Pattern is proven out by `rename_preview(summary=true)`, `find_references(summary=true)`, `symbol_impact_sweep(summary=true)`, `validate_workspace(summary=true)`.
+6. **F26 (P2) — `workspace_warm` doesn't prime the analyzer pipeline.** Only compilation + semantic-model caches are populated; `analyzersReady=false` persists through the full run.
+7. **F8 (P2) — `get_syntax_tree(maxTotalBytes=30000)` produced a 76 KB response (2.55×).** The cost model undercounts structural JSON.
+8. **F10 (P2) — `find_duplicate_helpers` false-positive rate ≥ 50 %** on domain-specific wrappers that terminate in a BCL call.
+9. **F7 (P2) — `semantic_search` with a structural return-type query** falls through to token-substring matching silently (no `warning` field populated).
+10. **F24/F25/F27 (P3, observational) — server startup contract ambiguity, `workspace_reload` heldMs double-count, `workspace_warm` doesn't prime substring-match index.** Minor individually but each adds operator friction.
 
 ### 8.3 Scalability assessment — "would this survive a 100-project solution?"
 
@@ -274,20 +289,22 @@ Phase 2.3 was **skipped** on this run — `workspace_warm` ran in Phase 0 before
 
 | Source phase | Actionable | Vague | Unhelpful |
 |---|---|---|---|
-| Phase 7 (deliberate edge cases) | 6/6 (100 %) | 0 | 0 |
+| Phase 7 (deliberate edge cases, incl. F21 `workspace_close`) | 7/7 (100 %) | 0 | 0 |
 | Phase 5 (invalid replace_invocation, missing pattern) | 2/2 (100 %) | 0 | 0 |
 | Phase 4 (invalid fix-all for IDE0005) | 1/1 (100 %) | 0 | 0 |
-| **Total** | **9/9 (100 %)** | **0** | **0** |
+| **Total** | **10/10 (100 %)** | **0** | **0** |
 
-Every structured error response named both the failure mode and the recovery path. This is a standout strength of the surface.
+Every structured error response named both the failure mode and the recovery path. This is a standout strength of the surface. (Note: F21 is a *behavioral* bug, not a message-quality bug — the error text was fine; the tool shouldn't have errored at all.)
 
-### 8.6 Top 5 recommendations
+### 8.6 Top 7 recommendations
 
 1. **[P1] Fix `validate_workspace` / `validate_recent_git_changes` overallStatus mismatch.** The tools return `overallStatus: "compile-error"` with `errorCount=0` and `errorDiagnostics=[]`. Likely a default-initialization bug in the status enum or an inverted branch. Highest-impact because gating logic is the marquee use case.
 2. **[P1] Investigate & fix the 2 AD0001 analyzer-crashed diagnostics.** Every analyzer-driven tool (`find_unused_symbols`, `suggest_refactorings`, all CA/IDE rules) under-reports until this is resolved. On this run, `find_unused_symbols` surfaced only 6 hits — the real count is almost certainly larger.
-3. **[P2] Add `summary=true` to `get_namespace_dependencies`, `get_di_registrations`, `change_signature_preview`.** Pattern is proven out by `rename_preview(summary=true)`, `find_references(summary=true)`, `symbol_impact_sweep(summary=true)`, `validate_workspace(summary=true)`. These three are the last hold-outs and they all overflow the cap on Jellyfin.
-4. **[P2] Calibrate `get_syntax_tree`'s `maxTotalBytes` cost model or rename/document it as soft cap.** Observed 2.55× overshoot on a real file (BaseItem.cs lines 45–200 with maxDepth=5). Clients rely on the hard-cap for output budgeting.
-5. **[P2] Tighten `find_duplicate_helpers` heuristics** to distinguish domain-specific wrappers (e.g., `AddPolicy(string, Action<AuthorizationPolicyBuilder>)` on `ApiServiceCollectionExtensions`) from actual BCL reinventions. Current false-positive rate on Jellyfin ≥ 50 % matches the existing backlog item `find-duplicate-helpers-framework-wrapper-false-positive`.
+3. **[P2] Add `summary=true` to 5 more tools.** `get_namespace_dependencies`, `get_di_registrations`, `change_signature_preview`, `workspace_reload`, `document_symbols` all overflow the MCP cap on Jellyfin. Pattern is proven out by the existing `summary=true` implementations — this is mostly mechanical.
+4. **[P2] Fix `workspace_close` to not require the solution file on disk.** The session is in-memory; closing it should free the registry entry regardless of what has happened to the source artifact. Currently leaves a zombie registry row until stdio host restart.
+5. **[P2] Extend `workspace_warm` to prime the analyzer pipeline and the symbol-name substring index.** Right now `analyzersReady=false` persists and the first `symbol_search` pays a ~500 ms cold penalty. Either include them by default, or expose `warmAnalyzers` / `warmSymbolIndex` opt-ins.
+6. **[P2] Calibrate `get_syntax_tree`'s `maxTotalBytes` cost model or rename/document it as soft cap.** Observed 2.55× overshoot on a real file (BaseItem.cs lines 45–200 with maxDepth=5). Clients rely on the hard-cap for output budgeting.
+7. **[P2] Tighten `find_duplicate_helpers` heuristics** to distinguish domain-specific wrappers (e.g., `AddPolicy(string, Action<AuthorizationPolicyBuilder>)` on `ApiServiceCollectionExtensions`) from actual BCL reinventions. Current false-positive rate on Jellyfin ≥ 50 % matches the existing backlog item `find-duplicate-helpers-framework-wrapper-false-positive`.
 
 ### 8.7 Comparison baseline
 
@@ -314,7 +331,12 @@ The user also requested that Jellyfin's own test suite be run (`dotnet test`, De
 | Jellyfin.Server.Tests | 7 | 0 | 7 | 359 ms |
 | **Totals** | **1 805** | **9** | **1 814** | **~2 min** |
 
-**0 failures.** The skipped tests are OS-specific (macOS/Linux path-handling fixtures) and expected on Windows. Several smaller test projects (Model.Tests, Extensions.Tests, MediaEncoding.Keyframes.Tests) produced no test-runner summary lines and are presumed empty/tooling-only — no failures observed.
+**0 failures.** The skipped tests are OS-specific (macOS/Linux path-handling fixtures) and expected on Windows. Several smaller test projects (Model.Tests, Extensions.Tests, MediaEncoding.Keyframes.Tests) produced no test-runner summary lines and are **presumed** empty/tooling-only — this was **not verified** with `dotnet test --list-tests`. A future run should enumerate these explicitly rather than inferring from absence.
+
+### 8.9 Run-hygiene notes
+
+- **Worktree cleanup discarded 3 uncommitted files** on `ExitWorktree(action="remove", discard_changes=true)`. These were almost certainly `dotnet restore` / `dotnet test` build artifacts not covered by `.gitignore` for the worktree path, but they were **not enumerated before discard**. Future stress tests should `git status --porcelain` the worktree before teardown if artifact provenance matters.
+- **Report size at commit time: 37.5 KB** — slightly over the 30 KB split threshold the prompt suggests. Kept as a single file because splitting would fracture cross-references between findings. A future run with more phases fully exercised (Phases 2.3, 4.4, 5.4–5.5, 5b.12, 5b.14, 5b.16, 7.7–7.8 are all marked skipped here) would almost certainly need to split.
 
 ---
 
