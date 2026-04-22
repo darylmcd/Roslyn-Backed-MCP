@@ -90,7 +90,7 @@ ship in the order below.
 
 ### 2. `catalog-split-phase2-extract-three-large-domains` — Introduce `partial` keyword + move Workspace, Symbols, Refactoring tools to domain partials
 
-**Status:** pending · **Order:** 2 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Changed
+**Status:** in-review (PR #334) · **Order:** 2 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|
