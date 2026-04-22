@@ -4,44 +4,12 @@ namespace RoslynMcp.Host.Stdio.Catalog;
 /// Static inventory of all MCP tools, resources, and prompts exposed by the server,
 /// together with their support tiers, categories, and read/destructive flags.
 /// </summary>
-public static class ServerSurfaceCatalog
+public static partial class ServerSurfaceCatalog
 {
     public const string CatalogVersion = "2026.04";
 
-    public static IReadOnlyList<SurfaceEntry> Tools { get; } =
+    private static readonly SurfaceEntry[] RemainingInlineTools =
     [
-        Tool("server_info", "server", "stable", true, false, "Inspect server capabilities, versions, and support tiers."),
-        Tool("server_heartbeat", "server", "stable", true, false, "Lightweight connection readiness probe — returns state/loadedWorkspaceCount/stdioPid/serverStartedAt without the full server_info payload."),
-
-        Tool("workspace_load", "workspace", "stable", false, false, "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session."),
-        Tool("workspace_reload", "workspace", "stable", false, false, "Reload an existing workspace session from disk."),
-        Tool("workspace_close", "workspace", "stable", false, true, "Close a loaded workspace session and release resources."),
-        Tool("workspace_warm", "workspace", "experimental", false, false, "Opt-in compilation prewarm: force GetCompilationAsync + first-semantic-model resolution across the workspace to cut the cold-start penalty of the first read-side tool call."),
-        Tool("workspace_list", "workspace", "stable", true, false, "List active workspace sessions."),
-        Tool("workspace_status", "workspace", "stable", true, false, "Inspect status, diagnostics, and stale-state information for a workspace."),
-        Tool("workspace_health", "workspace", "stable", true, false, "Lean workspace readiness summary (alias of workspace_status verbose=false)."),
-        Tool("project_graph", "workspace", "stable", true, false, "Inspect project and dependency structure."),
-        Tool("source_generated_documents", "workspace", "stable", true, false, "List source-generated documents for a workspace or project."),
-        Tool("get_source_text", "workspace", "stable", true, false, "Read source text as the Roslyn workspace currently sees it (may differ from disk if workspace hasn't been reloaded)."),
-
-        Tool("symbol_search", "symbols", "stable", true, false, "Search symbols by name across the workspace."),
-        Tool("symbol_info", "symbols", "stable", true, false, "Inspect the symbol at a source location."),
-        Tool("go_to_definition", "symbols", "stable", true, false, "Navigate to the symbol definition."),
-        Tool("find_references", "symbols", "stable", true, false, "Find references to a symbol."),
-        Tool("find_implementations", "symbols", "stable", true, false, "Find implementations of an interface or abstract member."),
-        Tool("document_symbols", "symbols", "stable", true, false, "List declared symbols in a document."),
-        Tool("find_overrides", "symbols", "stable", true, false, "Find overrides of a virtual or abstract member."),
-        Tool("find_base_members", "symbols", "stable", true, false, "Find base or implemented members."),
-        Tool("member_hierarchy", "symbols", "stable", true, false, "Summarize base and override relationships for a member."),
-        Tool("symbol_signature_help", "symbols", "stable", true, false, "Return symbol signature and documentation."),
-        Tool("symbol_relationships", "symbols", "stable", true, false, "Combine definition, reference, base, and implementation relationships."),
-        Tool("find_references_bulk", "symbols", "stable", true, false, "Resolve references for multiple symbols in one request."),
-        Tool("find_property_writes", "symbols", "stable", true, false, "Find property write sites and classify object-initializer writes."),
-        Tool("probe_position", "symbols", "experimental", true, false, "Probe the raw lexical token and containing symbol at a source position."),
-        Tool("enclosing_symbol", "symbols", "stable", true, false, "Return the enclosing symbol for a source position."),
-        Tool("goto_type_definition", "symbols", "stable", true, false, "Navigate from a symbol usage to its type definition."),
-        Tool("get_completions", "symbols", "stable", true, false, "Return IntelliSense-style completion items at a position."),
-
         Tool("project_diagnostics", "analysis", "stable", true, false, "Return compiler diagnostics for a workspace."),
         Tool("diagnostic_details", "analysis", "stable", true, false, "Inspect one diagnostic occurrence in detail."),
         Tool("type_hierarchy", "analysis", "stable", true, false, "Inspect type inheritance and interface relationships."),
@@ -49,24 +17,12 @@ public static class ServerSurfaceCatalog
         Tool("impact_analysis", "analysis", "stable", true, false, "Estimate the impact of changing a symbol."),
         Tool("find_type_mutations", "analysis", "stable", true, false, "Identify mutating members of a type and who calls them."),
         Tool("find_type_usages", "analysis", "stable", true, false, "Classify usages of a type across the solution."),
-
         Tool("build_workspace", "validation", "stable", false, false, "Run dotnet build for the loaded workspace."),
         Tool("build_project", "validation", "stable", false, false, "Run dotnet build for a selected project."),
         Tool("test_discover", "validation", "stable", true, false, "Discover tests in the loaded workspace."),
         Tool("test_run", "validation", "stable", false, false, "Run dotnet test for the workspace or a selected project."),
         Tool("test_related", "validation", "stable", true, false, "Find tests related to a symbol."),
         Tool("test_related_files", "validation", "stable", true, false, "Find tests related to a set of changed files."),
-
-        Tool("rename_preview", "refactoring", "stable", true, false, "Preview a rename refactoring."),
-        Tool("rename_apply", "refactoring", "stable", false, true, "Apply a previously previewed rename refactoring."),
-        Tool("organize_usings_preview", "refactoring", "stable", true, false, "Preview using-directive cleanup."),
-        Tool("organize_usings_apply", "refactoring", "stable", false, true, "Apply a previously previewed organize-usings operation."),
-        Tool("format_document_preview", "refactoring", "stable", true, false, "Preview document formatting."),
-        Tool("format_document_apply", "refactoring", "stable", false, true, "Apply a previously previewed document format operation."),
-        Tool("format_check", "refactoring", "experimental", true, false, "Report documents that would change under Roslyn's formatter without applying edits (workspace-wide format-verify)."),
-        Tool("code_fix_preview", "refactoring", "stable", true, false, "Preview a curated diagnostic code fix."),
-        Tool("code_fix_apply", "refactoring", "stable", false, true, "Apply a previously previewed curated code fix."),
-
         Tool("find_unused_symbols", "advanced-analysis", "stable", true, false, "Find likely unused symbols."),
         Tool("get_di_registrations", "advanced-analysis", "stable", true, false, "Inspect DI registration patterns in source."),
         Tool("get_complexity_metrics", "advanced-analysis", "stable", true, false, "Compute cyclomatic complexity and related metrics."),
@@ -78,22 +34,15 @@ public static class ServerSurfaceCatalog
         Tool("find_duplicated_methods", "advanced-analysis", "stable", true, false, "Find clusters of near-duplicate method bodies by AST-normalized hash."),
         Tool("find_duplicate_helpers", "advanced-analysis", "experimental", true, false, "Flag private/internal helper methods whose body duplicates a reachable BCL/NuGet symbol."),
         Tool("find_dead_locals", "advanced-analysis", "experimental", true, false, "Find method-local variables whose only write is not followed by any read."),
-
         Tool("apply_text_edit", "editing", "stable", false, true, "Apply direct text edits to a single file; optional verify + auto-revert on new compile errors."),
         Tool("apply_multi_file_edit", "editing", "experimental", false, true, "Apply direct text edits to multiple files; optional verify + auto-revert on new compile errors."),
         Tool("preview_multi_file_edit", "editing", "experimental", true, false, "Preview a multi-file edit batch; returns per-file diffs and a preview token."),
         Tool("preview_multi_file_edit_apply", "editing", "experimental", false, true, "Apply a previously previewed multi-file edit."),
-        Tool("restructure_preview", "refactoring", "experimental", true, false, "Preview a syntax-tree pattern-based find-and-replace using __placeholder__ captures."),
-        Tool("replace_string_literals_preview", "refactoring", "experimental", true, false, "Preview replacing string literals in argument/initializer position with a constant expression."),
         Tool("symbol_impact_sweep", "analysis", "experimental", true, false, "Sweep downstream impact of a symbol change: references + switch-exhaustiveness diagnostics + mapper-suffix callsites."),
         Tool("test_reference_map", "validation", "experimental", true, false, "Statically map source symbols to test references; returns covered/uncovered symbol lists and a coverage percentage. Supports offset/limit pagination and projectName scoping."),
         Tool("get_prompt_text", "prompts", "experimental", true, false, "Render any registered MCP prompt as plain text. Pass the prompt name plus a JSON object of the prompt's parameters; returns { messages: [{role, text}], promptName, parameterCount }."),
         Tool("validate_workspace", "validation", "experimental", true, false, "Composite post-edit validation: compile_check + project_diagnostics (errors) + test_related_files (+ optional test_run)."),
         Tool("validate_recent_git_changes", "validation", "experimental", true, false, "post-edit-validate-workspace-scoped-to-touched-files: auto-scoped validation companion that derives changedFilePaths from git status --porcelain, falls back to full-workspace scope with a warning when git is unavailable or the solution is outside a git repo."),
-        Tool("change_signature_preview", "refactoring", "experimental", true, false, "Preview adding/removing/renaming a method parameter with all callsites updated atomically."),
-        Tool("symbol_refactor_preview", "refactoring", "experimental", true, false, "Composite preview chaining rename + edit + restructure operations into a single token."),
-        Tool("split_service_with_di_preview", "refactoring", "experimental", true, false, "Composite preview splitting a service into partitions + forwarding facade + DI-registration deltas."),
-        Tool("record_field_add_with_satellites_preview", "refactoring", "experimental", true, false, "Composite preview synthesizing coordinated edits for satellite members when a type gains a new field."),
         Tool("create_file_preview", "file-operations", "stable", true, false, "Preview creating a new source file in a project."),
         Tool("create_file_apply", "file-operations", "experimental", false, true, "Apply a previously previewed file creation."),
         Tool("delete_file_preview", "file-operations", "stable", true, false, "Preview deleting an existing source file."),
@@ -128,51 +77,21 @@ public static class ServerSurfaceCatalog
         Tool("apply_composite_preview", "orchestration", "experimental", false, true, "Apply a previously previewed orchestration operation."),
         Tool("test_coverage", "validation", "stable", false, false, "Run coverage collection for test execution."),
         Tool("get_syntax_tree", "syntax", "stable", true, false, "Return a structured syntax tree for a document or range."),
-        Tool("get_code_actions", "code-actions", "stable", true, false, "List Roslyn code fixes and refactorings at a location or selection range. Selection-range refactorings include introduce parameter and inline temporary variable. Pass endLine/endColumn for selection-range actions."),
-        Tool("preview_code_action", "code-actions", "stable", true, false, "Preview a Roslyn code action before applying it."),
-        Tool("apply_code_action", "code-actions", "stable", false, true, "Apply a previously previewed Roslyn code action."),
-
         Tool("security_diagnostics", "security", "stable", true, false, "Return security-relevant diagnostics with OWASP categorization and fix hints."),
         Tool("security_analyzer_status", "security", "stable", true, false, "Check which security analyzer packages are present and recommend missing ones."),
         Tool("nuget_vulnerability_scan", "security", "stable", true, false, "Scan NuGet references for known CVEs using dotnet list package --vulnerable."),
-
         Tool("find_consumers", "analysis", "stable", true, false, "Find all types that depend on a given type or interface, classified by dependency kind."),
         Tool("get_cohesion_metrics", "analysis", "stable", true, false, "Measure type cohesion via LCOM4 metrics, identifying independent method clusters."),
         Tool("get_coupling_metrics", "analysis", "stable", true, false, "Measure per-type afferent/efferent coupling + Martin's instability index."),
         Tool("preview_record_field_addition", "analysis", "experimental", true, false, "Pre-flight audit: every site impacted by adding a positional field to a record."),
         Tool("find_shared_members", "analysis", "stable", true, false, "Find private members used by multiple public methods to inform type extractions."),
-
-        Tool("move_type_to_file_preview", "refactoring", "stable", true, false, "Preview moving a type declaration into its own file."),
-        Tool("move_type_to_file_apply", "refactoring", "experimental", false, true, "Apply a previewed move-type-to-file refactoring. Removes the type from the source file and creates its own dedicated file."),
-        Tool("change_type_namespace_preview", "refactoring", "experimental", true, false, "Preview relocating a type between namespaces in the same project. Rewrites the type's namespace declaration, optionally moves the file, and adjusts consumer using directives respecting ambient-namespace resolution."),
-        Tool("extract_interface_preview", "refactoring", "experimental", true, false, "Preview extracting an interface from a concrete type within the same project. Optionally replaces concrete type references with the interface."),
-        Tool("extract_interface_apply", "refactoring", "experimental", false, true, "Apply a previewed interface extraction. Creates the interface file, updates the type's base list, and applies usage replacements if requested."),
-        Tool("bulk_replace_type_preview", "refactoring", "stable", true, false, "Preview replacing all references to one type with another across the solution. Scope can be 'parameters', 'fields', or 'all'. 'parameters' also covers generic arguments in implemented-interface / base-class declarations so the class's interface contract stays in sync. Useful after extracting an interface."),
-        Tool("bulk_replace_type_apply", "refactoring", "experimental", false, true, "Apply a previewed bulk type replacement. Updates all matching type references and adds using directives where needed."),
-        Tool("replace_invocation_preview", "refactoring", "experimental", true, false, "Preview rewriting every call-site of a method to call a different method with a declared argument-reorder mapping derived from parameter-name equality. Takes two FQ signatures and disambiguates overloads by parameter-type list."),
-        Tool("extract_type_preview", "refactoring", "stable", true, false, "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
-        Tool("extract_type_apply", "refactoring", "experimental", false, true, "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type."),
-
-        Tool("workspace_changes", "workspace", "stable", true, false, "List all mutations applied to a workspace during this session, with descriptions, affected files, tool names, and timestamps."),
         Tool("suggest_refactorings", "advanced-analysis", "stable", true, false, "Analyze the workspace and return ranked refactoring suggestions based on complexity, cohesion (LCOM4), and unused symbol detection. Each suggestion includes severity, target, and recommended tool sequence."),
-
-        Tool("extract_method_preview", "refactoring", "stable", true, false, "Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values."),
-        Tool("extract_method_apply", "refactoring", "experimental", false, true, "Apply a previously previewed extract method refactoring."),
-        Tool("extract_shared_expression_to_helper_preview", "refactoring", "experimental", true, false, "Preview extracting a shared sub-expression into a synthesized private static helper and rewriting every structurally-identical call site in the scope."),
-
-        Tool("revert_last_apply", "undo", "stable", false, true, "Revert the most recent Roslyn solution-level apply operation for a workspace."),
-        Tool("apply_with_verify", "undo", "experimental", false, true, "Apply a preview AND immediately verify via compile_check; auto-revert on new errors."),
         Tool("remove_interface_member_preview", "dead-code", "experimental", true, false, "Composite preview removing a dead interface member and every implementation in one shot. Refuses if any external caller exists."),
-
         Tool("analyze_data_flow", "advanced-analysis", "stable", true, false, "Analyze variable flow through a code region: reads, writes, captures, always-assigned."),
         Tool("analyze_control_flow", "advanced-analysis", "stable", true, false, "Analyze control flow: entry/exit points, reachability, return statements."),
         Tool("compile_check", "validation", "stable", true, false, "Fast in-memory compilation check without invoking dotnet build."),
         Tool("list_analyzers", "analysis", "stable", true, false, "List all loaded analyzers and their diagnostic rules."),
-        Tool("fix_all_preview", "refactoring", "experimental", true, false, "Preview fixing ALL instances of a diagnostic across a scope."),
-        Tool("fix_all_apply", "refactoring", "experimental", false, true, "Apply a previously previewed fix-all operation."),
         Tool("get_operations", "advanced-analysis", "stable", true, false, "Get the IOperation tree for behavioral analysis at a source position."),
-        Tool("format_range_preview", "refactoring", "stable", true, false, "Preview formatting a specific range within a document."),
-        Tool("format_range_apply", "refactoring", "experimental", false, true, "Apply a previously previewed range format operation."),
         Tool("analyze_snippet", "analysis", "stable", true, false, "Analyze a C# code snippet in an ephemeral workspace without loading a solution."),
         Tool("evaluate_csharp", "scripting", "stable", true, false, "Evaluate a C# expression or script interactively via the Roslyn Scripting API. Emits MCP progress and heartbeat logs during long compile/run so clients are not stuck on a static label."),
         Tool("get_editorconfig_options", "configuration", "stable", true, false, "Get effective .editorconfig options for a source file."),
@@ -185,6 +104,11 @@ public static class ServerSurfaceCatalog
         Tool("verify_pragma_suppresses", "validation", "stable", true, false, "Verify an existing #pragma warning disable/restore pair covers a fire line."),
         Tool("pragma_scope_widen", "editing", "stable", false, false, "Extend an existing #pragma warning restore past a target line.")
     ];
+
+    private static readonly Lazy<IReadOnlyList<SurfaceEntry>> s_allTools = new(
+        static () => [..WorkspaceTools!, ..SymbolTools!, ..RefactoringTools!, ..RemainingInlineTools!]);
+
+    public static IReadOnlyList<SurfaceEntry> Tools => s_allTools.Value;
 
     public static IReadOnlyList<SurfaceEntry> Resources { get; } =
     [

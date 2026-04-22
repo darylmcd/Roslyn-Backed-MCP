@@ -1,0 +1,45 @@
+namespace RoslynMcp.Host.Stdio.Catalog;
+
+public static partial class ServerSurfaceCatalog
+{
+    private static readonly SurfaceEntry[] RefactoringTools =
+    [
+        Tool("rename_preview", "refactoring", "stable", true, false, "Preview a rename refactoring."),
+        Tool("rename_apply", "refactoring", "stable", false, true, "Apply a previously previewed rename refactoring."),
+        Tool("organize_usings_preview", "refactoring", "stable", true, false, "Preview using-directive cleanup."),
+        Tool("organize_usings_apply", "refactoring", "stable", false, true, "Apply a previously previewed organize-usings operation."),
+        Tool("format_document_preview", "refactoring", "stable", true, false, "Preview document formatting."),
+        Tool("format_document_apply", "refactoring", "stable", false, true, "Apply a previously previewed document format operation."),
+        Tool("format_check", "refactoring", "experimental", true, false, "Report documents that would change under Roslyn's formatter without applying edits (workspace-wide format-verify)."),
+        Tool("code_fix_preview", "refactoring", "stable", true, false, "Preview a curated diagnostic code fix."),
+        Tool("code_fix_apply", "refactoring", "stable", false, true, "Apply a previously previewed curated code fix."),
+        Tool("restructure_preview", "refactoring", "experimental", true, false, "Preview a syntax-tree pattern-based find-and-replace using __placeholder__ captures."),
+        Tool("replace_string_literals_preview", "refactoring", "experimental", true, false, "Preview replacing string literals in argument/initializer position with a constant expression."),
+        Tool("change_signature_preview", "refactoring", "experimental", true, false, "Preview adding/removing/renaming a method parameter with all callsites updated atomically."),
+        Tool("symbol_refactor_preview", "refactoring", "experimental", true, false, "Composite preview chaining rename + edit + restructure operations into a single token."),
+        Tool("split_service_with_di_preview", "refactoring", "experimental", true, false, "Composite preview splitting a service into partitions + forwarding facade + DI-registration deltas."),
+        Tool("record_field_add_with_satellites_preview", "refactoring", "experimental", true, false, "Composite preview synthesizing coordinated edits for satellite members when a type gains a new field."),
+        Tool("get_code_actions", "code-actions", "stable", true, false, "List Roslyn code fixes and refactorings at a location or selection range. Selection-range refactorings include introduce parameter and inline temporary variable. Pass endLine/endColumn for selection-range actions."),
+        Tool("preview_code_action", "code-actions", "stable", true, false, "Preview a Roslyn code action before applying it."),
+        Tool("apply_code_action", "code-actions", "stable", false, true, "Apply a previously previewed Roslyn code action."),
+        Tool("move_type_to_file_preview", "refactoring", "stable", true, false, "Preview moving a type declaration into its own file."),
+        Tool("move_type_to_file_apply", "refactoring", "experimental", false, true, "Apply a previewed move-type-to-file refactoring. Removes the type from the source file and creates its own dedicated file."),
+        Tool("change_type_namespace_preview", "refactoring", "experimental", true, false, "Preview relocating a type between namespaces in the same project. Rewrites the type's namespace declaration, optionally moves the file, and adjusts consumer using directives respecting ambient-namespace resolution."),
+        Tool("extract_interface_preview", "refactoring", "experimental", true, false, "Preview extracting an interface from a concrete type within the same project. Optionally replaces concrete type references with the interface."),
+        Tool("extract_interface_apply", "refactoring", "experimental", false, true, "Apply a previewed interface extraction. Creates the interface file, updates the type's base list, and applies usage replacements if requested."),
+        Tool("bulk_replace_type_preview", "refactoring", "stable", true, false, "Preview replacing all references to one type with another across the solution. Scope can be 'parameters', 'fields', or 'all'. 'parameters' also covers generic arguments in implemented-interface / base-class declarations so the class's interface contract stays in sync. Useful after extracting an interface."),
+        Tool("bulk_replace_type_apply", "refactoring", "experimental", false, true, "Apply a previewed bulk type replacement. Updates all matching type references and adds using directives where needed."),
+        Tool("replace_invocation_preview", "refactoring", "experimental", true, false, "Preview rewriting every call-site of a method to call a different method with a declared argument-reorder mapping derived from parameter-name equality. Takes two FQ signatures and disambiguates overloads by parameter-type list."),
+        Tool("extract_type_preview", "refactoring", "stable", true, false, "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
+        Tool("extract_type_apply", "refactoring", "experimental", false, true, "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type."),
+        Tool("extract_method_preview", "refactoring", "stable", true, false, "Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values."),
+        Tool("extract_method_apply", "refactoring", "experimental", false, true, "Apply a previously previewed extract method refactoring."),
+        Tool("extract_shared_expression_to_helper_preview", "refactoring", "experimental", true, false, "Preview extracting a shared sub-expression into a synthesized private static helper and rewriting every structurally-identical call site in the scope."),
+        Tool("revert_last_apply", "undo", "stable", false, true, "Revert the most recent Roslyn solution-level apply operation for a workspace."),
+        Tool("apply_with_verify", "undo", "experimental", false, true, "Apply a preview AND immediately verify via compile_check; auto-revert on new errors."),
+        Tool("fix_all_preview", "refactoring", "experimental", true, false, "Preview fixing ALL instances of a diagnostic across a scope."),
+        Tool("fix_all_apply", "refactoring", "experimental", false, true, "Apply a previously previewed fix-all operation."),
+        Tool("format_range_preview", "refactoring", "stable", true, false, "Preview formatting a specific range within a document."),
+        Tool("format_range_apply", "refactoring", "experimental", false, true, "Apply a previously previewed range format operation."),
+    ];
+}
