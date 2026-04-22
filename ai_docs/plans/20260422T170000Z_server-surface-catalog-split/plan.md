@@ -1,16 +1,24 @@
 # ServerSurfaceCatalog partial-class split — phased plan (2026-04-22)
 
+<!-- **Retrospective (2026-04-22, Phase 5):** The structural mitigation (Phases
+     1–4 + reconciling PRs) shipped. Post-merge `git log` on
+     `ServerSurfaceCatalog.cs` after Phase 2 was dominated by the phased split
+     itself; the main file is now a thin aggregator plus DTOs, so **optional
+     DTO extraction** was not pursued — closing the P4 row with backlog + changelog
+     only. A future source generator (`server-surface-catalog-append-conflict-hotspot`
+     option (b)) remains an optional second-order follow-up, not part of this plan. -->
 <!-- Generated from ai_docs/prompts/backlog-sweep-plan.md v3 conventions. Companion
-     state.json lives alongside this file. Targets backlog row
-     `server-surface-catalog-append-conflict-hotspot` (P4) which the 2026-04-19
-     sweep explicitly deferred as "needs its own dedicated multi-phase sweep" —
+     state.json lives alongside this file. The targeted backlog row
+     `server-surface-catalog-append-conflict-hotspot` (P4) is **closed in Phase 5**;
+     the 2026-04-19 sweep had deferred it as "needs its own dedicated multi-phase sweep" —
      structural split exceeds Rule 3's ≤4 prod-file cap unless phased. -->
 
 ## Inventory
 
-Single backlog row in scope:
+**Shipped (Phase 5):** backlog row closed — the structural split plus backlog/changelog
+sync. No open rows for this plan.
 
-- P4: 1 row (`server-surface-catalog-append-conflict-hotspot`)
+- P4: 0 open rows (former: `server-surface-catalog-append-conflict-hotspot`)
 
 Blocker / deps: none. The previously-considered source-generator approach
 (option (b) in the backlog row) is the second-order structural fix; this plan
@@ -156,7 +164,7 @@ ship in the order below.
 
 ### 5. `catalog-split-phase5-cleanup-and-close` — Optional `SurfaceEntry`/DTO relocation + verify + close backlog row
 
-**Status:** pending · **Order:** 5 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Maintenance
+**Status:** in-review (PR opened from `remediation/catalog-split-phase5-cleanup-and-close`) · **Order:** 5 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 30000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -177,7 +185,7 @@ ship in the order below.
 
 ## Final todo
 
-- [ ] `backlog: sync ai_docs/backlog.md` — Phase 5 deletes `server-surface-catalog-append-conflict-hotspot` and bumps `updated_at` in the same PR as the close.
+- [x] `backlog: sync ai_docs/backlog.md` — Phase 5 deletes `server-surface-catalog-append-conflict-hotspot` and bumps `updated_at` in the same PR as the close.
 
 ## Suggested kickoff order
 
