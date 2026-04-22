@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
@@ -27,15 +28,17 @@ public sealed class RefactoringService : IRefactoringService
     private readonly IUndoService? _undoService;
     private readonly IChangeTracker? _changeTracker;
     private readonly ICodeFixProviderRegistry? _codeFixRegistry;
+    private readonly IPostApplySymbolResolver? _postApplyResolver;
     private readonly ILogger<RefactoringService> _logger;
 
-    public RefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<RefactoringService> logger, IUndoService? undoService = null, IChangeTracker? changeTracker = null, ICodeFixProviderRegistry? codeFixRegistry = null)
+    public RefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<RefactoringService> logger, IUndoService? undoService = null, IChangeTracker? changeTracker = null, ICodeFixProviderRegistry? codeFixRegistry = null, IPostApplySymbolResolver? postApplyResolver = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
         _undoService = undoService;
         _changeTracker = changeTracker;
         _codeFixRegistry = codeFixRegistry;
+        _postApplyResolver = postApplyResolver;
         _logger = logger;
     }
 
@@ -85,6 +88,25 @@ public sealed class RefactoringService : IRefactoringService
 
         var description = $"Rename '{symbol.Name}' to '{newName}'";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
+
+        // Register a post-apply rename hint so ApplyRefactoringAsync can rotate the handle
+        // and return ApplyResult.MutatedSymbol with the new name. Declaration position is
+        // stable across renames, so stashing it plus the expected new name is sufficient.
+        if (_postApplyResolver is not null)
+        {
+            var declLocation = symbol.Locations.FirstOrDefault(static l => l.IsInSource);
+            if (declLocation is not null)
+            {
+                var declLineSpan = declLocation.GetLineSpan();
+                _postApplyResolver.RegisterRename(
+                    token,
+                    new PostApplyRenameHint(
+                        declLineSpan.Path,
+                        declLineSpan.StartLinePosition.Line + 1,
+                        declLineSpan.StartLinePosition.Character + 1,
+                        newName));
+            }
+        }
 
         // No-op warning: caller asked to rename a symbol to its own current name. C# identifiers
         // are case-sensitive, so a Foo→foo rename is real and must NOT be flagged.
@@ -284,6 +306,7 @@ public sealed class RefactoringService : IRefactoringService
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     _logger.LogWarning(ex, "Failed to persist changed documents to disk for workspace {WorkspaceId}", workspaceId);
+                    _postApplyResolver?.Invalidate(previewToken);
                     return new ApplyResultDto(false, [], "Failed to persist applied changes to disk.");
                 }
             }
@@ -293,12 +316,23 @@ public sealed class RefactoringService : IRefactoringService
 
         if (!success)
         {
+            _postApplyResolver?.Invalidate(previewToken);
             return new ApplyResultDto(false, [], "Failed to apply changes to the workspace.");
         }
 
         _changeTracker?.RecordChange(workspaceId, description, appliedFiles, "refactoring_apply");
         _logger.LogInformation("Applied refactoring '{Description}' to {Count} file(s)", description, appliedFiles.Count);
-        return new ApplyResultDto(true, appliedFiles, null);
+
+        // Rotate the symbol handle for refactors that change symbol identity (rename).
+        // Null for every other apply kind — the pre-apply handle still resolves on move-type,
+        // change-signature, format, code-fix, etc.
+        SymbolDto? mutatedSymbol = null;
+        if (_postApplyResolver is not null)
+        {
+            var appliedSolution = _workspace.GetCurrentSolution(workspaceId);
+            mutatedSymbol = await _postApplyResolver.ConsumeAsync(previewToken, appliedSolution, ct).ConfigureAwait(false);
+        }
+        return new ApplyResultDto(true, appliedFiles, null, mutatedSymbol);
     }
 
     /// <summary>

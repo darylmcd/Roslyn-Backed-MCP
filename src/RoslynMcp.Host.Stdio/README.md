@@ -65,7 +65,7 @@ Claude Code also supports installing this server as a **plugin** with curated sk
 
 No further configuration is required; the server starts with the defaults listed in [Configuration](#configuration). To tune any `ROSLYNMCP_*` value, drop a project-scope `.mcp.json` at your repo root with literal `env` values — see [`docs/mcp-json-examples/`](https://github.com/darylmcd/Roslyn-Backed-MCP/tree/main/docs/mcp-json-examples) for copy-ready templates.
 
-The plugin adds 10 guided slash commands (`/roslyn-mcp:analyze`, `/roslyn-mcp:refactor`, `/roslyn-mcp:review`, `/roslyn-mcp:security`, `/roslyn-mcp:dead-code`, `/roslyn-mcp:test-coverage`, `/roslyn-mcp:migrate-package`, `/roslyn-mcp:explain-error`, `/roslyn-mcp:complexity`, `/roslyn-mcp:document`) and pre-apply safety hooks that block `*_apply` calls without a matching `*_preview`. See the [GitHub README](https://github.com/darylmcd/Roslyn-Backed-MCP#claude-code-plugin-installation) for the full skill documentation.
+The plugin adds **31 bundled agent skills** — including `/roslyn-mcp:analyze`, `/roslyn-mcp:refactor`, `/roslyn-mcp:review`, `/roslyn-mcp:security`, `/roslyn-mcp:dead-code`, `/roslyn-mcp:test-coverage`, `/roslyn-mcp:migrate-package`, `/roslyn-mcp:explain-error`, `/roslyn-mcp:complexity`, `/roslyn-mcp:document`, `/roslyn-mcp:impact-assessment`, `/roslyn-mcp:refactor-loop`, `/roslyn-mcp:modernize`, `/roslyn-mcp:trace-flow`, `/roslyn-mcp:inheritance-explorer`, and more — plus pre-apply safety hooks that block `*_apply` calls without a matching `*_preview`. See the [GitHub README](https://github.com/darylmcd/Roslyn-Backed-MCP#claude-code-plugin-installation) for the full skill catalogue.
 
 ### VS Code (and other stdio MCP clients)
 
@@ -83,12 +83,12 @@ Any stdio-capable MCP client uses the same command:
 
 ## What's in the box
 
-Catalog `2026.04` ships **128 tools** (69 stable / 59 experimental), **9 resources**, and **19 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
+Catalog `2026.04` ships **159 tools** (107 stable / 52 experimental), **9 resources**, and **20 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
 
 | Family | Highlights |
 |---|---|
 | **Workspace** | `workspace_load`, `workspace_status`, `workspace_list`, `project_graph`, source-generated documents — workspace tools default to a lean **summary** payload (~500 bytes) and offer `verbose=true` opt-in for the full per-project tree. |
-| **Symbol navigation** | `find_references`, `find_implementations`, `find_overrides`, `goto_definition`, `symbol_search`, `find_consumers`, `find_type_usages`, `type_hierarchy`, `callers_callees`, `impact_analysis`. |
+| **Symbol navigation** | `find_references`, `find_implementations`, `find_overrides`, `goto_definition`, `symbol_search`, `find_consumers`, `find_type_usages`, `type_hierarchy`, `callers_callees`, `impact_analysis`. Major semantic tools accept a `symbolHandle` from prior search/info calls — pass it instead of file/line to disambiguate overloads and partial classes. |
 | **Diagnostics** | `project_diagnostics`, `compile_check` (in-memory, with optional emit validation), `diagnostic_details`, `security_diagnostics`, `nuget_vulnerability_scan`, `list_analyzers`. |
 | **Refactoring (preview / apply)** | `rename_*`, `extract_interface_*`, `extract_type_*`, `move_type_to_file_*`, `bulk_replace_type_*`, `code_fix_*`, `fix_all_*`, `format_document_*`, `organize_usings_*`, `split_class_*`, dead-code removal. |
 | **Build / test** | `build_workspace`, `build_project`, `test_discover`, `test_run`, `test_related`, `test_related_files`, `test_coverage`. |

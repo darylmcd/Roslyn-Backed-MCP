@@ -47,16 +47,16 @@ Execute these steps in order. Use Roslyn MCP tools throughout — do not shell o
 
 ### Step 2: Locate the Symbol
 
-1. Call `symbol_search` with the provided name.
+1. Call `symbol_search` with the provided name. Each result includes a `symbolHandle` — **capture the chosen match's handle** for every downstream sweep call.
 2. If multiple candidates come back, list them (kind, containing type, file:line) and ask the user to disambiguate. Do not guess.
-3. Once resolved, call `symbol_info` to capture:
+3. Once resolved, call `symbol_info` with `symbolHandle:` (not file/line) to capture:
    - `kind` (Method, Property, Field, Event, NamedType, Parameter, ...)
    - `accessibility` (Public / Internal / Private)
    - `isVirtual`, `isAbstract`, `isOverride`, `isInterfaceMember`
    - declaring file and line
    - signature and containing type
 
-The `kind` + virtuality flags determine which tools the impact sweep runs next (see Impact Tier Table).
+The `kind` + virtuality flags determine which tools the impact sweep runs next (see Impact Tier Table). **Propagate `symbolHandle`** (rather than re-passing file/line) to every Step 4 tool that accepts it — `find_references`, `find_consumers`, `impact_analysis`, `symbol_impact_sweep`, `find_property_writes`, `callers_callees`. Handles disambiguate overloads, partial classes, and tuple-deconstruction lines.
 
 ### Step 3: Determine Change Type and Tier
 

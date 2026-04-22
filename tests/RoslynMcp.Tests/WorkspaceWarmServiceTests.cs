@@ -30,9 +30,9 @@ public sealed class WorkspaceWarmServiceTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(
             result.ProjectsWarmed.Count > 0,
             $"Expected projectsWarmed.Count > 0; got {result.ProjectsWarmed.Count}.");
-        Assert.IsTrue(
-            result.ElapsedMs > 100,
-            $"Expected first-call elapsedMs > 100 (cold-start cost); got {result.ElapsedMs}ms.");
+        // Wall-clock elapsedMs is too brittle for a correctness assertion — a fast CI runner
+        // can complete cold compilations well under 100ms (observed: 23ms). The semantic
+        // signal that real work happened is ColdCompilationCount > 0.
         Assert.IsTrue(
             result.ColdCompilationCount > 0,
             $"Expected coldCompilationCount > 0 on a fresh workspace; got {result.ColdCompilationCount}.");

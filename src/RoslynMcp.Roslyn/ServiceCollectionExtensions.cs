@@ -120,6 +120,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IChangeSignatureService, ChangeSignatureService>();
         services.AddSingleton<ISymbolRefactorService, SymbolRefactorService>();
         services.AddSingleton<IExceptionFlowService, ExceptionFlowService>();
+        services.AddSingleton<IPostApplySymbolResolver, PostApplySymbolResolver>();
         return services;
     }
 

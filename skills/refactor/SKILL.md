@@ -50,16 +50,17 @@ Parse the user's request to determine the refactoring type:
 - **Dependency inversion / DI wiring**: `dependency_inversion_preview`, `extract_and_wire_interface_preview` (orchestrated previews)
 - **Format a range**: `format_range_preview` / `format_range_apply` (when whole-document format is too broad)
 
-### Step 2: Find the Target
+### Step 2: Find the Target and capture its handle
 
-1. Use `symbol_search` to locate the symbol by name.
-2. Use `symbol_info` to get full details (file, line, kind, containing type).
-3. If ambiguous, show candidates and ask the user to pick.
+1. Use `symbol_search` to locate the symbol by name. Each result includes a `symbolHandle` — **capture it from the chosen match** and keep it for every downstream step.
+2. Use `symbol_info` with `symbolHandle:` (not file/line) to confirm full details.
+3. If ambiguous, show candidates and ask the user to pick. Keep only the chosen handle — discard the rest.
+4. **Propagate `symbolHandle` to every downstream tool** (`find_references`, `impact_analysis`, `rename_preview`, etc.) instead of re-passing file/line. Handles disambiguate overloads, partial classes, and tuple-deconstruction lines where coordinate lookups can drift to an adjacent symbol on busy lines.
 
 ### Step 3: Assess Impact
 
-1. Call `find_references` to understand usage scope.
-2. Call `impact_analysis` to get affected files and declarations.
+1. Call `find_references` with the captured `symbolHandle`.
+2. Call `impact_analysis` with the same `symbolHandle`.
 3. Summarize: "{N} references across {M} files in {P} projects."
 4. If the impact is large (>10 files), warn the user and ask for confirmation.
 
@@ -69,7 +70,7 @@ Call the appropriate preview tool based on refactoring type:
 
 | Type | Preview Tool |
 |------|-------------|
-| Rename | `rename_preview` with `newName` |
+| Rename | `rename_preview` with `symbolHandle` + `newName` (prefer handle over file/line per the tool's docstring) |
 | Extract Interface | `extract_interface_preview` with `typeName`, `interfaceName` |
 | Extract Type | `extract_type_preview` with `typeName`, `memberNames`, `newTypeName` |
 | Move to File | `move_type_to_file_preview` with `typeName` |
@@ -96,6 +97,7 @@ After user confirmation:
 1. Call the corresponding `*_apply` tool with the preview token.
 2. Immediately call `compile_check` to verify no errors.
 3. If errors are introduced, report them and offer to revert with `revert_last_apply`.
+4. **Handle rotation**: after a rename / signature-change / type-move, the captured `symbolHandle` from Step 2 points at the *pre-mutation* symbol and may no longer resolve in the current solution. Re-resolve via `symbol_search` (with the new name) or `symbol_info` (by file/line of an applied file) before issuing follow-up calls on the same symbol.
 
 ### Step 6: Report
 

@@ -17,11 +17,13 @@ If no workspace is loaded, ask for the solution path and call `workspace_load` f
 
 ## Stage 1 — Pick the primitive
 
+When the intent targets a named symbol, resolve it with `symbol_search` first and **capture the returned `symbolHandle`**. Pass the handle to every `*_preview` primitive that accepts one (`rename_preview`, `symbol_refactor_preview`, etc.) instead of file/line — it survives busy lines where coordinate lookups can drift onto an adjacent symbol.
+
 Inspect the intent and select **one** primitive as the entry point:
 
 | Intent shape | Primitive | Notes |
 |---|---|---|
-| Rename a symbol | `rename_preview` | Single-symbol rename; `prepare_rename` first if uncertain. |
+| Rename a symbol | `rename_preview` | Single-symbol rename; pass `symbolHandle` captured above; `prepare_rename` first if uncertain. |
 | Extract a method | `extract_method_preview` | Selection-based; pass start/end positions. |
 | Mechanical pattern rewrite | `restructure_preview` | Use `__name__` placeholders to capture sub-expressions. |
 | Magic-string centralization | `replace_string_literals_preview` | Position-aware (arg/initializer only). |

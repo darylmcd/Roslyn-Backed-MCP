@@ -42,9 +42,9 @@ Execute these steps in order. Use the Roslyn MCP tools — do not shell out for 
 
 ### Step 2: Resolve Target
 
-1. Call `symbol_search` with the user-supplied name.
-2. Call `symbol_info` on the best candidate to get full details (`kind`, `containingType`, `isAbstract`, `isVirtual`, `isSealed`, `isOverride`, declaring file and line).
-3. If ambiguous (multiple candidates with the same short name), present the candidates and ask the user to disambiguate by fully-qualified name before continuing.
+1. Call `symbol_search` with the user-supplied name. **Capture the chosen candidate's `symbolHandle`** — every downstream traversal tool that accepts `symbolHandle` (`symbol_info`, `find_overrides`, `find_implementations`, `find_base_members`, `find_references`) should receive it instead of file/line.
+2. Call `symbol_info` with `symbolHandle:` to get full details (`kind`, `containingType`, `isAbstract`, `isVirtual`, `isSealed`, `isOverride`, declaring file and line).
+3. If ambiguous (multiple candidates with the same short name), present the candidates and ask the user to disambiguate by fully-qualified name before continuing. Keep only the chosen handle.
 4. Optionally call `goto_type_definition` when the input refers to a variable or parameter whose type is the real target.
 
 ### Step 3: Route by Kind
