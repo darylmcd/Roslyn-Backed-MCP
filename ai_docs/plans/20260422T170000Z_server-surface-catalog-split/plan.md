@@ -31,11 +31,12 @@ Plan-time source reads, all present as of 2026-04-22T17:00Z:
   11–187; Resources 189–204; Prompts 206–228; WorkflowHints 242–262;
   factory helpers 347–357; DTOs 360–448.
 - `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs` —
-  `AnalyzeCatalogInvocation` walks up to `PropertyDeclarationSyntax` with
-  Identifier name `Tools` / `Resources` / `Prompts` and rejects `Tool(...)` calls
-  outside those properties. This containment check **must be relaxed before the
-  split** or RMCP001 will false-positive every attributed method once the
-  factory calls move out of the Tools/Resources/Prompts property initializers.
+  **Phase 1 shipped (PR #330, 2026-04-22):** `AnalyzeCatalogInvocation` no longer
+  requires a `Tools` / `Resources` / `Prompts` property ancestor. Kind is inferred
+  from the bound factory method name (`Tool` / `Resource` / `Prompt`) on
+  `ServerSurfaceCatalog`, so partial-class slice fields and auxiliary properties
+  are first-class. Phase 2+ can move initializer lists into domain partials without
+  RMCP001/RMCP002 false-positives.
 - Tool categories in use (counted via source inspection of line 13–186): 21
   distinct `category` strings. `refactoring`, `analysis`, `advanced-analysis`,
   `symbols`, `workspace`, `validation`, `project-mutation` dominate; the
@@ -68,18 +69,18 @@ ship in the order below.
 
 ### 1. `catalog-split-phase1-relax-analyzer` — Extend `ServerSurfaceCatalogAnalyzer` to recognize `Tool()` calls outside the `Tools` property
 
-**Status:** in-review (PR #330) · **Order:** 1 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Changed
+**Status:** merged (PR #330, 2026-04-22) · **Order:** 1 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|
 | Backlog rows closed | (none — sets up Phase 2) |
-| Diagnosis | The current analyzer (`analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs:232-256`) requires every `Tool(...)` / `Resource(...)` / `Prompt(...)` invocation to be inside a `PropertyDeclarationSyntax` with Identifier text equal to `Tools` / `Resources` / `Prompts`. Phase 2's partial-class split moves factory calls into `private static readonly SurfaceEntry[] WorkspaceTools = [ Tool(...), ... ]` field initializers on sibling partials. The ancestor-walk will not find a matching property and RMCP001 will fire for every attributed method whose catalog entry moved to a slice field. |
-| Approach | Replace the `PropertyDeclarationSyntax` ancestor-walk with a two-stage check: (a) the invocation's semantic `ContainingType` must be `ServerSurfaceCatalog` (already verified at line 258-268 via `SemanticModel.GetSymbolInfo`); (b) infer the `SurfaceKind` from the invocation's **target method name** (`Tool` → Tool, `Resource` → Resource, `Prompt` → Prompt) instead of the containing-property identifier. The factory methods are already named after the kind they produce (lines 350-357), so the binding tells us the kind unambiguously without needing the property-ancestor context. Keep the existing identifier-syntax filter (line 212) and semantic-type filter (line 258-268) intact — just drop the property-ancestor requirement. |
-| Scope | prod: 1 (`analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs`). tests: 1 new (`tests/RoslynMcp.Analyzers.Tests/SliceFieldDetectionTests.cs` — confirms `Tool()` calls inside a private slice-field on a synthetic `ServerSurfaceCatalog` fixture resolve to the Tool kind and match against an attributed method). Existing analyzer tests under `tests/RoslynMcp.Analyzers.Tests/` must remain green. |
+| Diagnosis | (Shipped in PR #330.) Previously, `AnalyzeCatalogInvocation` required every `Tool(...)` / `Resource(...)` / `Prompt(...)` call to sit under a `PropertyDeclarationSyntax` named `Tools` / `Resources` / `Prompts`, which would have broken partial-class moves into slice fields. |
+| Approach | (Shipped in PR #330.) `SurfaceKind` is inferred from the bound factory method name on `ServerSurfaceCatalog` (`Tool` / `Resource` / `Prompt`); `GetSymbolInfo` still scopes the invocation to `ServerSurfaceCatalog` factories. The simple-identifier and non-qualified invocation filters are unchanged. |
+| Scope | prod: 1 (`analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs`). tests: 1 new (`tests/RoslynMcp.Tests/SliceFieldDetectionTests.cs` — slice field, unrelated `Tool` type, auxiliary property). `ServerSurfaceCatalogAnalyzerTests` in the same project remains the regression harness for RMCP001/RMCP002. |
 | Tool policy | `edit-only` |
 | Estimated context cost | 35000 tokens |
 | Risks | (a) The semantic `ContainingType` check already scopes to `ServerSurfaceCatalog` — but if `Tool()` is ever defined on a different type (e.g., a sibling helper) the relaxed analyzer would false-match. Current code has only one `Tool()` method in the compilation per the line 350-357 factories; defensive but confirmed safe. (b) Non-catalog partials (e.g., a future `ServerSurfaceCatalog.Internal.cs` for bookkeeping) could harbor `Tool()` invocations that aren't catalog entries — unlikely given the class's tight purpose, but the plan's Phase 5 "Types relocation" is the one place this could surface; keep slice-fields strictly `SurfaceEntry[]`-typed. |
-| Validation | Run existing `ServerSurfaceCatalogAnalyzerTests` (under `tests/RoslynMcp.Analyzers.Tests/`) — all green. Add `SliceFieldDetectionTests` asserting (a) Tool factory in a `private static readonly SurfaceEntry[] XTools = [ Tool("name", ...) ]` field is recognized as a Tool-kind entry; (b) Tool factory in a non-`ServerSurfaceCatalog` class is ignored; (c) Tool factory in an unrelated property on `ServerSurfaceCatalog` (e.g., a `ReservedTools` diagnostic slot) is still recognized (proves binding-based detection, not property-name dependence). `verify-release.ps1` green. |
+| Validation | `ServerSurfaceCatalogAnalyzerTests` and `SliceFieldDetectionTests` green; `verify-release.ps1` was run for PR #330. |
 | Performance review | Analyzer runs at compile time; the change replaces a syntax-walk with a semantic-model lookup that the existing code already performs at line 261 — same-or-cheaper. N/A for runtime. |
 | CHANGELOG category | Changed |
 | CHANGELOG entry (draft) | **Changed:** `ServerSurfaceCatalogAnalyzer` (RMCP001/RMCP002) now recognizes `Tool()` / `Resource()` / `Prompt()` factory invocations anywhere on the `ServerSurfaceCatalog` class (not only inside the `Tools` / `Resources` / `Prompts` property initializers). Unblocks the partial-class split that lands in follow-up PRs (`server-surface-catalog-append-conflict-hotspot` phase 1). |
