@@ -54,7 +54,9 @@ public sealed class ServerSurfaceCatalogAnalyzer : DiagnosticAnalyzer
     //       Tool("server_heartbeat", ...),
     //       ...
     //   ];
-    // We match on the method name and surrounding containing property to infer kind.
+    // Kinds are inferred from the bound factory method name (Tool / Resource / Prompt)
+    // on ServerSurfaceCatalog; entries may live in property initializers or in partial-class
+    // slice fields (see `ServerSurfaceCatalogAnalyzer` plan phase 1).
     private const string CatalogToolMethod = "Tool";
     private const string CatalogResourceMethod = "Resource";
     private const string CatalogPromptMethod = "Prompt";
@@ -215,54 +217,23 @@ public sealed class ServerSurfaceCatalogAnalyzer : DiagnosticAnalyzer
         }
 
         var methodName = identifier.Identifier.ValueText;
+        SurfaceKind kind;
         switch (methodName)
         {
-            case CatalogToolMethod:
-            case CatalogResourceMethod:
-            case CatalogPromptMethod:
-                break;
-            default:
-                return;
-        }
-
-        // The invocation must be inside one of the three catalog initializer properties.
-        // We walk up the syntax until we hit a PropertyDeclarationSyntax and compare the
-        // identifier. This is also our primary scoping check: the walk is bounded and
-        // rejects any `Tool(...)` call outside a catalog-shaped initializer.
-        var containingProperty = invocation.FirstAncestorOrSelf<PropertyDeclarationSyntax>();
-        if (containingProperty is null)
-        {
-            return;
-        }
-
-        var propertyName = containingProperty.Identifier.ValueText;
-        SurfaceKind kind;
-        switch (propertyName)
-        {
-            case CatalogToolsProperty: kind = SurfaceKind.Tool; break;
-            case CatalogResourcesProperty: kind = SurfaceKind.Resource; break;
-            case CatalogPromptsProperty: kind = SurfaceKind.Prompt; break;
+            case CatalogToolMethod: kind = SurfaceKind.Tool; break;
+            case CatalogResourceMethod: kind = SurfaceKind.Resource; break;
+            case CatalogPromptMethod: kind = SurfaceKind.Prompt; break;
             default: return;
         }
 
-        // The property must be on a class named ServerSurfaceCatalog — this scopes
-        // the analyzer to one specific class and prevents false-positives when a
-        // consumer happens to have a `Tools` property with `Tool(...)` factory calls.
-        var containingClass = containingProperty.FirstAncestorOrSelf<ClassDeclarationSyntax>();
-        if (containingClass is null
-            || !string.Equals(containingClass.Identifier.ValueText, CatalogTypeName, StringComparison.Ordinal))
-        {
-            return;
-        }
-
         // Semantic check: require the invocation to bind to a method on ServerSurfaceCatalog
-        // (not some helper of the same name imported from elsewhere). This is the final
+        // (not some helper of the same name imported from elsewhere). This is the
         // disambiguation that makes the analyzer safe against identifier shadowing.
         var symbolInfo = context.SemanticModel.GetSymbolInfo(invocation, context.CancellationToken);
         var targetMethod = symbolInfo.Symbol as IMethodSymbol
             ?? symbolInfo.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
-        if (targetMethod is not null
-            && !string.Equals(targetMethod.ContainingType?.Name, CatalogTypeName, StringComparison.Ordinal))
+        if (targetMethod is null
+            || !string.Equals(targetMethod.ContainingType?.Name, CatalogTypeName, StringComparison.Ordinal))
         {
             return;
         }
