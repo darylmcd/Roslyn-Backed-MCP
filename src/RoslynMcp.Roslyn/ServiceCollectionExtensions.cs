@@ -116,6 +116,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IImpactSweepService, ImpactSweepService>();
         services.AddSingleton<ITestReferenceMapService, TestReferenceMapService>();
         services.AddSingleton<IWorkspaceValidationService, WorkspaceValidationService>();
+        services.AddSingleton<IWorkspaceWarmService, WorkspaceWarmService>();
         services.AddSingleton<IChangeSignatureService, ChangeSignatureService>();
         services.AddSingleton<ISymbolRefactorService, SymbolRefactorService>();
         services.AddSingleton<IExceptionFlowService, ExceptionFlowService>();

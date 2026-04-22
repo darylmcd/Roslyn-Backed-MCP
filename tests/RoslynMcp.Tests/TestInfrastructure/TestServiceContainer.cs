@@ -64,6 +64,7 @@ internal sealed class TestServiceContainer
     public required FormatVerifyService FormatVerifyService { get; init; }
     public required InterfaceExtractionService InterfaceExtractionService { get; init; }
     public required ExceptionFlowService ExceptionFlowService { get; init; }
+    public required WorkspaceWarmService WorkspaceWarmService { get; init; }
 
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
@@ -283,7 +284,10 @@ internal sealed class TestServiceContainer
             FormatVerifyService = new FormatVerifyService(workspaceManager, NullLogger<FormatVerifyService>.Instance),
             ExceptionFlowService = new ExceptionFlowService(
                 workspaceManager,
-                NullLogger<ExceptionFlowService>.Instance)
+                NullLogger<ExceptionFlowService>.Instance),
+            WorkspaceWarmService = new WorkspaceWarmService(
+                workspaceManager,
+                NullLogger<WorkspaceWarmService>.Instance)
         };
     }
 }
