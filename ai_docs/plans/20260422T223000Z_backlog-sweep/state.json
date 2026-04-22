@@ -16,15 +16,15 @@
       "productionFilesTouched": 3,
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P3-correctness",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
+      "branch": "fix/validate-workspace-overallstatus-false-positive",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/343",
+      "mergedAt": "2026-04-22T18:15:59Z",
+      "notes": "Squash-merged; merge commit 0c934c6"
     },
     {
       "id": "preview-multi-file-edit-silent-syntax-acceptance",
