@@ -16,14 +16,14 @@
       "productionFilesTouched": 1,
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
-      "status": "in-review",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Changed",
       "branch": "remediation/catalog-split-phase1-relax-analyzer",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/330",
-      "mergedAt": null,
+      "mergedAt": "2026-04-22T15:03:44Z",
       "notes": "Strict prerequisite for Phase 2. Drop the PropertyDeclarationSyntax ancestor-walk; rely on the existing semantic ContainingType check + invocation target name for kind inference. Adds SliceFieldDetectionTests."
     },
     {
