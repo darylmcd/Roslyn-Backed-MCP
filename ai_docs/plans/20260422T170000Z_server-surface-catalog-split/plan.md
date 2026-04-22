@@ -27,8 +27,8 @@ Actionable initiatives this sweep: **5**.
 Plan-time source reads, all present as of 2026-04-22T17:00Z:
 
 - `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog*.cs` — **Phase 2 (PR #334, 2026-04-22)**
-  plus **Phase 3 shipped (PR #336, 2026-04-22),** and **Phase 4 in review (PR #338, 2026-04-22):** W/S/R/Analysis/Editing
-  partials; **new in phase 4** — `ServerSurfaceCatalog.Resources.cs`, `ServerSurfaceCatalog.Prompts.cs`, and
+  plus **Phase 3 shipped (PR #336, 2026-04-22),** and **Phase 4 shipped (PR #338, 2026-04-22):** W/S/R/Analysis/Editing
+  partials; **phase 4** — `ServerSurfaceCatalog.Resources.cs`, `ServerSurfaceCatalog.Prompts.cs`, and
   `ServerSurfaceCatalog.Orchestration.cs` (tail: former `RemainingInlineTools`). The main
   file holds the `s_allTools` aggregator, workflow hints, factories, and DTOs. The merged
   `Tools` list uses `Lazy<IReadOnlyList<SurfaceEntry>>` across partials; `Resources` and `Prompts` are
@@ -135,12 +135,12 @@ ship in the order below.
 
 ### 4. `catalog-split-phase4-extract-resources-prompts-and-tail` — Move Resources + Prompts properties and the remaining tail categories to partials
 
-**Status:** in-review (PR #338) · **Order:** 4 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Changed
+**Status:** merged (PR #338, 2026-04-22) · **Order:** 4 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|
 | Backlog rows closed | (none — Phase 5 closes the row) |
-| Diagnosis | The main file still owns (a) the `Resources` property and its ~13 entries, (b) the `Prompts` property and its ~20 entries, (c) the remaining inline tool tail (~20 entries across `project-mutation`, `scaffolding`, `cross-project-refactoring`, `orchestration`, `syntax`, `code-actions` (unless moved in Phase 2 — treat as already extracted), `configuration`, `scripting`, `security`). Once this phase ships, the main file contains only the aggregator properties, the factory helpers, the `GetSummary` / `CreateDocument` / `CreateSummaryDocument` / `PageEntries` methods, and the DTOs — no tool/resource/prompt data. |
+| Diagnosis | (Shipped in PR #338.) The former main-file `Resources`, `Prompts`, and tool tail are now in `ServerSurfaceCatalog.Resources.cs`, `ServerSurfaceCatalog.Prompts.cs`, and `ServerSurfaceCatalog.Orchestration.cs`. The main file is the `s_allTools` lazy aggregate plus workflow hints, `GetSummary` / `CreateDocument` / `CreateSummaryDocument` / `PageEntries`, factory helpers, and DTOs — no inline tool/resource/prompt data rows. |
 | Approach | (a) Create `ServerSurfaceCatalog.Resources.cs` mirroring the Tools pattern: `private static readonly SurfaceEntry[] ServerResources = [ Resource(...), Resource(...), ... ];` and change the main file's `Resources` property to `[..ServerResources]` (or drop the aggregator if only one slice and use direct assignment). (b) Same for `ServerSurfaceCatalog.Prompts.cs`. (c) Create `ServerSurfaceCatalog.Orchestration.cs` (or similar domain-neutral name) with the remaining tool tail — every category not yet extracted. (d) Update the main file's `Tools` initializer to replace `RemainingInlineTools` with `..OrchestrationTools` (or whatever the final slice name is). |
 | Scope | prod: 4 (`ServerSurfaceCatalog.cs` edit + `ServerSurfaceCatalog.Resources.cs` new + `ServerSurfaceCatalog.Prompts.cs` new + `ServerSurfaceCatalog.Orchestration.cs` new). tests: 0 new. |
 | Tool policy | `edit-only` |
