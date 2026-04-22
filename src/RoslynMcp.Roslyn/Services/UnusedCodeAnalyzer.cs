@@ -569,7 +569,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                 {
                     if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
 
-                    var hit = TryClassifyHelperAsDuplicate(methodDecl, semanticModel, project, ct);
+                    var hit = TryClassifyHelperAsDuplicate(methodDecl, semanticModel, project, options, ct);
                     if (hit is not null) results.Add(hit);
                 }
             }
@@ -588,6 +588,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         MethodDeclarationSyntax methodDecl,
         SemanticModel semanticModel,
         Project project,
+        DuplicateHelperAnalysisOptions analysisOptions,
         CancellationToken ct)
     {
         if (semanticModel.GetDeclaredSymbol(methodDecl, ct) is not IMethodSymbol methodSymbol)
@@ -641,6 +642,9 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         if (SymbolEqualityComparer.Default.Equals(targetSymbol.ContainingType, hostType))
             return null;
 
+        if (IsFrameworkGlueWrapperTarget(targetSymbol, analysisOptions.ExcludeFrameworkWrappers))
+            return null;
+
         var lineSpan = methodDecl.Identifier.GetLocation().GetLineSpan();
         var confidence = statementCount <= 1 ? "high" : "medium";
 
@@ -654,6 +658,34 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             CanonicalTarget: targetSymbol.ToDisplayString(),
             CanonicalTargetAssembly: targetAssembly.Name,
             Confidence: confidence);
+    }
+
+    /// <summary>
+    /// Thin forwarders to ASP.NET Core HTTP and System.Net.Http API entry points are
+    /// usually intentional (minimal APIs, test extensions), not reinvented primitive helpers.
+    /// </summary>
+    private static bool IsFrameworkGlueWrapperTarget(IMethodSymbol targetSymbol, bool excludeFrameworkWrappers)
+    {
+        if (!excludeFrameworkWrappers) return false;
+
+        for (var ns = targetSymbol.ContainingNamespace;
+             ns is { IsGlobalNamespace: false };
+             ns = ns.ContainingNamespace)
+        {
+            var display = ns.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+            if (display.StartsWith("global::", StringComparison.Ordinal))
+                display = display["global::".Length..];
+
+            if (display.StartsWith("Microsoft.AspNetCore.", StringComparison.Ordinal)
+                || string.Equals(display, "Microsoft.AspNetCore", StringComparison.Ordinal))
+                return true;
+
+            // System.Net.Http, System.Net.Http.Headers, System.Net.Http.Json, etc.
+            if (display.StartsWith("System.Net.Http", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
