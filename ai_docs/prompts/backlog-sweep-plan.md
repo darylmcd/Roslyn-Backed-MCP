@@ -101,10 +101,30 @@ count**, not the unit count, so the executor's vetting step sees the real file
 budget. Plans for new-tool initiatives MUST set `toolPolicy: "edit-only"` and cite
 the structural-unit exemption in the initiative's Scope field.
 
-**Session evidence:** 2026-04-17 pass 2 Init 4 (`exception-handler-classification-
-tracer`) shipped 7 prod + 1 test against a 2-prod estimate because the new-tool
-shape forced the three-layer pattern. See backlog row
-`backlog-sweep-plan-rule3-new-service-5-file-unit` and the merged PR #239 file list.
+**Fixed-cost addenda — new-MCP-tool initiatives MUST include these in the file
+count (typically +3 files on top of the 4 structural units):**
+
+| Addendum | File | Why |
+|---|---|---|
+| Test-fixture DI | `tests/RoslynMcp.Tests/TestBase.cs` | Register the new `I{Tool}Service` so fixture `ServiceProvider` can resolve it; otherwise tests that request the service via DI fail at resolution time. |
+| Test-fixture DI (container-style) | `tests/RoslynMcp.Tests/TestInfrastructure/TestServiceContainer.cs` | Same, for fixtures that build a `TestServiceContainer` instead of inheriting `TestBase` directly. |
+| README surface-count | `README.md` | The `ReadmeSurfaceCountTests` gate (shipped PR #294) asserts `README.md`'s "N tools (X stable / Y experimental)" matches `ServerSurfaceCatalog` at test time. A new Experimental tool bumps `Y` by 1 and `N` by 1; a new Stable tool bumps `X` and `N`. |
+
+These addenda are mechanical consequences of the new-tool shape but are NOT a
+5th structural unit — a plan that genuinely needs > 4 structural units must still
+split. Cite the addenda in the initiative's Scope field alongside the structural
+units so the executor's vetting step sees the full file budget up front.
+
+**Session evidence (structural units):** 2026-04-17 pass 2 Init 4
+(`exception-handler-classification-tracer`) shipped 7 prod + 1 test against a
+2-prod estimate because the new-tool shape forced the three-layer pattern. See
+backlog row `backlog-sweep-plan-rule3-new-service-5-file-unit` and the merged PR
+#239 file list.
+
+**Session evidence (addenda):** 2026-04-22 `compilation-prewarm-on-load` (PR #323)
+shipped 7 prod + 1 test against a 6-prod estimate because the plan missed the 3
+addenda above — all 3 surfaced at validation time and had to be added in the
+executor worktree.
 
 ### Rule 3b — toolPolicy per initiative
 
