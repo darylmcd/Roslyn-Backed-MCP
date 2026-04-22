@@ -78,13 +78,37 @@ internal static class TestFixtureFileSystem
         foreach (var file in Directory.GetFiles(sourceDir))
         {
             var destinationFile = Path.Combine(destinationDir, Path.GetFileName(file));
-            File.Copy(file, destinationFile, overwrite: true);
+            CopyFileWithRetry(file, destinationFile);
         }
 
         foreach (var directory in Directory.GetDirectories(sourceDir))
         {
             var destinationSubdirectory = Path.Combine(destinationDir, Path.GetFileName(directory));
             CopyDirectory(directory, destinationSubdirectory);
+        }
+    }
+
+    // verify-release.ps1 runs `dotnet restore` on the sample solution before parallel tests start.
+    // MSBuild / NuGet may still be finalizing transient artifacts (obj/**/*.assets.cache,
+    // CoreCompileInputs.cache) when the first parallel tests race to copy the fixture, producing
+    // IOExceptions with HRESULT 0x80070020 (ERROR_SHARING_VIOLATION). Retrying with backoff lets
+    // the host close the handle without falsely failing the test on a copy-time race.
+    private static void CopyFileWithRetry(string sourceFile, string destinationFile)
+    {
+        const int maxAttempts = 5;
+        var delayMs = 50;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.Copy(sourceFile, destinationFile, overwrite: true);
+                return;
+            }
+            catch (IOException) when (attempt < maxAttempts)
+            {
+                Thread.Sleep(delayMs);
+                delayMs *= 2;
+            }
         }
     }
 
