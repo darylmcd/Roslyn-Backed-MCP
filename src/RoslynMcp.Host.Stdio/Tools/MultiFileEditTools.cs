@@ -62,7 +62,7 @@ public static class MultiFileEditTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Array of file edits. Each has filePath (string) and edits (array of TextEditDto with startLine, startColumn, endLine, endColumn, newText)")] FileEditsDto[] fileEdits,
         CancellationToken ct = default,
-        [Description("When false (default), each C# file is parsed after edits; syntax errors surface as an error response.")] bool skipSyntaxCheck = false)
+        [Description("When false (default), each C# file is parsed after edits; all non-hidden parse diagnostics and parser-recovered skipped text reject the preview. Set true only for intentional intermediate states.")] bool skipSyntaxCheck = false)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {

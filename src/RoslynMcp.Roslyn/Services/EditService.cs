@@ -503,16 +503,38 @@ public sealed class EditService : IEditService
     private static IReadOnlyList<TextEditSyntaxErrorDto> GetCSharpSyntaxErrors(SourceText newSourceText, string filePath)
     {
         var tree = CSharpSyntaxTree.ParseText(newSourceText, path: filePath);
+        var root = tree.GetRoot();
         var list = new List<TextEditSyntaxErrorDto>();
         foreach (var d in tree.GetDiagnostics())
         {
-            if (d.Severity != DiagnosticSeverity.Error)
+            if (d.Severity == DiagnosticSeverity.Hidden)
             {
                 continue;
             }
 
+            // #warning in source (CS1030) is a directive diagnostic, not a malformed-tree
+            // signal; blocking apply on it would false-positive for intentional warnings.
+            if (d is { Severity: DiagnosticSeverity.Warning, Id: "CS1030" })
+            {
+                continue;
+            }
+
+            // A standalone syntax tree's diagnostics are lexer/parser (plus directive)
+            // only. The prior filter (Error only) could accept invalid C# when Roslyn's
+            // recovery path reported only non-Error severities, or when skipped tokens did
+            // not re-surface on the whole tree. Treat other non-Hidden tree diagnostics
+            // and skipped text as a syntax check failure. Callers that need a deliberate
+            // intermediate can pass skipSyntaxCheck=true.
             var lineSpan = d.Location.GetLineSpan().StartLinePosition;
             list.Add(new TextEditSyntaxErrorDto(lineSpan.Line + 1, lineSpan.Character + 1, d.GetMessage()));
+        }
+
+        if (list.Count == 0 && root.ContainsSkippedText)
+        {
+            list.Add(new TextEditSyntaxErrorDto(
+                1,
+                1,
+                "C# source contains parser recovered text (skipped tokens) without a listable top-level tree diagnostic. Pass skipSyntaxCheck=true if the intermediate state is intentional."));
         }
 
         return list;
