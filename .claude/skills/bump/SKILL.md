@@ -1,13 +1,13 @@
 ---
 name: bump
-description: "Version bump. Use when: bumping the version for a release, preparing a version increment (major/minor/patch), or when code changes require a new version. Takes bump type as input: 'major', 'minor', or 'patch'. Edits all 5 version files and prepends a CHANGELOG.md section."
+description: "Version bump. Use when: bumping the version for a release, preparing a version increment (major/minor/patch), or when code changes require a new version. Takes bump type as input: 'major', 'minor', or 'patch'. Edits all 5 version files, consumes `changelog.d/*.md` fragments into a new `## [X.Y.Z]` section grouped by category, and `git rm`s the consumed fragments."
 user-invocable: true
 argument-hint: "patch | minor | major"
 ---
 
 # Version Bump
 
-You are a release engineer. Your job is to increment the project version across all 5 version files and prepare a changelog section.
+You are a release engineer. Your job is to increment the project version across all 5 version files, consume accumulated `changelog.d/` fragments into the new `## [X.Y.Z]` section of `CHANGELOG.md`, and delete the consumed fragments in the same commit-ready change set.
 
 ## Server discovery
 
@@ -30,7 +30,11 @@ All 5 files must carry the same version string. See `docs/release-policy.md` § 
 | 2 | `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` |
 | 3 | `.claude-plugin/marketplace.json` | `plugins[0].version` (NOT `metadata.version`) |
 | 4 | `manifest.json` | `"version": "X.Y.Z"` |
-| 5 | `CHANGELOG.md` | New `## [X.Y.Z] - YYYY-MM-DD` header at top of entries |
+| 5 | `CHANGELOG.md` | New `## [X.Y.Z] - YYYY-MM-DD` header populated from `changelog.d/*.md` fragments, grouped by category |
+
+## Fragment-file migration
+
+`CHANGELOG.md`'s `## [Unreleased]` section is a structural anchor and stays empty between releases. Per-PR changelog entries are written as fragment files at `changelog.d/<row-id>.md` with YAML frontmatter carrying the category (see `changelog.d/README.md` for the full pattern). At release-cut time this skill consumes those fragments.
 
 ## Workflow
 
@@ -47,23 +51,91 @@ Parse the current version as `major.minor.patch`. Apply the bump type:
 
 Display the new version and confirm with the user before proceeding.
 
-### Step 3: Edit All 5 Files
+### Step 3: Edit Version Files 1-4
 
-Edit each file using the Edit tool, replacing the old version with the new version:
+Edit each of the first four version files using the Edit tool, replacing the old version with the new version:
 
 1. **`Directory.Build.props`**: Replace `<Version>OLD</Version>` with `<Version>NEW</Version>`
 2. **`.claude-plugin/plugin.json`**: Replace `"version": "OLD"` with `"version": "NEW"` (the first occurrence)
 3. **`.claude-plugin/marketplace.json`**: Replace `"version": "OLD"` in the `plugins[0]` entry (NOT the `metadata.version` on line 9)
 4. **`manifest.json`**: Replace `"version": "OLD"` with `"version": "NEW"`
-5. **`CHANGELOG.md`**: Insert a new section header `## [NEW] - YYYY-MM-DD` (today's date) with empty `### Fixed`, `### Changed`, `### Added` subsections above the previous top entry. Do NOT remove or edit existing entries.
 
-### Step 4: Verify
+### Step 4: Consume `changelog.d/` fragments into `CHANGELOG.md`
+
+Scan `changelog.d/*.md` (exclude `README.md` — the directory explainer is NOT a fragment):
+
+```bash
+ls changelog.d/*.md | grep -v README.md
+```
+
+For each fragment, parse YAML frontmatter and extract:
+
+- `category` — must be one of: `Fixed`, `Changed`, `Changed — BREAKING`, `Added`, `Maintenance` (em-dash is U+2014). Unknown values fail the bump loudly — see *Refusal conditions* below.
+- Body — everything after the closing `---`. Expected to be a single bullet in the shipping `**<Category>:**` prose style (one per fragment).
+
+Group the fragments by `category` in the canonical emit order: `Fixed` → `Changed — BREAKING` → `Changed` → `Added` → `Maintenance`.
+
+Insert a new section into `CHANGELOG.md` immediately above the most recent `## [X.Y.Z]` block:
+
+```
+## [NEW] - YYYY-MM-DD
+
+### Fixed
+
+<bullets from Fixed fragments in the order fragments were read>
+
+### Changed — BREAKING
+
+<bullets from Changed — BREAKING fragments>
+
+### Changed
+
+<bullets from Changed fragments>
+
+### Added
+
+<bullets from Added fragments>
+
+### Maintenance
+
+<bullets from Maintenance fragments>
+```
+
+Omit any subsection that has zero fragments (do NOT emit an empty `### Fixed` header if no Fixed fragments were present). Do NOT remove or edit `## [Unreleased]` — it stays as a structural anchor with its empty subsection headers.
+
+If no fragments were present at all, emit a `## [NEW] - YYYY-MM-DD` section with a single `_No user-visible changes in this release._` line and proceed — some patch bumps legitimately ship with no fragments (e.g. version-file drift repair).
+
+Delete each consumed fragment from disk after the `CHANGELOG.md` edit lands:
+
+```bash
+rm changelog.d/<row-id>.md
+```
+
+The intent is that `git add -- CHANGELOG.md changelog.d/` then `git status` shows a single atomic change set: one `CHANGELOG.md` edit + N `changelog.d/*.md` deletions. This is what `/ship` (or a manual `git commit`) will commit.
+
+### Refusal conditions (fragment consumption)
+
+Refuse loudly — abort the bump before any `CHANGELOG.md` write — if any of the following hold:
+
+| Condition | Message |
+|---|---|
+| A fragment has missing or unparseable YAML frontmatter | `"Refusing: changelog.d/<file> is missing its YAML frontmatter or the frontmatter did not parse. Fix the fragment and re-run."` |
+| A fragment's `category` key is missing | `"Refusing: changelog.d/<file> has no 'category' key in its frontmatter. Fix the fragment and re-run."` |
+| A fragment's `category` value is not one of the five canonical values | `"Refusing: changelog.d/<file> has category '<value>'; expected one of Fixed / Changed — BREAKING / Changed / Added / Maintenance. Fix the fragment and re-run."` |
+| A fragment has no body (frontmatter-only) | `"Refusing: changelog.d/<file> has no bullet body. Fix the fragment and re-run."` |
+
+Do NOT silently skip malformed fragments — a silent skip would lose the release note.
+
+### Step 5: Verify
 
 Run `eng/verify-version-drift.ps1` via Bash to confirm all 5 files agree on the new version. If it fails, fix the discrepancy and re-run.
 
-### Step 5: Report
+Also confirm `changelog.d/` now contains only `README.md` — every fragment that was present at Step 4 start should have been consumed and deleted.
+
+### Step 6: Report
 
 Display a summary:
 - Previous version → New version
-- Files modified (list all 5)
-- Reminder: "Fill in the CHANGELOG.md section before shipping. Run `/roslyn-mcp:publish-preflight` when ready to validate the full release."
+- Files modified (list all 5 version files + `CHANGELOG.md`)
+- Fragments consumed (count + list of `changelog.d/` filenames deleted)
+- Reminder: "Review the `## [NEW]` section in `CHANGELOG.md` — the grouped bullets came directly from the fragments. Edit the prose if a fragment was under-specified. Run `/roslyn-mcp:publish-preflight` when ready to validate the full release."
