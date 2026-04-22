@@ -26,12 +26,12 @@ Actionable initiatives this sweep: **5**.
 
 Plan-time source reads, all present as of 2026-04-22T17:00Z:
 
-- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog*.cs` — **Phase 2 shipped
-  (PR #334, 2026-04-22):** `public static partial class` with domain slices in
-  `ServerSurfaceCatalog.Workspace.cs` / `.Symbols.cs` / `.Refactoring.cs`; the main
-  file holds `RemainingInlineTools` plus Resources, Prompts, workflow hints, factory
-  helpers, and DTOs. The merged `Tools` list is built with `Lazy<IReadOnlyList<SurfaceEntry>>`
-  so static field initializers are not order-dependent across partials.
+- `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog*.cs` — **Phase 2 (PR #334, 2026-04-22)**
+  plus **Phase 3 in review (PR #336, 2026-04-22):** W/S/R partials and, new in phase 3,
+  `ServerSurfaceCatalog.Analysis.cs` and `ServerSurfaceCatalog.Editing.cs` with
+  `s_allTools` = W+S+Analysis+Refactoring+Editing+`RemainingInlineTools` (tail). The main
+  file holds the tail, Resources, Prompts, workflow hints, factories, and DTOs. The merged
+  `Tools` list uses `Lazy<IReadOnlyList<SurfaceEntry>>` across partials.
 - `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs` —
   **Phase 1 shipped (PR #330, 2026-04-22):** `AnalyzeCatalogInvocation` no longer
   requires a `Tools` / `Resources` / `Prompts` property ancestor. Kind is inferred
@@ -113,7 +113,7 @@ ship in the order below.
 
 ### 3. `catalog-split-phase3-extract-analysis-and-editing` — Move Analysis, AdvancedAnalysis, Validation, Editing, FileOperations, DeadCode to partials
 
-**Status:** pending · **Order:** 3 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Changed
+**Status:** in-review (PR #336, 2026-04-22) · **Order:** 3 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 45000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|

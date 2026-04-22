@@ -56,15 +56,15 @@
       "productionFilesTouched": 3,
       "testFilesAdded": 0,
       "toolPolicy": "edit-only",
-      "status": "pending",
+      "status": "in-review",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Changed",
-      "branch": null,
+      "branch": "remediation/catalog-split-phase3-extract-analysis-and-editing",
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/336",
       "mergedAt": null,
-      "notes": "Main file + 2 new partial files. Moves the next ~55% of inline tools out of the main file."
+      "notes": "Main file + 2 new partials. A/E/M partition of the former RemainingInline in original traversal order; s_allTools = W+S+Analysis+Refactoring+Editing+Remaining per plan §3."
     },
     {
       "id": "catalog-split-phase4-extract-resources-prompts-and-tail",
