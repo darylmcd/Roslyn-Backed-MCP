@@ -16,6 +16,7 @@ public static class ServerSurfaceCatalog
         Tool("workspace_load", "workspace", "stable", false, false, "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session."),
         Tool("workspace_reload", "workspace", "stable", false, false, "Reload an existing workspace session from disk."),
         Tool("workspace_close", "workspace", "stable", false, true, "Close a loaded workspace session and release resources."),
+        Tool("workspace_warm", "workspace", "experimental", false, false, "Opt-in compilation prewarm: force GetCompilationAsync + first-semantic-model resolution across the workspace to cut the cold-start penalty of the first read-side tool call."),
         Tool("workspace_list", "workspace", "stable", true, false, "List active workspace sessions."),
         Tool("workspace_status", "workspace", "stable", true, false, "Inspect status, diagnostics, and stale-state information for a workspace."),
         Tool("workspace_health", "workspace", "stable", true, false, "Lean workspace readiness summary (alias of workspace_status verbose=false)."),
