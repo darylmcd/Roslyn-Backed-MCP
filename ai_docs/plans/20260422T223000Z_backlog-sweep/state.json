@@ -24,7 +24,7 @@
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/343",
       "mergedAt": "2026-04-22T18:15:59Z",
-      "notes": "Squash-merged; merge commit 0c934c6"
+      "notes": "Primary: PR #343 (0c934c6). Follow-up PR #346 (aadd1c9, 2026-04-22T18:29:12Z): CompileCheckDto.Success XML docs + extended WorkspaceValidationOverallStatusTests."
     },
     {
       "id": "preview-multi-file-edit-silent-syntax-acceptance",
