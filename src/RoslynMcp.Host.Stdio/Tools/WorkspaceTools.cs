@@ -75,12 +75,16 @@ public static class WorkspaceTools
         // released before being removed from the registry.
         return gate.RunLoadGateAsync(async outerCt =>
         {
-            var json = await gate.RunWriteAsync(workspaceId, async innerCt =>
-            {
-                var closed = workspace.Close(workspaceId);
-                _ = NotifyResourcesChangedAsync(server);
-                return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
-            }, outerCt).ConfigureAwait(false);
+            var json = await gate.RunWriteAsync(
+                workspaceId,
+                async innerCt =>
+                {
+                    var closed = workspace.Close(workspaceId);
+                    _ = NotifyResourcesChangedAsync(server);
+                    return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
+                },
+                outerCt,
+                applyStalenessPolicy: false).ConfigureAwait(false);
             gate.RemoveGate(workspaceId);
             return json;
         }, ct);

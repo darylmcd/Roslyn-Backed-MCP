@@ -466,6 +466,53 @@ public class WorkspaceExecutionGateTests
             "StaleReloadMs must also remain null when no reload completed.");
     }
 
+    /// <summary>
+    /// workspace-close-missing-solution-on-disk: closing must not run the stale auto-reload
+    /// preamble (reload requires the solution file on disk).
+    /// </summary>
+    [TestMethod]
+    public async Task RunWriteAsync_SkipStaleness_WhenStale_DoesNotInvokeReload()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+        manager.ReloadThrowsFileNotFound = true;
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        var ran = false;
+        await gate.RunWriteAsync(
+            WorkspaceA,
+            _ =>
+            {
+                ran = true;
+                return Task.FromResult(0);
+            },
+            CancellationToken.None,
+            applyStalenessPolicy: false).ConfigureAwait(false);
+
+        Assert.IsTrue(ran);
+        Assert.AreEqual(0, manager.ReloadCount, "Close-style writes must not auto-reload stale workspaces.");
+    }
+
+    [TestMethod]
+    public async Task RunWriteAsync_Default_WhenStaleAndReloadThrowsFileNotFound_Propagates()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+        manager.ReloadThrowsFileNotFound = true;
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        await Assert.ThrowsExactlyAsync<FileNotFoundException>(() =>
+            gate.RunWriteAsync(WorkspaceA, _ => Task.FromResult(0), CancellationToken.None)).ConfigureAwait(false);
+
+        Assert.AreEqual(1, manager.ReloadCount);
+    }
+
     private sealed class ConcurrencyTracker
     {
         private int _current;
@@ -497,6 +544,13 @@ public class WorkspaceExecutionGateTests
         /// </summary>
         public bool ReloadThrowsKeyNotFound { get; set; }
 
+        /// <summary>
+        /// When true, <see cref="ReloadAsync"/> increments <see cref="ReloadCount"/> and throws
+        /// <see cref="FileNotFoundException"/> — simulates a missing on-disk solution while the
+        /// in-memory session is still registered (<c>workspace-close-missing-solution-on-disk</c>).
+        /// </summary>
+        public bool ReloadThrowsFileNotFound { get; set; }
+
         public FakeGateWorkspaceManager(bool containsAny = true)
         {
             _containsAny = containsAny;
@@ -520,6 +574,14 @@ public class WorkspaceExecutionGateTests
             {
                 throw new KeyNotFoundException($"Workspace '{workspaceId}' was closed between the stale check and the reload attempt.");
             }
+
+            if (ReloadThrowsFileNotFound)
+            {
+                throw new FileNotFoundException(
+                    $"Workspace path was not found: {workspaceId}",
+                    workspaceId);
+            }
+
             ClearStaleFlag(workspaceId);
             return Task.FromResult(new WorkspaceStatusDto(
                 WorkspaceId: workspaceId,

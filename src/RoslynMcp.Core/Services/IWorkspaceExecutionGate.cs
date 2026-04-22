@@ -42,7 +42,17 @@ public interface IWorkspaceExecutionGate
     /// <remarks>
     /// The action must not call another gate method against the same workspace id (no reentrance).
     /// </remarks>
-    Task<T> RunWriteAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct);
+    /// <param name="applyStalenessPolicy">
+    /// When <see langword="true"/> (default), stale workspaces may trigger an automatic reload
+    /// before the write runs. Set to <see langword="false"/> for <c>workspace_close</c> so the
+    /// session can be torn down even when the on-disk solution path is already gone (reload
+    /// would throw <see cref="System.IO.FileNotFoundException"/>).
+    /// </param>
+    Task<T> RunWriteAsync<T>(
+        string workspaceId,
+        Func<CancellationToken, Task<T>> action,
+        CancellationToken ct,
+        bool applyStalenessPolicy = true);
 
     /// <summary>
     /// Run an async action under the global <b>load gate</b>. Used by <c>workspace_load</c>,
