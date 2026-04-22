@@ -96,19 +96,37 @@ claude --plugin-dir /path/to/Roslyn-Backed-MCP
 
 ### Available Skills
 
+The plugin bundles **31 skills**. The most commonly used ones:
+
 | Skill | Description |
 |-------|-------------|
 | `/roslyn-mcp:analyze` | Solution health check — diagnostics, complexity, cohesion, vulnerabilities |
 | `/roslyn-mcp:refactor` | Guided semantic refactoring — rename, extract, move, split |
+| `/roslyn-mcp:refactor-loop` | Guided preview → apply-with-verify → validate loop for non-trivial refactors |
 | `/roslyn-mcp:review` | Semantic code review — diagnostics, dead code, complexity, security |
+| `/roslyn-mcp:impact-assessment` | Pre-change blast-radius report for a rename, signature change, or deletion |
+| `/roslyn-mcp:architecture-review` | Layering and Dependency-Inversion-Principle audit |
 | `/roslyn-mcp:document` | XML documentation generator for public APIs |
 | `/roslyn-mcp:security` | Security audit — OWASP diagnostics, CVE scan, reflection, DI |
 | `/roslyn-mcp:dead-code` | Dead code detection and safe cleanup |
 | `/roslyn-mcp:test-coverage` | Test coverage analysis and test scaffolding |
+| `/roslyn-mcp:test-triage` | Test discovery and failure triage when CI is red |
+| `/roslyn-mcp:generate-tests` | Batch-scaffold test stubs for untested public APIs |
 | `/roslyn-mcp:migrate-package` | NuGet package migration across projects |
+| `/roslyn-mcp:modernize` | Staged codebase modernization toward a natural-language goal |
 | `/roslyn-mcp:explain-error` | Diagnostic explanation with auto-fix |
 | `/roslyn-mcp:extract-method` | Extract statements into a new method with parameter inference |
+| `/roslyn-mcp:code-actions` | IDE-style fixes and refactorings at a position or selection |
 | `/roslyn-mcp:complexity` | Complexity hotspot and god class analysis |
+| `/roslyn-mcp:di-audit` | Audit dependency-injection registrations and lifetime mismatches |
+| `/roslyn-mcp:trace-flow` | Walk a value through control, data, and exception flow |
+| `/roslyn-mcp:inheritance-explorer` | Walk the inheritance and member-override graph for a type or member |
+| `/roslyn-mcp:exception-audit` | Repo-wide classification of exception-handling patterns |
+| `/roslyn-mcp:format-sweep` | Whole-solution formatting compliance pass |
+| `/roslyn-mcp:workspace-health` | One-shot status report on the server and loaded workspaces |
+| `/roslyn-mcp:session-undo` | Session history and undo of recent applies |
+
+Plus `project-inspection`, `snippet-eval`, `semantic-find`, `nuget-preflight`, `version-bump`, `update`, and release-workflow helpers. Browse [`skills/`](skills/) for the full catalogue.
 
 ### Plugin Hooks
 

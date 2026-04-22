@@ -32,7 +32,7 @@ Use **`discover_capabilities`** (`refactoring`) or **`roslyn://server/catalog`**
 
 ### Step 1: Find the Code Region
 
-1. Use `symbol_search` to locate the containing type or method.
+1. Use `symbol_search` to locate the containing type or method. Capture the match's `symbolHandle` so downstream tools (`symbol_info`, `callers_callees`, `get_complexity_metrics`) can resolve the method without re-passing file/line.
 2. Use `get_source_text` to read the file and identify the exact line range.
 3. Identify which statements to extract — look for:
    - Blocks that do a distinct subtask (validation, calculation, I/O)

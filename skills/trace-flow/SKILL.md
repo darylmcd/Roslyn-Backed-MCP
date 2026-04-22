@@ -59,7 +59,7 @@ Parse `$ARGUMENTS` and resolve to a concrete declaration:
 - **`file:line` (or `file:line:column`)**: call `enclosing_symbol` to find the nearest declaration (method, property, parameter, local) that contains the span. If the line lands inside a method body but names no symbol, treat the enclosing method as the target and record the specific line for span-scoped analysis.
 - **Exception type**: resolve via `symbol_search` (kind: `NamedType`); skip data/control flow unless the user also named a containing method.
 
-Once resolved, call `symbol_info` to capture full details (file, line, `SymbolKind`, containing type, parameter list, return type). Record this as the **target descriptor** — every downstream step references it.
+Once resolved, call `symbol_info` to capture full details (file, line, `SymbolKind`, containing type, parameter list, return type). **Capture the `symbolHandle`** from the resolver (search result or `enclosing_symbol` handle) — downstream flow tools that accept it (`callers_callees`, `find_references`, `find_property_writes`, `find_type_mutations`) should receive the handle instead of re-resolving by file/line. Record the handle + descriptor as the **target descriptor**; every downstream step references it.
 
 ### Step 3: Detect Symbol Kind and Pick Analyses
 

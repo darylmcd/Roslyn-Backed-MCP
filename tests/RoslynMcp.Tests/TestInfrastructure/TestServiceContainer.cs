@@ -153,7 +153,8 @@ internal sealed class TestServiceContainer
                 NullLogger<RefactoringService>.Instance,
                 undoService,
                 changeTracker,
-                new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance)),
+                new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance),
+                new PostApplySymbolResolver()),
             BuildService = new BuildService(
                 workspaceManager,
                 gatedCommandExecutor,
