@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
@@ -222,6 +223,68 @@ public sealed class DuplicateHelperDetectionTests
     }
 
     [TestMethod]
+    public async Task FindDuplicateHelpers_HttpClientForwarder_IsNotDetected_ByDefault()
+    {
+        const string source = """
+            using System.Net.Http;
+            using System.Threading.Tasks;
+            namespace Sample;
+            internal static class IntegrationTestHttpExtensions
+            {
+                public static Task<HttpResponseMessage> GetRelativeAsync(HttpClient client, string uri) => client.GetAsync(uri);
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(
+            source,
+            MetadataReference.CreateFromFile(typeof(HttpClient).Assembly.Location));
+
+        var hits = await analyzer.FindDuplicateHelpersAsync(
+            WorkspaceId,
+            new DuplicateHelperAnalysisOptions(),
+            default);
+
+        Assert.AreEqual(0, hits.Count,
+            "HttpClient delegation helpers should be filtered as framework glue by default.");
+    }
+
+    [TestMethod]
+    public async Task FindDuplicateHelpers_HttpClientForwarder_IsDetected_WhenExclusionOff()
+    {
+        const string source = """
+            using System.Net.Http;
+            using System.Threading.Tasks;
+            namespace Sample;
+            internal static class IntegrationTestHttpExtensions
+            {
+                public static Task<HttpResponseMessage> GetRelativeAsync(HttpClient client, string uri) => client.GetAsync(uri);
+            }
+            """;
+
+        var compileErrors = await GetCompilationErrorsAsync(
+            source,
+            MetadataReference.CreateFromFile(typeof(HttpClient).Assembly.Location));
+        Assert.AreEqual(
+            string.Empty,
+            compileErrors,
+            "In-memory fixture must compile so GetSymbolInfo binds HttpClient.GetAsync.");
+
+        var analyzer = BuildAnalyzerWithSource(
+            source,
+            MetadataReference.CreateFromFile(typeof(HttpClient).Assembly.Location));
+
+        var hits = await analyzer.FindDuplicateHelpersAsync(
+            WorkspaceId,
+            new DuplicateHelperAnalysisOptions { ExcludeFrameworkWrappers = false },
+            default);
+
+        Assert.AreEqual(1, hits.Count, "Opt-out should surface System.Net.Http glue forwarders again.");
+        Assert.IsTrue(
+            hits[0].CanonicalTarget.Contains("GetAsync", StringComparison.Ordinal),
+            $"Expected HttpClient.GetAsync; got '{hits[0].CanonicalTarget}'.");
+    }
+
+    [TestMethod]
     public async Task FindDuplicateHelpers_LimitCapsResults()
     {
         // Confirm the `Limit` option clamps the result count even when more hits exist.
@@ -251,8 +314,44 @@ public sealed class DuplicateHelperDetectionTests
     /// calls to <see cref="System.String"/> in <c>System.Private.CoreLib</c> for the
     /// detector's non-source-assembly check to fire.
     /// </summary>
-    private static UnusedCodeAnalyzer BuildAnalyzerWithSource(string source)
+    private static UnusedCodeAnalyzer BuildAnalyzerWithSource(string source, params MetadataReference[] additionalMetadataReferences)
     {
+        var workspace = CreateAdhocWorkspace(source, additionalMetadataReferences);
+        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
+        var cache = new CompilationCache(wsManager);
+        return new UnusedCodeAnalyzer(
+            wsManager,
+            cache,
+            NullLogger<UnusedCodeAnalyzer>.Instance);
+    }
+
+    private static AdhocWorkspace CreateAdhocWorkspace(string source, params MetadataReference[] additionalMetadataReferences)
+    {
+        var metadataRefs = new List<MetadataReference>(1 + additionalMetadataReferences.Length)
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location)
+        };
+
+        if (additionalMetadataReferences.Length > 0)
+        {
+            var coreDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+            // System.Net.Http (and other satellite facades) need facades next to System.Private.CoreLib
+            // in lightweight AdhocWorkspace fixtures (matches CS0012 chains in real solutions).
+            foreach (var facade in new[]
+                     {
+                         "System.Runtime.dll",
+                         "System.Private.Uri.dll",
+                         "System.Net.Primitives.dll",
+                     })
+            {
+                var path = Path.Combine(coreDir, facade);
+                if (File.Exists(path))
+                    metadataRefs.Add(MetadataReference.CreateFromFile(path));
+            }
+        }
+
+        metadataRefs.AddRange(additionalMetadataReferences);
+
         var workspace = new AdhocWorkspace();
         var projectId = ProjectId.CreateNewId();
         var projectInfo = ProjectInfo.Create(
@@ -263,10 +362,7 @@ public sealed class DuplicateHelperDetectionTests
             language: LanguageNames.CSharp,
             filePath: Path.Combine(Path.GetTempPath(), "TestAsm.csproj"),
             compilationOptions: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary),
-            metadataReferences:
-            [
-                MetadataReference.CreateFromFile(typeof(object).Assembly.Location)
-            ]);
+            metadataReferences: metadataRefs.ToArray());
         workspace.AddProject(projectInfo);
 
         var docId = DocumentId.CreateNewId(projectId);
@@ -282,12 +378,16 @@ public sealed class DuplicateHelperDetectionTests
                     VersionStamp.Create(),
                     fullPath))));
 
-        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
-        var cache = new CompilationCache(wsManager);
-        return new UnusedCodeAnalyzer(
-            wsManager,
-            cache,
-            NullLogger<UnusedCodeAnalyzer>.Instance);
+        return workspace;
+    }
+
+    private static async Task<string> GetCompilationErrorsAsync(string source, params MetadataReference[] additionalMetadataReferences)
+    {
+        var workspace = CreateAdhocWorkspace(source, additionalMetadataReferences);
+        var project = workspace.CurrentSolution.Projects.First();
+        var compilation = await project.GetCompilationAsync().ConfigureAwait(false);
+        var errors = compilation!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        return errors.Length == 0 ? string.Empty : string.Join(Environment.NewLine, errors.Select(d => d.ToString()));
     }
 
     /// <summary>

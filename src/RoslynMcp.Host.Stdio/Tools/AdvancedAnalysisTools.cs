@@ -205,13 +205,14 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_duplicate_helpers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Flag private/internal helper methods whose body duplicates a reachable BCL/NuGet symbol."),
-     Description("Find private/internal static helpers (on `static class` hosts) whose body is a single ≤ 2-statement delegation to a method declared in a non-source assembly (BCL or referenced NuGet) — the \"reinvented `string.IsNullOrWhiteSpace` / `ArgumentNullException.ThrowIfNull`\" pattern that `find_unused_symbols` misses because the helper IS used locally. Conservative: expression-bodied forwarders and `{ return Target(...); }` bodies return Confidence=high; a single null-guard followed by the delegation returns Confidence=medium. Any body that calls the solution's own code (same-solution assembly), or does more than a pure re-wrap, is not flagged. Intentionally distinct from `find_duplicated_methods` (which buckets internal-to-internal structural duplicates); this tool targets internal-vs-referenced-library duplicates.")]
+     Description("Find private/internal static helpers (on `static class` hosts) whose body is a single ≤ 2-statement delegation to a method declared in a non-source assembly (BCL or referenced NuGet) — the \"reinvented `string.IsNullOrWhiteSpace` / `ArgumentNullException.ThrowIfNull`\" pattern that `find_unused_symbols` misses because the helper IS used locally. Conservative: expression-bodied forwarders and `{ return Target(...); }` bodies return Confidence=high; a single null-guard followed by the delegation returns Confidence=medium. By default, thin forwarders into ASP.NET Core HTTP (`Microsoft.AspNetCore.*`, e.g. `Results.Ok`) and `System.Net.Http` (`HttpClient` helpers) are omitted as framework glue rather than redundant primitives. Set `excludeFrameworkWrappers=false` to include those. Any body that calls the solution's own code (same-solution assembly), or does more than a pure re-wrap, is not flagged. Intentionally distinct from `find_duplicated_methods` (which buckets internal-to-internal structural duplicates); this tool targets internal-vs-referenced-library duplicates.")]
     public static Task<string> FindDuplicateHelpers(
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
         [Description("Maximum number of hits to return (default: 50).")] int limit = 50,
+        [Description("When true (default), omit delegations into Microsoft.AspNetCore.* and System.Net.Http* as framework glue (minimal APIs, HTTP client helpers).")] bool excludeFrameworkWrappers = true,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
@@ -221,7 +222,8 @@ public static class AdvancedAnalysisTools
                 new DuplicateHelperAnalysisOptions
                 {
                     ProjectFilter = projectFilter,
-                    Limit = limit
+                    Limit = limit,
+                    ExcludeFrameworkWrappers = excludeFrameworkWrappers
                 },
                 c);
             return JsonSerializer.Serialize(new { count = results.Count, helpers = results }, JsonDefaults.Indented);
