@@ -42,9 +42,9 @@
       "changelogCategory": "Changed",
       "branch": "remediation/catalog-split-phase2-extract-three-large-domains",
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/334",
       "mergedAt": null,
-      "notes": "Depends on Phase 1 merged. Main file + 3 new partial files. Tools property becomes a collection-expression concatenation that preserves ordinal order."
+      "notes": "Depends on Phase 1 merged. Main file + 3 new partial files. Tools merged via Lazy from W+S+R+Remaining; domain ordering diverges from original line order by design."
     },
     {
       "id": "catalog-split-phase3-extract-analysis-and-editing",
