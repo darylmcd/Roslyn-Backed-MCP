@@ -8,91 +8,10 @@ public static partial class ServerSurfaceCatalog
 {
     public const string CatalogVersion = "2026.04";
 
-    private static readonly SurfaceEntry[] RemainingInlineTools =
-    [
-        Tool("get_prompt_text", "prompts", "experimental", true, false, "Render any registered MCP prompt as plain text. Pass the prompt name plus a JSON object of the prompt's parameters; returns { messages: [{role, text}], promptName, parameterCount }."),
-        Tool("add_package_reference_preview", "project-mutation", "stable", true, false, "Preview adding a PackageReference to a project file."),
-        Tool("remove_package_reference_preview", "project-mutation", "stable", true, false, "Preview removing a PackageReference from a project file."),
-        Tool("add_project_reference_preview", "project-mutation", "stable", true, false, "Preview adding a ProjectReference to a project file."),
-        Tool("remove_project_reference_preview", "project-mutation", "stable", true, false, "Preview removing a ProjectReference from a project file."),
-        Tool("set_project_property_preview", "project-mutation", "stable", true, false, "Preview setting an allowlisted property in a project file."),
-        Tool("add_target_framework_preview", "project-mutation", "stable", true, false, "Preview adding a target framework to a project file."),
-        Tool("remove_target_framework_preview", "project-mutation", "stable", true, false, "Preview removing a target framework from a project file."),
-        Tool("set_conditional_property_preview", "project-mutation", "stable", true, false, "Preview setting an allowlisted conditional project property."),
-        Tool("add_central_package_version_preview", "project-mutation", "experimental", true, false, "Preview adding a PackageVersion entry to Directory.Packages.props."),
-        Tool("remove_central_package_version_preview", "project-mutation", "stable", true, false, "Preview removing a PackageVersion entry from Directory.Packages.props."),
-        Tool("apply_project_mutation", "project-mutation", "experimental", false, true, "Apply a previously previewed project file mutation."),
-        Tool("scaffold_type_preview", "scaffolding", "experimental", true, false, "Preview scaffolding a new type file in a project."),
-        Tool("scaffold_type_apply", "scaffolding", "experimental", false, true, "Apply a previously previewed type scaffolding operation."),
-        Tool("scaffold_test_preview", "scaffolding", "stable", true, false, "Preview scaffolding a new test file (MSTest, xUnit, or NUnit; auto-detect or specify testFramework)."),
-        Tool("scaffold_test_batch_preview", "scaffolding", "experimental", true, false, "Preview scaffolding multiple test files for related target types in one composite preview."),
-        Tool("scaffold_first_test_file_preview", "scaffolding", "experimental", true, false, "Preview scaffolding the first <Service>Tests.cs fixture for a service that has no existing test file."),
-        Tool("scaffold_test_apply", "scaffolding", "experimental", false, true, "Apply a previously previewed test scaffolding operation."),
-        Tool("move_type_to_project_preview", "cross-project-refactoring", "experimental", true, false, "Preview moving a type declaration into another project."),
-        Tool("extract_interface_cross_project_preview", "cross-project-refactoring", "experimental", true, false, "Preview extracting an interface from a concrete type into a different project."),
-        Tool("dependency_inversion_preview", "cross-project-refactoring", "experimental", true, false, "Preview extracting an interface and updating constructor dependencies."),
-        Tool("migrate_package_preview", "orchestration", "experimental", true, false, "Preview migrating a package across affected projects."),
-        Tool("split_class_preview", "orchestration", "experimental", true, false, "Preview splitting a class into a new partial file."),
-        Tool("extract_and_wire_interface_preview", "orchestration", "experimental", true, false, "Preview extracting an interface and updating DI registrations."),
-        Tool("apply_composite_preview", "orchestration", "experimental", false, true, "Apply a previously previewed orchestration operation."),
-        Tool("get_syntax_tree", "syntax", "stable", true, false, "Return a structured syntax tree for a document or range."),
-        Tool("security_diagnostics", "security", "stable", true, false, "Return security-relevant diagnostics with OWASP categorization and fix hints."),
-        Tool("security_analyzer_status", "security", "stable", true, false, "Check which security analyzer packages are present and recommend missing ones."),
-        Tool("nuget_vulnerability_scan", "security", "stable", true, false, "Scan NuGet references for known CVEs using dotnet list package --vulnerable."),
-        Tool("evaluate_csharp", "scripting", "stable", true, false, "Evaluate a C# expression or script interactively via the Roslyn Scripting API. Emits MCP progress and heartbeat logs during long compile/run so clients are not stuck on a static label."),
-        Tool("get_editorconfig_options", "configuration", "stable", true, false, "Get effective .editorconfig options for a source file."),
-        Tool("set_editorconfig_option", "configuration", "stable", false, false, "Set or update a key in .editorconfig for C# files (creates file if needed)."),
-        Tool("evaluate_msbuild_property", "project-mutation", "stable", true, false, "Evaluate a single MSBuild property for a project."),
-        Tool("evaluate_msbuild_items", "project-mutation", "stable", true, false, "List MSBuild items of a type with evaluated includes and metadata."),
-        Tool("get_msbuild_properties", "project-mutation", "stable", true, false, "Dump evaluated MSBuild properties for a project."),
-        Tool("set_diagnostic_severity", "configuration", "stable", false, false, "Set dotnet_diagnostic severity in .editorconfig."),
-    ];
-
     private static readonly Lazy<IReadOnlyList<SurfaceEntry>> s_allTools = new(
-        static () => [..WorkspaceTools!, ..SymbolTools!, ..AnalysisTools!, ..RefactoringTools!, ..EditingTools!, ..RemainingInlineTools!]);
+        static () => [..WorkspaceTools!, ..SymbolTools!, ..AnalysisTools!, ..RefactoringTools!, ..EditingTools!, ..OrchestrationTools!]);
 
     public static IReadOnlyList<SurfaceEntry> Tools => s_allTools.Value;
-
-    public static IReadOnlyList<SurfaceEntry> Resources { get; } =
-    [
-        Resource("server_catalog", "server", "stable", true, false, "Cap-safe summary of the server surface (tool/prompt counts + resource list + workflow hints). Full tools and prompts via paginated siblings.", "roslyn://server/catalog"),
-        Resource("server_catalog_full", "server", "experimental", true, false, "Unpaginated full catalog including every tool and prompt entry. Large payload (~80 KB).", "roslyn://server/catalog/full"),
-        Resource("server_catalog_tools_page", "server", "experimental", true, false, "Paginated slice of the server tool catalog. Slots: offset (0-based) + limit (1-200).", "roslyn://server/catalog/tools/{offset}/{limit}"),
-        Resource("server_catalog_prompts_page", "server", "experimental", true, false, "Paginated slice of the server prompt catalog. Slots: offset (0-based) + limit (1-200).", "roslyn://server/catalog/prompts/{offset}/{limit}"),
-        Resource("resource_templates", "server", "stable", true, false, "Lists all resource URI templates, including workspace-scoped templates.", "roslyn://server/resource-templates"),
-        Resource("workspaces", "workspace", "stable", true, false, "List active workspace sessions (lean summary; counts and load state, no per-project tree).", "roslyn://workspaces"),
-        Resource("workspaces_verbose", "workspace", "stable", true, false, "List active workspace sessions with full per-project tree and diagnostics.", "roslyn://workspaces/verbose"),
-        Resource("workspace_status", "workspace", "stable", true, false, "Inspect workspace status (lean summary; counts and load state, no per-project tree).", "roslyn://workspace/{workspaceId}/status"),
-        Resource("workspace_status_verbose", "workspace", "stable", true, false, "Inspect workspace status with full per-project tree and workspace diagnostics.", "roslyn://workspace/{workspaceId}/status/verbose"),
-        Resource("workspace_projects", "workspace", "stable", true, false, "Read project graph metadata for a workspace.", "roslyn://workspace/{workspaceId}/projects"),
-        Resource("workspace_diagnostics", "analysis", "stable", true, false, "Read all compiler diagnostics for a workspace.", "roslyn://workspace/{workspaceId}/diagnostics"),
-        Resource("source_file", "workspace", "stable", true, false, "Read a source file from the loaded workspace.", "roslyn://workspace/{workspaceId}/file/{filePath}"),
-        Resource("source_file_lines", "workspace", "experimental", true, false, "Read a 1-based inclusive line range from a source file in the loaded workspace.", "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}")
-    ];
-
-    public static IReadOnlyList<SurfaceEntry> Prompts { get; } =
-    [
-        Prompt("explain_error", "prompts", "experimental", true, false, "Generate a prompt for explaining a compiler diagnostic."),
-        Prompt("suggest_refactoring", "prompts", "experimental", true, false, "Generate a prompt for refactoring suggestions."),
-        Prompt("review_file", "prompts", "experimental", true, false, "Generate a prompt for file review."),
-        Prompt("analyze_dependencies", "prompts", "experimental", true, false, "Generate a prompt for architecture and dependency analysis."),
-        Prompt("debug_test_failure", "prompts", "experimental", true, false, "Generate a prompt for debugging a failing test."),
-        Prompt("refactor_and_validate", "prompts", "experimental", true, false, "Generate a prompt for preview-first refactoring and validation."),
-        Prompt("fix_all_diagnostics", "prompts", "experimental", true, false, "Generate a prompt for batched diagnostic cleanup."),
-        Prompt("guided_package_migration", "prompts", "experimental", true, false, "Generate a prompt for package migration across affected projects."),
-        Prompt("guided_extract_interface", "prompts", "experimental", true, false, "Generate a prompt for interface extraction and consumer updates."),
-        Prompt("security_review", "prompts", "experimental", true, false, "Generate a prompt for comprehensive security review using security diagnostic tools."),
-        Prompt("discover_capabilities", "prompts", "experimental", true, false, "Generate a prompt to discover relevant server tools and workflows for a task category."),
-        Prompt("dead_code_audit", "prompts", "experimental", true, false, "Generate a prompt for dead code audit using unused symbol detection and removal."),
-        Prompt("review_test_coverage", "prompts", "experimental", true, false, "Generate a prompt for test coverage review and gap identification."),
-        Prompt("review_complexity", "prompts", "experimental", true, false, "Generate a prompt for complexity review and refactoring opportunities."),
-        Prompt("cohesion_analysis", "prompts", "experimental", true, false, "Generate a prompt for SRP analysis using LCOM4 cohesion metrics with guided type extraction workflow."),
-        Prompt("consumer_impact", "prompts", "experimental", true, false, "Generate a prompt analyzing the consumer/dependency graph for a type to assess refactoring impact."),
-        Prompt("guided_extract_method", "prompts", "experimental", true, false, "Generate a prompt for extract-method refactoring with data-flow and control-flow checks."),
-        Prompt("msbuild_inspection", "prompts", "experimental", true, false, "Generate a prompt for evaluating MSBuild properties and items for a project file."),
-        Prompt("session_undo", "prompts", "experimental", true, false, "Generate a prompt for inspecting session mutations and undoing the last apply operation."),
-        Prompt("refactor_loop", "prompts", "experimental", true, false, "Generate a prompt that walks an agent through the standard refactor → preview → apply-with-verify → validate_workspace loop using v1.17/v1.18 primitives.")
-    ];
 
     public static SurfaceSummary GetSummary()
     {

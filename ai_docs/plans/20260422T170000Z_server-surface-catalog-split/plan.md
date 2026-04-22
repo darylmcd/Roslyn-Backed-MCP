@@ -27,11 +27,12 @@ Actionable initiatives this sweep: **5**.
 Plan-time source reads, all present as of 2026-04-22T17:00Z:
 
 - `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog*.cs` — **Phase 2 (PR #334, 2026-04-22)**
-  plus **Phase 3 shipped (PR #336, 2026-04-22):** W/S/R partials and, new in phase 3,
-  `ServerSurfaceCatalog.Analysis.cs` and `ServerSurfaceCatalog.Editing.cs` with
-  `s_allTools` = W+S+Analysis+Refactoring+Editing+`RemainingInlineTools` (tail). The main
-  file holds the tail, Resources, Prompts, workflow hints, factories, and DTOs. The merged
-  `Tools` list uses `Lazy<IReadOnlyList<SurfaceEntry>>` across partials.
+  plus **Phase 3 shipped (PR #336, 2026-04-22),** and **Phase 4 in review (PR #338, 2026-04-22):** W/S/R/Analysis/Editing
+  partials; **new in phase 4** — `ServerSurfaceCatalog.Resources.cs`, `ServerSurfaceCatalog.Prompts.cs`, and
+  `ServerSurfaceCatalog.Orchestration.cs` (tail: former `RemainingInlineTools`). The main
+  file holds the `s_allTools` aggregator, workflow hints, factories, and DTOs. The merged
+  `Tools` list uses `Lazy<IReadOnlyList<SurfaceEntry>>` across partials; `Resources` and `Prompts` are
+  `=>` on slice fields in the new partials.
 - `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.cs` —
   **Phase 1 shipped (PR #330, 2026-04-22):** `AnalyzeCatalogInvocation` no longer
   requires a `Tools` / `Resources` / `Prompts` property ancestor. Kind is inferred
@@ -134,7 +135,7 @@ ship in the order below.
 
 ### 4. `catalog-split-phase4-extract-resources-prompts-and-tail` — Move Resources + Prompts properties and the remaining tail categories to partials
 
-**Status:** pending · **Order:** 4 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Changed
+**Status:** in-review (PR #338) · **Order:** 4 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|
