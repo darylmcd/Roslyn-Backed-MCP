@@ -56,15 +56,15 @@
       "productionFilesTouched": 3,
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P3-correctness",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
+      "branch": "remediation/workspace-close-missing-solution-on-disk",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Repro stack may be outside WorkspaceManager.Close; see plan preamble."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/345",
+      "mergedAt": "2026-04-22T18:27:21Z",
+      "notes": "Squash-merged; merge commit 955898a. Fix: RunWriteAsync staleness path no longer runs before Close (ApplyStalenessPolicy: false on close)."
     },
     {
       "id": "find-duplicate-helpers-framework-wrapper-false-positive",
