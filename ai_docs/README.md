@@ -44,10 +44,8 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | `procedures/audit-21-implementation-plan.md` | Implementation plan for AUDIT-21 (host-injected IDE/CA analyzers in MSBuildWorkspace) |
 | `prompts/standardize-documentation.md` | Cross-repo prompt: run `/doc-audit` first, then align human + AI docs, packaging/install inventory, stale ref removal |
 | `prompts/standardize-backlog-hygiene.md` | Align backlog hygiene across repos with `backlog.md` and `workflow.md` |
-| `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive MCP server audit, experimental→stable promotion scoring, and plugin-skill verification (Phases 0–18 + 16b). Keep in sync with project surface. Do not delete. |
-| `prompts/experimental-promotion-exercise.md` | Structured exercise for scoring experimental tools against stable-promotion criteria across sample workspaces |
-| `prompts/stress-test-external-repo.md` | Performance + correctness stress-test protocol for running the server against a large external solution |
-| `prompts/test-suite-audit.md` | Audit tests for performance smells, workspace/init issues, SRP, and tight focus—suite should not introduce slowness or instability |
+| `prompts/deep-review-and-refactor.md` | Living reusable prompt for comprehensive MCP server audit, experimental→stable promotion scoring, and plugin-skill verification (Phases -1 / 0 / 1–18 + 16b). Supports `mode = full` / `promotion-only` / `read-only`. Phase -1 hard-gates on a callable `mcp__roslyn__server_info`. Do not delete. |
+| `prompts/stress-test-external-repo.md` | Performance + correctness stress-test protocol for running the server against a large external solution. Phase -1 hard-gates on the MCP server; Phase 0 calls `workspace_warm`. |
 | `audit-reports/` | Raw MCP deep-review audit outputs (retention: latest 3). See `audit-reports/README.md` + `audit-reports/deep-review-session-checklist.md` |
 | `reports/` | Synthesized rollups and cross-cutting audit reports. See `reports/README.md`; examples: `2026-04-06-deep-review-rollup-example.md`, `2026-04-06-test-suite-audit.md` |
 
@@ -70,7 +68,7 @@ This directory is the canonical AI-facing documentation tree. Read this file to 
 | Change error handling, tool-call dispatch, filters, or `Program.cs` | `references/mcp-server-best-practices.md` → `domains/host-stdio/reference.md` |
 | Evolve a DTO or contract | `domains/core-contracts/reference.md` → `architecture.md` |
 | Write or update tests | `references/testing.md` → `runtime.md` |
-| Audit test suite (performance, SRP, workspace/init smells) | `prompts/test-suite-audit.md` → `references/testing.md` |
+| Audit test suite (performance, SRP, workspace/init smells) | `references/testing.md` (use Roslyn MCP tools `get_complexity_metrics`, `get_cohesion_metrics`, `find_shared_members`, `find_type_usages`, `find_references` scoped to `*.Tests.csproj` projects) |
 | Merge-ready handoff | `CI_POLICY.md` → `workflow.md` |
 | Doc-only change | `CI_POLICY.md` (run `verify-ai-docs.ps1`) |
 | Planning new features | `backlog.md` → `architecture.md` → `docs/roadmap.md` |
