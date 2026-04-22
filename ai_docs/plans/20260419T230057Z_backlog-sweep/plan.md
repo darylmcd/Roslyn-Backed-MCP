@@ -297,7 +297,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 13. `release-cut-atomic-skill-bump-ship-tag-reinstall` — New `/release-cut` skill
 
-**Status:** pending · **Order:** 13 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #322, 2026-04-22) · **Order:** 13 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
@@ -318,7 +318,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 14. `parallel-pr-changelog-append-friction` — Changelog-fragment directory pattern
 
-**Status:** pending · **Order:** 14 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Changed
+**Status:** merged (PR #321, 2026-04-22) · **Order:** 14 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 50000 tokens · **CHANGELOG category:** Changed
 
 | Field | Content |
 |---|---|
@@ -339,7 +339,7 @@ Within each correctness class, initiatives are sorted by estimated context cost 
 
 ### 15. `compilation-prewarm-on-load` — Opt-in `workspace_warm` MCP tool
 
-**Status:** pending · **Order:** 15 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
+**Status:** merged (PR #323, 2026-04-22) · **Order:** 15 · **Correctness class:** P4 · **Schedule hint:** — · **Estimated context:** 55000 tokens · **CHANGELOG category:** Added
 
 | Field | Content |
 |---|---|
