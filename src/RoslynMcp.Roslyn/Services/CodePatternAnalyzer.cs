@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
-public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
+public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
 {
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<CodePatternAnalyzer> _logger;
@@ -312,22 +312,49 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         "parameter", "parameters",
     };
 
+    private static readonly string[] ReturnTypeClauseTerminators = [" methods", " method", " async", " with ", " that ", " in "];
+
     /// <returns>A structured parse result with predicates, their human-readable labels, and the stopword-filtered token list.</returns>
     private static SemanticQueryParse ParseSemanticQuery(string query)
     {
         var predicates = new List<Func<ISymbol, bool>>();
         var predicateLabels = new List<string>();
-        var normalizedQuery = query.ToLowerInvariant().Trim();
+        var q = query.ToLowerInvariant().Trim();
 
-        AddKeywordPredicates(predicates, predicateLabels, normalizedQuery);
-        AddStaticPredicate(predicates, predicateLabels, normalizedQuery);
-        AddClassPredicate(predicates, predicateLabels, normalizedQuery);
-        AddAccessibilityPredicate(predicates, predicateLabels, normalizedQuery);
-        AddReturnTypePredicateWithLabel(predicates, predicateLabels, normalizedQuery);
-        AddImplementingPredicateWithLabel(predicates, predicateLabels, normalizedQuery);
-        AddParameterCountPredicate(predicates, predicateLabels, normalizedQuery);
+        AddKeywordPredicates(predicates, predicateLabels, q);
+        AddStaticPredicate(predicates, predicateLabels, q);
+        AddClassPredicate(predicates, predicateLabels, q);
+        AddAccessibilityPredicate(predicates, predicateLabels, q);
 
-        return CreateSemanticQueryParse(query, predicates, predicateLabels);
+        // "returning/returns <type>"
+        var beforeReturn = predicates.Count;
+        AddReturnTypePredicate(predicates, q);
+        if (predicates.Count > beforeReturn)
+        {
+            predicateLabels.Add("returning-type");
+        }
+
+        // "implementing <interface>"
+        var beforeImpl = predicates.Count;
+        AddImplementingPredicate(predicates, q);
+        if (predicates.Count > beforeImpl)
+        {
+            predicateLabels.Add("implementing-interface");
+        }
+
+        AddParameterCountPredicate(predicates, predicateLabels, q);
+
+        var tokens = ExtractTokens(query);
+
+        // Fallback: name-based search
+        if (predicates.Count == 0)
+        {
+            predicates.Add(s => s.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+            predicateLabels.Add("name-contains");
+            return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: true);
+        }
+
+        return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: false);
     }
 
     private static void AddKeywordPredicates(
@@ -335,9 +362,6 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         List<string> predicateLabels,
         string query)
     {
-        // Simple keyword predicates from the lookup table.
-        // Use a word boundary for "interface" so "IDisposable" does not trigger the interface symbol filter.
-        // BUG-N8: "asynchronous" must not satisfy the "async" keyword (substring match would).
         foreach (var (keyword, predicate) in KeywordPredicates)
         {
             if (!MatchesKeyword(query, keyword))
@@ -350,28 +374,17 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         }
     }
 
-    private static bool MatchesKeyword(string query, string keyword)
-    {
-        return keyword switch
-        {
-            "interface" => Regex.IsMatch(query, @"\binterface\b"),
-            "async" => Regex.IsMatch(query, @"\basync\b"),
-            _ => query.Contains(keyword, StringComparison.Ordinal)
-        };
-    }
-
     private static void AddStaticPredicate(
         List<Func<ISymbol, bool>> predicates,
         List<string> predicateLabels,
         string query)
     {
-        if (!query.Contains("static", StringComparison.Ordinal) || query.Contains("non-static", StringComparison.Ordinal))
+        if (query.Contains("static", StringComparison.Ordinal) &&
+            !query.Contains("non-static", StringComparison.Ordinal))
         {
-            return;
+            predicates.Add(s => s.IsStatic);
+            predicateLabels.Add("keyword:static");
         }
-
-        predicates.Add(symbol => symbol.IsStatic);
-        predicateLabels.Add("keyword:static");
     }
 
     private static void AddClassPredicate(
@@ -379,13 +392,12 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         List<string> predicateLabels,
         string query)
     {
-        if (!query.Contains("class", StringComparison.Ordinal) || query.Contains("classes implementing", StringComparison.Ordinal))
+        if (query.Contains("class", StringComparison.Ordinal) &&
+            !query.Contains("classes implementing", StringComparison.Ordinal))
         {
-            return;
+            predicates.Add(s => s is INamedTypeSymbol { TypeKind: TypeKind.Class });
+            predicateLabels.Add("keyword:class");
         }
-
-        predicates.Add(symbol => symbol is INamedTypeSymbol { TypeKind: TypeKind.Class });
-        predicateLabels.Add("keyword:class");
     }
 
     private static void AddAccessibilityPredicate(
@@ -393,51 +405,21 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         List<string> predicateLabels,
         string query)
     {
-        // Accessibility keywords are mutually exclusive. Capture to local to avoid closure issues.
         foreach (var (keyword, accessibility) in AccessibilityKeywords)
         {
-            if (!MatchesAccessibilityKeyword(query, keyword))
+            var capturedAccessibility = accessibility;
+            var matches = keyword == "public"
+                ? query.Contains("public", StringComparison.Ordinal) &&
+                  !query.Contains("non-public", StringComparison.Ordinal)
+                : query.Contains(keyword, StringComparison.Ordinal);
+            if (!matches)
             {
                 continue;
             }
 
-            var capturedAccessibility = accessibility;
-            predicates.Add(symbol => symbol.DeclaredAccessibility == capturedAccessibility);
+            predicates.Add(s => s.DeclaredAccessibility == capturedAccessibility);
             predicateLabels.Add($"accessibility:{keyword}");
-            return;
-        }
-    }
-
-    private static bool MatchesAccessibilityKeyword(string query, string keyword)
-    {
-        return keyword == "public"
-            ? query.Contains("public", StringComparison.Ordinal) && !query.Contains("non-public", StringComparison.Ordinal)
-            : query.Contains(keyword, StringComparison.Ordinal);
-    }
-
-    private static void AddReturnTypePredicateWithLabel(
-        List<Func<ISymbol, bool>> predicates,
-        List<string> predicateLabels,
-        string query)
-    {
-        var beforeCount = predicates.Count;
-        AddReturnTypePredicate(predicates, query);
-        if (predicates.Count > beforeCount)
-        {
-            predicateLabels.Add("returning-type");
-        }
-    }
-
-    private static void AddImplementingPredicateWithLabel(
-        List<Func<ISymbol, bool>> predicates,
-        List<string> predicateLabels,
-        string query)
-    {
-        var beforeCount = predicates.Count;
-        AddImplementingPredicate(predicates, query);
-        if (predicates.Count > beforeCount)
-        {
-            predicateLabels.Add("implementing-interface");
+            break;
         }
     }
 
@@ -446,32 +428,24 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         List<string> predicateLabels,
         string query)
     {
-        var paramMatch = System.Text.RegularExpressions.Regex.Match(query, @"(?:more than|>)\s*(\d+)\s*param");
+        var paramMatch = ParameterThresholdRegex().Match(query);
         if (!paramMatch.Success || !int.TryParse(paramMatch.Groups[1].Value, out var minParams))
         {
             return;
         }
 
-        predicates.Add(symbol => symbol is IMethodSymbol method && method.Parameters.Length > minParams);
+        predicates.Add(s => s is IMethodSymbol m && m.Parameters.Length > minParams);
         predicateLabels.Add($"min-parameters:{minParams}");
     }
 
-    private static SemanticQueryParse CreateSemanticQueryParse(
-        string originalQuery,
-        List<Func<ISymbol, bool>> predicates,
-        List<string> predicateLabels)
+    private static bool MatchesKeyword(string query, string keyword)
     {
-        var tokens = ExtractTokens(originalQuery);
-
-        // Fallback: name-based search.
-        if (predicates.Count == 0)
+        return keyword switch
         {
-            predicates.Add(symbol => symbol.Name.Contains(originalQuery, StringComparison.OrdinalIgnoreCase));
-            predicateLabels.Add("name-contains");
-            return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: true);
-        }
-
-        return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: false);
+            "interface" => InterfaceKeywordRegex().IsMatch(query),
+            "async" => AsyncKeywordRegex().IsMatch(query),
+            _ => query.Contains(keyword, StringComparison.Ordinal)
+        };
     }
 
     /// <summary>
@@ -486,7 +460,7 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
 
         // Split on whitespace + common punctuation, but keep `<`/`>`/`,` removed so
         // "Task<bool>" → "Task" + "bool".
-        var splits = Regex.Split(query, @"[\s<>,\(\)\[\]\{\}\""'\.\?!;:]+");
+        var splits = TokenSplitRegex().Split(query);
         var tokens = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var raw in splits)
@@ -516,7 +490,7 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         if (returnTypeStart < 0) return;
 
         var slice = q[(returnTypeStart + keywordLen)..].Trim();
-        foreach (var stop in new[] { " methods", " method", " async", " with ", " that ", " in " })
+        foreach (var stop in ReturnTypeClauseTerminators)
         {
             var idx = slice.IndexOf(stop, StringComparison.Ordinal);
             if (idx > 0)
@@ -526,7 +500,10 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         var typeFragment = slice.Trim();
         if (string.IsNullOrEmpty(typeFragment)) return;
 
-        var normalizedSpaced = Regex.Replace(typeFragment, @"[\<\>\,]", " ").Trim();
+        var normalizedSpaced = typeFragment.Replace("<", " ", StringComparison.Ordinal)
+            .Replace(">", " ", StringComparison.Ordinal)
+            .Replace(",", " ", StringComparison.Ordinal)
+            .Trim();
         var compactFragment = new string(typeFragment.Where(c => !char.IsWhiteSpace(c)).ToArray());
 
         predicates.Add(s =>
@@ -549,7 +526,7 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
         var ifaceName = q[(q.IndexOf("implementing ", StringComparison.Ordinal) + 13)..].Trim().Split(' ', ',')[0];
         if (string.IsNullOrEmpty(ifaceName)) return;
 
-        var requireClass = Regex.IsMatch(q, @"\bclasses?\b");
+        var requireClass = ClassKeywordRegex().IsMatch(q);
         // dr-semantic-search-idisposable-predicate-accuracy: Use exact match on
         // ToDisplayString() instead of Contains() to prevent false positives (e.g.,
         // "IDisposable" matching "IAsyncDisposable" via substring).
@@ -558,4 +535,19 @@ public sealed class CodePatternAnalyzer : ICodePatternAnalyzer
             t.AllInterfaces.Any(i => i.Name.Equals(ifaceName, StringComparison.OrdinalIgnoreCase) ||
                 i.ToDisplayString().Equals(ifaceName, StringComparison.OrdinalIgnoreCase)));
     }
+
+    [GeneratedRegex(@"\binterface\b")]
+    private static partial Regex InterfaceKeywordRegex();
+
+    [GeneratedRegex(@"\basync\b")]
+    private static partial Regex AsyncKeywordRegex();
+
+    [GeneratedRegex(@"(?:more than|>)\s*(\d+)\s*param")]
+    private static partial Regex ParameterThresholdRegex();
+
+    [GeneratedRegex(@"[\s<>,\(\)\[\]\{\}\""'\.\?!;:]+")]
+    private static partial Regex TokenSplitRegex();
+
+    [GeneratedRegex(@"\bclasses?\b")]
+    private static partial Regex ClassKeywordRegex();
 }

@@ -32,6 +32,19 @@ public sealed class SemanticSearchFallbackTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task SemanticSearch_AsynchronousQuery_DoesNotTreatAsyncAsKeyword()
+    {
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
+        var response = await CodePatternAnalyzer.SemanticSearchAsync(
+            workspaceId, "asynchronous methods", "SampleLib", 50, CancellationToken.None);
+
+        Assert.IsNotNull(response.Debug);
+        Assert.AreEqual("structured", response.Debug!.FallbackStrategy);
+        CollectionAssert.DoesNotContain(response.Debug.AppliedPredicates.ToList(), "keyword:async");
+        CollectionAssert.Contains(response.Debug.AppliedPredicates.ToList(), "keyword:method");
+    }
+
+    [TestMethod]
     public async Task SemanticSearch_VerboseNaturalLanguageQuery_FallsBackToTokenOrMatch()
     {
         var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
