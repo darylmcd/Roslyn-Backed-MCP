@@ -16,6 +16,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.29.0] - 2026-04-23
+
+### Added
+
+- **Added:** Experimental `find_dead_fields` analysis tool for source-declared fields that are never read, never written, or never either, with `includePublic` and `usageKind` filters plus detector and integration coverage. Closes `find-dead-fields-across-classes`. (PR #368)
+- **Added:** `workspace_load` and `workspace_reload` now accept `autoRestore=true`, and workspace status now reports `restoreRequired` when package inputs drift from the loaded assets snapshot so callers can recover stale metadata references with one restore-plus-reload flow. Closes `workspace-reload-auto-restore`. (PR #362)
+
+### Maintenance
+
+- **Maintenance:** Reduced cyclomatic complexity in `ScriptingService.EvaluateAsync` and `RefactoringService.PersistDocumentSetChangesAsync` by extracting helper flows while preserving behavior and targeted scripting coverage. Tracks `cc-18-to-19-residuals-post-top10-extraction` tranche 1. (PR #361)
+- **Maintenance:** Reduced cyclomatic complexity in `MutationAnalysisService.FindTypeMutationsAsync` and `ScaffoldingService.PreviewScaffoldTestBatchAsync` by extracting helper flows while preserving mutation/scaffolding behavior and regression coverage. Tracks `cc-18-to-19-residuals-post-top10-extraction` tranche 2. (PR #367)
+- **Maintenance:** Reduced cyclomatic complexity in `CodePatternAnalyzer.ParseSemanticQuery` and `TestDiscoveryService.FindRelatedTestsAsync` by extracting parser/test-discovery helpers while preserving existing behavior and targeted integration coverage. Tracks `cc-18-to-19-residuals-post-top10-extraction` tranche 3. (PR #366)
+- **Maintenance:** Reduced cyclomatic complexity in `SecurityDiagnosticService.GetAnalyzerStatusAsync` and `RestructureService.StructuralRewriter.TryMatch` by extracting helper flows while preserving analyzer-status reporting and restructure matching behavior. Tracks `cc-18-to-19-residuals-post-top10-extraction` tranche 4. (PR #371)
+- **Maintenance:** Reduced cyclomatic complexity in `InterfaceExtractionService.BuildUsingDirectives` and `TypeExtractionService.StripInheritanceOnlyModifiers` by extracting helper flows while preserving semantic using synthesis and extracted-member modifier cleanup behavior. Tracks `cc-18-to-19-residuals-post-top10-extraction` tranche 5. (PR #374)
+- **Maintenance:** Reduced cyclomatic complexity in `RefactoringService.CollapseBlankLineRunsInRange` and `NuGetVulnerabilityJsonParser.AddPackagesFromFramework` by extracting helper flows while preserving range-bounded formatting and NuGet vulnerability parsing behavior. Tracks `cc-18-to-19-residuals-post-top10-extraction` tranche 6. (PR #372)
+- **Maintenance:** Reduced cyclomatic complexity in `CohesionAnalysisService.FindAccessedMembers` by splitting member-access classification helpers while preserving cohesion clustering behavior and targeted regression coverage. Closes `cc-18-to-19-residuals-post-top10-extraction`. (PR #373)
+- **Maintenance:** Reduced cyclomatic complexity in `ScriptingService`, `RefactoringService`, `MutationAnalysisService`, `ScaffoldingService`, `CodePatternAnalyzer`, and `TestDiscoveryService` across the first three residual-complexity tranches (PRs #357, #358, #359). Follow-up to `cc-18-to-19-residuals-post-top10-extraction`.
+- **Maintenance:** Documented the server-side parallel read contract in `ai_docs/runtime.md` and `ai_docs/domains/tool-usage-guide.md`: read-only MCP calls may overlap on a loaded workspace when the client supports concurrent requests, while write and lifecycle calls remain serialized by `WorkspaceExecutionGate`. Tracks `host-parallel-mcp-reads`. (PR #360)
+
 ## [1.28.1] - 2026-04-22
 
 ### Fixed
