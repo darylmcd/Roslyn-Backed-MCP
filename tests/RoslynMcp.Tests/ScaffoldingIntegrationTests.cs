@@ -252,4 +252,40 @@ public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
         StringAssert.Contains(contents, "using Acme.Integration.Support;",
             "Sibling-carried using directive should be replicated so the scaffold resolves its types.");
     }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Batch_Preview_And_Apply_Creates_Multiple_Test_Files()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var dogPath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
+        var animalServicePath = workspace.GetPath("SampleLib.Tests", "AnimalServiceGeneratedTests.cs");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestBatchAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestBatchDto(
+                "SampleLib.Tests",
+                [
+                    new ScaffoldTestBatchTargetDto("Dog", "Speak"),
+                    new ScaffoldTestBatchTargetDto("AnimalService", "GetAllAnimals")
+                ],
+                "auto"),
+            CancellationToken.None);
+
+        Assert.AreEqual(2, preview.Changes.Count,
+            "Batch scaffold preview should aggregate one file-creation diff per target.");
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+            preview.PreviewToken,
+            CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.IsTrue(File.Exists(dogPath), $"Expected scaffolded file at {dogPath}.");
+        Assert.IsTrue(File.Exists(animalServicePath), $"Expected scaffolded file at {animalServicePath}.");
+
+        var dogContents = await File.ReadAllTextAsync(dogPath, CancellationToken.None);
+        var animalServiceContents = await File.ReadAllTextAsync(animalServicePath, CancellationToken.None);
+
+        StringAssert.Contains(dogContents, "Speak_Needs_Test");
+        StringAssert.Contains(animalServiceContents, "GetAllAnimals_Needs_Test");
+    }
 }
