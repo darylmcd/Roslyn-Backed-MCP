@@ -1,3 +1,4 @@
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using Microsoft.Extensions.Logging;
@@ -116,73 +117,10 @@ public sealed class SecurityDiagnosticService : ISecurityDiagnosticService
         ct.ThrowIfCancellationRequested();
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
-        var netAnalyzersPresent = false;
-        var securityCodeScanFromAssembly = false;
-        var pumaFromAssembly = false;
+        var analyzerPresence = DetectAnalyzerAssemblies(solution, ct);
+        var nugetPackages = await CollectNuGetPackagesAsync(solution, workspaceId, ct).ConfigureAwait(false);
 
-        foreach (var project in solution.Projects)
-        {
-            ct.ThrowIfCancellationRequested();
-            foreach (var analyzerRef in project.AnalyzerReferences)
-            {
-                var displayName = analyzerRef.Display ?? string.Empty;
-
-                if (!netAnalyzersPresent && MatchesAnyPrefix(displayName, NetAnalyzerAssemblyPrefixes))
-                    netAnalyzersPresent = true;
-
-                if (!securityCodeScanFromAssembly && MatchesAnyPrefix(displayName, SecurityCodeScanAssemblyPrefixes))
-                    securityCodeScanFromAssembly = true;
-
-                if (!pumaFromAssembly && MatchesAnyPrefix(displayName, PumaSecurityAssemblyPrefixes))
-                    pumaFromAssembly = true;
-            }
-        }
-
-        var nugetPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var project in solution.Projects)
-        {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(project.FilePath))
-                continue;
-
-            try
-            {
-                var evaluated = await _msBuildEvaluation.EvaluateItemsAsync(
-                    workspaceId, project.Name, "PackageReference", ct).ConfigureAwait(false);
-
-                foreach (var item in evaluated.Items)
-                {
-                    if (!string.IsNullOrWhiteSpace(item.Include))
-                        nugetPackages.Add(item.Include);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogDebug(ex, "Could not evaluate PackageReference items for project '{ProjectName}'", project.Name);
-            }
-        }
-
-        var securityRelatedNuget = nugetPackages
-            .Where(IsSecurityRelatedNuGetPackage)
-            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var securityCodeScanPresent = securityCodeScanFromAssembly ||
-            nugetPackages.Any(p => p.Contains("SecurityCodeScan", StringComparison.OrdinalIgnoreCase));
-
-        var pumaPresent = pumaFromAssembly ||
-            nugetPackages.Any(p => p.Contains("Puma.Security", StringComparison.OrdinalIgnoreCase));
-
-        var missingPackages = new List<string>();
-        if (!securityCodeScanPresent)
-            missingPackages.AddRange(RecommendedPackages);
-
-        return new SecurityAnalyzerStatusDto(
-            NetAnalyzersPresent: netAnalyzersPresent,
-            SecurityCodeScanPresent: securityCodeScanPresent,
-            MissingRecommendedPackages: missingPackages,
-            PumaSecurityRulesPresent: pumaPresent,
-            SecurityRelatedNuGetPackages: securityRelatedNuget);
+        return CreateAnalyzerStatus(analyzerPresence, nugetPackages);
     }
 
     private static bool IsSecurityRelatedNuGetPackage(string packageId) =>
@@ -201,6 +139,106 @@ public sealed class SecurityDiagnosticService : ISecurityDiagnosticService
         }
         return false;
     }
+
+    private async Task<HashSet<string>> CollectNuGetPackagesAsync(Solution solution, string workspaceId, CancellationToken ct)
+    {
+        var nugetPackages = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in solution.Projects)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (string.IsNullOrWhiteSpace(project.FilePath))
+            {
+                continue;
+            }
+
+            try
+            {
+                var evaluated = await _msBuildEvaluation.EvaluateItemsAsync(
+                    workspaceId, project.Name, "PackageReference", ct).ConfigureAwait(false);
+
+                foreach (var item in evaluated.Items)
+                {
+                    if (!string.IsNullOrWhiteSpace(item.Include))
+                    {
+                        nugetPackages.Add(item.Include);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogDebug(ex, "Could not evaluate PackageReference items for project '{ProjectName}'", project.Name);
+            }
+        }
+
+        return nugetPackages;
+    }
+
+    private static AnalyzerPresence DetectAnalyzerAssemblies(Solution solution, CancellationToken ct)
+    {
+        var netAnalyzersPresent = false;
+        var securityCodeScanPresent = false;
+        var pumaPresent = false;
+
+        foreach (var project in solution.Projects)
+        {
+            ct.ThrowIfCancellationRequested();
+            foreach (var analyzerRef in project.AnalyzerReferences)
+            {
+                var displayName = analyzerRef.Display ?? string.Empty;
+
+                if (!netAnalyzersPresent && MatchesAnyPrefix(displayName, NetAnalyzerAssemblyPrefixes))
+                {
+                    netAnalyzersPresent = true;
+                }
+
+                if (!securityCodeScanPresent && MatchesAnyPrefix(displayName, SecurityCodeScanAssemblyPrefixes))
+                {
+                    securityCodeScanPresent = true;
+                }
+
+                if (!pumaPresent && MatchesAnyPrefix(displayName, PumaSecurityAssemblyPrefixes))
+                {
+                    pumaPresent = true;
+                }
+            }
+        }
+
+        return new AnalyzerPresence(netAnalyzersPresent, securityCodeScanPresent, pumaPresent);
+    }
+
+    private static SecurityAnalyzerStatusDto CreateAnalyzerStatus(
+        AnalyzerPresence analyzerPresence,
+        IReadOnlyCollection<string> nugetPackages)
+    {
+        var securityRelatedNuget = nugetPackages
+            .Where(IsSecurityRelatedNuGetPackage)
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var securityCodeScanPresent = analyzerPresence.SecurityCodeScanPresent ||
+            nugetPackages.Any(p => p.Contains("SecurityCodeScan", StringComparison.OrdinalIgnoreCase));
+
+        var pumaPresent = analyzerPresence.PumaPresent ||
+            nugetPackages.Any(p => p.Contains("Puma.Security", StringComparison.OrdinalIgnoreCase));
+
+        var missingPackages = new List<string>();
+        if (!securityCodeScanPresent)
+        {
+            missingPackages.AddRange(RecommendedPackages);
+        }
+
+        return new SecurityAnalyzerStatusDto(
+            NetAnalyzersPresent: analyzerPresence.NetAnalyzersPresent,
+            SecurityCodeScanPresent: securityCodeScanPresent,
+            MissingRecommendedPackages: missingPackages,
+            PumaSecurityRulesPresent: pumaPresent,
+            SecurityRelatedNuGetPackages: securityRelatedNuget);
+    }
+
+    private readonly record struct AnalyzerPresence(
+        bool NetAnalyzersPresent,
+        bool SecurityCodeScanPresent,
+        bool PumaPresent);
 
     private static int GetSeverityOrder(string severity) =>
         severity switch

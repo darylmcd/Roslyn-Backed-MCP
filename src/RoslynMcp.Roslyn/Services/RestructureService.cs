@@ -142,13 +142,25 @@ public sealed class RestructureService : IRestructureService
         var names = new HashSet<string>(StringComparer.Ordinal);
         foreach (var identifier in pattern.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>())
         {
-            var match = PlaceholderPattern.Match(identifier.Identifier.ValueText);
-            if (match.Success && match.Length == identifier.Identifier.ValueText.Length)
+            if (TryGetPlaceholderName(identifier.Identifier.ValueText, out var name))
             {
-                names.Add(match.Groups["name"].Value);
+                names.Add(name);
             }
         }
         return names;
+    }
+
+    private static bool TryGetPlaceholderName(string text, out string name)
+    {
+        var match = PlaceholderPattern.Match(text);
+        if (match.Success && match.Length == text.Length)
+        {
+            name = match.Groups["name"].Value;
+            return true;
+        }
+
+        name = string.Empty;
+        return false;
     }
 
     private static IEnumerable<Project> EnumerateProjects(Solution solution, RestructureScope scope)
@@ -225,69 +237,101 @@ public sealed class RestructureService : IRestructureService
         private bool TryMatch(SyntaxNode patternNode, SyntaxNode candidate, Dictionary<string, SyntaxNode> captures)
         {
             // Placeholder: any leaf identifier __name__ captures whatever candidate is.
-            if (patternNode is IdentifierNameSyntax id)
+            if (TryCaptureIdentifierPlaceholder(patternNode, candidate, captures, out var placeholderMatched))
             {
-                var text = id.Identifier.ValueText;
-                var match = PlaceholderPattern.Match(text);
-                if (match.Success && match.Length == text.Length)
-                {
-                    var name = match.Groups["name"].Value;
-                    if (captures.TryGetValue(name, out var existing))
-                    {
-                        return SyntaxFactory.AreEquivalent(existing, candidate, topLevel: false);
-                    }
-                    captures[name] = candidate;
-                    return true;
-                }
+                return placeholderMatched;
             }
 
             if (patternNode.RawKind != candidate.RawKind) return false;
 
+            return TryMatchChildren(patternNode, candidate, captures);
+        }
+
+        private bool TryMatchChildren(SyntaxNode patternNode, SyntaxNode candidate, Dictionary<string, SyntaxNode> captures)
+        {
             var patternChildren = patternNode.ChildNodesAndTokens().ToArray();
             var candidateChildren = candidate.ChildNodesAndTokens().ToArray();
             if (patternChildren.Length != candidateChildren.Length) return false;
 
             for (var i = 0; i < patternChildren.Length; i++)
             {
-                var pc = patternChildren[i];
-                var cc = candidateChildren[i];
-                if (pc.IsNode && cc.IsNode)
-                {
-                    if (!TryMatch(pc.AsNode()!, cc.AsNode()!, captures)) return false;
-                }
-                else if (pc.IsToken && cc.IsToken)
-                {
-                    if (pc.RawKind != cc.RawKind) return false;
-                    var pt = pc.AsToken();
-                    var ct2 = cc.AsToken();
-                    // Token-level placeholders: an identifier token whose text matches
-                    // __foo__ acts like a placeholder too (covers identifier-shape patterns
-                    // like __name__.Method()).
-                    var tokenText = pt.ValueText;
-                    var placeholderMatch = PlaceholderPattern.Match(tokenText);
-                    if (placeholderMatch.Success && placeholderMatch.Length == tokenText.Length)
-                    {
-                        // Represent a captured token as an identifier-name syntax so substitution
-                        // can splice it back in uniformly.
-                        var name = placeholderMatch.Groups["name"].Value;
-                        var newIdent = SyntaxFactory.IdentifierName(ct2.ValueText);
-                        if (captures.TryGetValue(name, out var existing))
-                        {
-                            if (!SyntaxFactory.AreEquivalent(existing, newIdent, topLevel: false)) return false;
-                        }
-                        else
-                        {
-                            captures[name] = newIdent;
-                        }
-                        continue;
-                    }
-                    if (!string.Equals(pt.ValueText, ct2.ValueText, StringComparison.Ordinal)) return false;
-                }
-                else
+                if (!TryMatchChild(patternChildren[i], candidateChildren[i], captures))
                 {
                     return false;
                 }
             }
+
+            return true;
+        }
+
+        private bool TryMatchChild(
+            SyntaxNodeOrToken patternChild,
+            SyntaxNodeOrToken candidateChild,
+            Dictionary<string, SyntaxNode> captures)
+        {
+            if (patternChild.IsNode && candidateChild.IsNode)
+            {
+                return TryMatch(patternChild.AsNode()!, candidateChild.AsNode()!, captures);
+            }
+
+            if (patternChild.IsToken && candidateChild.IsToken)
+            {
+                return TryMatchToken(patternChild.AsToken(), candidateChild.AsToken(), captures);
+            }
+
+            return false;
+        }
+
+        private static bool TryCaptureIdentifierPlaceholder(
+            SyntaxNode patternNode,
+            SyntaxNode candidate,
+            Dictionary<string, SyntaxNode> captures,
+            out bool placeholderMatched)
+        {
+            placeholderMatched = false;
+            if (patternNode is not IdentifierNameSyntax identifier ||
+                !TryGetPlaceholderName(identifier.Identifier.ValueText, out var name))
+            {
+                return false;
+            }
+
+            placeholderMatched = TryCapturePlaceholder(name, candidate, captures);
+            return true;
+        }
+
+        private static bool TryMatchToken(
+            SyntaxToken patternToken,
+            SyntaxToken candidateToken,
+            Dictionary<string, SyntaxNode> captures)
+        {
+            if (patternToken.RawKind != candidateToken.RawKind)
+            {
+                return false;
+            }
+
+            // Token-level placeholders: an identifier token whose text matches __foo__
+            // acts like a placeholder too (covers identifier-shape patterns like
+            // __name__.Method()).
+            if (TryGetPlaceholderName(patternToken.ValueText, out var name))
+            {
+                var capturedToken = SyntaxFactory.IdentifierName(candidateToken.ValueText);
+                return TryCapturePlaceholder(name, capturedToken, captures);
+            }
+
+            return string.Equals(patternToken.ValueText, candidateToken.ValueText, StringComparison.Ordinal);
+        }
+
+        private static bool TryCapturePlaceholder(
+            string name,
+            SyntaxNode candidate,
+            Dictionary<string, SyntaxNode> captures)
+        {
+            if (captures.TryGetValue(name, out var existing))
+            {
+                return SyntaxFactory.AreEquivalent(existing, candidate, topLevel: false);
+            }
+
+            captures[name] = candidate;
             return true;
         }
 
