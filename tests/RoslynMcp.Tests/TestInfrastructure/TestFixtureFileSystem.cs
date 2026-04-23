@@ -2,6 +2,9 @@ namespace RoslynMcp.Tests;
 
 internal static class TestFixtureFileSystem
 {
+    private static readonly StringComparer PathComponentComparer = StringComparer.OrdinalIgnoreCase;
+    private static readonly string[] IgnoredDirectoryNames = ["bin"];
+
     public static string CreateSampleSolutionCopy(string repositoryRootPath, string sampleSolutionPath)
     {
         var sampleRoot = Path.GetDirectoryName(sampleSolutionPath)
@@ -75,14 +78,24 @@ internal static class TestFixtureFileSystem
     {
         Directory.CreateDirectory(destinationDir);
 
-        foreach (var file in Directory.GetFiles(sourceDir))
+        foreach (var file in Directory.EnumerateFiles(sourceDir))
         {
+            if (ShouldSkipFile(file))
+            {
+                continue;
+            }
+
             var destinationFile = Path.Combine(destinationDir, Path.GetFileName(file));
             CopyFileWithRetry(file, destinationFile);
         }
 
-        foreach (var directory in Directory.GetDirectories(sourceDir))
+        foreach (var directory in Directory.EnumerateDirectories(sourceDir))
         {
+            if (ShouldSkipDirectory(directory))
+            {
+                continue;
+            }
+
             var destinationSubdirectory = Path.Combine(destinationDir, Path.GetFileName(directory));
             CopyDirectory(directory, destinationSubdirectory);
         }
@@ -109,6 +122,10 @@ internal static class TestFixtureFileSystem
                 Thread.Sleep(delayMs);
                 delayMs *= 2;
             }
+            catch (IOException) when (CanIgnoreMissingTransientFile(sourceFile))
+            {
+                return;
+            }
         }
     }
 
@@ -122,5 +139,31 @@ internal static class TestFixtureFileSystem
                 File.Copy(sourcePath, Path.Combine(destinationRoot, fileName), overwrite: true);
             }
         }
+    }
+
+    private static bool ShouldSkipDirectory(string path)
+    {
+        var name = Path.GetFileName(path);
+        for (var i = 0; i < IgnoredDirectoryNames.Length; i++)
+        {
+            if (PathComponentComparer.Equals(name, IgnoredDirectoryNames[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ShouldSkipFile(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name.EndsWith("~", StringComparison.Ordinal) ||
+               name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool CanIgnoreMissingTransientFile(string path)
+    {
+        return !File.Exists(path) && ShouldSkipFile(path);
     }
 }
