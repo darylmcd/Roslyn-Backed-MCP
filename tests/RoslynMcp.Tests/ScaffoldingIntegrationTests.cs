@@ -173,6 +173,47 @@ public class BulkProcessor
     }
 
     [TestMethod]
+    public async Task Scaffold_Test_Private_Target_Method_Adds_Warning_And_Reflection_Call()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var targetTypePath = workspace.GetPath("SampleLib", "HiddenBehavior.cs");
+        await File.WriteAllTextAsync(targetTypePath, """
+namespace SampleLib;
+
+public class HiddenBehavior
+{
+    private string BuildSecret()
+    {
+        return "secret";
+    }
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto("SampleLib.Tests", "HiddenBehavior", "BuildSecret", ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview.Warnings);
+        Assert.AreEqual(1, preview.Warnings.Count);
+        StringAssert.Contains(
+            preview.Warnings[0],
+            "Target method 'BuildSecret' is private — the scaffold uses reflection to invoke it;");
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var contents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib.Tests", "HiddenBehaviorGeneratedTests.cs"),
+            CancellationToken.None);
+
+        StringAssert.Contains(contents, "typeof(HiddenBehavior).GetMethod(");
+        StringAssert.Contains(contents, "\"BuildSecret\"");
+    }
+
+    [TestMethod]
     public async Task Scaffold_Test_With_ReferenceTestFile_Replicates_IClassFixture_Pattern()
     {
         // Regression for scaffold-test-sibling-pattern-inference: when a referenceTestFile

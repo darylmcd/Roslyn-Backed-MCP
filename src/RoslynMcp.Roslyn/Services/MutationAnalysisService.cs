@@ -418,6 +418,8 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             Summary: summary);
     }
 
+    private sealed record MethodMutationAnalysisContext(SyntaxTree SourceTree, SyntaxNode MethodNode);
+
     private sealed record MutationCandidate(ISymbol Member, string? Scope);
 
     private static bool IsWriteReference(SyntaxNode refNode)
@@ -548,11 +550,9 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         if (member.IsStatic) return null;
         if (member.DeclaredAccessibility == Accessibility.Private) return null;
 
-        // Settable properties
-        if (member is IPropertySymbol prop && prop.SetMethod is not null &&
-            !prop.SetMethod.IsInitOnly && prop.SetMethod.DeclaredAccessibility != Accessibility.Private)
+        if (TryClassifyPropertyMutationScope(member, out var propertyScope))
         {
-            return SideEffectClassifier.Scopes.FieldWrite;
+            return propertyScope;
         }
 
         if (member is not IMethodSymbol method ||
@@ -561,43 +561,83 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             return null;
         }
 
+        return ClassifyMethodMutationScope(method, containingType, compilation);
+    }
+
+    private static bool TryClassifyPropertyMutationScope(ISymbol member, out string? scope)
+    {
+        scope = null;
+        if (member is not IPropertySymbol property ||
+            property.SetMethod is null ||
+            property.SetMethod.IsInitOnly ||
+            property.SetMethod.DeclaredAccessibility == Accessibility.Private)
+        {
+            return false;
+        }
+
+        scope = SideEffectClassifier.Scopes.FieldWrite;
+        return true;
+    }
+
+    private static string? ClassifyMethodMutationScope(
+        IMethodSymbol method,
+        INamedTypeSymbol containingType,
+        Compilation? compilation)
+    {
         // Naming convention is checked first because it doesn't require a syntax tree.
         var byName = IsMutatingByName(method);
-
-        var location = method.Locations.FirstOrDefault(l => l.IsInSource);
-        if (location?.SourceTree is null)
+        var analysisContext = TryCreateMethodMutationAnalysisContext(method);
+        if (analysisContext is null)
         {
             return byName ? SideEffectClassifier.Scopes.FieldWrite : null;
         }
 
-        var methodNode = location.SourceTree.GetRoot().FindNode(location.SourceSpan);
-
         // Side-effect detection: highest severity wins. Requires the right SemanticModel
         // for the syntax tree containing the method body — fall back to the field/collection
         // heuristics when one is not available.
-        string? sideEffectScope = null;
-        if (compilation is not null && location.SourceTree is { } tree)
-        {
-            var model = compilation.GetSemanticModel(tree);
-            sideEffectScope = SideEffectClassifier.ClassifyMethodSideEffects(methodNode, model, CancellationToken.None);
-        }
-
+        var sideEffectScope = TryClassifyMethodSideEffects(compilation, analysisContext.SourceTree, analysisContext.MethodNode);
         if (sideEffectScope is not null)
         {
             return sideEffectScope;
         }
 
-        if (HasInstanceFieldAssignment(methodNode, containingType))
+        if (HasInstanceFieldAssignment(analysisContext.MethodNode, containingType))
         {
             return SideEffectClassifier.Scopes.FieldWrite;
         }
 
-        if (HasMutatingCollectionCall(methodNode))
+        if (HasMutatingCollectionCall(analysisContext.MethodNode))
         {
             return SideEffectClassifier.Scopes.CollectionWrite;
         }
 
         return byName ? SideEffectClassifier.Scopes.FieldWrite : null;
+    }
+
+    private static MethodMutationAnalysisContext? TryCreateMethodMutationAnalysisContext(IMethodSymbol method)
+    {
+        var location = method.Locations.FirstOrDefault(l => l.IsInSource);
+        if (location?.SourceTree is null)
+        {
+            return null;
+        }
+
+        var methodNode = location.SourceTree.GetRoot().FindNode(location.SourceSpan);
+        return new MethodMutationAnalysisContext(location.SourceTree, methodNode);
+    }
+
+    private static string? TryClassifyMethodSideEffects(
+        Compilation? compilation,
+        SyntaxTree sourceTree,
+        SyntaxNode methodNode)
+    {
+        if (compilation is null)
+        {
+            return null;
+        }
+
+        var model = compilation.GetSemanticModel(sourceTree);
+        return SideEffectClassifier.ClassifyMethodSideEffects(methodNode, model, CancellationToken.None);
     }
 
     /// <summary>

@@ -190,15 +190,15 @@ public sealed class ScaffoldingService : IScaffoldingService
             cachedCompilations,
             target.TargetTypeName,
             target.TargetMethodName);
-        if (typeInfo.matchedType is null)
+        if (typeInfo.MatchedType is null)
         {
             state.Warnings.Add($"Target type '{target.TargetTypeName}' not found in referenced projects — skipped.");
             return;
         }
 
-        if (typeInfo.warnings is not null)
+        if (typeInfo.Warnings is not null)
         {
-            state.Warnings.AddRange(typeInfo.warnings);
+            state.Warnings.AddRange(typeInfo.Warnings);
         }
 
         var dto = new ScaffoldTestDto(
@@ -213,11 +213,11 @@ public sealed class ScaffoldingService : IScaffoldingService
         var content = BuildTestContent(
             context.TestNamespace,
             dto,
-            typeInfo.targetNamespace,
-            typeInfo.constructorArgs,
+            typeInfo.TargetNamespace,
+            typeInfo.ConstructorArgs,
             context.Framework,
-            typeInfo.targetMethod,
-            typeInfo.matchedType,
+            typeInfo.TargetMethod,
+            typeInfo.MatchedType,
             siblingPattern: null);
 
         var testProject = state.Accumulator.GetProject(context.TestProject.Id)
@@ -282,55 +282,37 @@ public sealed class ScaffoldingService : IScaffoldingService
         public List<string> CreatedFiles { get; } = [];
     }
 
+    private sealed record ResolvedTargetTypeInfo(
+        string TargetNamespace,
+        string ConstructorArgs,
+        IMethodSymbol? TargetMethod,
+        List<string>? Warnings,
+        INamedTypeSymbol? MatchedType)
+    {
+        public static ResolvedTargetTypeInfo NotFound { get; } = new(string.Empty, string.Empty, null, null, null);
+    }
+
     /// <summary>
     /// Non-async variant of <see cref="ResolveTargetTypeAndMethodAsync"/> reading from a cached
     /// compilation list. Used by batch scaffold to avoid re-walking <c>GetCompilationAsync</c>
     /// per target.
     /// </summary>
-    private static (string targetNamespace, string constructorArgs, IMethodSymbol? targetMethod, List<string>? warnings, INamedTypeSymbol? matchedType)
+    private static ResolvedTargetTypeInfo
         ResolveTargetTypeAndMethodFromCache(
             IReadOnlyList<Compilation> compilations, string targetTypeName, string? targetMethodName)
     {
         INamedTypeSymbol? matchedType = null;
         foreach (var compilation in compilations)
         {
-            var candidates = compilation.GetSymbolsWithName(targetTypeName, SymbolFilter.Type)
-                .OfType<INamedTypeSymbol>()
-                .Where(t => t.TypeKind is TypeKind.Class or TypeKind.Struct &&
-                            string.Equals(t.Name, targetTypeName, StringComparison.Ordinal))
-                .ToList();
+            var candidates = GetMatchingTargetTypeCandidates(compilation, targetTypeName, CancellationToken.None).ToList();
             if (candidates.Count == 1) { matchedType = candidates[0]; break; }
             if (candidates.Count > 1)
             {
-                return (string.Empty, string.Empty, null,
-                    [$"Ambiguous type '{targetTypeName}' — multiple candidates; skipped."], null);
+                return CreateAmbiguousTargetTypeResult(targetTypeName);
             }
         }
 
-        if (matchedType is null)
-            return (string.Empty, string.Empty, null, null, null);
-
-        var ns = matchedType.ContainingNamespace.IsGlobalNamespace
-            ? string.Empty
-            : matchedType.ContainingNamespace.ToDisplayString();
-
-        var constructorArgs = BuildConstructorArgs(matchedType);
-
-        IMethodSymbol? targetMethod = null;
-        List<string>? warnings = null;
-        if (!string.IsNullOrWhiteSpace(targetMethodName))
-        {
-            targetMethod = matchedType.GetMembers(targetMethodName)
-                .OfType<IMethodSymbol>()
-                .FirstOrDefault(m => m.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation);
-            if (targetMethod is null)
-            {
-                warnings ??= [];
-                warnings.Add($"Target method '{targetMethodName}' was not found on type '{matchedType.Name}'.");
-            }
-        }
-
-        return (ns, constructorArgs, targetMethod, warnings, matchedType);
+        return CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: false);
     }
 
     public async Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(string workspaceId, ScaffoldTestDto request, CancellationToken ct)
@@ -355,11 +337,11 @@ public sealed class ScaffoldingService : IScaffoldingService
         var siblingWarnings = siblingInference.Warnings;
 
         var content = BuildTestContent(
-            testNamespace, request, typeInfo.targetNamespace, typeInfo.constructorArgs, framework,
-            typeInfo.targetMethod, typeInfo.matchedType, siblingInference.Pattern);
+            testNamespace, request, typeInfo.TargetNamespace, typeInfo.ConstructorArgs, framework,
+            typeInfo.TargetMethod, typeInfo.MatchedType, siblingInference.Pattern);
         var preview = await _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, testFilePath, content), ct).ConfigureAwait(false);
 
-        var combinedWarnings = CombineWarnings(typeInfo.warnings, siblingWarnings);
+        var combinedWarnings = CombineWarnings(typeInfo.Warnings, siblingWarnings);
         return combinedWarnings.Count == 0 ? preview : preview with { Warnings = combinedWarnings };
     }
 
@@ -886,7 +868,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         return "mstest";
     }
 
-    private async Task<(string targetNamespace, string constructorArgs, IMethodSymbol? targetMethod, List<string>? warnings, INamedTypeSymbol? matchedType)>
+    private async Task<ResolvedTargetTypeInfo>
         ResolveTargetTypeAndMethodAsync(
             string workspaceId, string testProjectName, string targetTypeName, string? targetMethodName, CancellationToken ct)
     {
@@ -896,32 +878,45 @@ public sealed class ScaffoldingService : IScaffoldingService
             string.Equals(p.FilePath, testProjectName, StringComparison.OrdinalIgnoreCase));
 
         if (testProject is null)
-            return (string.Empty, string.Empty, null, null, null);
+            return ResolvedTargetTypeInfo.NotFound;
 
+        var projectsToSearch = GetProjectsToSearch(solution, testProject);
+        var matchedType = await FindTargetTypeAsync(projectsToSearch, targetTypeName, ct).ConfigureAwait(false);
+        return CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: true);
+    }
+
+    private static List<Project> GetProjectsToSearch(Solution solution, Project testProject)
+    {
         var projectsToSearch = new List<Project> { testProject };
         foreach (var projectRef in testProject.ProjectReferences)
         {
             var referencedProject = solution.GetProject(projectRef.ProjectId);
             if (referencedProject is not null)
+            {
                 projectsToSearch.Add(referencedProject);
+            }
         }
 
-        INamedTypeSymbol? matchedType = null;
+        return projectsToSearch;
+    }
+
+    private static async Task<INamedTypeSymbol?> FindTargetTypeAsync(
+        IReadOnlyList<Project> projectsToSearch,
+        string targetTypeName,
+        CancellationToken ct)
+    {
         foreach (var project in projectsToSearch)
         {
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
-            if (compilation is null) continue;
+            if (compilation is null)
+            {
+                continue;
+            }
 
-            var candidates = compilation.GetSymbolsWithName(targetTypeName, SymbolFilter.Type, ct)
-                .OfType<INamedTypeSymbol>()
-                .Where(t => t.TypeKind is TypeKind.Class or TypeKind.Struct &&
-                            string.Equals(t.Name, targetTypeName, StringComparison.Ordinal))
-                .ToList();
-
+            var candidates = GetMatchingTargetTypeCandidates(compilation, targetTypeName, ct).ToList();
             if (candidates.Count == 1)
             {
-                matchedType = candidates[0];
-                break;
+                return candidates[0];
             }
 
             if (candidates.Count > 1)
@@ -933,38 +928,84 @@ public sealed class ScaffoldingService : IScaffoldingService
             }
         }
 
+        return null;
+    }
+
+    private static IEnumerable<INamedTypeSymbol> GetMatchingTargetTypeCandidates(
+        Compilation compilation,
+        string targetTypeName,
+        CancellationToken ct)
+    {
+        return compilation.GetSymbolsWithName(targetTypeName, SymbolFilter.Type, ct)
+            .OfType<INamedTypeSymbol>()
+            .Where(t => t.TypeKind is TypeKind.Class or TypeKind.Struct &&
+                        string.Equals(t.Name, targetTypeName, StringComparison.Ordinal));
+    }
+
+    private static ResolvedTargetTypeInfo CreateResolvedTargetTypeInfo(
+        INamedTypeSymbol? matchedType,
+        string? targetMethodName,
+        bool warnOnPrivateMethod)
+    {
         if (matchedType is null)
-            return (string.Empty, string.Empty, null, null, null);
-
-        var ns = matchedType.ContainingNamespace.IsGlobalNamespace
-            ? string.Empty
-            : matchedType.ContainingNamespace.ToDisplayString();
-
-        var constructorArgs = BuildConstructorArgs(matchedType);
-
-        IMethodSymbol? targetMethod = null;
-        List<string>? warnings = null;
-        if (!string.IsNullOrWhiteSpace(targetMethodName))
         {
-            targetMethod = matchedType.GetMembers(targetMethodName)
-                .OfType<IMethodSymbol>()
-                .FirstOrDefault(m => m.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation);
-
-            if (targetMethod is null)
-            {
-                warnings ??= [];
-                warnings.Add($"Target method '{targetMethodName}' was not found on type '{matchedType.Name}'.");
-            }
-            else if (targetMethod.DeclaredAccessibility == Accessibility.Private)
-            {
-                warnings ??= [];
-                warnings.Add(
-                    $"Target method '{targetMethodName}' is private — the scaffold uses reflection to invoke it; " +
-                    "prefer InternalsVisibleTo or testing via public API when possible.");
-            }
+            return ResolvedTargetTypeInfo.NotFound;
         }
 
-        return (ns, constructorArgs, targetMethod, warnings, matchedType);
+        var targetNamespace = matchedType.ContainingNamespace.IsGlobalNamespace
+            ? string.Empty
+            : matchedType.ContainingNamespace.ToDisplayString();
+        var constructorArgs = BuildConstructorArgs(matchedType);
+        var warnings = new List<string>();
+        var targetMethod = ResolveTargetMethod(matchedType, targetMethodName, warnOnPrivateMethod, warnings);
+
+        return new ResolvedTargetTypeInfo(
+            targetNamespace,
+            constructorArgs,
+            targetMethod,
+            warnings.Count == 0 ? null : warnings,
+            matchedType);
+    }
+
+    private static ResolvedTargetTypeInfo CreateAmbiguousTargetTypeResult(string targetTypeName)
+    {
+        return new ResolvedTargetTypeInfo(
+            string.Empty,
+            string.Empty,
+            null,
+            [$"Ambiguous type '{targetTypeName}' — multiple candidates; skipped."],
+            null);
+    }
+
+    private static IMethodSymbol? ResolveTargetMethod(
+        INamedTypeSymbol matchedType,
+        string? targetMethodName,
+        bool warnOnPrivateMethod,
+        List<string> warnings)
+    {
+        if (string.IsNullOrWhiteSpace(targetMethodName))
+        {
+            return null;
+        }
+
+        var targetMethod = matchedType.GetMembers(targetMethodName)
+            .OfType<IMethodSymbol>()
+            .FirstOrDefault(m => m.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation);
+
+        if (targetMethod is null)
+        {
+            warnings.Add($"Target method '{targetMethodName}' was not found on type '{matchedType.Name}'.");
+            return null;
+        }
+
+        if (warnOnPrivateMethod && targetMethod.DeclaredAccessibility == Accessibility.Private)
+        {
+            warnings.Add(
+                $"Target method '{targetMethodName}' is private — the scaffold uses reflection to invoke it; " +
+                "prefer InternalsVisibleTo or testing via public API when possible.");
+        }
+
+        return targetMethod;
     }
 
     private static string BuildConstructorArgs(INamedTypeSymbol type)
