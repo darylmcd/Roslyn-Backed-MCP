@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-22T19:06:06Z
+**updated_at:** 2026-04-23T14:39:18Z
 
 ## Agent contract
 
@@ -41,7 +41,6 @@ _No open P2 rows._
 | `host-parallel-mcp-reads` | P4 | `host` | Document and enable safe parallel read-only MCP calls where the host/client permits it; current serialization wastes the server's read-side concurrency. |
 | `mcp-audit-rollup-2026-04-13-22` | P4 | — | Umbrella row for unresolved server-side follow-ons absorbed from the retired 2026-04-13/15/22 raw audits: preview-formatting defects, summary-mode gaps, resource/connection contract docs, large-solution payload reducers, warm-up follow-ons, and selected experimental-promotion fixes. Split child rows only when one item becomes active. |
 | `workspace-process-pool-or-daemon` | P4 | `compilation-prewarm-on-load` | Reduce repeated `workspace_load` cost across multi-agent sessions by evaluating a long-running daemon or process-pool/shared-workspace model. |
-| `workspace-reload-auto-restore` | P4 | — | Add `autoRestore` or equivalent restore-needed signalling for `workspace_reload` / `workspace_load` so package-graph changes do not leave stale `MetadataReference` handles until the caller manually runs `dotnet restore`. |
 
 ## Refs
 
