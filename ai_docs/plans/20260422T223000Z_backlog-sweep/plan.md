@@ -121,6 +121,7 @@
 
 | Field | Content |
 |-------|---------|
+| **Status** | `merged` (PR [#371](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/371), 2026-04-23) |
 | **Diagnosis** | Pairs `SecurityDiagnosticService.GetAnalyzerStatusAsync` (cc=18) + `RestructureService.StructuralRewriter.TryMatch` (cc=19, maxNesting=5). |
 | **Estimated context cost** | 50000 |
 | **Tool policy** | `preview-then-apply` |
@@ -129,6 +130,7 @@
 
 | Field | Content |
 |-------|---------|
+| **Status** | `merged` (PR [#374](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/374), 2026-04-23) |
 | **Diagnosis** | Pairs `InterfaceExtractionService.BuildUsingDirectives` (cc=19) + `TypeExtractionService.StripInheritanceOnlyModifiers` (cc=18). |
 | **Estimated context cost** | 48000 |
 | **Tool policy** | `preview-then-apply` |
@@ -137,6 +139,7 @@
 
 | Field | Content |
 |-------|---------|
+| **Status** | `merged` (PR [#372](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/372), 2026-04-23) |
 | **Diagnosis** | Pairs `RefactoringService.CollapseBlankLineRunsInRange` (cc=19) + `NuGetVulnerabilityJsonParser.AddPackagesFromFramework` (cc=18, paramCount=7; may be disposition “dense switch not extractable”). If parser is not extractable, do only `CollapseBlankLineRunsInRange` in this tranche and add a new backlog line for the parser. |
 | **Estimated context cost** | 50000 |
 | **Tool policy** | `preview-then-apply` |
@@ -145,12 +148,12 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `merged` (PR [#368](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/368), 2026-04-23) |
-| **Backlog rows closed** | `cc-18-to-19-residuals-post-top10-extraction` — **only when** tranches 4a–4f are already in `main` (reconcile order in executor; if 4g lands first, leave row open). |
+| **Status** | `merged` (PR [#373](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/373), 2026-04-23) |
+| **Backlog rows closed** | `cc-18-to-19-residuals-post-top10-extraction` |
 | **Diagnosis** | `CohesionAnalysisService.FindAccessedMembers` (cc=18) — last method in the backlog list after 4a–4f pairings. |
 | **Tool policy** | `preview-then-apply` |
 | **Estimated context cost** | 45000 |
-| **Backlog sync** | Close `cc-18-to-19-residuals-post-top10-extraction` on the appropriate merge commit after full set ships. |
+| **Backlog sync** | Close `cc-18-to-19-residuals-post-top10-extraction` in this batch reconcile commit. |
 
 *If 4b–4f pairings are wrong on source read, the executor re-pairs; one extraction pair per tranche, ≤4 prod files.*
 

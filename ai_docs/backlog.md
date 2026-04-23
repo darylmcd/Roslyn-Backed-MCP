@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-23T18:46:58Z
+**updated_at:** 2026-04-23T20:26:14Z
 
 ## Agent contract
 
@@ -29,9 +29,7 @@ _No open P2 rows._
 
 ## P3 — open work
 
-| id | pri | deps | do |
-|----|-----|------|-----|
-| `cc-18-to-19-residuals-post-top10-extraction` | P3 | — | `RoslynMcp.Roslyn` still has 13 methods in the cc=18-19 band after the top-17 hotspot sweep. Tackle them in roughly seven sessions using two-method batches; start with `ScriptingService.EvaluateAsync` and `RefactoringService.PersistDocumentSetChangesAsync`, and review `NuGetVulnerabilityJsonParser.AddPackagesFromFramework` first for possible defer/reject if it is a dense switch parser. Refs: PRs #304, #307, #308, #310, #312, #314, #316, #317, #318, #319. |
+_No open P3 rows._
 
 ## P4 — open work
 
