@@ -132,6 +132,17 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             $"Expected AnimalServiceTests.cs to surface via interface-dispatch augmentation; got: {string.Join(", ", result.Select(t => t.FilePath))}");
     }
 
+    [TestMethod]
+    public async Task TestRelated_UnknownSymbol_ReturnsEmptyList()
+    {
+        var result = await TestDiscoveryService.FindRelatedTestsAsync(
+            WorkspaceId,
+            RoslynMcp.Core.Models.SymbolLocator.ByMetadataName("SampleLib.DoesNotExist"),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, result.Count);
+    }
+
     private static string FindDocumentPath(string name)
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);

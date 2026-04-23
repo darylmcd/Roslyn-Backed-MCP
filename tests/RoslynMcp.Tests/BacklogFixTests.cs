@@ -164,6 +164,8 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
         var response = await CodePatternAnalyzer.SemanticSearchAsync(
             workspaceId, "classes implementing IDisposable", "SampleLib", 50, CancellationToken.None);
 
+        Assert.IsNotNull(response.Debug);
+        CollectionAssert.Contains(response.Debug!.AppliedPredicates.ToList(), "implementing-interface");
         Assert.IsTrue(
             response.Results.Any(r => r.SymbolName == "BacklogDisposableSample"),
             "Expected disposable sample class.");
@@ -177,6 +179,8 @@ public sealed class BacklogFixTests : SharedWorkspaceTestBase
         var response = await CodePatternAnalyzer.SemanticSearchAsync(
             workspaceId, "methods returning Task<bool>", "SampleLib", 50, CancellationToken.None);
 
+        Assert.IsNotNull(response.Debug);
+        CollectionAssert.Contains(response.Debug!.AppliedPredicates.ToList(), "returning-type");
         Assert.IsTrue(
             response.Results.Any(r => r.SymbolName == "ReturnsBoolAsync"),
             "Expected method returning Task<bool>.");

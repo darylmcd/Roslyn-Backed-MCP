@@ -97,20 +97,9 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         var discovery = await DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is null) return [];
-
-        var discoveredTests = discovery.TestProjects.SelectMany(project => project.Tests).ToList();
-        var searchTerms = BuildRelatedTestSearchTerms(symbol);
-        var collected = CollectHeuristicRelatedTests(discoveredTests, searchTerms);
-
-        await TryAugmentRelatedTestsFromReferencesAsync(
-            symbol,
-            solution,
-            discoveredTests,
-            collected,
-            ct).ConfigureAwait(false);
-
-        return collected.Values.ToList();
+        return symbol is null
+            ? []
+            : await CollectRelatedTestsAsync(discovery, solution, symbol, ct).ConfigureAwait(false);
     }
 
     private static HashSet<string> BuildRelatedTestSearchTerms(ISymbol symbol)
@@ -122,6 +111,30 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         }
 
         return searchTerms;
+    }
+
+    private async Task<IReadOnlyList<TestCaseDto>> CollectRelatedTestsAsync(
+        TestDiscoveryDto discovery,
+        Solution solution,
+        ISymbol symbol,
+        CancellationToken ct)
+    {
+        var discoveredTests = FlattenDiscoveredTests(discovery);
+        var collected = CollectHeuristicRelatedTests(discoveredTests, BuildRelatedTestSearchTerms(symbol));
+
+        await TryAugmentRelatedTestsFromReferencesAsync(
+            symbol,
+            solution,
+            discoveredTests,
+            collected,
+            ct).ConfigureAwait(false);
+
+        return collected.Values.ToList();
+    }
+
+    private static List<TestCaseDto> FlattenDiscoveredTests(TestDiscoveryDto discovery)
+    {
+        return discovery.TestProjects.SelectMany(project => project.Tests).ToList();
     }
 
     private static Dictionary<string, TestCaseDto> CollectHeuristicRelatedTests(
