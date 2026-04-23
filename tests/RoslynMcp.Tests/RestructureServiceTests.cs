@@ -82,4 +82,26 @@ public sealed class RestructureServiceTests : SharedWorkspaceTestBase
         StringAssert.Contains(ex.Message, "no matches found",
             "Orphaned-placeholder validation must not fire for a literal-only pattern/goal pair.");
     }
+
+    [TestMethod]
+    public async Task PreviewRestructure_RepeatedPlaceholder_RequiresConsistentTokenCapture()
+    {
+        var refactoringProbePath = Path.Combine(
+            Path.GetDirectoryName(SampleSolutionPath)!,
+            "SampleLib",
+            "RefactoringProbe.cs");
+
+        var preview = await Service.PreviewRestructureAsync(
+            WorkspaceId,
+            pattern: "__name__ = __name__ * 2;",
+            goal: "__name__ *= 2;",
+            scope: new RestructureScope(refactoringProbePath, null),
+            ct: CancellationToken.None);
+
+        Assert.AreEqual(1, preview.Changes.Count,
+            "The repeated-placeholder pattern should match exactly the `result = result * 2;` statement.");
+        StringAssert.Contains(preview.Description, "1 match(es)");
+        StringAssert.Contains(preview.Changes[0].UnifiedDiff, "result *= 2;");
+        StringAssert.Contains(preview.Changes[0].UnifiedDiff, "-        result = result * 2;");
+    }
 }

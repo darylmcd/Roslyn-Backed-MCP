@@ -163,8 +163,47 @@ public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
         CollectionAssert.DoesNotContain(
             status.MissingRecommendedPackages.ToList(),
             "SecurityCodeScan.VS2019",
-            "The archived SecurityCodeScan.VS2019 package must not appear in MissingRecommendedPackages " +
-            "— recommending an archived package gives consumers bad advice.");
+             "The archived SecurityCodeScan.VS2019 package must not appear in MissingRecommendedPackages " +
+             "— recommending an archived package gives consumers bad advice.");
+    }
+
+    [TestMethod]
+    public async Task AnalyzerStatus_PackageReferencesDriveSecurityPackageFlags_AndSorting()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        var copiedWorkspaceId = string.Empty;
+
+        try
+        {
+            InjectSecurityPackageReferences(Path.Combine(copiedRoot, "SampleLib", "SampleLib.csproj"));
+            copiedWorkspaceId = (await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None)).WorkspaceId;
+
+            var status = await SecurityService.GetAnalyzerStatusAsync(copiedWorkspaceId, CancellationToken.None);
+
+            CollectionAssert.AreEqual(
+                new[]
+                {
+                    "Puma.Security.Rules",
+                    "SecurityCodeScan.VS2019",
+                    "SonarAnalyzer.CSharp",
+                },
+                status.SecurityRelatedNuGetPackages?.ToArray() ?? [],
+                "Security-related PackageReference items should be deduced from MSBuild evaluation and sorted.");
+            Assert.IsTrue(status.SecurityCodeScanPresent,
+                "SecurityCodeScanPresent should flip on when the package exists even without an analyzer assembly.");
+            Assert.IsTrue(status.PumaSecurityRulesPresent,
+                "PumaSecurityRulesPresent should flip on when the package exists even without an analyzer assembly.");
+        }
+        finally
+        {
+            if (!string.IsNullOrEmpty(copiedWorkspaceId))
+            {
+                WorkspaceManager.Close(copiedWorkspaceId);
+            }
+
+            DeleteDirectoryIfExists(copiedRoot);
+        }
     }
 
     // ── Catalog Tests ──
@@ -328,5 +367,20 @@ public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
                 finding.FilePath?.Contains("InsecureLib", StringComparison.OrdinalIgnoreCase) == true,
                 $"Finding in unexpected path: {finding.FilePath}");
         }
+    }
+
+    private static void InjectSecurityPackageReferences(string csprojPath)
+    {
+        var content = File.ReadAllText(csprojPath);
+        var packageReferenceSnippet = """
+              <ItemGroup>
+                <PackageReference Include="SonarAnalyzer.CSharp" Version="9.26.0.0" />
+                <PackageReference Include="Puma.Security.Rules" Version="1.0.0" />
+                <PackageReference Include="SecurityCodeScan.VS2019" Version="5.6.7" />
+              </ItemGroup>
+            </Project>
+            """;
+
+        File.WriteAllText(csprojPath, content.Replace("</Project>", packageReferenceSnippet, StringComparison.Ordinal));
     }
 }
