@@ -14,12 +14,7 @@ This document supports the post-release roadmap item **“promote experimental �
 
 ## Aggregate surface (reference)
 
-| Tier | Tools | Resources | Prompts |
-|------|-------|-----------|---------|
-| Stable | 69 | 9 stable / 0 experimental | 0 stable / 16 experimental |
-| Experimental | 59 | — | — |
-
-Authoritative counts: `ServerSurfaceCatalog.GetSummary()` / `server_info` / `roslyn://server/catalog`.
+This document tracks promotion history and criteria, not the live surface totals. For current tool/resource/prompt counts, use `server_info` or `roslyn://server/catalog`.
 
 Operational evidence for promotion decisions should come from the latest deep-review rollup in `ai_docs/reports/`, backed by immutable raw audits in `ai_docs/audit-reports/`.
 

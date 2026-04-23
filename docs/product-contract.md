@@ -82,7 +82,7 @@ Current experimental families:
 The server is also distributed as a Claude Code plugin (`roslyn-mcp`) providing:
 
 - **MCP server**: `roslynmcp` via stdio with user-configurable env vars
-- **11 skills**: analyze, refactor, extract-method, review, document, security, dead-code, test-coverage, migrate-package, explain-error, complexity
+- **31 bundled skills** across analysis, refactoring, search, testing, workspace/session, documentation, and release workflows
 - **Safety hooks**: PreToolUse guard (blocks apply without prior preview) and PostToolUse reminder (compile-check after structural refactoring)
 
 Skills compose multiple Roslyn MCP tools into guided workflows. They are not part of the MCP protocol surface — they are Claude Code-specific orchestration on top of the stable and experimental tool tiers documented above.

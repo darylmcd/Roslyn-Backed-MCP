@@ -1,6 +1,9 @@
 # Deep-review backlog intake
 
 <!-- purpose: Backlog reconciliation for multi-repo campaigns. -->
+<!-- scope: reference -->
+
+> **SCOPE: reference — context only, assigns no work.** Does not answer "next step?". Route via [`../planning_index.md`](../planning_index.md).
 
 ## Default (automated)
 

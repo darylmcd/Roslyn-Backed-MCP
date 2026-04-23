@@ -21,6 +21,9 @@
      subagent briefing contract + result-format protocol codified, worktree-vs-
      repo-root merge discipline documented. Prior revisions: v2 added Step 1a
      plan vetting (v1 over-bundled); v1 was serial-only. -->
+<!-- scope: reference -->
+
+> **SCOPE: reference — context only, assigns no work.** Does not answer "next step?". Route via [`../planning_index.md`](../planning_index.md).
 
 You are picking up **one or more** initiatives from a previously-produced
 backlog-sweep plan (see `backlog-sweep-plan.md`).

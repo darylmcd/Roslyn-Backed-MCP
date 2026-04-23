@@ -152,4 +152,4 @@ Console.WriteLine(ReadResponse(2));
 ## Next steps
 
 - Read `ai_docs/runtime.md` for environment variables, session lifetime, and the MCP runtime contract.
-- Read `roslyn://server/catalog` (resource) or call `server_info` for the live surface inventory — 147 tools / 13 resources / 20 prompts as of catalog `2026.04`.
+- Read `roslyn://server/catalog` (resource) or call `server_info` for the authoritative live surface inventory.

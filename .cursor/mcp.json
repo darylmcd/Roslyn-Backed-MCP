@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "roslyn": {
+      "type": "stdio",
+      "command": "roslynmcp"
+    }
+  }
+}

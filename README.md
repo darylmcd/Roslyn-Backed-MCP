@@ -2,416 +2,120 @@
 
 [![CI](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/workflows/ci.yml)
 
-A production-usable MCP (Model Context Protocol) server that provides semantic C# analysis capabilities powered by Roslyn, without requiring Visual Studio. Designed for AI coding agents to semantically navigate, analyze, and refactor real C# solutions.
+Local-first MCP (Model Context Protocol) server for semantic C# analysis, navigation, validation, and refactoring on real `.sln` / `.slnx` / `.csproj` workspaces. It uses Roslyn and `MSBuildWorkspace`, runs over stdio, and does not require Visual Studio.
 
-## AI Session Fast Start
+## What It Does
 
-For the shortest safe path in new agent sessions:
-
-1. Read `AGENTS.md` first.
-2. Read `CI_POLICY.md` for validation and merge-gating expectations.
-3. Read `ai_docs/README.md`, then `ai_docs/workflow.md` and `ai_docs/runtime.md`.
-4. Use `server_info` and `roslyn://server/catalog` to verify runtime surface.
-
-### 30-Second AI Quick Path
-
-1. Load workspace and keep `workspaceId`.
-2. Follow `ai_docs/workflow.md` for branch/worktree/PR behavior.
-3. Follow `CI_POLICY.md` for validation and merge handoff.
-4. Use stable tools/resources first and preview/apply for mutations.
+- Loads real C# solutions and projects with session-scoped `workspaceId`s.
+- Exposes semantic navigation, diagnostics, build/test helpers, and preview/apply refactoring workflows over MCP.
+- Ships as a .NET global tool, a Claude Code plugin, and a source-buildable stdio host.
+- Publishes the authoritative live surface through `server_info` and `roslyn://server/catalog`.
 
 ## Quick Start
 
-For packaging, Docker, the global `dotnet` tool, and CI artifact names, see [docs/setup.md](docs/setup.md).
-
 ### Prerequisites
 
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) — **10.0.100** per [`global.json`](global.json) (`rollForward` is `latestFeature`; compatible **10.0.x** patches generally work). See [docs/setup.md](docs/setup.md).
+- [.NET 10 SDK](https://dotnet.microsoft.com/download) — pinned to `10.0.100` in [`global.json`](global.json) (`rollForward: latestFeature`)
 
-### Build
+### Install As A Global Tool
 
 ```bash
-dotnet build RoslynMcp.slnx
+dotnet tool install -g Darylmcd.RoslynMcp
 ```
 
-### Run
+- Package ID: `Darylmcd.RoslynMcp`
+- CLI command: `roslynmcp`
+
+### Build And Run From Source
 
 ```bash
+dotnet build RoslynMcp.slnx --nologo
+dotnet test RoslynMcp.slnx --nologo
 dotnet run --project src/RoslynMcp.Host.Stdio
 ```
 
-### Test
+### Claude Code Plugin
 
-```bash
-dotnet test RoslynMcp.slnx
-```
-
-## Cross-Platform Notes
-
-The server runs on Windows, macOS, and Linux wherever the .NET 10 SDK is available. Known platform-specific behavior:
-
-- **Path separators**: The server normalizes paths internally but MCP clients should send OS-native paths (backslashes on Windows, forward slashes elsewhere).
-- **MSBuild locator**: Uses `Microsoft.Build.Locator` to find the SDK. On Linux/macOS, ensure the SDK is on `PATH` or set `DOTNET_ROOT`.
-- **Symlink resolution**: `ClientRootPathValidator` resolves symlinks and junctions before path comparison. Behavior varies by filesystem — NTFS junctions on Windows, symlinks on Unix.
-- **Process management**: `dotnet build` and `dotnet test` child processes use `Process.Kill(entireProcessTree: true)` on cancellation, which requires `SIGKILL` support on Unix (available on all modern distributions).
-- **File watchers**: `FileSystemWatcher` reliability varies by OS and filesystem. NFS and some container-mounted volumes may not emit change events.
-
-## Security Considerations
-
-**This server executes MSBuild evaluation when loading `.sln` and `.csproj` files.** MSBuild project files can contain arbitrary build targets, tasks, and imports that run native code during evaluation. This means:
-
-- **Only load solutions you trust.** A malicious `.csproj` can execute arbitrary code with the permissions of the server process.
-- **Run in a sandbox for untrusted code.** If you need to analyze untrusted repositories, run the server inside a container, VM, or other isolation boundary.
-- **Path validation is enforced** against MCP client roots when available, including symlink/junction resolution, but this is a defense-in-depth measure — not a substitute for trusting the workspace content.
-
-See [SECURITY.md](SECURITY.md) for the vulnerability disclosure policy.
-
-## Claude Code Plugin Installation
-
-The easiest way to use this server with Claude Code is as a plugin.
-
-### Prerequisites
-
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) — **10.0.100** per [`global.json`](global.json)
-- Install the global tool: `dotnet tool install -g Darylmcd.RoslynMcp` (the unprefixed `RoslynMcp` package id is owned by another publisher; the CLI command remains `roslynmcp` after install)
-
-### Install as Plugin
-
-```bash
-# Add the marketplace
+```text
 /plugin marketplace add darylmcd/Roslyn-Backed-MCP
-
-# Install the plugin
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
-**No further configuration is required** — the server starts with the defaults listed in [Configuration](#configuration). To tune any `ROSLYNMCP_*` value, drop a project-scope `.mcp.json` at your repo root with literal `env` values (see [`docs/mcp-json-examples/with-overrides.mcp.json`](docs/mcp-json-examples/with-overrides.mcp.json) for a copy-ready template). Earlier versions (≤1.18.1) shipped a `.mcp.json` that referenced `${user_config.*}` placeholders substituted at plugin enable-time — that path was unreliable on default installs, so v1.18.2 moved all tuning to project-scope `.mcp.json` with literal values.
+The plugin bundles the MCP server, 31 skills, and safety hooks. For packaging, reinstall, and local plugin-dev details, see [docs/setup.md](docs/setup.md) and [docs/reinstall.md](docs/reinstall.md).
 
-Or for local development/testing:
+### Any Stdio MCP Client
 
-```bash
-# Load directly from a local checkout
-claude --plugin-dir /path/to/Roslyn-Backed-MCP
-```
-
-### Available Skills
-
-The plugin bundles **31 skills**. The most commonly used ones:
-
-| Skill | Description |
-|-------|-------------|
-| `/roslyn-mcp:analyze` | Solution health check — diagnostics, complexity, cohesion, vulnerabilities |
-| `/roslyn-mcp:refactor` | Guided semantic refactoring — rename, extract, move, split |
-| `/roslyn-mcp:refactor-loop` | Guided preview → apply-with-verify → validate loop for non-trivial refactors |
-| `/roslyn-mcp:review` | Semantic code review — diagnostics, dead code, complexity, security |
-| `/roslyn-mcp:impact-assessment` | Pre-change blast-radius report for a rename, signature change, or deletion |
-| `/roslyn-mcp:architecture-review` | Layering and Dependency-Inversion-Principle audit |
-| `/roslyn-mcp:document` | XML documentation generator for public APIs |
-| `/roslyn-mcp:security` | Security audit — OWASP diagnostics, CVE scan, reflection, DI |
-| `/roslyn-mcp:dead-code` | Dead code detection and safe cleanup |
-| `/roslyn-mcp:test-coverage` | Test coverage analysis and test scaffolding |
-| `/roslyn-mcp:test-triage` | Test discovery and failure triage when CI is red |
-| `/roslyn-mcp:generate-tests` | Batch-scaffold test stubs for untested public APIs |
-| `/roslyn-mcp:migrate-package` | NuGet package migration across projects |
-| `/roslyn-mcp:modernize` | Staged codebase modernization toward a natural-language goal |
-| `/roslyn-mcp:explain-error` | Diagnostic explanation with auto-fix |
-| `/roslyn-mcp:extract-method` | Extract statements into a new method with parameter inference |
-| `/roslyn-mcp:code-actions` | IDE-style fixes and refactorings at a position or selection |
-| `/roslyn-mcp:complexity` | Complexity hotspot and god class analysis |
-| `/roslyn-mcp:di-audit` | Audit dependency-injection registrations and lifetime mismatches |
-| `/roslyn-mcp:trace-flow` | Walk a value through control, data, and exception flow |
-| `/roslyn-mcp:inheritance-explorer` | Walk the inheritance and member-override graph for a type or member |
-| `/roslyn-mcp:exception-audit` | Repo-wide classification of exception-handling patterns |
-| `/roslyn-mcp:format-sweep` | Whole-solution formatting compliance pass |
-| `/roslyn-mcp:workspace-health` | One-shot status report on the server and loaded workspaces |
-| `/roslyn-mcp:session-undo` | Session history and undo of recent applies |
-
-Plus `project-inspection`, `snippet-eval`, `semantic-find`, `nuget-preflight`, `version-bump`, `update`, and release-workflow helpers. Browse [`skills/`](skills/) for the full catalogue.
-
-### Plugin Hooks
-
-The plugin includes safety hooks that enforce the preview/apply pattern:
-
-- **Pre-apply guard**: Blocks `*_apply` calls that weren't preceded by a `*_preview`.
-- **Post-apply verifier**: Reminds the agent to run `compile_check` after structural refactorings.
-
-## MCP Client Configuration
-
-### Custom stdio clients
-
-If you're building your own harness that spawns `roslynmcp` and speaks MCP directly, read [`docs/stdio-client-integration.md`](docs/stdio-client-integration.md). It covers NDJSON framing (not LSP `Content-Length`), the `initialize` + `notifications/initialized` handshake order, and includes minimal Python and C# client examples. If you're using Cursor / Claude Code with a pre-configured integration, skip it — the configs below are all you need.
-
-### Cursor
-
-Add to `.cursor/mcp.json`:
+Point the client at the installed tool:
 
 ```json
 {
   "mcpServers": {
-    "roslyn-mcp": {
-      "command": "dotnet",
-      "args": ["run", "--project", "C:\\path\\to\\src\\RoslynMcp.Host.Stdio"]
-    }
-  }
-}
-```
-
-### Claude Code
-
-Add to Claude Code MCP settings:
-
-```json
-{
-  "mcpServers": {
-    "roslyn-mcp": {
-      "command": "dotnet",
-      "args": ["run", "--project", "C:\\path\\to\\src\\RoslynMcp.Host.Stdio"]
-    }
-  }
-}
-```
-
-### Install as Global Tool (Recommended)
-
-Pack and install as a dotnet global tool for the best startup performance and MCP client configuration:
-
-```bash
-dotnet publish src/RoslynMcp.Host.Stdio -c Release /p:ReinstallTool=true
-```
-
-This single command builds, packs the NuGet package, kills any running `roslynmcp` processes, and installs (or updates) the global tool. After installation, configure your MCP client to use the tool command:
-
-```json
-{
-  "mcpServers": {
-    "roslyn-mcp": {
+    "roslyn": {
+      "type": "stdio",
       "command": "roslynmcp"
     }
   }
 }
 ```
 
-To update after code changes, run the same publish command again. The `/p:ReinstallTool=true` flag handles the full cycle automatically.
-
-### Published Executable (Alternative)
-
-If you prefer a standalone publish without global tool installation:
-
-```bash
-dotnet publish src/RoslynMcp.Host.Stdio -c Release -o ./publish
-```
-
-Then point your MCP client at the published executable:
-
-```json
-{
-  "mcpServers": {
-    "roslyn-mcp": {
-      "command": "C:\\path\\to\\publish\\RoslynMcp.Host.Stdio.exe"
-    }
-  }
-}
-```
-
-For a reproducible release build and publish verification:
-
-```powershell
-./eng/verify-release.ps1
-```
+For NDJSON framing, handshake order, and minimal Python/C# client examples, see [docs/stdio-client-integration.md](docs/stdio-client-integration.md).
 
 ## Configuration
 
-All variables below are **optional**. The server starts with the listed defaults when no value is set — no per-user or per-install configuration step is required. Override by adding an `env` block to a project-scope `.mcp.json` at your repo root (see [`docs/mcp-json-examples/with-overrides.mcp.json`](docs/mcp-json-examples/with-overrides.mcp.json)) or to your MCP client's server config. See [`ai_docs/runtime.md`](ai_docs/runtime.md) for the full list of advanced overrides (path validation, scripting concurrency, abandoned-script caps, etc.).
+The server starts with built-in defaults. To override `ROSLYNMCP_*` values for a repo, add a project-scope `.mcp.json` with literal `env` values.
 
-| Environment Variable | Default | Description |
-|---|---|---|
-| `ROSLYNMCP_MAX_WORKSPACES` | `8` | Maximum concurrent workspace sessions |
-| `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build operation timeout (seconds) |
-| `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `600` | Test run timeout (seconds) |
-| `ROSLYNMCP_VULN_SCAN_TIMEOUT_SECONDS` | `120` | NuGet vulnerability scan timeout (seconds) |
-| `ROSLYNMCP_PREVIEW_MAX_ENTRIES` | `20` | Preview store entries per store |
-| `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `5` | Preview store entry lifetime (minutes) |
-| `ROSLYNMCP_RATE_LIMIT_MAX_REQUESTS` | `120` | Maximum requests per rate-limit window |
-| `ROSLYNMCP_RATE_LIMIT_WINDOW_SECONDS` | `60` | Rate-limit window (seconds) |
-| `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `120` | Per-request timeout (seconds) |
-| `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS` | `10` | `evaluate_csharp` script budget (seconds) |
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ROSLYNMCP_MAX_WORKSPACES` | `8` | Concurrent workspace cap |
+| `ROSLYNMCP_BUILD_TIMEOUT_SECONDS` | `300` | Build timeout |
+| `ROSLYNMCP_TEST_TIMEOUT_SECONDS` | `600` | Test timeout |
+| `ROSLYNMCP_PREVIEW_TTL_MINUTES` | `5` | Preview-token TTL |
+| `ROSLYNMCP_REQUEST_TIMEOUT_SECONDS` | `120` | Per-request timeout |
 
-Example:
+Copy-ready examples live in [docs/mcp-json-examples/README.md](docs/mcp-json-examples/README.md). The full runtime/config surface is documented in [ai_docs/runtime.md](ai_docs/runtime.md).
 
-```json
-{
-  "mcpServers": {
-    "roslyn-mcp": {
-      "command": "roslynmcp",
-      "env": {
-        "ROSLYNMCP_MAX_WORKSPACES": "4",
-        "ROSLYNMCP_BUILD_TIMEOUT_SECONDS": "120"
-      }
-    }
-  }
-}
-```
+## Security
 
-## Privacy Policy
+Loading a solution or project executes MSBuild evaluation. Treat workspaces as trusted code unless you run the server inside a sandbox, container, or VM.
 
-This MCP server runs entirely on your local machine and does not collect, transmit, or store any telemetry, analytics, or personal data.
+- Only load repos you trust.
+- Use isolation for untrusted workspaces.
+- Path validation is defense in depth, not a substitute for trusting the loaded project graph.
 
-- **Data processed**: The server reads `.sln`, `.csproj`, and `.cs` files from workspaces you explicitly load. All analysis happens in-process using Roslyn.
-- **Network access**: The server makes no outbound network requests. `dotnet build` and `dotnet test` child processes may download NuGet packages as part of normal .NET SDK behavior.
-- **Data retention**: Workspace state exists only in memory for the duration of the server process. Preview stores expire entries after 5 minutes. No data is persisted to disk beyond what `dotnet build`/`dotnet test` produce.
-- **Logging**: Diagnostic logs are emitted via MCP's logging notification channel to the connected client. No logs are written to disk or sent to external services.
-- **Third-party sharing**: No data is shared with Anthropic, any third party, or any external service.
+See [SECURITY.md](SECURITY.md) for disclosure policy.
 
-For privacy questions, open an issue at [github.com/darylmcd/Roslyn-Backed-MCP/issues](https://github.com/darylmcd/Roslyn-Backed-MCP/issues).
+## Live Surface
+
+The current release exposes **160 tools** (107 stable / 53 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental).
+
+Use the running server for the authoritative live catalog and support tiers:
+
+- `server_info` for a human-readable summary
+- `roslyn://server/catalog` for the machine-readable contract
+- `roslyn://server/resource-templates` for resource URI templates
+
+Stable families include workspace/session management, semantic navigation, diagnostics, build/test helpers, and preview/apply refactoring flows. Experimental families include broader project mutation, scaffolding, orchestration, direct text-edit helpers, and prompts.
+
+## Repository Layout
+
+- `src/RoslynMcp.Host.Stdio/` — stdio host, tool/resource/prompt wiring, logging
+- `src/RoslynMcp.Core/` — DTOs, contracts, abstractions, preview-store types
+- `src/RoslynMcp.Roslyn/` — Roslyn workspace, analysis, diagnostics, refactoring, execution services
+- `tests/RoslynMcp.Tests/` — integration and regression coverage
+- `skills/` — bundled Claude Code skill definitions
+- `hooks/` — Claude Code safety hooks
+
+## Docs
+
+- [docs/setup.md](docs/setup.md) — packaging, Docker, tool install, plugin install, CI artifacts
+- [docs/stdio-client-integration.md](docs/stdio-client-integration.md) — custom MCP client integration
+- [docs/product-contract.md](docs/product-contract.md) — stable vs experimental surface contract
+- [docs/release-policy.md](docs/release-policy.md) — release gates and compatibility rules
+- [AGENTS.md](AGENTS.md) — bootstrap entry point for AI agents working in this repo
+- [ai_docs/README.md](ai_docs/README.md) — canonical AI-doc routing index
 
 ## Support
 
-- **Bug reports and feature requests**: [GitHub Issues](https://github.com/darylmcd/Roslyn-Backed-MCP/issues)
-- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-- **Security vulnerabilities**: See [SECURITY.md](SECURITY.md) for the disclosure policy.
-
-## Canonical Docs
-
-- `AGENTS.md` is the canonical bootstrap entry point for AI agents.
-- `CLAUDE.md` is the Claude bootstrap mirror.
-- `.github/copilot-instructions.md` is a thin bootstrap file for Copilot.
-- `CI_POLICY.md` is the canonical validation and merge-gating policy.
-- `ai_docs/README.md` is the canonical AI-doc routing index.
-- `ai_docs/workflow.md` is the canonical git/branch/worktree/PR workflow policy.
-- `ai_docs/runtime.md` is the canonical runtime and execution-context reference.
-- `ai_docs/backlog.md` is the canonical unfinished-work list.
-- `.cursor/rules/operational-essentials.md` is a compact reminder layer aligned with `ai_docs/workflow.md`.
-- `roslyn://server/catalog` is the canonical machine-readable surface contract exposed by the running server.
-
-## Project Map
-
-- `src/RoslynMcp.Host.Stdio/`: host startup, MCP wrappers, tool/resource/prompt registration, logging.
-- `src/RoslynMcp.Core/`: shared contracts, DTOs, interfaces, and preview-store abstractions.
-- `src/RoslynMcp.Roslyn/`: Roslyn workspace, semantic analysis, diagnostics, refactoring, and execution services.
-- `tests/RoslynMcp.Tests/`: integration and behavior coverage across stable and experimental surfaces.
-- `samples/`: fixture solutions used by tests for realistic workflows.
-- `eng/verify-release.ps1`: release verification path for publish and hashes.
-- `.claude-plugin/`: Claude Code plugin manifest and marketplace descriptor.
-- `skills/`: Claude Code skill definitions composing MCP tools into guided workflows (see `skills/*/SKILL.md`).
-- `hooks/`: plugin safety hooks enforcing preview/apply and compile-check patterns.
-
-## Supported Surface
-
-Catalog **`2026.04`** ships **160 tools** (107 stable / 53 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental). Use the `server_info` tool and the `roslyn://server/catalog` resource for the authoritative live surface — the categories below are a quick orientation.
-
-### Stable tool families
-
-- workspace session management and inspection
-- source text and source-generated document reads
-- semantic symbol navigation, relationships, references, completions, type-usage and type-mutation tooling
-- diagnostics, `compile_check`, impact analysis, `list_analyzers`, and related semantic analysis tools (including `analyze_snippet`)
-- security tools (`security_diagnostics`, `security_analyzer_status`, `nuget_vulnerability_scan`)
-- read-only advanced-analysis tools (`find_unused_symbols`, `get_complexity_metrics`, `get_di_registrations`, `get_namespace_dependencies`, `get_nuget_dependencies`, `find_reflection_usages`)
-- build/test discovery, execution, related-test lookup, and coverage
-- preview/apply refactoring workflows for rename, organize-usings, format document, and curated code fixes
-- `server_info`
-
-### Experimental tool families
-
-- `semantic_search`, flow analysis (`analyze_data_flow`, `analyze_control_flow`), `get_operations`, `get_syntax_tree`
-- direct text-edit tools (`apply_text_edit`, `apply_multi_file_edit`, `add_pragma_suppression`)
-- workspace file operations (create / move / delete preview + apply)
-- project file mutations (package, project, framework, conditional property, central package management) and MSBuild evaluators
-- scaffolding (type, test) preview + apply
-- dead-code removal preview + apply
-- generic Roslyn code actions (`get_code_actions`, `preview_code_action`, `apply_code_action`)
-- experimental refactoring (extract interface/type, move type to file, bulk replace type, fix-all, format range)
-- cross-project refactoring and orchestration (move type to project, dependency inversion, package migration, split class, extract+wire interface, composite apply)
-- editor configuration (`get_editorconfig_options`, `set_editorconfig_option`, `set_diagnostic_severity`)
-- scripting (`evaluate_csharp`)
-- undo (`revert_last_apply`)
-
-### Stable resources
-
-- `roslyn://server/catalog`, `roslyn://server/resource-templates`
-- `roslyn://workspaces` and `roslyn://workspaces/verbose`
-- `roslyn://workspace/{workspaceId}/status` and `.../status/verbose`
-- `roslyn://workspace/{workspaceId}/projects`
-- `roslyn://workspace/{workspaceId}/diagnostics`
-- `roslyn://workspace/{workspaceId}/file/{filePath}`
-
-The `verbose` siblings opt into the full per-project tree; the default summary keeps a status check at ~500 bytes instead of ~30 KB on large solutions.
-
-### Experimental prompts (19)
-
-`explain_error`, `suggest_refactoring`, `review_file`, `analyze_dependencies`, `debug_test_failure`, `refactor_and_validate`, `fix_all_diagnostics`, `guided_package_migration`, `guided_extract_interface`, `security_review`, `discover_capabilities`, `dead_code_audit`, `review_test_coverage`, `review_complexity`, `cohesion_analysis`, `consumer_impact`, `guided_extract_method`, `msbuild_inspection`, `session_undo`.
-
-### Product Boundaries
-
-- The current production target is the local stdio host on a developer workstation.
-- Workspace state comes from `MSBuildWorkspace` and on-disk files, not unsaved editor buffers.
-- HTTP/SSE hosting is intentionally deferred to a future host project.
-- Live IDE parity requires a separate editor-backed integration path and is not implied by the current host.
-
-## Architecture
-
-```
-.claude-plugin/              Claude Code plugin manifest + marketplace
-skills/                      bundled plugin skills (workflows + discovery)
-hooks/                       Plugin safety hooks (preview/apply guard)
-src/
-  RoslynMcp.Host.Stdio/      MCP stdio host (thin tool wrappers)
-  RoslynMcp.Core/            DTOs, service interfaces, PreviewStore
-  RoslynMcp.Roslyn/          Roslyn workspace/symbol/refactoring services
-tests/
-  RoslynMcp.Tests/           Unit + integration tests
-samples/
-  SampleSolution/            Multi-project test solution
-```
-
-## Agent Workflow (End-To-End)
-
-1. Load workspace and persist `workspaceId`.
-2. Run stable-first semantic navigation and diagnostics.
-3. Produce preview tokens for mutation/refactoring operations.
-4. Apply preview only if workspace version has not changed.
-5. Run build/test validation loops.
-6. Re-run diagnostics and update docs/tests for any surface change.
-
-### Key Design Decisions
-
-- **Transport-agnostic core**: Only `Host.Stdio` references the MCP SDK. An HTTP/SSE host can be added later by referencing the same Core and Roslyn libraries.
-- **DTOs at the boundary**: Roslyn types (`ISymbol`, `Document`, `Compilation`) never cross the service boundary. All public APIs return serializable DTOs.
-- **Session-aware workspaces**: `workspace_load` returns a dedicated `workspaceId`. Every semantic and refactoring tool is scoped to an explicit session instead of relying on a singleton loaded solution.
-- **Preview/apply with version gating**: Refactoring operations use a two-step preview/apply pattern. Preview tokens are tied to a specific workspace session and version and are rejected if that workspace changes between preview and apply.
-- **Flexible symbol targeting**: Tools can resolve symbols from file path + 1-based line/column, stable symbol handles emitted in symbol DTOs, or fully qualified metadata names where appropriate.
-- **Validation loop built in**: Agents can stay inside the MCP surface for build/test discovery and execution instead of shelling out ad hoc for every edit cycle.
-- **Curated fixes over generic mutation**: Diagnostic fixes are intentionally opt-in and preview-first. The server exposes a small, deterministic curated set instead of arbitrary code actions.
-- **stderr-only logging**: stdout is reserved exclusively for MCP protocol messages.
-- **MSBuildWorkspace**: Uses real MSBuild project loading for accurate analysis of `.sln`/`.csproj` files, not ad-hoc workspace hacks.
-
-## Deferred Features
-
-| Feature | Reason |
-|---------|--------|
-| `extract_method_preview` | Roslyn's `ExtractMethodCodeRefactoringProvider` requires internal IDE workspace services absent from `MSBuildWorkspace`. Verified in v1.9.0. Other selection-range refactorings (introduce parameter, inline temporary variable) **do** work via `get_code_actions` with `endLine`/`endColumn`. |
-| HTTP/SSE transport | v1 focuses on local stdio. The architecture supports adding an ASP.NET Core host project later. |
-| Generic file read/write tools | Editors (Cursor, VS Code) already provide these. |
-| Memory/knowledge-base features | Out of scope for a semantic analysis server. |
-| AI summarization | Out of scope. |
-| Arbitrary code generation | Out of scope for v1. |
-
-## Requirements
-
-- .NET 10 SDK (`10.0.100`+ per [`global.json`](global.json); `rollForward` is `latestFeature`)
-- No Visual Studio installation required (MSBuild is included in the SDK)
-- Windows is the primary v1 target; macOS and Linux are supported wherever the .NET 10 SDK runs (see *Cross-Platform Notes* above for known platform-specific behaviour)
-
-## Validation
-
-The integration suite covers:
-
-- workspace load/reload/status with explicit `workspaceId` sessions
-- workspace-scoped build/test discovery and execution with passing and failing fixtures
-- symbol search, symbol info, definition lookup, references, implementations, type hierarchy, callers/callees, and impact analysis
-- override/base-member lookup, member hierarchy, project graph, signature help, relationship summaries, and generated-document listing
-- separated workspace/load, compiler, and analyzer diagnostics
-- preview/apply behavior for rename, organize-usings, formatting, and curated code fixes on isolated sample-solution copies
-- stale preview rejection when a workspace session changes after preview creation
-- wrapper/integration coverage for server catalog, resources, prompts, syntax, completions, direct edits, multi-file edits, code-action contracts, and coverage response shape
-- hardening coverage for workspace-load validation, workspace-count limits, related-test scan bounds, and command timeout enforcement
+- Bugs and feature requests: [GitHub Issues](https://github.com/darylmcd/Roslyn-Backed-MCP/issues)
+- Contribution guidelines: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security disclosures: [SECURITY.md](SECURITY.md)

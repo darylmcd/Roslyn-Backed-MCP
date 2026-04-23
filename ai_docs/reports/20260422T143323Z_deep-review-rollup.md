@@ -1,5 +1,7 @@
 # Deep-review rollup
 
+<!-- purpose: Synthesized deep-review rollup for the 2026-04-22 audit batch. -->
+
 ## Scope
 - **Generated:** 20260422T143323Z
 - **Purpose:** Deep-review rollup
