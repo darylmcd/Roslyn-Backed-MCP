@@ -92,101 +92,194 @@ public sealed class ScaffoldingService : IScaffoldingService
     public async Task<RefactoringPreviewDto> PreviewScaffoldTestBatchAsync(
         string workspaceId, ScaffoldTestBatchDto request, CancellationToken ct)
     {
+        ValidateBatchScaffoldRequest(request);
+        var context = CreateBatchScaffoldContext(workspaceId, request);
+        var cachedCompilations = await LoadBatchCompilationsAsync(context.Solution, context.TestProject, ct).ConfigureAwait(false);
+        var state = new BatchScaffoldState(context.Solution);
+
+        foreach (var target in request.Targets)
+        {
+            ProcessBatchScaffoldTarget(target, request, context, cachedCompilations, state, ct);
+        }
+
+        return await CreateBatchScaffoldPreviewAsync(workspaceId, context.Project, state, ct).ConfigureAwait(false);
+    }
+
+    private static void ValidateBatchScaffoldRequest(ScaffoldTestBatchDto request)
+    {
         if (request.Targets is null || request.Targets.Count == 0)
         {
             throw new InvalidOperationException("scaffold_test_batch_preview requires at least one target.");
         }
+    }
 
+    private BatchScaffoldContext CreateBatchScaffoldContext(string workspaceId, ScaffoldTestBatchDto request)
+    {
         var project = ResolveProject(workspaceId, request.TestProjectName);
         ValidateIsTestProject(project);
         var projectDirectory = Path.GetDirectoryName(project.FilePath)
             ?? throw new InvalidOperationException($"Project directory could not be resolved for '{project.FilePath}'.");
-        var testNamespace = project.Name;
-        var framework = ResolveTestFramework(request.TestFramework, project.FilePath);
-
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var testProject = solution.Projects.FirstOrDefault(p =>
             string.Equals(p.Name, request.TestProjectName, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(p.FilePath, request.TestProjectName, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"Test project not loaded: {request.TestProjectName}");
 
+        return new BatchScaffoldContext(
+            Project: project,
+            TestProject: testProject,
+            Solution: solution,
+            ProjectDirectory: projectDirectory,
+            TestNamespace: project.Name,
+            Framework: ResolveTestFramework(request.TestFramework, project.FilePath));
+    }
+
+    private static async Task<List<Compilation>> LoadBatchCompilationsAsync(
+        Solution solution,
+        Project testProject,
+        CancellationToken ct)
+    {
         // Cache source-project compilations once to avoid N× GetCompilationAsync across targets
         // (the primary perf win over iterating PreviewScaffoldTestAsync).
         var projectsToSearch = new List<Project> { testProject };
         foreach (var projectRef in testProject.ProjectReferences)
         {
             var referenced = solution.GetProject(projectRef.ProjectId);
-            if (referenced is not null) projectsToSearch.Add(referenced);
+            if (referenced is not null)
+            {
+                projectsToSearch.Add(referenced);
+            }
         }
+
         var cachedCompilations = new List<Compilation>();
-        foreach (var p in projectsToSearch)
+        foreach (var project in projectsToSearch)
         {
-            var compilation = await p.GetCompilationAsync(ct).ConfigureAwait(false);
-            if (compilation is not null) cachedCompilations.Add(compilation);
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is not null)
+            {
+                cachedCompilations.Add(compilation);
+            }
         }
 
-        var accumulator = solution;
-        var warnings = new List<string>();
-        var createdFiles = new List<string>();
-        var skippedTargets = new List<string>();
+        return cachedCompilations;
+    }
 
-        foreach (var target in request.Targets)
+    private static void ProcessBatchScaffoldTarget(
+        ScaffoldTestBatchTargetDto target,
+        ScaffoldTestBatchDto request,
+        BatchScaffoldContext context,
+        IReadOnlyList<Compilation> cachedCompilations,
+        BatchScaffoldState state,
+        CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(target.TargetTypeName))
         {
-            ct.ThrowIfCancellationRequested();
-            if (string.IsNullOrWhiteSpace(target.TargetTypeName))
-            {
-                warnings.Add("Skipped empty target type name.");
-                continue;
-            }
-
-            var testFilePath = Path.Combine(projectDirectory, $"{target.TargetTypeName}GeneratedTests.cs");
-            if (SymbolResolver.FindDocument(accumulator, testFilePath) is not null || File.Exists(testFilePath))
-            {
-                skippedTargets.Add(target.TargetTypeName);
-                warnings.Add($"Skipped '{target.TargetTypeName}': target file already exists at '{testFilePath}'.");
-                continue;
-            }
-
-            var typeInfo = ResolveTargetTypeAndMethodFromCache(
-                cachedCompilations, target.TargetTypeName, target.TargetMethodName);
-            if (typeInfo.matchedType is null)
-            {
-                warnings.Add($"Target type '{target.TargetTypeName}' not found in referenced projects — skipped.");
-                continue;
-            }
-            if (typeInfo.warnings is not null) warnings.AddRange(typeInfo.warnings);
-
-            var dto = new ScaffoldTestDto(request.TestProjectName, target.TargetTypeName, target.TargetMethodName, request.TestFramework);
-            // Batch scaffolding intentionally does NOT apply sibling-pattern inference — a batch
-            // run typically targets a homogenous set of production types and callers want the
-            // generic scaffold. Sibling inference is available via per-target scaffold_test_preview.
-            var content = BuildTestContent(
-                testNamespace, dto, typeInfo.targetNamespace, typeInfo.constructorArgs, framework,
-                typeInfo.targetMethod, typeInfo.matchedType, siblingPattern: null);
-
-            var projInAccumulator = accumulator.GetProject(testProject.Id)
-                ?? throw new InvalidOperationException("Test project disappeared from working solution snapshot.");
-            var folders = Array.Empty<string>();
-            var newDoc = projInAccumulator.AddDocument(
-                Path.GetFileName(testFilePath),
-                Microsoft.CodeAnalysis.Text.SourceText.From(content),
-                folders,
-                testFilePath);
-            accumulator = newDoc.Project.Solution;
-            createdFiles.Add(testFilePath);
+            state.Warnings.Add("Skipped empty target type name.");
+            return;
         }
 
-        if (createdFiles.Count == 0)
+        var testFilePath = Path.Combine(context.ProjectDirectory, $"{target.TargetTypeName}GeneratedTests.cs");
+        if (SymbolResolver.FindDocument(state.Accumulator, testFilePath) is not null || File.Exists(testFilePath))
+        {
+            state.Warnings.Add($"Skipped '{target.TargetTypeName}': target file already exists at '{testFilePath}'.");
+            return;
+        }
+
+        var typeInfo = ResolveTargetTypeAndMethodFromCache(
+            cachedCompilations,
+            target.TargetTypeName,
+            target.TargetMethodName);
+        if (typeInfo.matchedType is null)
+        {
+            state.Warnings.Add($"Target type '{target.TargetTypeName}' not found in referenced projects — skipped.");
+            return;
+        }
+
+        if (typeInfo.warnings is not null)
+        {
+            state.Warnings.AddRange(typeInfo.warnings);
+        }
+
+        var dto = new ScaffoldTestDto(
+            request.TestProjectName,
+            target.TargetTypeName,
+            target.TargetMethodName,
+            request.TestFramework);
+
+        // Batch scaffolding intentionally does NOT apply sibling-pattern inference — a batch
+        // run typically targets a homogenous set of production types and callers want the
+        // generic scaffold. Sibling inference is available via per-target scaffold_test_preview.
+        var content = BuildTestContent(
+            context.TestNamespace,
+            dto,
+            typeInfo.targetNamespace,
+            typeInfo.constructorArgs,
+            context.Framework,
+            typeInfo.targetMethod,
+            typeInfo.matchedType,
+            siblingPattern: null);
+
+        var testProject = state.Accumulator.GetProject(context.TestProject.Id)
+            ?? throw new InvalidOperationException("Test project disappeared from working solution snapshot.");
+        var newDocument = testProject.AddDocument(
+            Path.GetFileName(testFilePath),
+            Microsoft.CodeAnalysis.Text.SourceText.From(content),
+            folders: [],
+            filePath: testFilePath);
+
+        state.Accumulator = newDocument.Project.Solution;
+        state.CreatedFiles.Add(testFilePath);
+    }
+
+    private async Task<RefactoringPreviewDto> CreateBatchScaffoldPreviewAsync(
+        string workspaceId,
+        ProjectStatusDto project,
+        BatchScaffoldState state,
+        CancellationToken ct)
+    {
+        if (state.CreatedFiles.Count == 0)
         {
             throw new InvalidOperationException(
                 "scaffold_test_batch_preview produced no file creations. See Warnings for per-target reasons.");
         }
 
-        var changes = await Helpers.SolutionDiffHelper.ComputeChangesAsync(solution, accumulator, ct).ConfigureAwait(false);
-        var description = $"Scaffold {createdFiles.Count} test file(s) in project '{project.Name}'";
-        var token = _previewStore.Store(workspaceId, accumulator, _workspace.GetCurrentVersion(workspaceId), description);
+        var changes = await Helpers.SolutionDiffHelper
+            .ComputeChangesAsync(state.OriginalSolution, state.Accumulator, ct)
+            .ConfigureAwait(false);
+        var description = $"Scaffold {state.CreatedFiles.Count} test file(s) in project '{project.Name}'";
+        var token = _previewStore.Store(workspaceId, state.Accumulator, _workspace.GetCurrentVersion(workspaceId), description);
 
-        return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
+        return new RefactoringPreviewDto(
+            token,
+            description,
+            changes,
+            state.Warnings.Count > 0 ? state.Warnings : null);
+    }
+
+    private sealed record BatchScaffoldContext(
+        ProjectStatusDto Project,
+        Project TestProject,
+        Solution Solution,
+        string ProjectDirectory,
+        string TestNamespace,
+        string Framework);
+
+    private sealed class BatchScaffoldState
+    {
+        public BatchScaffoldState(Solution originalSolution)
+        {
+            OriginalSolution = originalSolution;
+            Accumulator = originalSolution;
+        }
+
+        public Solution OriginalSolution { get; }
+
+        public Solution Accumulator { get; set; }
+
+        public List<string> Warnings { get; } = [];
+
+        public List<string> CreatedFiles { get; } = [];
     }
 
     /// <summary>

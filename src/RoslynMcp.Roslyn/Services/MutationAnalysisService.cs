@@ -202,135 +202,223 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not INamedTypeSymbol namedType) return null;
 
+        var compilation = await ResolveContainingCompilationAsync(solution, namedType, ct).ConfigureAwait(false);
+        var candidates = GetMutationCandidates(namedType, compilation);
+
+        if (candidates.Length == 0)
+        {
+            return CreateTypeMutationDto(namedType, solution, []);
+        }
+
+        var mutatingMembers = await BuildMutatingMembersAsync(solution, namedType, candidates, ct).ConfigureAwait(false);
+        return CreateTypeMutationDto(namedType, solution, mutatingMembers);
+    }
+
+    private async Task<Compilation?> ResolveContainingCompilationAsync(
+        Solution solution,
+        INamedTypeSymbol namedType,
+        CancellationToken ct)
+    {
         // Get the compilation that defines the type so the side-effect classifier can read
         // semantic models against the same compilation as the symbol.
-        Compilation? compilation = null;
         foreach (var project in solution.Projects)
         {
             var projectCompilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
-            if (projectCompilation is null) continue;
+            if (projectCompilation is null)
+            {
+                continue;
+            }
+
             if (SymbolEqualityComparer.Default.Equals(projectCompilation.Assembly, namedType.ContainingAssembly))
             {
-                compilation = projectCompilation;
-                break;
+                return projectCompilation;
             }
         }
 
+        return null;
+    }
+
+    private static MutationCandidate[] GetMutationCandidates(INamedTypeSymbol namedType, Compilation? compilation)
+    {
         // Filter to mutating members up front so we can fan out the expensive
         // SymbolFinder.FindReferencesAsync calls in parallel while preserving declaration order.
         // Each candidate carries its computed scope so we don't recompute it inside the parallel
         // member tasks.
-        var candidates = namedType.GetMembers()
-            .Select(m => (Member: m, Scope: ClassifyMutationScope(m, namedType, compilation)))
-            .Where(t => t.Scope is not null)
+        return namedType.GetMembers()
+            .Select(member => new MutationCandidate(member, ClassifyMutationScope(member, namedType, compilation)))
+            .Where(candidate => candidate.Scope is not null)
+            .Select(candidate => candidate with { Scope = candidate.Scope! })
             .ToArray();
+    }
 
-        if (candidates.Length == 0)
-        {
-            return new TypeMutationDto(
-                Type: SymbolMapper.ToDto(namedType, solution),
-                MutatingMembers: [],
-                Summary: $"Type '{namedType.Name}' has 0 mutating member(s) with 0 external caller(s).");
-        }
-
+    private async Task<MutatingMemberDto[]> BuildMutatingMembersAsync(
+        Solution solution,
+        INamedTypeSymbol namedType,
+        IReadOnlyList<MutationCandidate> candidates,
+        CancellationToken ct)
+    {
         // Concurrent caches shared across the parallel member tasks. Roslyn's per-document
         // caches mean these are mostly redundant after warmup, but the dictionary still saves
         // the async-state-machine cost on hot documents.
         var rootCache = new ConcurrentDictionary<DocumentId, SyntaxNode?>();
         var modelCache = new ConcurrentDictionary<DocumentId, SemanticModel?>();
-
         var parallelism = Math.Clamp(Environment.ProcessorCount, 4, 16);
         using var semaphore = new SemaphoreSlim(parallelism, parallelism);
 
-        async Task<MutatingMemberDto> ProcessMemberAsync(ISymbol member, string mutationScope)
+        var memberTasks = new Task<MutatingMemberDto>[candidates.Count];
+        for (var i = 0; i < candidates.Count; i++)
         {
-            await semaphore.WaitAsync(ct).ConfigureAwait(false);
-            try
+            memberTasks[i] = BuildMutatingMemberAsync(
+                solution,
+                namedType,
+                candidates[i],
+                rootCache,
+                modelCache,
+                semaphore,
+                ct);
+        }
+
+        return await Task.WhenAll(memberTasks).ConfigureAwait(false);
+    }
+
+    private async Task<MutatingMemberDto> BuildMutatingMemberAsync(
+        Solution solution,
+        INamedTypeSymbol namedType,
+        MutationCandidate candidate,
+        ConcurrentDictionary<DocumentId, SyntaxNode?> rootCache,
+        ConcurrentDictionary<DocumentId, SemanticModel?> modelCache,
+        SemaphoreSlim semaphore,
+        CancellationToken ct)
+    {
+        await semaphore.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var callers = new List<MutationCallerDto>();
+            var references = await SymbolFinder.FindReferencesAsync(candidate.Member, solution, ct).ConfigureAwait(false);
+
+            foreach (var refSymbol in references)
             {
-                var callers = new List<MutationCallerDto>();
-                var references = await SymbolFinder.FindReferencesAsync(member, solution, ct).ConfigureAwait(false);
-
-                foreach (var refSymbol in references)
+                foreach (var refLocation in refSymbol.Locations)
                 {
-                    foreach (var refLocation in refSymbol.Locations)
+                    var caller = await BuildMutationCallerAsync(
+                        refLocation,
+                        namedType,
+                        rootCache,
+                        modelCache,
+                        ct).ConfigureAwait(false);
+                    if (caller is not null)
                     {
-                        var doc = refLocation.Document;
-
-                        // ConcurrentDictionary has no async value factory, so we check-then-add.
-                        // The race is benign: at worst two members fetch the same document's
-                        // root/model concurrently and one TryAdd loses; the result is identical.
-                        if (!rootCache.TryGetValue(doc.Id, out var root))
-                        {
-                            root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-                            rootCache.TryAdd(doc.Id, root);
-                        }
-                        if (!modelCache.TryGetValue(doc.Id, out var model))
-                        {
-                            model = await doc.GetSemanticModelAsync(ct).ConfigureAwait(false);
-                            modelCache.TryAdd(doc.Id, model);
-                        }
-
-                        // For interface-implemented members (e.g. Dispose), filter to only calls
-                        // where the receiver type matches the target type
-                        if (root is not null && model is not null && !IsReceiverOfTargetType(root, model, refLocation.Location, namedType, ct))
-                            continue;
-
-                        var containingSymbol = root is not null && model is not null
-                            ? SymbolServiceHelpers.GetContainingSymbolFromRoot(root, model, refLocation.Location, ct)
-                            : null;
-
-                        // Skip calls from within the type itself (internal mutators calling each other)
-                        if (containingSymbol is not null &&
-                            SymbolEqualityComparer.Default.Equals(containingSymbol.ContainingType, namedType))
-                            continue;
-
-                        var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
-                        var phase = ClassifyCallerPhase(root, model, refLocation.Location, namedType);
-                        var lineSpan = refLocation.Location.GetLineSpan();
-
-                        callers.Add(new MutationCallerDto(
-                            FilePath: lineSpan.Path,
-                            StartLine: lineSpan.StartLinePosition.Line + 1,
-                            StartColumn: lineSpan.StartLinePosition.Character + 1,
-                            ContainingMember: containingSymbol?.ToDisplayString(),
-                            PreviewText: preview,
-                            CallerPhase: phase));
+                        callers.Add(caller);
                     }
                 }
+            }
 
-                var memberLoc = member.Locations.FirstOrDefault(l => l.IsInSource);
-                return new MutatingMemberDto(
-                    Name: member.Name,
-                    FullyQualifiedName: member.ToDisplayString(),
-                    Kind: member.Kind.ToString(),
-                    FilePath: memberLoc?.GetLineSpan().Path,
-                    Line: memberLoc?.GetLineSpan().StartLinePosition.Line + 1,
-                    ExternalCallers: callers,
-                    MutationScope: mutationScope);
-            }
-            finally
-            {
-                semaphore.Release();
-            }
+            var memberLoc = candidate.Member.Locations.FirstOrDefault(location => location.IsInSource);
+            return new MutatingMemberDto(
+                Name: candidate.Member.Name,
+                FullyQualifiedName: candidate.Member.ToDisplayString(),
+                Kind: candidate.Member.Kind.ToString(),
+                FilePath: memberLoc?.GetLineSpan().Path,
+                Line: memberLoc?.GetLineSpan().StartLinePosition.Line + 1,
+                ExternalCallers: callers,
+                MutationScope: candidate.Scope!);
         }
-
-        var memberTasks = new Task<MutatingMemberDto>[candidates.Length];
-        for (var i = 0; i < candidates.Length; i++)
+        finally
         {
-            // Scope is non-null because the .Where filter above kept only entries with a scope.
-            memberTasks[i] = ProcessMemberAsync(candidates[i].Member, candidates[i].Scope!);
+            semaphore.Release();
+        }
+    }
+
+    private async Task<MutationCallerDto?> BuildMutationCallerAsync(
+        ReferenceLocation refLocation,
+        INamedTypeSymbol namedType,
+        ConcurrentDictionary<DocumentId, SyntaxNode?> rootCache,
+        ConcurrentDictionary<DocumentId, SemanticModel?> modelCache,
+        CancellationToken ct)
+    {
+        var doc = refLocation.Document;
+        var root = await GetCachedSyntaxRootAsync(doc, rootCache, ct).ConfigureAwait(false);
+        var model = await GetCachedSemanticModelAsync(doc, modelCache, ct).ConfigureAwait(false);
+
+        // For interface-implemented members (e.g. Dispose), filter to only calls
+        // where the receiver type matches the target type.
+        if (root is not null && model is not null && !IsReceiverOfTargetType(root, model, refLocation.Location, namedType, ct))
+        {
+            return null;
         }
 
-        var mutatingMembers = await Task.WhenAll(memberTasks).ConfigureAwait(false);
+        var containingSymbol = root is not null && model is not null
+            ? SymbolServiceHelpers.GetContainingSymbolFromRoot(root, model, refLocation.Location, ct)
+            : null;
 
-        var summary = $"Type '{namedType.Name}' has {mutatingMembers.Length} mutating member(s) " +
-                      $"with {mutatingMembers.Sum(m => m.ExternalCallers.Count)} external caller(s).";
+        // Skip calls from within the type itself (internal mutators calling each other).
+        if (containingSymbol is not null &&
+            SymbolEqualityComparer.Default.Equals(containingSymbol.ContainingType, namedType))
+        {
+            return null;
+        }
+
+        var preview = await SymbolResolver.GetPreviewTextAsync(doc, refLocation.Location, ct).ConfigureAwait(false);
+        var phase = ClassifyCallerPhase(root, model, refLocation.Location, namedType);
+        var lineSpan = refLocation.Location.GetLineSpan();
+
+        return new MutationCallerDto(
+            FilePath: lineSpan.Path,
+            StartLine: lineSpan.StartLinePosition.Line + 1,
+            StartColumn: lineSpan.StartLinePosition.Character + 1,
+            ContainingMember: containingSymbol?.ToDisplayString(),
+            PreviewText: preview,
+            CallerPhase: phase);
+    }
+
+    private static async Task<SyntaxNode?> GetCachedSyntaxRootAsync(
+        Document document,
+        ConcurrentDictionary<DocumentId, SyntaxNode?> rootCache,
+        CancellationToken ct)
+    {
+        // ConcurrentDictionary has no async value factory, so we check-then-add.
+        // The race is benign: at worst two members fetch the same document's root concurrently
+        // and one TryAdd loses; the result is identical.
+        if (rootCache.TryGetValue(document.Id, out var root))
+        {
+            return root;
+        }
+
+        root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+        rootCache.TryAdd(document.Id, root);
+        return root;
+    }
+
+    private static async Task<SemanticModel?> GetCachedSemanticModelAsync(
+        Document document,
+        ConcurrentDictionary<DocumentId, SemanticModel?> modelCache,
+        CancellationToken ct)
+    {
+        if (modelCache.TryGetValue(document.Id, out var model))
+        {
+            return model;
+        }
+
+        model = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+        modelCache.TryAdd(document.Id, model);
+        return model;
+    }
+
+    private static TypeMutationDto CreateTypeMutationDto(
+        INamedTypeSymbol namedType,
+        Solution solution,
+        IReadOnlyList<MutatingMemberDto> mutatingMembers)
+    {
+        var summary = $"Type '{namedType.Name}' has {mutatingMembers.Count} mutating member(s) " +
+                      $"with {mutatingMembers.Sum(member => member.ExternalCallers.Count)} external caller(s).";
 
         return new TypeMutationDto(
             Type: SymbolMapper.ToDto(namedType, solution),
             MutatingMembers: mutatingMembers,
             Summary: summary);
     }
+
+    private sealed record MutationCandidate(ISymbol Member, string? Scope);
 
     private static bool IsWriteReference(SyntaxNode refNode)
     {
