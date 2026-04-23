@@ -93,7 +93,10 @@ public sealed class ScriptingService : IScriptingService
         var heartbeatInterval = TimeSpan.FromMilliseconds(Math.Max(100, _options.HeartbeatIntervalMs));
 
         var capacityError = await TryAcquireCapacityAsync(effectiveTimeoutSeconds, ct).ConfigureAwait(false);
-        if (capacityError is not null) return capacityError;
+        if (capacityError is not null)
+        {
+            return capacityError;
+        }
 
         Interlocked.Increment(ref _activeEvaluations);
 
@@ -107,22 +110,18 @@ public sealed class ScriptingService : IScriptingService
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeoutCts.CancelAfter(budget);
 
-        var heartbeatCount = 0;
-        var slowWarningEmitted = false;
         Timer? heartbeatTimer = null;
         Timer? deadlineTimer = null;
+        var runState = new ScriptRunState();
 
         // Signaled by EXACTLY ONE of: the worker thread (success/error/cancel) or the deadline timer.
         // RunContinuationsAsynchronously ensures the awaiting frame is not invoked inline on the
         // worker thread or the timer thread.
-        var completion = new TaskCompletionSource<ScriptOutcome>(TaskCreationOptions.RunContinuationsAsynchronously);
-        long workerFinished = 0;
-        long slotReleased = 0;
-        long abandonedFlag = 0;
+        var completion = CreateCompletionSource();
 
         void ReleaseSlotOnce()
         {
-            if (Interlocked.Exchange(ref slotReleased, 1) == 0)
+            if (Interlocked.Exchange(ref runState.SlotReleased, 1) == 0)
             {
                 Interlocked.Decrement(ref _activeEvaluations);
                 try { _concurrencyGate.Release(); }
@@ -133,119 +132,32 @@ public sealed class ScriptingService : IScriptingService
 
         try
         {
-            // FLAG-5C: dedicated background thread, NOT a thread-pool thread.
-            var workerThreadName = $"roslyn-mcp.script.{Guid.NewGuid():N}";
-            if (workerThreadName.Length > 32) workerThreadName = workerThreadName[..32];
-            var workerThread = new Thread(() =>
-            {
-                ScriptOutcome outcome;
-                try
-                {
-                    var result = CSharpScript
-                        .EvaluateAsync<object?>(code, scriptOptions, cancellationToken: timeoutCts.Token)
-                        .GetAwaiter().GetResult();
-                    outcome = ScriptOutcome.Success(result);
-                }
-                catch (CompilationErrorException cex)
-                {
-                    outcome = ScriptOutcome.CompilationFailure(cex);
-                }
-                catch (OperationCanceledException)
-                {
-                    outcome = ScriptOutcome.TimedOut();
-                }
-                catch (Exception ex)
-                {
-                    outcome = ScriptOutcome.Runtime(ex);
-                }
-
-                Interlocked.Exchange(ref workerFinished, 1);
-
-                // If the worker was already declared abandoned by the deadline path, recover the
-                // abandoned counter. Otherwise signal completion normally.
-                if (Interlocked.Read(ref abandonedFlag) == 1)
-                {
-                    Interlocked.Decrement(ref _abandonedEvaluations);
-                }
-                else
-                {
-                    completion.TrySetResult(outcome);
-                }
-            })
-            {
-                IsBackground = true,
-                Name = workerThreadName,
-            };
-            workerThread.Start();
-
-            // Wall-clock hard deadline. Timer fires on a thread-pool thread, but TrySetResult
-            // is non-blocking and the awaiting frame uses RunContinuationsAsynchronously so the
-            // continuation runs on a fresh thread-pool thread, never inline on the timer thread.
-            deadlineTimer = new Timer(
-                _ => completion.TrySetResult(ScriptOutcome.HardDeadline()),
-                state: null,
-                dueTime: TimeSpan.FromSeconds(hardDeadlineSeconds),
-                period: Timeout.InfiniteTimeSpan);
-
-            // Heartbeat is also Timer-based so its tear-down is sync (timer.Dispose).
-            heartbeatTimer = new Timer(
-                _ =>
-                {
-                    var index = Interlocked.Increment(ref heartbeatCount);
-                    var elapsed = sw.Elapsed;
-                    onProgress?.Invoke(new ScriptEvaluationProgress(elapsed, budget, index));
-                    if (index == 1)
-                    {
-                        _logger.LogInformation(
-                            "evaluate_csharp: Roslyn script evaluation in progress (budget {BudgetSeconds}s, heartbeat every {HeartbeatMs}ms)",
-                            effectiveTimeoutSeconds,
-                            _options.HeartbeatIntervalMs);
-                    }
-                    if (!slowWarningEmitted && elapsed.TotalSeconds >= _options.StuckWarningSeconds)
-                    {
-                        slowWarningEmitted = true;
-                        _logger.LogWarning(
-                            "evaluate_csharp: still running after {ElapsedSeconds:F1}s — clients often show a static \"Evaluating C#\" step here; " +
-                            "large compile or synchronous script work may continue until timeout ({BudgetSeconds}s).",
-                            elapsed.TotalSeconds,
-                            effectiveTimeoutSeconds);
-                    }
-                },
-                state: null,
-                dueTime: heartbeatInterval,
-                period: heartbeatInterval);
+            var workerThread = StartWorkerThread(code, scriptOptions, timeoutCts.Token, completion, runState);
+            deadlineTimer = CreateDeadlineTimer(completion, hardDeadlineSeconds);
+            heartbeatTimer = CreateHeartbeatTimer(
+                onProgress,
+                sw,
+                budget,
+                effectiveTimeoutSeconds,
+                heartbeatInterval,
+                runState);
 
             // Outer cancellation propagation: if the caller cancels (e.g. MCP request budget),
             // surface OperationCanceledException promptly. Worker thread is then abandoned.
-            using var ctRegistration = ct.Register(static state =>
-            {
-                var tcs = (TaskCompletionSource<ScriptOutcome>)state!;
-                tcs.TrySetResult(ScriptOutcome.OuterCancelled());
-            }, completion);
+            using var ctRegistration = RegisterOuterCancellation(ct, completion);
 
             var raceOutcome = await completion.Task.ConfigureAwait(false);
             sw.Stop();
-
-            // Outer cancellation: surface as OperationCanceledException; mark worker abandoned.
-            if (raceOutcome.Kind == ScriptOutcomeKind.OuterCancelled)
-            {
-                MarkAbandonedIfWorkerStillRunning(timeoutCts, ref workerFinished, ref abandonedFlag);
-                ct.ThrowIfCancellationRequested();
-            }
-
-            // Hard deadline path — Roslyn never finished. Mark thread abandoned and return.
-            if (raceOutcome.Kind == ScriptOutcomeKind.HardDeadline)
-            {
-                if (MarkAbandonedIfWorkerStillRunning(timeoutCts, ref workerFinished, ref abandonedFlag))
-                {
-                    LogHardDeadlineCritical(workerThread.Name, hardDeadlineSeconds, effectiveTimeoutSeconds, graceSeconds);
-                }
-
-                return BuildHardDeadlineDto(sw, heartbeatCount, hardDeadlineSeconds, effectiveTimeoutSeconds, graceSeconds);
-            }
-
-            // Worker finished first — translate the outcome.
-            return BuildOutcomeDto(raceOutcome, sw, heartbeatCount, effectiveTimeoutSeconds);
+            return FinalizeEvaluation(
+                raceOutcome,
+                sw,
+                workerThread.Name,
+                runState,
+                hardDeadlineSeconds,
+                effectiveTimeoutSeconds,
+                graceSeconds,
+                ct,
+                timeoutCts);
         }
         finally
         {
@@ -258,6 +170,190 @@ public sealed class ScriptingService : IScriptingService
             // will not consume a slot.
             ReleaseSlotOnce();
         }
+    }
+
+    private static TaskCompletionSource<ScriptOutcome> CreateCompletionSource() =>
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    private static CancellationTokenRegistration RegisterOuterCancellation(
+        CancellationToken ct,
+        TaskCompletionSource<ScriptOutcome> completion)
+    {
+        return ct.Register(static state =>
+        {
+            var tcs = (TaskCompletionSource<ScriptOutcome>)state!;
+            tcs.TrySetResult(ScriptOutcome.OuterCancelled());
+        }, completion);
+    }
+
+    private Thread StartWorkerThread(
+        string code,
+        ScriptOptions scriptOptions,
+        CancellationToken timeoutToken,
+        TaskCompletionSource<ScriptOutcome> completion,
+        ScriptRunState runState)
+    {
+        // FLAG-5C: dedicated background thread, NOT a thread-pool thread.
+        var workerThreadName = $"roslyn-mcp.script.{Guid.NewGuid():N}";
+        if (workerThreadName.Length > 32)
+        {
+            workerThreadName = workerThreadName[..32];
+        }
+
+        var workerThread = new Thread(() =>
+        {
+            var outcome = ExecuteScript(code, scriptOptions, timeoutToken);
+            CompleteWorkerThread(completion, outcome, runState);
+        })
+        {
+            IsBackground = true,
+            Name = workerThreadName,
+        };
+        workerThread.Start();
+        return workerThread;
+    }
+
+    private static ScriptOutcome ExecuteScript(
+        string code,
+        ScriptOptions scriptOptions,
+        CancellationToken timeoutToken)
+    {
+        try
+        {
+            var result = CSharpScript
+                .EvaluateAsync<object?>(code, scriptOptions, cancellationToken: timeoutToken)
+                .GetAwaiter().GetResult();
+            return ScriptOutcome.Success(result);
+        }
+        catch (CompilationErrorException cex)
+        {
+            return ScriptOutcome.CompilationFailure(cex);
+        }
+        catch (OperationCanceledException)
+        {
+            return ScriptOutcome.TimedOut();
+        }
+        catch (Exception ex)
+        {
+            return ScriptOutcome.Runtime(ex);
+        }
+    }
+
+    private void CompleteWorkerThread(
+        TaskCompletionSource<ScriptOutcome> completion,
+        ScriptOutcome outcome,
+        ScriptRunState runState)
+    {
+        Interlocked.Exchange(ref runState.WorkerFinished, 1);
+
+        // If the worker was already declared abandoned by the deadline path, recover the
+        // abandoned counter. Otherwise signal completion normally.
+        if (Interlocked.Read(ref runState.AbandonedFlag) == 1)
+        {
+            Interlocked.Decrement(ref _abandonedEvaluations);
+            return;
+        }
+
+        completion.TrySetResult(outcome);
+    }
+
+    private static Timer CreateDeadlineTimer(
+        TaskCompletionSource<ScriptOutcome> completion,
+        int hardDeadlineSeconds)
+    {
+        // Wall-clock hard deadline. Timer fires on a thread-pool thread, but TrySetResult
+        // is non-blocking and the awaiting frame uses RunContinuationsAsynchronously so the
+        // continuation runs on a fresh thread-pool thread, never inline on the timer thread.
+        return new Timer(
+            _ => completion.TrySetResult(ScriptOutcome.HardDeadline()),
+            state: null,
+            dueTime: TimeSpan.FromSeconds(hardDeadlineSeconds),
+            period: Timeout.InfiniteTimeSpan);
+    }
+
+    private Timer CreateHeartbeatTimer(
+        Action<ScriptEvaluationProgress>? onProgress,
+        Stopwatch sw,
+        TimeSpan budget,
+        int effectiveTimeoutSeconds,
+        TimeSpan heartbeatInterval,
+        ScriptRunState runState)
+    {
+        // Heartbeat is also Timer-based so its tear-down is sync (timer.Dispose).
+        return new Timer(
+            _ => EmitHeartbeat(onProgress, sw, budget, effectiveTimeoutSeconds, runState),
+            state: null,
+            dueTime: heartbeatInterval,
+            period: heartbeatInterval);
+    }
+
+    private void EmitHeartbeat(
+        Action<ScriptEvaluationProgress>? onProgress,
+        Stopwatch sw,
+        TimeSpan budget,
+        int effectiveTimeoutSeconds,
+        ScriptRunState runState)
+    {
+        var index = Interlocked.Increment(ref runState.HeartbeatCount);
+        var elapsed = sw.Elapsed;
+        onProgress?.Invoke(new ScriptEvaluationProgress(elapsed, budget, index));
+        if (index == 1)
+        {
+            _logger.LogInformation(
+                "evaluate_csharp: Roslyn script evaluation in progress (budget {BudgetSeconds}s, heartbeat every {HeartbeatMs}ms)",
+                effectiveTimeoutSeconds,
+                _options.HeartbeatIntervalMs);
+        }
+
+        if (runState.SlowWarningEmitted || elapsed.TotalSeconds < _options.StuckWarningSeconds)
+        {
+            return;
+        }
+
+        runState.SlowWarningEmitted = true;
+        _logger.LogWarning(
+            "evaluate_csharp: still running after {ElapsedSeconds:F1}s — clients often show a static \"Evaluating C#\" step here; " +
+            "large compile or synchronous script work may continue until timeout ({BudgetSeconds}s).",
+            elapsed.TotalSeconds,
+            effectiveTimeoutSeconds);
+    }
+
+    private ScriptEvaluationDto FinalizeEvaluation(
+        ScriptOutcome raceOutcome,
+        Stopwatch sw,
+        string? workerThreadName,
+        ScriptRunState runState,
+        int hardDeadlineSeconds,
+        int effectiveTimeoutSeconds,
+        int graceSeconds,
+        CancellationToken ct,
+        CancellationTokenSource timeoutCts)
+    {
+        // Outer cancellation: surface as OperationCanceledException; mark worker abandoned.
+        if (raceOutcome.Kind == ScriptOutcomeKind.OuterCancelled)
+        {
+            MarkAbandonedIfWorkerStillRunning(timeoutCts, runState);
+            ct.ThrowIfCancellationRequested();
+        }
+
+        // Hard deadline path — Roslyn never finished. Mark thread abandoned and return.
+        if (raceOutcome.Kind == ScriptOutcomeKind.HardDeadline)
+        {
+            if (MarkAbandonedIfWorkerStillRunning(timeoutCts, runState))
+            {
+                LogHardDeadlineCritical(workerThreadName, hardDeadlineSeconds, effectiveTimeoutSeconds, graceSeconds);
+            }
+
+            return BuildHardDeadlineDto(
+                sw,
+                runState.HeartbeatCount,
+                hardDeadlineSeconds,
+                effectiveTimeoutSeconds,
+                graceSeconds);
+        }
+
+        // Worker finished first — translate the outcome.
+        return BuildOutcomeDto(raceOutcome, sw, runState.HeartbeatCount, effectiveTimeoutSeconds);
     }
 
     private async Task<ScriptEvaluationDto?> TryAcquireCapacityAsync(int effectiveTimeoutSeconds, CancellationToken ct)
@@ -305,11 +401,10 @@ public sealed class ScriptingService : IScriptingService
     /// </summary>
     private bool MarkAbandonedIfWorkerStillRunning(
         CancellationTokenSource timeoutCts,
-        ref long workerFinished,
-        ref long abandonedFlag)
+        ScriptRunState runState)
     {
-        if (Interlocked.Read(ref workerFinished) != 0) return false;
-        if (Interlocked.Exchange(ref abandonedFlag, 1) != 0) return false;
+        if (Interlocked.Read(ref runState.WorkerFinished) != 0) return false;
+        if (Interlocked.Exchange(ref runState.AbandonedFlag, 1) != 0) return false;
 
         Interlocked.Increment(ref _abandonedEvaluations);
         try { timeoutCts.Cancel(); } catch (ObjectDisposedException) { }
@@ -456,6 +551,15 @@ public sealed class ScriptingService : IScriptingService
             str = str[..4093] + "...";
 
         return str;
+    }
+
+    private sealed class ScriptRunState
+    {
+        public int HeartbeatCount;
+        public bool SlowWarningEmitted;
+        public long WorkerFinished;
+        public long SlotReleased;
+        public long AbandonedFlag;
     }
 
     private enum ScriptOutcomeKind
