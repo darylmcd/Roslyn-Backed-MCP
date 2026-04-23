@@ -1,9 +1,11 @@
-# Backlog sweep plan — 2026-04-22T22:30:00Z (draft)
+# Backlog sweep plan — 2026-04-22T22:30:00Z (completed record)
 
 <!-- purpose: In-repo planning pass for the 2026-04-22 backlog-sweep batch. -->
 <!-- scope: in-repo -->
 
-**Plan kind:** planning pass only (no product code or backlog edits).
+**Plan kind:** planning pass only (no product code in this file; backlog and completion metadata reconciled on closeout).
+
+**Completion:** Closed on 2026-04-23. Remaining `heroic-last` entries were marked `obsolete` with notes `skipped - stale / needs fresh planning`; this completed plan remains in `ai_docs/plans/` as the archived rationale record.
 
 **Preamble — anchor verification (Step 3):** *Skipped for planner token budget.* Cited `file:line` and symbol names are grounded in a source read of the listed files; the executor should run `symbol_search` / Grep for any `Validation` anchor before apply if the branch has moved.
 
@@ -163,7 +165,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
+| **Status** | `merged` (PR [#368](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/368), 2026-04-23) |
 | **Backlog rows closed** | `find-dead-fields-across-classes` |
 | **Diagnosis** | `find_dead_locals` / `find_unused_symbols` gap for fields (P4). |
 | **Approach** | New MCP tool: Core contract + models, Roslyn analyzer service, `Host.Stdio` tool surface, catalog + DI. Rule 3 **structural-unit** exemption. Addenda: `tests/RoslynMcp.Tests/TestBase.cs`, `TestInfrastructure/TestServiceContainer.cs`, `README.md` tool counts. |
@@ -194,10 +196,10 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `merged` (PR [#360](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/360), 2026-04-23; row stays open) |
-| **Backlog rows closed** | *optional — ship server docs only; close when host+server story complete* |
+| **Status** | `merged` (PR [#360](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/360), 2026-04-23; backlog row closed during 2026-04-23 closeout) |
+| **Backlog rows closed** | `host-parallel-mcp-reads` |
 | **Diagnosis** | Some MCP hosts serialize tool calls; P4 `blocker: host`. |
-| **Approach** | Document `WorkspaceExecutionGate` + read path thread-safety in `ai_docs/runtime.md`; cross-refs. Consumer-side doc note if available. **≤2 doc files** if no code change. |
+| **Approach** | Document `WorkspaceExecutionGate` + read path thread-safety in `ai_docs/runtime.md`; cross-refs. Consumer-side doc note if available. **≤2 doc files** if no code change. Close the repo backlog row once the repo-side docs land and the only remaining limiter is host/client behavior outside this repo. |
 | **Tool policy** | `edit-only` |
 | **Estimated context cost** | 22000 |
 | **CHANGELOG category** | `Maintenance` |
@@ -208,13 +210,13 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
-| **Backlog rows closed** | *none* (rollup row stays open until all §A–F follow-ups are tracked elsewhere) |
+| **Status** | `obsolete` — skipped - stale / needs fresh planning (2026-04-23 closeout). The umbrella row was retired during backlog hygiene and replaced by concrete surviving follow-ons. |
+| **Backlog rows closed** | `mcp-audit-rollup-2026-04-13-22` (retired stale umbrella; unresolved work was rewritten into concrete rows) |
 | **Scope** | One shippable slice, e.g. F25 `heldMs` / gate accounting or another **≤4 file** item from the rollup; executor picks after reading `WorkspaceExecutionGate` / `workspace_reload` metadata. |
 | **Tool policy** | `edit-only` |
 | **scheduleHint** | `heroic-last` |
 | **Estimated context cost** | 80000 |
-| **notes** | Partial; parent rollup row is not closable in this tranche. |
+| **notes** | Partial scope never became planner-ready. Closeout retired the stale umbrella row instead of guessing a tranche from historical raw-audit material that is no longer in-tree. |
 
 ---
 
@@ -222,10 +224,10 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
-| **Backlog rows closed** | *deferred if scope > one PR* |
-| **Diagnosis** | Per-workspace reload cost across many subprocesses (P4). `deps: compilation-prewarm-on-load` — **verify** satisfied after PR #323 class of work. |
-| **Approach** | If **>4 prod files**, split: doc-only tranche in `runtime.md` **or** spawn follow-up plan; daemon mode is a large initiative. This entry assumes **scoping to design note + 1–2 file hooks** for executor, else defer. |
+| **Status** | `obsolete` — skipped - stale / needs fresh planning (2026-04-23 closeout). Keep the backlog item, but only as an evidence-gated design/perf investigation for a future planner pass. |
+| **Backlog rows closed** | *none* (backlog row stays open as a fresh-planning candidate) |
+| **Diagnosis** | Per-workspace reload cost across many subprocesses (P4). The original `compilation-prewarm-on-load` dependency is satisfied by shipped `workspace_warm`; the remaining question is whether measured large-solution data justifies further investment. |
+| **Approach** | If **>4 prod files**, split: doc-only tranche in `runtime.md` **or** spawn follow-up plan; daemon mode is a large initiative. This entry assumes **scoping to design note + 1–2 file hooks** for executor, else defer. Closeout rewrote the backlog row to require measured large-solution evidence and a bounded design note before any implementation plan. |
 | **Tool policy** | `edit-only` |
 | **scheduleHint** | `heroic-last` |
 | **Estimated context cost** | 70000 |
