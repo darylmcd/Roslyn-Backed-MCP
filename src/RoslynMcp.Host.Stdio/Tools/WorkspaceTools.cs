@@ -13,15 +13,17 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class WorkspaceTools
 {
 
-    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 8) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error.")]
+    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. Set autoRestore=true to run dotnet restore and one follow-up reload when the loaded status reports restoreRequired=true. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 8) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error.")]
     [McpToolMetadata("workspace", "stable", false, false,
         "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session.")]
     public static Task<string> LoadWorkspace(
         McpServer server,
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
+        IDotnetCommandRunner commandRunner,
         [Description("Absolute path to a .sln, .slnx, or .csproj file")] string path,
         [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
+        [Description("When true and the loaded status reports restoreRequired=true, run `dotnet restore` on the target and reload once before returning.")] bool autoRestore = false,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
@@ -29,7 +31,8 @@ public static class WorkspaceTools
         {
             ProgressHelper.Report(progress, 0, 1);
             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
-            var status = await workspace.LoadAsync(path, c);
+            var status = await workspace.LoadAsync(path, c).ConfigureAwait(false);
+            status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, c).ConfigureAwait(false);
             ProgressHelper.Report(progress, 1, 1);
             _ = NotifyResourcesChangedAsync(server);
             return verbose
@@ -38,22 +41,25 @@ public static class WorkspaceTools
         }, ct);
     }
 
-    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Reload the currently loaded workspace to pick up file changes")]
+    [McpServerTool(Name = "workspace_reload", ReadOnly = false, Destructive = false, Idempotent = false, OpenWorld = false), Description("Reload the currently loaded workspace to pick up file changes. Set autoRestore=true to run dotnet restore and one follow-up reload when the reloaded status reports restoreRequired=true.")]
     [McpToolMetadata("workspace", "stable", false, false,
         "Reload an existing workspace session from disk.")]
     public static Task<string> ReloadWorkspace(
         McpServer server,
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
+        IDotnetCommandRunner commandRunner,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        CancellationToken ct)
+        [Description("When true and the reloaded status reports restoreRequired=true, run `dotnet restore` on the loaded target and reload once before returning.")] bool autoRestore = false,
+        CancellationToken ct = default)
     {
         // Reload acquires both the global load gate AND the per-workspace write lock so that
         // any in-flight readers on this workspace complete before the solution is replaced.
         return gate.RunLoadGateAsync(outerCt =>
             gate.RunWriteAsync(workspaceId, async innerCt =>
             {
-                var status = await workspace.ReloadAsync(workspaceId, innerCt);
+                var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
+                status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, innerCt).ConfigureAwait(false);
                 _ = NotifyResourcesChangedAsync(server);
                 return JsonSerializer.Serialize(status, JsonDefaults.Indented);
             }, outerCt), ct);
@@ -235,6 +241,57 @@ public static class WorkspaceTools
                 text = slice
             }, JsonDefaults.Indented);
         }, ct);
+    }
+
+    internal static async Task<WorkspaceStatusDto> RestoreAndReloadIfRequiredAsync(
+        IDotnetCommandRunner commandRunner,
+        IWorkspaceManager workspace,
+        WorkspaceStatusDto status,
+        bool autoRestore,
+        CancellationToken ct)
+    {
+        if (!autoRestore || !status.RestoreRequired || string.IsNullOrWhiteSpace(status.LoadedPath))
+        {
+            return status;
+        }
+
+        var workingDirectory = Path.GetDirectoryName(status.LoadedPath);
+        if (string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            throw new InvalidOperationException(
+                $"workspace auto-restore could not determine a working directory for '{status.LoadedPath}'.");
+        }
+
+        var execution = await commandRunner.RunAsync(
+            workingDirectory,
+            status.LoadedPath,
+            ["restore", status.LoadedPath, "--nologo"],
+            ct).ConfigureAwait(false);
+
+        if (!execution.Succeeded)
+        {
+            throw new InvalidOperationException(BuildRestoreFailureMessage(status.LoadedPath, execution));
+        }
+
+        return await workspace.ReloadAsync(status.WorkspaceId, ct).ConfigureAwait(false);
+    }
+
+    private static string BuildRestoreFailureMessage(string targetPath, CommandExecutionDto execution)
+    {
+        static string TrimOutput(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return "(empty)";
+            }
+
+            var trimmed = text.Trim();
+            return trimmed.Length <= 500 ? trimmed : trimmed[^500..];
+        }
+
+        return
+            $"workspace auto-restore failed for '{targetPath}' (exit code {execution.ExitCode}). " +
+            $"stdout tail: {TrimOutput(execution.StdOut)} stderr tail: {TrimOutput(execution.StdErr)}";
     }
 
     /// <summary>

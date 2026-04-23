@@ -1,4 +1,7 @@
+using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -234,6 +237,60 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
         }
     }
 
+    [TestMethod]
+    public async Task ReloadAsync_WithAutoRestore_ClearsRestoreRequiredAfterPackageVersionEdit()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        using var manager = CreateIsolatedManager(restoreRaceWaitMs: 0);
+        var commandRunner = new DotnetCommandRunner();
+
+        try
+        {
+            await RunRestoreAsync(commandRunner, copiedSolutionPath, CancellationToken.None);
+
+            var status = await manager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            Assert.IsFalse(status.RestoreRequired, "Freshly restored workspace should not report restore drift.");
+
+            var packagesPropsPath = Path.Combine(copiedRoot, "Directory.Packages.props");
+            var originalProps = await File.ReadAllTextAsync(packagesPropsPath, CancellationToken.None);
+            const string originalVersion = "<PackageVersion Include=\"Microsoft.NET.Test.Sdk\" Version=\"17.14.0\" />";
+            const string updatedVersion = "<PackageVersion Include=\"Microsoft.NET.Test.Sdk\" Version=\"17.14.1\" />";
+            StringAssert.Contains(originalProps, originalVersion, "Test fixture drifted; update the expected central package version.");
+            await File.WriteAllTextAsync(
+                packagesPropsPath,
+                originalProps.Replace(originalVersion, updatedVersion, StringComparison.Ordinal),
+                CancellationToken.None);
+
+            status = await manager.ReloadAsync(status.WorkspaceId, CancellationToken.None);
+            Assert.IsTrue(status.RestoreRequired, "Reload must signal restoreRequired after a package-version edit without restore.");
+
+            var summary = WorkspaceStatusSummaryDto.From(status);
+            Assert.IsTrue(summary.RestoreRequired, "Summary projection must preserve restoreRequired.");
+            StringAssert.Contains(summary.RestoreHint ?? string.Empty, "dotnet restore",
+                "Summary hint should point callers at restore when package inputs drift.");
+
+            status = await WorkspaceTools.RestoreAndReloadIfRequiredAsync(
+                commandRunner,
+                manager,
+                status,
+                autoRestore: true,
+                CancellationToken.None);
+
+            Assert.IsFalse(status.RestoreRequired, "Auto-restore should clear restoreRequired after rerunning restore and reload.");
+            Assert.AreEqual(
+                "17.14.1",
+                ReadCentralPackageVersion(
+                    Path.Combine(copiedRoot, "SampleLib.Tests", "obj", "project.assets.json"),
+                    "Microsoft.NET.Test.Sdk"),
+                "dotnet restore should refresh project.assets.json to the edited central package version.");
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
     /// <summary>
     /// Removes every <c>obj/</c> subtree in the copied sample solution so the probe sees
     /// a clean tree before each test seeds its own artefacts. Guards against cross-test
@@ -271,5 +328,47 @@ public sealed class WorkspaceLoadRestoreRaceTests : SharedWorkspaceTestBase
                 MaxConcurrentWorkspaces = 4,
                 RestoreRaceWaitMs = restoreRaceWaitMs,
             });
+    }
+
+    private static async Task RunRestoreAsync(DotnetCommandRunner commandRunner, string solutionPath, CancellationToken ct)
+    {
+        var workingDirectory = Path.GetDirectoryName(solutionPath)!;
+        var execution = await commandRunner.RunAsync(
+            workingDirectory,
+            solutionPath,
+            ["restore", solutionPath, "--nologo"],
+            ct);
+
+        Assert.IsTrue(
+            execution.Succeeded,
+            $"dotnet restore failed for test fixture. ExitCode={execution.ExitCode} StdOut={execution.StdOut} StdErr={execution.StdErr}");
+    }
+
+    private static string? ReadCentralPackageVersion(string assetsPath, string packageId)
+    {
+        using var document = JsonDocument.Parse(File.ReadAllText(assetsPath));
+        if (!document.RootElement.TryGetProperty("project", out var project) ||
+            !project.TryGetProperty("frameworks", out var frameworks))
+        {
+            return null;
+        }
+
+        foreach (var framework in frameworks.EnumerateObject())
+        {
+            if (!framework.Value.TryGetProperty("centralPackageVersions", out var centralVersions))
+            {
+                continue;
+            }
+
+            foreach (var package in centralVersions.EnumerateObject())
+            {
+                if (string.Equals(package.Name, packageId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return package.Value.GetString();
+                }
+            }
+        }
+
+        return null;
     }
 }

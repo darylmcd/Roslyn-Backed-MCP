@@ -17,6 +17,7 @@ namespace RoslynMcp.Core.Models;
 ///   <item><description><see cref="IsStale"/> is false — no pending external changes.</description></item>
 ///   <item><description><see cref="AnalyzersReady"/> — every required analyzer reference resolved.</description></item>
 ///   <item><description><see cref="WorkspaceErrorCount"/> is zero.</description></item>
+///   <item><description><see cref="RestoreRequired"/> is false — package-restore inputs still match the loaded assets snapshot.</description></item>
 /// </list>
 /// <para>
 /// Pre-bundle the formula was just <c>IsLoaded &amp;&amp; !IsStale &amp;&amp; errors == 0</c>; analyzer-resolution
@@ -41,6 +42,7 @@ public sealed record WorkspaceStatusSummaryDto(
     int WorkspaceWarningCount,
     bool IsReady,
     bool AnalyzersReady,
+    bool RestoreRequired,
     string? RestoreHint,
     string? SolutionFileName)
 {
@@ -74,12 +76,14 @@ public sealed record WorkspaceStatusSummaryDto(
 
         var analyzersReady = unresolvedAnalyzerWarnings == 0;
         var solutionFileName = GetSolutionOrProjectFileName(status.LoadedPath);
-        var isReady = status.IsLoaded && !status.IsStale && analyzersReady && errors == 0;
+        var restoreRequired = status.RestoreRequired;
+        var isReady = status.IsLoaded && !status.IsStale && analyzersReady && errors == 0 && !restoreRequired;
         var restoreHint = BuildRestoreHint(
             status.WorkspaceDiagnostics,
             isStale: status.IsStale,
             errors: errors,
-            unresolvedAnalyzerWarnings: unresolvedAnalyzerWarnings);
+            unresolvedAnalyzerWarnings: unresolvedAnalyzerWarnings,
+            restoreRequired: restoreRequired);
 
         return new WorkspaceStatusSummaryDto(
             WorkspaceId: status.WorkspaceId,
@@ -96,6 +100,7 @@ public sealed record WorkspaceStatusSummaryDto(
             WorkspaceWarningCount: warnings,
             IsReady: isReady,
             AnalyzersReady: analyzersReady,
+            RestoreRequired: restoreRequired,
             RestoreHint: restoreHint,
             SolutionFileName: solutionFileName);
     }
@@ -114,8 +119,14 @@ public sealed record WorkspaceStatusSummaryDto(
         IReadOnlyList<DiagnosticDto> workspaceDiagnostics,
         bool isStale,
         int errors,
-        int unresolvedAnalyzerWarnings)
+        int unresolvedAnalyzerWarnings,
+        bool restoreRequired)
     {
+        if (restoreRequired)
+        {
+            return "Package-restore inputs changed since the last restore. Run `dotnet restore` on the solution or project, then `workspace_reload`.";
+        }
+
         if (unresolvedAnalyzerWarnings > 0)
         {
             return $"{unresolvedAnalyzerWarnings} analyzer reference(s) failed to load — analyzer-driven tools (e.g. find_unused_symbols, project_diagnostics) will under-report. Run `dotnet restore` on the solution and reload the workspace.";

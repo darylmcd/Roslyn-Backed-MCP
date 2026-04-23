@@ -38,7 +38,8 @@ public sealed record WorkspaceStatusDto(
     IReadOnlyList<DiagnosticDto> WorkspaceDiagnostics,
     [property: JsonPropertyName("staleReason")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    string? StaleReason = null);
+    string? StaleReason = null,
+    bool RestoreRequired = false);
 
 /// <summary>
 /// Represents the status of a project within a loaded workspace.
