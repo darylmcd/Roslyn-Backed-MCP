@@ -405,44 +405,78 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     {
         var fields = new HashSet<string>(StringComparer.Ordinal);
         var calls = new HashSet<string>(StringComparer.Ordinal);
-        var methodLocation = method.Locations.FirstOrDefault(l => l.IsInSource);
-        if (methodLocation?.SourceTree is null) return (fields, calls);
-
-        var root = methodLocation.SourceTree.GetRoot(ct);
-        var methodNode = root.FindNode(methodLocation.SourceSpan);
+        var methodNode = FindSourceMethodNode(method, ct);
+        if (methodNode is null) return (fields, calls);
 
         foreach (var identifier in methodNode.DescendantNodes().OfType<IdentifierNameSyntax>())
         {
-            var symbolInfo = semanticModel.GetSymbolInfo(identifier, ct);
-            var referencedSymbol = symbolInfo.Symbol;
+            var referencedSymbol = semanticModel.GetSymbolInfo(identifier, ct).Symbol;
             if (referencedSymbol is null) continue;
 
-            if (referencedSymbol is IFieldSymbol field &&
-                SymbolEqualityComparer.Default.Equals(field.ContainingType, containingType) &&
-                (containingType.IsStatic || !field.IsStatic))
-            {
-                fields.Add(field.Name);
-            }
-            else if (referencedSymbol is IPropertySymbol prop &&
-                     SymbolEqualityComparer.Default.Equals(prop.ContainingType, containingType) &&
-                     (containingType.IsStatic || !prop.IsStatic))
-            {
-                fields.Add(prop.Name);
-            }
-            else if (referencedSymbol is IMethodSymbol calledMethod &&
-                     SymbolEqualityComparer.Default.Equals(calledMethod.ContainingType, containingType) &&
-                     (containingType.IsStatic || !calledMethod.IsStatic) &&
-                     calledMethod.DeclaredAccessibility == Accessibility.Private &&
-                     calledMethod.MethodKind == MethodKind.Ordinary)
-            {
-                // Private method calls create transitive coupling but should NOT appear as
-                // SharedFields. They live in the call map, used only for cluster connectivity.
-                calls.Add(calledMethod.Name);
-            }
+            AddAccessedMember(referencedSymbol, containingType, fields, calls);
         }
 
         return (fields, calls);
     }
+
+    private static SyntaxNode? FindSourceMethodNode(IMethodSymbol method, CancellationToken ct)
+    {
+        var methodLocation = method.Locations.FirstOrDefault(l => l.IsInSource);
+        if (methodLocation?.SourceTree is null) return null;
+
+        var root = methodLocation.SourceTree.GetRoot(ct);
+        return root.FindNode(methodLocation.SourceSpan);
+    }
+
+    private static void AddAccessedMember(
+        ISymbol referencedSymbol, INamedTypeSymbol containingType,
+        HashSet<string> fields, HashSet<string> calls)
+    {
+        var sharedMemberName = GetSharedMemberName(referencedSymbol, containingType);
+        if (sharedMemberName is not null)
+        {
+            fields.Add(sharedMemberName);
+            return;
+        }
+
+        var helperCallName = GetPrivateHelperCallName(referencedSymbol, containingType);
+        if (helperCallName is not null)
+        {
+            // Private method calls create transitive coupling but should NOT appear as
+            // SharedFields. They live in the call map, used only for cluster connectivity.
+            calls.Add(helperCallName);
+        }
+    }
+
+    private static string? GetSharedMemberName(ISymbol referencedSymbol, INamedTypeSymbol containingType) =>
+        referencedSymbol switch
+        {
+            IFieldSymbol field when IsOwnedMember(field, containingType) => field.Name,
+            IPropertySymbol property when IsOwnedMember(property, containingType) => property.Name,
+            _ => null,
+        };
+
+    private static string? GetPrivateHelperCallName(ISymbol referencedSymbol, INamedTypeSymbol containingType) =>
+        referencedSymbol is IMethodSymbol calledMethod
+        && IsOwnedMember(calledMethod, containingType)
+        && calledMethod.DeclaredAccessibility == Accessibility.Private
+        && calledMethod.MethodKind == MethodKind.Ordinary
+            ? calledMethod.Name
+            : null;
+
+    private static bool IsOwnedMember(ISymbol member, INamedTypeSymbol containingType) =>
+        member.ContainingType is not null
+        && SymbolEqualityComparer.Default.Equals(member.ContainingType, containingType)
+        && (containingType.IsStatic || !IsStaticMember(member));
+
+    private static bool IsStaticMember(ISymbol member) =>
+        member switch
+        {
+            IFieldSymbol field => field.IsStatic,
+            IPropertySymbol property => property.IsStatic,
+            IMethodSymbol method => method.IsStatic,
+            _ => false,
+        };
 
     private static bool MethodAccessesMember(
         IMethodSymbol method, ISymbol member,
