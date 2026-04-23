@@ -321,40 +321,61 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
         var predicateLabels = new List<string>();
         var q = query.ToLowerInvariant().Trim();
 
+        AddBaseSemanticPredicates(predicates, predicateLabels, q);
+        AddAccessibilityPredicate(predicates, predicateLabels, q);
+        AddAdvancedSemanticPredicates(predicates, predicateLabels, q);
+        return BuildSemanticQueryParse(query, predicates, predicateLabels);
+    }
+
+    private static void AddBaseSemanticPredicates(
+        List<Func<ISymbol, bool>> predicates,
+        List<string> predicateLabels,
+        string q)
+    {
         AddKeywordPredicates(predicates, predicateLabels, q);
         AddStaticPredicate(predicates, predicateLabels, q);
         AddClassPredicate(predicates, predicateLabels, q);
-        AddAccessibilityPredicate(predicates, predicateLabels, q);
+    }
 
-        // "returning/returns <type>"
-        var beforeReturn = predicates.Count;
-        AddReturnTypePredicate(predicates, q);
-        if (predicates.Count > beforeReturn)
+    private static void AddAdvancedSemanticPredicates(
+        List<Func<ISymbol, bool>> predicates,
+        List<string> predicateLabels,
+        string query)
+    {
+        AddPredicateLabelIfAdded(predicates, predicateLabels, "returning-type", () => AddReturnTypePredicate(predicates, query));
+        AddPredicateLabelIfAdded(predicates, predicateLabels, "implementing-interface", () => AddImplementingPredicate(predicates, query));
+        AddParameterCountPredicate(predicates, predicateLabels, query);
+    }
+
+    private static void AddPredicateLabelIfAdded(
+        List<Func<ISymbol, bool>> predicates,
+        List<string> predicateLabels,
+        string label,
+        Action addPredicate)
+    {
+        var beforeCount = predicates.Count;
+        addPredicate();
+        if (predicates.Count > beforeCount)
         {
-            predicateLabels.Add("returning-type");
+            predicateLabels.Add(label);
         }
+    }
 
-        // "implementing <interface>"
-        var beforeImpl = predicates.Count;
-        AddImplementingPredicate(predicates, q);
-        if (predicates.Count > beforeImpl)
-        {
-            predicateLabels.Add("implementing-interface");
-        }
-
-        AddParameterCountPredicate(predicates, predicateLabels, q);
-
+    private static SemanticQueryParse BuildSemanticQueryParse(
+        string query,
+        List<Func<ISymbol, bool>> predicates,
+        List<string> predicateLabels)
+    {
         var tokens = ExtractTokens(query);
+        if (predicates.Count > 0)
+        {
+            return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: false);
+        }
 
         // Fallback: name-based search
-        if (predicates.Count == 0)
-        {
-            predicates.Add(s => s.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
-            predicateLabels.Add("name-contains");
-            return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: true);
-        }
-
-        return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: false);
+        predicates.Add(s => s.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+        predicateLabels.Add("name-contains");
+        return new SemanticQueryParse(predicates, predicateLabels, tokens, UsedImplicitNameOnly: true);
     }
 
     private static void AddKeywordPredicates(
