@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-23T14:39:18Z
+**updated_at:** 2026-04-23T17:07:25Z
 
 ## Agent contract
 
@@ -37,7 +37,6 @@ _No open P2 rows._
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `find-dead-fields-across-classes` | P4 | — | Add a read-side analysis tool for unused fields (`never-read`, `never-written`, `never-either`). Current `find_dead_locals` and `find_unused_symbols` miss field-level cases seen in audit follow-up work. |
 | `host-parallel-mcp-reads` | P4 | `host` | Document and enable safe parallel read-only MCP calls where the host/client permits it; current serialization wastes the server's read-side concurrency. |
 | `mcp-audit-rollup-2026-04-13-22` | P4 | — | Umbrella row for unresolved server-side follow-ons absorbed from the retired 2026-04-13/15/22 raw audits: preview-formatting defects, summary-mode gaps, resource/connection contract docs, large-solution payload reducers, warm-up follow-ons, and selected experimental-promotion fixes. Split child rows only when one item becomes active. |
 | `workspace-process-pool-or-daemon` | P4 | `compilation-prewarm-on-load` | Reduce repeated `workspace_load` cost across multi-agent sessions by evaluating a long-running daemon or process-pool/shared-workspace model. |
