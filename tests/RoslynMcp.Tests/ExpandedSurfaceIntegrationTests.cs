@@ -96,6 +96,21 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             ct: CancellationToken.None);
         using var complexityDoc = JsonDocument.Parse(complexityJson);
         Assert.IsTrue(complexityDoc.RootElement.GetProperty("metrics").GetArrayLength() > 0);
+
+        var deadFieldsJson = await AdvancedAnalysisTools.FindDeadFields(
+            WorkspaceExecutionGate,
+            UnusedCodeAnalyzer,
+            WorkspaceId,
+            projectFilter: "SampleLib",
+            includePublic: false,
+            usageKind: "never-read",
+            limit: 20,
+            ct: CancellationToken.None);
+        using var deadFieldsDoc = JsonDocument.Parse(deadFieldsJson);
+        var deadFields = deadFieldsDoc.RootElement.GetProperty("deadFields").EnumerateArray().ToList();
+        Assert.IsTrue(deadFields.Any(field =>
+            field.GetProperty("symbolName").GetString() == "_unusedForDiagnostics"
+            && field.GetProperty("usageKind").GetString() == "never-read"));
     }
 
     [TestMethod]

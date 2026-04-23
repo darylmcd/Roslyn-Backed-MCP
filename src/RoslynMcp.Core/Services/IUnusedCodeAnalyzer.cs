@@ -30,6 +30,19 @@ public interface IUnusedCodeAnalyzer
         CancellationToken ct);
 
     /// <summary>
+    /// Finds source-declared fields whose observed in-solution usage is incomplete:
+    /// never read, never written, or never either. Classification is based on Roslyn
+    /// reference finding plus declaration initializers (which count as writes). Enum
+    /// members, constants, compiler-generated backing fields, and generated files are
+    /// skipped. Public/protected fields are excluded by default because external callers
+    /// may legitimately read or write them.
+    /// </summary>
+    Task<IReadOnlyList<DeadFieldDto>> FindDeadFieldsAsync(
+        string workspaceId,
+        DeadFieldsAnalysisOptions options,
+        CancellationToken ct);
+
+    /// <summary>
     /// Finds method-local variables whose only write is not followed by any read —
     /// the class of waste IDE0059 ("Unnecessary assignment of a value") covers when the
     /// diagnostic is at its default severity. Walks every method-like body (methods,
