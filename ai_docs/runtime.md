@@ -113,6 +113,22 @@ Prefer Roslyn MCP read tools over shell/Grep in normal sessions, including boots
 
 Canonical pattern-to-tool mappings live in `bootstrap-read-tool-primer.md`.
 
+### Parallel read-only calls
+
+When the client or host can issue multiple MCP requests concurrently, read-only
+workspace tools may fan out in parallel against the same loaded workspace. The
+server's `WorkspaceExecutionGate` allows overlapping reads on one workspace and
+serializes writers/lifecycle calls around them.
+
+- Safe parallel fan-out candidates: `symbol_search`, `find_references`,
+  `find_consumers`, `document_symbols`, `compile_check`, and other read-only
+  navigation/analysis calls after `workspace_load`.
+- Do not overlap reads with write/lifecycle operations on the same workspace:
+  `*_apply`, `apply_*`, `workspace_load`, `workspace_reload`, and
+  `workspace_close` stay serialized by design.
+- If the host serializes MCP tool calls, expect no speedup. That is a client
+  limitation, not a server-side correctness bug.
+
 ### Write-side by session shape
 
 | Session shape | Preferred write path |
