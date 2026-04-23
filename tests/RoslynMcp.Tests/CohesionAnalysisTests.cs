@@ -244,6 +244,68 @@ public class AdapterUnderTest
     }
 
     [TestMethod]
+    public async Task GetCohesionMetrics_SharedFields_IncludePrivateProperties_ButNotHelperNames()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+        string? workspaceId = null;
+
+        try
+        {
+            var filePath = Path.Combine(copiedRoot, "SampleLib", "PropertyBackedAdapter.cs");
+            await File.WriteAllTextAsync(filePath, """
+namespace SampleLib;
+
+public class PropertyBackedAdapter
+{
+    private string ConnectionString { get; } = "server";
+
+    public string ReadOne()
+    {
+        return Format(ConnectionString);
+    }
+
+    public string ReadTwo()
+    {
+        return Format(ConnectionString);
+    }
+
+    private static string Format(string connection)
+    {
+        return connection.ToUpperInvariant();
+    }
+}
+""", CancellationToken.None);
+
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            workspaceId = status.WorkspaceId;
+
+            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+                workspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+
+            var adapter = metrics.FirstOrDefault(m => m.TypeName == "PropertyBackedAdapter");
+            Assert.IsNotNull(adapter, "PropertyBackedAdapter should appear in cohesion metrics.");
+            Assert.IsTrue(adapter.Clusters.Count >= 1, "PropertyBackedAdapter should have at least one cluster.");
+
+            var sharedFields = adapter.Clusters.SelectMany(cluster => cluster.SharedFields).ToList();
+            CollectionAssert.Contains(sharedFields, "ConnectionString",
+                "Private properties accessed by multiple public methods should still appear in SharedFields.");
+            CollectionAssert.DoesNotContain(sharedFields, "Format",
+                "Private helper method names must stay out of SharedFields.");
+        }
+        finally
+        {
+            if (workspaceId is not null)
+            {
+                WorkspaceManager.Close(workspaceId);
+            }
+
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
+    [TestMethod]
     public async Task GetCohesionMetrics_ActionTriadPattern_ClassifiesAsActionTriad_AndDowngradesRecommendation()
     {
         // lcom4-lifecycle-pattern-false-positive: A type ending in `Action`/`Handler`/`Command`/`Stage`
