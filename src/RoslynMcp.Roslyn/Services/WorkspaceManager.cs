@@ -7,6 +7,7 @@ using Microsoft.CodeAnalysis.MSBuild;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Text.Json;
 using System.Threading;
 using System.Xml.Linq;
 
@@ -676,6 +677,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
             session.ProjectStatuses = BuildProjectStatuses(session.Workspace.CurrentSolution);
             session.LoadedPath = fullPath;
+            session.RestoreRequired = DetectRestoreRequired(session.ProjectStatuses) ||
+                                      HasRestoreRequiredWorkspaceDiagnostics(session.WorkspaceDiagnostics);
             session.LoadedAtUtc = DateTimeOffset.UtcNow;
             session.IncrementVersion();
             _previewStore.InvalidateAll(session.WorkspaceId);
@@ -866,6 +869,326 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         }
     }
 
+    private bool DetectRestoreRequired(ImmutableArray<ProjectStatusDto> projects)
+    {
+        foreach (var project in projects)
+        {
+            if (IsRestoreRequired(project.FilePath))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsRestoreRequired(string projectFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var expectedPackages = CollectExpectedPackages(projectFilePath);
+            if (expectedPackages.Count == 0)
+            {
+                return false;
+            }
+
+            var assets = LoadAssetsPackageVersions(projectFilePath);
+            if (assets is null)
+            {
+                return true;
+            }
+
+            foreach (var (packageId, expectation) in expectedPackages)
+            {
+                if (!assets.Value.PackageVersions.TryGetValue(packageId, out var assetVersions))
+                {
+                    return true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(expectation.RequestedVersion) &&
+                    !PackageVersionMatches(expectation.RequestedVersion!, assetVersions))
+                {
+                    return true;
+                }
+
+                if (expectation.UsesCentralVersion)
+                {
+                    if (string.IsNullOrWhiteSpace(expectation.RequestedVersion) ||
+                        !assets.Value.CentralPackageVersions.TryGetValue(packageId, out var centralVersions) ||
+                        !PackageVersionMatches(expectation.RequestedVersion!, centralVersions))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            _logger.LogDebug(ex, "restore-drift detection skipped for '{ProjectFilePath}'", projectFilePath);
+        }
+
+        return false;
+    }
+
+    private static Dictionary<string, PackageExpectation> CollectExpectedPackages(string projectFilePath)
+    {
+        var expected = new Dictionary<string, PackageExpectation>(StringComparer.OrdinalIgnoreCase);
+        var centralPackages = LoadCentralPackageVersions(MsBuildMetadataHelper.FindDirectoryPackagesProps(projectFilePath));
+
+        foreach (var documentPath in EnumeratePackageReferenceDocuments(projectFilePath))
+        {
+            XDocument document;
+            try
+            {
+                document = XDocument.Load(documentPath, LoadOptions.PreserveWhitespace);
+            }
+            catch (System.Xml.XmlException)
+            {
+                continue;
+            }
+
+            foreach (var element in document
+                         .Descendants()
+                         .Where(candidate => string.Equals(candidate.Name.LocalName, "PackageReference", StringComparison.OrdinalIgnoreCase)))
+            {
+                var packageId = GetXmlValue(element, "Include") ?? GetXmlValue(element, "Update");
+                if (string.IsNullOrWhiteSpace(packageId))
+                {
+                    continue;
+                }
+
+                var explicitVersion =
+                    GetXmlValue(element, "VersionOverride") ??
+                    GetChildValue(element, "VersionOverride") ??
+                    GetXmlValue(element, "Version") ??
+                    GetChildValue(element, "Version");
+
+                centralPackages.TryGetValue(packageId, out var centralVersion);
+                var usesCentralVersion = string.IsNullOrWhiteSpace(explicitVersion) &&
+                                         !string.IsNullOrWhiteSpace(centralVersion);
+                expected[packageId] = new PackageExpectation(
+                    usesCentralVersion ? centralVersion : explicitVersion,
+                    usesCentralVersion);
+            }
+        }
+
+        return expected;
+    }
+
+    private static IEnumerable<string> EnumeratePackageReferenceDocuments(string projectFilePath)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var buildPropsPath = FindNearestFile(projectFilePath, "Directory.Build.props");
+        if (!string.IsNullOrWhiteSpace(buildPropsPath) && seen.Add(buildPropsPath))
+        {
+            yield return buildPropsPath;
+        }
+
+        if (seen.Add(projectFilePath))
+        {
+            yield return projectFilePath;
+        }
+
+        var buildTargetsPath = FindNearestFile(projectFilePath, "Directory.Build.targets");
+        if (!string.IsNullOrWhiteSpace(buildTargetsPath) && seen.Add(buildTargetsPath))
+        {
+            yield return buildTargetsPath;
+        }
+    }
+
+    private static string? FindNearestFile(string path, string fileName)
+    {
+        var directory = Path.GetDirectoryName(path);
+        while (!string.IsNullOrWhiteSpace(directory))
+        {
+            var candidate = Path.Combine(directory, fileName);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = Directory.GetParent(directory)?.FullName;
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, string> LoadCentralPackageVersions(string? packagesPropsPath)
+    {
+        var centralPackages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(packagesPropsPath) || !File.Exists(packagesPropsPath))
+        {
+            return centralPackages;
+        }
+
+        XDocument document;
+        try
+        {
+            document = XDocument.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
+        }
+        catch (System.Xml.XmlException)
+        {
+            return centralPackages;
+        }
+
+        foreach (var element in document
+                     .Descendants()
+                     .Where(candidate => string.Equals(candidate.Name.LocalName, "PackageVersion", StringComparison.OrdinalIgnoreCase)))
+        {
+            var packageId = GetXmlValue(element, "Include");
+            var version = GetXmlValue(element, "Version") ?? GetChildValue(element, "Version");
+            if (!string.IsNullOrWhiteSpace(packageId) && !string.IsNullOrWhiteSpace(version))
+            {
+                centralPackages[packageId] = version;
+            }
+        }
+
+        return centralPackages;
+    }
+
+    private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(string projectFilePath)
+    {
+        var projectDirectory = Path.GetDirectoryName(projectFilePath);
+        if (string.IsNullOrWhiteSpace(projectDirectory))
+        {
+            return null;
+        }
+
+        var assetsPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
+        if (!File.Exists(assetsPath))
+        {
+            return null;
+        }
+
+        using var stream = File.OpenRead(assetsPath);
+        using var document = JsonDocument.Parse(stream);
+        if (!document.RootElement.TryGetProperty("project", out var project) ||
+            !project.TryGetProperty("frameworks", out var frameworks) ||
+            frameworks.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        var packageVersions = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+        var centralPackageVersions = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var framework in frameworks.EnumerateObject())
+        {
+            if (framework.Value.TryGetProperty("dependencies", out var dependencies) &&
+                dependencies.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var dependency in dependencies.EnumerateObject())
+                {
+                    if (!dependency.Value.TryGetProperty("version", out var versionElement) ||
+                        versionElement.ValueKind != JsonValueKind.String)
+                    {
+                        continue;
+                    }
+
+                    AddVersion(packageVersions, dependency.Name, versionElement.GetString());
+                }
+            }
+
+            if (framework.Value.TryGetProperty("centralPackageVersions", out var centralVersions) &&
+                centralVersions.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var centralVersion in centralVersions.EnumerateObject())
+                {
+                    AddVersion(centralPackageVersions, centralVersion.Name, centralVersion.Value.GetString());
+                }
+            }
+        }
+
+        return (packageVersions, centralPackageVersions);
+    }
+
+    private static void AddVersion(Dictionary<string, HashSet<string>> versions, string packageId, string? version)
+    {
+        if (string.IsNullOrWhiteSpace(packageId) || string.IsNullOrWhiteSpace(version))
+        {
+            return;
+        }
+
+        if (!versions.TryGetValue(packageId, out var values))
+        {
+            values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            versions[packageId] = values;
+        }
+
+        values.Add(version.Trim());
+    }
+
+    private static bool PackageVersionMatches(string expectedVersion, IReadOnlySet<string> actualVersions)
+    {
+        var expected = expectedVersion.Trim();
+        if (string.IsNullOrWhiteSpace(expected))
+        {
+            return false;
+        }
+
+        if (actualVersions.Contains(expected))
+        {
+            return true;
+        }
+
+        if (expected.StartsWith("[", StringComparison.Ordinal) || expected.StartsWith("(", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return actualVersions.Contains($"[{expected}, )");
+    }
+
+    private static string? GetXmlValue(XElement element, string localName)
+    {
+        return element.Attributes().FirstOrDefault(attribute =>
+            string.Equals(attribute.Name.LocalName, localName, StringComparison.OrdinalIgnoreCase))?.Value?.Trim();
+    }
+
+    private static string? GetChildValue(XElement element, string localName)
+    {
+        return element.Elements().FirstOrDefault(child =>
+            string.Equals(child.Name.LocalName, localName, StringComparison.OrdinalIgnoreCase))?.Value?.Trim();
+    }
+
+    private static bool HasRestoreRequiredWorkspaceDiagnostics(IEnumerable<DiagnosticDto> diagnostics)
+    {
+        var suspiciousDiagnostics = 0;
+        foreach (var diagnostic in diagnostics)
+        {
+            if (string.Equals(diagnostic.Id, "WORKSPACE_UNRESOLVED_ANALYZER", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (string.Equals(diagnostic.Id, "CS0234", StringComparison.OrdinalIgnoreCase))
+            {
+                suspiciousDiagnostics++;
+                continue;
+            }
+
+            var message = diagnostic.Message;
+            if (message is null)
+            {
+                continue;
+            }
+
+            if (message.Contains("could not be found", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("does not exist in the namespace", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("could not load file or assembly", StringComparison.OrdinalIgnoreCase))
+            {
+                suspiciousDiagnostics++;
+            }
+        }
+
+        return suspiciousDiagnostics >= 3;
+    }
+
     /// <summary>
     /// Removes <see cref="UnresolvedAnalyzerReference"/> entries from every project in the
     /// loaded workspace. These entries are produced when an analyzer file referenced by the
@@ -996,7 +1319,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 IsLoaded: false,
                 IsStale: isStale,
                 WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray(),
-                StaleReason: staleReason);
+                StaleReason: staleReason,
+                RestoreRequired: session.RestoreRequired);
         }
 
         var projects = session.ProjectStatuses;
@@ -1013,7 +1337,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             IsLoaded: true,
             IsStale: isStale,
             WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray(),
-            StaleReason: staleReason);
+            StaleReason: staleReason,
+            RestoreRequired: session.RestoreRequired);
     }
 
     private WorkspaceSession GetRequiredSession(string workspaceId)
@@ -1101,6 +1426,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         }).ToImmutableArray();
     }
 
+    private readonly record struct PackageExpectation(string? RequestedVersion, bool UsesCentralVersion);
+
     private sealed class WorkspaceSession(string workspaceId) : IDisposable
     {
         private int _version;
@@ -1111,6 +1438,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         public ImmutableArray<ProjectStatusDto> ProjectStatuses { get; set; } = ImmutableArray<ProjectStatusDto>.Empty;
         public MSBuildWorkspace? Workspace { get; set; }
         public string? LoadedPath { get; set; }
+        public bool RestoreRequired { get; set; }
         public DateTimeOffset LoadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
         public DateTimeOffset LastAccessedUtc { get; set; } = DateTimeOffset.UtcNow;
         public int Version => Volatile.Read(ref _version);
