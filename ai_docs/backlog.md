@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-23T17:07:25Z
+**updated_at:** 2026-04-23T18:46:58Z
 
 ## Agent contract
 
@@ -39,6 +39,8 @@ _No open P2 rows._
 |----|-----|------|-----|
 | `host-parallel-mcp-reads` | P4 | `host` | Document and enable safe parallel read-only MCP calls where the host/client permits it; current serialization wastes the server's read-side concurrency. |
 | `mcp-audit-rollup-2026-04-13-22` | P4 | — | Umbrella row for unresolved server-side follow-ons absorbed from the retired 2026-04-13/15/22 raw audits: preview-formatting defects, summary-mode gaps, resource/connection contract docs, large-solution payload reducers, warm-up follow-ons, and selected experimental-promotion fixes. Split child rows only when one item becomes active. |
+| `test-related-files-empty-result-explainability` | P4 | — | `test_related_files` currently returns only `tests: []` and `dotnetTestFilter: \"\"` on a miss. During the 2026-04-23 backlog-sweep wave-2 preflight this gave no clue whether no tests existed or the heuristic missed likely coverage for `MutationAnalysisService` and `ScaffoldingService`, then again for `CodePatternAnalyzer` and `TestDiscoveryService`. Extend the tool, or add a companion, to report scanned test projects, heuristics hit, and rejection reasons on empty results. Refs: retrospective 2026-04-23 Step 2a row 1, Step 2b row 1, Step 3 pattern 1. |
+| `test-related-files-service-refactor-underreporting` | P4 | — | Harden `test_related_files` for service-layer refactors. In the 2026-04-23 backlog-sweep wave-2 preflight it returned empty results for `MutationAnalysisService.cs` plus `ScaffoldingService.cs` and for `CodePatternAnalyzer.cs` plus `TestDiscoveryService.cs`, despite those initiatives later landing targeted test updates in PRs #367 and #366. Add stronger fallback heuristics such as symbol-name affinity, broader integration-test ownership, or unioning with `test_related` before falling back to empty. Refs: retrospective 2026-04-23 Step 2a row 1, Step 3 pattern 1. |
 | `workspace-process-pool-or-daemon` | P4 | `compilation-prewarm-on-load` | Reduce repeated `workspace_load` cost across multi-agent sessions by evaluating a long-running daemon or process-pool/shared-workspace model. |
 
 ## Refs
