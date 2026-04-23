@@ -390,6 +390,7 @@ FodyWeavers.xsd
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+!.vscode/mcp.json
 *.code-workspace
 
 # Local History for Visual Studio Code
@@ -492,6 +493,7 @@ $RECYCLE.BIN/
 !.claude/skills/**
 !.claude/agents/
 !.claude/agents/**
+.worktrees/
 .mcp.json
 # ...except the plugin's own .mcp.json at the repo root, which is the
 # Claude Code plugin loader's canonical MCP-server descriptor and must

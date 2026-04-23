@@ -30,7 +30,7 @@ Raw audits use `<timestamp>_<repo-id>_mcp-server-audit.md` (no lock-mode segment
 
 | File or pattern | Purpose |
 |-----------------|---------|
-| `deep-review-session-checklist.md` | Fill-in worksheet for a live session; phase order tracks the living prompt (including Phase 8b and Phase 9 after 10). |
+| `audit-reports/deep-review-session-checklist.md` | Fill-in worksheet for a live session; phase order tracks the living prompt (including Phase 8b and Phase 9 after 10). |
 | `<timestamp>_<repo-id>_mcp-server-audit.md` | Raw evidence for one repo/client deep-review run. |
 
 ## Session worksheet

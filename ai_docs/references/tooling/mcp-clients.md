@@ -42,7 +42,7 @@
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
-This installs the MCP server + 10 curated skills + safety hooks. Requires `roslynmcp` on PATH (`dotnet tool install -g Darylmcd.RoslynMcp`).
+This installs the MCP server, bundled skills, and safety hooks. Requires `roslynmcp` on PATH (`dotnet tool install -g Darylmcd.RoslynMcp`).
 
 **Manual MCP config (alternative):**
 

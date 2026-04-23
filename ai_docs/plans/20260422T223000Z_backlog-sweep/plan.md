@@ -1,5 +1,8 @@
 # Backlog sweep plan — 2026-04-22T22:30:00Z (draft)
 
+<!-- purpose: In-repo planning pass for the 2026-04-22 backlog-sweep batch. -->
+<!-- scope: in-repo -->
+
 **Plan kind:** planning pass only (no product code or backlog edits).
 
 **Preamble — anchor verification (Step 3):** *Skipped for planner token budget.* Cited `file:line` and symbol names are grounded in a source read of the listed files; the executor should run `symbol_search` / Grep for any `Validation` anchor before apply if the branch has moved.

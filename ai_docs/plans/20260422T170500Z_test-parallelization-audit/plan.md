@@ -1,5 +1,8 @@
 # Test parallelization audit — phased plan (2026-04-22)
 
+<!-- purpose: In-repo phased plan for the deferred test-parallelization audit initiative. -->
+<!-- scope: in-repo -->
+
 <!-- Generated from ai_docs/prompts/backlog-sweep-plan.md v3 conventions. Companion
      state.json lives alongside this file. Targets the 2026-04-19 sweep's
      deferred item `ci-test-parallelization-audit` (P3-UX), which

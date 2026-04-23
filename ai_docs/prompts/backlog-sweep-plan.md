@@ -11,6 +11,9 @@
      worktree sessions (serial or parallel subagents) may use *_apply freely.
      Prior revisions: v2 (2026-04-16) forced strict per-initiative scope discipline
      after v1 over-bundled by treating "shared root concept" as "shared fix shape". -->
+<!-- scope: reference -->
+
+> **SCOPE: reference — context only, assigns no work.** Does not answer "next step?". Route via [`../planning_index.md`](../planning_index.md).
 
 You are a senior engineer working in the Roslyn-Backed-MCP repo. Your job is to read
 `ai_docs/backlog.md` and produce a per-initiative implementation plan that is **honest
