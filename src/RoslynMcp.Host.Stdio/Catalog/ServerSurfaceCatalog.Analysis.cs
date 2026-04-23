@@ -28,6 +28,7 @@ public static partial class ServerSurfaceCatalog
         Tool("find_duplicated_methods", "advanced-analysis", "stable", true, false, "Find clusters of near-duplicate method bodies by AST-normalized hash."),
         Tool("find_duplicate_helpers", "advanced-analysis", "experimental", true, false, "Flag private/internal helper methods whose body duplicates a reachable BCL/NuGet symbol."),
         Tool("find_dead_locals", "advanced-analysis", "experimental", true, false, "Find method-local variables whose only write is not followed by any read."),
+        Tool("find_dead_fields", "advanced-analysis", "experimental", true, false, "Find source-declared fields that are never read, never written, or never either."),
         Tool("symbol_impact_sweep", "analysis", "experimental", true, false, "Sweep downstream impact of a symbol change: references + switch-exhaustiveness diagnostics + mapper-suffix callsites."),
         Tool("test_reference_map", "validation", "experimental", true, false, "Statically map source symbols to test references; returns covered/uncovered symbol lists and a coverage percentage. Supports offset/limit pagination and projectName scoping."),
         Tool("validate_workspace", "validation", "experimental", true, false, "Composite post-edit validation: compile_check + project_diagnostics (errors) + test_related_files (+ optional test_run)."),

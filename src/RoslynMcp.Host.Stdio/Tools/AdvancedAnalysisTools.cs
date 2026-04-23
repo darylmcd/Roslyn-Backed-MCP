@@ -202,6 +202,36 @@ public static class AdvancedAnalysisTools
         }, ct);
     }
 
+    [McpServerTool(Name = "find_dead_fields", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "experimental", true, false,
+        "Find source-declared fields that are never read, never written, or never either."),
+     Description("Find source-declared fields whose in-solution usage is incomplete: `never-read`, `never-written`, or `never-either`. Classification uses Roslyn reference finding plus declaration initializers (which count as writes). Skips enum members, constants, compiler-generated backing fields, field-like event storage, and generated files. By default excludes public/protected fields because external consumers may legitimately read or write them; set `includePublic=true` to include that surface. Optional `usageKind` filter accepts `never-read`, `never-written`, or `never-either`.")]
+    public static Task<string> FindDeadFields(
+        IWorkspaceExecutionGate gate,
+        IUnusedCodeAnalyzer unusedCodeAnalyzer,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
+        [Description("Include public/protected fields in the scan (default: false).")] bool includePublic = false,
+        [Description("Optional: restrict results to one usage kind: `never-read`, `never-written`, or `never-either`. Default: all kinds.")] string? usageKind = null,
+        [Description("Maximum number of hits to return (default: 50).")] int limit = 50,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await unusedCodeAnalyzer.FindDeadFieldsAsync(
+                workspaceId,
+                new DeadFieldsAnalysisOptions
+                {
+                    ProjectFilter = projectFilter,
+                    IncludePublic = includePublic,
+                    UsageKindFilter = usageKind,
+                    Limit = limit
+                },
+                c);
+            return JsonSerializer.Serialize(new { count = results.Count, deadFields = results }, JsonDefaults.Indented);
+        }, ct);
+    }
+
     [McpServerTool(Name = "find_duplicate_helpers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "experimental", true, false,
         "Flag private/internal helper methods whose body duplicates a reachable BCL/NuGet symbol."),

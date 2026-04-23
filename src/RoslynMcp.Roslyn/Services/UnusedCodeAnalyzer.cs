@@ -579,6 +579,66 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     }
 
     /// <summary>
+    /// Finds source-declared fields whose observed source usage is incomplete:
+    /// never read, never written, or never either. See
+    /// <see cref="IUnusedCodeAnalyzer.FindDeadFieldsAsync"/> for the contract.
+    /// </summary>
+    public async Task<IReadOnlyList<DeadFieldDto>> FindDeadFieldsAsync(
+        string workspaceId,
+        DeadFieldsAnalysisOptions options,
+        CancellationToken ct)
+    {
+        ValidateDeadFieldUsageKindFilter(options.UsageKindFilter);
+
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var results = new List<DeadFieldDto>();
+        var processedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+
+        var projects = ProjectFilterHelper.FilterProjects(solution, options.ProjectFilter);
+        foreach (var project in projects)
+        {
+            if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
+
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            foreach (var tree in compilation.SyntaxTrees)
+            {
+                if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
+                if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
+
+                var semanticModel = compilation.GetSemanticModel(tree);
+                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+
+                foreach (var declarator in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+                {
+                    if (ct.IsCancellationRequested || results.Count >= options.Limit) break;
+
+                    if (semanticModel.GetDeclaredSymbol(declarator, ct) is not IFieldSymbol field)
+                        continue;
+                    if (!IsCandidateSymbol(field, processedSymbols))
+                        continue;
+                    if (ShouldSkipFieldForDeadFieldAnalysis(field, options.IncludePublic))
+                        continue;
+
+                    var dto = await TryBuildDeadFieldDtoAsync(
+                        field,
+                        declarator,
+                        solution,
+                        project.Name,
+                        options.UsageKindFilter,
+                        ct).ConfigureAwait(false);
+                    if (dto is null) continue;
+
+                    results.Add(dto);
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
     /// Inspects a method declaration and, when its host is a static helper class,
     /// its effective accessibility is non-public, and its body is a single
     /// ≤ 2-statement delegation to a non-source-declared method, returns a
@@ -741,6 +801,173 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     {
         // Higher enum value = more visible (Public=6, Internal=4, Private=1).
         return ((int)a < (int)b) ? a : b;
+    }
+
+    private static void ValidateDeadFieldUsageKindFilter(string? usageKindFilter)
+    {
+        if (usageKindFilter is null) return;
+
+        if (!IsAcceptedDeadFieldUsageKind(usageKindFilter))
+        {
+            throw new ArgumentException(
+                $"Unsupported usageKind '{usageKindFilter}'. Expected never-read, never-written, or never-either.",
+                nameof(usageKindFilter));
+        }
+    }
+
+    private static bool IsAcceptedDeadFieldUsageKind(string usageKind) =>
+        usageKind is "never-read" or "never-written" or "never-either";
+
+    private static bool ShouldSkipFieldForDeadFieldAnalysis(IFieldSymbol field, bool includePublic)
+    {
+        if (field.IsImplicitlyDeclared) return true;
+        if (field.AssociatedSymbol is not null) return true;
+        if (field.ContainingType?.TypeKind == TypeKind.Enum) return true;
+        if (field.IsConst) return true;
+        if (field.Name.Length == 0) return true;
+
+        var effectiveAccessibility = field.ContainingType is null
+            ? field.DeclaredAccessibility
+            : MinAccessibility(field.DeclaredAccessibility, field.ContainingType.DeclaredAccessibility);
+
+        if (!includePublic && effectiveAccessibility is Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal)
+            return true;
+
+        return false;
+    }
+
+    private async Task<DeadFieldDto?> TryBuildDeadFieldDtoAsync(
+        IFieldSymbol field,
+        VariableDeclaratorSyntax declarator,
+        Solution solution,
+        string projectName,
+        string? usageKindFilter,
+        CancellationToken ct)
+    {
+        var locations = await SymbolFinder.FindReferencesAsync(field, solution, ct).ConfigureAwait(false);
+        var (readCount, writeCount) = ClassifyDeadFieldReferenceCounts(locations);
+
+        if (declarator.Initializer is not null)
+        {
+            writeCount++;
+        }
+
+        var usageKind = DetermineDeadFieldUsageKind(readCount, writeCount);
+        if (usageKind is null) return null;
+        if (usageKindFilter is not null && !string.Equals(usageKind, usageKindFilter, StringComparison.Ordinal))
+            return null;
+
+        return BuildDeadFieldDto(field, projectName, usageKind, readCount, writeCount);
+    }
+
+    private static (int ReadCount, int WriteCount) ClassifyDeadFieldReferenceCounts(IEnumerable<ReferencedSymbol> referencedSymbols)
+    {
+        var readCount = 0;
+        var writeCount = 0;
+
+        foreach (var location in referencedSymbols.SelectMany(symbol => symbol.Locations))
+        {
+            if (location.IsImplicit) continue;
+            if (!location.Location.IsInSource) continue;
+
+            switch (ClassifyDeadFieldReferenceLocation(location))
+            {
+                case "Write":
+                    writeCount++;
+                    break;
+                case "ReadWrite":
+                    readCount++;
+                    writeCount++;
+                    break;
+                default:
+                    readCount++;
+                    break;
+            }
+        }
+
+        return (readCount, writeCount);
+    }
+
+    private static string ClassifyDeadFieldReferenceLocation(ReferenceLocation refLocation)
+    {
+        var syntaxNode = refLocation.Location.SourceTree?
+            .GetRoot()
+            .FindNode(refLocation.Location.SourceSpan);
+
+        if (syntaxNode is null)
+        {
+            return "Read";
+        }
+
+        return syntaxNode.Parent switch
+        {
+            AssignmentExpressionSyntax assignment when assignment.Left == syntaxNode
+                => assignment.Kind() is SyntaxKind.AddAssignmentExpression
+                    or SyntaxKind.SubtractAssignmentExpression
+                    or SyntaxKind.MultiplyAssignmentExpression
+                    or SyntaxKind.DivideAssignmentExpression
+                    ? "ReadWrite"
+                    : "Write",
+            MemberAccessExpressionSyntax memberAccess
+                when memberAccess.Parent is AssignmentExpressionSyntax memberAssignment
+                     && memberAssignment.Left == memberAccess
+                => "Write",
+            PrefixUnaryExpressionSyntax prefix
+                when prefix.IsKind(SyntaxKind.PreIncrementExpression) || prefix.IsKind(SyntaxKind.PreDecrementExpression)
+                => "ReadWrite",
+            PostfixUnaryExpressionSyntax postfix
+                when postfix.IsKind(SyntaxKind.PostIncrementExpression) || postfix.IsKind(SyntaxKind.PostDecrementExpression)
+                => "ReadWrite",
+            ArgumentSyntax arg when arg.RefKindKeyword.IsKind(SyntaxKind.RefKeyword)
+                => "ReadWrite",
+            ArgumentSyntax arg when arg.RefKindKeyword.IsKind(SyntaxKind.OutKeyword)
+                => "Write",
+            _ => "Read"
+        };
+    }
+
+    private static string? DetermineDeadFieldUsageKind(int readCount, int writeCount)
+    {
+        if (readCount == 0 && writeCount == 0) return "never-either";
+        if (readCount == 0) return "never-read";
+        if (writeCount == 0) return "never-written";
+        return null;
+    }
+
+    private static DeadFieldDto? BuildDeadFieldDto(
+        IFieldSymbol field,
+        string projectName,
+        string usageKind,
+        int readCount,
+        int writeCount)
+    {
+        var location = field.Locations.FirstOrDefault(l => l.IsInSource);
+        if (location is null) return null;
+
+        var lineSpan = location.GetLineSpan();
+        return new DeadFieldDto(
+            SymbolName: field.Name,
+            ContainingType: field.ContainingType?.Name,
+            FilePath: lineSpan.Path,
+            Line: lineSpan.StartLinePosition.Line + 1,
+            Column: lineSpan.StartLinePosition.Character + 1,
+            ProjectName: projectName,
+            UsageKind: usageKind,
+            ReadReferenceCount: readCount,
+            WriteReferenceCount: writeCount,
+            SymbolHandle: SymbolHandleSerializer.CreateHandle(field),
+            Confidence: ComputeDeadFieldConfidence(field));
+    }
+
+    private static string ComputeDeadFieldConfidence(IFieldSymbol field)
+    {
+        var effectiveAccessibility = field.ContainingType is null
+            ? field.DeclaredAccessibility
+            : MinAccessibility(field.DeclaredAccessibility, field.ContainingType.DeclaredAccessibility);
+
+        return effectiveAccessibility is Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal
+            ? "medium"
+            : "high";
     }
 
     /// <summary>
