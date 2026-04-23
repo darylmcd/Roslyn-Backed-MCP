@@ -207,6 +207,107 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
     }
 
     [TestMethod]
+    public async Task ExtractInterface_PreservesSpecialUsings_And_Drops_UnusedPlainUsings()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var modelsDir = Path.Combine(sampleLibDir, "Models");
+        Directory.CreateDirectory(modelsDir);
+
+        await File.WriteAllTextAsync(Path.Combine(modelsDir, "Item3SpecialUsingModel.cs"),
+            """
+            namespace SampleLib.Models;
+
+            public class Item3SpecialUsingModel
+            {
+                public int Count { get; set; }
+            }
+            """);
+
+        await File.WriteAllTextAsync(Path.Combine(modelsDir, "Item3AliasModel.cs"),
+            """
+            namespace SampleLib.Models;
+
+            public class Item3AliasModel
+            {
+                public int Count { get; set; }
+            }
+            """);
+
+        var servicePath = Path.Combine(sampleLibDir, "Item3SpecialUsingService.cs");
+        await File.WriteAllTextAsync(servicePath,
+            """
+            using System.Text;
+            using System.Threading.Tasks;
+            using SampleLib.Models;
+            using AliasModel = SampleLib.Models.Item3AliasModel;
+            using static System.Math;
+            global using System.Globalization;
+
+            namespace SampleLib;
+
+            public class Item3SpecialUsingService
+            {
+                public Task<Item3SpecialUsingModel> LoadAsync(AliasModel model)
+                {
+                    _ = Sqrt(model.Count);
+                    return Task.FromResult(new Item3SpecialUsingModel { Count = model.Count });
+                }
+            }
+            """);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var previewDto = await InterfaceExtractionService.PreviewExtractInterfaceAsync(
+                workspaceId,
+                servicePath,
+                typeName: "Item3SpecialUsingService",
+                interfaceName: "IItem3SpecialUsingService",
+                memberNames: null,
+                replaceUsages: false,
+                CancellationToken.None);
+
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
+
+            var interfaceFilePath = Path.Combine(sampleLibDir, "IItem3SpecialUsingService.cs");
+            var generatedText = await File.ReadAllTextAsync(interfaceFilePath);
+
+            StringAssert.Contains(generatedText, "using System.Threading.Tasks;");
+            StringAssert.Contains(generatedText, "using SampleLib.Models;");
+            StringAssert.Contains(generatedText, "using AliasModel = SampleLib.Models.Item3AliasModel;");
+            StringAssert.Contains(generatedText, "using static System.Math;");
+            StringAssert.Contains(generatedText, "global using System.Globalization;");
+            Assert.IsFalse(
+                generatedText.Contains("using System.Text;", StringComparison.Ordinal),
+                $"Unused plain using should be dropped. Generated:\n{generatedText}");
+
+            var threadingIndex = generatedText.IndexOf("using System.Threading.Tasks;", StringComparison.Ordinal);
+            var modelsIndex = generatedText.IndexOf("using SampleLib.Models;", StringComparison.Ordinal);
+            var aliasIndex = generatedText.IndexOf("using AliasModel = SampleLib.Models.Item3AliasModel;", StringComparison.Ordinal);
+            var staticIndex = generatedText.IndexOf("using static System.Math;", StringComparison.Ordinal);
+            var globalIndex = generatedText.IndexOf("global using System.Globalization;", StringComparison.Ordinal);
+
+            Assert.IsTrue(
+                threadingIndex >= 0
+                && modelsIndex > threadingIndex
+                && aliasIndex > modelsIndex
+                && staticIndex > aliasIndex
+                && globalIndex > staticIndex,
+                $"Expected sorted plain usings followed by special usings in source order. Generated:\n{generatedText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    [TestMethod]
     public async Task ExtractInterface_Appends_To_Existing_Base_List_Inline_Without_Newline_Continuation()
     {
         // Regression for dr-9-6-emits-continuation-on-a-new-line-instead-of-inli
