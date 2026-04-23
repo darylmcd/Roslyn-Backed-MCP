@@ -352,4 +352,52 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
             WorkspaceManager.Close(workspaceId);
         }
     }
+
+    [TestMethod]
+    public async Task FormatRangePreview_PreservesBlankLineRunsThatCrossRangeBoundary()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "FormatRangeBoundaryFixture.cs");
+        var content =
+            "namespace SampleLib;\r\n" +
+            "\r\n" +
+            "public class FormatRangeBoundaryFixture\r\n" +
+            "{\r\n" +
+            "    public int Compute(int input)\r\n" +
+            "    {\r\n" +
+            "\r\n" +
+            "\r\n" +
+            "        return input + 1;\r\n" +
+            "    }\r\n" +
+            "}\r\n";
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var preview = await RefactoringService.PreviewFormatRangeAsync(
+                workspaceId, fixturePath,
+                startLine: 8, startColumn: 1,
+                endLine: 9, endColumn: 25,
+                CancellationToken.None);
+
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, "apply must succeed");
+
+            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+            Assert.AreEqual(content, postApplyText,
+                "blank-line runs that cross the requested range boundary must be preserved verbatim.");
+            Assert.IsTrue(postApplyText.Contains("\r\n\r\n\r\n", StringComparison.Ordinal),
+                $"the boundary-crossing blank-line run should remain intact. Got:\n{postApplyText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
 }
