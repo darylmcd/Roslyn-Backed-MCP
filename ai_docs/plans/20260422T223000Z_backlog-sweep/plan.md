@@ -77,7 +77,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
+| **Status** | `merged` (PR [#361](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/361), 2026-04-23) |
 | **Backlog rows closed** | *none — row closes on 4g* |
 | **Diagnosis** | `ScriptingService.EvaluateAsync` (cc=19, **182 LOC**) and `RefactoringService.PersistDocumentSetChangesAsync` (cc=18, **191 LOC**) per backlog; highest LOC / worst MI-per-cc among set. |
 | **Approach** | Same as WS2: `extract_method_preview` where applicable, hand-`Edit` on CS0136/CS0841. `verify-release.ps1` for tranche. |
@@ -190,7 +190,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
+| **Status** | `merged` (PR [#360](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/360), 2026-04-23; row stays open) |
 | **Backlog rows closed** | *optional — ship server docs only; close when host+server story complete* |
 | **Diagnosis** | Some MCP hosts serialize tool calls; P4 `blocker: host`. |
 | **Approach** | Document `WorkspaceExecutionGate` + read path thread-safety in `ai_docs/runtime.md`; cross-refs. Consumer-side doc note if available. **≤2 doc files** if no code change. |
@@ -232,7 +232,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
+| **Status** | `merged` (PR [#362](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/362), 2026-04-23) |
 | **Backlog rows closed** | `workspace-reload-auto-restore` |
 | **Diagnosis** | CS1705 / stale `MetadataReference` after csproj version edits without `dotnet restore` (IT-Chat-Bot F01; rollup §C). |
 | **Approach** | Optional `autoRestore` on `workspace_reload` / `workspace_load`, and/or `restoreRequired` in status DTO when assets drift. |
