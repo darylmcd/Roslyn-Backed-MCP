@@ -39,7 +39,6 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | File | Purpose |
 |------|---------|
 | `plans/20260422T170500Z_test-parallelization-audit/plan.md` | In-repo phased plan for the deferred test-parallelization audit |
-| `plans/20260422T223000Z_backlog-sweep/plan.md` | Current backlog-sweep planning pass |
 
 ## Procedures And Prompts
 

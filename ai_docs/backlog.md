@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-23T20:26:14Z
+**updated_at:** 2026-04-23T22:01:33Z
 
 ## Agent contract
 
@@ -21,6 +21,8 @@
 
 - Reprioritize on each audit pass.
 - Keep rows terse: summarize the current need, not the full session history.
+- Keep rows planner-ready: name live anchors and the next concrete deliverable or investigation output.
+- Replace stale umbrella rows with concrete follow-ons before planning against them.
 - Put long-form audit evidence in the referenced reports, not in this file.
 
 ## P2 — open work
@@ -29,17 +31,17 @@ _No open P2 rows._
 
 ## P3 — open work
 
-_No open P3 rows._
+| id | pri | deps | do |
+|----|-----|------|-----|
+| `ci-test-parallelization-audit` | P3 | — | Refresh the old test-parallelization audit around the real residual issue: `eng/verify-release.ps1` still has 3 pre-existing cleanup-race flakes even though the `[DoNotParallelize]` sweep is already done. Start by reproducing and naming the failing tests, then localize whether the race sits in `tests/RoslynMcp.Tests/AssemblyCleanup.cs`, `tests/RoslynMcp.Tests/TestBase.cs`, or another teardown path before planning the fix plus a repeated-release stress gate (`eng/verify-release-stress.ps1` / CI). |
 
 ## P4 — open work
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `host-parallel-mcp-reads` | P4 | `host` | Document and enable safe parallel read-only MCP calls where the host/client permits it; current serialization wastes the server's read-side concurrency. |
-| `mcp-audit-rollup-2026-04-13-22` | P4 | — | Umbrella row for unresolved server-side follow-ons absorbed from the retired 2026-04-13/15/22 raw audits: preview-formatting defects, summary-mode gaps, resource/connection contract docs, large-solution payload reducers, warm-up follow-ons, and selected experimental-promotion fixes. Split child rows only when one item becomes active. |
-| `test-related-files-empty-result-explainability` | P4 | — | `test_related_files` currently returns only `tests: []` and `dotnetTestFilter: \"\"` on a miss. During the 2026-04-23 backlog-sweep wave-2 preflight this gave no clue whether no tests existed or the heuristic missed likely coverage for `MutationAnalysisService` and `ScaffoldingService`, then again for `CodePatternAnalyzer` and `TestDiscoveryService`. Extend the tool, or add a companion, to report scanned test projects, heuristics hit, and rejection reasons on empty results. Refs: retrospective 2026-04-23 Step 2a row 1, Step 2b row 1, Step 3 pattern 1. |
-| `test-related-files-service-refactor-underreporting` | P4 | — | Harden `test_related_files` for service-layer refactors. In the 2026-04-23 backlog-sweep wave-2 preflight it returned empty results for `MutationAnalysisService.cs` plus `ScaffoldingService.cs` and for `CodePatternAnalyzer.cs` plus `TestDiscoveryService.cs`, despite those initiatives later landing targeted test updates in PRs #367 and #366. Add stronger fallback heuristics such as symbol-name affinity, broader integration-test ownership, or unioning with `test_related` before falling back to empty. Refs: retrospective 2026-04-23 Step 2a row 1, Step 3 pattern 1. |
-| `workspace-process-pool-or-daemon` | P4 | `compilation-prewarm-on-load` | Reduce repeated `workspace_load` cost across multi-agent sessions by evaluating a long-running daemon or process-pool/shared-workspace model. |
+| `test-related-files-empty-result-explainability` | P4 | — | `test_related_files` currently returns only `tests` + `dotnetTestFilter` (`src/RoslynMcp.Core/Models/RelatedTestsForFilesDto.cs`), so an empty result cannot distinguish "no tests exist" from "heuristic miss." Extend the response, or add a companion diagnostic mode, to report scanned test projects, heuristics attempted, and miss reasons for each changed file. |
+| `test-related-files-service-refactor-underreporting` | P4 | — | `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs` still underreports service-layer refactors because its fallback path leans too heavily on type-name / filename affinity. Broaden the heuristic for multi-file service changes so it can surface likely integration or neighboring service tests before returning empty, and validate against the `MutationAnalysisService` + `ScaffoldingService` and `CodePatternAnalyzer` + `TestDiscoveryService` misses seen in the 2026-04-23 sweep. |
+| `workspace-process-pool-or-daemon` | P4 | `large-solution profile` | Do not start a daemon/process-pool implementation blindly. First capture representative 50+ project timings per `docs/large-solution-profiling-baseline.md`; only if `workspace_load` / reload P95 still blocks daily use after `workspace_warm` should the next plan produce a bounded design note comparing daemon, process-pool, and shared-workspace approaches, including lifecycle and failure-isolation hooks. |
 
 ## Refs
 
@@ -47,5 +49,7 @@ _No open P3 rows._
 |------|------|
 | `ai_docs/planning_index.md` | Planning router and scope boundary |
 | `ai_docs/workflow.md` | Branch/PR workflow and backlog-closure rule |
-| `ai_docs/reports/20260422T143323Z_deep-review-rollup.md` | Current synthesized audit rollup backing the umbrella P4 row |
+| `ai_docs/plans/20260422T170500Z_test-parallelization-audit/plan.md` | Dedicated phased plan for `ci-test-parallelization-audit` |
+| `docs/large-solution-profiling-baseline.md` | Evidence gate for daemon/process-pool performance work |
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Intake procedure for future audit batches |
+| `ai_docs/plans/20260422T223000Z_backlog-sweep/plan.md` | Backlog sweep (20260422T223000Z). Shipped 14 initiatives across 14 PRs; closed 9 backlog rows (P2: 0, P3: 4, P4: 5). |
