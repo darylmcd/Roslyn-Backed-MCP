@@ -121,6 +121,31 @@ public sealed class ScriptingServiceTests
     }
 
     [TestMethod]
+    [Timeout(10_000)]
+    public async Task EvaluateAsync_LongRunningAsyncScript_ReportsHeartbeatProgress()
+    {
+        var options = new ScriptingServiceOptions
+        {
+            HeartbeatIntervalMs = 100,
+            WatchdogGraceSeconds = 1,
+        };
+        var service = new ScriptingService(NullLogger<ScriptingService>.Instance, options);
+        var observedHeartbeats = 0;
+
+        var result = await service.EvaluateAsync(
+            "await Task.Delay(500); 123",
+            imports: null,
+            CancellationToken.None,
+            _ => Interlocked.Increment(ref observedHeartbeats),
+            timeoutSecondsOverride: 5).ConfigureAwait(false);
+
+        Assert.IsTrue(result.Success, result.Error);
+        Assert.AreEqual("123", result.ResultValue);
+        Assert.IsTrue(result.ProgressHeartbeatCount is >= 1, "Expected the DTO to report at least one heartbeat.");
+        Assert.IsTrue(observedHeartbeats >= result.ProgressHeartbeatCount, "Heartbeat callback count should match or exceed the reported timer count.");
+    }
+
+    [TestMethod]
     public async Task EvaluateAsync_SimpleExpression_ReturnsResult()
     {
         var service = new ScriptingService(NullLogger<ScriptingService>.Instance, new ScriptingServiceOptions());

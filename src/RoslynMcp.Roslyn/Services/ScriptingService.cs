@@ -84,15 +84,9 @@ public sealed class ScriptingService : IScriptingService
         Action<ScriptEvaluationProgress>? onProgress = null,
         int? timeoutSecondsOverride = null)
     {
-        // UX-002: per-call timeout override; null/<=0 falls back to env-configured default.
-        var effectiveTimeoutSeconds = timeoutSecondsOverride is > 0
-            ? timeoutSecondsOverride.Value
-            : _options.TimeoutSeconds;
-        var graceSeconds = Math.Max(0, _options.WatchdogGraceSeconds);
-        var hardDeadlineSeconds = effectiveTimeoutSeconds + graceSeconds;
-        var heartbeatInterval = TimeSpan.FromMilliseconds(Math.Max(100, _options.HeartbeatIntervalMs));
+        var settings = CreateExecutionSettings(imports, timeoutSecondsOverride);
 
-        var capacityError = await TryAcquireCapacityAsync(effectiveTimeoutSeconds, ct).ConfigureAwait(false);
+        var capacityError = await TryAcquireCapacityAsync(settings.EffectiveTimeoutSeconds, ct).ConfigureAwait(false);
         if (capacityError is not null)
         {
             return capacityError;
@@ -100,76 +94,109 @@ public sealed class ScriptingService : IScriptingService
 
         Interlocked.Increment(ref _activeEvaluations);
 
-        var sw = Stopwatch.StartNew();
-        var budget = TimeSpan.FromSeconds(effectiveTimeoutSeconds);
-        var scriptOptions = BuildScriptOptions(imports);
-
         // The script execution token is the inner token Roslyn sees. We cancel it when the
         // budget elapses, but Roslyn may not honor it for tight loops — that is what the
         // hard deadline below is for.
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(budget);
-
-        Timer? heartbeatTimer = null;
-        Timer? deadlineTimer = null;
-        var runState = new ScriptRunState();
-
-        // Signaled by EXACTLY ONE of: the worker thread (success/error/cancel) or the deadline timer.
-        // RunContinuationsAsynchronously ensures the awaiting frame is not invoked inline on the
-        // worker thread or the timer thread.
-        var completion = CreateCompletionSource();
-
-        void ReleaseSlotOnce()
-        {
-            if (Interlocked.Exchange(ref runState.SlotReleased, 1) == 0)
-            {
-                Interlocked.Decrement(ref _activeEvaluations);
-                try { _concurrencyGate.Release(); }
-                catch (ObjectDisposedException) { /* host shutting down */ }
-                catch (SemaphoreFullException) { /* defensive */ }
-            }
-        }
+        using var timeoutCts = CreateTimeoutTokenSource(ct, settings.Budget);
+        var execution = CreateExecutionContext();
 
         try
         {
-            var workerThread = StartWorkerThread(code, scriptOptions, timeoutCts.Token, completion, runState);
-            deadlineTimer = CreateDeadlineTimer(completion, hardDeadlineSeconds);
-            heartbeatTimer = CreateHeartbeatTimer(
-                onProgress,
-                sw,
-                budget,
-                effectiveTimeoutSeconds,
-                heartbeatInterval,
-                runState);
-
-            // Outer cancellation propagation: if the caller cancels (e.g. MCP request budget),
-            // surface OperationCanceledException promptly. Worker thread is then abandoned.
-            using var ctRegistration = RegisterOuterCancellation(ct, completion);
-
-            var raceOutcome = await completion.Task.ConfigureAwait(false);
-            sw.Stop();
-            return FinalizeEvaluation(
-                raceOutcome,
-                sw,
-                workerThread.Name,
-                runState,
-                hardDeadlineSeconds,
-                effectiveTimeoutSeconds,
-                graceSeconds,
-                ct,
-                timeoutCts);
+            return await RunEvaluationAsync(code, onProgress, ct, timeoutCts, settings, execution).ConfigureAwait(false);
         }
         finally
         {
-            // Tear down timers (synchronous; never blocks).
-            try { heartbeatTimer?.Dispose(); } catch { /* best-effort */ }
-            try { deadlineTimer?.Dispose(); } catch { /* best-effort */ }
-
-            // Always release the slot. The request is done from the caller's perspective. If
-            // the worker thread is still running it has been moved to the abandoned counter and
-            // will not consume a slot.
-            ReleaseSlotOnce();
+            DisposeTimers(execution);
+            ReleaseConcurrencySlot(execution.RunState);
         }
+    }
+
+    private ScriptExecutionSettings CreateExecutionSettings(string[]? imports, int? timeoutSecondsOverride)
+    {
+        // UX-002: per-call timeout override; null/<=0 falls back to env-configured default.
+        var effectiveTimeoutSeconds = timeoutSecondsOverride is > 0
+            ? timeoutSecondsOverride.Value
+            : _options.TimeoutSeconds;
+        var graceSeconds = Math.Max(0, _options.WatchdogGraceSeconds);
+
+        return new ScriptExecutionSettings(
+            EffectiveTimeoutSeconds: effectiveTimeoutSeconds,
+            GraceSeconds: graceSeconds,
+            HardDeadlineSeconds: effectiveTimeoutSeconds + graceSeconds,
+            HeartbeatInterval: TimeSpan.FromMilliseconds(Math.Max(100, _options.HeartbeatIntervalMs)),
+            Budget: TimeSpan.FromSeconds(effectiveTimeoutSeconds),
+            ScriptOptions: BuildScriptOptions(imports));
+    }
+
+    private static CancellationTokenSource CreateTimeoutTokenSource(CancellationToken ct, TimeSpan budget)
+    {
+        var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(budget);
+        return timeoutCts;
+    }
+
+    private static ScriptExecutionContext CreateExecutionContext() =>
+        new(Stopwatch.StartNew(), new ScriptRunState(), CreateCompletionSource());
+
+    private async Task<ScriptEvaluationDto> RunEvaluationAsync(
+        string code,
+        Action<ScriptEvaluationProgress>? onProgress,
+        CancellationToken ct,
+        CancellationTokenSource timeoutCts,
+        ScriptExecutionSettings settings,
+        ScriptExecutionContext execution)
+    {
+        var workerThread = StartWorkerThread(
+            code,
+            settings.ScriptOptions,
+            timeoutCts.Token,
+            execution.Completion,
+            execution.RunState);
+        execution.DeadlineTimer = CreateDeadlineTimer(execution.Completion, settings.HardDeadlineSeconds);
+        execution.HeartbeatTimer = CreateHeartbeatTimer(
+            onProgress,
+            execution.Stopwatch,
+            settings.Budget,
+            settings.EffectiveTimeoutSeconds,
+            settings.HeartbeatInterval,
+            execution.RunState);
+
+        // Outer cancellation propagation: if the caller cancels (e.g. MCP request budget),
+        // surface OperationCanceledException promptly. Worker thread is then abandoned.
+        using var ctRegistration = RegisterOuterCancellation(ct, execution.Completion);
+
+        var raceOutcome = await execution.Completion.Task.ConfigureAwait(false);
+        execution.Stopwatch.Stop();
+        return FinalizeEvaluation(
+            raceOutcome,
+            execution.Stopwatch,
+            workerThread.Name,
+            execution.RunState,
+            settings.HardDeadlineSeconds,
+            settings.EffectiveTimeoutSeconds,
+            settings.GraceSeconds,
+            ct,
+            timeoutCts);
+    }
+
+    private void ReleaseConcurrencySlot(ScriptRunState runState)
+    {
+        if (Interlocked.Exchange(ref runState.SlotReleased, 1) != 0)
+        {
+            return;
+        }
+
+        Interlocked.Decrement(ref _activeEvaluations);
+        try { _concurrencyGate.Release(); }
+        catch (ObjectDisposedException) { /* host shutting down */ }
+        catch (SemaphoreFullException) { /* defensive */ }
+    }
+
+    private static void DisposeTimers(ScriptExecutionContext execution)
+    {
+        // Tear down timers (synchronous; never blocks).
+        try { execution.HeartbeatTimer?.Dispose(); } catch { /* best-effort */ }
+        try { execution.DeadlineTimer?.Dispose(); } catch { /* best-effort */ }
     }
 
     private static TaskCompletionSource<ScriptOutcome> CreateCompletionSource() =>
@@ -561,6 +588,26 @@ public sealed class ScriptingService : IScriptingService
         public long SlotReleased;
         public long AbandonedFlag;
     }
+
+    private sealed class ScriptExecutionContext(
+        Stopwatch stopwatch,
+        ScriptRunState runState,
+        TaskCompletionSource<ScriptOutcome> completion)
+    {
+        public Stopwatch Stopwatch { get; } = stopwatch;
+        public ScriptRunState RunState { get; } = runState;
+        public TaskCompletionSource<ScriptOutcome> Completion { get; } = completion;
+        public Timer? HeartbeatTimer { get; set; }
+        public Timer? DeadlineTimer { get; set; }
+    }
+
+    private readonly record struct ScriptExecutionSettings(
+        int EffectiveTimeoutSeconds,
+        int GraceSeconds,
+        int HardDeadlineSeconds,
+        TimeSpan HeartbeatInterval,
+        TimeSpan Budget,
+        ScriptOptions ScriptOptions);
 
     private enum ScriptOutcomeKind
     {

@@ -870,8 +870,6 @@ public sealed class RefactoringService : IRefactoringService
         SolutionChanges solutionChanges,
         CancellationToken ct)
     {
-        var appliedFiles = new List<string>();
-
         // Item #5 — severity-medium-breaks-msbuild-until-csproj-is-hand.
         //
         // MSBuildWorkspace.TryApplyChanges, when it sees an added document in an
@@ -888,8 +886,6 @@ public sealed class RefactoringService : IRefactoringService
         // workspace's view of the added document (TryApplyChanges has already added
         // the document to the in-memory Solution). The next reload picks up the new
         // file through the SDK's default glob, so the on-disk csproj stays clean.
-        var sdkProjectCsprojSnapshots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
         // csproj-reserialization-msbuildworkspace (P2) — create-file-apply-csproj-side-effect-all-projects.
         //
         // Extends Item #5's snapshot pattern to EVERY csproj in the workspace. MSBuildWorkspace's
@@ -910,6 +906,31 @@ public sealed class RefactoringService : IRefactoringService
         // them. This whole-workspace snapshot is a SECOND pass that handles the other shapes of
         // MSBuild-driven reserialization drift (e.g., csprojs with analyzer references that trigger
         // TryApplyChanges via StripUnresolvedAnalyzerReferences on subsequent reloads).
+        var persistenceState = await CreateDocumentSetPersistenceStateAsync(currentSolution, ct).ConfigureAwait(false);
+
+        try
+        {
+            await PersistDocumentSetChangesCoreAsync(
+                workspaceId,
+                currentSolution,
+                modifiedSolution,
+                solutionChanges,
+                persistenceState,
+                ct).ConfigureAwait(false);
+
+            return (true, persistenceState.GetDistinctAppliedFiles());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "Failed to persist document set changes for workspace {WorkspaceId}", workspaceId);
+            return (false, []);
+        }
+    }
+
+    private async Task<DocumentSetPersistenceState> CreateDocumentSetPersistenceStateAsync(
+        Solution currentSolution,
+        CancellationToken ct)
+    {
         var allCsprojSnapshots = await CsprojSemanticEquality.SnapshotProjectsAsync(
             currentSolution.Projects
                 .Select(project => project.FilePath)
@@ -917,33 +938,37 @@ public sealed class RefactoringService : IRefactoringService
             _logger,
             ct).ConfigureAwait(false);
 
-        try
-        {
-            foreach (var projectChange in solutionChanges.GetProjectChanges())
-            {
-                await PersistProjectDocumentChangesAsync(
-                    currentSolution,
-                    modifiedSolution,
-                    projectChange,
-                    sdkProjectCsprojSnapshots,
-                    appliedFiles,
-                    ct).ConfigureAwait(false);
-            }
+        return new DocumentSetPersistenceState(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            new List<string>(),
+            allCsprojSnapshots);
+    }
 
-            await ApplyDocumentSetChangesAsync(
-                workspaceId,
+    private async Task PersistDocumentSetChangesCoreAsync(
+        string workspaceId,
+        Solution currentSolution,
+        Solution modifiedSolution,
+        SolutionChanges solutionChanges,
+        DocumentSetPersistenceState persistenceState,
+        CancellationToken ct)
+    {
+        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        {
+            await PersistProjectDocumentChangesAsync(
+                currentSolution,
                 modifiedSolution,
-                sdkProjectCsprojSnapshots,
-                allCsprojSnapshots,
+                projectChange,
+                persistenceState.SdkProjectCsprojSnapshots,
+                persistenceState.AppliedFiles,
                 ct).ConfigureAwait(false);
+        }
 
-            return (true, appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList());
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
-        {
-            _logger.LogWarning(ex, "Failed to persist document set changes for workspace {WorkspaceId}", workspaceId);
-            return (false, []);
-        }
+        await ApplyDocumentSetChangesAsync(
+            workspaceId,
+            modifiedSolution,
+            persistenceState.SdkProjectCsprojSnapshots,
+            persistenceState.AllCsprojSnapshots,
+            ct).ConfigureAwait(false);
     }
 
     private async Task PersistProjectDocumentChangesAsync(
@@ -1059,6 +1084,19 @@ public sealed class RefactoringService : IRefactoringService
 
             appliedFiles.Add(document.FilePath);
         }
+    }
+
+    private sealed class DocumentSetPersistenceState(
+        Dictionary<string, string> sdkProjectCsprojSnapshots,
+        List<string> appliedFiles,
+        IReadOnlyDictionary<string, string> allCsprojSnapshots)
+    {
+        public Dictionary<string, string> SdkProjectCsprojSnapshots { get; } = sdkProjectCsprojSnapshots;
+        public List<string> AppliedFiles { get; } = appliedFiles;
+        public IReadOnlyDictionary<string, string> AllCsprojSnapshots { get; } = allCsprojSnapshots;
+
+        public IReadOnlyList<string> GetDistinctAppliedFiles() =>
+            AppliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     private async Task ApplyDocumentSetChangesAsync(
