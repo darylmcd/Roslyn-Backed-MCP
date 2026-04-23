@@ -97,7 +97,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
+| **Status** | `merged` (PR [#367](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/367), 2026-04-23) |
 | **Backlog rows closed** | *none until row closure PR* |
 | **Diagnosis** | `MutationAnalysisService.FindTypeMutationsAsync` (cc=18) + `ScaffoldingService.PreviewScaffoldTestBatchAsync` (cc=19) per `ai_docs/backlog.md`. |
 | **Approach** | `preview-then-apply` extractions; `verify-release.ps1` per tranche. |
@@ -111,6 +111,7 @@
 
 | Field | Content |
 |-------|---------|
+| **Status** | `merged` (PR [#366](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/366), 2026-04-23) |
 | **Diagnosis** | Pairs `CodePatternAnalyzer.ParseSemanticQuery` (cc=19) + `TestDiscoveryService.FindRelatedTestsAsync` (cc=18, maxNesting=5). |
 | **Tool policy** | `preview-then-apply` |
 | **Estimated context cost** | 48000 |
@@ -144,7 +145,7 @@
 
 | Field | Content |
 |-------|---------|
-| **Status** | `pending` |
+| **Status** | `merged` (PR [#368](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/368), 2026-04-23) |
 | **Backlog rows closed** | `cc-18-to-19-residuals-post-top10-extraction` — **only when** tranches 4a–4f are already in `main` (reconcile order in executor; if 4g lands first, leave row open). |
 | **Diagnosis** | `CohesionAnalysisService.FindAccessedMembers` (cc=18) — last method in the backlog list after 4a–4f pairings. |
 | **Tool policy** | `preview-then-apply` |
