@@ -25,6 +25,20 @@ Call `discover_capabilities` with a category to get contextual guidance, or use 
 
 **"I need to verify after a multi-file edit"** → `validate_recent_git_changes` (auto-scoped to `git status`), or `validate_workspace` with an explicit `changedFilePaths` — see [Verification workflow](#verification-workflow-post-edit-default)
 
+## Parallel read fan-out
+
+If you need several independent answers from the same loaded workspace, issue
+read-only calls in parallel when the client supports concurrent MCP requests.
+Good pairings include multiple `find_references` / `symbol_search` lookups, or
+navigation plus `compile_check`.
+
+- Safe: read-only analysis/navigation/verification on an already-loaded
+  workspace.
+- Unsafe to overlap: `workspace_load`, `workspace_reload`, `workspace_close`,
+  and all `*_apply` / `apply_*` mutation flows.
+- If the host serializes requests, fall back to sequential calls and note that
+  the client blocked parallelism rather than the server.
+
 ## Verification workflow (post-edit default)
 
 After any C# edit — `Edit`, `Write`, or `*_apply` — the canonical verify for
