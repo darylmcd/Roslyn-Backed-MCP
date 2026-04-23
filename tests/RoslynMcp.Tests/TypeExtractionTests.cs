@@ -12,24 +12,58 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     [TestMethod]
     public async Task ExtractType_FromAnimalService_RefusesWhenExternalConsumersExist()
     {
-        // Regression for `dr-9-1-does-not-update-external-consumer-call-sites` (P3): the
-        // SampleSolution AnimalService.CountAnimals is referenced by Program.cs and the
-        // AnimalServiceTests project. Pre-fix, extracting it produced a preview token but
-        // applying it broke the external callers. Post-fix the preview refuses with an
-        // actionable error so the breakage surfaces before any disk mutation.
-        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
-        var wsId = workspace.WorkspaceId;
+        // Regression for `dr-9-1-does-not-update-external-consumer-call-sites` (P3): extracting
+        // a member with references from another source file must refuse the preview before any
+        // disk mutation. Keep the fixture local to this test so it does not drift as the shared
+        // sample solution evolves.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var sourcePath = Path.Combine(sampleLibDir, "ExternalConsumerFixture.cs");
+        var callerPath = Path.Combine(sampleLibDir, "ExternalConsumerCaller.cs");
 
-        var doc = WorkspaceManager.GetCurrentSolution(wsId)
-            .Projects.SelectMany(p => p.Documents)
-            .First(d => d.FilePath?.EndsWith("AnimalService.cs") == true);
+        await File.WriteAllTextAsync(sourcePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class ExternalConsumerFixture",
+                "{",
+                "    public int Compute(int value) => value * 2;",
+                "}",
+                "",
+            }));
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
-            TypeExtractionService.PreviewExtractTypeAsync(
-                wsId, doc.FilePath!, "AnimalService", ["CountAnimals"], "AnimalCounter", null, CancellationToken.None));
-        StringAssert.Contains(ex.Message, "external consumer");
-        StringAssert.Contains(ex.Message, "Program.cs",
-            "error message must name the affected external file so callers know which code to update");
+        await File.WriteAllTextAsync(callerPath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class ExternalConsumerCaller",
+                "{",
+                "    public int Use(ExternalConsumerFixture fixture) => fixture.Compute(21);",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+                TypeExtractionService.PreviewExtractTypeAsync(
+                    wsId, sourcePath, "ExternalConsumerFixture", ["Compute"], "ComputeHelper", null, CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "external consumer");
+            StringAssert.Contains(ex.Message, "ExternalConsumerCaller.cs",
+                "error message must name the affected external file so callers know which code to update");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
     }
 
     [TestMethod]
@@ -181,6 +215,62 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ExtractType_NewMember_StripsNewModifierFromNewType()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "NewModifierFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class NewModifierBase",
+                "{",
+                "    public int Count => 1;",
+                "}",
+                "",
+                "public class NewModifierFixture : NewModifierBase",
+                "{",
+                "    public new int Count => 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var result = await TypeExtractionService.PreviewExtractTypeAsync(
+                wsId, fixturePath, "NewModifierFixture", ["Count"], "CountHelper", null, CancellationToken.None);
+
+            Assert.IsNotNull(result);
+            var newFileDiff = result.Changes.FirstOrDefault(
+                c => c.FilePath.EndsWith("CountHelper.cs", StringComparison.OrdinalIgnoreCase));
+            Assert.IsNotNull(newFileDiff, "preview must emit a change entry for the new extracted type file");
+            var diffText = newFileDiff!.UnifiedDiff;
+
+            var addedLines = diffText
+                .Split('\n')
+                .Where(line => line.StartsWith('\u002B') && !line.StartsWith("\u002B\u002B\u002B"))
+                .ToArray();
+
+            Assert.IsFalse(
+                addedLines.Any(line => System.Text.RegularExpressions.Regex.IsMatch(line, @"\bnew\b")),
+                $"extracted members must not carry 'new' in the new type. Diff:\n{diffText}");
+            Assert.IsTrue(
+                addedLines.Any(line => line.Contains("int Count", StringComparison.Ordinal)),
+                $"property should still be present in the extracted type. Diff:\n{diffText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+        }
+    }
+
+    [TestMethod]
     public async Task ExtractType_PreservesBlankLineBetweenNamespaceAndClass()
     {
         // Regression for `dr-9-5-strips-the-blank-line-between-namespace-and-clas` (P4):
@@ -252,6 +342,21 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         finally
         {
             WorkspaceManager.Close(wsId);
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch
+        {
+            // Best-effort cleanup.
         }
     }
 }

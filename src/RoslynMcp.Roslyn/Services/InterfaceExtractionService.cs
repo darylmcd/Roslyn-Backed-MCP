@@ -393,16 +393,27 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         var result = new List<UsingDirectiveSyntax>();
         var alreadyAddedPlainNamespaces = new HashSet<string>(StringComparer.Ordinal);
 
+        PreserveSpecialAndRequiredSourceUsings(
+            sourceUsings,
+            requiredNamespaces,
+            result,
+            alreadyAddedPlainNamespaces);
+        AddMissingRequiredUsingDirectives(requiredNamespaces, alreadyAddedPlainNamespaces, result);
+        return SortUsingDirectives(result);
+    }
+
+    private static void PreserveSpecialAndRequiredSourceUsings(
+        SyntaxList<UsingDirectiveSyntax> sourceUsings,
+        IReadOnlyCollection<string> requiredNamespaces,
+        List<UsingDirectiveSyntax> result,
+        ISet<string> alreadyAddedPlainNamespaces)
+    {
         // Preserve aliases, static usings, and global usings — the semantic walker cannot
         // reproduce these, they may carry meaningful intent, and they never cause the
         // missing-using bug we're fixing.
         foreach (var source in sourceUsings)
         {
-            var isAlias = source.Alias is not null;
-            var isStatic = source.StaticKeyword.IsKind(SyntaxKind.StaticKeyword);
-            var isGlobal = source.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword);
-
-            if (isAlias || isStatic || isGlobal)
+            if (IsSpecialUsingDirective(source))
             {
                 result.Add(source);
                 continue;
@@ -410,46 +421,62 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
             // Plain using: keep ONLY if the semantic walk identified this namespace as
             // required. This drops unrelated usings that pollute the interface file.
-            var name = source.Name?.ToString();
-            if (!string.IsNullOrWhiteSpace(name) && requiredNamespaces.Contains(name))
-            {
-                result.Add(source);
-                alreadyAddedPlainNamespaces.Add(name);
-            }
-        }
-
-        // Add missing required namespaces as new plain usings.
-        foreach (var ns in requiredNamespaces)
-        {
-            if (alreadyAddedPlainNamespaces.Contains(ns))
+            var name = GetUsingNamespace(source);
+            if (name is null || !requiredNamespaces.Contains(name))
             {
                 continue;
             }
 
-            result.Add(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns)));
+            result.Add(source);
+            alreadyAddedPlainNamespaces.Add(name);
         }
+    }
 
+    private static void AddMissingRequiredUsingDirectives(
+        IReadOnlyCollection<string> requiredNamespaces,
+        ISet<string> alreadyAddedPlainNamespaces,
+        List<UsingDirectiveSyntax> result)
+    {
+        foreach (var ns in requiredNamespaces)
+        {
+            if (!alreadyAddedPlainNamespaces.Contains(ns))
+            {
+                result.Add(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns)));
+            }
+        }
+    }
+
+    private static SyntaxList<UsingDirectiveSyntax> SortUsingDirectives(List<UsingDirectiveSyntax> usings)
+    {
         // Sort: System.* first alphabetically, then other plain usings alphabetically,
-        // then aliases/static/global at the end in their original order. This keeps the
-        // generated file PEP-style tidy for code review.
-        var systemUsings = result
-            .Where(u => u.Alias is null
-                && !u.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
-                && !u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword)
-                && (u.Name?.ToString().StartsWith("System", StringComparison.Ordinal) ?? false))
+        // then aliases/static/global at the end in their original order.
+        var systemUsings = usings
+            .Where(IsSystemUsingDirective)
             .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
-        var otherPlain = result
-            .Where(u => u.Alias is null
-                && !u.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
-                && !u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword)
-                && !(u.Name?.ToString().StartsWith("System", StringComparison.Ordinal) ?? false))
+        var otherPlain = usings
+            .Where(u => !IsSpecialUsingDirective(u) && !IsSystemUsingDirective(u))
             .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
-        var specials = result
-            .Where(u => u.Alias is not null
-                || u.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
-                || u.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword));
-
+        var specials = usings.Where(IsSpecialUsingDirective);
         return SyntaxFactory.List(systemUsings.Concat(otherPlain).Concat(specials));
+    }
+
+    private static string? GetUsingNamespace(UsingDirectiveSyntax source)
+    {
+        var name = source.Name?.ToString();
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
+    private static bool IsSystemUsingDirective(UsingDirectiveSyntax usingDirective)
+    {
+        return !IsSpecialUsingDirective(usingDirective)
+            && (usingDirective.Name?.ToString().StartsWith("System", StringComparison.Ordinal) ?? false);
+    }
+
+    private static bool IsSpecialUsingDirective(UsingDirectiveSyntax usingDirective)
+    {
+        return usingDirective.Alias is not null
+            || usingDirective.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
+            || usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword);
     }
 
     private static TypeDeclarationSyntax EnsureOpeningBraceOnOwnLine(TypeDeclarationSyntax typeDecl)

@@ -476,39 +476,17 @@ public sealed class TypeExtractionService : ITypeExtractionService
     /// </summary>
     private static MemberDeclarationSyntax StripInheritanceOnlyModifiers(MemberDeclarationSyntax member)
     {
-        var inheritanceOnly = new[]
-        {
-            SyntaxKind.OverrideKeyword,
-            SyntaxKind.VirtualKeyword,
-            SyntaxKind.AbstractKeyword,
-            SyntaxKind.SealedKeyword,
-            SyntaxKind.NewKeyword,
-        };
-
-        var currentModifiers = member switch
-        {
-            MethodDeclarationSyntax m => m.Modifiers,
-            PropertyDeclarationSyntax p => p.Modifiers,
-            FieldDeclarationSyntax f => f.Modifiers,
-            EventDeclarationSyntax e => e.Modifiers,
-            _ => default
-        };
-
+        var currentModifiers = GetMemberModifiers(member);
         if (currentModifiers.Count == 0)
+        {
             return member;
+        }
 
-        var kept = currentModifiers.Where(tok => !inheritanceOnly.Contains(tok.Kind())).ToArray();
-        if (kept.Length == currentModifiers.Count)
+        var strippedModifiers = BuildStrippedModifierList(currentModifiers);
+        if (strippedModifiers.Count == currentModifiers.Count)
+        {
             return member;
-
-        // Preserve the leading trivia from the original first modifier so the declaration
-        // does not collapse against the preceding newline when an override-only modifier sat
-        // at the front of the list.
-        var leadingTrivia = currentModifiers[0].LeadingTrivia;
-        if (kept.Length > 0)
-            kept[0] = kept[0].WithLeadingTrivia(leadingTrivia);
-
-        var tokenList = SyntaxFactory.TokenList(kept);
+        }
 
         // For members whose method body remains valid after dropping `abstract`, we need to
         // also ensure the declaration has a body (abstract members carry `;` instead). Roslyn
@@ -517,15 +495,54 @@ public sealed class TypeExtractionService : ITypeExtractionService
         // current extract path (the source method already had a body to be extracted), but we
         // guard defensively so any future caller shape surfaces an explicit error instead of
         // silently emitting broken syntax.
-        if (member is MethodDeclarationSyntax method
-            && currentModifiers.Any(m => m.IsKind(SyntaxKind.AbstractKeyword))
-            && method.Body is null
-            && method.ExpressionBody is null)
+        ValidateAbstractMethodHasBody(member, currentModifiers);
+        return WithMemberModifiers(member, strippedModifiers);
+    }
+
+    private static SyntaxTokenList BuildStrippedModifierList(SyntaxTokenList currentModifiers)
+    {
+        var kept = currentModifiers.Where(tok => !IsInheritanceOnlyModifier(tok)).ToArray();
+        if (kept.Length > 0)
         {
-            throw new InvalidOperationException(
-                $"Cannot extract abstract member '{method.Identifier.Text}' into a non-inheriting type: the source has no body.");
+            // Preserve the leading trivia from the original first modifier so the declaration
+            // does not collapse against the preceding newline when an override-only modifier sat
+            // at the front of the list.
+            kept[0] = kept[0].WithLeadingTrivia(currentModifiers[0].LeadingTrivia);
         }
 
+        return SyntaxFactory.TokenList(kept);
+    }
+
+    private static void ValidateAbstractMethodHasBody(MemberDeclarationSyntax member, SyntaxTokenList currentModifiers)
+    {
+        if (member is not MethodDeclarationSyntax method || !currentModifiers.Any(IsAbstractModifier))
+        {
+            return;
+        }
+
+        if (method.Body is not null || method.ExpressionBody is not null)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Cannot extract abstract member '{method.Identifier.Text}' into a non-inheriting type: the source has no body.");
+    }
+
+    private static SyntaxTokenList GetMemberModifiers(MemberDeclarationSyntax member)
+    {
+        return member switch
+        {
+            MethodDeclarationSyntax m => m.Modifiers,
+            PropertyDeclarationSyntax p => p.Modifiers,
+            FieldDeclarationSyntax f => f.Modifiers,
+            EventDeclarationSyntax e => e.Modifiers,
+            _ => default
+        };
+    }
+
+    private static MemberDeclarationSyntax WithMemberModifiers(MemberDeclarationSyntax member, SyntaxTokenList tokenList)
+    {
         return member switch
         {
             MethodDeclarationSyntax m => m.WithModifiers(tokenList),
@@ -534,5 +551,19 @@ public sealed class TypeExtractionService : ITypeExtractionService
             EventDeclarationSyntax e => e.WithModifiers(tokenList),
             _ => member
         };
+    }
+
+    private static bool IsAbstractModifier(SyntaxToken token)
+    {
+        return token.IsKind(SyntaxKind.AbstractKeyword);
+    }
+
+    private static bool IsInheritanceOnlyModifier(SyntaxToken token)
+    {
+        return token.IsKind(SyntaxKind.OverrideKeyword)
+            || token.IsKind(SyntaxKind.VirtualKeyword)
+            || token.IsKind(SyntaxKind.AbstractKeyword)
+            || token.IsKind(SyntaxKind.SealedKeyword)
+            || token.IsKind(SyntaxKind.NewKeyword);
     }
 }
