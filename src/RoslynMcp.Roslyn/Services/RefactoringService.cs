@@ -1374,62 +1374,112 @@ public sealed class RefactoringService : IRefactoringService
         int startLine,
         int endLine)
     {
-        var startIdx = startLine - 1;
-        var endIdx = endLine - 1;
-        if (startIdx < 0) startIdx = 0;
-        if (endIdx >= text.Lines.Count) endIdx = text.Lines.Count - 1;
-        if (endIdx < startIdx) return text;
-
-        // Identify maximal blank-line runs (length >= 2) whose every line is in [startIdx, endIdx].
-        // Build a set of line indices to drop: keep the first blank in each qualifying run, drop the rest.
-        var dropIndices = new System.Collections.Generic.HashSet<int>();
-        int i = 0;
-        while (i < text.Lines.Count)
+        var (startIdx, endIdx) = NormalizeCollapsedBlankLineRange(text, startLine, endLine);
+        if (endIdx < startIdx)
         {
-            if (!IsBlankLine(text.Lines[i])) { i++; continue; }
-            int runStart = i;
-            int runEnd = i;
+            return text;
+}
+        var dropIndices = CollectBlankLineIndicesToDrop(text, startIdx, endIdx);
+        if (dropIndices.Count == 0)
+        {
+            return text;
+        }
+
+        return BuildCollapsedSourceText(text, dropIndices);
+    }
+
+    private static (int StartIdx, int EndIdx) NormalizeCollapsedBlankLineRange(
+        Microsoft.CodeAnalysis.Text.SourceText text,
+        int startLine,
+        int endLine)
+    {
+        var startIdx = System.Math.Max(0, startLine - 1);
+        var endIdx = System.Math.Min(text.Lines.Count - 1, endLine - 1);
+        return (startIdx, endIdx);
+    }
+
+    private static System.Collections.Generic.HashSet<int> CollectBlankLineIndicesToDrop(
+        Microsoft.CodeAnalysis.Text.SourceText text,
+        int startIdx,
+        int endIdx)
+    {
+        var dropIndices = new System.Collections.Generic.HashSet<int>();
+        var lineIndex = 0;
+        while (lineIndex < text.Lines.Count)
+        {
+            if (!IsBlankLine(text.Lines[lineIndex]))
+            {
+                lineIndex++;
+                continue;
+            }
+
+            var runEnd = lineIndex;
             while (runEnd + 1 < text.Lines.Count && IsBlankLine(text.Lines[runEnd + 1]))
             {
                 runEnd++;
             }
-            // Qualify: run length >= 2 AND entire run inside the requested range.
-            if (runEnd - runStart >= 1 && runStart >= startIdx && runEnd <= endIdx)
+
+            if (lineIndex >= startIdx && runEnd <= endIdx)
             {
-                for (int k = runStart + 1; k <= runEnd; k++)
+                for (var dropIndex = lineIndex + 1; dropIndex <= runEnd; dropIndex++)
                 {
-                    dropIndices.Add(k);
+                    dropIndices.Add(dropIndex);
                 }
             }
-            i = runEnd + 1;
+
+            lineIndex = runEnd + 1;
         }
 
-        if (dropIndices.Count == 0) return text;
-
-        var sb = new System.Text.StringBuilder(text.Length);
-        for (int j = 0; j < text.Lines.Count; j++)
-        {
-            if (dropIndices.Contains(j)) continue;
-            var line = text.Lines[j];
-            sb.Append(line.ToString());
-            var lineBreakStart = line.End;
-            var lineBreakEnd = line.EndIncludingLineBreak;
-            if (lineBreakEnd > lineBreakStart)
-            {
-                var breakSpan = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(lineBreakStart, lineBreakEnd);
-                sb.Append(text.GetSubText(breakSpan).ToString());
-            }
-        }
-        return Microsoft.CodeAnalysis.Text.SourceText.From(sb.ToString(), text.Encoding, text.ChecksumAlgorithm);
-
-        static bool IsBlankLine(Microsoft.CodeAnalysis.Text.TextLine line)
-        {
-            var s = line.ToString();
-            for (int n = 0; n < s.Length; n++)
-            {
-                if (s[n] != ' ' && s[n] != '\t') return false;
-            }
-            return true;
-        }
+        return dropIndices;
     }
+
+    private static Microsoft.CodeAnalysis.Text.SourceText BuildCollapsedSourceText(
+        Microsoft.CodeAnalysis.Text.SourceText text,
+        System.Collections.Generic.HashSet<int> dropIndices)
+    {
+        var sb = new System.Text.StringBuilder(text.Length);
+        for (var lineIndex = 0; lineIndex < text.Lines.Count; lineIndex++)
+        {
+            if (dropIndices.Contains(lineIndex))
+            {
+                continue;
+            }
+
+            AppendLineAndBreak(sb, text, text.Lines[lineIndex]);
+        }
+
+        return Microsoft.CodeAnalysis.Text.SourceText.From(sb.ToString(), text.Encoding, text.ChecksumAlgorithm);
+    }
+
+    private static void AppendLineAndBreak(
+        System.Text.StringBuilder sb,
+        Microsoft.CodeAnalysis.Text.SourceText text,
+        Microsoft.CodeAnalysis.Text.TextLine line)
+    {
+        sb.Append(line.ToString());
+        var lineBreakStart = line.End;
+        var lineBreakEnd = line.EndIncludingLineBreak;
+        if (lineBreakEnd <= lineBreakStart)
+        {
+            return;
+        }
+
+        var breakSpan = Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(lineBreakStart, lineBreakEnd);
+        sb.Append(text.GetSubText(breakSpan).ToString());
+    }
+
+    private static bool IsBlankLine(Microsoft.CodeAnalysis.Text.TextLine line)
+    {
+        var s = line.ToString();
+        for (var n = 0; n < s.Length; n++)
+        {
+            if (s[n] != ' ' && s[n] != '\t')
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
 }
