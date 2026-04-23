@@ -97,83 +97,132 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         var discovery = await DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        if (symbol is null)
-        {
-            return [];
-        }
+        if (symbol is null) return [];
 
+        var discoveredTests = discovery.TestProjects.SelectMany(project => project.Tests).ToList();
+        var searchTerms = BuildRelatedTestSearchTerms(symbol);
+        var collected = CollectHeuristicRelatedTests(discoveredTests, searchTerms);
+
+        await TryAugmentRelatedTestsFromReferencesAsync(
+            symbol,
+            solution,
+            discoveredTests,
+            collected,
+            ct).ConfigureAwait(false);
+
+        return collected.Values.ToList();
+    }
+
+    private static HashSet<string> BuildRelatedTestSearchTerms(ISymbol symbol)
+    {
         var searchTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { symbol.Name };
         if (symbol.ContainingType is not null)
         {
             searchTerms.Add(symbol.ContainingType.Name);
         }
 
+        return searchTerms;
+    }
+
+    private static Dictionary<string, TestCaseDto> CollectHeuristicRelatedTests(
+        IReadOnlyList<TestCaseDto> discoveredTests,
+        IReadOnlySet<string> searchTerms)
+    {
         // test-related-empty-for-valid-symbol: name heuristic misses tests that dispatch
         // through an interface (test method references `IService.Method()` but this symbol
-        // is the concrete `MyService.Method`). Walk every derived / implementing symbol + the
-        // symbol itself with SymbolFinder.FindReferencesAsync and collect the test files those
-        // references sit in — then look up any test method whose FilePath matches a reference
-        // file. The heuristic name-match is kept as a fast-path (covers the majority case where
-        // the test method name contains the symbol name) and the reference sweep augments it
-        // for interface-dispatched cases.
+        // is the concrete `MyService.Method`). Keep the heuristic as a fast path, then augment
+        // it with the reference sweep below for interface-dispatched cases.
         var collected = new Dictionary<string, TestCaseDto>(StringComparer.Ordinal);
-
-        foreach (var test in discovery.TestProjects.SelectMany(project => project.Tests))
+        foreach (var test in discoveredTests)
         {
-            if (searchTerms.Any(term =>
-                    test.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                    test.FullyQualifiedName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-                    (test.FilePath?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)))
+            if (searchTerms.Any(term => MatchesRelatedTestTerm(test, term)))
             {
                 collected[test.FullyQualifiedName] = test;
             }
         }
 
+        return collected;
+    }
+
+    private static bool MatchesRelatedTestTerm(TestCaseDto test, string term)
+    {
+        return test.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+               test.FullyQualifiedName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+               (test.FilePath?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task TryAugmentRelatedTestsFromReferencesAsync(
+        ISymbol symbol,
+        Solution solution,
+        IReadOnlyList<TestCaseDto> discoveredTests,
+        Dictionary<string, TestCaseDto> collected,
+        CancellationToken ct)
+    {
         // Reference-based augmentation: collect files that contain a reference to `symbol`
         // (or any override / implementation when the symbol is abstract / interface). Test
         // methods whose file path matches are considered related.
         try
         {
-            var referencedFilePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var symbolsToWalk = await CollectSymbolAndImplementationsAsync(symbol, solution, ct).ConfigureAwait(false);
-
-            foreach (var candidate in symbolsToWalk)
+            var referencedFilePaths = await CollectReferencedFilePathsAsync(symbol, solution, ct).ConfigureAwait(false);
+            if (referencedFilePaths.Count == 0)
             {
-                ct.ThrowIfCancellationRequested();
-                var references = await SymbolFinder.FindReferencesAsync(candidate, solution, ct).ConfigureAwait(false);
-                foreach (var refSet in references)
-                {
-                    foreach (var loc in refSet.Locations)
-                    {
-                        var path = loc.Document.FilePath;
-                        if (!string.IsNullOrWhiteSpace(path))
-                        {
-                            referencedFilePaths.Add(Path.GetFullPath(path));
-                        }
-                    }
-                }
+                return;
             }
 
-            if (referencedFilePaths.Count > 0)
+            foreach (var test in discoveredTests)
             {
-                foreach (var test in discovery.TestProjects.SelectMany(project => project.Tests))
+                if (string.IsNullOrWhiteSpace(test.FilePath))
                 {
-                    if (string.IsNullOrWhiteSpace(test.FilePath)) continue;
-                    if (referencedFilePaths.Contains(Path.GetFullPath(test.FilePath)))
-                    {
-                        collected.TryAdd(test.FullyQualifiedName, test);
-                    }
+                    continue;
+                }
+
+                if (referencedFilePaths.Contains(Path.GetFullPath(test.FilePath)))
+                {
+                    collected.TryAdd(test.FullyQualifiedName, test);
                 }
             }
         }
-        catch (OperationCanceledException) { throw; }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             // Reference-sweep is best-effort augmentation — never let it break the heuristic path.
             _logger.LogWarning(ex, "FindRelatedTests reference-sweep augmentation failed; returning heuristic results only.");
         }
+    }
 
-        return collected.Values.ToList();
+    private static async Task<HashSet<string>> CollectReferencedFilePathsAsync(
+        ISymbol symbol,
+        Solution solution,
+        CancellationToken ct)
+    {
+        var referencedFilePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var symbolsToWalk = await CollectSymbolAndImplementationsAsync(symbol, solution, ct).ConfigureAwait(false);
+
+        foreach (var candidate in symbolsToWalk)
+        {
+            ct.ThrowIfCancellationRequested();
+            var references = await SymbolFinder.FindReferencesAsync(candidate, solution, ct).ConfigureAwait(false);
+            foreach (var refSet in references)
+            {
+                foreach (var location in refSet.Locations)
+                {
+                    AddReferencedFilePath(referencedFilePaths, location.Document.FilePath);
+                }
+            }
+        }
+
+        return referencedFilePaths;
+    }
+
+    private static void AddReferencedFilePath(HashSet<string> referencedFilePaths, string? filePath)
+    {
+        if (!string.IsNullOrWhiteSpace(filePath))
+        {
+            referencedFilePaths.Add(Path.GetFullPath(filePath));
+        }
     }
 
     /// <summary>
