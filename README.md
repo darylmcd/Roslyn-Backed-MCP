@@ -86,7 +86,9 @@ See [SECURITY.md](SECURITY.md) for disclosure policy.
 
 ## Live Surface
 
-Use the running server for authoritative counts and support tiers:
+The current release exposes **160 tools** (107 stable / 53 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental).
+
+Use the running server for the authoritative live catalog and support tiers:
 
 - `server_info` for a human-readable summary
 - `roslyn://server/catalog` for the machine-readable contract
