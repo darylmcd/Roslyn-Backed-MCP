@@ -182,6 +182,75 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
         }
     }
 
+    /// <summary>
+    /// organize-usings-preview-document-not-found-after-apply — regression: when a workspace
+    /// reload fires between two preview calls that target the same file (matching the
+    /// staleness-gate <c>auto-reloaded</c> cascade a real caller observes after
+    /// <c>remove_dead_code_apply</c> / <c>apply_text_edit</c>), <c>organize_usings_preview</c>
+    /// must succeed on the same turn as a preceding <c>format_document_preview</c>. Before the
+    /// shared-resolver fix, the two services used divergent document-resolver paths and one
+    /// preview could return <c>"Invalid operation: Document not found"</c> while the other
+    /// succeeded against the reloaded snapshot. The simulated mid-sequence
+    /// <c>WorkspaceManager.ReloadAsync</c> stands in for the execution-gate's
+    /// <c>ApplyStalenessPolicyAsync</c> auto-reload; both preview services now re-acquire the
+    /// current solution via <c>DocumentResolution.GetDocumentFromFreshSolutionOrThrow</c> so
+    /// the second call sees the refreshed snapshot and resolves the document correctly.
+    /// </summary>
+    [TestMethod]
+    public async Task OrganizeUsings_Preview_Succeeds_After_MidSequence_WorkspaceReload()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
+
+        try
+        {
+            var probeFilePath = Path.Combine(copiedRoot, "SampleLib", "AutoReloadProbe.cs");
+            var seeded = string.Join('\n',
+                "using System;",
+                "using System.IO;",
+                "using System.Text;",
+                "using System.Linq;",
+                "",
+                "namespace SampleLib;",
+                "",
+                "public sealed class AutoReloadProbe",
+                "{",
+                "    public int Count => 0;",
+                "}",
+                "");
+            await File.WriteAllTextAsync(probeFilePath, seeded, CancellationToken.None);
+
+            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+            var wsId = status.WorkspaceId;
+
+            // First preview: format_document_preview succeeds, populating any snapshot caches.
+            var formatPreview = await RefactoringService.PreviewFormatDocumentAsync(
+                wsId, probeFilePath, CancellationToken.None);
+            Assert.IsNotNull(formatPreview.PreviewToken,
+                "format_document_preview must succeed before the simulated reload.");
+
+            // Simulated auto-reload cascade: bumps the workspace version and rebuilds the
+            // Solution reference behind the IWorkspaceManager facade. Before the fix, a resolver
+            // that captured its Solution reference outside the fresh-snapshot helper would miss
+            // this swap; the call below is the exact scenario the shared
+            // DocumentResolution.GetDocumentFromFreshSolutionOrThrow helper is designed to
+            // tolerate.
+            await WorkspaceManager.ReloadAsync(wsId, CancellationToken.None);
+
+            // Second preview on the same file / same turn must also succeed.
+            var organizePreview = await RefactoringService.PreviewOrganizeUsingsAsync(
+                wsId, probeFilePath, CancellationToken.None);
+            Assert.IsNotNull(organizePreview.PreviewToken,
+                "organize_usings_preview must succeed on the same file after a mid-sequence workspace reload.");
+
+            WorkspaceManager.Close(wsId);
+        }
+        finally
+        {
+            DeleteDirectoryIfExists(copiedRoot);
+        }
+    }
+
     private static string FindDocumentPath(string name)
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);

@@ -340,10 +340,13 @@ public sealed class RefactoringService : IRefactoringService
     /// </summary>
     public async Task<RefactoringPreviewDto> PreviewOrganizeUsingsAsync(string workspaceId, string filePath, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution(workspaceId);
-        var document = SymbolResolver.FindDocument(solution, filePath);
-        if (document is null)
-            throw new InvalidOperationException($"Document not found: {filePath}");
+        // organize-usings-preview-document-not-found-after-apply — route through the shared
+        // DocumentResolution helper so this tool and format_document_preview both re-acquire
+        // the same post-auto-reload snapshot from IWorkspaceManager and raise identical
+        // InvalidOperationException("Document not found: ...") messages when the file is not
+        // part of the workspace session.
+        var (solution, document) = DocumentResolution.GetDocumentFromFreshSolutionOrThrow(
+            _workspace, workspaceId, filePath);
 
         var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not get syntax root for '{filePath}'.");
@@ -386,10 +389,10 @@ public sealed class RefactoringService : IRefactoringService
     /// </summary>
     public async Task<RefactoringPreviewDto> PreviewFormatDocumentAsync(string workspaceId, string filePath, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution(workspaceId);
-        var document = SymbolResolver.FindDocument(solution, filePath);
-        if (document is null)
-            throw new InvalidOperationException($"Document not found: {filePath}");
+        // organize-usings-preview-document-not-found-after-apply — shared resolver; see sibling
+        // PreviewOrganizeUsingsAsync note.
+        var (solution, document) = DocumentResolution.GetDocumentFromFreshSolutionOrThrow(
+            _workspace, workspaceId, filePath);
 
         var formattedDoc = await Formatter.FormatAsync(document, cancellationToken: ct).ConfigureAwait(false);
         var newSolution = formattedDoc.Project.Solution;
@@ -404,10 +407,9 @@ public sealed class RefactoringService : IRefactoringService
     public async Task<RefactoringPreviewDto> PreviewFormatRangeAsync(
         string workspaceId, string filePath, int startLine, int startColumn, int endLine, int endColumn, CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution(workspaceId);
-        var document = SymbolResolver.FindDocument(solution, filePath);
-        if (document is null)
-            throw new InvalidOperationException($"Document not found: {filePath}");
+        // organize-usings-preview-document-not-found-after-apply — shared resolver.
+        var (solution, document) = DocumentResolution.GetDocumentFromFreshSolutionOrThrow(
+            _workspace, workspaceId, filePath);
 
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
 
@@ -492,12 +494,9 @@ public sealed class RefactoringService : IRefactoringService
         string? fixId,
         CancellationToken ct)
     {
-        var solution = _workspace.GetCurrentSolution(workspaceId);
-        var document = SymbolResolver.FindDocument(solution, filePath);
-        if (document is null)
-        {
-            throw new InvalidOperationException($"Document not found: {filePath}");
-        }
+        // organize-usings-preview-document-not-found-after-apply — shared resolver.
+        var (solution, document) = DocumentResolution.GetDocumentFromFreshSolutionOrThrow(
+            _workspace, workspaceId, filePath);
 
         var syntaxTree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not get syntax tree for '{filePath}'.");
