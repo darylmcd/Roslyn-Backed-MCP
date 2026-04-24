@@ -287,15 +287,49 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
 
         // 3. ASP.NET middleware shape: public InvokeAsync(HttpContext) or Invoke(HttpContext).
         //    Match the parameter type by simple name only so we don't pull Microsoft.AspNetCore.Http.
+        //    ASP.NET HealthCheck response-writer shape: method taking (HttpContext, HealthReport).
+        //    HealthCheck writers are registered via Action<HttpContext, HealthReport> delegates
+        //    (`ResponseWriter = MyType.WriteAsync`), so direct C# call sites don't exist even
+        //    though the method is live.
         foreach (var member in type.GetMembers().OfType<IMethodSymbol>())
         {
             if (member.DeclaredAccessibility != Accessibility.Public) continue;
-            if (member.Name is not ("InvokeAsync" or "Invoke")) continue;
-            if (member.Parameters.Length < 1) continue;
-            if (member.Parameters[0].Type.Name == "HttpContext") return true;
+
+            if (member.Name is "InvokeAsync" or "Invoke"
+                && member.Parameters.Length >= 1
+                && member.Parameters[0].Type.Name == "HttpContext")
+                return true;
+
+            if (member.Parameters.Length == 2
+                && member.Parameters[0].Type.Name == "HttpContext"
+                && member.Parameters[1].Type.Name == "HealthReport")
+                return true;
         }
 
-        // 4. Reuse the existing test-fixture detection so xUnit/MSTest/NUnit fixture types are
+        // 4. Attribute-based convention markers applied to the type declaration itself.
+        //    Covered families:
+        //      - MCP server catalogs: [McpServerToolType] / [McpServerPromptType] / [McpServerResourceType].
+        //        The ModelContextProtocol host discovers these types via reflection; no C# call
+        //        site exists for the class declaration.
+        //      - xUnit [CollectionDefinition("name")] holder types. xUnit looks them up by attribute;
+        //        the class itself is never constructed by user code.
+        foreach (var attribute in type.GetAttributes())
+        {
+            var name = attribute.AttributeClass?.Name;
+            if (name is null) continue;
+
+            var normalized = name.EndsWith("Attribute", StringComparison.Ordinal)
+                ? name[..^"Attribute".Length]
+                : name;
+
+            if (normalized is "McpServerToolType"
+                or "McpServerPromptType"
+                or "McpServerResourceType"
+                or "CollectionDefinition")
+                return true;
+        }
+
+        // 5. Reuse the existing test-fixture detection so xUnit/MSTest/NUnit fixture types are
         //    uniformly excluded under the convention-invoked umbrella.
         return IsLikelyTestFixtureType(type);
     }
