@@ -219,8 +219,15 @@ public sealed class CodeActionService : ICodeActionService
             return TextSpan.FromBounds(startPosition, endPosition);
         }
 
+        // get-code-actions-caret-only-inverted-range: When caret-only callers pass a startColumn
+        // past the line's last character (common on callers that supply a column >= the line
+        // length, e.g. a caret logically sitting at EOL on a short line), the original code
+        // built TextSpan.FromBounds(startPosition, lineEnd) with lineEnd < startPosition,
+        // yielding an inverted-range ArgumentOutOfRangeException. Clamp end >= start so a
+        // caret-only call always yields a well-formed span — a zero-width selection at the
+        // caret when startColumn is past EOL, otherwise the remainder of the line.
         var lineEnd = text.Lines[startLine - 1].End;
-        return TextSpan.FromBounds(startPosition, lineEnd);
+        return TextSpan.FromBounds(startPosition, Math.Max(startPosition, lineEnd));
     }
 
     private static Assembly? LoadCSharpFeaturesAssembly()
