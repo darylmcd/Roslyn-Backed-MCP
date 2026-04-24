@@ -473,7 +473,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #417, 2026-04-24) |
 | **Backlog rows closed** | `find-base-members-vs-member-hierarchy-metadata-drift` |
 | **Diagnosis** | `find_base_members`/`find_overrides` return count=0 for metadata-boundary interfaces (`IEquatable<T>.Equals`) while `member_hierarchy` resolves them on the same symbols. Row cites `src/RoslynMcp.Roslyn/Services/ReferenceService.cs` + `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs`. |
 | **Approach** | Align the metadata-boundary resolver in `ReferenceService`: reuse the same traversal `member_hierarchy` uses (or extract a shared helper) so `find_base_members` / `find_overrides` resolve through metadata the same way. Fallback: add `warning: "metadata-boundary"` field. Prefer the alignment fix. |
@@ -533,7 +533,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #414, 2026-04-24) |
 | **Backlog rows closed** | `scaffold-test-preview-ctor-arg-stubs` |
 | **Diagnosis** | `scaffold_test_preview` emits `new T()` even when target's primary ctor requires args (DI-registered services e.g. `NamespaceRelocationService`). Row cites `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs` + `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs:87`. |
 | **Approach** | In `ScaffoldingService`, probe the target's primary ctor parameters; emit TODO placeholders or (when `NSubstitute` package is already referenced) `Substitute.For<T>()` stubs for each non-resolvable arg. |
@@ -553,7 +553,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #415, 2026-04-24) |
 | **Backlog rows closed** | `workspace-changes-log-missing-editorconfig-writers` |
 | **Diagnosis** | `workspace_changes` omits `set_diagnostic_severity` / `set_editorconfig_option` applies and buckets distinct writers under generic names. Row cites `src/RoslynMcp.Roslyn/Services/ChangeTracker.cs` + `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:312`. |
 | **Approach** | In the editorconfig tool handlers, wire their applies through `ChangeTracker.Record` with a discriminated tool name. Also update the bucket logic so `rename_apply` / `code_fix_apply` / `format_document_apply` / `remove_dead_code_apply` retain their originating tool name rather than collapsing into `refactoring_apply` / `apply_text_edit`. |
@@ -613,7 +613,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #416, 2026-04-24) |
 | **Backlog rows closed** | `diagnostic-details-perf-budget-overrun` |
 | **Diagnosis** | `diagnostic_details` took 16045ms on single-symbol probes because the handler re-runs project-wide diagnostics even when `filePath` + position are pre-resolved. Row cites `src/RoslynMcp.Roslyn/Services/DiagnosticService.cs` + `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:138`. |
 | **Approach** | In `DiagnosticService`, short-circuit when `filePath` + line/column are supplied: fetch the single-document diagnostic set (`SemanticModel.GetDiagnostics(documentSpan)`) instead of the solution-wide pass. |
