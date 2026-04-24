@@ -62,6 +62,57 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task MoveType_EnumDeclaration_ThrowsStructuredTypeKindError()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        // Append an enum so Cat.cs becomes a multi-type file (a sibling class is required by
+        // the single-type guard) but the *target* of the move is the enum.
+        var catFile = workspace.GetPath("SampleLib", "Cat.cs");
+        File.AppendAllText(catFile, "\npublic enum IngestionTerminalStatus\n{\n    Pending,\n    Completed,\n    Failed,\n}\n");
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var doc = WorkspaceManager.GetCurrentSolution(wsId)
+            .Projects.SelectMany(p => p.Documents)
+            .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
+
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            TypeMoveService.PreviewMoveTypeToFileAsync(
+                wsId, doc.FilePath!, "IngestionTerminalStatus", null, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "type-kind Enum not supported",
+            $"Expected structured type-kind error citing Enum; got: {ex.Message}");
+        // Must NOT degrade into the misleading "not found" wording.
+        Assert.IsFalse(ex.Message.Contains("not found", StringComparison.Ordinal),
+            $"Enum should be reported as unsupported kind, not 'not found': {ex.Message}");
+    }
+
+    [TestMethod]
+    public async Task MoveType_DelegateDeclaration_ThrowsStructuredTypeKindError()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var catFile = workspace.GetPath("SampleLib", "Cat.cs");
+        File.AppendAllText(catFile, "\npublic delegate void NotificationHandler(string message);\n");
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var doc = WorkspaceManager.GetCurrentSolution(wsId)
+            .Projects.SelectMany(p => p.Documents)
+            .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
+
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            TypeMoveService.PreviewMoveTypeToFileAsync(
+                wsId, doc.FilePath!, "NotificationHandler", null, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "type-kind Delegate not supported",
+            $"Expected structured type-kind error citing Delegate; got: {ex.Message}");
+        Assert.IsFalse(ex.Message.Contains("not found", StringComparison.Ordinal),
+            $"Delegate should be reported as unsupported kind, not 'not found': {ex.Message}");
+    }
+
+    [TestMethod]
     public async Task MoveType_NewFile_HasNoLeadingBlankLine()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
