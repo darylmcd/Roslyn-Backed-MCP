@@ -22,9 +22,7 @@ Use this flow when the audited C# repository is outside this workspace.
 
 1. Run `prompts/deep-review-and-refactor.md` in the external repo.
 2. Let the prompt write its raw file into that repo's `ai_docs/audit-reports/` (or copy into Roslyn-Backed-MCP when this workspace is the audit root).
-3. **Operator step:** run **`eng/new-deep-review-batch.ps1`** from the Roslyn-Backed-MCP repo root with **no arguments**. It discovers sibling checkouts under the parent folder (e.g. `C:\Code-Repo\*`), imports the **newest audit per repo-id**, writes a rollup under `ai_docs/reports/`, and merges new backlog candidates into `ai_docs/backlog.md` (see `deep-review-backlog-intake.md`). Use `-AuditFiles` only when you must bypass discovery.
-
-Optional: `eng/compare-external-audit-sources.ps1` for a read-only drift report without running the full batch.
+3. **Operator step:** from the Roslyn-Backed-MCP repo root, invoke the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill (`/backlog-intake`). It discovers sibling checkouts under the parent folder (e.g. `C:\Code-Repo\*`) via `eng/stage-review-inbox.ps1`, stages every `*_mcp-server-audit.md` / `*_experimental-promotion.md` / `*_roslyn-mcp-retro.md` into `review-inbox/`, then extracts / dedupes / anchor-verifies / ranks / splits and merges new rows into `ai_docs/backlog.md`. See [`deep-review-backlog-intake.md`](deep-review-backlog-intake.md).
 
 ## Repo coverage matrix
 
@@ -98,13 +96,7 @@ Each raw audit or batch manifest should capture these fields so rollups are comp
 | Skills audit counts | From the raw audit's *Skills audit* table: frontmatter_ok / tool_refs_valid / dry_run pass counts per skill. |
 | New issue count / candidate closure count | Support rollup triage. |
 
-Use these fields as the manifest schema for manual review, future automation, or the lightweight scaffold script.
-
-For a lightweight scaffold, use `eng/new-deep-review-rollup.ps1` with the raw audit file paths. It creates a timestamped rollup skeleton under `ai_docs/reports/` and pre-populates the input-audit table from the raw report headers.
-
-For external-repo runs, use `eng/import-deep-review-audit.ps1` first so the rollup is built from canonical local copies rather than arbitrary external paths.
-
-For the common operator path, use `eng/new-deep-review-batch.ps1` to do both steps in sequence.
+Use these fields as the manifest schema for manual review. Rollup scaffolding is no longer automated — author a rollup by hand under `ai_docs/reports/<timestamp>_deep-review-rollup.md` when a release-gate sign-off requires the narrative artifact. For routine batches, the `review-inbox/` staging folder (populated by `eng/stage-review-inbox.ps1`) plus the backlog commit produced by `/backlog-intake` together serve as the evidence trail.
 
 ## Rollup contents
 
@@ -128,11 +120,11 @@ Each batch rollup in `ai_docs/reports/` should include:
 
 ## Backlog intake rules
 
-Default intake is **automated** by `eng/sync-deep-review-backlog.ps1` (invoked from `eng/new-deep-review-batch.ps1`). It scans §14-style issue rows, dedupes against the open table (including tool-keyword overlap), assigns P2–P4 heuristics, and re-sorts the table.
+Default intake is **driven by the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill** (`/backlog-intake`). It stages review artifacts, extracts actionable items via a context-protecting subagent, dedupes semantically, verifies each candidate against `CHANGELOG.md` + the newest backlog-sweep plan, fixes service / tool anchors, splits heroic rows per `backlog-sweep-plan.md` Rule 1 / 3 / 4, ranks P2 / P3 / P4, and commits to a fresh branch off `main`.
 
-- Add or edit rows **manually** for findings that do not match §14 table/numbered patterns (e.g. narrative-only rollups, test-suite audits). Use the same id and ordering rules as `ai_docs/backlog.md`.
 - Dedupe key (human triage): `tool + symptom + catalog-version + client-family`.
-- Pure client limitations usually stay in rollup prose unless covered by existing doc rows (`mcp-client-surface-notifications`, etc.).
+- Narrative-only sources (test-suite audits, manual retros without a matching filename pattern) still need a by-hand row in `ai_docs/backlog.md`.
+- Pure client limitations usually stay out of the backlog unless covered by existing doc rows (`mcp-client-surface-notifications`, etc.).
 
 ## Related
 
@@ -141,9 +133,8 @@ Default intake is **automated** by `eng/sync-deep-review-backlog.ps1` (invoked f
 - `deep-review-command-reference.md` — concrete shell command examples for the workflow
 - `audit-reports/README.md` — raw audit output location
 - `reports/README.md` — synthesized rollup location
-- `../eng/compare-external-audit-sources.ps1` — detect missing/stale canonical copies vs sibling repo checkouts
-- `../eng/import-deep-review-audit.ps1` — import raw audits produced outside this workspace
-- `../eng/new-deep-review-batch.ps1` — import external raw audits and scaffold a rollup in one command
+- `../eng/stage-review-inbox.ps1` — discover + move audit/retro/promotion files from sibling repos into `review-inbox/`
+- `../.claude/skills/backlog-intake/SKILL.md` — `/backlog-intake` skill that consumes `review-inbox/` and produces backlog rows
 - `docs/release-policy.md` — release-gate requirements that consume audit evidence
 - `docs/experimental-promotion-analysis.md` — promotion decisions that use rollup-backed operational evidence
 - `docs/large-solution-profiling-baseline.md` — large-solution lane methodology
