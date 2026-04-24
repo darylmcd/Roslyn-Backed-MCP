@@ -18,6 +18,11 @@ internal static class ToolErrorHandler
 {
     private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> ErrorHandlers = new()
     {
+        // autoreload-cascade-stdio-host-crash: wraps a state-read that raced with (or followed)
+        // an auto-reload transition. Registered BEFORE the generic Exception handlers so the
+        // structured category wins over the dictionary walk's InvalidOperation fallback.
+        [typeof(StaleWorkspaceTransitionException)] = (ex, _) => new("StaleWorkspaceTransition",
+            $"Workspace is transitioning between snapshots: {ex.Message}"),
         [typeof(FileNotFoundException)] = (ex, _) => new("FileNotFound",
             $"File not found: {ex.Message}. Verify the file path is absolute and the file exists on disk. " +
             "If the workspace was recently reloaded, the file may have been removed."),
