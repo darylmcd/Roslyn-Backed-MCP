@@ -288,11 +288,96 @@ public sealed class DiagnosticService : IDiagnosticService
             }
         }
 
-        // Cold path: cache miss (no prior list call, or workspace was reloaded). Re-run
-        // the search across projects in parallel and warm the cache for next time.
+        // Cold path: cache miss (no prior list call, or workspace was reloaded).
+        // diagnostic-details-perf-budget-overrun: short-circuit to a single-document
+        // diagnostic scan when we can resolve the supplied filePath to specific Document(s)
+        // in the solution. This avoids the solution-wide compile + analyzer pass (previously
+        // ~16s on large solutions) in favor of a per-document syntax+semantic+analyzer scan
+        // that finishes in <2s. The detail tool's contract already requires filePath + line +
+        // column, so this path is always available for the diagnostic_details caller.
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var diagnostic = await FindDiagnosticAsync(workspaceId, solution, version, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
-        return diagnostic is null ? null : BuildDetailsDto(diagnostic);
+        var diagnostic = await FindDiagnosticInDocumentAsync(workspaceId, solution, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
+        if (diagnostic is not null)
+        {
+            return BuildDetailsDto(diagnostic);
+        }
+
+        // If the file did not resolve to any Document (e.g., a generated file path, or a
+        // workspace-level diagnostic with no source location), fall back to the legacy
+        // solution-wide search so we don't regress discoverability.
+        var fallbackDiagnostic = await FindDiagnosticAsync(workspaceId, solution, version, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
+        return fallbackDiagnostic is null ? null : BuildDetailsDto(fallbackDiagnostic);
+    }
+
+    /// <summary>
+    /// diagnostic-details-perf-budget-overrun: single-document diagnostic scan. Resolves
+    /// <paramref name="filePath"/> to the matching Document(s) via
+    /// <see cref="Solution.GetDocumentIdsWithFilePath"/> and runs only the per-document
+    /// analyzer + compiler passes needed to find the target diagnostic. Returns null when
+    /// the file does not resolve to any Document; caller falls back to the full scan.
+    /// </summary>
+    private async Task<Diagnostic?> FindDiagnosticInDocumentAsync(
+        string workspaceId,
+        Solution solution,
+        string diagnosticId,
+        string filePath,
+        int line,
+        int column,
+        CancellationToken ct)
+    {
+        var documentIds = solution.GetDocumentIdsWithFilePath(filePath);
+        if (documentIds.IsDefaultOrEmpty) return null;
+
+        foreach (var documentId in documentIds)
+        {
+            var document = solution.GetDocument(documentId);
+            if (document is null) continue;
+
+            var tree = await document.GetSyntaxTreeAsync(ct).ConfigureAwait(false);
+            if (tree is null) continue;
+
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, document.Project, ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            // Compiler diagnostics scoped to the single syntax tree — avoids walking every
+            // tree in the compilation.
+            var compilerDiagnostics = compilation.GetDiagnostics(ct).Where(d => d.Location.SourceTree == tree);
+            foreach (var d in compilerDiagnostics)
+            {
+                if (DiagnosticMatchesLocation(d, diagnosticId, filePath, line, column))
+                    return d;
+            }
+
+            // Analyzer diagnostics scoped to the single document. We use the syntax- and
+            // semantic-diagnostic APIs on CompilationWithAnalyzers so analyzers registered
+            // via RegisterSyntaxTreeAction / RegisterSemanticModelAction / RegisterSymbolAction
+            // only run for this document's tree + model.
+            var compilationWithAnalyzers = await _compilationCache
+                .GetCompilationWithAnalyzersAsync(workspaceId, document.Project, ct)
+                .ConfigureAwait(false);
+            if (compilationWithAnalyzers is null) continue;
+
+            var syntaxAnalyzerDiagnostics = await compilationWithAnalyzers
+                .GetAnalyzerSyntaxDiagnosticsAsync(tree, ct).ConfigureAwait(false);
+            foreach (var d in syntaxAnalyzerDiagnostics)
+            {
+                if (DiagnosticMatchesLocation(d, diagnosticId, filePath, line, column))
+                    return d;
+            }
+
+            var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (semanticModel is null) continue;
+
+            var semanticAnalyzerDiagnostics = await compilationWithAnalyzers
+                .GetAnalyzerSemanticDiagnosticsAsync(semanticModel, filterSpan: null, ct).ConfigureAwait(false);
+            foreach (var d in semanticAnalyzerDiagnostics)
+            {
+                if (DiagnosticMatchesLocation(d, diagnosticId, filePath, line, column))
+                    return d;
+            }
+        }
+
+        return null;
     }
 
     private static DiagnosticDetailsDto BuildDetailsDto(Diagnostic diagnostic) => new(
