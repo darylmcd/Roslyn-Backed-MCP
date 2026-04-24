@@ -43,14 +43,31 @@ public sealed class ProjectMutationService : IProjectMutationService
         _changeTracker = changeTracker;
     }
 
-    public Task<RefactoringPreviewDto> PreviewAddPackageReferenceAsync(string workspaceId, AddPackageReferenceDto request, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewAddPackageReferenceAsync(string workspaceId, AddPackageReferenceDto request, CancellationToken ct)
     {
         var project = ResolveProject(workspaceId, request.ProjectName);
         var warnings = new List<string>();
         var packagesPropsPath = ResolveDirectoryPackagesPropsPath(workspaceId);
         var usesCentralPackageManagement = packagesPropsPath is not null && MsBuildMetadataHelper.IsCentralPackageManagementEnabled(packagesPropsPath);
 
-        return PreviewProjectMutationAsync(workspaceId, project, document =>
+        // add-package-reference-preview-cpm-duplicate-detection: Probe the evaluated
+        // PackageReference item graph so we catch packages injected via
+        // Directory.Build.props / Directory.Packages.props / SDK imports. The XDocument
+        // check below only sees references declared in the .csproj itself, so an
+        // implicit/transitive-via-imports reference would silently duplicate.
+        var evaluatedPackages = await _msbuildEvaluation
+            .EvaluateItemsAsync(workspaceId, request.ProjectName, "PackageReference", ct)
+            .ConfigureAwait(false);
+        if (evaluatedPackages.Items.Any(item =>
+                string.Equals(item.Include, request.PackageId, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException(
+                $"Package reference '{request.PackageId}' is already present in the evaluated project graph " +
+                "(declared in the .csproj or imported via Directory.Build.props / Directory.Packages.props / SDK imports). " +
+                "No changes needed.");
+        }
+
+        return await PreviewProjectMutationAsync(workspaceId, project, document =>
         {
             if (document.Descendants("PackageReference").Any(element =>
                     string.Equals((string?)element.Attribute("Include"), request.PackageId, StringComparison.OrdinalIgnoreCase)))
@@ -76,7 +93,7 @@ public sealed class ProjectMutationService : IProjectMutationService
 
             var itemGroup = GetOrCreateItemGroup(document, "PackageReference");
             AddChildElementPreservingIndentation(itemGroup, packageReference);
-        }, $"Add package reference '{request.PackageId}'", ct, warnings);
+        }, $"Add package reference '{request.PackageId}'", ct, warnings).ConfigureAwait(false);
     }
 
     public Task<RefactoringPreviewDto> PreviewRemovePackageReferenceAsync(string workspaceId, RemovePackageReferenceDto request, CancellationToken ct)
