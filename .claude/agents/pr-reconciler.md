@@ -101,6 +101,6 @@ NOTES: <one line if anything unusual, else omit>
 - NEVER use `--admin` or `-f` to bypass failing checks or review gates.
 - NEVER force-push anywhere.
 - `git reset --hard` is ONLY allowed against `origin/main` during the post-merge sync.
-- NEVER edit `CHANGELOG.md` or `ai_docs/backlog.md` — that is `changelog-and-backlog-sync`'s job.
+- NEVER edit `CHANGELOG.md`, `changelog.d/*.md`, or `ai_docs/backlog.md` — those belong to the orchestrator's batch-boundary reconcile PR (parallel mode) or to the `/draft-changelog-entry` + `/close-backlog-rows` skills (serial mode).
 - If `gh pr view` itself fails (network / auth / rate limit), retry once after 5s. If it still fails, emit `STATUS: error` with the `gh` error message — do not guess the PR state.
 - If `git worktree remove` fails (file lock, Windows testhost), emit the error in `NOTES:` but continue with the remaining cleanup. Do not abort — the merge itself succeeded.

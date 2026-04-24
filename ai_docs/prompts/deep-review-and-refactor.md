@@ -646,7 +646,7 @@ This prompt writes **raw per-run evidence only**. Multi-repo campaigns synthesiz
 - `<timestamp>` = current UTC `yyyyMMddTHHmmssZ`.
 - If auditing Roslyn-Backed-MCP, use `ai_docs/audit-reports/` relative to that repo root.
 - Auditing another solution in a different workspace and **can't** write to Roslyn-Backed-MCP: write to the current workspace root as `ai_docs/audit-reports/<timestamp>_<repo-id>_mcp-server-audit.md` and state in the header: *"Intended final path: `<path-to-Roslyn-Backed-MCP>/ai_docs/audit-reports/…` — copy this file there before creating a rollup or backlog update."*
-- When the run happens outside Roslyn-Backed-MCP, import with `eng/import-deep-review-audit.ps1 -AuditFiles <path>` before generating any rollup.
+- When the run happens outside Roslyn-Backed-MCP, copy the raw file into the sibling repo's `ai_docs/audit-reports/` so `eng/stage-review-inbox.ps1` discovers it on the next `/backlog-intake` pass (or pass an explicit source path via the skill's `--sibling-parent` flag).
 - Do **not** place raw audit files under `ai_docs/reports/` — that directory is for synthesized rollups.
 
 ### Naming scheme (`<timestamp>_<repo-id>`)

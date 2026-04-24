@@ -102,7 +102,7 @@ Post-close row counts are best-effort — a subsequent `grep -c` on each band's 
 
 ## Non-goals
 
-- **Do NOT edit `CHANGELOG.md`, `state.json`, or `plan.md`.** Those are separate concerns handled by `/reconcile-backlog-sweep-plan` (state.json + plan.md) and `draft-changelog-entry` / `changelog-and-backlog-sync` (CHANGELOG.md).
+- **Do NOT edit `CHANGELOG.md`, `changelog.d/*.md`, `state.json`, or `plan.md`.** Those are separate concerns: `/draft-changelog-entry` writes `changelog.d/<row-id>.md` fragments; `/reconcile-backlog-sweep-plan` updates state.json + plan.md; `CHANGELOG.md` is rewritten only at version-bump time by `/bump`.
 - **Do NOT commit or push.** The caller (typically a reconcile PR) stages the change and opens the PR.
 - **Do NOT query GitHub.** This skill operates purely on local files. `gh` is not required.
 - **Do NOT re-order or re-format the `Refs` table at the bottom of backlog.md.** Row closure only touches the P2/P3/P4 open-work tables and the `updated_at:` line.
@@ -140,5 +140,5 @@ P-band deltas:
 ## Distinct from related skills
 
 - **`/reconcile-backlog-sweep-plan`**: reconciles `state.json` + `plan.md` against `gh pr view` reality. Does NOT touch backlog.md. Use both in sequence when a batch reconcile needs plan-state sync + row closure.
-- **`changelog-and-backlog-sync` subagent (`.claude/agents/changelog-and-backlog-sync.md`)**: drafts a CHANGELOG + backlog diff from ONE merged PR's metadata. This skill closes N rows without the single-PR-to-entries correlation; use it when a batch reconcile PR has already drafted its own CHANGELOG block and only needs the backlog side closed.
+- **`/draft-changelog-entry`**: writes ONE `changelog.d/<row-id>.md` fragment per PR. This skill closes the corresponding backlog row(s). In a batch reconcile PR, pair them: draft-changelog-entry per merged PR, then close-backlog-rows with the full id list.
 - **`/ship`**: commits + pushes + opens PR + merges the current branch. Does NOT close backlog rows — callers close first, then ship.

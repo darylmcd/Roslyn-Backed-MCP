@@ -35,9 +35,9 @@ Each rollup should include:
 | Candidate closures | Prior ids and current evidence |
 | Backlog actions | Rows to open, update, or intentionally leave out |
 
-**Backlog intake:** by default, `eng/new-deep-review-batch.ps1` runs `eng/sync-deep-review-backlog.ps1` so new §14-style findings merge into `ai_docs/backlog.md`. Add rows by hand for narrative-only sources (e.g. test-suite audits) when needed — see [`../procedures/deep-review-backlog-intake.md`](../procedures/deep-review-backlog-intake.md).
+**Backlog intake:** invoke the [`/backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill — it stages review-inbox, extracts / dedupes semantically (not literal-text), verifies against CHANGELOG + recent plans, anchor-verifies, heroic-splits, and commits new rows into `ai_docs/backlog.md`. See [`../procedures/deep-review-backlog-intake.md`](../procedures/deep-review-backlog-intake.md).
 
-**Rollup-only:** `eng/new-deep-review-rollup.ps1 -AuditFiles <paths...>`
+**Rollup scaffolding:** author by hand when a release-gate sign-off requires a narrative rollup. The skill does not generate rollup markdown — for routine batches, `review-inbox/` + the backlog commit is the evidence trail.
 
 ## Current files
 

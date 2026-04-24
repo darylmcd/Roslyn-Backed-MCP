@@ -22,8 +22,8 @@ Raw audits use `<timestamp>_<repo-id>_mcp-server-audit.md` (no lock-mode segment
 ## Intake rule
 
 - Keep raw audit files immutable once written.
-- **Standard path:** run **`eng/new-deep-review-batch.ps1`** from the Roslyn-Backed-MCP root (no args). It pulls the newest `*_mcp-server-audit.md` per repo-id from sibling folders under the same parent directory (e.g. `C:\Code-Repo\*`), copies into this tree, writes a rollup, and updates `ai_docs/backlog.md` unless `-SkipBacklogSync` is passed.
-- Manual import only if needed: `eng/import-deep-review-audit.ps1`.
+- **Standard path:** invoke the [`/backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill from the Roslyn-Backed-MCP root. It runs `eng/stage-review-inbox.ps1` to pull the latest `*_mcp-server-audit.md` / `*_experimental-promotion.md` / `*_roslyn-mcp-retro.md` per repo-id from sibling folders under the same parent directory (e.g. `C:\Code-Repo\*`) and from this repo's own audit folders, stages them into `review-inbox/`, then extracts / dedupes / ranks / splits and commits new rows into `ai_docs/backlog.md`.
+- Staging only (no triage): `./eng/stage-review-inbox.ps1` (add `-DryRun` to preview, `-Copy` to copy instead of move).
 - **2026-04-22 batch cleanup:** Timestamped raw files from 2026-04-13 / 15 / 22 (firewallanalyzer, itchatbot, networkdocumentation, Jellyfin stress) were read against the then-current server, their open **server-side** follow-ups were folded into `ai_docs/backlog.md` (P3: `validate-workspace-overallstatus-false-positive`, `workspace-close-missing-solution-on-disk`; P4: `mcp-audit-rollup-2026-04-13-22`), and the raw files were **removed** from this directory per the contract in `backlog.md` (Refs) — not because every finding was already implemented.
 
 ## Static files and patterns

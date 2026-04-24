@@ -2,11 +2,17 @@
 
 <!-- purpose: Execute one initiative (or a parallel batch) from the latest
      backlog-sweep plan, ship as PR(s).
+     v6 (2026-04-24) — retires the `changelog-and-backlog-sync` subagent (zero
+     invocations across the 2026-04-22 sweep; repo uses `changelog.d/` fragments
+     now, not direct CHANGELOG edits). Serial Step 7 now targets `changelog.d/
+     <row-id>.md` fragments via the `/draft-changelog-entry` skill and closes
+     backlog rows via the `/close-backlog-rows` skill. Parallel Step 7 unchanged
+     (orchestrator batch-reconcile PR already used this pattern — see PRs
+     #363/#369/#375).
      v5 (2026-04-17, same-day refinement of v4) — Appendix B preamble points at
      the `initiative-executor` subagent (`.claude/agents/initiative-executor.md`)
      as the preferred spawn path; the inline template is retained as fallback for
-     environments without `.claude/agents/` support. Step 7 serial variant points
-     at `changelog-and-backlog-sync` subagent; Step 8 points at `pr-reconciler`
+     environments without `.claude/agents/` support. Step 8 points at `pr-reconciler`
      subagent. Rationale: 2026-04-17 session-transcript analysis found 39/39
      `Agent()` calls pasted the full Appendix B template as a `general-purpose`
      brief (~3KB of re-stated policy per call); the subagent pulls that policy
@@ -359,35 +365,14 @@ part of the initiative.
 
 ### Serial mode — in this PR
 
-**Preferred path (Claude Code sessions):** invoke the `changelog-and-backlog-sync`
-subagent (`.claude/agents/changelog-and-backlog-sync.md`) with `autoCommit: true`
-to handle both 7a and 7b mechanically. It emits a unified-diff preview first;
-the orchestrator can review before the auto-commit. Falls through to the manual
-7a + 7b below if the subagent is unavailable.
+**Preferred path:** use the two dedicated skills, one after the other:
 
-#### 7a. `ai_docs/backlog.md`
+1. **`/draft-changelog-entry <initiative-id> <commit-sha-or-branch> <closed-row-ids>`** — produces a `changelog.d/<row-id>.md` fragment file (one per PR) in the project's fragment style. The fragment is consumed into `CHANGELOG.md` at version-bump time by the `/bump` skill. Do **not** edit `CHANGELOG.md` directly — it is a build artifact of `changelog.d/*.md`.
+2. **`/close-backlog-rows <comma-separated-row-ids>`** — deletes the closed rows atomically, bumps `updated_at:`, and reports the P-band decrements. Handles the "long matching line" friction that trips line-by-line Edit calls on `backlog.md`'s 1500+ char rows.
 
-- Remove the closed rows from the appropriate P-band table.
-- For any row marked `obsolete` during Step 4: remove it too, with a note in the PR
-  description explaining why.
-- For any cross-referenced row that needs its `Refs:`/dependency section adjusted
-  (per the plan's Backlog sync field): update inline.
-- Bump the `updated_at:` timestamp at the top of `backlog.md`.
+Both skills are non-destructive until their Step 5 commits; review the diff previews first.
 
-#### 7b. `CHANGELOG.md` (repo root — not under `ai_docs/`)
-
-- Confirm `## [Unreleased]` section exists at top. If not, add it above the most
-  recent versioned section.
-- Insert the initiative's pre-drafted CHANGELOG entry (from plan.md's
-  "CHANGELOG entry (draft)" field) under the appropriate category subsection
-  (`### Fixed`, `### Added`, `### Changed — BREAKING`, or `### Maintenance`).
-  If the subsection doesn't exist yet, create it.
-- Update the `### Maintenance` subsection's "Backlog: N rows closed" tally to include
-  this initiative's closed rows under the correct P-band bullet (`P2 (n)`, `P3 (n)`,
-  `P4 (n)`). Pattern: see existing release entries (e.g. `[Unreleased]` block in the
-  current `CHANGELOG.md`) for tone, prefix-bolding, and row-id citation style.
-- Update the test-count line in `### Maintenance` if your initiative added tests
-  (line pattern: `Tests: <prev> → <new> (+N across <count> new regression test files).`).
+Fallback (environments without those skills): write the fragment file by hand under `changelog.d/<row-id>.md` matching the existing fragment shape (`grep -l '' changelog.d/` for templates), and edit `backlog.md` directly — remove the closed row from its P-band table, bump `updated_at:`.
 
 ### Parallel mode — orchestrator-owned, separate reconcile PR
 
@@ -599,6 +584,11 @@ initiatives are taken. **Therefore:**
      `Device or resource busy` on Windows and leave stale `.worktrees/*`
      directories (hit twice in the 2026-04-18 pass-3 retrospective).
    - `git worktree remove --force .worktrees/<id>` for each.
+   - On Windows, if `git worktree remove --force` still fails after
+     `build-server shutdown` (typically because the subagent crashed mid-write
+     and left uncommitted work), invoke the `/recover-stalled-subagent <remediation-branch>`
+     skill — it stages the uncommitted work to a WIP branch and retries removal
+     cleanly. Do NOT escalate to `rm -rf` without preserving uncommitted work.
    - `git push origin --delete remediation/<id>` for each merged branch.
    - `git remote prune origin`.
    - `rm -rf .worktrees/` if empty.

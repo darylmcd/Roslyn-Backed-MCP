@@ -8,49 +8,53 @@ Run from the **Roslyn-Backed-MCP** repo root:
 Set-Location C:\Code-Repo\Roslyn-Backed-MCP
 ```
 
-## One command (recommended)
+## Produce audits (per repo)
 
-**Import sibling audits → canonical store → rollup → backlog merge**
+Run the audit prompt inside the repo being audited. The prompt emits a raw `*_mcp-server-audit.md` (and, when applicable, `*_experimental-promotion.md` / `*_roslyn-mcp-retro.md`) into that repo's `ai_docs/audit-reports/` or `ai_docs/reports/`.
 
-```powershell
-./eng/new-deep-review-batch.ps1
+```
+/deep-review-and-refactor
 ```
 
-**Defaults**
+Produce audits across every sibling C# repo in the coverage matrix before running intake.
 
-- Scans **sibling git checkouts** under the parent of this repo (e.g. `C:\Code-Repo\*` when this repo is `C:\Code-Repo\Roslyn-Backed-MCP`).
-- Excludes only this repository’s folder name from sibling scans (so other repos’ audits are pulled in).
-- **Overwrites** canonical audit files when the external copy is newer (use `-NoOverwrite` to disable).
-- Updates **`ai_docs/backlog.md`** unless you pass `-SkipBacklogSync`.
+## Intake audits into the backlog (one command)
 
-**Dry-run backlog only**
+From Roslyn-Backed-MCP repo root:
 
-```powershell
-./eng/new-deep-review-batch.ps1 -BacklogWhatIf
+```
+/backlog-intake
 ```
 
-**Explicit audit paths (no sibling scan)**
+This runs the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill, which:
 
-```powershell
-./eng/new-deep-review-batch.ps1 -AuditFiles @(
-  'C:\Code-Repo\IT-Chat-Bot\ai_docs\audit-reports\20260408T200500Z_itchatbot_mcp-server-audit.md'
-)
+1. Stages `*_mcp-server-audit.md` / `*_experimental-promotion.md` / `*_roslyn-mcp-retro.md` from sibling repos + this repo into `review-inbox/`.
+2. Extracts actionable items via a subagent (context-protecting).
+3. Deduplicates semantically across files.
+4. Verifies each candidate against `CHANGELOG.md` [Unreleased] + last 3 versions + the newest backlog-sweep plan.
+5. Fixes service / tool anchors so each row lands on real files.
+6. Splits heroic rows per `backlog-sweep-plan.md` Rule 1 / 3 / 4.
+7. Ranks P2 / P3 / P4.
+8. Commits to a fresh branch off `main`.
+
+## Skill flags
+
+```
+/backlog-intake --stage            # force a staging pass even if review-inbox/ has files
+/backlog-intake --skip-stage       # triage only what's already in review-inbox/
+/backlog-intake --skip-verify      # skip CHANGELOG / plan cross-check (faster, riskier)
+/backlog-intake --no-commit        # write backlog.md but don't branch or commit
+/backlog-intake --sibling-parent C:\Customer-Repos
 ```
 
-**Custom rollup path / label**
+## Staging only (no triage)
 
 ```powershell
-./eng/new-deep-review-batch.ps1 -OutputPath ai_docs/reports/manual_rollup.md -CampaignPurpose 'RC sign-off'
+./eng/stage-review-inbox.ps1                 # move audit/retro/promotion files into review-inbox/
+./eng/stage-review-inbox.ps1 -DryRun         # preview only
+./eng/stage-review-inbox.ps1 -Copy           # copy instead of move
+./eng/stage-review-inbox.ps1 -SkipSelf       # don't scan this repo's own ai_docs/
 ```
-
-## Optional helpers
-
-| Script | Role |
-|--------|------|
-| `eng/import-deep-review-audit.ps1` | Import only (when not using the batch). |
-| `eng/new-deep-review-rollup.ps1` | Rollup scaffold only. |
-| `eng/compare-external-audit-sources.ps1` | Optional pre-flight compare (batch already refreshes imports by default). |
-| `eng/sync-deep-review-backlog.ps1` | Backlog merge only (normally invoked by the batch). |
 
 ## Verify AI docs links
 
@@ -60,7 +64,7 @@ Set-Location C:\Code-Repo\Roslyn-Backed-MCP
 
 ## Related
 
-- `deep-review-program.md` — coverage matrix and program rules
-- `deep-review-backlog-intake.md` — backlog automation details
-- `../audit-reports/README.md` — raw audit storage
-- `../reports/README.md` — rollup storage
+- [`deep-review-program.md`](deep-review-program.md) — coverage matrix and program rules
+- [`deep-review-backlog-intake.md`](deep-review-backlog-intake.md) — intake skill reference
+- [`../audit-reports/README.md`](../audit-reports/README.md) — raw audit storage
+- [`../reports/README.md`](../reports/README.md) — rollup storage
