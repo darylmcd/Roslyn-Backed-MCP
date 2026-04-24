@@ -386,7 +386,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_property_writes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all locations where a property is assigned to (written), classified as object-initializer writes (safe for init) or post-construction assignments")]
+    [McpServerTool(Name = "find_property_writes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all locations where a property is assigned to (written). Each write carries a WriteKind bucket: ObjectInitializer (safe for init), Assignment (post-construction), OutRef (passed by out/ref), or PrimaryConstructorBind (the property is a positional-record primary-ctor parameter and the site is a `new T(value)` construction that binds this positional slot — find-property-writes-positional-record-silent-zero).")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find property write sites and classify object-initializer writes.")]
     public static Task<string> FindPropertyWrites(

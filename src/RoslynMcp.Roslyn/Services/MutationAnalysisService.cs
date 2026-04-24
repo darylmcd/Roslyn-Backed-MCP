@@ -133,12 +133,9 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
 
             var refNode = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan);
 
-            // Determine if this reference is a write (left side of assignment, out/ref arg, or in an initializer)
-            if (!IsWriteReference(refNode)) continue;
-
-            var isObjectInitializer = refNode.Ancestors()
-                .Any(static a => a is InitializerExpressionSyntax init &&
-                    init.Kind() == SyntaxKind.ObjectInitializerExpression);
+            // Classify the syntactic shape of the write. Null => this reference is a read, skip.
+            var writeKind = ClassifyWriteReference(refNode);
+            if (writeKind is null) continue;
 
             var lineSpan = item.Source.Location.GetLineSpan();
 
@@ -150,10 +147,140 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                 EndColumn: lineSpan.EndLinePosition.Character + 1,
                 ContainingMember: item.ContainingSymbol?.ToDisplayString(),
                 PreviewText: item.Dto.PreviewText,
-                IsObjectInitializer: isObjectInitializer));
+                WriteKind: writeKind));
+        }
+
+        // find-property-writes-positional-record-silent-zero:
+        // Positional-record primary-ctor-bound properties are assigned implicitly at each
+        // `new T(value)` site. `SymbolFinder.FindReferencesAsync(property, ...)` attributes
+        // those writes to the primary-ctor parameter (a distinct symbol) which itself has no
+        // by-name references from positional arguments, so the sweep above sees zero writes
+        // even though every construction writes to the property.
+        //
+        // Fix: detect positional-record primary-ctor-bound properties and additionally walk
+        // references to the record's primary constructor (IMethodSymbol), emitting a
+        // PrimaryConstructorBind bucket at each construction site. The parameter-index match
+        // (property name -> parameter ordinal) ensures we only light up writes to this
+        // specific property, not every positional slot on the record.
+        if (TryGetPrimaryConstructorParameterIndex(property) is int parameterIndex)
+        {
+            var primaryCtor = GetPrimaryConstructor(property.ContainingType);
+            if (primaryCtor is not null)
+            {
+                var ctorRefs = await SymbolFinder.FindReferencesAsync(primaryCtor, solution, ct).ConfigureAwait(false);
+                var ctorRefLocations = ctorRefs.SelectMany(r => r.Locations).ToList();
+                var ctorMaterialized = await ReferenceLocationMaterializer.MaterializeAsync(ctorRefLocations, ct).ConfigureAwait(false);
+
+                foreach (var item in ctorMaterialized)
+                {
+                    if (item.SyntaxRoot is null) continue;
+
+                    var refNode = item.SyntaxRoot.FindNode(item.Source.Location.SourceSpan);
+                    var argLocation = FindPositionalArgumentLocation(refNode, parameterIndex);
+                    if (argLocation is null) continue;
+
+                    var lineSpan = argLocation.GetLineSpan();
+                    var preview = await SymbolResolver.GetPreviewTextAsync(item.Source.Document, argLocation, ct).ConfigureAwait(false);
+
+                    results.Add(new PropertyWriteDto(
+                        FilePath: lineSpan.Path,
+                        StartLine: lineSpan.StartLinePosition.Line + 1,
+                        StartColumn: lineSpan.StartLinePosition.Character + 1,
+                        EndLine: lineSpan.EndLinePosition.Line + 1,
+                        EndColumn: lineSpan.EndLinePosition.Character + 1,
+                        ContainingMember: item.ContainingSymbol?.ToDisplayString(),
+                        PreviewText: preview,
+                        WriteKind: "PrimaryConstructorBind"));
+                }
+            }
         }
 
         return (results, "Property");
+    }
+
+    /// <summary>
+    /// Returns the primary-constructor parameter ordinal for a positional-record synthesized
+    /// property, or <see langword="null"/> when the property is not a positional-record
+    /// primary-ctor-bound property. Positional-record synthesized properties have a single
+    /// <see cref="ISymbol.DeclaringSyntaxReferences"/> entry whose syntax is a
+    /// <see cref="ParameterSyntax"/> inside a <see cref="RecordDeclarationSyntax"/>
+    /// parameter list.
+    /// </summary>
+    private static int? TryGetPrimaryConstructorParameterIndex(IPropertySymbol property)
+    {
+        var containingType = property.ContainingType;
+        if (containingType is null || !containingType.IsRecord) return null;
+
+        foreach (var declRef in property.DeclaringSyntaxReferences)
+        {
+            if (declRef.GetSyntax() is not ParameterSyntax paramSyntax) continue;
+            if (paramSyntax.Parent is not ParameterListSyntax paramList) continue;
+            if (paramList.Parent is not RecordDeclarationSyntax) continue;
+
+            for (var i = 0; i < paramList.Parameters.Count; i++)
+            {
+                if (paramList.Parameters[i] == paramSyntax) return i;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the canonical primary constructor for a positional record — the
+    /// <see cref="IMethodSymbol"/> whose <see cref="ISymbol.DeclaringSyntaxReferences"/>
+    /// resolves to the <see cref="RecordDeclarationSyntax"/> itself (pattern mirrors
+    /// <c>RecordFieldAdditionService.ExtractPositionalParameters</c>). Returns
+    /// <see langword="null"/> for non-positional records.
+    /// </summary>
+    private static IMethodSymbol? GetPrimaryConstructor(INamedTypeSymbol containingType)
+    {
+        foreach (var ctor in containingType.InstanceConstructors)
+        {
+            foreach (var declRef in ctor.DeclaringSyntaxReferences)
+            {
+                if (declRef.GetSyntax() is RecordDeclarationSyntax recordDecl && recordDecl.ParameterList is not null)
+                {
+                    return ctor;
+                }
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Given a construction-site reference to a primary constructor (i.e. a node inside a
+    /// <c>new T(arg0, arg1, ...)</c> or <c>new(arg0, arg1, ...)</c> expression), returns the
+    /// location of the positional argument at <paramref name="parameterIndex"/>, or
+    /// <see langword="null"/> when the reference is not a positional-ctor construction site
+    /// (e.g. a deconstruction pattern, a derived-record primary-base call, or when the index
+    /// is out of range for the argument list).
+    /// </summary>
+    private static Location? FindPositionalArgumentLocation(SyntaxNode refNode, int parameterIndex)
+    {
+        // Walk up to the ObjectCreation / ImplicitObjectCreation / PrimaryConstructorBaseType
+        // node, then index into its ArgumentList.
+        for (var current = refNode; current is not null; current = current.Parent)
+        {
+            BaseArgumentListSyntax? argList = current switch
+            {
+                ObjectCreationExpressionSyntax oc => oc.ArgumentList,
+                ImplicitObjectCreationExpressionSyntax ioc => ioc.ArgumentList,
+                PrimaryConstructorBaseTypeSyntax pcb => pcb.ArgumentList,
+                _ => null,
+            };
+            if (argList is ArgumentListSyntax args)
+            {
+                if (parameterIndex < 0 || parameterIndex >= args.Arguments.Count) return null;
+                return args.Arguments[parameterIndex].GetLocation();
+            }
+
+            // Stop walking when we leave the enclosing statement / member (the reference is
+            // not inside a construction expression).
+            if (current is StatementSyntax or MemberDeclarationSyntax) break;
+        }
+
+        return null;
     }
 
     public async Task<IReadOnlyList<TypeUsageDto>> FindTypeUsagesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
@@ -422,30 +549,37 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
 
     private sealed record MutationCandidate(ISymbol Member, string? Scope);
 
-    private static bool IsWriteReference(SyntaxNode refNode)
+    /// <summary>
+    /// Classifies a property reference as a write and returns the bucket name, or
+    /// <see langword="null"/> if the reference is a read. Buckets (see
+    /// <see cref="PropertyWriteDto.WriteKind"/>): <c>"ObjectInitializer"</c>,
+    /// <c>"Assignment"</c>, <c>"OutRef"</c>.
+    /// </summary>
+    private static string? ClassifyWriteReference(SyntaxNode refNode)
     {
-        // Object initializer member assignment: { Prop = value }
+        // Object initializer member assignment: { Prop = value } — includes `with { Prop = value }`
+        // because WithInitializerExpressionSyntax shares the InitializerExpressionSyntax base.
         if (refNode.Parent is AssignmentExpressionSyntax assignInInit &&
             assignInInit.Left == refNode &&
             assignInInit.Parent is InitializerExpressionSyntax)
-            return true;
+            return "ObjectInitializer";
 
         // Regular assignment: target = value
         if (refNode.Parent is AssignmentExpressionSyntax directAssign && directAssign.Left == refNode)
-            return true;
+            return "Assignment";
 
         // MemberAccess on left of assignment: obj.Prop = value
         if (refNode.Parent is MemberAccessExpressionSyntax memberAccess &&
             memberAccess.Parent is AssignmentExpressionSyntax memberAssign &&
             memberAssign.Left == memberAccess)
-            return true;
+            return "Assignment";
 
         // out or ref argument
         if (refNode.Parent is ArgumentSyntax arg &&
             (arg.RefKindKeyword.IsKind(SyntaxKind.OutKeyword) || arg.RefKindKeyword.IsKind(SyntaxKind.RefKeyword)))
-            return true;
+            return "OutRef";
 
-        return false;
+        return null;
     }
 
     private static TypeUsageClassification ClassifyTypeUsage(SyntaxNode refNode, ISymbol referencedSymbol)
