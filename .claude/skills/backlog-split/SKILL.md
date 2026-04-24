@@ -35,7 +35,7 @@ Default output shape — adapt section names if the file already uses different 
 Both new files get:
 - A `<!-- purpose: P{N} backlog rows, split from ai_docs/backlog.md on {ISO-date} -->` comment.
 - A `<!-- scope: in-repo -->` tag immediately after (doc-audit §Planning-Doc-Scope-Rules).
-- A one-line back-pointer: `Root: [`ai_docs/backlog.md`](backlog.md). Contract and standing rules live there; this file holds P{N} rows only.`
+- A one-line back-pointer referencing `ai_docs/backlog.md` as the root; note that contract and standing rules live there and this file holds only P{N} rows. Use a relative-link form appropriate to the file's location.
 - The exact `| id | pri | deps | do |` header + every row that was in that section.
 - No `Refs` table (lives in root only).
 
@@ -44,25 +44,9 @@ Both new files get:
 1. Read `ai_docs/backlog.md` fully. Note the line ranges of each `## P{2,3,4} — open work` section.
 2. Compute the new `ai_docs/backlog.md` body: keep metadata + P2 section + augmented Refs.
 3. Write `ai_docs/backlog-p3.md` and `ai_docs/backlog-p4.md` with the extracted sections + pointer header.
-4. In the root file, insert a new `## Priority-scoped backlog files` subsection right after `## Standing rules`:
+4. In the root file, insert a new `## Priority-scoped backlog files` subsection right after `## Standing rules`. Its content is a small table with columns `File | Holds | When to read`, one row per split file (`backlog-p3.md`, `backlog-p4.md`) using the standard sibling-relative link form (target filename as both label and href), plus a one-line footer explaining that the root backlog holds P2 + contract + standing rules and that row ids never duplicate across files.
 
-   ```markdown
-   ## Priority-scoped backlog files
-
-   | File | Holds | When to read |
-   |------|-------|--------------|
-   | [`backlog-p3.md`](backlog-p3.md) | P3 open rows | After P2 has no match for the current task. |
-   | [`backlog-p4.md`](backlog-p4.md) | P4 open rows | Nice-to-have band; read only when explicitly sweeping P4. |
-
-   Root backlog holds P2 (hot), the Agent contract, and standing rules. P3 / P4 rows live in the split files. Row ids never duplicate across files.
-   ```
-
-5. Append to the root `## Refs` table:
-
-   ```markdown
-   | `ai_docs/backlog-p3.md` | P3 open rows (split from this file on YYYY-MM-DD). |
-   | `ai_docs/backlog-p4.md` | P4 open rows (split from this file on YYYY-MM-DD). |
-   ```
+5. Append rows to the root `## Refs` table for each split file: the `Path` cell is the full repo-relative path in inline-code (e.g. `ai_docs/backlog-p3.md`) and the `Role` cell names the priority band plus the ISO split date.
 
 6. Bump `**updated_at:**` to the current UTC ISO datetime.
 7. Re-run the doc-audit size check: `wc -c ai_docs/backlog.md` ÷ 4 ≈ tokens. Should now be < 4000.
