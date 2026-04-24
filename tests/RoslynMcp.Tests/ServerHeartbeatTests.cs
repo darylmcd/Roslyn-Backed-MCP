@@ -66,14 +66,18 @@ public sealed class ServerHeartbeatTests
     }
 
     [TestMethod]
-    public async Task Heartbeat_NoWorkspaceLoaded_ReturnsInitializingWithZeroCount()
+    public async Task Heartbeat_NoWorkspaceLoaded_ReturnsIdleWithZeroCount()
     {
+        // connection-state-ready-unsatisfiable-preload: pre-load state is "idle", a
+        // terminal label, not the previous "initializing" which incorrectly implied a
+        // transient step that would auto-advance. The server only transitions via an
+        // explicit workspace_load call.
         var json = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0));
         using var doc = JsonDocument.Parse(json);
 
         var connection = doc.RootElement.GetProperty("connection");
-        Assert.AreEqual("initializing", connection.GetProperty("state").GetString(),
-            "state must be 'initializing' when no workspace has been loaded yet.");
+        Assert.AreEqual("idle", connection.GetProperty("state").GetString(),
+            "state must be 'idle' when no workspace has been loaded yet (terminal pre-load state, NOT 'initializing').");
         Assert.AreEqual(0, connection.GetProperty("loadedWorkspaceCount").GetInt32());
         AssertIdentityFieldsPresent(connection);
     }
@@ -89,6 +93,48 @@ public sealed class ServerHeartbeatTests
             "state must be 'ready' once at least one workspace is loaded.");
         Assert.AreEqual(1, connection.GetProperty("loadedWorkspaceCount").GetInt32());
         AssertIdentityFieldsPresent(connection);
+    }
+
+    [TestMethod]
+    public async Task Heartbeat_PreLoadToPostLoadTransition_IdleToReady()
+    {
+        // connection-state-ready-unsatisfiable-preload: explicit test of the only
+        // allowed state transition. The server starts at `idle` (pre-load) and flips
+        // to `ready` the moment ListWorkspaces() reports a loaded session. There is
+        // no transient intermediate `initializing` step — the label `idle` is terminal
+        // until workspace_load is called. A hard-gate prompt that polls through this
+        // transition should observe exactly two distinct states in order: idle, ready.
+        var preLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 0));
+        using var preLoadDoc = JsonDocument.Parse(preLoadJson);
+        Assert.AreEqual(
+            "idle",
+            preLoadDoc.RootElement.GetProperty("connection").GetProperty("state").GetString(),
+            "pre-load state must be 'idle' — reverts to the broken 'initializing' label if this fails.");
+
+        var postLoadJson = await ServerTools.GetServerHeartbeat(new FakeWorkspaceManager(loadedCount: 1));
+        using var postLoadDoc = JsonDocument.Parse(postLoadJson);
+        Assert.AreEqual(
+            "ready",
+            postLoadDoc.RootElement.GetProperty("connection").GetProperty("state").GetString(),
+            "post-load state must flip to 'ready' once at least one workspace is loaded.");
+    }
+
+    [TestMethod]
+    public async Task ServerInfo_PreLoad_ReportsIdleNotInitializing()
+    {
+        // connection-state-ready-unsatisfiable-preload: matches the heartbeat's shape
+        // but verifies the inline `connection` block on `server_info`. Prompts like
+        // `deep-review-and-refactor.md`'s Phase -1 hard gate previously saw
+        // `state=initializing` here and waited for it to flip without ever calling
+        // workspace_load — that broken polling loop is what this fix closes.
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(loadedCount: 0), new FakeVersionProvider(null));
+        using var doc = JsonDocument.Parse(json);
+
+        var connection = doc.RootElement.GetProperty("connection");
+        Assert.AreEqual("idle", connection.GetProperty("state").GetString(),
+            "server_info.connection.state must be 'idle' pre-load, not 'initializing'.");
+        Assert.AreNotEqual("initializing", connection.GetProperty("state").GetString(),
+            "server_info.connection.state must NOT revert to the legacy 'initializing' label.");
     }
 
     [TestMethod]
