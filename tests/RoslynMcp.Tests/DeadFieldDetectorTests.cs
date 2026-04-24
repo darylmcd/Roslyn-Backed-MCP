@@ -270,6 +270,128 @@ public sealed class DeadFieldDetectorTests
         Assert.IsNull(hit.RemovalBlockedBy);
     }
 
+    // Regression coverage for `find-dead-fields-compound-assignment-writes`:
+    // every compound-assignment operator + `++`/`--` on both bare and member-access
+    // field references must count as a write so the field is never classified as
+    // `never-written`. `Interlocked.*` callsites that take the field by `ref` are
+    // covered by the existing `RefKeyword` arm; adding the member-access case
+    // here ensures `Interlocked.Increment(ref acc.field)` works for qualified refs.
+    [DataTestMethod]
+    [DataRow("_count++;", DisplayName = "PostfixIncrement")]
+    [DataRow("_count--;", DisplayName = "PostfixDecrement")]
+    [DataRow("++_count;", DisplayName = "PrefixIncrement")]
+    [DataRow("--_count;", DisplayName = "PrefixDecrement")]
+    [DataRow("_count += 1;", DisplayName = "AddAssign")]
+    [DataRow("_count -= 1;", DisplayName = "SubtractAssign")]
+    [DataRow("_count *= 2;", DisplayName = "MultiplyAssign")]
+    [DataRow("_count /= 2;", DisplayName = "DivideAssign")]
+    [DataRow("_count %= 2;", DisplayName = "ModuloAssign")]
+    [DataRow("_count <<= 1;", DisplayName = "LeftShiftAssign")]
+    [DataRow("_count >>= 1;", DisplayName = "RightShiftAssign")]
+    [DataRow("_count |= 1;", DisplayName = "OrAssign")]
+    [DataRow("_count &= 1;", DisplayName = "AndAssign")]
+    [DataRow("_count ^= 1;", DisplayName = "XorAssign")]
+    public async Task FindDeadFields_CompoundAssignmentCountsAsWrite(string statement)
+    {
+        var source = $$"""
+            namespace Sample;
+            internal sealed class Counter
+            {
+                private int _count;
+
+                public int Touch()
+                {
+                    {{statement}}
+                    return _count;
+                }
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadFieldsAsync(
+            WorkspaceId,
+            new DeadFieldsAnalysisOptions(),
+            default);
+
+        Assert.AreEqual(0, hits.Count,
+            $"Compound statement `{statement}` must register a write reference — otherwise the field is falsely classified as never-written.");
+    }
+
+    [TestMethod]
+    public async Task FindDeadFields_MemberAccessCompoundAssignmentCountsAsWrite()
+    {
+        // `acc.ErrorCount++` from the diagnosis: the reference is the Name node of a
+        // MemberAccessExpression. Prior to the fix, the classifier returned "Read"
+        // because only the MemberAccess→Assignment arm matched, not the Postfix
+        // case. This test locks in the unwrap that promotes MemberAccess to the
+        // effective reference node before matching operator arms.
+        const string source = """
+            namespace Sample;
+            internal sealed class Accumulator
+            {
+                public int ErrorCount;
+            }
+            internal sealed class Consumer
+            {
+                public int Touch(Accumulator acc)
+                {
+                    acc.ErrorCount++;
+                    acc.ErrorCount += 2;
+                    return acc.ErrorCount;
+                }
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadFieldsAsync(
+            WorkspaceId,
+            new DeadFieldsAnalysisOptions { IncludePublic = true },
+            default);
+
+        var errorCount = hits.FirstOrDefault(hit => hit.SymbolName == "ErrorCount");
+        Assert.IsNull(errorCount,
+            "`acc.ErrorCount++` and `acc.ErrorCount += 2` must both count as writes on the field reference.");
+    }
+
+    [TestMethod]
+    public async Task FindDeadFields_InterlockedIncrementCountsAsReadWrite()
+    {
+        // `Interlocked.Increment(ref acc.ErrorCount)` — the `ref` arg carries a
+        // MemberAccess to the field. The existing `RefKeyword` arm only matched
+        // bare field references; the MemberAccess unwrap extends it to qualified
+        // field references, so the canonical `Interlocked.*` pattern no longer
+        // silently drops as `Read`.
+        const string source = """
+            using System.Threading;
+            namespace Sample;
+            internal sealed class Accumulator
+            {
+                public int ErrorCount;
+            }
+            internal sealed class Consumer
+            {
+                public int Touch(Accumulator acc)
+                {
+                    Interlocked.Increment(ref acc.ErrorCount);
+                    return acc.ErrorCount;
+                }
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadFieldsAsync(
+            WorkspaceId,
+            new DeadFieldsAnalysisOptions { IncludePublic = true },
+            default);
+
+        var errorCount = hits.FirstOrDefault(hit => hit.SymbolName == "ErrorCount");
+        Assert.IsNull(errorCount,
+            "`Interlocked.Increment(ref acc.ErrorCount)` must count as a write on the qualified field reference.");
+    }
+
     [TestMethod]
     public async Task FindDeadFields_LimitCapsResults()
     {
