@@ -274,7 +274,7 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects. References and declarations are paginated server-side (FLAG-3D) — use referencesOffset/referencesLimit/declarationsLimit. Total counts and hasMore flags are always returned.")]
+    [McpServerTool(Name = "impact_analysis", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Analyze the impact of changing a symbol: find all references, affected declarations, and affected projects. References and declarations are paginated server-side (FLAG-3D) — use referencesOffset/referencesLimit/declarationsLimit. Total counts and hasMore flags are always returned. Pass summary=true to drop the per-reference and per-declaration arrays and keep only counts (10-100x smaller payload on broad-impact symbols).")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Estimate the impact of changing a symbol.")]
     public static Task<string> AnalyzeImpact(
@@ -289,6 +289,7 @@ public static class AnalysisTools
         [Description("Number of references to skip before returning results (default: 0)")] int referencesOffset = 0,
         [Description("Maximum number of references to return per page (default: 100). Larger pages can blow MCP output budgets on broad-impact symbols.")] int referencesLimit = 100,
         [Description("Maximum number of affected declarations to return (default: 100)")] int declarationsLimit = 100,
+        [Description("When true, drops the per-reference and per-declaration arrays and returns only the targetSymbol, affectedProjects list, totals, and hasMore flags. Default false preserves the v1.18.x shape.")] bool summary = false,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
@@ -302,6 +303,31 @@ public static class AnalysisTools
                 paging,
                 c);
             if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+
+            // Summary mode drops the materialized per-ref / per-decl arrays. Paging knobs
+            // are still echoed so callers paging follow-up requests get the same envelope
+            // shape regardless of mode. The downstream service still walks the full
+            // reference set (needed to compute the totals); summary mode is a payload-size
+            // reduction, not a compute reduction. See find_references(summary=true) for the
+            // analogous symbol-tools contract.
+            if (summary)
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    targetSymbol = result.TargetSymbol,
+                    affectedProjects = result.AffectedProjects,
+                    summary = result.Summary,
+                    totalDirectReferences = result.TotalDirectReferences,
+                    totalAffectedDeclarations = result.TotalAffectedDeclarations,
+                    hasMoreReferences = result.HasMoreReferences,
+                    hasMoreDeclarations = result.HasMoreDeclarations,
+                    referencesOffset = result.ReferencesOffset,
+                    referencesLimit = result.ReferencesLimit,
+                    declarationsLimit,
+                    summaryMode = true,
+                }, JsonDefaults.Indented);
+            }
+
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
