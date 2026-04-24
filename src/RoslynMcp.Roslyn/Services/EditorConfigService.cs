@@ -91,7 +91,7 @@ public sealed class EditorConfigService : IEditorConfigService
     /// Parses the .editorconfig file on disk and yields key-value pairs from
     /// sections that apply to C# files (e.g., [*.cs], [*.{cs,csx,cake}], [*]).
     /// </summary>
-    private static IEnumerable<(string Key, string Value)> ParseEditorconfigCsKeys(string editorconfigPath)
+    internal static IEnumerable<(string Key, string Value)> ParseEditorconfigCsKeys(string editorconfigPath)
     {
         var inApplicableSection = false;
         foreach (var rawLine in File.ReadLines(editorconfigPath))
@@ -102,10 +102,7 @@ public sealed class EditorConfigService : IEditorConfigService
 
             if (line[0] == '[')
             {
-                // Check if the section header matches C# files
-                inApplicableSection = line.Contains("*", StringComparison.Ordinal) &&
-                    (line.Contains(".cs", StringComparison.OrdinalIgnoreCase) ||
-                     !line.Contains('.'));  // [*] applies to all files
+                inApplicableSection = SectionMatchesCSharp(line);
                 continue;
             }
 
@@ -119,6 +116,56 @@ public sealed class EditorConfigService : IEditorConfigService
             if (key.Length > 0 && value.Length > 0)
                 yield return (key, value);
         }
+    }
+
+    /// <summary>
+    /// Returns true if an .editorconfig section header applies to C# source files.
+    /// Recognizes common glob shapes: <c>[*]</c>, <c>[*.cs]</c>, <c>[*.{cs,csx,cake}]</c>,
+    /// <c>[**.cs]</c>, and brace-expansion lists that include <c>cs</c>.
+    /// </summary>
+    internal static bool SectionMatchesCSharp(string sectionHeader)
+    {
+        if (sectionHeader.Length < 2 || sectionHeader[0] != '[' || sectionHeader[^1] != ']')
+            return false;
+
+        var inner = sectionHeader[1..^1].Trim();
+        if (inner.Length == 0) return false;
+
+        // [*] applies to all files.
+        if (inner == "*" || inner == "**") return true;
+
+        // Extract extension portion after the last '.' that isn't inside braces.
+        // Handle brace expansion {cs,csx,cake} by checking each alternative.
+        if (inner.Contains('{', StringComparison.Ordinal) && inner.Contains('}', StringComparison.Ordinal))
+        {
+            var openBrace = inner.IndexOf('{', StringComparison.Ordinal);
+            var closeBrace = inner.IndexOf('}', openBrace);
+            if (closeBrace > openBrace)
+            {
+                var alternatives = inner[(openBrace + 1)..closeBrace]
+                    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                foreach (var alt in alternatives)
+                {
+                    if (alt.Equals("cs", StringComparison.OrdinalIgnoreCase) ||
+                        alt.Equals("csx", StringComparison.OrdinalIgnoreCase) ||
+                        alt.Equals("cake", StringComparison.OrdinalIgnoreCase) ||
+                        alt.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        // Simple extension match: [*.cs], [**.cs], [**/*.cs].
+        if (inner.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ||
+            inner.EndsWith(".csx", StringComparison.OrdinalIgnoreCase) ||
+            inner.EndsWith(".cake", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static IEnumerable<string> GetKnownOptionKeys()
