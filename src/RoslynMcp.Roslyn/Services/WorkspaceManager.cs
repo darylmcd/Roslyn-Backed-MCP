@@ -482,8 +482,38 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     public Solution GetCurrentSolution(string workspaceId)
     {
         var session = GetRequiredSession(workspaceId);
-        return session.Workspace?.CurrentSolution
-            ?? throw new InvalidOperationException($"Workspace '{workspaceId}' is not loaded.");
+        var workspace = session.Workspace;
+        if (workspace is null)
+        {
+            // autoreload-cascade-stdio-host-crash: a null workspace observed after the session
+            // was registered means a reload failed mid-flight (or is executing on another turn
+            // and has not yet completed the atomic swap). Surface as StaleWorkspaceTransition
+            // so the caller sees a retry-able envelope rather than a generic invalid-operation
+            // that historically let the raw exception terminate the stdio host.
+            throw new StaleWorkspaceTransitionException(
+                workspaceId,
+                $"Workspace '{workspaceId}' is in the middle of a reload transition or its last " +
+                "reload failed. Retry the read after workspace_reload settles, or call " +
+                "workspace_reload explicitly to re-establish a valid snapshot.");
+        }
+
+        try
+        {
+            return workspace.CurrentSolution;
+        }
+        catch (ObjectDisposedException ex)
+        {
+            // Defensive: even with the atomic swap in LoadIntoSessionAsync, if a caller held a
+            // captured reference to the previous workspace across a reload, reading its solution
+            // can observe the disposed instance. Translate that to a structured transition error
+            // (retry-able) rather than letting it bubble as a generic InternalError that killed
+            // the stdio host in the 2026-04-24 cascade.
+            throw new StaleWorkspaceTransitionException(
+                workspaceId,
+                $"Workspace '{workspaceId}' snapshot reference was disposed during a concurrent " +
+                "reload. Retry the read to observe the fresh snapshot.",
+                ex);
+        }
     }
 
     /// <summary>
@@ -605,16 +635,27 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private async Task LoadIntoSessionAsync(WorkspaceSession session, string path, CancellationToken ct)
     {
         await session.LoadLock.WaitAsync(ct).ConfigureAwait(false);
+        // autoreload-cascade-stdio-host-crash: build the new workspace + diagnostics queue into
+        // locals, then swap them onto the session atomically on success. Previously we disposed
+        // the old `session.Workspace` before creating the new one (and also overwrote
+        // `session.WorkspaceDiagnostics` mid-flight). That left readers with a window where
+        // `session.Workspace` pointed at a disposed MSBuildWorkspace — `.CurrentSolution` on a
+        // disposed workspace throws `ObjectDisposedException`, and the 2026-04-24 two-writer +
+        // reader cascade showed this path could terminate the stdio host. With the swap-on-
+        // success pattern, readers always see EITHER the prior loaded workspace OR the fully
+        // initialized new workspace; the disposed object is never observable.
+        MSBuildWorkspace? newWorkspace = null;
+        ConcurrentQueue<DiagnosticDto>? newDiagnostics = null;
+        MSBuildWorkspace? oldWorkspace = session.Workspace;
         try
         {
-            session.Workspace?.Dispose();
             MsBuildInitializer.EnsureInitialized();
-            session.Workspace = MSBuildWorkspace.Create();
-            session.WorkspaceDiagnostics = new ConcurrentQueue<DiagnosticDto>();
-            session.ProjectStatuses = ImmutableArray<ProjectStatusDto>.Empty;
+            newWorkspace = MSBuildWorkspace.Create();
+            newDiagnostics = new ConcurrentQueue<DiagnosticDto>();
             var fullPath = path;
+            var diagnosticsRef = newDiagnostics; // capture for the handler closure below
 
-            session.Workspace.RegisterWorkspaceFailedHandler(args =>
+            newWorkspace.RegisterWorkspaceFailedHandler(args =>
             {
                 // Normalize at ingress so workspace_load, workspace_status, project_diagnostics,
                 // and the roslyn://workspaces resource all see the same severity. Previously
@@ -632,10 +673,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     StartColumn: null,
                     EndLine: null,
                     EndColumn: null);
-                session.WorkspaceDiagnostics.Enqueue(dto);
-                while (session.WorkspaceDiagnostics.Count > MaxDiagnosticsPerWorkspace)
+                diagnosticsRef.Enqueue(dto);
+                while (diagnosticsRef.Count > MaxDiagnosticsPerWorkspace)
                 {
-                    session.WorkspaceDiagnostics.TryDequeue(out _);
+                    diagnosticsRef.TryDequeue(out _);
                 }
 
                 _logger.LogWarning(
@@ -657,11 +698,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             if (fullPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
                 fullPath.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
             {
-                await session.Workspace.OpenSolutionAsync(fullPath, cancellationToken: ct).ConfigureAwait(false);
+                await newWorkspace.OpenSolutionAsync(fullPath, cancellationToken: ct).ConfigureAwait(false);
             }
             else if (fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
             {
-                await session.Workspace.OpenProjectAsync(fullPath, cancellationToken: ct).ConfigureAwait(false);
+                await newWorkspace.OpenProjectAsync(fullPath, cancellationToken: ct).ConfigureAwait(false);
             }
             else
             {
@@ -673,20 +714,45 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // Compilation.GetDiagnostics, and Roslyn-internal switches over AnalyzerReference
             // subtypes throw "Unexpected value 'UnresolvedAnalyzerReference'" otherwise. The
             // earlier per-service guards in CompilationCache/FixAllService are now unnecessary.
-            await StripUnresolvedAnalyzerReferencesAsync(session, ct).ConfigureAwait(false);
+            await StripUnresolvedAnalyzerReferencesAsync(session.WorkspaceId, newWorkspace, newDiagnostics, ct).ConfigureAwait(false);
 
-            session.ProjectStatuses = BuildProjectStatuses(session.Workspace.CurrentSolution);
+            var projectStatuses = BuildProjectStatuses(newWorkspace.CurrentSolution);
+            var restoreRequired = DetectRestoreRequired(projectStatuses) ||
+                                  HasRestoreRequiredWorkspaceDiagnostics(newDiagnostics);
+
+            // autoreload-cascade-stdio-host-crash: atomic swap. Assign all session state AFTER
+            // the new workspace is fully loaded so concurrent readers never observe a mid-reload
+            // session (disposed workspace, empty project list, or mismatched LoadedPath).
+            session.Workspace = newWorkspace;
+            session.WorkspaceDiagnostics = newDiagnostics;
+            session.ProjectStatuses = projectStatuses;
             session.LoadedPath = fullPath;
-            session.RestoreRequired = DetectRestoreRequired(session.ProjectStatuses) ||
-                                      HasRestoreRequiredWorkspaceDiagnostics(session.WorkspaceDiagnostics);
+            session.RestoreRequired = restoreRequired;
             session.LoadedAtUtc = DateTimeOffset.UtcNow;
             session.IncrementVersion();
             _previewStore.InvalidateAll(session.WorkspaceId);
 
+            // Transfer succeeded — dispose the prior workspace AFTER readers can no longer
+            // latch onto it through `session.Workspace`. Null out our local so the finally
+            // block doesn't re-dispose or dispose the now-live new workspace.
+            newWorkspace = null;
             LogWorkspaceLoaded(_logger, session.WorkspaceId, fullPath, session.Version, null);
         }
         finally
         {
+            // If the load failed mid-way, dispose the half-initialized new workspace and leave
+            // the session's prior state untouched. Readers continue to see the previous valid
+            // workspace rather than a broken one (or null).
+            newWorkspace?.Dispose();
+            // Dispose the previous workspace now that the swap is visible (or keep it if we
+            // failed and never swapped — the finally's newWorkspace dispose above handles the
+            // failure case; oldWorkspace remains attached to the session).
+            if (newWorkspace is null)
+            {
+                // Successful swap: oldWorkspace was captured before the swap and is no longer
+                // referenced by the session. Safe to dispose.
+                oldWorkspace?.Dispose();
+            }
             session.LoadLock.Release();
         }
     }
@@ -1200,11 +1266,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// <c>WORKSPACE_UNRESOLVED_ANALYZER</c> warning (severity Warning, not Error) so callers
     /// can still discover that something was filtered.
     /// </summary>
-    private async Task StripUnresolvedAnalyzerReferencesAsync(WorkspaceSession session, CancellationToken ct)
+    private async Task StripUnresolvedAnalyzerReferencesAsync(
+        string workspaceId,
+        MSBuildWorkspace workspace,
+        ConcurrentQueue<DiagnosticDto> diagnosticsQueue,
+        CancellationToken ct)
     {
-        if (session.Workspace is null) return;
-
-        var originalSolution = session.Workspace.CurrentSolution;
+        var originalSolution = workspace.CurrentSolution;
         var solution = originalSolution;
         var strippedCount = 0;
         var newDiagnostics = new List<DiagnosticDto>();
@@ -1263,7 +1331,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             _logger,
             ct).ConfigureAwait(false);
 
-        if (!session.Workspace.TryApplyChanges(solution))
+        if (!workspace.TryApplyChanges(solution))
         {
             // Should be impossible — analyzer reference removal is supported by every workspace
             // implementation. Log and leave the unresolved entries in place; the per-service
@@ -1271,7 +1339,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // surface the failure loudly.
             _logger.LogWarning(
                 "Workspace {WorkspaceId}: TryApplyChanges failed when stripping {Count} UnresolvedAnalyzerReference entries; downstream tools may still crash on them.",
-                session.WorkspaceId, strippedCount);
+                workspaceId, strippedCount);
             return;
         }
 
@@ -1285,16 +1353,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
         foreach (var dto in newDiagnostics)
         {
-            session.WorkspaceDiagnostics.Enqueue(dto);
-            while (session.WorkspaceDiagnostics.Count > MaxDiagnosticsPerWorkspace)
+            diagnosticsQueue.Enqueue(dto);
+            while (diagnosticsQueue.Count > MaxDiagnosticsPerWorkspace)
             {
-                session.WorkspaceDiagnostics.TryDequeue(out _);
+                diagnosticsQueue.TryDequeue(out _);
             }
         }
 
         _logger.LogInformation(
             "Workspace {WorkspaceId}: stripped {Count} UnresolvedAnalyzerReference entries to prevent downstream crashes.",
-            session.WorkspaceId, strippedCount);
+            workspaceId, strippedCount);
     }
 
     private WorkspaceStatusDto BuildStatus(WorkspaceSession session)
