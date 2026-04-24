@@ -47,7 +47,7 @@ public sealed class SuppressionService : ISuppressionService
         }
 
         var key = $"dotnet_diagnostic.{diagnosticId.Trim()}.severity";
-        return _editorConfig.SetOptionAsync(workspaceId, sourceFilePath, key, severity.Trim(), ct);
+        return _editorConfig.SetOptionAsync(workspaceId, sourceFilePath, key, severity.Trim(), "set_diagnostic_severity", ct);
     }
 
     public Task<TextEditResultDto> AddPragmaWarningDisableAsync(
@@ -65,7 +65,7 @@ public sealed class SuppressionService : ISuppressionService
 
         var pragma = $"#pragma warning disable {diagnosticId.Trim()}{Environment.NewLine}";
         var edit = new TextEditDto(line, 1, line, 1, pragma);
-        return _editService.ApplyTextEditsAsync(workspaceId, filePath, [edit], ct);
+        return _editService.ApplyTextEditsAsync(workspaceId, filePath, [edit], "add_pragma_suppression", ct);
     }
 
     public async Task<PragmaVerifyResultDto> VerifyPragmaSuppressesAsync(
@@ -218,6 +218,7 @@ public sealed class SuppressionService : ISuppressionService
             workspaceId,
             filePath,
             edits,
+            "pragma_scope_widen",
             ct,
             skipSyntaxCheck: false,
             verify: false,

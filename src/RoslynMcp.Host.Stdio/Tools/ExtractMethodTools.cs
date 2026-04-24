@@ -52,7 +52,7 @@ public static class ExtractMethodTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "extract_method_apply", c),
             ct);
 
     [McpServerTool(Name = "extract_shared_expression_to_helper_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]

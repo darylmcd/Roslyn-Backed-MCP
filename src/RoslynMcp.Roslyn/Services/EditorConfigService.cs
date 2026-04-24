@@ -12,12 +12,18 @@ public sealed class EditorConfigService : IEditorConfigService
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<EditorConfigService> _logger;
     private readonly IUndoService? _undoService;
+    private readonly IChangeTracker? _changeTracker;
 
-    public EditorConfigService(IWorkspaceManager workspace, ILogger<EditorConfigService> logger, IUndoService? undoService = null)
+    public EditorConfigService(
+        IWorkspaceManager workspace,
+        ILogger<EditorConfigService> logger,
+        IUndoService? undoService = null,
+        IChangeTracker? changeTracker = null)
     {
         _workspace = workspace;
         _logger = logger;
         _undoService = undoService;
+        _changeTracker = changeTracker;
     }
 
     public async Task<EditorConfigOptionsDto> GetOptionsAsync(
@@ -295,7 +301,7 @@ public sealed class EditorConfigService : IEditorConfigService
     }
 
     public Task<EditorConfigWriteResultDto> SetOptionAsync(
-        string workspaceId, string sourceFilePath, string key, string value, CancellationToken ct)
+        string workspaceId, string sourceFilePath, string key, string value, string toolName, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         _ = _workspace.GetCurrentSolution(workspaceId);
@@ -338,6 +344,16 @@ public sealed class EditorConfigService : IEditorConfigService
         }
 
         File.WriteAllLines(editorconfigPath, lines);
+
+        // workspace-changes-log-missing-editorconfig-writers: route the editorconfig write
+        // through ChangeTracker so `workspace_changes` surfaces the originating tool name
+        // (`set_editorconfig_option` or `set_diagnostic_severity`) instead of omitting
+        // editorconfig applies entirely.
+        _changeTracker?.RecordChange(
+            workspaceId,
+            $"Set .editorconfig option '{key.Trim()}' in {Path.GetFileName(editorconfigPath)}",
+            [editorconfigPath],
+            toolName);
 
         return Task.FromResult(new EditorConfigWriteResultDto(editorconfigPath, key, value, created));
     }

@@ -163,7 +163,7 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
                 wsId, probeFilePath, CancellationToken.None);
             Assert.IsNotNull(preview.PreviewToken);
 
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(apply.Success, apply.Error);
 
             var resultText = await File.ReadAllTextAsync(probeFilePath, CancellationToken.None);

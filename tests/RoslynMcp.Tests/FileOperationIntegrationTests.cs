@@ -35,7 +35,7 @@ public sealed class FileOperationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken));
         Assert.IsTrue(preview.Changes.Any(change => string.Equals(change.FilePath, newFilePath, StringComparison.OrdinalIgnoreCase)));
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(newFilePath));
@@ -59,7 +59,7 @@ public sealed class FileOperationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken));
         Assert.IsTrue(preview.Changes.Any(change => string.Equals(change.FilePath, targetFilePath, StringComparison.OrdinalIgnoreCase)));
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsFalse(File.Exists(targetFilePath));
@@ -79,7 +79,7 @@ public sealed class FileOperationIntegrationTests : IsolatedWorkspaceTestBase
 
         await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsFalse(applyResult.Success, "Stale previews should be rejected.");
         StringAssert.Contains(applyResult.Error ?? string.Empty, "stale");
@@ -101,7 +101,7 @@ public sealed class FileOperationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(preview.Changes.Any(change => string.Equals(change.FilePath, sourceFilePath, StringComparison.OrdinalIgnoreCase)));
         Assert.IsTrue(preview.Changes.Any(change => string.Equals(change.FilePath, destinationFilePath, StringComparison.OrdinalIgnoreCase)));
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsFalse(File.Exists(sourceFilePath));

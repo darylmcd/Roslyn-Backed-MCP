@@ -37,8 +37,7 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
         var result = await EditService.ApplyTextEditsAsync(
             workspaceId,
             dogFilePath,
-            new[] { edit },
-            CancellationToken.None,
+            new[] { edit }, "apply_text_edit", CancellationToken.None,
             skipSyntaxCheck: false,
             verify: false,
             autoRevertOnError: false);
@@ -67,8 +66,7 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
         var result = await EditService.ApplyTextEditsAsync(
             workspaceId,
             dogFilePath,
-            new[] { edit },
-            CancellationToken.None,
+            new[] { edit }, "apply_text_edit", CancellationToken.None,
             skipSyntaxCheck: false,
             verify: true,
             autoRevertOnError: false);
@@ -103,8 +101,7 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
         var result = await EditService.ApplyTextEditsAsync(
             workspaceId,
             dogFilePath,
-            new[] { edit },
-            CancellationToken.None,
+            new[] { edit }, "apply_text_edit", CancellationToken.None,
             skipSyntaxCheck: false,
             verify: true,
             autoRevertOnError: false);
@@ -143,8 +140,7 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
         var result = await EditService.ApplyTextEditsAsync(
             workspaceId,
             dogFilePath,
-            new[] { edit },
-            CancellationToken.None,
+            new[] { edit }, "apply_text_edit", CancellationToken.None,
             skipSyntaxCheck: false,
             verify: true,
             autoRevertOnError: true);
@@ -182,7 +178,7 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
         var originalCat = await File.ReadAllTextAsync(catFilePath, CancellationToken.None);
         var catEdit = ReplaceSpeakReturnEdit(originalCat, "PreExistingErrorMarker");
         var call1 = await EditService.ApplyTextEditsAsync(
-            workspaceId, catFilePath, new[] { catEdit }, CancellationToken.None,
+            workspaceId, catFilePath, new[] { catEdit }, "apply_text_edit", CancellationToken.None,
             skipSyntaxCheck: false, verify: false, autoRevertOnError: false);
         Assert.IsTrue(call1.Success);
         Assert.IsNull(call1.Verification, "Sanity: call 1 should not have a Verification field.");
@@ -201,7 +197,7 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
         var originalDog = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
         var dogEdit = AppendCommentEdit(originalDog, "// benign-in-broken-workspace");
         var call2 = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { dogEdit }, CancellationToken.None,
+            workspaceId, dogFilePath, new[] { dogEdit }, "apply_text_edit", CancellationToken.None,
             skipSyntaxCheck: false, verify: true, autoRevertOnError: true);
 
         Assert.IsTrue(call2.Success);
@@ -240,8 +236,7 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
 
         var result = await EditService.ApplyMultiFileTextEditsAsync(
             workspaceId,
-            fileEdits,
-            CancellationToken.None,
+            fileEdits, "apply_multi_file_edit", CancellationToken.None,
             skipSyntaxCheck: false,
             verify: true,
             autoRevertOnError: false);
@@ -279,8 +274,7 @@ public sealed class ApplyTextEditVerifyTests : IsolatedWorkspaceTestBase
 
         var result = await EditService.ApplyMultiFileTextEditsAsync(
             workspaceId,
-            fileEdits,
-            CancellationToken.None,
+            fileEdits, "apply_multi_file_edit", CancellationToken.None,
             skipSyntaxCheck: false,
             verify: true,
             autoRevertOnError: true);

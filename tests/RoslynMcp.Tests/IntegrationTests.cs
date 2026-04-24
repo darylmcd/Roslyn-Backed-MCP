@@ -342,7 +342,7 @@ public class IntegrationTests : SharedWorkspaceTestBase
                 CancellationToken.None);
             Assert.IsTrue(preview.Changes.Count > 0, "Rename preview should produce file changes.");
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, applyResult.Error);
 
             var dogContents = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
@@ -374,7 +374,7 @@ public class IntegrationTests : SharedWorkspaceTestBase
                 CancellationToken.None);
             await WorkspaceManager.ReloadAsync(isolatedWorkspaceId, CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsFalse(applyResult.Success, "Stale previews should be rejected.");
             StringAssert.Contains(applyResult.Error ?? string.Empty, "stale");
         }
@@ -400,7 +400,7 @@ public class IntegrationTests : SharedWorkspaceTestBase
                 isolatedWorkspaceId,
                 serviceFilePath,
                 CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(applyResult.Success, applyResult.Error);
             var serviceContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);
@@ -428,7 +428,7 @@ public class IntegrationTests : SharedWorkspaceTestBase
                 isolatedWorkspaceId,
                 serviceFilePath,
                 CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(applyResult.Success, applyResult.Error);
             var serviceContents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);

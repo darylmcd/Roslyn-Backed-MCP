@@ -51,6 +51,6 @@ public static class TypeExtractionTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "extract_type_apply", c),
             ct);
 }

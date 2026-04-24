@@ -91,7 +91,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
                 replaceUsages: false,
                 CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
 
             var interfaceFilePath = Path.Combine(sampleLibDir, "IItem3InventoryService.cs");
@@ -186,7 +186,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
                 replaceUsages: false,
                 CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
 
             var interfaceFilePath = Path.Combine(sampleLibDir, "IItem3GenericService.cs");
@@ -271,7 +271,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
                 replaceUsages: false,
                 CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
 
             var interfaceFilePath = Path.Combine(sampleLibDir, "IItem3SpecialUsingService.cs");
@@ -359,7 +359,7 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
                 replaceUsages: false,
                 CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
 
             var updatedSourceText = await File.ReadAllTextAsync(servicePath);

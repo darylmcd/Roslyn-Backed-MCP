@@ -33,7 +33,7 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
         const string value = "none";
 
         var setResult = await EditorConfigService.SetOptionAsync(
-            workspaceId, dogFilePath, unloadedKey, value, CancellationToken.None);
+            workspaceId, dogFilePath, unloadedKey, value, "set_editorconfig_option", CancellationToken.None);
         Assert.IsTrue(File.Exists(setResult.EditorConfigPath));
 
         var options = await EditorConfigService.GetOptionsAsync(

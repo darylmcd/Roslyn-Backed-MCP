@@ -51,6 +51,6 @@ public static class DeadCodeTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "remove_dead_code_apply", c),
             ct);
 }

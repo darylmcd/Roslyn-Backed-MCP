@@ -51,7 +51,7 @@ public static class RefactoringTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "rename_apply", c),
             ct);
 
     [McpServerTool(Name = "organize_usings_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview organizing using directives in a file: removes unused usings and sorts them")]
@@ -82,7 +82,7 @@ public static class RefactoringTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "organize_usings_apply", c),
             ct);
 
     [McpServerTool(Name = "format_document_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview formatting a document: applies standard C# formatting rules")]
@@ -113,7 +113,7 @@ public static class RefactoringTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "format_document_apply", c),
             ct);
 
     [McpServerTool(Name = "code_fix_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview a curated code fix for a specific diagnostic occurrence")]
@@ -148,7 +148,7 @@ public static class RefactoringTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "code_fix_apply", c),
             ct);
 
     [McpServerTool(Name = "format_range_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -185,7 +185,7 @@ public static class RefactoringTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "format_range_apply", c),
             ct);
 
     [McpServerTool(Name = "format_check", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),

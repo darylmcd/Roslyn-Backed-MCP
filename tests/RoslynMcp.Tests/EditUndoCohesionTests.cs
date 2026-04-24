@@ -39,7 +39,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         var edit = new TextEditDto(1, 1, 1, 1, null!);
 
         var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, CancellationToken.None));
+            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "null NewText");
     }
 
@@ -53,7 +53,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         var edit = new TextEditDto(5, 10, 5, 5, "x");
 
         var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, CancellationToken.None));
+            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "reversed range");
     }
 
@@ -67,7 +67,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         var edit = new TextEditDto(9999, 1, 9999, 1, "oops");
 
         var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, CancellationToken.None));
+            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "9999");
     }
 
@@ -81,7 +81,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         var edit = new TextEditDto(1, 0, 1, 1, "oops");
 
         var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, CancellationToken.None));
+            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "1-based");
     }
 
@@ -95,7 +95,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         var edit = new TextEditDto(5, 10, 5, 5, "x"); // reversed
         try
         {
-            await EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, CancellationToken.None);
+            await EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
             Assert.Fail("Expected ArgumentException.");
         }
         catch (ArgumentException)
@@ -119,7 +119,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         var e2 = new TextEditDto(5, 6, 5, 20, "y");
 
         var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
-            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { e1, e2 }, CancellationToken.None));
+            EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { e1, e2 }, "apply_text_edit", CancellationToken.None));
         StringAssert.Contains(ex.Message, "overlapping");
     }
 
@@ -132,7 +132,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
 
         // Remove the closing brace of the class (line 13: `}`).
         var edit = new TextEditDto(13, 1, 13, 2, "");
-        var result = await EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, CancellationToken.None);
+        var result = await EditService.ApplyTextEditsAsync(workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
 
         Assert.IsFalse(result.Success);
         Assert.IsNotNull(result.SyntaxErrors);
@@ -150,7 +150,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
 
         var edit = new TextEditDto(13, 1, 13, 2, "");
         var result = await EditService.ApplyTextEditsAsync(
-            workspace.WorkspaceId, dogFilePath, new[] { edit }, CancellationToken.None, skipSyntaxCheck: true);
+            workspace.WorkspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None, skipSyntaxCheck: true);
 
         Assert.IsTrue(result.Success);
         Assert.IsNull(result.SyntaxErrors);
@@ -175,7 +175,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         // Normal apply: capture the file snapshot on the undo stack.
         var lines = originalText.Split('\n');
         var appendEdit = new TextEditDto(lines.Length, lines[^1].Length + 1, lines.Length, lines[^1].Length + 1, "\n// apply marker");
-        var applyResult = await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { appendEdit }, CancellationToken.None);
+        var applyResult = await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { appendEdit }, "apply_text_edit", CancellationToken.None);
         Assert.IsTrue(applyResult.Success);
 
         // Simulate post-apply disk drift: a second out-of-band write that the workspace
@@ -209,7 +209,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         await File.WriteAllTextAsync(editorconfigPath, originalContent, CancellationToken.None);
 
         var setResult = await EditorConfigService.SetOptionAsync(
-            workspaceId, dogFilePath, "dotnet_diagnostic.CA1000.severity", "warning", CancellationToken.None);
+            workspaceId, dogFilePath, "dotnet_diagnostic.CA1000.severity", "warning", "set_editorconfig_option", CancellationToken.None);
         Assert.AreEqual(editorconfigPath, setResult.EditorConfigPath);
         Assert.IsFalse(setResult.CreatedNewFile);
 
@@ -240,7 +240,7 @@ public sealed class EditUndoCohesionTests : IsolatedWorkspaceTestBase
         if (File.Exists(candidatePath)) File.Delete(candidatePath);
 
         var setResult = await EditorConfigService.SetOptionAsync(
-            workspaceId, dogFilePath, "dotnet_diagnostic.CA1001.severity", "warning", CancellationToken.None);
+            workspaceId, dogFilePath, "dotnet_diagnostic.CA1001.severity", "warning", "set_editorconfig_option", CancellationToken.None);
         // The implementation may locate an existing .editorconfig higher in the tree; only assert
         // the created-on-this-call case, which is what the "revert deletes it" contract covers.
         if (!setResult.CreatedNewFile)

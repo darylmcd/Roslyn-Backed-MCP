@@ -47,6 +47,6 @@ public static class EditorConfigTools
         => ToolDispatch.PreviewWithWorkspaceIdAsync(
             gate,
             workspaceId,
-            c => editorConfigService.SetOptionAsync(workspaceId, filePath, key, value, c),
+            c => editorConfigService.SetOptionAsync(workspaceId, filePath, key, value, "set_editorconfig_option", c),
             ct);
 }

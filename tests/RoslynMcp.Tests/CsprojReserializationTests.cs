@@ -249,7 +249,7 @@ public sealed class CsprojReserializationTests : TestBase
                     Content: "namespace SampleLib;\n\npublic static class CsprojDriftGuard\n{\n    public const string Marker = \"csproj-reserialization\";\n}\n"),
                 CancellationToken.None);
 
-            await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(File.Exists(newFilePath), "The generated file must be on disk after apply.");
 

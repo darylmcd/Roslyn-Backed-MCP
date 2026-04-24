@@ -32,7 +32,7 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         var edit = new TextEditDto(lastLine, lastColumn, lastLine, lastColumn, "\n// inserted by test");
 
         var result = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { edit }, CancellationToken.None);
+            workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
         Assert.IsTrue(result.Success, "ApplyTextEditsAsync should report success.");
 
         var afterEdit = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
@@ -73,7 +73,7 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
             new FileEditsDto(catFilePath, new[] { catEdit }),
         };
 
-        var dto = await EditService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, CancellationToken.None);
+        var dto = await EditService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, "apply_multi_file_edit", CancellationToken.None);
         Assert.IsTrue(dto.Success);
         Assert.AreEqual(2, dto.FilesModified);
 
@@ -110,7 +110,7 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         var preview = await RefactoringService.PreviewRenameAsync(
             workspaceId, locator, "ICreature", CancellationToken.None);
         var renameApply = await RefactoringService.ApplyRefactoringAsync(
-            preview.PreviewToken, CancellationToken.None);
+            preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(renameApply.Success, renameApply.Error);
 
         // Capture the post-rename file state — the text edit's snapshot should restore THIS,
@@ -124,7 +124,7 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         // POST-RENAME state.
         var edit = AppendCommentEdit(postRenameDog, "// after rename");
         var editResult = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { edit }, CancellationToken.None);
+            workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
         Assert.IsTrue(editResult.Success);
 
         // Revert: should restore the post-rename state (rename is preserved).
@@ -153,7 +153,7 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
         var dogText = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
         var edit = AppendCommentEdit(dogText, "// snapshot probe");
 
-        await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { edit }, CancellationToken.None);
+        await EditService.ApplyTextEditsAsync(workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
 
         var entry = UndoService.GetLastOperation(workspaceId);
         Assert.IsNotNull(entry, "apply_text_edit must register an undo entry.");
@@ -198,7 +198,7 @@ public sealed class EditUndoIntegrationTests : IsolatedWorkspaceTestBase
             "    public string Speak() => \"Bark\";");
 
         var result = await EditService.ApplyTextEditsAsync(
-            workspaceId, dogFilePath, new[] { edit }, CancellationToken.None);
+            workspaceId, dogFilePath, new[] { edit }, "apply_text_edit", CancellationToken.None);
         Assert.IsTrue(result.Success);
 
         var afterEdit = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);

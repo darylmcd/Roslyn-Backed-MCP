@@ -83,7 +83,7 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
                 // The previous step persisted its own preview token; we don't need it after the
                 // text changes have flowed into the workspace. Apply the step so the next op
                 // sees the rewritten state.
-                await _refactoringService.ApplyRefactoringAsync(stepPreview.PreviewToken, ct).ConfigureAwait(false);
+                await _refactoringService.ApplyRefactoringAsync(stepPreview.PreviewToken, "symbol_refactor_preview", ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

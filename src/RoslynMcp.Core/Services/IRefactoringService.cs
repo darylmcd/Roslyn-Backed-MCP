@@ -32,8 +32,15 @@ public interface IRefactoringService
     /// Applies a previously previewed refactoring to the workspace.
     /// </summary>
     /// <param name="previewToken">The token returned by a prior preview call.</param>
+    /// <param name="toolName">
+    /// The originating MCP tool name (e.g. <c>rename_apply</c>, <c>code_fix_apply</c>,
+    /// <c>format_document_apply</c>). Threaded through to <see cref="IChangeTracker.RecordChange"/>
+    /// so <c>workspace_changes</c> can discriminate writers rather than collapsing every
+    /// preview-based apply into a generic <c>refactoring_apply</c> bucket
+    /// (<c>workspace-changes-log-missing-editorconfig-writers</c>).
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
-    Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct);
+    Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, CancellationToken ct);
 
     /// <summary>
     /// Item #4 — apply a preview with an explicit <paramref name="force"/> override.
@@ -43,7 +50,7 @@ public interface IRefactoringService
     /// apply without full visibility — the agent accepts responsibility for the
     /// unreviewed changes.
     /// </summary>
-    Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, bool force, CancellationToken ct);
+    Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, bool force, CancellationToken ct);
 
     /// <summary>
     /// Previews removing unused <c>using</c> directives and sorting the remaining ones for the given file.

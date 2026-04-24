@@ -84,7 +84,7 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
 
             Assert.IsTrue(preview.Changes.Count > 0, "Code fix preview should produce changes.");
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(applyResult.Success, applyResult.Error);
             var contents = await File.ReadAllTextAsync(serviceFilePath, CancellationToken.None);

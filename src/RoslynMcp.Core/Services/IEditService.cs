@@ -32,10 +32,19 @@ public interface IEditService
     /// snapshot this call captured can be reverted — prior-turn edits are never
     /// touched. Ignored when <paramref name="verify"/> is <c>false</c>.
     /// </param>
+    /// <remarks>
+    /// <paramref name="toolName"/> carries the originating MCP tool name to
+    /// <see cref="IChangeTracker.RecordChange"/> so <c>workspace_changes</c> reports the writer
+    /// that actually ran (e.g. <c>add_pragma_suppression</c>, <c>pragma_scope_widen</c>,
+    /// <c>apply_text_edit</c>) instead of collapsing every <see cref="IEditService"/> caller
+    /// into a generic <c>apply_text_edit</c> bucket
+    /// (<c>workspace-changes-log-missing-editorconfig-writers</c>).
+    /// </remarks>
     Task<TextEditResultDto> ApplyTextEditsAsync(
         string workspaceId,
         string filePath,
         IReadOnlyList<TextEditDto> edits,
+        string toolName,
         CancellationToken ct,
         bool skipSyntaxCheck = false,
         bool verify = false,
@@ -63,6 +72,7 @@ public interface IEditService
     Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
         string workspaceId,
         IReadOnlyList<FileEditsDto> fileEdits,
+        string toolName,
         CancellationToken ct,
         bool skipSyntaxCheck = false,
         bool verify = false,

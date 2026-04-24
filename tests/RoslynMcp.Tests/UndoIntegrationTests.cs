@@ -38,7 +38,7 @@ public sealed class UndoIntegrationTests : IsolatedWorkspaceTestBase
 
         // Apply the rename
         var applyResult = await RefactoringService.ApplyRefactoringAsync(
-            preview.PreviewToken, CancellationToken.None);
+            preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         // Verify the rename took effect
@@ -93,7 +93,7 @@ public sealed class UndoIntegrationTests : IsolatedWorkspaceTestBase
 
         var preview = await RefactoringService.PreviewRenameAsync(workspaceId, locator, "ICreature", CancellationToken.None);
         Assert.IsNotNull(preview.PreviewToken);
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         // After apply, disk must show the rename.

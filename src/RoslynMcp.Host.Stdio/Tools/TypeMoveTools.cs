@@ -50,7 +50,7 @@ public static class TypeMoveTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "move_type_to_file_apply", c),
             ct);
 
     [McpServerTool(Name = "change_type_namespace_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),

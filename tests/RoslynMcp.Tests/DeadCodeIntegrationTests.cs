@@ -50,7 +50,7 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
                 new RoslynMcp.Core.Models.DeadCodeRemovalDto([unusedField.SymbolHandle!]),
                 CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(applyResult.Success, applyResult.Error);
             var contents = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);

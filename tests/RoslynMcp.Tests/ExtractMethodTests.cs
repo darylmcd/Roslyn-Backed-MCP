@@ -62,7 +62,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             CancellationToken.None);
 
         var applyResult = await RefactoringService.ApplyRefactoringAsync(
-            preview.PreviewToken, CancellationToken.None);
+            preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, "Apply should succeed.");
 
@@ -172,7 +172,7 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
             $"Must NOT emit `var result = TransformResult(...)` — that re-declares the existing local. Diff:\n{diff}");
 
         var applyResult = await RefactoringService.ApplyRefactoringAsync(
-            preview.PreviewToken, CancellationToken.None);
+            preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, "Apply must succeed.");
 
         var compileResult = await CompileCheckService.CheckAsync(

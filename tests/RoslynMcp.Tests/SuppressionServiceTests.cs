@@ -37,7 +37,7 @@ public sealed class SuppressionServiceTests
         string? capturedKey = null;
         var editor = new StubEditorConfig
         {
-            OnSetOption = (_, _, key, _, _) =>
+            OnSetOption = (_, _, key, _, _, _) =>
             {
                 capturedKey = key;
                 return Task.FromResult(new EditorConfigWriteResultDto("/x/.editorconfig", key, "warning", false));
@@ -54,7 +54,7 @@ public sealed class SuppressionServiceTests
         TextEditDto? captured = null;
         var edits = new StubEditService
         {
-            OnApply = (_, _, editsToApply, _, _) =>
+            OnApply = (_, _, editsToApply, _, _, _) =>
             {
                 captured = editsToApply.Single();
                 return Task.FromResult(new TextEditResultDto(true, "/src/Program.cs", 1, []));
@@ -69,20 +69,20 @@ public sealed class SuppressionServiceTests
 
     private sealed class StubEditorConfig : IEditorConfigService
     {
-        public Func<string, string, string, string, CancellationToken, Task<EditorConfigWriteResultDto>>? OnSetOption { get; init; }
+        public Func<string, string, string, string, string, CancellationToken, Task<EditorConfigWriteResultDto>>? OnSetOption { get; init; }
 
         public Task<EditorConfigOptionsDto> GetOptionsAsync(string workspaceId, string filePath, CancellationToken ct) =>
             throw new NotSupportedException();
 
         public Task<EditorConfigWriteResultDto> SetOptionAsync(
-            string workspaceId, string sourceFilePath, string key, string value, CancellationToken ct) =>
-            OnSetOption?.Invoke(workspaceId, sourceFilePath, key, value, ct)
+            string workspaceId, string sourceFilePath, string key, string value, string toolName, CancellationToken ct) =>
+            OnSetOption?.Invoke(workspaceId, sourceFilePath, key, value, toolName, ct)
             ?? Task.FromResult(new EditorConfigWriteResultDto("", key, value, false));
     }
 
     private sealed class StubEditService : IEditService
     {
-        public Func<string, string, IReadOnlyList<TextEditDto>, CancellationToken, bool, Task<TextEditResultDto>>? OnApply { get; init; }
+        public Func<string, string, IReadOnlyList<TextEditDto>, string, CancellationToken, bool, Task<TextEditResultDto>>? OnApply { get; init; }
 
         // SuppressionService only forwards the default (verify=false, autoRevertOnError=false)
         // parameter values to apply_text_edit. The stub ignores them — it verifies that the
@@ -91,16 +91,18 @@ public sealed class SuppressionServiceTests
             string workspaceId,
             string filePath,
             IReadOnlyList<TextEditDto> edits,
+            string toolName,
             CancellationToken ct,
             bool skipSyntaxCheck = false,
             bool verify = false,
             bool autoRevertOnError = false) =>
-            OnApply?.Invoke(workspaceId, filePath, edits, ct, skipSyntaxCheck)
+            OnApply?.Invoke(workspaceId, filePath, edits, toolName, ct, skipSyntaxCheck)
             ?? Task.FromResult(new TextEditResultDto(false, filePath, 0, []));
 
         public Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
             string workspaceId,
             IReadOnlyList<FileEditsDto> fileEdits,
+            string toolName,
             CancellationToken ct,
             bool skipSyntaxCheck = false,
             bool verify = false,

@@ -35,7 +35,7 @@ public sealed class PostApplySymbolRotationTests : SharedWorkspaceTestBase
                 workspaceId, locator, "GetAllAnimalsRotated", CancellationToken.None);
             Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken));
 
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(apply.Success, apply.Error);
             Assert.IsNotNull(apply.MutatedSymbol, "Rename apply must return a rotated handle in MutatedSymbol.");
@@ -72,7 +72,7 @@ public sealed class PostApplySymbolRotationTests : SharedWorkspaceTestBase
                 workspaceId, targetFile, CancellationToken.None);
             Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken));
 
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(apply.Success, apply.Error);
             Assert.IsNull(

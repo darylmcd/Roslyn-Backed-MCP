@@ -81,7 +81,7 @@ public static class ScaffoldingTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "scaffold_type_apply", c),
             ct);
 
     [McpServerTool(Name = "scaffold_test_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
@@ -121,7 +121,7 @@ public static class ScaffoldingTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "scaffold_test_apply", c),
             ct);
 
     [McpServerTool(Name = "scaffold_first_test_file_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),

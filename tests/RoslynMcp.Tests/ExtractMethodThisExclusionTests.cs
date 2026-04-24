@@ -70,7 +70,7 @@ public sealed class ExtractMethodThisExclusionTests : TestBase
                 methodName: "CalculateResult",
                 ct: CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
 
             var updated = await File.ReadAllTextAsync(fixturePath);
@@ -132,7 +132,7 @@ public sealed class ExtractMethodThisExclusionTests : TestBase
                 methodName: "ComputeTripledFromDoubled",
                 ct: CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Static extraction must still work. Got error: {applyResult.Error}");
 
             var updated = await File.ReadAllTextAsync(fixturePath);
