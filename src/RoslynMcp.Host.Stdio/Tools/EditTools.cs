@@ -30,7 +30,7 @@ public static class EditTools
         return gate.RunWriteAsync(workspaceId, async c =>
         {
             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-            var result = await editService.ApplyTextEditsAsync(workspaceId, filePath, edits, c, skipSyntaxCheck, verify, autoRevertOnError);
+            var result = await editService.ApplyTextEditsAsync(workspaceId, filePath, edits, "apply_text_edit", c, skipSyntaxCheck, verify, autoRevertOnError);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }

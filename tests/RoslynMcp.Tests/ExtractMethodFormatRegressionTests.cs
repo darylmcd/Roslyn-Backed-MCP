@@ -63,7 +63,7 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
                 methodName: "ComputeIntermediate",
                 ct: CancellationToken.None);
 
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(apply.Success, $"Apply must succeed. Error: {apply.Error}");
 
             var updated = await File.ReadAllTextAsync(fixturePath);
@@ -136,7 +136,7 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
                 methodName: "ComputeCombined",
                 ct: CancellationToken.None);
 
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(apply.Success, $"Apply must succeed. Error: {apply.Error}");
 
             var updated = await File.ReadAllTextAsync(fixturePath);
@@ -210,7 +210,7 @@ public sealed class ExtractMethodFormatRegressionTests : TestBase
                 methodName: "BuildDoubled",
                 ct: CancellationToken.None);
 
-            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+            var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(apply.Success, $"Apply must succeed. Error: {apply.Error}");
 
             var post = await File.ReadAllTextAsync(fixturePath);

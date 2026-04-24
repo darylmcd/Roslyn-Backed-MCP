@@ -205,10 +205,10 @@ public sealed class RefactoringService : IRefactoringService
     /// Applies a previously previewed refactoring. Validates the preview token against the current
     /// workspace version to reject stale changes.
     /// </summary>
-    public Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, CancellationToken ct)
-        => ApplyRefactoringAsync(previewToken, force: false, ct);
+    public Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, CancellationToken ct)
+        => ApplyRefactoringAsync(previewToken, toolName, force: false, ct);
 
-    public async Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, bool force, CancellationToken ct)
+    public async Task<ApplyResultDto> ApplyRefactoringAsync(string previewToken, string toolName, bool force, CancellationToken ct)
     {
         var entry = _previewStore.Retrieve(previewToken);
         if (entry is null)
@@ -320,7 +320,7 @@ public sealed class RefactoringService : IRefactoringService
             return new ApplyResultDto(false, [], "Failed to apply changes to the workspace.");
         }
 
-        _changeTracker?.RecordChange(workspaceId, description, appliedFiles, "refactoring_apply");
+        _changeTracker?.RecordChange(workspaceId, description, appliedFiles, toolName);
         _logger.LogInformation("Applied refactoring '{Description}' to {Count} file(s)", description, appliedFiles.Count);
 
         // Rotate the symbol handle for refactors that change symbol identity (rename).

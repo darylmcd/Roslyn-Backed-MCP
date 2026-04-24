@@ -98,7 +98,7 @@ public sealed class RenameSummaryModeTests : SharedWorkspaceTestBase
             var token = doc.RootElement.GetProperty("previewToken").GetString();
             Assert.IsFalse(string.IsNullOrWhiteSpace(token));
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(token!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(token!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Summary-mode apply must succeed. Error: {applyResult.Error}");
 
             var postRename = await File.ReadAllTextAsync(animalServicePath);

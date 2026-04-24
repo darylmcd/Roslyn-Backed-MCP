@@ -42,7 +42,7 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
             description: "Item #4 truncation gate probe",
             diffTruncated: true);
 
-        var result = await RefactoringService.ApplyRefactoringAsync(token, force: false, CancellationToken.None);
+        var result = await RefactoringService.ApplyRefactoringAsync(token, "test_apply", force: false, CancellationToken.None);
 
         Assert.IsFalse(result.Success, "Truncated preview must refuse to apply without force.");
         Assert.IsNotNull(result.Error, "Refusal must carry an actionable error message.");
@@ -70,7 +70,7 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
         // that's already loaded, no real disk mutation occurs, but the apply call must
         // proceed past the truncation gate (Success=true, or if Success=false it's for
         // reasons other than the gate).
-        var result = await RefactoringService.ApplyRefactoringAsync(token, force: true, CancellationToken.None);
+        var result = await RefactoringService.ApplyRefactoringAsync(token, "test_apply", force: true, CancellationToken.None);
 
         // The apply may have nothing to do (identity solution) — both Success paths
         // are acceptable. What MUST be true: the Error does NOT mention truncation.
@@ -96,7 +96,7 @@ public sealed class TruncatedPreviewApplyGateTests : TestBase
             description: "Item #4 non-truncated probe",
             diffTruncated: false);
 
-        var result = await RefactoringService.ApplyRefactoringAsync(token, force: false, CancellationToken.None);
+        var result = await RefactoringService.ApplyRefactoringAsync(token, "test_apply", force: false, CancellationToken.None);
 
         // Identity solution apply; again the gate must not fire. Any failure MUST not
         // reference truncation.

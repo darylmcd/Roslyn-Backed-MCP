@@ -48,6 +48,6 @@ public static class FixAllTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "fix_all_apply", c),
             ct);
 }

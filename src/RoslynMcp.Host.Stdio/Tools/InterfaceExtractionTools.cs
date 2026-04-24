@@ -51,6 +51,6 @@ public static class InterfaceExtractionTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "extract_interface_apply", c),
             ct);
 }

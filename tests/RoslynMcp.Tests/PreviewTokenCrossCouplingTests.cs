@@ -66,7 +66,7 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
         // Apply A first — this bumps the workspace version. Pre-fix, the `TryApplyChanges`
         // path called `_previewStore.InvalidateAll(workspaceId)`, so token B would be
         // dropped here even though nothing about file B changed.
-        var applyA = await RefactoringService.ApplyRefactoringAsync(previewA.PreviewToken, CancellationToken.None);
+        var applyA = await RefactoringService.ApplyRefactoringAsync(previewA.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyA.Success, applyA.Error);
         Assert.IsTrue(File.Exists(firstFilePath));
 
@@ -74,7 +74,7 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
         // "Preview token is invalid, expired, or stale because the workspace changed
         // since the preview was generated." (audit §9.6, §5 "extract_interface_apply
         // stale preview token (invalidated by sibling format_range_apply in same turn)").
-        var applyB = await RefactoringService.ApplyRefactoringAsync(previewB.PreviewToken, CancellationToken.None);
+        var applyB = await RefactoringService.ApplyRefactoringAsync(previewB.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyB.Success,
             $"Sibling apply must not invalidate unrelated preview tokens. Got: {applyB.Error}");
         Assert.IsTrue(File.Exists(secondFilePath));
@@ -123,10 +123,10 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(string.IsNullOrWhiteSpace(previewA.PreviewToken));
         Assert.IsFalse(string.IsNullOrWhiteSpace(previewB.PreviewToken));
 
-        var applyA = await RefactoringService.ApplyRefactoringAsync(previewA.PreviewToken, CancellationToken.None);
+        var applyA = await RefactoringService.ApplyRefactoringAsync(previewA.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyA.Success, applyA.Error);
 
-        var applyB = await RefactoringService.ApplyRefactoringAsync(previewB.PreviewToken, CancellationToken.None);
+        var applyB = await RefactoringService.ApplyRefactoringAsync(previewB.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyB.Success,
             $"Sibling text-edit apply must not invalidate unrelated preview tokens. Got: {applyB.Error}");
 
@@ -160,7 +160,7 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
         // Lifecycle event — drops all tokens (captured Solution refs now orphaned).
         await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsFalse(applyResult.Success,
             "Reload must still invalidate live preview tokens.");

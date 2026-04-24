@@ -153,7 +153,7 @@ public sealed class ExtractSharedExpressionTests : IsolatedWorkspaceTestBase
             CancellationToken.None);
 
         var applyResult = await RefactoringService.ApplyRefactoringAsync(
-            preview.PreviewToken, CancellationToken.None);
+            preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, "Apply should succeed.");
 
         var compileResult = await CompileCheckService.CheckAsync(

@@ -48,7 +48,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
             new ScaffoldFirstTestFileDto("SampleLib.Dog", "SampleLib.Tests"),
             CancellationToken.None);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(
-            preview.PreviewToken, CancellationToken.None);
+            preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(destinationPath),
@@ -119,7 +119,7 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
                 TestProjectName: null),
             CancellationToken.None);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(
-            preview.PreviewToken, CancellationToken.None);
+            preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(destinationPath),

@@ -95,7 +95,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
             // Apply and inspect the resulting file. The previous bug rendered as
             // `public int Compute(int a, int b, int c = 0) {` (one line) — body brace
             // concatenated. Post-fix the body brace stays on its own line.
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -161,7 +161,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
 
             var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -348,7 +348,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
 
             var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success);
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -411,7 +411,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
 
             var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -494,7 +494,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
             Assert.IsNotNull(preview.PreviewToken);
             Assert.IsTrue(preview.Changes.Count >= 1, "preview must report at least the declaration file");
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -567,7 +567,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
                 workspaceId, locator, request, CancellationToken.None);
             Assert.IsNotNull(preview.PreviewToken);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -631,7 +631,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
 
             var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -752,7 +752,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
 
             var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
                 workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success);
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);

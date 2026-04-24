@@ -50,7 +50,7 @@ public static class BulkRefactoringTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "bulk_replace_type_apply", c),
             ct);
 
     // replace-invocation-pattern-refactor: method-level ergonomic pair to bulk_replace_type_preview.

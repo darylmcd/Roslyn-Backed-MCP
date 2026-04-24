@@ -35,7 +35,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
 
@@ -66,7 +66,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             CancellationToken.None,
             preserveNamespace: false);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsFalse(File.Exists(sourceFilePath));
         Assert.IsTrue(File.Exists(targetFilePath));
@@ -97,7 +97,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             CancellationToken.None,
             preserveNamespace: true);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var movedText = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(movedText, "namespace SampleLib");
@@ -125,7 +125,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(interfaceFilePath));
 
@@ -163,7 +163,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var interfaceText = await File.ReadAllTextAsync(interfaceFilePath, CancellationToken.None);
@@ -264,7 +264,7 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             "Contracts",
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var sourceContents = await File.ReadAllTextAsync(sourceFilePath, CancellationToken.None);

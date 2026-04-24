@@ -46,7 +46,7 @@ public static class MultiFileEditTools
                 await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, fileEdit.FilePath, c).ConfigureAwait(false);
             }
 
-            var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, c, skipSyntaxCheck, verify, autoRevertOnError).ConfigureAwait(false);
+            var dto = await editService.ApplyMultiFileTextEditsAsync(workspaceId, fileEdits, "apply_multi_file_edit", c, skipSyntaxCheck, verify, autoRevertOnError).ConfigureAwait(false);
             return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
         }, ct);
     }
@@ -89,6 +89,6 @@ public static class MultiFileEditTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "preview_multi_file_edit_apply", c),
             ct);
 }

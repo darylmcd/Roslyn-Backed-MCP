@@ -75,6 +75,6 @@ public static class CodeActionTools
             gate,
             previewStore,
             previewToken,
-            c => refactoringService.ApplyRefactoringAsync(previewToken, c),
+            c => refactoringService.ApplyRefactoringAsync(previewToken, "apply_code_action", c),
             ct);
 }

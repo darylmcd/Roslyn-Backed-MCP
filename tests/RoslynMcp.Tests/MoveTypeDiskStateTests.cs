@@ -71,7 +71,7 @@ public sealed class MoveTypeDiskStateTests : TestBase
             Assert.IsTrue(previewDto.Changes.Count >= 2,
                 $"Expected at least source-modification + target-creation in preview. Got {previewDto.Changes.Count}.");
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, $"Apply failed: {applyResult.Error}");
 
             // Expected post-apply shape.

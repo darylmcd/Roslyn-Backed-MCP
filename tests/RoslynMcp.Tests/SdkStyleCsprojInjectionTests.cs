@@ -134,7 +134,7 @@ public sealed class SdkStyleCsprojInjectionTests : TestBase
                     Content: "namespace SampleLib;\n\npublic static class Item5Guard\n{\n    public const string Marker = \"item-5\";\n}\n"),
                 CancellationToken.None);
 
-            await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
 
             Assert.IsTrue(File.Exists(newFilePath), "The generated file must be on disk after apply.");
 

@@ -171,7 +171,7 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
 
             // Apply the preview and compare on-disk text to the preview's expected text.
             var preApplyText = await File.ReadAllTextAsync(fixturePath);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, "apply must succeed");
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -248,7 +248,7 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
                 "no changes expected when the requested range is already clean");
 
             var preApplyText = await File.ReadAllTextAsync(fixturePath);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success);
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -324,7 +324,7 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
                 endLine: 14, endColumn: 6,
                 CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, "apply must succeed");
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);
@@ -386,7 +386,7 @@ public sealed class FormatRangeServiceTests : IsolatedWorkspaceTestBase
                 endLine: 9, endColumn: 25,
                 CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, "apply must succeed");
 
             var postApplyText = await File.ReadAllTextAsync(fixturePath);

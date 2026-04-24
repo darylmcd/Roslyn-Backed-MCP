@@ -28,7 +28,7 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
             new ScaffoldTypeDto("SampleLib", "Bird", "class", "SampleLib.Generated"),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(targetFilePath));
@@ -49,7 +49,7 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId,
             new ScaffoldTypeDto("SampleLib", "Bird", "class", "SampleLib.Generated"),
             CancellationToken.None);
-        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(contents, "internal sealed class Bird");
@@ -68,7 +68,7 @@ public sealed class ScaffoldingIntegrationTests : IsolatedWorkspaceTestBase
             workspace.WorkspaceId,
             new ScaffoldTypeDto("SampleLib", "IThing", "interface", "SampleLib.Contracts"),
             CancellationToken.None);
-        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(contents, "public interface IThing");
@@ -117,7 +117,7 @@ public class BulkProcessor
             workspace.WorkspaceId,
             new ScaffoldTestDto("SampleLib.Tests", "BulkProcessor", "Sum"),
             CancellationToken.None);
-        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         var contents = await File.ReadAllTextAsync(
             workspace.GetPath("SampleLib.Tests", "BulkProcessorGeneratedTests.cs"),
@@ -263,7 +263,7 @@ public sealed class Bar { }
             workspace.WorkspaceId,
             new ScaffoldTypeDto("SampleLib", "Widget", "class", "Acme.Domain"),
             CancellationToken.None);
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(expectedPath),
@@ -284,7 +284,7 @@ public sealed class Bar { }
             new ScaffoldTestDto("SampleLib.Tests", "Dog", "Speak", ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(targetFilePath));
@@ -323,7 +323,7 @@ public class HiddenBehavior
             preview.Warnings[0],
             "Target method 'BuildSecret' is private — the scaffold uses reflection to invoke it;");
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(applyResult.Success, applyResult.Error);
 
         var contents = await File.ReadAllTextAsync(
@@ -378,7 +378,7 @@ public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
                 ReferenceTestFile: siblingPath),
             CancellationToken.None);
         var applyResult = await RefactoringService.ApplyRefactoringAsync(
-            preview.PreviewToken, CancellationToken.None);
+            preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var scaffoldPath = workspace.GetPath("SampleLib.Tests", "AnimalServiceGeneratedTests.cs");
@@ -437,8 +437,7 @@ public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
             "Batch scaffold preview should aggregate one file-creation diff per target.");
 
         var applyResult = await RefactoringService.ApplyRefactoringAsync(
-            preview.PreviewToken,
-            CancellationToken.None);
+            preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(dogPath), $"Expected scaffolded file at {dogPath}.");
@@ -473,7 +472,7 @@ public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(expectedFilePath),
@@ -525,7 +524,7 @@ public class NestedHost
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         Assert.IsTrue(File.Exists(expectedFilePath),
@@ -568,7 +567,7 @@ public static class StaticUtil
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
@@ -611,7 +610,7 @@ public class TenantConstants
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
@@ -654,7 +653,7 @@ public class SnapshotContentHasher
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
 
-        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
         Assert.IsTrue(applyResult.Success, applyResult.Error);
         var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);

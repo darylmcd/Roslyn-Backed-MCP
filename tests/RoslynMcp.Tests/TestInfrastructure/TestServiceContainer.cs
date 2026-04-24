@@ -270,7 +270,8 @@ internal sealed class TestServiceContainer
             EditorConfigService = new EditorConfigService(
                 workspaceManager,
                 NullLogger<EditorConfigService>.Instance,
-                undoService),
+                undoService,
+                changeTracker),
             MsBuildEvaluationService = msBuildEvaluationService,
             ExtractMethodService = new ExtractMethodService(
                 workspaceManager,

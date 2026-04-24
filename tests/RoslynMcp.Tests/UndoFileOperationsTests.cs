@@ -48,7 +48,7 @@ public sealed class UndoFileOperationsTests : TestBase
                     Content: "namespace SampleLib;\npublic static class Item2Guard_CreatedOnly { }\n"),
                 CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, "Apply must succeed as a precondition.");
             Assert.IsTrue(File.Exists(newFilePath), "File must be on disk after apply.");
 
@@ -89,7 +89,7 @@ public sealed class UndoFileOperationsTests : TestBase
                 new DeleteFileDto(targetFilePath),
                 CancellationToken.None);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(previewDto.PreviewToken, "test_apply", CancellationToken.None);
             Assert.IsTrue(applyResult.Success, "Delete apply must succeed as a precondition.");
             Assert.IsFalse(File.Exists(targetFilePath), "File must be gone from disk after delete apply.");
 

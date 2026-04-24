@@ -41,7 +41,7 @@ public static class ApplyWithVerifyTool
                 var preErrors = ExtractErrorFingerprints(preBaseline);
 
                 // Apply
-                var applyResult = await refactoringService.ApplyRefactoringAsync(previewToken, c).ConfigureAwait(false);
+                var applyResult = await refactoringService.ApplyRefactoringAsync(previewToken, "apply_with_verify", c).ConfigureAwait(false);
                 if (!applyResult.Success)
                 {
                     return JsonSerializer.Serialize(new

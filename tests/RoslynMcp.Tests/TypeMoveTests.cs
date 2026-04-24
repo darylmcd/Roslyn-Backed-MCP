@@ -130,7 +130,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
             wsId, doc.FilePath!, "Kitten", null, CancellationToken.None);
         Assert.IsNotNull(preview.PreviewToken);
 
-        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(apply.Success, apply.Error);
 
         var newFilePath = workspace.GetPath("SampleLib", "Kitten.cs");
@@ -159,7 +159,7 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
 
         var preview = await TypeMoveService.PreviewMoveTypeToFileAsync(
             wsId, doc.FilePath!, "Kitten", null, CancellationToken.None);
-        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        var apply = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
         Assert.IsTrue(apply.Success, apply.Error);
 
         var content = await File.ReadAllTextAsync(workspace.GetPath("SampleLib", "Kitten.cs"), CancellationToken.None);

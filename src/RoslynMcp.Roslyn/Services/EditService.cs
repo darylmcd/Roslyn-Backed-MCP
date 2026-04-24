@@ -37,6 +37,7 @@ public sealed class EditService : IEditService
         string workspaceId,
         string filePath,
         IReadOnlyList<TextEditDto> edits,
+        string toolName,
         CancellationToken ct,
         bool skipSyntaxCheck = false,
         bool verify = false,
@@ -85,7 +86,7 @@ public sealed class EditService : IEditService
             solution,
             fileSnapshots);
 
-        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, ct).ConfigureAwait(false);
+        var coreResult = await ApplyTextEditsCoreAsync(workspaceId, filePath, edits, solution, document, sourceText, newSourceText, toolName, ct).ConfigureAwait(false);
 
         // Only wire up verify when the core apply actually wrote the edit. When the
         // core path returns Success=false (e.g. MSBuildWorkspace.TryApplyChanges
@@ -109,6 +110,7 @@ public sealed class EditService : IEditService
     public async Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
         string workspaceId,
         IReadOnlyList<FileEditsDto> fileEdits,
+        string toolName,
         CancellationToken ct,
         bool skipSyntaxCheck = false,
         bool verify = false,
@@ -173,7 +175,7 @@ public sealed class EditService : IEditService
             }
 
             var result = await ApplyTextEditsCoreAsync(
-                workspaceId, fileEdit.FilePath, fileEdit.Edits, current, document, sourceText, merged, ct).ConfigureAwait(false);
+                workspaceId, fileEdit.FilePath, fileEdit.Edits, current, document, sourceText, merged, toolName, ct).ConfigureAwait(false);
             var diff = result.Changes.Count > 0
                 ? string.Join("\n", result.Changes.Select(ch => ch.UnifiedDiff))
                 : null;
@@ -471,6 +473,7 @@ public sealed class EditService : IEditService
         Document document,
         SourceText sourceText,
         SourceText newSourceText,
+        string toolName,
         CancellationToken ct)
     {
         var normalizedPath = Path.GetFullPath(filePath);
@@ -501,7 +504,7 @@ public sealed class EditService : IEditService
 
         _changeTracker?.RecordChange(workspaceId,
             $"Apply text edit to {Path.GetFileName(filePath)}",
-            [filePath], "apply_text_edit");
+            [filePath], toolName);
 
         return new TextEditResultDto(true, filePath, edits.Count, [fileChange], null);
     }
