@@ -130,6 +130,127 @@ public class BulkProcessor
     }
 
     [TestMethod]
+    public async Task Scaffold_Test_DIService_WithInterfaceAndConcreteCtorArgs_EmitsPerArgPlaceholders()
+    {
+        // BUG fix (scaffold-test-preview-ctor-arg-stubs): when the target's primary ctor
+        // requires arguments (the canonical DI-registered-service shape), scaffold_test_preview
+        // previously picked the wrong ctor or emitted `new T()`, producing a non-compiling
+        // scaffold. The fix probes the widest accessible ctor when no parameterless ctor
+        // exists and synthesizes per-param placeholders:
+        //   - interface / abstract class → `default(T)!` with a TODO when NSubstitute is not
+        //     referenced by the test project; `NSubstitute.Substitute.For<T>()` when it is.
+        //   - concrete class with parameterless ctor → `new T()`.
+        //   - concrete class without parameterless ctor → TODO placeholder.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var fixturePath = workspace.GetPath("SampleLib", "NamespaceRelocationServiceFixture.cs");
+        await File.WriteAllTextAsync(fixturePath, """
+namespace SampleLib;
+
+public interface ILogger
+{
+    void Log(string message);
+}
+
+public sealed class Clock
+{
+    public System.DateTime Now => System.DateTime.UtcNow;
+}
+
+public sealed class NamespaceRelocationServiceFixture
+{
+    private readonly ILogger _logger;
+    private readonly Clock _clock;
+    private readonly string _name;
+
+    public NamespaceRelocationServiceFixture(ILogger logger, Clock clock, string name)
+    {
+        _logger = logger;
+        _clock = clock;
+        _name = name;
+    }
+
+    public string Describe() => _name;
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "NamespaceRelocationServiceFixture",
+                "Describe",
+                ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+
+        var contents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib.Tests", "NamespaceRelocationServiceFixtureGeneratedTests.cs"),
+            CancellationToken.None);
+
+        // Should NOT emit the bare `new NamespaceRelocationServiceFixture()` — that was the
+        // pre-fix output and does not compile.
+        Assert.IsFalse(
+            contents.Contains("new NamespaceRelocationServiceFixture()"),
+            "Scaffold must not emit a parameterless `new T()` when the target ctor requires args — got:\n" + contents);
+
+        // Interface arg: SampleLib.Tests does NOT reference NSubstitute in this test harness,
+        // so the TODO placeholder branch applies.
+        StringAssert.Contains(contents, "default(ILogger)!",
+            "Interface ctor arg should be emitted as `default(T)!` with a TODO when NSubstitute is not referenced.");
+        StringAssert.Contains(contents, "TODO",
+            "Interface ctor arg placeholder should carry a TODO comment so callers notice.");
+        StringAssert.Contains(contents, "/* logger */",
+            "Ctor arg should retain the parameter-name breadcrumb.");
+
+        // Concrete class with parameterless ctor: scaffolded as `new Clock()`.
+        StringAssert.Contains(contents, "new Clock()",
+            "Concrete ctor arg with an accessible parameterless ctor should be emitted as `new T()`.");
+        StringAssert.Contains(contents, "/* clock */",
+            "Concrete ctor arg should retain the parameter-name breadcrumb.");
+
+        // String arg: existing behaviour — `string.Empty`.
+        StringAssert.Contains(contents, "string.Empty",
+            "String ctor arg should be emitted as `string.Empty`.");
+    }
+
+    [TestMethod]
+    public void BuildArgExpression_InterfaceArg_WithNSubstitute_EmitsSubstituteFor()
+    {
+        // Covers the NSubstitute-available branch of BuildArgExpression — the SampleLib.Tests
+        // integration fixture does NOT reference NSubstitute, so this unit-level assertion is
+        // what pins the `NSubstitute.Substitute.For<T>()` emission.
+        var source = """
+namespace Acme;
+
+public interface IFoo { }
+public sealed class Bar { }
+""";
+        var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(source);
+        var compilation = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create(
+            "Test",
+            [tree],
+            [Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(object).Assembly.Location)]);
+        var foo = compilation.GetTypeByMetadataName("Acme.IFoo")!;
+        var bar = compilation.GetTypeByMetadataName("Acme.Bar")!;
+
+        var withSub = RoslynMcp.Roslyn.Services.ScaffoldingService.BuildArgExpression(foo, nsubstituteAvailable: true);
+        var withoutSub = RoslynMcp.Roslyn.Services.ScaffoldingService.BuildArgExpression(foo, nsubstituteAvailable: false);
+        var concrete = RoslynMcp.Roslyn.Services.ScaffoldingService.BuildArgExpression(bar, nsubstituteAvailable: false);
+
+        StringAssert.Contains(withSub, "NSubstitute.Substitute.For<IFoo>()",
+            "Interface arg with NSubstitute available should emit Substitute.For<T>().");
+        StringAssert.Contains(withoutSub, "default(IFoo)!",
+            "Interface arg without NSubstitute should emit default(T)! with TODO.");
+        StringAssert.Contains(withoutSub, "TODO",
+            "Interface arg placeholder should include TODO.");
+        StringAssert.Contains(concrete, "new Bar()",
+            "Concrete class with parameterless ctor should emit new T().");
+    }
+
+    [TestMethod]
     public async Task Scaffold_Type_NamespaceNotMatchingProject_GetsFolderStructure()
     {
         // BUG fix (scaffold-defaults-improvements / b): when the namespace does not start
