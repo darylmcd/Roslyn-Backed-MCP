@@ -131,7 +131,8 @@ public sealed class ScaffoldingService : IScaffoldingService
             Solution: solution,
             ProjectDirectory: projectDirectory,
             TestNamespace: project.Name,
-            Framework: ResolveTestFramework(request.TestFramework, project.FilePath));
+            Framework: ResolveTestFramework(request.TestFramework, project.FilePath),
+            NSubstituteAvailable: IsNSubstituteAvailable(testProject));
     }
 
     private static async Task<List<Compilation>> LoadBatchCompilationsAsync(
@@ -185,7 +186,8 @@ public sealed class ScaffoldingService : IScaffoldingService
         var typeInfo = ResolveTargetTypeAndMethodFromCache(
             cachedCompilations,
             lookupName,
-            target.TargetMethodName);
+            target.TargetMethodName,
+            context.NSubstituteAvailable);
         if (typeInfo.MatchedType is null)
         {
             state.Warnings.Add($"Target type '{target.TargetTypeName}' not found in referenced projects — skipped.");
@@ -268,7 +270,8 @@ public sealed class ScaffoldingService : IScaffoldingService
         Solution Solution,
         string ProjectDirectory,
         string TestNamespace,
-        string Framework);
+        string Framework,
+        bool NSubstituteAvailable);
 
     private sealed class BatchScaffoldState
     {
@@ -304,7 +307,10 @@ public sealed class ScaffoldingService : IScaffoldingService
     /// </summary>
     private static ResolvedTargetTypeInfo
         ResolveTargetTypeAndMethodFromCache(
-            IReadOnlyList<Compilation> compilations, string targetTypeName, string? targetMethodName)
+            IReadOnlyList<Compilation> compilations,
+            string targetTypeName,
+            string? targetMethodName,
+            bool nsubstituteAvailable = false)
     {
         INamedTypeSymbol? matchedType = null;
         foreach (var compilation in compilations)
@@ -317,7 +323,7 @@ public sealed class ScaffoldingService : IScaffoldingService
             }
         }
 
-        return CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: false);
+        return CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: false, nsubstituteAvailable);
     }
 
     public async Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(string workspaceId, ScaffoldTestDto request, CancellationToken ct)
@@ -404,7 +410,11 @@ public sealed class ScaffoldingService : IScaffoldingService
         var serviceNamespace = serviceSymbol.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : serviceSymbol.ContainingNamespace.ToDisplayString();
-        var constructorArgs = BuildConstructorArgs(serviceSymbol);
+        var testRoslynProject = solution.Projects.FirstOrDefault(p =>
+            string.Equals(p.Name, testProject.Name, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.FilePath, testProject.FilePath, StringComparison.OrdinalIgnoreCase));
+        var nsubstituteAvailable = IsNSubstituteAvailable(testRoslynProject);
+        var constructorArgs = BuildConstructorArgs(serviceSymbol, nsubstituteAvailable);
         var publicMethods = CollectPublicTestableMethods(serviceSymbol);
 
         var content = BuildFirstTestFileContent(
@@ -895,7 +905,8 @@ public sealed class ScaffoldingService : IScaffoldingService
 
         var projectsToSearch = GetProjectsToSearch(solution, testProject);
         var matchedType = await FindTargetTypeAsync(projectsToSearch, targetTypeName, ct).ConfigureAwait(false);
-        return CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: true);
+        var nsubstituteAvailable = IsNSubstituteAvailable(testProject);
+        return CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: true, nsubstituteAvailable);
     }
 
     private static List<Project> GetProjectsToSearch(Solution solution, Project testProject)
@@ -958,7 +969,8 @@ public sealed class ScaffoldingService : IScaffoldingService
     private static ResolvedTargetTypeInfo CreateResolvedTargetTypeInfo(
         INamedTypeSymbol? matchedType,
         string? targetMethodName,
-        bool warnOnPrivateMethod)
+        bool warnOnPrivateMethod,
+        bool nsubstituteAvailable = false)
     {
         if (matchedType is null)
         {
@@ -968,7 +980,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         var targetNamespace = matchedType.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : matchedType.ContainingNamespace.ToDisplayString();
-        var constructorArgs = BuildConstructorArgs(matchedType);
+        var constructorArgs = BuildConstructorArgs(matchedType, nsubstituteAvailable);
         var warnings = new List<string>();
         var targetMethod = ResolveTargetMethod(matchedType, targetMethodName, warnOnPrivateMethod, warnings);
 
@@ -1021,22 +1033,29 @@ public sealed class ScaffoldingService : IScaffoldingService
         return targetMethod;
     }
 
-    private static string BuildConstructorArgs(INamedTypeSymbol type)
+    private static string BuildConstructorArgs(INamedTypeSymbol type, bool nsubstituteAvailable = false)
     {
         var constructors = type.Constructors
             .Where(c => !c.IsImplicitlyDeclared || c.Parameters.Length == 0)
             .Where(c => c.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
-            .OrderBy(c => c.Parameters.Length)
             .ToList();
 
         if (constructors.Count == 0)
             return string.Empty;
 
-        var bestCtor = constructors[0];
+        // Prefer a parameterless ctor when one exists — `new T()` always compiles and is the
+        // shape callers expect for POCOs. When no parameterless ctor is accessible (the
+        // DI-registered-service case this fix targets — `NamespaceRelocationService` and
+        // similar expose a single ctor(IFoo, IBar, …)), fall through to the widest accessible
+        // ctor and synthesize per-param placeholders below
+        // (scaffold-test-preview-ctor-arg-stubs).
+        var bestCtor = constructors.FirstOrDefault(c => c.Parameters.Length == 0)
+            ?? constructors.OrderByDescending(c => c.Parameters.Length).First();
         if (bestCtor.Parameters.Length == 0)
             return string.Empty;
 
-        var args = bestCtor.Parameters.Select(p => $"{BuildArgExpression(p.Type)} /* {p.Name} */");
+        var args = bestCtor.Parameters.Select(p =>
+            $"{BuildArgExpression(p.Type, nsubstituteAvailable)} /* {p.Name} */");
         return string.Join(", ", args);
     }
 
@@ -1049,7 +1068,7 @@ public sealed class ScaffoldingService : IScaffoldingService
     /// throws <c>NullReferenceException</c> on the first call when the parameter is a non-null
     /// collection interface — observed in the 2026-04-07 ITChatBot legacy-mutex audit.
     /// </summary>
-    private static string BuildArgExpression(ITypeSymbol parameterType)
+    internal static string BuildArgExpression(ITypeSymbol parameterType, bool nsubstituteAvailable = false)
     {
         var displayName = parameterType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
 
@@ -1081,7 +1100,72 @@ public sealed class ScaffoldingService : IScaffoldingService
             }
         }
 
+        // Interfaces and abstract classes cannot be instantiated via `default(T)` in a way that
+        // produces a usable collaborator — `default` gives null and the first call throws NRE.
+        // When the test project references NSubstitute we emit `Substitute.For<T>()`; otherwise
+        // we emit a TODO placeholder so the caller notices and supplies a real/faked instance.
+        if (parameterType.TypeKind == TypeKind.Interface ||
+            (parameterType.TypeKind == TypeKind.Class && parameterType.IsAbstract))
+        {
+            return nsubstituteAvailable
+                ? $"NSubstitute.Substitute.For<{displayName}>()"
+                : $"default({displayName})! /* TODO: provide a test double for {displayName} */";
+        }
+
+        // Concrete class with an accessible parameterless ctor → safe to `new T()`. Structs go
+        // through `default(T)` (the existing fallback).
+        if (parameterType is INamedTypeSymbol concrete &&
+            concrete.TypeKind == TypeKind.Class &&
+            !concrete.IsAbstract &&
+            HasAccessibleParameterlessCtor(concrete))
+        {
+            return $"new {displayName}()";
+        }
+
+        // Concrete class without a parameterless ctor: can't safely construct. Emit a TODO so
+        // the caller swaps in the right factory. Previously emitted `default(T)` silently.
+        if (parameterType is INamedTypeSymbol concreteNoCtor &&
+            concreteNoCtor.TypeKind == TypeKind.Class &&
+            !concreteNoCtor.IsAbstract)
+        {
+            return nsubstituteAvailable
+                ? $"NSubstitute.Substitute.For<{displayName}>()"
+                : $"default({displayName})! /* TODO: provide a test double for {displayName} */";
+        }
+
         return $"default({displayName})";
+    }
+
+    private static bool HasAccessibleParameterlessCtor(INamedTypeSymbol type)
+    {
+        // A class with NO declared instance ctors has an implicit parameterless ctor.
+        var instanceCtors = type.InstanceConstructors
+            .Where(c => c.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
+            .ToList();
+        if (instanceCtors.Count == 0) return false;
+        return instanceCtors.Any(c => c.Parameters.Length == 0);
+    }
+
+    /// <summary>
+    /// Detects whether the given Roslyn project has NSubstitute on its reference graph, either
+    /// as a direct <c>PackageReference</c> or brought in transitively via a project reference
+    /// (e.g. a shared test-infra project). Uses MetadataReferences so transitive closure is
+    /// handled by MSBuild's existing resolution — covers both cases the plan calls out
+    /// (test project references AND the target test project's NuGet graph).
+    /// </summary>
+    internal static bool IsNSubstituteAvailable(Project? testProject)
+    {
+        if (testProject is null) return false;
+        foreach (var reference in testProject.MetadataReferences)
+        {
+            if (reference.Display is null) continue;
+            var fileName = Path.GetFileNameWithoutExtension(reference.Display);
+            if (string.Equals(fileName, "NSubstitute", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private ProjectStatusDto ResolveProject(string workspaceId, string projectName)
