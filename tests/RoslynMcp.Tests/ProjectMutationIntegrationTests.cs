@@ -337,4 +337,28 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
             string.Equals((string?)r.Attribute("Include"), "Humanizer.Core", StringComparison.OrdinalIgnoreCase)),
             "PackageReference must be absent after remove.");
     }
+
+    [TestMethod]
+    public async Task Add_Package_Reference_Preview_Rejects_Package_Already_Imported_From_Directory_Build_Props()
+    {
+        // add-package-reference-preview-cpm-duplicate-detection: when a package is already
+        // present in the evaluated project graph because Directory.Build.props contributes a
+        // `<PackageReference Include="..." />` for every project, trying to add the same
+        // package via the tool must not silently emit a duplicate. The pre-fix behavior only
+        // scanned the csproj XML, missed the imported reference, and happily added a second
+        // `<PackageReference>` that NuGet later refuses.
+        //
+        // The sample fixture's Directory.Build.props already declares Microsoft.CodeAnalysis.NetAnalyzers
+        // as a PackageReference for every project, so it acts as the "transitive-present" repro.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            ProjectMutationService.PreviewAddPackageReferenceAsync(
+                workspace.WorkspaceId,
+                new AddPackageReferenceDto("SampleLib", "Microsoft.CodeAnalysis.NetAnalyzers", "10.0.100"),
+                CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "already present");
+        StringAssert.Contains(ex.Message, "Microsoft.CodeAnalysis.NetAnalyzers");
+    }
 }
