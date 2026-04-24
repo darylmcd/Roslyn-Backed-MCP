@@ -18,7 +18,7 @@ public static class FixAllTools
     [McpServerTool(Name = "fix_all_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
         "Preview fixing ALL instances of a diagnostic across a scope."),
-     Description("Preview applying a code fix to ALL instances of a diagnostic across a scope (document, project, or solution). Dramatically faster than fixing diagnostics one at a time. Use list_analyzers or project_diagnostics to find diagnostic IDs. When no provider or no FixAll support exists, the response includes guidanceMessage with next steps (e.g. organize_usings_preview for IDE0005).")]
+     Description("Preview applying a code fix to ALL instances of a diagnostic across a scope (document, project, or solution). Dramatically faster than fixing diagnostics one at a time. Use list_analyzers or project_diagnostics to find diagnostic IDs. When no provider or no FixAll support exists, the response includes guidanceMessage with next steps (e.g. organize_usings_preview for IDE0005). When the registered FixAll provider itself throws (e.g. the 'Sequence contains no elements' crash on IDE0300), the response is a structured envelope with error=true, category='FixAllProviderCrash', and perOccurrenceFallbackAvailable=true so callers can fall back to code_fix_preview on individual occurrences.")]
     public static Task<string> PreviewFixAll(
         IWorkspaceExecutionGate gate,
         IFixAllService fixAllService,
