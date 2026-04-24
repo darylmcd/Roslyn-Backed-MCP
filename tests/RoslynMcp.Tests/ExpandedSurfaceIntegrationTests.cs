@@ -223,6 +223,129 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task FindReferencesBulk_Applies_Summary_And_PerSymbolLimit_Before_Envelope()
+    {
+        // find-references-bulk-summary-mode: before this change, find_references_bulk applied no
+        // per-symbol cap and always serialized preview text for every hit. Across a 2-symbol batch
+        // against high-fan-out targets, the aggregate envelope overflowed the MCP payload cap
+        // (observed 120 KB). Two expectations:
+        //   1) summary=true drops PreviewText from every returned reference.
+        //   2) maxItemsPerSymbol=N caps each symbol's reference list to N items BEFORE the outer
+        //      envelope is assembled. `truncated=true` + `referenceCount > returnedCount` signal
+        //      that the caller should follow up with find_references (paged) for full coverage.
+
+        var symbols = new[]
+        {
+            new BulkSymbolLocator(SymbolHandle: null, MetadataName: "SampleLib.IAnimal",
+                FilePath: null, Line: null, Column: null),
+            new BulkSymbolLocator(SymbolHandle: null, MetadataName: "SampleLib.Dog",
+                FilePath: null, Line: null, Column: null),
+        };
+
+        // Baseline: no summary, no cap — capture sizes so we can assert the bounded shape is
+        // strictly smaller AND the per-symbol cap actually trimmed at least one symbol.
+        var fullJson = await SymbolTools.FindReferencesBulk(
+            WorkspaceExecutionGate,
+            ReferenceService,
+            WorkspaceId,
+            symbols,
+            includeDefinition: false,
+            summary: false,
+            maxItemsPerSymbol: 100,
+            ct: CancellationToken.None);
+
+        using var fullDoc = JsonDocument.Parse(fullJson);
+        var fullResults = fullDoc.RootElement.GetProperty("results").EnumerateArray().ToList();
+        Assert.AreEqual(2, fullResults.Count);
+        foreach (var r in fullResults)
+        {
+            Assert.IsFalse(r.GetProperty("truncated").GetBoolean(),
+                "Baseline run with maxItemsPerSymbol=100 should not truncate SampleLib targets.");
+        }
+
+        // Bounded: summary=true strips preview text, maxItemsPerSymbol=1 trims each symbol to
+        // one reference. That floor (1 ref × 2 symbols) guarantees the envelope is smaller than
+        // the baseline for this sample workspace, which has multiple refs per symbol.
+        var boundedJson = await SymbolTools.FindReferencesBulk(
+            WorkspaceExecutionGate,
+            ReferenceService,
+            WorkspaceId,
+            symbols,
+            includeDefinition: false,
+            summary: true,
+            maxItemsPerSymbol: 1,
+            ct: CancellationToken.None);
+
+        using var boundedDoc = JsonDocument.Parse(boundedJson);
+        Assert.AreEqual(2, boundedDoc.RootElement.GetProperty("count").GetInt32());
+        Assert.IsTrue(boundedDoc.RootElement.GetProperty("summary").GetBoolean());
+        Assert.AreEqual(1, boundedDoc.RootElement.GetProperty("maxItemsPerSymbol").GetInt32());
+
+        var boundedResults = boundedDoc.RootElement.GetProperty("results").EnumerateArray().ToList();
+        Assert.AreEqual(2, boundedResults.Count);
+
+        var anyTruncated = false;
+        foreach (var r in boundedResults)
+        {
+            // referenceCount is the pre-cap total; returnedCount is what we actually included.
+            var totalRefs = r.GetProperty("referenceCount").GetInt32();
+            var returned = r.GetProperty("returnedCount").GetInt32();
+            Assert.IsTrue(returned <= 1,
+                $"maxItemsPerSymbol=1 must cap returned list (saw {returned}).");
+
+            var refs = r.GetProperty("references").EnumerateArray().ToList();
+            Assert.AreEqual(returned, refs.Count,
+                "references array length must match returnedCount.");
+
+            // Every included ref must have PreviewText omitted under summary=true. JSON serializer
+            // emits null fields explicitly — either the property is absent or its value is null.
+            foreach (var refEl in refs)
+            {
+                if (refEl.TryGetProperty("previewText", out var previewEl))
+                {
+                    Assert.AreEqual(JsonValueKind.Null, previewEl.ValueKind,
+                        "summary=true must null out previewText on every returned reference.");
+                }
+            }
+
+            var truncated = r.GetProperty("truncated").GetBoolean();
+            if (truncated)
+            {
+                anyTruncated = true;
+                Assert.IsTrue(totalRefs > returned,
+                    "truncated=true must imply referenceCount > returnedCount.");
+            }
+        }
+
+        Assert.IsTrue(anyTruncated,
+            "With maxItemsPerSymbol=1 against 2 high-fan-out SampleLib targets, at least one result must report truncated=true.");
+
+        // Aggregate payload size must strictly shrink — this is the whole point of the knob.
+        Assert.IsTrue(boundedJson.Length < fullJson.Length,
+            $"Bounded envelope ({boundedJson.Length} bytes) must be smaller than baseline ({fullJson.Length} bytes) when summary+cap are applied.");
+    }
+
+    [TestMethod]
+    public async Task FindReferencesBulk_InvalidMaxItemsPerSymbol_Throws()
+    {
+        var symbols = new[]
+        {
+            new BulkSymbolLocator(SymbolHandle: null, MetadataName: "SampleLib.IAnimal",
+                FilePath: null, Line: null, Column: null),
+        };
+
+        await Assert.ThrowsExceptionAsync<ArgumentException>(() => SymbolTools.FindReferencesBulk(
+            WorkspaceExecutionGate,
+            ReferenceService,
+            WorkspaceId,
+            symbols,
+            includeDefinition: false,
+            summary: false,
+            maxItemsPerSymbol: 0,
+            ct: CancellationToken.None));
+    }
+
+    [TestMethod]
     public async Task Relationship_And_Cohesion_Tools_Expose_New_Limit_And_Interface_Flags()
     {
         var iAnimalPath = FindDocumentPath("IAnimal.cs");

@@ -312,9 +312,10 @@ public static class SymbolTools
     }
 
     [McpServerTool(Name = "find_references_bulk", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
-        "Find references for multiple symbols in one call (max 50). Returns { count, results } where each result has key, referenceCount, references, and optional error. " +
+        "Find references for multiple symbols in one call (max 50). Returns { count, results } where each result has key, referenceCount, references, truncated, and optional error. " +
         "Parameter name must be `symbols` (array of objects). Do NOT pass symbolHandles or a JSON string array. " +
-        "Each element must set exactly one of: symbolHandle, metadataName, or filePath+line+column.")]
+        "Each element must set exactly one of: symbolHandle, metadataName, or filePath+line+column. " +
+        "Pass `summary=true` to drop per-ref preview text and `maxItemsPerSymbol=N` to cap each symbol's reference list so the aggregate envelope stays under the MCP payload cap (overflowed at 120 KB without bounds).")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Resolve references for multiple symbols in one request.")]
     public static Task<string> FindReferencesBulk(
@@ -323,12 +324,64 @@ public static class SymbolTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Array of locator objects (max 50). Example shape: symbols: [ { metadataName: \"SampleLib.IAnimal\" }, { filePath: \"C:/src/x.cs\", line: 10, column: 5 } ]")] BulkSymbolLocator[] symbols,
         [Description("Include the definition location in each result (default: false)")] bool includeDefinition = false,
+        [Description("When true, drops per-ref preview text to keep each symbol's references small for high-fan-out batches. File path + line + column + classification still populated. Default false preserves the v1.18.2 shape.")] bool summary = false,
+        [Description("Maximum number of reference locations to keep per symbol (default: 100). Applied BEFORE the outer envelope is assembled so the cap actually bounds aggregate output. Each result's `truncated` flag indicates whether its list was trimmed; `referenceCount` still reflects the full pre-cap total so callers can page follow-up queries via find_references.")] int maxItemsPerSymbol = 100,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
+            if (maxItemsPerSymbol < 1)
+                throw new ArgumentException("maxItemsPerSymbol must be >= 1.", nameof(maxItemsPerSymbol));
+
             var results = await referenceService.FindReferencesBulkAsync(workspaceId, symbols, includeDefinition, c);
-            return JsonSerializer.Serialize(new { count = results.Count, results }, JsonDefaults.Indented);
+
+            // Apply the per-symbol cap + summary stripping BEFORE assembling the outer envelope.
+            // Serializing the raw service result and then paging post-hoc would still materialize
+            // the full preview payload in memory and in the JSON output — the whole point of
+            // summary/maxItemsPerSymbol is to bound the aggregate size, so the bound has to
+            // happen upstream of JsonSerializer.Serialize.
+            var shaped = new List<object>(results.Count);
+            foreach (var r in results)
+            {
+                var fullCount = r.References.Count;
+                var cappedCount = Math.Min(fullCount, maxItemsPerSymbol);
+                var truncated = fullCount > cappedCount;
+
+                IReadOnlyList<LocationDto> shapedRefs;
+                if (summary || truncated)
+                {
+                    var buffer = new List<LocationDto>(cappedCount);
+                    for (var i = 0; i < cappedCount; i++)
+                    {
+                        var loc = r.References[i];
+                        buffer.Add(summary ? loc with { PreviewText = null } : loc);
+                    }
+                    shapedRefs = buffer;
+                }
+                else
+                {
+                    shapedRefs = r.References;
+                }
+
+                shaped.Add(new
+                {
+                    key = r.Key,
+                    resolvedSymbol = r.ResolvedSymbol,
+                    referenceCount = r.ReferenceCount,
+                    returnedCount = shapedRefs.Count,
+                    truncated,
+                    references = shapedRefs,
+                    error = r.Error,
+                });
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                count = shaped.Count,
+                summary,
+                maxItemsPerSymbol,
+                results = shaped,
+            }, JsonDefaults.Indented);
         }, ct);
     }
 
