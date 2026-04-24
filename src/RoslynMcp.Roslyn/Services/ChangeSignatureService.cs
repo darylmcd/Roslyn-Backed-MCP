@@ -85,10 +85,22 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         if (string.IsNullOrWhiteSpace(request.ParameterType))
             throw new ArgumentException("op='add' requires ParameterType.", nameof(request));
 
+        // change-signature-preview-add-unhelpful-error:
+        // When the caller does not supply Position, default to end-append (the intent is
+        // unambiguous — "add a new parameter named X of type Y" means "append it"). When
+        // the caller supplies a Position that exceeds Parameters.Length, raise an
+        // actionable error citing the user-facing fields (Name + ParameterType + the
+        // valid Position range) instead of bubbling an internal ArgumentOutOfRangeException
+        // with paramName='index'. Pre-fix this surfaced as
+        // "Parameter 'index' has an out-of-range value" and forced agents to guess.
         var insertPosition = request.Position ?? method.Parameters.Length;
         if (insertPosition < 0 || insertPosition > method.Parameters.Length)
             throw new ArgumentException(
-                $"Position {insertPosition} is out of range (0..{method.Parameters.Length}).", nameof(request));
+                $"op='add' Position={insertPosition} is out of range for adding parameter " +
+                $"'{request.Name}: {request.ParameterType}' to {method.ToDisplayString()} " +
+                $"(method has {method.Parameters.Length} existing parameter(s); " +
+                $"valid Position is 0..{method.Parameters.Length}, or omit Position to append at end).",
+                nameof(request));
 
         // change-signature-preview-brace-concat-on-add-op:
         // Build the new parameter via SyntaxFactory.ParseParameter — the parser produces a
@@ -116,8 +128,18 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             {
                 if (isPositional)
                 {
+                    // change-signature-preview-add-unhelpful-error:
+                    // Existing callsites may pass fewer arguments than the method declares
+                    // (default-valued parameters are common, e.g. CancellationToken at the
+                    // end). args.Insert(insertPosition, ...) where insertPosition > args.Count
+                    // throws ArgumentOutOfRangeException with paramName='index' — that's the
+                    // unhelpful internal error the row reports. Clamp to args.Count so the
+                    // splice always lands at a valid index; semantically the new arg still
+                    // appends at the end of THIS callsite, which matches the declaration's
+                    // append-at-end behavior.
+                    var clampedInsert = Math.Min(insertPosition, args.Count);
                     var newArg = SyntaxFactory.Argument(SyntaxFactory.ParseExpression(argText));
-                    return args.Insert(insertPosition, newArg.WithLeadingTrivia(insertPosition == 0 ? default : SyntaxFactory.Space));
+                    return args.Insert(clampedInsert, newArg.WithLeadingTrivia(clampedInsert == 0 ? default : SyntaxFactory.Space));
                 }
                 // Caller uses named args — splice by name so we don't break existing positions.
                 var named = SyntaxFactory.Argument(

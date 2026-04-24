@@ -424,6 +424,294 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         }
     }
 
+    /// <summary>
+    /// change-signature-preview-add-unhelpful-error: pre-fix
+    /// `change_signature_preview(op=add, name=cancellationToken, parameterType=CancellationToken)`
+    /// against a method whose existing callsites pass fewer args than declared (the typical
+    /// "default-valued trailing param" shape that motivates adding a CancellationToken in
+    /// the first place) failed with `"Parameter 'index' has an out-of-range value"` — an
+    /// internal `ArgumentOutOfRangeException` from
+    /// `SeparatedSyntaxList&lt;ArgumentSyntax&gt;.Insert(insertPosition, ...)` where
+    /// `insertPosition` (= method.Parameters.Length) exceeded `args.Count`. The user reached
+    /// a hard stop and could not see the preview at all. Post-fix the callsite splice
+    /// clamps to `args.Count`, so the preview succeeds and the declaration is rewritten
+    /// with the new parameter appended at the end (end-append default).
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_AddOp_CancellationToken_SucceedsWithEndAppend_WhenCallsiteOmitsDefaultArg()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        // Method already has a default-valued parameter that the caller omits — this is the
+        // shape that previously broke. method has 2 params (the second has a default value);
+        // callsite passes only 1 arg. Adding `CancellationToken ct = default` at end makes
+        // insertPosition=2 but args.Count=1 → pre-fix throws.
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureCtAppendFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "using System.Threading;",
+            "",
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureCtAppendFixture",
+            "{",
+            "    public int Compute(int a, int b = 0)",
+            "    {",
+            "        return a + b;",
+            "    }",
+            "",
+            "    public int CallCompute()",
+            "    {",
+            "        return Compute(1);",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            // Caret on `Compute` (line 7, column 16). Add CancellationToken at end (no Position
+            // specified — defaults to method.Parameters.Length=2).
+            var locator = SymbolLocator.BySource(fixturePath, line: 7, column: 16);
+            var request = new ChangeSignatureRequest(
+                Op: "add",
+                Name: "cancellationToken",
+                ParameterType: "System.Threading.CancellationToken",
+                Position: null, // explicit end-append default
+                NewName: null,
+                DefaultValue: "default");
+
+            // Pre-fix this throws ArgumentOutOfRangeException with paramName='index'.
+            // Post-fix the preview succeeds and the declaration is rewritten.
+            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspaceId, locator, request, CancellationToken.None);
+            Assert.IsNotNull(preview.PreviewToken);
+            Assert.IsTrue(preview.Changes.Count >= 1, "preview must report at least the declaration file");
+
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+
+            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+            StringAssert.Contains(postApplyText, "int a, int b = 0, System.Threading.CancellationToken cancellationToken = default",
+                $"new parameter must append at end of declaration; got:\n{postApplyText}");
+            // Callsite Compute(1) remains valid post-rewrite because both `b` and the new
+            // CancellationToken parameter have defaults — the file still compiles. The
+            // backlog row's contract is "preview succeeds + declaration shows the change",
+            // not "every callsite is rewritten" (that's a separate concern tracked by
+            // change-signature-preview-callsite-summary).
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// change-signature-preview-add-unhelpful-error: with an explicit Position equal to
+    /// method.Parameters.Length the behavior must match the omitted-Position default —
+    /// the preview must succeed without bubbling the internal `ArgumentOutOfRangeException`
+    /// from the callsite-arg splice. Guards against a regression where the explicit-position
+    /// branch loses the clamping and reverts to the unhelpful "index out of range" error.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_AddOp_ExplicitEndPosition_Succeeds_WhenCallsiteOmitsDefaultArg()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureExplicitEndFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "using System.Threading;",
+            "",
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureExplicitEndFixture",
+            "{",
+            "    public int Compute(int a, int b = 0)",
+            "    {",
+            "        return a + b;",
+            "    }",
+            "",
+            "    public int CallCompute()",
+            "    {",
+            "        return Compute(1);",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var locator = SymbolLocator.BySource(fixturePath, line: 7, column: 16);
+            var request = new ChangeSignatureRequest(
+                Op: "add",
+                Name: "cancellationToken",
+                ParameterType: "System.Threading.CancellationToken",
+                Position: 2, // explicit end-position
+                NewName: null,
+                DefaultValue: "default");
+
+            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspaceId, locator, request, CancellationToken.None);
+            Assert.IsNotNull(preview.PreviewToken);
+
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+
+            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+            StringAssert.Contains(postApplyText, "int a, int b = 0, System.Threading.CancellationToken cancellationToken = default",
+                $"explicit end-position must succeed same as omitted-Position; got:\n{postApplyText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// change-signature-preview-add-unhelpful-error risk: ensure the end-append clamping
+    /// fix doesn't collide with positional inserts. With Position=0 (head insert) and a
+    /// callsite that already has the right arg count, the new parameter must splice in at
+    /// the front of the declaration. Math.Min(0, args.Count) is still 0, so positional
+    /// behavior is unchanged.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_AddOp_HeadPosition_StillSplicesAtFrontOfDeclaration()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureHeadPosFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureHeadPosFixture",
+            "{",
+            "    public int Compute(int a)",
+            "    {",
+            "        return a;",
+            "    }",
+            "",
+            "    public int CallCompute()",
+            "    {",
+            "        return Compute(42);",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+            var request = new ChangeSignatureRequest(
+                Op: "add",
+                Name: "prefix",
+                ParameterType: "string",
+                Position: 0, // head insert — Math.Min(0, args.Count) must remain 0
+                NewName: null,
+                DefaultValue: "\"\"");
+
+            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspaceId, locator, request, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+
+            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+            // Declaration: `string prefix = ""` then `int a`.
+            StringAssert.Contains(postApplyText, "string prefix = \"\", int a",
+                $"head insert must put new parameter first in declaration; got:\n{postApplyText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// change-signature-preview-add-unhelpful-error: when the caller supplies an explicit
+    /// Position that genuinely exceeds method.Parameters.Length (i.e. user error, not a
+    /// callsite-omits-default case), the error must cite user-facing fields (Name +
+    /// ParameterType + the valid range) instead of bubbling an internal
+    /// ArgumentOutOfRangeException with paramName='index'.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_AddOp_OutOfRangePosition_EmitsActionableError()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureOutOfRangeFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureOutOfRangeFixture",
+            "{",
+            "    public int Compute(int a, int b)",
+            "    {",
+            "        return a + b;",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+            var request = new ChangeSignatureRequest(
+                Op: "add",
+                Name: "cancellationToken",
+                ParameterType: "System.Threading.CancellationToken",
+                Position: 99, // genuinely out of range — method has 2 params, valid 0..2
+                NewName: null,
+                DefaultValue: "default");
+
+            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+                await _changeSignatureService.PreviewChangeSignatureAsync(
+                    workspaceId, locator, request, CancellationToken.None));
+
+            // Error must cite Name, ParameterType, valid range, and the "omit Position" hint.
+            // Must NOT mention internal "index" identifier.
+            StringAssert.Contains(ex.Message, "cancellationToken",
+                $"error must cite caller-supplied Name; got: {ex.Message}");
+            StringAssert.Contains(ex.Message, "CancellationToken",
+                $"error must cite caller-supplied ParameterType; got: {ex.Message}");
+            StringAssert.Contains(ex.Message, "0..2",
+                $"error must cite the valid Position range; got: {ex.Message}");
+            StringAssert.Contains(ex.Message, "omit Position",
+                $"error must hint that omitting Position appends at end; got: {ex.Message}");
+            Assert.IsFalse(ex.Message.Contains("Parameter 'index'", StringComparison.Ordinal),
+                $"error must NOT leak the internal 'index' paramName; got: {ex.Message}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     [TestMethod]
     public async Task ChangeSignaturePreview_RemoveOp_CaretOnParameter_ExplicitPositionOverridesAutoResolve()
     {
