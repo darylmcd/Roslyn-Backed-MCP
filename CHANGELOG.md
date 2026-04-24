@@ -16,6 +16,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.29.1] - 2026-04-24
+
+### Fixed
+
+- **Fixed:** `find_dead_fields(usageKind=never-read)` no longer flags DI-captured fields (e.g. `_options`, `_factory`) as removable when a chained `remove_dead_code_preview` will refuse with `"still has references"`. Every `DeadFieldDto` hit gains `removalBlockedBy` (nullable list of `Kind@Path:Line:Col` markers — ctor-enclosed writes tagged `ConstructorWrite@...`) and `safelyRemovable` (`false` when any source reference survives). Prefers metadata-surface over cascading remove, keeping `UnusedCodeAnalyzer` focused on classification (`find-dead-fields-remove-dead-code-contract-break`).
+- **Fixed:** `fix_all_preview` now returns a structured `FixAllProviderCrash` envelope instead of surfacing a raw `InvalidOperationException` (notably the IDE0300 `"Sequence contains no elements"` crash) or an indistinguishable empty `FixAllPreviewDto`. `FixAllService.PreviewFixAllAsync` narrows the two provider call-site catches (`GetFixAsync` + `GetOperationsAsync`) from broad `Exception` to `InvalidOperationException` only; `FixAllPreviewDto` gains optional `Error` / `Category` / `PerOccurrenceFallbackAvailable` fields; tool description documents the envelope (`fix-all-preview-sequence-contains-no-elements`).
+- **Fixed:** `organize_usings_preview` returning `"Invalid operation: Document not found"` after an auto-reload cascade (e.g. `remove_dead_code_apply` earlier in the turn) while `format_document_preview` succeeded on the same file. Extracts `RoslynMcp.Roslyn.Helpers.DocumentResolution` — `GetDocumentFromFreshSolutionOrThrow` re-acquires the current `Solution` from `IWorkspaceManager` at call time so the post-auto-reload snapshot is honored, and `GetDocumentInSolutionOrThrow` handles accumulator paths. `RefactoringService` (organize-usings / format-document / format-range / code-fix previews) and `EditService.ResolveDocumentAndTextAsync` route through the shared helper with a unified `InvalidOperationException("Document not found: ...")` (`organize-usings-preview-document-not-found-after-apply`).
+- **Fixed:** `scaffold_test_preview` no longer emits a dotted class identifier when callers pass a fully-qualified type name after an ambiguity-resolution hint. `ScaffoldingService.PreviewScaffoldTestAsync` + `ProcessBatchScaffoldTarget` now strip input to the last identifier segment for resolver lookup, then thread the matched `INamedTypeSymbol.Name` through `BuildTestContent` to every downstream template site (filename, class-name, ctor call, static invocation, `typeof(T)`) so dotted input produces compiling single-identifier output (`scaffold-test-preview-dotted-identifier`).
+
+### Changed
+
+- **Changed:** `/roslyn-mcp:update` skill gains a repo-local maintainer override at `.claude/skills/update/SKILL.md` that leads Layer 2 with the agent-executable `pwsh eng/update-claude-plugin.ps1` updater and keeps `/plugin marketplace update` + `/plugin install` as a fallback. Surfaced during the v1.29.0 release-cut (PR #377) where the Claude Code client responded with `/plugin isn't available in this environment`, leaving Layer 1 updated but Layer 2 stuck at 1.28.1 in the plugin cache — the bundled PowerShell script already replicated the slash-command flow (pull marketplace clone, re-sync cache from git-tracked files, prune stale versions, update `installed_plugins.json` + `known_marketplaces.json`), but the shipped skill couldn't reference repo-specific `eng/` paths under `verify-skills-are-generic.ps1`. The shipped generic skill keeps its `/plugin`-only guidance plus a pointer to the `.claude/skills/` override for maintainers in-repo.
+
 ## [1.29.0] - 2026-04-23
 
 ### Added
