@@ -56,6 +56,49 @@ public class FileSnapshotStoreSample
 }
 """, CancellationToken.None);
 
+        // Fixture #3: a lifecycle-manager class that mutates a ConcurrentDictionary field via
+        // TryAdd / TryRemove / indexer-write / Clear across sync + async methods. Regression
+        // guard for find-type-mutations-undercounts-lifecycle-writes — pre-fix only the Clear()
+        // call in DisposeAll was detected because TryAdd / TryRemove were not in the mutator
+        // name list and indexer-writes were not recognized as collection mutations.
+        var lifecyclePath = Path.Combine(CopiedRoot, "SampleLib", "LifecycleManagerSample.cs");
+        await File.WriteAllTextAsync(lifecyclePath, """
+namespace SampleLib;
+
+using System.Collections.Concurrent;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class LifecycleManagerSample
+{
+    private readonly ConcurrentDictionary<string, string> _sessions = new();
+
+    public async Task<string> LoadAsync(string path, CancellationToken ct)
+    {
+        await Task.Yield();
+        var id = System.Guid.NewGuid().ToString();
+        _sessions.TryAdd(id, path);
+        return id;
+    }
+
+    public async Task ReloadAsync(string id, CancellationToken ct)
+    {
+        await Task.Yield();
+        _sessions[id] = "reloaded";
+    }
+
+    public bool Close(string id)
+    {
+        return _sessions.TryRemove(id, out _);
+    }
+
+    public void DisposeAll()
+    {
+        _sessions.Clear();
+    }
+}
+""", CancellationToken.None);
+
         // Fixture #2: a no-side-effect computational class — should report zero mutations.
         var pureClassPath = Path.Combine(CopiedRoot, "SampleLib", "PureComputeSample.cs");
         await File.WriteAllTextAsync(pureClassPath, """
@@ -109,6 +152,31 @@ public class PureComputeSample
         Assert.IsNotNull(deleteManifest);
         Assert.AreEqual(SideEffectClassifier.Scopes.IO, deleteManifest.MutationScope,
             "File.Delete should classify as IO.");
+    }
+
+    [TestMethod]
+    public async Task FindTypeMutations_LifecycleManager_FlagsAsyncCollectionMutators()
+    {
+        var locator = SymbolLocator.ByMetadataName("SampleLib.LifecycleManagerSample");
+        var result = await MutationAnalysisService.FindTypeMutationsAsync(WorkspaceId, locator, CancellationToken.None);
+
+        Assert.IsNotNull(result, "LifecycleManagerSample should resolve to a named type.");
+
+        // Regression: at least LoadAsync (TryAdd), ReloadAsync (indexer-write), Close (TryRemove),
+        // DisposeAll (Clear) — four mutating members. Pre-fix only DisposeAll was detected because
+        // TryAdd/TryRemove were missing from the collection-mutator name list and indexer-writes
+        // were not recognized as collection mutations.
+        var mutatorNames = result.MutatingMembers.Select(m => m.Name).ToHashSet();
+        Assert.IsTrue(mutatorNames.Contains("LoadAsync"),
+            $"LoadAsync (TryAdd in async body) should be flagged. Got: [{string.Join(", ", mutatorNames)}]");
+        Assert.IsTrue(mutatorNames.Contains("ReloadAsync"),
+            $"ReloadAsync (indexer-write in async body) should be flagged. Got: [{string.Join(", ", mutatorNames)}]");
+        Assert.IsTrue(mutatorNames.Contains("Close"),
+            $"Close (TryRemove) should be flagged. Got: [{string.Join(", ", mutatorNames)}]");
+        Assert.IsTrue(mutatorNames.Contains("DisposeAll"),
+            $"DisposeAll (Clear) should be flagged. Got: [{string.Join(", ", mutatorNames)}]");
+        Assert.IsTrue(result.MutatingMembers.Count >= 4,
+            $"Expected at least 4 mutating members on LifecycleManagerSample, got {result.MutatingMembers.Count}.");
     }
 
     [TestMethod]

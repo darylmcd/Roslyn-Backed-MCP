@@ -678,11 +678,37 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
 
     private static bool HasMutatingCollectionCall(SyntaxNode methodNode)
     {
-        return methodNode.DescendantNodes()
-            .OfType<InvocationExpressionSyntax>()
-            .Any(inv => inv.Expression is MemberAccessExpressionSyntax access &&
-                        access.Name.Identifier.Text is "Add" or "Remove" or "Clear" or "Insert"
-                                                            or "RemoveAt" or "AddRange" or "RemoveAll");
+        foreach (var descendant in methodNode.DescendantNodes())
+        {
+            // find-type-mutations-undercounts-lifecycle-writes: recognize the full family of
+            // collection-mutation APIs used by ConcurrentDictionary / ConcurrentBag / ConcurrentQueue /
+            // ConcurrentStack / Channel / HashSet / Stack / Queue, not just the List<T> surface.
+            // WorkspaceManager.LoadAsync / Close mutate `_sessions` via TryAdd / TryRemove — without
+            // these names in the list they were invisible to find_type_mutations even though they
+            // are the canonical lifecycle mutators.
+            if (descendant is InvocationExpressionSyntax inv &&
+                inv.Expression is MemberAccessExpressionSyntax access &&
+                access.Name.Identifier.Text is "Add" or "Remove" or "Clear" or "Insert"
+                    or "RemoveAt" or "AddRange" or "RemoveAll"
+                    or "TryAdd" or "TryRemove" or "TryUpdate" or "AddOrUpdate" or "GetOrAdd"
+                    or "Push" or "Pop" or "TryPop"
+                    or "Enqueue" or "Dequeue" or "TryDequeue"
+                    or "Set" or "SetItem" or "Replace" or "Swap"
+                    or "ExceptWith" or "IntersectWith" or "SymmetricExceptWith" or "UnionWith")
+            {
+                return true;
+            }
+
+            // Indexer-write: `_field[key] = value` or `this[key] = value`. ElementAccessExpression
+            // on the left side of an assignment is a collection write that HasInstanceFieldAssignment
+            // does not cover (it only matches MemberAccess and bare-identifier LHS).
+            if (descendant is AssignmentExpressionSyntax assign &&
+                assign.Left is ElementAccessExpressionSyntax)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>
