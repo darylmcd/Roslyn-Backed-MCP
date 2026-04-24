@@ -197,6 +197,80 @@ public sealed class DeadFieldDetectorTests
     }
 
     [TestMethod]
+    public async Task FindDeadFields_CtorAssignedButNeverRead_IsNotSafelyRemovable()
+    {
+        // The canonical DI-captured-field shape: the constructor assigns the field,
+        // but nothing ever reads it. `find_dead_fields` correctly classifies it as
+        // `never-read`, but `remove_dead_code_preview` will refuse ("still has
+        // references") because the constructor assignment IS a source reference.
+        // The envelope must surface that break in the chained workflow via
+        // `removalBlockedBy` + `safelyRemovable=false` so callers don't retry.
+        const string source = """
+            namespace Sample;
+            internal sealed class Consumer
+            {
+                private readonly string _options;
+
+                public Consumer(string options)
+                {
+                    _options = options;
+                }
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadFieldsAsync(
+            WorkspaceId,
+            new DeadFieldsAnalysisOptions(),
+            default);
+
+        Assert.AreEqual(1, hits.Count);
+        var hit = hits[0];
+        Assert.AreEqual("_options", hit.SymbolName);
+        Assert.AreEqual("never-read", hit.UsageKind);
+        Assert.AreEqual(0, hit.ReadReferenceCount);
+        Assert.AreEqual(1, hit.WriteReferenceCount);
+        Assert.IsFalse(hit.SafelyRemovable,
+            "Ctor-written fields must be flagged as not safely removable because `remove_dead_code_preview` will refuse them.");
+        Assert.IsNotNull(hit.RemovalBlockedBy);
+        Assert.AreEqual(1, hit.RemovalBlockedBy!.Count);
+        StringAssert.StartsWith(hit.RemovalBlockedBy[0], "ConstructorWrite@",
+            "Blocker markers for constructor assignments must be tagged `ConstructorWrite@Path:Line:Col`.");
+    }
+
+    [TestMethod]
+    public async Task FindDeadFields_InitializerOnlyNeverRead_IsSafelyRemovable()
+    {
+        // A field that only has a declaration initializer (no other refs) is safely
+        // removable: `remove_dead_code_preview` erases the declaration which erases
+        // the initializer in the same syntax edit. No residual references remain, so
+        // `safelyRemovable=true` and `removalBlockedBy` is null.
+        const string source = """
+            namespace Sample;
+            internal sealed class Counter
+            {
+                private int _count = 5;
+            }
+            """;
+
+        var analyzer = BuildAnalyzerWithSource(source);
+
+        var hits = await analyzer.FindDeadFieldsAsync(
+            WorkspaceId,
+            new DeadFieldsAnalysisOptions(),
+            default);
+
+        Assert.AreEqual(1, hits.Count);
+        var hit = hits[0];
+        Assert.AreEqual("_count", hit.SymbolName);
+        Assert.AreEqual("never-read", hit.UsageKind);
+        Assert.IsTrue(hit.SafelyRemovable,
+            "A field with only a declaration initializer has no residual references and should be safely removable.");
+        Assert.IsNull(hit.RemovalBlockedBy);
+    }
+
+    [TestMethod]
     public async Task FindDeadFields_LimitCapsResults()
     {
         const string source = """
