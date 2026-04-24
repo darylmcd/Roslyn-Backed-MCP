@@ -33,7 +33,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #381, 2026-04-24) |
 | **Backlog rows closed** | `scaffold-test-preview-dotted-identifier` |
 | **Diagnosis** | `ScaffoldingService` uses the fully-qualified symbol name in the class-name template, emitting `public class RoslynMcp.Roslyn.Services.NamespaceRelocationServiceGeneratedTests` — dotted identifier is a CS syntax error. Row cites `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs` + `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs:87`. |
 | **Approach** | In `ScaffoldingService` class-name template, substitute `TypeSymbol.Name` (unqualified) for the FQN. Cross-check other scaffold templates (filename, fixture class) use the same naming source to avoid re-introducing the bug via a neighboring template. |
@@ -53,7 +53,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #383, 2026-04-24) |
 | **Backlog rows closed** | `fix-all-preview-sequence-contains-no-elements` |
 | **Diagnosis** | `fix_all_preview(IDE0300)` returns `fixedCount=0` with `"Sequence contains no elements"` bubbling from the registered FixAll provider. Row cites `src/RoslynMcp.Roslyn/Services/FixAllService.cs` + `src/RoslynMcp.Host.Stdio/Tools/FixAllTools.cs`. |
 | **Approach** | Wrap the provider invocation in try/catch for `InvalidOperationException`; return a structured `{error: true, category: "FixAllProviderCrash", perOccurrenceFallbackAvailable: true, message: ...}` envelope. Optionally fan out to per-occurrence `code_fix_preview` when the provider short-circuits (prefer envelope-first to keep scope minimal). |
@@ -73,7 +73,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #382, 2026-04-24) |
 | **Backlog rows closed** | `organize-usings-preview-document-not-found-after-apply` |
 | **Diagnosis** | After an apply triggers auto-reload, `organize_usings_preview` fails with `"Document not found"` while `format_document_preview` succeeds on the same file/turn. The two tools use divergent document-resolver paths. Row cites `src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs` and services `RefactoringService.cs` + `EditService.cs`. |
 | **Approach** | Audit both resolver paths, extract a shared post-auto-reload document resolver helper, route both `organize_usings_preview` and `format_document_preview` through it. Ensure the resolver re-acquires the refreshed snapshot before the `GetDocument` call. |
@@ -93,7 +93,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #380, 2026-04-24) |
 | **Backlog rows closed** | `find-dead-fields-remove-dead-code-contract-break` |
 | **Diagnosis** | `find_dead_fields(usageKind=never-read)` flags ctor-written fields as removable; `remove_dead_code_preview` then refuses with "still has references" — broken chained workflow. Row cites `src/RoslynMcp.Roslyn/Services/DeadCodeService.cs`, `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs`, `src/RoslynMcp.Host.Stdio/Tools/DeadCodeTools.cs`. |
 | **Approach** | Emit `deadFields[].removalBlockedBy: ["ConstructorWrite@..."]` and `safelyRemovable: bool` on the find-side response so callers don't chain a workflow that always refuses. (Prefer metadata-surface over cascading remove, keeps DeadCodeService scope scoped to the classifier.) |
