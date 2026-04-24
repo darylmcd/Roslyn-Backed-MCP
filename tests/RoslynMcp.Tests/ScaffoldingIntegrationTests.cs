@@ -184,7 +184,7 @@ public sealed class NamespaceRelocationServiceFixture
                 "Describe",
                 ReferenceTestFile: string.Empty),
             CancellationToken.None);
-        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "scaffold_test_apply", CancellationToken.None);
 
         var contents = await File.ReadAllTextAsync(
             workspace.GetPath("SampleLib.Tests", "NamespaceRelocationServiceFixtureGeneratedTests.cs"),

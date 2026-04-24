@@ -171,7 +171,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member. Response shape: { count, items }. Auto-promotes to the virtual/interface root: override chains, explicit interface implementations, and implicit interface implementations are normalized before the search so callers can anchor at the implementation or declaration site and get the same result set.")]
+    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member. Response shape: { count, items }; each item is a SymbolDto (Name, FullyQualifiedName, FilePath, StartLine, etc.). Auto-promotes to the virtual/interface root: override chains, explicit interface implementations, and implicit interface implementations are normalized before the search so callers can anchor at the implementation or declaration site and get the same result set. Metadata-boundary members (e.g. IEquatable<T>.Equals) now surface with FilePath=null so count matches member_hierarchy.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find overrides of a virtual or abstract member.")]
     public static Task<string> FindOverrides(
@@ -193,7 +193,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_base_members", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find base or implemented members for an override or implementation")]
+    [McpServerTool(Name = "find_base_members", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find base or implemented members for an override or implementation. Response shape: { count, items }; each item is a SymbolDto (Name, FullyQualifiedName, FilePath, StartLine, etc.). Metadata-boundary bases (e.g. IEquatable<T>.Equals from corlib) surface with FilePath=null so count matches member_hierarchy.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find base or implemented members.")]
     public static Task<string> FindBaseMembers(

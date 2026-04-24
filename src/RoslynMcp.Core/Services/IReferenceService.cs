@@ -36,8 +36,23 @@ public interface IReferenceService
         SymbolLocator locator,
         CancellationToken ct,
         bool includeGeneratedPartials = false);
-    Task<IReadOnlyList<LocationDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
-    Task<IReadOnlyList<LocationDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
+    /// <summary>
+    /// Finds overriding/implementing members for a virtual, abstract, or interface member resolved at
+    /// <paramref name="locator"/>. Returns <see cref="SymbolDto"/> rather than <see cref="LocationDto"/> so
+    /// that members whose definition lives in metadata (e.g. <c>IEquatable&lt;T&gt;.Equals</c>) are not
+    /// silently dropped — a metadata-only result still carries <see cref="SymbolDto.FullyQualifiedName"/>
+    /// with <see cref="SymbolDto.FilePath"/>=<c>null</c>. Aligns with <c>member_hierarchy</c>.
+    /// </summary>
+    Task<IReadOnlyList<SymbolDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
+
+    /// <summary>
+    /// Finds base or implemented members for an override or implementation resolved at
+    /// <paramref name="locator"/>. Returns <see cref="SymbolDto"/> rather than <see cref="LocationDto"/> so
+    /// that members whose definition lives in metadata (e.g. <c>IEquatable&lt;T&gt;.Equals</c>) are not
+    /// silently dropped — a metadata-only result still carries <see cref="SymbolDto.FullyQualifiedName"/>
+    /// with <see cref="SymbolDto.FilePath"/>=<c>null</c>. Aligns with <c>member_hierarchy</c>.
+    /// </summary>
+    Task<IReadOnlyList<SymbolDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
     Task<IReadOnlyList<BulkReferenceResultDto>> FindReferencesBulkAsync(
         string workspaceId, IReadOnlyList<BulkSymbolLocator> symbols, bool includeDefinition, CancellationToken ct);
 }
