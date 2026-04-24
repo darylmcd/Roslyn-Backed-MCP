@@ -38,7 +38,11 @@ public sealed class ReferenceService : IReferenceService
             .ToList();
     }
 
-    public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(
+        string workspaceId,
+        SymbolLocator locator,
+        CancellationToken ct,
+        bool includeGeneratedPartials = false)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
@@ -46,9 +50,40 @@ public sealed class ReferenceService : IReferenceService
         var implementations = await SymbolFinder.FindImplementationsAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
         var results = new List<LocationDto>();
 
+        // find-implementations-source-gen-partial-dedup: Roslyn merges partial-class
+        // declarations into a single ISymbol whose Locations property exposes every
+        // declaration site — including ones emitted by source generators like
+        // [LoggerMessage] (Logging.g.cs) or [GeneratedRegex] (RegexGenerator.g.cs).
+        // Emitting every Location surfaces the same logical type 3+ times. Canonicalize
+        // on the symbol's original definition (handles constructed generics) and, by
+        // default, emit only the user-authored partial(s). Opt-in restores the raw list.
         foreach (var impl in implementations)
         {
-            foreach (var location in impl.Locations.Where(l => l.IsInSource))
+            var sourceLocations = impl.Locations.Where(l => l.IsInSource).ToList();
+            if (sourceLocations.Count == 0)
+            {
+                continue;
+            }
+
+            IEnumerable<Location> emitted;
+            if (includeGeneratedPartials)
+            {
+                emitted = sourceLocations;
+            }
+            else
+            {
+                var userAuthored = sourceLocations
+                    .Where(l => !IsGeneratedSourceLocation(l, solution))
+                    .ToList();
+                // If every declaration is generated (rare — a type that exists only in
+                // generated output), still emit one location so the caller isn't told the
+                // implementation is empty.
+                emitted = userAuthored.Count > 0
+                    ? userAuthored
+                    : sourceLocations.Take(1);
+            }
+
+            foreach (var location in emitted)
             {
                 var doc = solution.GetDocument(location.SourceTree!);
                 var preview = doc is not null ? await SymbolResolver.GetPreviewTextAsync(doc, location, ct).ConfigureAwait(false) : null;
@@ -57,6 +92,36 @@ public sealed class ReferenceService : IReferenceService
         }
 
         return OrderLocations(results);
+    }
+
+    private static bool IsGeneratedSourceLocation(Location location, Solution solution)
+    {
+        var tree = location.SourceTree;
+        if (tree is null)
+        {
+            return false;
+        }
+
+        // Roslyn-emitted source-generator documents are not returned by Solution.GetDocument
+        // (they live under GetSourceGeneratedDocumentAsync). Treat a null Document here as a
+        // strong signal the tree is generator-produced.
+        if (solution.GetDocument(tree) is null)
+        {
+            return true;
+        }
+
+        // Fallback: some generators (or build-time T4/MSBuild outputs) show up in the regular
+        // document list but their file path still carries the conventional .g.cs /
+        // .generated.cs suffix. Honour that convention — every generator SDK this repo
+        // currently encounters (LoggerMessage, GeneratedRegex, StronglyTypedId, etc.) emits
+        // one of these two extensions.
+        var path = tree.FilePath;
+        if (string.IsNullOrEmpty(path))
+        {
+            return false;
+        }
+        return path.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<IReadOnlyList<LocationDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)

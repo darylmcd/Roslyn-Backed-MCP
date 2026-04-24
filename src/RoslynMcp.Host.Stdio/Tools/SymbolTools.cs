@@ -129,7 +129,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all implementations of an interface or abstract member at the given position. Response shape: { count, items }. IMPORTANT: when using filePath/line/column, the column must point at the symbol identifier token (e.g., the interface name 'IMyService'), not the start of the line — otherwise no symbol can be resolved and the result is empty. For interface lookups, prefer metadataName (fully qualified) when you do not have an exact cursor position.")]
+    [McpServerTool(Name = "find_implementations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all implementations of an interface or abstract member at the given position. Response shape: { count, items }. By default, source-generator-emitted partial declarations (e.g. Logging.g.cs, RegexGenerator.g.cs) are deduped against the user-authored partial so each implementation appears exactly once; pass includeGeneratedPartials=true to restore the raw per-declaration list. IMPORTANT: when using filePath/line/column, the column must point at the symbol identifier token (e.g., the interface name 'IMyService'), not the start of the line — otherwise no symbol can be resolved and the result is empty. For interface lookups, prefer metadataName (fully qualified) when you do not have an exact cursor position.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find implementations of an interface or abstract member.")]
     public static Task<string> FindImplementations(
@@ -141,13 +141,14 @@ public static class SymbolTools
         [Description("Optional: 1-based column number — must point at the symbol name token")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.IMyInterface")] string? metadataName = null,
+        [Description("When true, emit every partial-declaration location (including generator-emitted .g.cs files). Default false dedupes to user-authored partials.")] bool includeGeneratedPartials = false,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-            var results = await referenceService.FindImplementationsAsync(workspaceId, locator, c);
-            return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
+            var results = await referenceService.FindImplementationsAsync(workspaceId, locator, c, includeGeneratedPartials);
+            return JsonSerializer.Serialize(new { count = results.Count, items = results, includeGeneratedPartials }, JsonDefaults.Indented);
         }, ct);
     }
 
