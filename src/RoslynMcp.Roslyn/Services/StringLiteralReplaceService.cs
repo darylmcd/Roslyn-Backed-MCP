@@ -93,8 +93,17 @@ public sealed class StringLiteralReplaceService : IStringLiteralReplaceService
 
         if (changes.Count == 0)
         {
-            throw new InvalidOperationException(
-                "replace_string_literals_preview: no matching literals found in scope.");
+            // Structured empty-preview response rather than an exception. Zero matches is a
+            // valid outcome for a find-style preview (e.g. the caller is probing whether a
+            // literal exists in scope); throwing forced callers to `try/catch` on a
+            // semantically benign case. Mirrors the `FixAllService` empty-preview shape —
+            // empty token + empty changes + descriptive `Description`.
+            var emptyDescription = "No matching string literals found in scope.";
+            return new RefactoringPreviewDto(
+                PreviewToken: string.Empty,
+                Description: emptyDescription,
+                Changes: Array.Empty<FileChangeDto>(),
+                Warnings: null);
         }
 
         var description = $"Replace {totalHits} string literal(s) across {changes.Count} file(s)";
