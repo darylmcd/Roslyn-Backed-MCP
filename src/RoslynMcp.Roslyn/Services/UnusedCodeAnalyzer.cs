@@ -989,19 +989,23 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             return "Read";
         }
 
-        return syntaxNode.Parent switch
+        // Walk up through any `MemberAccessExpressionSyntax` wrapper so `obj.field`
+        // and bare `field` references classify the same way. Without this step a
+        // field accessed through a qualifier (e.g. `acc.ErrorCount++` or
+        // `Interlocked.Increment(ref acc.ErrorCount)`) would be pinned to the
+        // MemberAccess node whose parent is the postfix / argument — but the
+        // existing arms only match when the reference is the MemberAccess's own
+        // operand, so those write-sites silently classified as `Read`.
+        var effectiveNode = syntaxNode;
+        if (syntaxNode.Parent is MemberAccessExpressionSyntax ma && ma.Name == syntaxNode)
         {
-            AssignmentExpressionSyntax assignment when assignment.Left == syntaxNode
-                => assignment.Kind() is SyntaxKind.AddAssignmentExpression
-                    or SyntaxKind.SubtractAssignmentExpression
-                    or SyntaxKind.MultiplyAssignmentExpression
-                    or SyntaxKind.DivideAssignmentExpression
-                    ? "ReadWrite"
-                    : "Write",
-            MemberAccessExpressionSyntax memberAccess
-                when memberAccess.Parent is AssignmentExpressionSyntax memberAssignment
-                     && memberAssignment.Left == memberAccess
-                => "Write",
+            effectiveNode = ma;
+        }
+
+        return effectiveNode.Parent switch
+        {
+            AssignmentExpressionSyntax assignment when assignment.Left == effectiveNode
+                => ClassifyAssignment(assignment),
             PrefixUnaryExpressionSyntax prefix
                 when prefix.IsKind(SyntaxKind.PreIncrementExpression) || prefix.IsKind(SyntaxKind.PreDecrementExpression)
                 => "ReadWrite",
@@ -1015,6 +1019,17 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             _ => "Read"
         };
     }
+
+    /// <summary>
+    /// Classifies an assignment-expression LHS reference. A simple `=` is a pure
+    /// write; every compound form (`+=`, `-=`, `*=`, `/=`, `%=`, `|=`, `&amp;=`,
+    /// `^=`, `&lt;&lt;=`, `&gt;&gt;=`, `&gt;&gt;&gt;=`, `??=`) reads the current
+    /// value before writing it back, so they all classify as ReadWrite.
+    /// </summary>
+    private static string ClassifyAssignment(AssignmentExpressionSyntax assignment)
+        => assignment.Kind() == SyntaxKind.SimpleAssignmentExpression
+            ? "Write"
+            : "ReadWrite";
 
     private static string? DetermineDeadFieldUsageKind(int readCount, int writeCount)
     {
