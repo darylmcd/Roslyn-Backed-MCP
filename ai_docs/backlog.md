@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-24T04:30:00Z
+**updated_at:** 2026-04-24T06:30:00Z
 
 ## Agent contract
 
@@ -31,10 +31,6 @@
 | id | pri | deps | do |
 |----|-----|------|-----|
 | `autoreload-cascade-stdio-host-crash` | P2 | — | Two `staleAction=auto-reloaded` responses in the same turn (from `workspace_changes` + experimental writers `preview_record_field_addition` / `extract_and_wire_interface_preview`) killed the stdio host mid-session (see `review-inbox/archive/20260424T031936Z/20260424T022657Z_networkdocumentation_mcp-server-audit.md` §14.1). Every tool funnels through `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` for its snapshot — guard the post-auto-reload state-read path there (single choke point) so a stale read returns a structured `category="StaleWorkspaceTransition"` envelope instead of raising the unhandled exception that terminates the host. Regression: two writers + one reader in the same test turn must not crash the host. |
-| `find-dead-fields-remove-dead-code-contract-break` | P2 | — | `find_dead_fields(usageKind=never-read)` flags ctor-written fields (`_options`, `_factory`, `_instance`) as removable but `remove_dead_code_preview` then refuses all of them with "still has references." In `src/RoslynMcp.Roslyn/Services/DeadCodeService.cs` (core logic) + `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs` (`find_dead_fields`) + `src/RoslynMcp.Host.Stdio/Tools/DeadCodeTools.cs` (`remove_dead_code_preview`), either (a) add `cascadeToWriters=true` so the preview co-removes ctor assignments, or (b) emit `deadFields[].removalBlockedBy: ["ConstructorWrite@…"]` / `safelyRemovable: bool` so callers don't chain a workflow that always refuses. |
-| `fix-all-preview-sequence-contains-no-elements` | P2 | — | `fix_all_preview(diagnosticId=IDE0300, scope=solution|document)` returns `fixedCount=0, guidanceMessage="The registered FixAll provider threw (InvalidOperationException: Sequence contains no elements)"` on both TradeWise and NetworkDocumentation. Catch the exception inside `src/RoslynMcp.Roslyn/Services/FixAllService.cs` (core) / `src/RoslynMcp.Host.Stdio/Tools/FixAllTools.cs` (tool wrapper) and either (a) return a structured `{error: true, category: "FixAllProviderCrash", perOccurrenceFallbackAvailable: true}` envelope, or (b) fan out to per-occurrence `code_fix_preview` internally when the provider short-circuits. |
-| `organize-usings-preview-document-not-found-after-apply` | P2 | — | After `remove_dead_code_apply` / `apply_text_edit` on `IngestionRunRepository.cs` and `NuGetVulnerabilityJsonParser.cs`, `organize_usings_preview` returned `"Invalid operation: Document not found"` with `staleAction=auto-reloaded` set, while `format_document_preview` on the same file/turn succeeded. Audit the document-resolver path used by `organize_usings_preview` vs `format_document_preview` (both in `src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs`, delegating into `src/RoslynMcp.Roslyn/Services/RefactoringService.cs` + `EditService.cs`) and unify their post-auto-reload lookup so a resolved snapshot is shared. |
-| `scaffold-test-preview-dotted-identifier` | P2 | — | `scaffold_test_preview` emits `public class RoslynMcp.Roslyn.Services.NamespaceRelocationServiceGeneratedTests : TestBase` — a dotted identifier is a CS syntax error, so the generated file cannot compile. In `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs` (tool: `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs:87`), strip the namespace prefix from the generated class identifier (use `TypeSymbol.Name`, not fully-qualified name, in the class-name template). Regression: scaffold for one nested and one top-level type; both must emit a single-identifier class name that `compile_check` accepts. |
 
 ## P3 — open work
 
