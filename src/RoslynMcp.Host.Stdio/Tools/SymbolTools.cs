@@ -28,6 +28,18 @@ public static class SymbolTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
+            // Guard: empty/whitespace queries would otherwise dump the full workspace symbol index
+            // (observed 70-80 KB payloads on mid-sized solutions). Return a structured empty-query
+            // envelope so the caller gets an actionable note instead of a giant unfiltered dump.
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return JsonSerializer.Serialize(new
+                {
+                    count = 0,
+                    symbols = Array.Empty<object>(),
+                    note = "query must be non-empty — pass a bare substring like 'Animal' to find 'AnimalService', 'IAnimal', etc."
+                }, JsonDefaults.Indented);
+            }
             var results = await symbolSearchService.SearchSymbolsAsync(workspaceId, query, projectName, kind, @namespace, limit, c);
             return JsonSerializer.Serialize(new { count = results.Count, symbols = results }, JsonDefaults.Indented);
         }, ct);

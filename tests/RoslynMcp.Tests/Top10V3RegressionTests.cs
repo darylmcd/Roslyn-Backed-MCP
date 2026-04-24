@@ -46,6 +46,58 @@ public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
             "symbol_search response must now carry _meta — the whole point of the shape wrap.");
     }
 
+    // ── symbol-search-empty-query-overflow: guard empty/whitespace queries ──
+
+    [DataTestMethod]
+    [DataRow("")]
+    [DataRow(" ")]
+    [DataRow("\t")]
+    [DataRow("   \t  \r\n ")]
+    public async Task SymbolSearch_EmptyOrWhitespaceQuery_ReturnsStructuredEmptyEnvelope(string query)
+    {
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "symbol_search",
+            () => SymbolTools.SearchSymbols(
+                WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
+                query: query,
+                projectName: null, kind: null, @namespace: null, limit: 50,
+                CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("count", out var count),
+            "Empty-query envelope must expose 'count'.");
+        Assert.AreEqual(0, count.GetInt32(),
+            "Empty/whitespace queries must NOT dump the workspace index — count must be 0.");
+        Assert.IsTrue(doc.RootElement.TryGetProperty("symbols", out var symbols),
+            "Empty-query envelope must expose an empty 'symbols' array.");
+        Assert.AreEqual(JsonValueKind.Array, symbols.ValueKind);
+        Assert.AreEqual(0, symbols.GetArrayLength());
+        Assert.IsTrue(doc.RootElement.TryGetProperty("note", out var note),
+            "Empty-query envelope must carry a 'note' explaining why the query was rejected.");
+        Assert.IsTrue(note.GetString()!.Contains("non-empty", StringComparison.OrdinalIgnoreCase),
+            "Note should state the query must be non-empty.");
+    }
+
+    [TestMethod]
+    public async Task SymbolSearch_NonEmptyQuery_DoesNotEmitRejectionNote()
+    {
+        // Control case: a genuine query keeps the normal response shape without the 'note'
+        // field, so clients can disambiguate the empty-query envelope from real results.
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "symbol_search",
+            () => SymbolTools.SearchSymbols(
+                WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
+                query: "AnimalService",
+                projectName: null, kind: null, @namespace: null, limit: 10,
+                CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsFalse(doc.RootElement.TryGetProperty("note", out _),
+            "Valid queries must not emit the empty-query rejection 'note' field.");
+        Assert.IsTrue(doc.RootElement.GetProperty("count").GetInt32() >= 1,
+            "Valid query 'AnimalService' should still return at least one hit.");
+    }
+
     // ── roslyn-mcp-complexity-subset-rerun: filePaths list parameter ──
 
     [TestMethod]
