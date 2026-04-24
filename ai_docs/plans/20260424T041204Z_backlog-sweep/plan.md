@@ -353,7 +353,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #406, 2026-04-24) |
 | **Backlog rows closed** | `find-implementations-source-gen-partial-dedup` |
 | **Diagnosis** | `find_implementations(ISnapshotStore)` returns `FileSnapshotStore` plus partials from `Logging.g.cs` / `RegexGenerator.g.cs` — same type, not distinct implementations. Row cites `src/RoslynMcp.Roslyn/Services/ReferenceService.cs` + `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs`. |
 | **Approach** | Deduplicate by containing `ISymbol` identity in `ReferenceService.FindImplementationsAsync`. Expose opt-in `includeGeneratedPartials: bool=false` for callers needing the raw list. |
@@ -393,7 +393,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #405, 2026-04-24) |
 | **Backlog rows closed** | `find-dead-fields-compound-assignment-writes` |
 | **Diagnosis** | `find_dead_fields` reports `writeReferenceCount=0` for `acc.ErrorCount++` and similar compound-assignment writes. Row cites `src/RoslynMcp.Roslyn/Services/DeadCodeService.cs` + `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs` + a concrete callsite at `CompileCheckService.cs:155`. |
 | **Approach** | Extend the write-reference sweep in `DeadCodeService` to recognize compound-assignment target-of operations (`++`, `--`, `+=`, `-=`, `*=`, `/=`, `<<=`, `>>=`, `\|=`, `&=`, `^=`) and `Interlocked.*` callsites where the first argument is a field ref. |
@@ -413,7 +413,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #404, 2026-04-24) |
 | **Backlog rows closed** | `find-unused-symbols-convention-filter-gaps` |
 | **Diagnosis** | `excludeConventionInvoked=true` false-positives `[McpServerToolType]` / `[McpServerPromptType]` / `[McpServerResourceType]`, xUnit `[CollectionDefinition]` holders, and ASP.NET health-response writers. Row cites `src/RoslynMcp.Roslyn/Services/UnusedCodeAnalyzer.cs` + `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs:13`. |
 | **Approach** | Extend the default convention list in `UnusedCodeAnalyzer` to include the five listed attribute patterns + `HealthResponseWriter` signature pattern. |
@@ -433,7 +433,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #403, 2026-04-24) |
 | **Backlog rows closed** | `set-editorconfig-option-round-trip-asymmetry` |
 | **Diagnosis** | `set_editorconfig_option(CA9999.severity=none)` writes to disk but `get_editorconfig_options` immediately after returns without the new key when no loaded analyzer reports the id. Row cites `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs` + `src/RoslynMcp.Host.Stdio/Tools/EditorConfigTools.cs`. |
 | **Approach** | In `EditorConfigService`, ensure the set path invalidates or updates the read-side cache; alternatively, the get path always reads the on-disk union rather than filtering by loaded analyzer ids. Prefer the latter for correctness. |
