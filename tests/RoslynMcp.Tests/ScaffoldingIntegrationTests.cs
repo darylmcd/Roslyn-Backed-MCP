@@ -417,4 +417,130 @@ public class NestedHost
             "Scaffold must NOT emit a dotted class identifier for nested types either.");
         StringAssert.Contains(contents, "Speak_Needs_Test");
     }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Preview_StaticClass_Omits_NewT_InArrange()
+    {
+        // scaffold-test-preview-static-target-body: a `static class` target should scaffold
+        // a utility-shaped body — no `new StaticUtil()` and no `var subject = ...` Arrange line.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var fixturePath = workspace.GetPath("SampleLib", "StaticUtil.cs");
+        await File.WriteAllTextAsync(fixturePath, """
+namespace SampleLib;
+
+public static class StaticUtil
+{
+    public static int Add(int a, int b) => a + b;
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var expectedFilePath = workspace.GetPath("SampleLib.Tests", "StaticUtilGeneratedTests.cs");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "StaticUtil",
+                "Add",
+                ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
+
+        Assert.IsFalse(contents.Contains("new StaticUtil("),
+            "Static-class scaffold must NOT emit `new StaticUtil(...)` in Arrange.");
+        Assert.IsFalse(contents.Contains("var subject ="),
+            "Static-class scaffold must NOT emit a `subject` instance.");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Preview_ConstantsOnlyClass_Omits_NewT_InArrange()
+    {
+        // scaffold-test-preview-static-target-body: a non-static class whose only public surface
+        // is `const` / static fields (classic "constants" holder e.g. `TenantConstants`) should
+        // scaffold without `new TenantConstants()` — previously the scaffolder only inspected
+        // methods, so constants-only types fell through to the instance template.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var fixturePath = workspace.GetPath("SampleLib", "TenantConstants.cs");
+        await File.WriteAllTextAsync(fixturePath, """
+namespace SampleLib;
+
+public class TenantConstants
+{
+    public const string DefaultTenant = "default";
+    public const int MaxConnections = 42;
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var expectedFilePath = workspace.GetPath("SampleLib.Tests", "TenantConstantsGeneratedTests.cs");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "TenantConstants",
+                TargetMethodName: null,
+                ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
+
+        Assert.IsFalse(contents.Contains("new TenantConstants("),
+            "Constants-only class scaffold must NOT emit `new TenantConstants(...)` in Arrange.");
+        Assert.IsFalse(contents.Contains("var subject ="),
+            "Constants-only class scaffold must NOT emit a `subject` instance.");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Preview_StaticMembersOnlyClass_Omits_NewT_InArrange()
+    {
+        // scaffold-test-preview-static-target-body: a non-static class whose public surface is
+        // entirely static members (methods + properties — e.g. `SnapshotContentHasher`) should
+        // scaffold as a utility, not as an instance.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var fixturePath = workspace.GetPath("SampleLib", "SnapshotContentHasher.cs");
+        await File.WriteAllTextAsync(fixturePath, """
+namespace SampleLib;
+
+public class SnapshotContentHasher
+{
+    public static string Version { get; } = "v1";
+
+    public static string Hash(string content) => content.GetHashCode().ToString();
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var expectedFilePath = workspace.GetPath("SampleLib.Tests", "SnapshotContentHasherGeneratedTests.cs");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "SnapshotContentHasher",
+                "Hash",
+                ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
+
+        Assert.IsFalse(contents.Contains("new SnapshotContentHasher("),
+            "Static-members-only class scaffold must NOT emit `new SnapshotContentHasher(...)` in Arrange.");
+        Assert.IsFalse(contents.Contains("var subject ="),
+            "Static-members-only class scaffold must NOT emit a `subject` instance.");
+    }
 }
