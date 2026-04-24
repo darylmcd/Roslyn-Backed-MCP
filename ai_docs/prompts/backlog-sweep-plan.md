@@ -1,6 +1,16 @@
 # Backlog sweep — planning pass
 
 <!-- purpose: Initiative-level plan that groups related backlog rows into shippable PRs.
+     v4 (2026-04-24) — against the 44-row post-intake backlog (5 P2 + 29 P3 + 10 P4),
+     adds (a) Rule 3 "tool-surface-only" 2-file exemption (11/29 P3 rows are envelope/
+     error-wrapper fixes that don't need the 3-layer pattern), (b) heroic-bundle +
+     WorkspaceManager-family anti-pattern warnings in Step 2 (intake just split three
+     heroic rows this cycle), (c) Rule 5 budget rows for tool-surface-only (20-30K)
+     and complexity-extraction (45-55K) shapes, (d) Step 5 sort hint for catalog /
+     WorkspaceManager-touching initiatives (executor has the rule at §2a; planner now
+     surfaces it), (e) `requiredAddenda` optional field in state.json schema for
+     machine-readable new-tool addenda tracking, (f) note on heroic-last often
+     meaning "defer at closeout" per 20260422 orders 15/16 obsolescence evidence.
      v3 (2026-04-17) — adds (a) Rule 3 "new-MCP-tool structural-unit" exemption after
      2026-04-17 pass 2 Init 4 shipped 7 prod files against a 2-prod estimate because
      the Core+Roslyn+Host.Stdio three-layer pattern is indivisible, and (b) a per-
@@ -129,6 +139,25 @@ shipped 7 prod + 1 test against a 6-prod estimate because the plan missed the 3
 addenda above — all 3 surfaced at validation time and had to be added in the
 executor worktree.
 
+**Rule 3 exemption — tool-surface-only initiatives.** Initiatives that ONLY change
+response-shape, error envelope, description text, or parameter defaults on an
+already-registered `[McpServerTool]` may touch up to **2 files**:
+
+| File | Purpose |
+|---|---|
+| `src/RoslynMcp.Host.Stdio/Tools/{Tool}Tools.cs` | Tool-wrapper edit — envelope, schema, description. |
+| `src/RoslynMcp.Core/Models/{Tool}ResponseDto.cs` (optional) | DTO field add/rename to reshape the response. |
+
+`toolPolicy` MUST be `"edit-only"`. This is NOT a structural-unit exemption —
+the file cap is 2, not 4. Rule 4 still applies (≤3 test files). Cite the
+exemption in the Scope field: *"Rule 3 exemption: tool-surface-only, 2 files."*
+
+**Session evidence (tool-surface-only):** 11 of 29 new P3 rows in the 2026-04-24
+intake are envelope/error-wrapper fixes (e.g. `validate-recent-git-changes-bare-
+error-envelope`, `symbol-search-empty-query-overflow`, `replace-string-literals-
+preview-throws-on-zero-match`). Forcing them into the 3-layer new-tool pattern
+wastes vetting cycles; the 2-file cap captures them accurately.
+
 ### Rule 3b — toolPolicy per initiative
 
 Every initiative gets a `toolPolicy` value that the executor uses to brief the
@@ -175,7 +204,9 @@ Per-initiative budgets, by shape:
 | Initiative shape | Typical estimate |
 |---|---|
 | Doc-only / config-only | ~15-25K tokens |
+| Tool-surface-only (envelope/error/description, 1-2 files) | ~20-30K tokens |
 | Fix/refactor, 1-2 files | ~25-40K tokens |
+| Complexity-extraction refactor (split helper out of hotspot service, 2-3 files + tests) | ~45-55K tokens |
 | Fix/refactor, 3-4 files | ~40-60K tokens |
 | New-MCP-tool (edit-only, structural-unit exemption) | ~45-65K tokens |
 | Solution-wide rename/extract (preview-then-apply) | ~50-70K tokens |
@@ -215,6 +246,21 @@ bundle (verified by past audit):
   comments warning AGAINST blanket reformatting. Each service is its own initiative.
 - `output-size-summary-mode-family` — each tool's response shape is different; each
   needs its own DTO change + tool-schema update. Each is its own initiative.
+- **"Heroic bundle" — a single backlog row describing 2-3 distinct bugs in one
+  service.** Examples from the 2026-04-24 intake: `scaffold-test-preview-invalid-
+  csharp` bundled dotted-identifier + static-target-body + ctor-arg-stubs (three
+  code paths); `diagnostic-details-perf-and-param-naming` bundled schema drift +
+  perf + data-population (three concerns); `find-references-bulk-impact-analysis-
+  summary-parity` bundled two tool files. When a row's `do` text contains 2+
+  distinct failure modes or 2+ distinct tool-file anchors, treat the row as
+  **pre-split candidates**: emit one initiative per sibling and flag the
+  backlog row for refinement via `/backlog-intake` on the next pass. The intake
+  skill splits at intake time, but older pre-intake rows may still leak through.
+- **"Auto-reload family" / "error-envelope family" / "workspace-state family"** —
+  multiple P3 rows citing `WorkspaceManager.cs` share state but NOT code path.
+  `WorkspaceManager.cs` is a 330-line hotspot (PR #362 evidence); two initiatives
+  touching it in one wave force serial rebase churn. Schedule at most one
+  WorkspaceManager-touching initiative per parallel wave.
 
 When in doubt, do NOT bundle.
 
@@ -278,10 +324,19 @@ Sort initiatives by:
    throughput; agents complete more per session when small wins are scheduled early.
 3. Implementation interdependency — if initiative B's fix conflicts with initiative A,
    schedule A first.
+4. **Catalog-touching and WorkspaceManager-touching initiatives distributed across
+   waves.** The executor's Step 2a parallel-mode rule enforces ≤1 `ServerSurfaceCatalog.cs`-touching initiative per wave; the planner should surface this by NOT
+   giving two catalog-touching initiatives adjacent `order` values. Same for
+   `WorkspaceManager.cs` — see the "Auto-reload family" anti-pattern in Step 2.
 
 **Tie-break for heroic-cost initiatives:** schedule LAST regardless of correctness
 class, marked `scheduleHint: "heroic-last"`. The executor enforces that all non-heroic
-initiatives ship before any heroic one runs.
+initiatives ship before any heroic one runs. **Note (2026-04-22 evidence):** the two
+`heroic-last` initiatives in the 20260422T223000Z sweep (orders 15, 16) were marked
+`obsolete` at closeout rather than shipped — because `heroic-last` often means
+"defer at closeout, not ship". If the plan-draft already suspects a heroic row
+will not ship this batch, prefer `status: "deferred"` in state.json from the
+outset rather than burning the plan slot on a heroic.
 
 ## Step 6 — Self-vet before output
 
@@ -339,6 +394,7 @@ Do NOT write any code. This is planning only.
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
+      "requiredAddenda": [],
       "status": "pending",
       "correctnessClass": "P3-correctness",
       "scheduleHint": null,
@@ -370,6 +426,12 @@ Field reference:
 - `toolPolicy`: per Rule 3b. `"edit-only"` | `"preview-then-apply"` | `null`.
   `null` means "executor decides based on file count and Approach shape." Optional
   for backward-compat with pre-v3 plans; planner v3+ should always emit explicitly.
+- `requiredAddenda`: optional array; strings from `["test-fixture-di",
+  "test-service-container", "readme-surface-count"]`. Only populated for
+  new-MCP-tool initiatives invoking the Rule 3 structural-unit exemption —
+  names the fixed-cost addenda the executor must include in the PR. Empty
+  array (or missing field) means "no addenda." Pre-v3 plans without this
+  field still vet as "no addenda claimed."
 
 ## Final sanity check
 

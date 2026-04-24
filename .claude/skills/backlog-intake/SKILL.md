@@ -59,33 +59,20 @@ Record the count: `N files staged from M repos` for the final summary.
 
 ### Phase 1 — Extract actionable items (subagent)
 
-The `review-inbox/` files are typically 200-800 lines each, totaling several thousand lines. Extraction happens in a **subagent** to protect the main context. Use `subagent_type: "general-purpose"`.
+Invoke the dedicated `backlog-intake-extractor` subagent:
 
-Subagent prompt template (fill the bracketed slots):
+```
+Agent(subagent_type: "backlog-intake-extractor", prompt: <<<
+reviewInboxPath: <absolute path to review-inbox/>
+existingBacklogPath: <absolute path to ai_docs/backlog.md>
+>>>)
+```
 
-> You are extracting actionable items from markdown reports under `{repo-root}/review-inbox/` and normalizing them into backlog rows for `ai_docs/backlog.md`.
->
-> **Context.** The Roslyn-Backed-MCP repo is a C# MCP server that exposes Roslyn-powered tools (refactor, analyze, review, …) to Claude Code. It is consumed by several sibling C# repos. Reports come in three shapes:
-> - `*_mcp-server-audit.md` — audits where the server's tools are exercised against a real codebase. Findings split between "bug in the audited codebase" and "gap/limitation in the MCP server tools."
-> - `*_experimental-promotion.md` — audits of whether an experimental feature is ready for promotion. Findings often name the MCP tool the feature depends on.
-> - `*_roslyn-mcp-retro.md` — session retrospectives on using the MCP server. Richest source of items actionable in THIS repo.
->
-> **Scope.** `ai_docs/backlog.md` is ONLY for work actionable inside the Roslyn-Backed-MCP repo. **Include**: MCP-server bugs, tool gaps, service-layer fixes, skill/CLI/docs/test/build/release work. **Exclude**: bugs/refactors inside the consumer repos (those belong in the consumer's own backlog). Retro observations ("tool X crashed", "tool Y missed Z", "docs unclear") ARE items for this repo.
->
-> **Your task.** (1) Read every file under `review-inbox/`. (2) Extract every actionable item (explicit recommendations, "should", "gap", "missing", "blocker", "next step"). (3) Filter to items actionable in this repo. (4) **Deduplicate aggressively** across files — if 4 retros say the same thing, it is ONE row. (5) Classify rough area (workspace mgmt, refactor tools, analysis, etc.) — for grouping, not a column. (6) Rank P2/P3/P4:
->   - **P2**: tool broken for its core purpose, blocks ship, correctness bug with silent bad output.
->   - **P3**: meaningful friction / gap that consistently hurts workflow quality; real fix needed.
->   - **P4**: polish, nice-to-have, edge case, speculative.
->
-> (7) Cross-check each new row against the existing `ai_docs/backlog.md` P2 / P3 / P4 tables — if an item overlaps, note as "refine existing row `<id>`" rather than a new row.
->
-> **Deliverable.** One markdown response:
-> - `### New rows to add` — a table `| id | pri | deps | do |` sorted P2 → P3 → P4, alphabetical by id within band. For each `do`, name specific tool / service / file anchors (not just "improve X").
-> - `### Notes` — overlaps with existing rows, items deliberately excluded, dedupe ratio.
->
-> Target 15–35 rows after dedupe. If you're producing 60+, dedupe harder.
+The agent encapsulates the extraction / filter / dedupe / classify / cross-check flow with a strict Read/Glob/Grep tool policy (no writers) and returns a `<<<RESULT>>>` envelope containing the deduped row list + notes. See `.claude/agents/backlog-intake-extractor.md` for the agent's own contract.
 
-Expect the subagent to return a structured block. Capture the row list for Phase 2.
+Parse the envelope. Capture `dedupedRows` / `dedupeRatio` / `rawCandidates` for the Phase 7 summary. Capture the row list for Phase 2.
+
+**Fallback** (environments without `.claude/agents/` support): spawn a `general-purpose` subagent and inline the agent's body as the prompt. The agent file is the canonical source of that prompt.
 
 ### Phase 2 — Verify-not-already-shipped
 
