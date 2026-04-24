@@ -17,6 +17,20 @@ namespace RoslynMcp.Core.Models;
 /// <param name="WriteReferenceCount">Number of source references classified as writes, plus a declaration initializer when present.</param>
 /// <param name="SymbolHandle">Stable symbol handle for follow-up tools.</param>
 /// <param name="Confidence">Heuristic confidence: high (non-public), medium (public/protected surface).</param>
+/// <param name="RemovalBlockedBy">
+/// Non-null when the classifier found residual source references that would make
+/// <c>remove_dead_code_preview</c> refuse ("still has references"). Each entry is a
+/// marker string of the form <c>Kind@AbsolutePath:Line:Column</c>, where <c>Kind</c>
+/// is one of <c>ConstructorWrite</c>, <c>Read</c>, or <c>Write</c>. <c>null</c> when
+/// no residual references exist beyond a declaration initializer.
+/// </param>
+/// <param name="SafelyRemovable">
+/// True when <c>remove_dead_code_preview</c> is expected to succeed — the field has
+/// no residual source references (only the declaration initializer is tolerated).
+/// False when any source reference survives, including constructor writes; in that
+/// case <see cref="RemovalBlockedBy"/> enumerates the blocking sites so callers
+/// don't chain a removal workflow that always refuses.
+/// </param>
 public sealed record DeadFieldDto(
     string SymbolName,
     string? ContainingType,
@@ -28,4 +42,6 @@ public sealed record DeadFieldDto(
     int ReadReferenceCount,
     int WriteReferenceCount,
     string? SymbolHandle,
-    string Confidence);
+    string Confidence,
+    IReadOnlyList<string>? RemovalBlockedBy,
+    bool SafelyRemovable);

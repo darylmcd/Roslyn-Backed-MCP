@@ -845,7 +845,9 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         CancellationToken ct)
     {
         var locations = await SymbolFinder.FindReferencesAsync(field, solution, ct).ConfigureAwait(false);
-        var (readCount, writeCount) = ClassifyDeadFieldReferenceCounts(locations);
+        var classification = ClassifyDeadFieldReferences(locations);
+        var readCount = classification.ReadCount;
+        var writeCount = classification.WriteCount;
 
         if (declarator.Initializer is not null)
         {
@@ -857,20 +859,45 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         if (usageKindFilter is not null && !string.Equals(usageKind, usageKindFilter, StringComparison.Ordinal))
             return null;
 
-        return BuildDeadFieldDto(field, projectName, usageKind, readCount, writeCount);
+        // A field is safely removable only when there are zero residual source references
+        // (only the declaration initializer, if any, survives). Any ref — ctor-write,
+        // read, or direct write — will make `remove_dead_code_preview` refuse with
+        // "still has references", so callers should skip chaining the removal workflow
+        // on those fields. The `RemovalBlockedBy` list enumerates the blocking sites.
+        var removalBlockedBy = classification.BlockingSites.Count > 0
+            ? classification.BlockingSites
+            : null;
+        var safelyRemovable = removalBlockedBy is null;
+
+        return BuildDeadFieldDto(field, projectName, usageKind, readCount, writeCount, removalBlockedBy, safelyRemovable);
     }
 
-    private static (int ReadCount, int WriteCount) ClassifyDeadFieldReferenceCounts(IEnumerable<ReferencedSymbol> referencedSymbols)
+    private readonly record struct DeadFieldReferenceClassification(
+        int ReadCount,
+        int WriteCount,
+        IReadOnlyList<string> BlockingSites);
+
+    /// <summary>
+    /// Classifies every non-implicit, in-source reference to the field into read /
+    /// write buckets AND records a <c>Kind@Path:Line:Col</c> marker for each one so
+    /// callers can see exactly what would block a subsequent
+    /// <c>remove_dead_code_preview</c>. Constructor writes are tagged specifically
+    /// because the <c>find_dead_fields</c> → <c>remove_dead_code_preview</c> chain
+    /// breaks most often on DI-captured fields assigned only in the constructor.
+    /// </summary>
+    private static DeadFieldReferenceClassification ClassifyDeadFieldReferences(IEnumerable<ReferencedSymbol> referencedSymbols)
     {
         var readCount = 0;
         var writeCount = 0;
+        var blockingSites = new List<string>();
 
         foreach (var location in referencedSymbols.SelectMany(symbol => symbol.Locations))
         {
             if (location.IsImplicit) continue;
             if (!location.Location.IsInSource) continue;
 
-            switch (ClassifyDeadFieldReferenceLocation(location))
+            var kind = ClassifyDeadFieldReferenceLocation(location);
+            switch (kind)
             {
                 case "Write":
                     writeCount++;
@@ -883,9 +910,38 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
                     readCount++;
                     break;
             }
+
+            blockingSites.Add(FormatBlockingSite(location, kind));
         }
 
-        return (readCount, writeCount);
+        return new DeadFieldReferenceClassification(readCount, writeCount, blockingSites);
+    }
+
+    /// <summary>
+    /// Formats a reference site as <c>Kind@AbsolutePath:Line:Column</c>. When the
+    /// reference lives inside a constructor body the kind is promoted to
+    /// <c>ConstructorWrite</c> (for <c>Write</c>/<c>ReadWrite</c>) so callers can
+    /// quickly tell the DI-captured-field pattern apart from ordinary reads.
+    /// </summary>
+    private static string FormatBlockingSite(ReferenceLocation refLocation, string kind)
+    {
+        var sourceTree = refLocation.Location.SourceTree;
+        var span = refLocation.Location.GetLineSpan();
+        var filePath = span.Path;
+        var line = span.StartLinePosition.Line + 1;
+        var column = span.StartLinePosition.Character + 1;
+
+        var resolvedKind = kind;
+        if ((kind == "Write" || kind == "ReadWrite") && sourceTree is not null)
+        {
+            var node = sourceTree.GetRoot().FindNode(refLocation.Location.SourceSpan);
+            if (node.FirstAncestorOrSelf<ConstructorDeclarationSyntax>() is not null)
+            {
+                resolvedKind = "ConstructorWrite";
+            }
+        }
+
+        return $"{resolvedKind}@{filePath}:{line}:{column}";
     }
 
     private static string ClassifyDeadFieldReferenceLocation(ReferenceLocation refLocation)
@@ -939,7 +995,9 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         string projectName,
         string usageKind,
         int readCount,
-        int writeCount)
+        int writeCount,
+        IReadOnlyList<string>? removalBlockedBy,
+        bool safelyRemovable)
     {
         var location = field.Locations.FirstOrDefault(l => l.IsInSource);
         if (location is null) return null;
@@ -956,7 +1014,9 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             ReadReferenceCount: readCount,
             WriteReferenceCount: writeCount,
             SymbolHandle: SymbolHandleSerializer.CreateHandle(field),
-            Confidence: ComputeDeadFieldConfidence(field));
+            Confidence: ComputeDeadFieldConfidence(field),
+            RemovalBlockedBy: removalBlockedBy,
+            SafelyRemovable: safelyRemovable);
     }
 
     private static string ComputeDeadFieldConfidence(IFieldSymbol field)
