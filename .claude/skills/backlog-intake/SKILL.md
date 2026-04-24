@@ -137,12 +137,20 @@ Before writing, verify the Refs table in `ai_docs/backlog.md` includes these ent
 | `ai_docs/runtime.md` | Bootstrap scope policy — main-checkout self-edit (no `*_apply`) vs worktree/parallel-subagent sessions. |
 | `review-inbox/` | Source evidence for the open rows. Keep until each row is closed or superseded. |
 
-### Phase 6 — Write backlog.md and commit
+### Phase 6 — Archive processed files, write backlog.md, commit
 
-1. Update `updated_at:` to current UTC.
+1. Update `updated_at:` to current UTC. Record this timestamp as the batch id in the form `YYYYMMDDTHHMMSSZ` (e.g. `20260424T031936Z`).
 2. Re-sort each priority band alphabetically by id.
 3. Ensure the "Standing rules" section includes the initiative-sizing rule: `"Size every row to a single backlog-sweep-plan.md initiative: one code path, ≤4 production files, ≤3 test files, one regression-test shape."` (add if missing).
-4. Skip if `--no-commit`; otherwise:
+4. **Archive the processed review files.** Only the files that produced rows this batch — do NOT touch any existing `review-inbox/archive/<prior-batch>/` subdirectories.
+   ```bash
+   mkdir -p review-inbox/archive/{BATCH_ID}
+   for f in review-inbox/*.md; do git mv "$f" "review-inbox/archive/{BATCH_ID}/$(basename "$f")"; done
+   ```
+   The flat `review-inbox/` directory is now empty (save for the `archive/` subdirectory) and ready for the next batch to stage into.
+5. **Rewrite any `review-inbox/<file>` citations in the new backlog rows** to point at the archive path: `review-inbox/archive/{BATCH_ID}/<file>`. This keeps anchors resolvable after the move. Use `Edit` with exact-string replace on each affected row.
+6. **Verify the Refs table** in `ai_docs/backlog.md` describes both the flat `review-inbox/` (staging) and `review-inbox/archive/<batch-ts>/` (processed evidence) roles. The contract: row citations point into the archive; the flat directory is always the next batch's inbox.
+7. Skip the commit if `--no-commit`; otherwise:
    ```bash
    git switch main
    git pull --ff-only
@@ -155,7 +163,9 @@ Before writing, verify the Refs table in `ai_docs/backlog.md` includes these ent
    chore(backlog): intake cross-repo audit + retro batch ({YYYY-MM-DD})
 
    Consolidates actionable items from {N} review files across {M} repos into
-   ai_docs/backlog.md.
+   ai_docs/backlog.md. Archived processed files under
+   review-inbox/archive/{BATCH_ID}/ so the flat review-inbox/ stays empty for
+   the next batch.
 
    Backlog now: {P2-count} P2 + {P3-count} P3 + {P4-count} P4 = {total} open
    rows (up from {prior}). Rows anchored to both core services (src/RoslynMcp.Roslyn/Services/)
@@ -168,7 +178,13 @@ Before writing, verify the Refs table in `ai_docs/backlog.md` includes these ent
 
    Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
    ```
-5. Do NOT push unless the user asked. Leave the branch local.
+8. Do NOT push unless the user asked. Leave the branch local.
+
+### Why archive instead of a manifest or renamed-in-place
+
+- Anchor integrity: backlog rows cite `review-inbox/…` paths. A move + per-batch subdirectory keeps those paths resolvable (and `git log --follow` preserves history).
+- Next-batch cleanliness: Phase 0's staging-then-triage flow only reads the flat `review-inbox/`. By the time the next batch stages, the flat dir is empty and the extractor subagent reads only the NEW files — no need for the extractor to filter against a manifest or frontmatter stamp.
+- Context savings: the extractor subagent's directory scan ignores `archive/` by default (no recursion). Skipping thousands of already-processed lines per batch.
 
 ### Phase 7 — Report
 

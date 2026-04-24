@@ -37,7 +37,9 @@ The Roslyn-Backed-MCP repo is a C# MCP server that exposes Roslyn-powered tools 
 
 ### 1. Read every review file
 
-Read each file under `reviewInboxPath` in full. Record the filename → file type (audit / retro / promotion) → source-repo (inferred from filename prefix after the timestamp).
+Read each `.md` file directly under `reviewInboxPath`. **Do NOT recurse into `archive/` or any other subdirectory** — archived files are evidence from prior batches that have already produced backlog rows; re-reading them would produce duplicate candidates. Glob pattern: `<reviewInboxPath>/*.md` (single asterisk, not `**`).
+
+Record each file's filename → file type (audit / retro / promotion) → source-repo (inferred from filename prefix after the timestamp).
 
 ### 2. Extract actionable items
 
