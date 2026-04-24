@@ -124,7 +124,7 @@ public sealed class ReferenceService : IReferenceService
             || path.EndsWith(".generated.cs", StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<IReadOnlyList<LocationDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    public async Task<IReadOnlyList<SymbolDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
@@ -140,8 +140,19 @@ public sealed class ReferenceService : IReferenceService
         var promoted = PromoteToVirtualRoot(symbol);
 
         var overrides = await SymbolFinder.FindOverridesAsync(promoted, solution, cancellationToken: ct).ConfigureAwait(false);
-        var locations = await SymbolServiceHelpers.SymbolsToLocationsAsync(overrides, solution, ct).ConfigureAwait(false);
-        return OrderLocations(locations);
+
+        // find-base-members-vs-member-hierarchy-metadata-drift: return SymbolDto instead of
+        // LocationDto so metadata-boundary members (e.g. IEquatable<T>.Equals implementations
+        // whose base sits in corlib) are not silently dropped by an IsInSource filter. Aligns
+        // with member_hierarchy, which already maps base members/overrides through SymbolMapper.ToDto.
+        return overrides
+            .Distinct(SymbolEqualityComparer.Default)
+            .Select(overrideSymbol => SymbolMapper.ToDto(overrideSymbol, solution))
+            .OrderBy(d => d.FilePath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(d => d.StartLine ?? int.MaxValue)
+            .ThenBy(d => d.StartColumn ?? int.MaxValue)
+            .ThenBy(d => d.FullyQualifiedName, StringComparer.Ordinal)
+            .ToList();
     }
 
     private static IReadOnlyList<LocationDto> OrderLocations(IReadOnlyList<LocationDto> dtos) =>
@@ -270,12 +281,28 @@ public sealed class ReferenceService : IReferenceService
         return null;
     }
 
-    public async Task<IReadOnlyList<LocationDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    public Task<IReadOnlyList<SymbolDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
+        return ResolveBaseMembersAsync(solution, locator, ct);
+    }
+
+    private static async Task<IReadOnlyList<SymbolDto>> ResolveBaseMembersAsync(Solution solution, SymbolLocator locator, CancellationToken ct)
+    {
         var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
-        return await SymbolServiceHelpers.SymbolsToLocationsAsync(SymbolServiceHelpers.GetBaseMembers(symbol), solution, ct).ConfigureAwait(false);
+        // find-base-members-vs-member-hierarchy-metadata-drift: return SymbolDto instead of
+        // LocationDto so metadata-boundary base members (e.g. IEquatable<T>.Equals from corlib)
+        // are not silently dropped by an IsInSource filter. Aligns with member_hierarchy, which
+        // already maps base members through SymbolMapper.ToDto.
+        return SymbolServiceHelpers.GetBaseMembers(symbol)
+            .Distinct(SymbolEqualityComparer.Default)
+            .Select(baseMember => SymbolMapper.ToDto(baseMember, solution))
+            .OrderBy(d => d.FilePath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(d => d.StartLine ?? int.MaxValue)
+            .ThenBy(d => d.StartColumn ?? int.MaxValue)
+            .ThenBy(d => d.FullyQualifiedName, StringComparer.Ordinal)
+            .ToList();
     }
 
     public async Task<IReadOnlyList<BulkReferenceResultDto>> FindReferencesBulkAsync(

@@ -8,5 +8,5 @@ public sealed record SymbolRelationshipsDto(
     IReadOnlyList<LocationDto> Definitions,
     IReadOnlyList<LocationDto> References,
     IReadOnlyList<LocationDto> Implementations,
-    IReadOnlyList<LocationDto> BaseMembers,
-    IReadOnlyList<LocationDto> Overrides);
+    IReadOnlyList<SymbolDto> BaseMembers,
+    IReadOnlyList<SymbolDto> Overrides);

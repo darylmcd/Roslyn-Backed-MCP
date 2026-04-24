@@ -73,7 +73,7 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
             CancellationToken.None);
 
         Assert.IsTrue(
-            fromOverrideSite.Any(l => l.FilePath.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase)),
+            fromOverrideSite.Any(symbol => symbol.FilePath?.EndsWith("Rectangle.cs", StringComparison.OrdinalIgnoreCase) == true),
             "Promoted FindOverrides should include Rectangle.Describe in the override set.");
     }
 
@@ -98,8 +98,8 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
         Assert.AreEqual(fromVirtual.Count, fromOverride.Count,
             "Virtual-site and override-site FindOverrides must return the same number of locations.");
         CollectionAssert.AreEquivalent(
-            fromVirtual.Select(l => l.FilePath).ToList(),
-            fromOverride.Select(l => l.FilePath).ToList(),
+            fromVirtual.Select(s => s.FilePath).ToList(),
+            fromOverride.Select(s => s.FilePath).ToList(),
             "The override set must be identical regardless of caret position.");
     }
 
@@ -123,8 +123,8 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
         Assert.AreEqual(fromIface.Count, fromImpl.Count,
             "Implicit interface implementation site should promote to the interface member and match the interface declaration query.");
         CollectionAssert.AreEquivalent(
-            fromIface.Select(l => (l.FilePath, l.StartLine, l.StartColumn)).OrderBy(t => t.FilePath).ToList(),
-            fromImpl.Select(l => (l.FilePath, l.StartLine, l.StartColumn)).OrderBy(t => t.FilePath).ToList(),
+            fromIface.Select(s => (s.FilePath, s.StartLine, s.StartColumn)).OrderBy(t => t.FilePath).ToList(),
+            fromImpl.Select(s => (s.FilePath, s.StartLine, s.StartColumn)).OrderBy(t => t.FilePath).ToList(),
             "Override/implementation locations should match after promotion.");
     }
 
