@@ -373,7 +373,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #411, 2026-04-24) |
 | **Backlog rows closed** | `find-property-writes-positional-record-silent-zero` |
 | **Diagnosis** | `find_property_writes` returns `count=0` for positional-record primary-ctor bindings. Row cites `src/RoslynMcp.Roslyn/Services/ReferenceService.cs` + `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:323`. |
 | **Approach** | In `ReferenceService`, detect positional-record primary-ctor bindings and emit a `PrimaryConstructorBind` write-kind bucket (or at minimum a warning on count=0 when the declaring type is a positional record). |
@@ -453,7 +453,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #409, 2026-04-24) |
 | **Backlog rows closed** | `add-package-reference-preview-cpm-duplicate-detection` |
 | **Diagnosis** | `add_package_reference_preview(Meziantou.Analyzer 3.0.50)` emits a duplicate `<PackageReference>` when the package is already present via CPM / `Directory.Build.props`. Row cites `src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs` + `src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs`. |
 | **Approach** | In `ProjectMutationService.AddPackageReferencePreviewAsync`, consult the evaluated PackageReference graph via `evaluate_msbuild_items` and return `status: "already-present"` (or structured refusal) before writing the diff. |
@@ -493,7 +493,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #410, 2026-04-24) |
 | **Backlog rows closed** | `find-type-mutations-undercounts-lifecycle-writes` |
 | **Diagnosis** | `find_type_mutations(WorkspaceManager)` surfaces only 2 mutators despite `LoadAsync`/`ReloadAsync`/`CloseAsync` mutating `_workspaces`. Row cites `src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs` + `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:274`. |
 | **Approach** | Extend the mutation-scope classifier in `MutationAnalysisService` to walk through async-state-machine boundaries and recognize collection-mutating ops (`Add`/`Remove`/`Clear`/`TryAdd`) on field targets inside async methods. |
@@ -513,7 +513,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #412, 2026-04-24) |
 | **Backlog rows closed** | `scaffold-test-preview-static-target-body` |
 | **Diagnosis** | `scaffold_test_preview` emits `new T()` in Arrange even when target is static (`TenantConstants`, `SnapshotContentHasher`). Row cites `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs` + `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs:87`. |
 | **Approach** | In `ScaffoldingService`, detect `INamedTypeSymbol.IsStatic` and switch the body template to call static members directly (no `new <TargetType>`). |
