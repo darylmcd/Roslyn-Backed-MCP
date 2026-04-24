@@ -34,8 +34,44 @@ public sealed class TypeMoveService : ITypeMoveService
             ?? throw new InvalidOperationException("Source document must be a C# compilation unit.");
 
         var typeDecl = sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
-            .FirstOrDefault(t => string.Equals(t.Identifier.Text, typeName, StringComparison.Ordinal))
-            ?? throw new InvalidOperationException($"Type '{typeName}' not found in {sourceFilePath}.");
+            .FirstOrDefault(t => string.Equals(t.Identifier.Text, typeName, StringComparison.Ordinal));
+
+        if (typeDecl is null)
+        {
+            // Distinguish "symbol found but unsupported kind" from "symbol not found".
+            // EnumDeclarationSyntax derives from BaseTypeDeclarationSyntax (not TypeDeclarationSyntax);
+            // DelegateDeclarationSyntax is a MemberDeclarationSyntax. Both are addressable by name from
+            // symbol_search, so callers reasonably expect the move tool to handle them — surface a
+            // structured error that names the resolved kind instead of the misleading "not found" text.
+            var unsupportedKind = sourceRoot.DescendantNodes()
+                .OfType<BaseTypeDeclarationSyntax>()
+                .FirstOrDefault(t => string.Equals(t.Identifier.Text, typeName, StringComparison.Ordinal))
+                ?.Kind();
+
+            if (unsupportedKind is null)
+            {
+                var unsupportedDelegate = sourceRoot.DescendantNodes()
+                    .OfType<DelegateDeclarationSyntax>()
+                    .FirstOrDefault(d => string.Equals(d.Identifier.Text, typeName, StringComparison.Ordinal));
+                if (unsupportedDelegate is not null)
+                    unsupportedKind = SyntaxKind.DelegateDeclaration;
+            }
+
+            if (unsupportedKind is not null)
+            {
+                var typeKindName = unsupportedKind switch
+                {
+                    SyntaxKind.EnumDeclaration => "Enum",
+                    SyntaxKind.DelegateDeclaration => "Delegate",
+                    _ => unsupportedKind.ToString()!,
+                };
+                throw new InvalidOperationException(
+                    $"type-kind {typeKindName} not supported for this refactor. " +
+                    $"move_type_to_file_preview currently supports class, struct, record, and interface declarations only.");
+            }
+
+            throw new InvalidOperationException($"Type '{typeName}' not found in {sourceFilePath}.");
+        }
 
         // Validate source file has more than one type (otherwise move is pointless)
         var typeCount = sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
