@@ -113,7 +113,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #389, 2026-04-24) |
 | **Backlog rows closed** | `autoreload-cascade-stdio-host-crash` |
 | **Diagnosis** | Two `staleAction=auto-reloaded` responses in the same turn (two writers + one reader) caused an unhandled exception in the post-auto-reload state-read path that terminated the stdio host. Every tool funnels through `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` for its snapshot — single choke point. |
 | **Approach** | Guard the post-auto-reload state-read path in `WorkspaceManager` so a stale read returns a structured `category="StaleWorkspaceTransition"` envelope propagated to the tool layer instead of throwing. Preserve the original exception in `_meta` for diagnostics. |
@@ -133,7 +133,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #388, 2026-04-24) |
 | **Backlog rows closed** | `symbol-search-empty-query-overflow` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:15` handler delegating into `SymbolSearchService`. Empty/whitespace query dumps 70-80KB full workspace index. No cross-layer drift. |
 | **Approach** | In the tool wrapper, guard-clause the handler: reject empty/whitespace queries with `{count:0, symbols:[], note:"query must be non-empty"}` (or `InvalidArgument` envelope) before delegating into the service. |
@@ -153,7 +153,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #386, 2026-04-24) |
 | **Backlog rows closed** | `replace-string-literals-preview-throws-on-zero-match` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs` + tool wrapper `src/RoslynMcp.Host.Stdio/Tools/RestructureTools.cs:40`. Throws `"Invalid operation: no matching literals found in scope"` instead of returning a structured empty response. No cross-layer drift. |
 | **Approach** | Replace the throw-on-zero path with a structured `{count: 0, changes: []}` return, matching other preview tools. Exception becomes a genuine error case only for true error conditions. |
@@ -173,7 +173,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #387, 2026-04-24) |
 | **Backlog rows closed** | `validate-recent-git-changes-bare-error-envelope` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs:37` handler. Returns bare `"An error occurred invoking 'validate_recent_git_changes'."` with no category/tool/exceptionType. No cross-layer drift. |
 | **Approach** | Wrap the handler with the same structured-envelope decorator `validate_workspace` uses (locate it in the same file / neighboring tool module). Populate `category`, `tool`, `message`, `exceptionType`, and `_meta` fields. |
