@@ -233,7 +233,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #399, 2026-04-24) |
 | **Backlog rows closed** | `impact-analysis-summary-mode` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:242` (`impact_analysis` handler, delegating into the shared impact helper also used by `symbol_impact_sweep`). `declarations` list has no paging cap; overflowed at 86KB. No cross-layer drift. |
 | **Approach** | Add `summary: bool` + `declarationsLimit: int` parameters to the tool wrapper; mirror `find_references(summary=true)` contract. Summary mode returns counts only; non-summary mode honors `declarationsLimit` with `hasMore`. |
@@ -273,7 +273,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #398, 2026-04-24) |
 | **Backlog rows closed** | `move-type-to-file-preview-enum-support` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Roslyn/Services/TypeMoveService.cs` + tool wrapper `src/RoslynMcp.Host.Stdio/Tools/TypeMoveTools.cs`. Rejects enums with vague "Type 'X' not found" even though `symbol_search` resolves them. |
 | **Approach** | Prefer (b): emit explicit `"type-kind Enum not supported for this refactor"` error citing the resolved `TypeKind`. Skip enum support implementation for this initiative (can be spun off). |
@@ -293,7 +293,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #400, 2026-04-24) |
 | **Backlog rows closed** | `change-signature-preview-add-unhelpful-error` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs` + `ChangeSignatureAddRemovePreviewBuilder.cs` (tool: `src/RoslynMcp.Host.Stdio/Tools/ChangeSignatureTools.cs`). `op=add` with a valid name+type returns "Parameter 'index' has an out-of-range value" referencing an internal index. |
 | **Approach** | Catch the out-of-range case in the add-path builder; either accept the add when the intent is unambiguous (default to end-append) or emit an actionable error citing caller-supplied `name`/`parameterType`. Prefer accept-at-end since the intent is clear. |
@@ -333,7 +333,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #401, 2026-04-24) |
 | **Backlog rows closed** | `test-related-response-envelope-parity` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs` + tool-layer wrappers under `src/RoslynMcp.Host.Stdio/Tools/`. `test_related` returns bare array while `test_related_files` returns structured envelope with `dotnetTestFilter`. |
 | **Approach** | Wrap `test_related` in the same envelope: `{tests: [...], dotnetTestFilter, pagination: {total, returned, hasMore}}`. Reuse the filter-synthesis helper from `test_related_files`. |
