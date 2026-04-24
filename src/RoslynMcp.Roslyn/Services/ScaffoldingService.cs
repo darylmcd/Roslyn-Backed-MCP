@@ -179,20 +179,24 @@ public sealed class ScaffoldingService : IScaffoldingService
             return;
         }
 
-        var testFilePath = Path.Combine(context.ProjectDirectory, $"{target.TargetTypeName}GeneratedTests.cs");
-        if (SymbolResolver.FindDocument(state.Accumulator, testFilePath) is not null || File.Exists(testFilePath))
-        {
-            state.Warnings.Add($"Skipped '{target.TargetTypeName}': target file already exists at '{testFilePath}'.");
-            return;
-        }
-
+        // See PreviewScaffoldTestAsync — accept dotted FQN input, resolve via simple name,
+        // and let the matched symbol supply the authoritative class identifier.
+        var lookupName = StripToSimpleTypeName(target.TargetTypeName);
         var typeInfo = ResolveTargetTypeAndMethodFromCache(
             cachedCompilations,
-            target.TargetTypeName,
+            lookupName,
             target.TargetMethodName);
         if (typeInfo.MatchedType is null)
         {
             state.Warnings.Add($"Target type '{target.TargetTypeName}' not found in referenced projects — skipped.");
+            return;
+        }
+
+        var simpleTypeName = typeInfo.MatchedType.Name;
+        var testFilePath = Path.Combine(context.ProjectDirectory, $"{simpleTypeName}GeneratedTests.cs");
+        if (SymbolResolver.FindDocument(state.Accumulator, testFilePath) is not null || File.Exists(testFilePath))
+        {
+            state.Warnings.Add($"Skipped '{target.TargetTypeName}': target file already exists at '{testFilePath}'.");
             return;
         }
 
@@ -213,6 +217,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         var content = BuildTestContent(
             context.TestNamespace,
             dto,
+            simpleTypeName,
             typeInfo.TargetNamespace,
             typeInfo.ConstructorArgs,
             context.Framework,
@@ -321,13 +326,21 @@ public sealed class ScaffoldingService : IScaffoldingService
         ValidateIsTestProject(project);
         var projectDirectory = Path.GetDirectoryName(project.FilePath)
             ?? throw new InvalidOperationException($"Project directory could not be resolved for '{project.FilePath}'.");
-        var testFilePath = Path.Combine(projectDirectory, $"{request.TargetTypeName}GeneratedTests.cs");
         var testNamespace = project.Name;
 
         var framework = ResolveTestFramework(request.TestFramework, project.FilePath);
 
+        // Accept a dotted FQN as input (callers who hit the ambiguity error get pointed at
+        // "the fully qualified type name", then re-invoke with `Namespace.Type`). The resolver
+        // only ever looks up the simple name, so strip to that for lookup — and treat the
+        // matched symbol's Name as authoritative once we have it, so the downstream class
+        // identifier is always a single identifier (dotted identifiers are a CS syntax error).
+        var lookupName = StripToSimpleTypeName(request.TargetTypeName);
         var typeInfo = await ResolveTargetTypeAndMethodAsync(
-            workspaceId, request.TestProjectName, request.TargetTypeName, request.TargetMethodName, ct).ConfigureAwait(false);
+            workspaceId, request.TestProjectName, lookupName, request.TargetMethodName, ct).ConfigureAwait(false);
+
+        var simpleTypeName = typeInfo.MatchedType?.Name ?? lookupName;
+        var testFilePath = Path.Combine(projectDirectory, $"{simpleTypeName}GeneratedTests.cs");
 
         // Sibling-pattern inference (scaffold-test-sibling-pattern-inference). When an explicit
         // referenceTestFile is supplied we use that as the pattern source; otherwise we
@@ -337,7 +350,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         var siblingWarnings = siblingInference.Warnings;
 
         var content = BuildTestContent(
-            testNamespace, request, typeInfo.TargetNamespace, typeInfo.ConstructorArgs, framework,
+            testNamespace, request, simpleTypeName, typeInfo.TargetNamespace, typeInfo.ConstructorArgs, framework,
             typeInfo.TargetMethod, typeInfo.MatchedType, siblingInference.Pattern);
         var preview = await _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, testFilePath, content), ct).ConfigureAwait(false);
 
@@ -1634,6 +1647,7 @@ public sealed class ScaffoldingService : IScaffoldingService
     private static string BuildTestContent(
         string testNamespace,
         ScaffoldTestDto request,
+        string simpleTypeName,
         string targetNamespace,
         string constructorArgs,
         string framework,
@@ -1653,18 +1667,34 @@ public sealed class ScaffoldingService : IScaffoldingService
         var ctorCall = useStaticScaffold
             ? string.Empty
             : string.IsNullOrWhiteSpace(constructorArgs)
-                ? $"new {request.TargetTypeName}()"
-                : $"new {request.TargetTypeName}({constructorArgs})";
+                ? $"new {simpleTypeName}()"
+                : $"new {simpleTypeName}({constructorArgs})";
 
         var methodTargetBlock = BuildMethodTargetInvocationBlock(
-            framework, request.TargetTypeName, request.TargetMethodName, targetMethod, useStaticScaffold);
+            framework, simpleTypeName, request.TargetMethodName, targetMethod, useStaticScaffold);
 
         return framework switch
         {
-            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
-            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
-            _ => BuildMSTestTestContent(testNamespace, usingDirective, request.TargetTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
+            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
+            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
+            _ => BuildMSTestTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
         };
+    }
+
+    /// <summary>
+    /// Strip a dotted input (e.g. <c>"SampleLib.Hierarchy.Circle"</c>) to its last identifier
+    /// segment so it can be used both as a lookup key against <see cref="Compilation.GetSymbolsWithName"/>
+    /// (which indexes on the simple name) and as a C# identifier in scaffolded output. Callers
+    /// sometimes arrive here with a fully-qualified name because the ambiguity-resolution
+    /// error message suggests "use the fully qualified type name" — without this strip, the
+    /// dotted input would flow into the class-name template and produce a CS syntax error.
+    /// </summary>
+    private static string StripToSimpleTypeName(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input))
+            return input;
+        var lastDot = input.LastIndexOf('.');
+        return lastDot < 0 ? input : input[(lastDot + 1)..];
     }
 
     /// <summary>

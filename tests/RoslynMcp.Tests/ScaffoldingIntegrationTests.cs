@@ -329,4 +329,92 @@ public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
         StringAssert.Contains(dogContents, "Speak_Needs_Test");
         StringAssert.Contains(animalServiceContents, "GetAllAnimals_Needs_Test");
     }
+
+    [TestMethod]
+    public async Task Scaffold_Test_DottedTargetTypeName_TopLevel_Yields_SingleIdentifier_ClassName()
+    {
+        // Regression for scaffold-test-preview-dotted-identifier: callers who hit the
+        // ambiguity-resolution error are told to "use the fully qualified type name" and
+        // then re-invoke with `Namespace.Type`. Previously that dotted input was stamped
+        // verbatim into the class-name template, emitting
+        // `public class SampleLib.Hierarchy.CircleGeneratedTests` — a CS syntax error. The
+        // fix uses `TypeSymbol.Name` (unqualified) so only the simple identifier lands in
+        // the class and file names, while the `using SampleLib.Hierarchy;` brings the type
+        // into scope for the constructor call.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var expectedFilePath = workspace.GetPath("SampleLib.Tests", "CircleGeneratedTests.cs");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "SampleLib.Hierarchy.Circle",
+                ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.IsTrue(File.Exists(expectedFilePath),
+            $"Expected scaffolded file at '{expectedFilePath}' — dotted FQN input must be stripped to the simple name for the filename.");
+
+        var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
+
+        // Class identifier must be a single identifier — a dotted identifier is a CS syntax error.
+        StringAssert.Contains(contents, "public class CircleGeneratedTests");
+        Assert.IsFalse(contents.Contains("SampleLib.Hierarchy.CircleGeneratedTests"),
+            "Scaffold must NOT emit a dotted class identifier — this is a CS syntax error.");
+
+        // The `using` for the target namespace brings Circle into scope for `new Circle(...)`.
+        StringAssert.Contains(contents, "using SampleLib.Hierarchy;");
+        StringAssert.Contains(contents, "new Circle(");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_DottedTargetTypeName_NestedType_Yields_SingleIdentifier_ClassName()
+    {
+        // Companion to the top-level regression above: a nested type's "FQN" looks like
+        // `Namespace.Outer.Inner`, and the scaffold must still emit a single-identifier
+        // class name. We inject a fixture with a nested type so the test is self-contained
+        // and does not depend on sample-solution evolution.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var fixturePath = workspace.GetPath("SampleLib", "NestedFixture.cs");
+        await File.WriteAllTextAsync(fixturePath, """
+namespace SampleLib;
+
+public class NestedHost
+{
+    public class NestedInner
+    {
+        public string Speak() => "inner";
+    }
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var expectedFilePath = workspace.GetPath("SampleLib.Tests", "NestedInnerGeneratedTests.cs");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "SampleLib.NestedHost.NestedInner",
+                "Speak",
+                ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.IsTrue(File.Exists(expectedFilePath),
+            $"Expected scaffolded file at '{expectedFilePath}' — nested-type FQN must be stripped to the simple name.");
+
+        var contents = await File.ReadAllTextAsync(expectedFilePath, CancellationToken.None);
+
+        StringAssert.Contains(contents, "public class NestedInnerGeneratedTests");
+        Assert.IsFalse(contents.Contains("NestedHost.NestedInnerGeneratedTests"),
+            "Scaffold must NOT emit a dotted class identifier for nested types either.");
+        StringAssert.Contains(contents, "Speak_Needs_Test");
+    }
 }
