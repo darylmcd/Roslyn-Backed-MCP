@@ -92,14 +92,56 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         return result;
     }
 
-    public async Task<IReadOnlyList<TestCaseDto>> FindRelatedTestsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    public async Task<RelatedTestsForSymbolDto> FindRelatedTestsAsync(
+        string workspaceId, SymbolLocator locator, int maxResults, CancellationToken ct)
     {
         var discovery = await DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
         var solution = _workspaceManager.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        return symbol is null
+
+        IReadOnlyList<TestCaseDto> rawMatches = symbol is null
             ? []
             : await CollectRelatedTestsAsync(discovery, solution, symbol, ct).ConfigureAwait(false);
+
+        // Project lookup so we can populate ProjectName on the envelope element type
+        // (RelatedTestCaseDto), matching test_related_files's shape.
+        var projectLookup = discovery.TestProjects
+            .SelectMany(p => p.Tests.Select(t => (t.FullyQualifiedName, p.ProjectName)))
+            .GroupBy(x => x.FullyQualifiedName, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().ProjectName, StringComparer.Ordinal);
+
+        var enriched = rawMatches
+            .Select(t => new RelatedTestCaseDto(
+                DisplayName: t.DisplayName,
+                FullyQualifiedName: t.FullyQualifiedName,
+                ProjectName: projectLookup.TryGetValue(t.FullyQualifiedName, out var p) ? p : string.Empty,
+                FilePath: t.FilePath,
+                Line: t.Line,
+                // Symbol-mode has no source file trigger — the trigger is the symbol itself.
+                TriggeredByFiles: []))
+            .ToList();
+
+        var total = enriched.Count;
+        var page = enriched.Take(maxResults).ToList();
+        var dotnetFilter = SynthesizeDotnetTestFilter(page.Select(t => t.FullyQualifiedName));
+        return new RelatedTestsForSymbolDto(
+            page,
+            dotnetFilter,
+            new PaginationInfo(Total: total, Returned: page.Count, HasMore: total > page.Count));
+    }
+
+    /// <summary>
+    /// Build a <c>dotnet test --filter</c> expression from a sequence of fully-qualified test
+    /// names. Shared by <c>test_related</c> and <c>test_related_files</c> so the two tools
+    /// emit identically-shaped filter strings.
+    /// </summary>
+    internal static string SynthesizeDotnetTestFilter(IEnumerable<string> fullyQualifiedNames)
+    {
+        var filterParts = fullyQualifiedNames
+            .Distinct(StringComparer.Ordinal)
+            .Select(fqn => $"FullyQualifiedName~{fqn}")
+            .ToList();
+        return filterParts.Count > 0 ? string.Join("|", filterParts) : string.Empty;
     }
 
     private static HashSet<string> BuildRelatedTestSearchTerms(ISymbol symbol)
@@ -344,6 +386,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             .SelectMany(p => p.Tests)
             .ToDictionary(t => t.FullyQualifiedName, StringComparer.Ordinal);
 
+        var total = testToTriggers.Count;
         var results = testToTriggers
             .Take(maxResults)
             .Select(kv =>
@@ -360,14 +403,11 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             })
             .ToList();
 
-        var filterParts = results
-            .Select(t => t.FullyQualifiedName)
-            .Distinct()
-            .Select(fqn => $"FullyQualifiedName~{fqn}")
-            .ToList();
-        var dotnetFilter = filterParts.Count > 0 ? string.Join("|", filterParts) : string.Empty;
-
-        return new RelatedTestsForFilesDto(results, dotnetFilter);
+        var dotnetFilter = SynthesizeDotnetTestFilter(results.Select(t => t.FullyQualifiedName));
+        return new RelatedTestsForFilesDto(
+            results,
+            dotnetFilter,
+            new PaginationInfo(Total: total, Returned: results.Count, HasMore: total > results.Count));
     }
 
     private static readonly HashSet<string> TestAttributeNames = new(StringComparer.Ordinal)

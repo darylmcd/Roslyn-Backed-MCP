@@ -114,7 +114,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
 
         // Stage 3: discover related tests for the changed files (no test execution yet).
         var related = changedFiles.Count == 0
-            ? new RelatedTestsForFilesDto([], string.Empty)
+            ? new RelatedTestsForFilesDto([], string.Empty, new PaginationInfo(0, 0, false))
             : await _testDiscovery
                 .FindRelatedTestsForFilesAsync(workspaceId, changedFiles, MaxRelatedTestsCap, ct)
                 .ConfigureAwait(false);

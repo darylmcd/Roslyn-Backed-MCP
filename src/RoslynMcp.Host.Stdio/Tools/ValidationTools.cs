@@ -170,12 +170,13 @@ public static class ValidationTools
         [Description("Optional: 1-based column number")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
+        [Description("Maximum number of test cases to return (default: 100)")] int maxResults = 100,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-            var result = await testDiscoveryService.FindRelatedTestsAsync(workspaceId, locator, c);
+            var result = await testDiscoveryService.FindRelatedTestsAsync(workspaceId, locator, maxResults, c);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }

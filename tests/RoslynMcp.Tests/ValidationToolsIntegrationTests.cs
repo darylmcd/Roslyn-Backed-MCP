@@ -125,11 +125,12 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         var result = await TestDiscoveryService.FindRelatedTestsAsync(
             WorkspaceId,
             RoslynMcp.Core.Models.SymbolLocator.ByMetadataName("SampleLib.IAnimal.Name"),
+            maxResults: 100,
             CancellationToken.None);
 
         Assert.IsNotNull(result);
-        Assert.IsTrue(result.Any(t => t.FilePath?.EndsWith("AnimalServiceTests.cs", StringComparison.OrdinalIgnoreCase) == true),
-            $"Expected AnimalServiceTests.cs to surface via interface-dispatch augmentation; got: {string.Join(", ", result.Select(t => t.FilePath))}");
+        Assert.IsTrue(result.Tests.Any(t => t.FilePath?.EndsWith("AnimalServiceTests.cs", StringComparison.OrdinalIgnoreCase) == true),
+            $"Expected AnimalServiceTests.cs to surface via interface-dispatch augmentation; got: {string.Join(", ", result.Tests.Select(t => t.FilePath))}");
     }
 
     [TestMethod]
@@ -138,9 +139,70 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         var result = await TestDiscoveryService.FindRelatedTestsAsync(
             WorkspaceId,
             RoslynMcp.Core.Models.SymbolLocator.ByMetadataName("SampleLib.DoesNotExist"),
+            maxResults: 100,
             CancellationToken.None);
 
-        Assert.AreEqual(0, result.Count);
+        Assert.AreEqual(0, result.Tests.Count);
+        Assert.AreEqual(0, result.Pagination.Total);
+        Assert.AreEqual(0, result.Pagination.Returned);
+        Assert.IsFalse(result.Pagination.HasMore);
+        Assert.AreEqual(string.Empty, result.DotnetTestFilter);
+    }
+
+    // test-related-response-envelope-parity: test_related and test_related_files MUST emit
+    // identically-shaped envelopes — Tests / DotnetTestFilter / Pagination — so callers can
+    // route either response through the same downstream test_run --filter pipeline. This
+    // regression test asserts the JSON property surface matches.
+    [TestMethod]
+    public async Task TestRelated_EnvelopeMatchesTestRelatedFiles()
+    {
+        var symbolJson = await ValidationTools.FindRelatedTests(
+            WorkspaceExecutionGate,
+            TestDiscoveryService,
+            WorkspaceId,
+            filePath: null,
+            line: null,
+            column: null,
+            symbolHandle: null,
+            metadataName: "SampleLib.IAnimal.Name",
+            maxResults: 100,
+            ct: CancellationToken.None);
+
+        var animalServicePath = FindDocumentPath("AnimalService.cs");
+        var filesJson = await ValidationTools.FindRelatedTestsForFiles(
+            WorkspaceExecutionGate,
+            TestDiscoveryService,
+            WorkspaceId,
+            new[] { animalServicePath },
+            maxResults: 100,
+            CancellationToken.None);
+
+        using var symbolDoc = JsonDocument.Parse(symbolJson);
+        using var filesDoc = JsonDocument.Parse(filesJson);
+
+        var symbolProps = symbolDoc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        var filesProps = filesDoc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        CollectionAssert.AreEqual(symbolProps, filesProps,
+            $"Envelope property surface differs. test_related: [{string.Join(",", symbolProps)}], test_related_files: [{string.Join(",", filesProps)}]");
+
+        // Pagination sub-shape parity.
+        var symbolPagination = symbolDoc.RootElement.GetProperty("pagination");
+        var filesPagination = filesDoc.RootElement.GetProperty("pagination");
+        var symbolPagProps = symbolPagination.EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        var filesPagProps = filesPagination.EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+        CollectionAssert.AreEqual(symbolPagProps, filesPagProps,
+            $"Pagination property surface differs. test_related: [{string.Join(",", symbolPagProps)}], test_related_files: [{string.Join(",", filesPagProps)}]");
+
+        // First test (if present) should expose the same property surface in both envelopes.
+        var symbolTests = symbolDoc.RootElement.GetProperty("tests");
+        var filesTests = filesDoc.RootElement.GetProperty("tests");
+        if (symbolTests.GetArrayLength() > 0 && filesTests.GetArrayLength() > 0)
+        {
+            var symbolTestProps = symbolTests[0].EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+            var filesTestProps = filesTests[0].EnumerateObject().Select(p => p.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
+            CollectionAssert.AreEqual(symbolTestProps, filesTestProps,
+                $"Test element property surface differs. test_related: [{string.Join(",", symbolTestProps)}], test_related_files: [{string.Join(",", filesTestProps)}]");
+        }
     }
 
     private static string FindDocumentPath(string name)

@@ -9,6 +9,16 @@ namespace RoslynMcp.Core.Services;
 public interface ITestDiscoveryService
 {
     Task<TestDiscoveryDto> DiscoverTestsAsync(string workspaceId, CancellationToken ct);
-    Task<IReadOnlyList<TestCaseDto>> FindRelatedTestsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
-    Task<RelatedTestsForFilesDto> FindRelatedTestsForFilesAsync(string workspaceId, IReadOnlyList<string> filePaths, int maxResults, CancellationToken ct);
+
+    /// <summary>
+    /// Find tests related to <paramref name="locator"/>'s symbol. Returns the same envelope
+    /// shape as <see cref="FindRelatedTestsForFilesAsync"/> — <c>tests</c>,
+    /// <c>dotnetTestFilter</c>, <c>pagination</c> — so callers can route either response
+    /// through the same downstream <c>test_run --filter</c> pipeline.
+    /// </summary>
+    Task<RelatedTestsForSymbolDto> FindRelatedTestsAsync(
+        string workspaceId, SymbolLocator locator, int maxResults, CancellationToken ct);
+
+    Task<RelatedTestsForFilesDto> FindRelatedTestsForFilesAsync(
+        string workspaceId, IReadOnlyList<string> filePaths, int maxResults, CancellationToken ct);
 }
