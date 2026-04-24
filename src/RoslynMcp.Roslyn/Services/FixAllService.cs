@@ -148,21 +148,17 @@ public sealed class FixAllService : IFixAllService
         {
             fixAllAction = await fixAllProvider.GetFixAsync(fixAllContext).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (InvalidOperationException ex)
         {
+            // fix-all-preview-sequence-contains-no-elements: FixAll providers (notably the
+            // collection-expression fixer on IDE0300) can throw InvalidOperationException —
+            // commonly "Sequence contains no elements" — when internal preconditions fail
+            // on a specific occurrence. Narrow catch to InvalidOperationException only; other
+            // exception types indicate bugs we want surfaced, not swallowed.
             _logger.LogWarning(ex,
                 "FixAllProvider threw for diagnostic '{DiagnosticId}' at scope '{Scope}': {Message}",
                 diagnosticId, scope, ex.Message);
-            return new FixAllPreviewDto(
-                PreviewToken: "",
-                DiagnosticId: diagnosticId,
-                Scope: scope,
-                FixedCount: 0,
-                Changes: [],
-                GuidanceMessage:
-                    $"The registered FixAll provider for '{diagnosticId}' threw while computing the fix " +
-                    $"({ex.GetType().Name}: {ex.Message}). Try code_fix_preview on individual occurrences, " +
-                    "or narrow the scope (document / project) to isolate the failing occurrence.");
+            return BuildProviderCrashEnvelope(diagnosticId, scope, ex);
         }
 
         if (fixAllAction is null)
@@ -181,21 +177,14 @@ public sealed class FixAllService : IFixAllService
         {
             operations = await fixAllAction.GetOperationsAsync(ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (InvalidOperationException ex)
         {
+            // Same narrowing as the GetFixAsync call site above: InvalidOperationException is
+            // the observed failure mode; broader catches would mask genuine defects.
             _logger.LogWarning(ex,
                 "FixAll action GetOperationsAsync threw for '{DiagnosticId}': {Message}",
                 diagnosticId, ex.Message);
-            return new FixAllPreviewDto(
-                PreviewToken: "",
-                DiagnosticId: diagnosticId,
-                Scope: scope,
-                FixedCount: 0,
-                Changes: [],
-                GuidanceMessage:
-                    $"The FixAll action for '{diagnosticId}' threw while materialising code-action operations " +
-                    $"({ex.GetType().Name}: {ex.Message}). Try code_fix_preview on individual occurrences, " +
-                    "or narrow the scope to isolate the failing occurrence.");
+            return BuildProviderCrashEnvelope(diagnosticId, scope, ex);
         }
 
         var applyOp = operations.OfType<ApplyChangesOperation>().FirstOrDefault();
@@ -580,6 +569,40 @@ public sealed class FixAllService : IFixAllService
             "This typically means the provider's internal Fixable check rejected every occurrence's syntax " +
             "context. Try code_fix_preview on individual occurrences to inspect per-site behaviour, " +
             "or add_pragma_suppression / set_diagnostic_severity if the rule cannot be auto-fixed here.";
+    }
+
+    /// <summary>
+    /// Builds the structured error envelope returned when the registered <c>FixAllProvider</c>
+    /// throws <see cref="InvalidOperationException"/> while computing the fix or materialising
+    /// operations. This includes the well-known <c>"Sequence contains no elements"</c> crash on
+    /// IDE0300 (use-collection-expression) and analogous failures on other fixers whose internal
+    /// invariants reject specific occurrences.
+    /// </summary>
+    /// <remarks>
+    /// Callers inspect <see cref="FixAllPreviewDto.Error"/> and
+    /// <see cref="FixAllPreviewDto.Category"/> to distinguish a provider crash from a missing
+    /// provider, zero occurrences, or a provider that silently produced no actions.
+    /// <see cref="FixAllPreviewDto.PerOccurrenceFallbackAvailable"/> signals that calling
+    /// <c>code_fix_preview</c> per occurrence is a viable recovery path.
+    /// </remarks>
+    internal static FixAllPreviewDto BuildProviderCrashEnvelope(
+        string diagnosticId, string scope, Exception ex)
+    {
+        var message =
+            $"The registered FixAll provider for '{diagnosticId}' threw while computing the fix " +
+            $"({ex.GetType().Name}: {ex.Message}). Try code_fix_preview on individual occurrences, " +
+            "or narrow the scope (document / project) to isolate the failing occurrence.";
+
+        return new FixAllPreviewDto(
+            PreviewToken: "",
+            DiagnosticId: diagnosticId,
+            Scope: scope,
+            FixedCount: 0,
+            Changes: [],
+            GuidanceMessage: message,
+            Error: true,
+            Category: "FixAllProviderCrash",
+            PerOccurrenceFallbackAvailable: true);
     }
 
     /// <summary>
