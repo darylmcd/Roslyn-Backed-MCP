@@ -271,21 +271,27 @@ public sealed class EditService : IEditService
         return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
     }
 
+    /// <summary>
+    /// Resolves <paramref name="filePath"/> against the supplied <paramref name="solution"/> and
+    /// reads the current <see cref="SourceText"/>. Uses the shared
+    /// <see cref="DocumentResolution"/> helper so every preview / apply path raises a single
+    /// consistent <see cref="InvalidOperationException"/> message when the file is not part of
+    /// the workspace session. See
+    /// <c>organize-usings-preview-document-not-found-after-apply</c>.
+    /// </summary>
+    /// <remarks>
+    /// Callers that own a progressively mutated accumulator solution (multi-file apply / preview)
+    /// pass their accumulator in directly — re-reading from the workspace manager at this layer
+    /// would drop the in-progress edits. Entry-point callers that simply want the freshest
+    /// solution should acquire it via <c>_workspace.GetCurrentSolution(...)</c> on the turn the
+    /// resolve runs, so staleness-gate auto-reload results are reflected here.
+    /// </remarks>
     private static async Task<(Document Document, SourceText SourceText)> ResolveDocumentAndTextAsync(
         Solution solution,
         string filePath,
         CancellationToken ct)
     {
-        var normalizedPath = Path.GetFullPath(filePath);
-
-        var document = solution.Projects
-            .SelectMany(p => p.Documents)
-            .FirstOrDefault(d => d.FilePath is not null &&
-                Path.GetFullPath(d.FilePath).Equals(normalizedPath, StringComparison.OrdinalIgnoreCase));
-
-        if (document is null)
-            throw new KeyNotFoundException($"Document not found in workspace: {filePath}");
-
+        var document = DocumentResolution.GetDocumentInSolutionOrThrow(solution, filePath);
         var sourceText = await document.GetTextAsync(ct).ConfigureAwait(false);
         return (document, sourceText);
     }
