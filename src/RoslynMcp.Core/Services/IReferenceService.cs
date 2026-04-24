@@ -18,7 +18,24 @@ public interface IReferenceService
     /// + classification still populated. Default <c>false</c> preserves the v1.18.2 shape.
     /// </param>
     Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool summary = false);
-    Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
+    /// <summary>
+    /// Finds every implementation of an interface or abstract member resolved at
+    /// <paramref name="locator"/>.
+    /// </summary>
+    /// <param name="includeGeneratedPartials">
+    /// When false (default — find-implementations-source-gen-partial-dedup): the result contains
+    /// one location per unique implementation symbol, preferring the user-authored partial
+    /// declaration over any source-generator-emitted partial (e.g. <c>Logging.g.cs</c>,
+    /// <c>RegexGenerator.g.cs</c>). This prevents the same type from appearing 3+ times in the
+    /// result list simply because <c>[LoggerMessage]</c> or <c>[GeneratedRegex]</c> expanded it
+    /// into extra partial declarations. When true, every source location of every
+    /// implementation symbol is emitted (the v1 behavior).
+    /// </param>
+    Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(
+        string workspaceId,
+        SymbolLocator locator,
+        CancellationToken ct,
+        bool includeGeneratedPartials = false);
     Task<IReadOnlyList<LocationDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
     Task<IReadOnlyList<LocationDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
     Task<IReadOnlyList<BulkReferenceResultDto>> FindReferencesBulkAsync(
