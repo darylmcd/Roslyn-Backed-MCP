@@ -1,6 +1,6 @@
 {
   "name": "roslyn-mcp",
-  "version": "1.29.1",
+  "version": "1.30.0",
   "description": "Semantic C# analysis and refactoring for AI agents, powered by Roslyn. Load .sln/.csproj files, inspect the live MCP catalog at runtime, and use 31 bundled agent skills for analysis, refactoring, testing, architecture review, and release workflows.",
   "author": {
     "name": "darylmcd",
