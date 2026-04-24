@@ -135,7 +135,10 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get detailed information and curated fix options for a specific diagnostic occurrence")]
+    [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Get detailed information and curated fix options for a specific diagnostic occurrence. " +
+        "Position parameters accept either `line`/`column` or the `startLine`/`startColumn` naming used by other positional tools " +
+        "(find_references, goto_definition, get_code_actions, …); supply exactly one pair.")]
     [McpToolMetadata("analysis", "stable", true, false,
         "Inspect one diagnostic occurrence in detail.")]
     public static Task<string> GetDiagnosticDetails(
@@ -145,14 +148,22 @@ public static class AnalysisTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Diagnostic identifier, e.g. CS8019")] string diagnosticId,
         [Description("Absolute path to the source file")] string filePath,
-        [Description("1-based line number")] int line,
-        [Description("1-based column number")] int column,
+        [Description("1-based line number (alias: startLine). Supply exactly one of line/startLine.")] int? line = null,
+        [Description("1-based column number (alias: startColumn). Supply exactly one of column/startColumn.")] int? column = null,
+        [Description("Alias for line, matching the positional-tool convention used by find_references, goto_definition, etc.")] int? startLine = null,
+        [Description("Alias for column, matching the positional-tool convention used by find_references, goto_definition, etc.")] int? startColumn = null,
         CancellationToken ct = default)
     {
+        // Normalize line/column vs startLine/startColumn aliases. Reject ambiguous
+        // (both supplied with different values) and missing-both cases so callers see
+        // a clear parameter error instead of a confusing "diagnostic not found" envelope.
+        var resolvedLine = ResolvePositionAlias(line, startLine, "line", "startLine");
+        var resolvedColumn = ResolvePositionAlias(column, startColumn, "column", "startColumn");
+
         return gate.RunReadAsync(workspaceId, async c =>
         {
             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-            var result = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, line, column, c);
+            var result = await diagnosticService.GetDiagnosticDetailsAsync(workspaceId, diagnosticId, filePath, resolvedLine, resolvedColumn, c);
             if (result is null)
             {
                 // FLAG-1C: surface a structured "not found" envelope instead of raw JSON null,
@@ -162,9 +173,9 @@ public static class AnalysisTools
                     found = false,
                     diagnosticId,
                     filePath,
-                    line,
-                    column,
-                    message = $"No diagnostic with id '{diagnosticId}' was found at {filePath}:{line}:{column}. " +
+                    line = resolvedLine,
+                    column = resolvedColumn,
+                    message = $"No diagnostic with id '{diagnosticId}' was found at {filePath}:{resolvedLine}:{resolvedColumn}. " +
                               "Run project_diagnostics first and copy an exact (id, line, column) tuple from a real entry; " +
                               "diagnostic positions must match the analyzer-reported location, not just the surrounding line.",
                 };
@@ -172,6 +183,30 @@ public static class AnalysisTools
             }
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
+    }
+
+    /// <summary>
+    /// Resolves a positional parameter that accepts two alias names (e.g. <c>line</c> and <c>startLine</c>).
+    /// Exactly one of the two must be supplied; supplying both with conflicting values or supplying
+    /// neither is a parameter error.
+    /// </summary>
+    private static int ResolvePositionAlias(int? primary, int? alias, string primaryName, string aliasName)
+    {
+        if (primary.HasValue && alias.HasValue)
+        {
+            if (primary.Value != alias.Value)
+            {
+                throw new ArgumentException(
+                    $"Conflicting values for '{primaryName}' ({primary.Value}) and its alias '{aliasName}' ({alias.Value}). Supply only one.",
+                    primaryName);
+            }
+            return primary.Value;
+        }
+        if (primary.HasValue) return primary.Value;
+        if (alias.HasValue) return alias.Value;
+        throw new ArgumentException(
+            $"Missing required parameter '{primaryName}' (or its alias '{aliasName}').",
+            primaryName);
     }
 
     [McpServerTool(Name = "type_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the type hierarchy (base types, derived types, implemented interfaces) for a type at the given position")]
