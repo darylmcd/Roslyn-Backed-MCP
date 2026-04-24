@@ -139,6 +139,21 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
             "EF *ModelSnapshot must be excluded under default excludeConventionInvoked.");
         Assert.IsFalse(unusedNames.Contains("LoggingMiddleware"),
             "ASP.NET middleware (Invoke/InvokeAsync(HttpContext) shape) must be excluded under default excludeConventionInvoked.");
+        Assert.IsFalse(unusedNames.Contains("HealthResponseWriter"),
+            "ASP.NET HealthCheck response-writer shape (HttpContext, HealthReport) must be excluded under default excludeConventionInvoked.");
+        Assert.IsFalse(unusedNames.Contains("SampleMcpToolCatalog"),
+            "[McpServerToolType] holder must be excluded under default excludeConventionInvoked.");
+        Assert.IsFalse(unusedNames.Contains("SampleMcpPromptCatalog"),
+            "[McpServerPromptType] holder must be excluded under default excludeConventionInvoked.");
+        Assert.IsFalse(unusedNames.Contains("SampleMcpResourceCatalog"),
+            "[McpServerResourceType] holder must be excluded under default excludeConventionInvoked.");
+        Assert.IsFalse(unusedNames.Contains("WebHostSerialCollection"),
+            "xUnit [CollectionDefinition] holder must be excluded under default excludeConventionInvoked.");
+
+        // Negative control: the attribute simply contains 'McpServerToolType' as a substring
+        // but is not on the whitelist. It must NOT be excluded.
+        Assert.IsTrue(unusedNames.Contains("NotConventionInvokedHolder"),
+            "Attributes that are not on the whitelist must not accidentally trigger the convention filter.");
     }
 
     [TestMethod]
@@ -171,6 +186,12 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
             "Convention exclusion off — MyDbContextModelSnapshot should be reported as unused.");
         Assert.IsTrue(unusedNames.Contains("LoggingMiddleware"),
             "Convention exclusion off — LoggingMiddleware should be reported as unused.");
+        Assert.IsTrue(unusedNames.Contains("HealthResponseWriter"),
+            "Convention exclusion off — HealthResponseWriter should be reported as unused.");
+        Assert.IsTrue(unusedNames.Contains("SampleMcpToolCatalog"),
+            "Convention exclusion off — SampleMcpToolCatalog should be reported as unused.");
+        Assert.IsTrue(unusedNames.Contains("WebHostSerialCollection"),
+            "Convention exclusion off — WebHostSerialCollection should be reported as unused.");
     }
 
     [TestMethod]
