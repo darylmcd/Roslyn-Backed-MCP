@@ -1805,8 +1805,11 @@ public sealed class ScaffoldingService : IScaffoldingService
     }
 
     /// <summary>
-    /// BUG-N10: static classes, or instance classes whose only public API is static methods (utility types),
-    /// should not scaffold <c>new T()</c> + instance assertions.
+    /// BUG-N10: static classes, or instance classes whose only public API is static members (utility types
+    /// — e.g. <c>TenantConstants</c> with only <c>public const</c> fields, or <c>SnapshotContentHasher</c>
+    /// with only static methods/properties), should not scaffold <c>new T()</c> + instance assertions.
+    /// Considers methods, properties, fields (including consts), and events so types whose only surface
+    /// is static state still skip the <c>new T()</c> template.
     /// </summary>
     private static bool ShouldUseStaticTestScaffold(INamedTypeSymbol? matchedType)
     {
@@ -1815,18 +1818,26 @@ public sealed class ScaffoldingService : IScaffoldingService
         if (matchedType.IsStatic)
             return true;
 
-        var ordinaryMethods = matchedType.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation)
+        // Only consider user-authored members — the implicitly-declared default ctor and compiler-emitted
+        // backing fields shouldn't tip the scales. Accessors of properties/events are tracked via their
+        // owning property/event (we treat the accessor methods as part of that member, not separately).
+        var candidateMembers = matchedType.GetMembers()
+            .Where(m => !m.IsImplicitlyDeclared)
+            .Where(m => m.Kind is SymbolKind.Method or SymbolKind.Property or SymbolKind.Field or SymbolKind.Event)
+            .Where(m => m is not IMethodSymbol method ||
+                        method.MethodKind is MethodKind.Ordinary or MethodKind.ExplicitInterfaceImplementation)
             .ToList();
 
-        var hasVisibleInstance = ordinaryMethods.Any(m =>
+        static bool IsInstanceVisible(ISymbol m) =>
             !m.IsStatic &&
-            m.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal or Accessibility.Protected);
+            m.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal or Accessibility.Protected;
 
-        var hasVisibleStatic = ordinaryMethods.Any(m =>
+        static bool IsStaticVisible(ISymbol m) =>
             m.IsStatic &&
-            m.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal);
+            m.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal;
+
+        var hasVisibleInstance = candidateMembers.Any(IsInstanceVisible);
+        var hasVisibleStatic = candidateMembers.Any(IsStaticVisible);
 
         return !hasVisibleInstance && hasVisibleStatic;
     }
