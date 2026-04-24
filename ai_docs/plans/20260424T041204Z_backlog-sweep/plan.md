@@ -193,7 +193,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #393, 2026-04-24) |
 | **Backlog rows closed** | `connection-state-ready-unsatisfiable-preload` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Host.Stdio/Tools/ServerTools.cs` where `server_info` is registered and composed. Pre-load state reports `"initializing"` indefinitely, breaking hard-gate prompts. No cross-layer drift. |
 | **Approach** | Rename the pre-load state value to `"idle"` (or `"ready-no-workspace"`) in the composition path; update the tool description to document the state machine. Prefer `"idle"` for brevity and symmetry with future states. |
@@ -213,7 +213,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #396, 2026-04-24) |
 | **Backlog rows closed** | `diagnostic-details-param-naming-drift` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:138` (`diagnostic_details` handler). Unique `line`/`column` where every other positional tool uses `startLine`/`startColumn`. No cross-layer drift. |
 | **Approach** | Accept both naming conventions on input; map `startLine→line`, `startColumn→column` in the handler front matter. Update the tool description to list both aliases. |
@@ -253,7 +253,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #395, 2026-04-24) |
 | **Backlog rows closed** | `find-references-bulk-summary-mode` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:302` (handler delegating into `ReferenceService`). Paging cap applies only to each symbol's inner list, not the outer batch; overflowed at 120KB. No cross-layer drift. |
 | **Approach** | Add `summary: bool` + `maxItemsPerSymbol: int` to the tool wrapper; mirror existing `find_references(summary=true)` contract. |
@@ -313,7 +313,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #394, 2026-04-24) |
 | **Backlog rows closed** | `get-code-actions-caret-only-inverted-range` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Roslyn/Services/CodeActionService.cs` + tool wrapper `src/RoslynMcp.Host.Stdio/Tools/CodeActionTools.cs`. Default-end computation produces a position 3 chars before start on caret-only calls. |
 | **Approach** | Fix the default-range selector in `CodeActionService`: when `endLine`/`endColumn` are omitted, default to a zero-width selection at the caret (or the enclosing token's end) instead of computing a backwards offset. |
