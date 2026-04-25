@@ -36,6 +36,7 @@ public static partial class ServerSurfaceCatalog
         Tool("extract_method_apply", "refactoring", "experimental", false, true, "Apply a previously previewed extract method refactoring."),
         Tool("extract_shared_expression_to_helper_preview", "refactoring", "experimental", true, false, "Preview extracting a shared sub-expression into a synthesized private static helper and rewriting every structurally-identical call site in the scope."),
         Tool("revert_last_apply", "undo", "stable", false, true, "Revert the most recent Roslyn solution-level apply operation for a workspace."),
+        Tool("revert_apply_by_sequence", "undo", "stable", false, true, "Revert a specific earlier apply identified by its workspace_changes sequence number."),
         Tool("apply_with_verify", "undo", "experimental", false, true, "Apply a preview AND immediately verify via compile_check; auto-revert on new errors."),
         Tool("fix_all_preview", "refactoring", "experimental", true, false, "Preview fixing ALL instances of a diagnostic across a scope."),
         Tool("fix_all_apply", "refactoring", "experimental", false, true, "Apply a previously previewed fix-all operation."),

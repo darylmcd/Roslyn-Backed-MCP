@@ -92,8 +92,8 @@ internal sealed class TestServiceContainer
             workspaceManager,
             compilationCache,
             NullLogger<DiagnosticService>.Instance);
-        var undoService = new UndoService(NullLogger<UndoService>.Instance, workspaceManager);
         var changeTracker = new ChangeTracker(workspaceManager);
+        var undoService = new UndoService(NullLogger<UndoService>.Instance, workspaceManager, changeTracker);
         var msBuildEvaluationService = new MsBuildEvaluationService(workspaceManager);
         var namespaceDependencyService = new NamespaceDependencyService(
             workspaceManager,

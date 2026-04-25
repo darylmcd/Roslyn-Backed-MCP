@@ -31,19 +31,33 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class UndoService : IUndoService, IDisposable
 {
     private readonly ConcurrentDictionary<string, UndoSnapshot> _snapshots = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, List<UndoSnapshot>> _history = new(StringComparer.Ordinal);
     private readonly ILogger<UndoService> _logger;
     private readonly IWorkspaceManager _workspaceManager;
+    private readonly IChangeTracker? _changeTracker;
 
-    public UndoService(ILogger<UndoService> logger, IWorkspaceManager workspaceManager)
+    public UndoService(
+        ILogger<UndoService> logger,
+        IWorkspaceManager workspaceManager,
+        IChangeTracker? changeTracker = null)
     {
         _logger = logger;
         _workspaceManager = workspaceManager;
+        _changeTracker = changeTracker;
         _workspaceManager.WorkspaceClosed += Clear;
+        if (_changeTracker is not null)
+        {
+            _changeTracker.ChangeRecorded += OnChangeRecorded;
+        }
     }
 
     public void Dispose()
     {
         _workspaceManager.WorkspaceClosed -= Clear;
+        if (_changeTracker is not null)
+        {
+            _changeTracker.ChangeRecorded -= OnChangeRecorded;
+        }
     }
 
     public void CaptureBeforeApply(
@@ -67,7 +81,9 @@ public sealed class UndoService : IUndoService, IDisposable
             solution,
             fileSnapshots,
             preApplyVersion,
-            DateTime.UtcNow);
+            DateTime.UtcNow,
+            SequenceNumber: 0,
+            AffectedFiles: Array.Empty<string>());
     }
 
     public UndoEntry? GetLastOperation(string workspaceId)
@@ -85,6 +101,27 @@ public sealed class UndoService : IUndoService, IDisposable
 
         var workspace = _workspaceManager;
 
+        // Also drop the matching history entry so the LIFO and by-sequence pathways agree
+        // on what's been reverted. The pending snapshot is identified by sequence number
+        // (assigned when ChangeTracker recorded the apply); look up the history entry by
+        // that key. When CommitPendingCapture has not yet run (apply succeeded but
+        // ChangeRecorded handler has not fired), the history list is empty for this id —
+        // skip silently.
+        if (snapshot.SequenceNumber > 0 && _history.TryGetValue(workspaceId, out var historyList))
+        {
+            lock (historyList)
+            {
+                for (var i = historyList.Count - 1; i >= 0; i--)
+                {
+                    if (historyList[i].SequenceNumber == snapshot.SequenceNumber)
+                    {
+                        historyList.RemoveAt(i);
+                        break;
+                    }
+                }
+            }
+        }
+
         // Fast path: the caller provided an explicit file-snapshot list. Restore those
         // files directly — authoritative, independent of the workspace solution state.
         if (snapshot.FileSnapshots is { Count: > 0 })
@@ -95,6 +132,136 @@ public sealed class UndoService : IUndoService, IDisposable
         // Legacy path: solution-based restore with a snapshot-wide walk so empty-GetChanges
         // no longer silently wins.
         return await RevertFromSolutionSnapshotAsync(workspaceId, workspace, snapshot, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<RevertBySequenceResult> RevertBySequenceAsync(
+        string workspaceId,
+        int sequenceNumber,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_history.TryGetValue(workspaceId, out var historyList))
+        {
+            return new RevertBySequenceResult(
+                Reverted: false,
+                RevertedOperation: null,
+                AffectedFiles: Array.Empty<string>(),
+                Reason: "unknown-sequence",
+                BlockingSequences: null);
+        }
+
+        UndoSnapshot? target;
+        List<UndoSnapshot> laterApplies;
+        lock (historyList)
+        {
+            target = historyList.FirstOrDefault(s => s.SequenceNumber == sequenceNumber);
+            laterApplies = target is null
+                ? new List<UndoSnapshot>()
+                : historyList
+                    .Where(s => s.SequenceNumber > sequenceNumber)
+                    .ToList();
+        }
+
+        if (target is null)
+        {
+            return new RevertBySequenceResult(
+                Reverted: false,
+                RevertedOperation: null,
+                AffectedFiles: Array.Empty<string>(),
+                Reason: "unknown-sequence",
+                BlockingSequences: null);
+        }
+
+        // Conservative dependency check: if any later apply touches a file that the target
+        // apply also touched, reverting the target would silently roll back part of those
+        // later applies. Block the revert and surface the offending sequence numbers so the
+        // caller can revert them first if desired.
+        var targetFiles = new HashSet<string>(target.AffectedFiles, StringComparer.OrdinalIgnoreCase);
+        var blocking = new List<int>();
+        foreach (var later in laterApplies)
+        {
+            foreach (var file in later.AffectedFiles)
+            {
+                if (targetFiles.Contains(file))
+                {
+                    blocking.Add(later.SequenceNumber);
+                    break;
+                }
+            }
+        }
+
+        if (blocking.Count > 0)
+        {
+            return new RevertBySequenceResult(
+                Reverted: false,
+                RevertedOperation: target.Description,
+                AffectedFiles: target.AffectedFiles,
+                Reason: "dependency-blocked",
+                BlockingSequences: blocking);
+        }
+
+        // Apply the revert. Drop the history entry first so concurrent callers can't double-revert.
+        lock (historyList)
+        {
+            historyList.RemoveAll(s => s.SequenceNumber == sequenceNumber);
+        }
+
+        // If this is also the pending LIFO snapshot, drop it from _snapshots too — keeps
+        // GetLastOperation / RevertAsync consistent.
+        if (_snapshots.TryGetValue(workspaceId, out var pending) && pending.SequenceNumber == sequenceNumber)
+        {
+            _snapshots.TryRemove(workspaceId, out _);
+        }
+
+        bool reverted;
+        if (target.FileSnapshots is { Count: > 0 })
+        {
+            reverted = await RevertFromFileSnapshotsAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            reverted = await RevertFromSolutionSnapshotAsync(workspaceId, _workspaceManager, target, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (!reverted)
+        {
+            return new RevertBySequenceResult(
+                Reverted: false,
+                RevertedOperation: target.Description,
+                AffectedFiles: target.AffectedFiles,
+                Reason: "revert-failed",
+                BlockingSequences: null);
+        }
+
+        return new RevertBySequenceResult(
+            Reverted: true,
+            RevertedOperation: target.Description,
+            AffectedFiles: target.AffectedFiles,
+            Reason: null,
+            BlockingSequences: null);
+    }
+
+    public void CommitPendingCapture(string workspaceId, int sequenceNumber, IReadOnlyList<string> affectedFiles)
+    {
+        if (!_snapshots.TryGetValue(workspaceId, out var pending))
+        {
+            // No pending snapshot — apply path skipped CaptureBeforeApply (e.g., a no-op tool
+            // that records a change without producing a revertable diff). Nothing to commit.
+            return;
+        }
+
+        var promoted = pending with { SequenceNumber = sequenceNumber, AffectedFiles = affectedFiles };
+        _snapshots[workspaceId] = promoted;
+
+        var historyList = _history.GetOrAdd(workspaceId, _ => new List<UndoSnapshot>());
+        lock (historyList)
+        {
+            historyList.Add(promoted);
+        }
+    }
+
+    private void OnChangeRecorded(ChangeRecordedEventArgs e)
+    {
+        CommitPendingCapture(e.WorkspaceId, e.SequenceNumber, e.AffectedFiles);
     }
 
     private async Task<bool> RevertFromFileSnapshotsAsync(
@@ -354,6 +521,7 @@ public sealed class UndoService : IUndoService, IDisposable
     public void Clear(string workspaceId)
     {
         _snapshots.TryRemove(workspaceId, out _);
+        _history.TryRemove(workspaceId, out _);
     }
 
     private sealed record UndoSnapshot(
@@ -362,5 +530,7 @@ public sealed class UndoService : IUndoService, IDisposable
         Solution? PreApplySolution,
         IReadOnlyList<FileSnapshotDto>? FileSnapshots,
         int PreApplyWorkspaceVersion,
-        DateTime AppliedAtUtc);
+        DateTime AppliedAtUtc,
+        int SequenceNumber,
+        IReadOnlyList<string> AffectedFiles);
 }
