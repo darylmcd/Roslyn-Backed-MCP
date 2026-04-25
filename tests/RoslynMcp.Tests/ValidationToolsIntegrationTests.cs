@@ -264,6 +264,106 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             "ScannedTestProjects must be populated regardless of resolution outcome.");
     }
 
+    // test-related-files-service-refactor-underreporting: pre-fix, the file-affinity heuristic
+    // returned empty for inputs whose declared type names did not textually appear in any
+    // test method/class/file path — even though the inputs are referenced by tests via
+    // semantic dispatch. The cited 2026-04-23 sweep misses were
+    // (`MutationAnalysisService` + `ScaffoldingService`) and
+    // (`CodePatternAnalyzer` + `TestDiscoveryService`); both pairs ship related tests whose
+    // class names do not contain the input service names. Post-fix, when the primary pass
+    // produces zero candidates, the service broadens via an inbound-reference sweep
+    // (SymbolFinder.FindReferencesAsync) and a 1-hop namespace-neighbor expansion. Either
+    // expansion alone is sufficient to recover the test.
+    //
+    // Sample-fixture analogue: `IAnimal.cs` declares only `IAnimal` — no test class, method,
+    // or file path under `samples/SampleSolution/SampleLib.Tests/` contains the substring
+    // "IAnimal". But `AnimalServiceTests.cs` calls `service.GetAllAnimals()` (typed
+    // `List<IAnimal>`), so the inbound-reference sweep on `IAnimal` finds the test file.
+    // Namespace-neighbor expansion also recovers it via `AnimalService` (a sibling type in
+    // namespace `SampleLib`) which IS textually contained in `AnimalServiceTests`.
+    [TestMethod]
+    public async Task FindRelatedTestsForFiles_NameAffinityMissButReferencedByTests_FallbackRecovers()
+    {
+        var iAnimalPath = FindDocumentPath("IAnimal.cs");
+
+        // Sanity guard: pre-fix, the primary pass would produce zero matches because
+        // "IAnimal" is not a substring of any test name/path. We assert the fallback now
+        // recovers AnimalServiceTests.
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var result = await TestDiscoveryService.FindRelatedTestsForFilesAsync(
+            WorkspaceId,
+            new[] { iAnimalPath },
+            maxResults: 100,
+            CancellationToken.None);
+        stopwatch.Stop();
+
+        Assert.IsTrue(result.Tests.Count > 0,
+            $"Fallback broadening should surface at least one related test for IAnimal.cs; got 0. Diagnostics: " +
+            $"scanned={result.Diagnostics.ScannedTestProjects}, " +
+            $"heuristics=[{string.Join(",", result.Diagnostics.HeuristicsAttempted)}], " +
+            $"missReasons=[{string.Join(" | ", result.Diagnostics.MissReasons)}]");
+
+        Assert.IsTrue(result.Tests.Any(t =>
+                t.FilePath?.EndsWith("AnimalServiceTests.cs", StringComparison.OrdinalIgnoreCase) == true),
+            $"Expected AnimalServiceTests.cs to surface via fallback broadening; got: " +
+            $"[{string.Join(", ", result.Tests.Select(t => t.FilePath))}]");
+
+        // Heuristics envelope must report that the fallback heuristics were attempted, so
+        // callers can see why the test surfaced (and distinguish "primary hit" from
+        // "fallback recovery").
+        Assert.IsTrue(
+            result.Diagnostics.HeuristicsAttempted.Contains("inbound-reference") ||
+            result.Diagnostics.HeuristicsAttempted.Contains("namespace-neighbor"),
+            $"At least one fallback heuristic should be reported as attempted; got: " +
+            $"[{string.Join(",", result.Diagnostics.HeuristicsAttempted)}]");
+
+        // Performance guard. Reference sweep + namespace walk on a fixture-sized workspace
+        // (5 projects, ~533 docs) must finish well under 30s. Sample workspace runs with no
+        // contention here typically complete in 1-3s; the cap leaves generous headroom for
+        // CI variance without papering over a regression. The fallback path runs only on
+        // empty-primary-result, so this cost is bounded by definition.
+        Assert.IsTrue(stopwatch.ElapsedMilliseconds < 30_000,
+            $"Fallback broadening took {stopwatch.ElapsedMilliseconds}ms which exceeds the 30s perf budget.");
+    }
+
+    // test-related-files-service-refactor-underreporting: multi-file service-refactor case.
+    // Pre-fix, passing two cohesive source files (the cited example was
+    // `MutationAnalysisService` + `ScaffoldingService`) whose declared type names matched no
+    // test name produced an empty result. Post-fix, the per-file fallback broadening still
+    // runs even when multiple input files miss together — the namespace-neighbor expansion
+    // recovers the related tests via a sibling type in the shared namespace.
+    [TestMethod]
+    public async Task FindRelatedTestsForFiles_MultiFileServiceRefactor_FallbackRecovers()
+    {
+        // Pick two cohesive sample files whose declared type names ("IAnimal", "Cat") do
+        // not textually overlap with the test class name "AnimalServiceTests" or its
+        // method names ("CountAnimals_Returns_Total_Count",
+        // "GetAllAnimals_Returns_Dog_And_Cat"). Note: "Cat" IS a substring of
+        // "GetAllAnimals_Returns_Dog_And_Cat", so the primary pass DOES match Cat.cs alone.
+        // To force the multi-file fallback path here we use IAnimal.cs (a primary-pass miss)
+        // alongside an unrelated input. Namespace-neighbor recovers AnimalServiceTests via
+        // sibling type AnimalService.
+        var iAnimalPath = FindDocumentPath("IAnimal.cs");
+        var animalExtPath = FindDocumentPath("AnimalExtensions.cs");
+
+        var result = await TestDiscoveryService.FindRelatedTestsForFilesAsync(
+            WorkspaceId,
+            new[] { iAnimalPath, animalExtPath },
+            maxResults: 100,
+            CancellationToken.None);
+
+        Assert.IsTrue(result.Tests.Count > 0,
+            $"Multi-file service refactor (IAnimal + AnimalExtensions) should surface at " +
+            $"least one related test via fallback broadening; got 0. Diagnostics: " +
+            $"heuristics=[{string.Join(",", result.Diagnostics.HeuristicsAttempted)}], " +
+            $"missReasons=[{string.Join(" | ", result.Diagnostics.MissReasons)}]");
+
+        Assert.IsTrue(result.Tests.Any(t =>
+                t.FilePath?.EndsWith("AnimalServiceTests.cs", StringComparison.OrdinalIgnoreCase) == true),
+            $"Expected AnimalServiceTests.cs to surface via multi-file fallback broadening; got: " +
+            $"[{string.Join(", ", result.Tests.Select(t => t.FilePath))}]");
+    }
+
     private static string FindDocumentPath(string name)
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);

@@ -368,6 +368,12 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         var missReasons = new List<string>();
         var anyDocumentResolved = false;
 
+        // test-related-files-service-refactor-underreporting: retain (filePath, document, root)
+        // tuples for the per-file pass so the fallback broadening (namespace-neighbor +
+        // inbound-reference expansion) can re-walk only the documents that resolved without
+        // re-running the FirstOrDefault path lookup.
+        var resolvedDocuments = new List<(string FilePath, Document Document, SyntaxNode Root)>();
+
         foreach (var filePath in filePaths)
         {
             var document = solution
@@ -390,6 +396,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             }
 
             anyDocumentResolved = true;
+            resolvedDocuments.Add((filePath, document, root));
 
             var searchTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -436,6 +443,50 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             }
         }
 
+        // test-related-files-service-refactor-underreporting: when the file-affinity pass
+        // produced zero matches across every input file but at least one document resolved,
+        // broaden via two 1-hop expansions:
+        //   - inbound-reference: walk SymbolFinder.FindReferencesAsync for each declared type
+        //     in the resolved file(s); test files containing those references are related.
+        //   - namespace-neighbor: collect other types declared in the same namespace as the
+        //     input file's types; rerun the name-affinity match against those neighbor type
+        //     names.
+        // Both run only on the empty-primary-result path so amortized cost stays low.
+        // Multi-file service refactors (e.g. MutationAnalysisService + ScaffoldingService,
+        // CodePatternAnalyzer + TestDiscoveryService) frequently miss because the test
+        // class name doesn't textually contain any input type name; the inbound-reference
+        // sweep recovers them by following actual call sites.
+        var fallbackHeuristicsAttempted = new List<string>();
+        if (testToTriggers.Count == 0 && resolvedDocuments.Count > 0 && allTests.Count > 0)
+        {
+            var testFilePaths = BuildTestFilePathSet(allTests);
+            var (referenceMatches, neighborMatches, fallbackHeuristics) =
+                await CollectFallbackMatchesAsync(resolvedDocuments, solution, allTests, testFilePaths, ct)
+                    .ConfigureAwait(false);
+
+            fallbackHeuristicsAttempted.AddRange(fallbackHeuristics);
+
+            foreach (var (filePath, test) in referenceMatches)
+            {
+                AddTrigger(testToTriggers, test.FullyQualifiedName, filePath);
+                filesThatMatched.Add(filePath);
+            }
+            foreach (var (filePath, test) in neighborMatches)
+            {
+                AddTrigger(testToTriggers, test.FullyQualifiedName, filePath);
+                filesThatMatched.Add(filePath);
+            }
+
+            if (testToTriggers.Count > 0)
+            {
+                // Broadening recovered tests that the primary heuristic missed — emit a
+                // single explanatory miss-reason rather than leaving the per-file
+                // "no name matched" reasons as the only signal.
+                missReasons.Add(
+                    $"primary type-name/file-name affinity matched zero tests; fallback broadening (heuristics: [{string.Join(", ", fallbackHeuristicsAttempted)}]) recovered {testToTriggers.Count} candidate test(s)");
+            }
+        }
+
         var projectLookup = discovery.TestProjects
             .SelectMany(p => p.Tests.Select(t => (t.FullyQualifiedName, p.ProjectName)))
             .ToDictionary(x => x.FullyQualifiedName, x => x.ProjectName, StringComparer.Ordinal);
@@ -463,8 +514,9 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
         var dotnetFilter = SynthesizeDotnetTestFilter(results.Select(t => t.FullyQualifiedName));
         var heuristicsAttempted = anyDocumentResolved
-            ? (IReadOnlyList<string>)["type-name", "file-name"]
-            : [];
+            ? new List<string> { "type-name", "file-name" }
+            : new List<string>();
+        heuristicsAttempted.AddRange(fallbackHeuristicsAttempted);
         var diagnostics = new RelatedTestsDiagnosticsDto(
             ScannedTestProjects: discovery.TestProjects.Count,
             HeuristicsAttempted: heuristicsAttempted,
@@ -474,6 +526,264 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             dotnetFilter,
             new PaginationInfo(Total: total, Returned: results.Count, HasMore: total > results.Count),
             diagnostics);
+    }
+
+    private static void AddTrigger(Dictionary<string, List<string>> testToTriggers, string fqn, string filePath)
+    {
+        if (!testToTriggers.TryGetValue(fqn, out var triggers))
+        {
+            triggers = new List<string>();
+            testToTriggers[fqn] = triggers;
+        }
+        if (!triggers.Contains(filePath, StringComparer.OrdinalIgnoreCase))
+        {
+            triggers.Add(filePath);
+        }
+    }
+
+    private static HashSet<string> BuildTestFilePathSet(
+        IReadOnlyList<(string Project, TestCaseDto Test)> allTests)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (_, test) in allTests)
+        {
+            if (!string.IsNullOrWhiteSpace(test.FilePath))
+            {
+                set.Add(Path.GetFullPath(test.FilePath));
+            }
+        }
+        return set;
+    }
+
+    /// <summary>
+    /// test-related-files-service-refactor-underreporting: fallback broadening when the
+    /// primary type-name/file-name heuristic produced zero matches. Runs two 1-hop
+    /// expansions in parallel:
+    /// <list type="number">
+    ///   <item>
+    ///     <b>inbound-reference</b> — for each type declared in a resolved input file,
+    ///     <see cref="SymbolFinder.FindReferencesAsync"/> locates every call site; tests
+    ///     whose source file path appears in those references are recovered.
+    ///   </item>
+    ///   <item>
+    ///     <b>namespace-neighbor</b> — for each type declared in a resolved input file,
+    ///     other types declared in the same namespace (across the project) are added to
+    ///     the search-term set. The name-affinity match reruns over the test surface using
+    ///     those neighbor type names. Capped at one hop — neighbors of neighbors are not
+    ///     walked, to bound noise.
+    ///   </item>
+    /// </list>
+    /// Results from both expansions are de-duplicated by the caller via <c>AddTrigger</c>.
+    /// </summary>
+    private async Task<(
+        List<(string FilePath, TestCaseDto Test)> ReferenceMatches,
+        List<(string FilePath, TestCaseDto Test)> NeighborMatches,
+        List<string> Heuristics)> CollectFallbackMatchesAsync(
+            IReadOnlyList<(string FilePath, Document Document, SyntaxNode Root)> resolvedDocuments,
+            Solution solution,
+            IReadOnlyList<(string Project, TestCaseDto Test)> allTests,
+            HashSet<string> testFilePaths,
+            CancellationToken ct)
+    {
+        var referenceMatches = new List<(string FilePath, TestCaseDto Test)>();
+        var neighborMatches = new List<(string FilePath, TestCaseDto Test)>();
+        var heuristics = new List<string>();
+
+        var referenceAttempted = false;
+        var neighborAttempted = false;
+
+        foreach (var (filePath, document, root) in resolvedDocuments)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            SemanticModel? semanticModel = null;
+            try
+            {
+                semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "FindRelatedTestsForFiles fallback: failed to obtain semantic model for '{FilePath}', skipping symbolic broadening for this file.", filePath);
+                continue;
+            }
+
+            if (semanticModel is null)
+            {
+                continue;
+            }
+
+            var declaredTypeSymbols = new List<INamedTypeSymbol>();
+            foreach (var typeDecl in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+            {
+                if (semanticModel.GetDeclaredSymbol(typeDecl, ct) is INamedTypeSymbol typeSymbol)
+                {
+                    declaredTypeSymbols.Add(typeSymbol);
+                }
+            }
+
+            if (declaredTypeSymbols.Count == 0)
+            {
+                continue;
+            }
+
+            // ── inbound-reference expansion ────────────────────────────────────────────
+            referenceAttempted = true;
+            try
+            {
+                foreach (var typeSymbol in declaredTypeSymbols)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var references = await SymbolFinder.FindReferencesAsync(typeSymbol, solution, ct).ConfigureAwait(false);
+                    var referencedTestFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var refSet in references)
+                    {
+                        foreach (var location in refSet.Locations)
+                        {
+                            var refFilePath = location.Document?.FilePath;
+                            if (string.IsNullOrWhiteSpace(refFilePath))
+                            {
+                                continue;
+                            }
+                            var fullPath = Path.GetFullPath(refFilePath);
+                            if (testFilePaths.Contains(fullPath))
+                            {
+                                referencedTestFiles.Add(fullPath);
+                            }
+                        }
+                    }
+
+                    foreach (var (_, test) in allTests)
+                    {
+                        if (string.IsNullOrWhiteSpace(test.FilePath))
+                        {
+                            continue;
+                        }
+                        if (referencedTestFiles.Contains(Path.GetFullPath(test.FilePath)))
+                        {
+                            referenceMatches.Add((filePath, test));
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Reference sweep is best-effort. Never let it break the heuristic path.
+                _logger.LogWarning(ex, "FindRelatedTestsForFiles fallback inbound-reference sweep failed for '{FilePath}'; continuing with namespace-neighbor expansion.", filePath);
+            }
+
+            // ── namespace-neighbor expansion (1 hop) ───────────────────────────────────
+            neighborAttempted = true;
+            try
+            {
+                var neighborTerms = CollectNamespaceNeighborTerms(declaredTypeSymbols, document.Project);
+
+                if (neighborTerms.Count > 0)
+                {
+                    foreach (var (_, test) in allTests)
+                    {
+                        if (neighborTerms.Any(term =>
+                            test.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                            test.FullyQualifiedName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                            (test.FilePath?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)))
+                        {
+                            neighborMatches.Add((filePath, test));
+                        }
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "FindRelatedTestsForFiles fallback namespace-neighbor expansion failed for '{FilePath}'; continuing.", filePath);
+            }
+        }
+
+        if (referenceAttempted)
+        {
+            heuristics.Add("inbound-reference");
+        }
+        if (neighborAttempted)
+        {
+            heuristics.Add("namespace-neighbor");
+        }
+
+        return (referenceMatches, neighborMatches, heuristics);
+    }
+
+    /// <summary>
+    /// Collect unqualified type names declared in the same namespace as <paramref name="declaredTypes"/>,
+    /// limited to the same project (1-hop). Excludes the input types themselves so the caller
+    /// can search the test surface for distinct neighbor names. The intent is to recover tests
+    /// for cohesive service refactors — when <c>FooService</c> ships alongside <c>BarService</c>
+    /// in the same namespace, a change touching only <c>FooService</c> should still surface
+    /// tests that exercise <c>BarService</c> if they live next door.
+    /// </summary>
+    private static HashSet<string> CollectNamespaceNeighborTerms(
+        IReadOnlyList<INamedTypeSymbol> declaredTypes,
+        Project project)
+    {
+        var inputTypeNames = new HashSet<string>(declaredTypes.Select(t => t.Name), StringComparer.Ordinal);
+        var inputNamespaceNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var typeSymbol in declaredTypes)
+        {
+            var ns = typeSymbol.ContainingNamespace;
+            if (ns is not null && !ns.IsGlobalNamespace)
+            {
+                inputNamespaceNames.Add(ns.ToDisplayString());
+            }
+        }
+
+        if (inputNamespaceNames.Count == 0)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var neighborTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var projectAssembly = project.TryGetCompilation(out var compilation)
+            ? compilation?.Assembly
+            : null;
+
+        if (projectAssembly is not null)
+        {
+            CollectMatchingTypeNamesFromNamespace(projectAssembly.GlobalNamespace, inputNamespaceNames, inputTypeNames, neighborTerms);
+        }
+
+        return neighborTerms;
+    }
+
+    private static void CollectMatchingTypeNamesFromNamespace(
+        INamespaceSymbol namespaceSymbol,
+        IReadOnlySet<string> targetNamespaces,
+        IReadOnlySet<string> exclude,
+        HashSet<string> neighborTerms)
+    {
+        var fullName = namespaceSymbol.IsGlobalNamespace ? string.Empty : namespaceSymbol.ToDisplayString();
+        if (!namespaceSymbol.IsGlobalNamespace && targetNamespaces.Contains(fullName))
+        {
+            foreach (var typeMember in namespaceSymbol.GetTypeMembers())
+            {
+                if (!exclude.Contains(typeMember.Name))
+                {
+                    neighborTerms.Add(typeMember.Name);
+                }
+            }
+        }
+
+        foreach (var nestedNamespace in namespaceSymbol.GetNamespaceMembers())
+        {
+            CollectMatchingTypeNamesFromNamespace(nestedNamespace, targetNamespaces, exclude, neighborTerms);
+        }
     }
 
     private static readonly HashSet<string> TestAttributeNames = new(StringComparer.Ordinal)
