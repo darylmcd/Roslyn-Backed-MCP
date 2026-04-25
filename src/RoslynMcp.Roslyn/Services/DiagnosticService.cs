@@ -3,6 +3,8 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CodeActions;
+using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging;
 
@@ -12,6 +14,7 @@ public sealed class DiagnosticService : IDiagnosticService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
+    private readonly ICodeFixProviderRegistry _codeFixRegistry;
     private readonly ILogger<DiagnosticService> _logger;
 
     /// <summary>
@@ -40,10 +43,15 @@ public sealed class DiagnosticService : IDiagnosticService
 
     private const int MaxResultCacheEntriesPerWorkspace = 8;
 
-    public DiagnosticService(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<DiagnosticService> logger)
+    public DiagnosticService(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ICodeFixProviderRegistry codeFixRegistry,
+        ILogger<DiagnosticService> logger)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
+        _codeFixRegistry = codeFixRegistry;
         _logger = logger;
         _workspace.WorkspaceClosed += InvalidateWorkspaceCaches;
         // Item #7: `compile-check-stale-assembly-refs-post-reload` — drop cached analyzer
@@ -277,13 +285,14 @@ public sealed class DiagnosticService : IDiagnosticService
         // Fast path: most callers invoke this immediately after GetDiagnosticsAsync, so the
         // exact Diagnostic they want is already in the cache. Skip the recompile entirely.
         var version = _workspace.GetCurrentVersion(workspaceId);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
         if (_diagnosticCache.TryGetValue(workspaceId, out var cached) && cached.Version == version)
         {
             foreach (var d in cached.Diagnostics)
             {
                 if (DiagnosticMatchesLocation(d, diagnosticId, filePath, line, column))
                 {
-                    return BuildDetailsDto(d);
+                    return await BuildDetailsDtoAsync(d, solution, filePath, ct).ConfigureAwait(false);
                 }
             }
         }
@@ -295,18 +304,19 @@ public sealed class DiagnosticService : IDiagnosticService
         // ~16s on large solutions) in favor of a per-document syntax+semantic+analyzer scan
         // that finishes in <2s. The detail tool's contract already requires filePath + line +
         // column, so this path is always available for the diagnostic_details caller.
-        var solution = _workspace.GetCurrentSolution(workspaceId);
         var diagnostic = await FindDiagnosticInDocumentAsync(workspaceId, solution, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
         if (diagnostic is not null)
         {
-            return BuildDetailsDto(diagnostic);
+            return await BuildDetailsDtoAsync(diagnostic, solution, filePath, ct).ConfigureAwait(false);
         }
 
         // If the file did not resolve to any Document (e.g., a generated file path, or a
         // workspace-level diagnostic with no source location), fall back to the legacy
         // solution-wide search so we don't regress discoverability.
         var fallbackDiagnostic = await FindDiagnosticAsync(workspaceId, solution, version, diagnosticId, filePath, line, column, ct).ConfigureAwait(false);
-        return fallbackDiagnostic is null ? null : BuildDetailsDto(fallbackDiagnostic);
+        return fallbackDiagnostic is null
+            ? null
+            : await BuildDetailsDtoAsync(fallbackDiagnostic, solution, filePath, ct).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -380,12 +390,17 @@ public sealed class DiagnosticService : IDiagnosticService
         return null;
     }
 
-    private static DiagnosticDetailsDto BuildDetailsDto(Diagnostic diagnostic) => new(
-        Diagnostic: SymbolMapper.ToDiagnosticDto(diagnostic),
-        Description: BuildDiagnosticDescription(diagnostic),
-        HelpLinkUri: BuildHelpLink(diagnostic.Id),
-        SupportedFixes: GetSupportedFixes(diagnostic.Id),
-        GuidanceMessage: GetFixGuidance(diagnostic.Id));
+    private async Task<DiagnosticDetailsDto> BuildDetailsDtoAsync(
+        Diagnostic diagnostic, Solution solution, string filePath, CancellationToken ct)
+    {
+        var supportedFixes = await GetSupportedFixesAsync(diagnostic, solution, filePath, ct).ConfigureAwait(false);
+        return new DiagnosticDetailsDto(
+            Diagnostic: SymbolMapper.ToDiagnosticDto(diagnostic),
+            Description: BuildDiagnosticDescription(diagnostic),
+            HelpLinkUri: BuildHelpLink(diagnostic.Id),
+            SupportedFixes: supportedFixes,
+            GuidanceMessage: GetFixGuidance(diagnostic.Id, supportedFixes));
+    }
 
     private static string BuildDiagnosticDescription(Diagnostic diagnostic)
     {
@@ -447,42 +462,162 @@ public sealed class DiagnosticService : IDiagnosticService
     private static string BuildHelpLink(string diagnosticId) =>
         $"https://learn.microsoft.com/dotnet/csharp/language-reference/compiler-messages/{diagnosticId.ToLowerInvariant()}";
 
-    // dr-code-fix-preview-vs-diagnostic-details-curated-gap: Only advertise
-    // diagnostics that code_fix_preview (PreviewCodeFixAsync) actually handles.
-    // Previously this map included CS0414, CS8600/8602/8603, CA2234 which were
-    // rejected at apply time — a contract violation surfaced by deep-review audits.
-    private static IReadOnlyList<CodeFixOptionDto> GetSupportedFixes(string diagnosticId) =>
-        diagnosticId.ToUpperInvariant() switch
+    /// <summary>
+    /// diagnostic-details-supported-fixes-empty: enumerate code fix providers from
+    /// <see cref="ICodeFixProviderRegistry"/> for the supplied diagnostic and project them
+    /// to <see cref="CodeFixOptionDto"/>. The registry combines the static IDE Features
+    /// providers with project-loaded analyzer providers, so any analyzer reference (CA*/
+    /// SCS*/MA*/SYSLIB*/ASP*) that ships its own CodeFixProvider will surface here.
+    /// <para>
+    /// Each registered <see cref="CodeAction"/> for the diagnostic produces one
+    /// <see cref="CodeFixOptionDto"/> using the action's
+    /// <see cref="CodeAction.EquivalenceKey"/> as the stable fix id (falling back to the
+    /// title) and the action's <see cref="CodeAction.Title"/> as the display title. We do
+    /// not invoke the action — only enumeration — so this is cheap relative to running the
+    /// fix.
+    /// </para>
+    /// <para>
+    /// Returns an empty list when no providers are loaded for the id, when the file does
+    /// not resolve to a project Document, or when registered actions throw during
+    /// enumeration. Callers receive the same envelope shape regardless and can rely on
+    /// <see cref="DiagnosticDetailsDto.GuidanceMessage"/> to direct them to
+    /// get_code_actions + preview_code_action when no curated fixes are available.
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<CodeFixOptionDto>> GetSupportedFixesAsync(
+        Diagnostic diagnostic, Solution solution, string filePath, CancellationToken ct)
+    {
+        var providers = _codeFixRegistry.GetProvidersFor(diagnostic.Id, solution);
+        if (providers.Count == 0)
         {
-            "CS8019" =>
-            [
-                new CodeFixOptionDto(
-                    FixId: "remove_unused_using",
-                    Title: "Remove unused using",
-                    Description: "Deletes the using directive flagged as unnecessary.")
-            ],
-            "IDE0005" =>
-            [
-                new CodeFixOptionDto(
-                    FixId: "remove_unused_using",
-                    Title: "Remove unnecessary using directive",
-                    Description: "IDE-style unused using removal (requires a matching code fix provider in the workspace).")
-            ],
-            _ => []
-        };
+            return [];
+        }
+
+        // Prefer the document derived from the diagnostic's own location — when the diagnostic
+        // is materialized via Compilation+Analyzer pipeline, its SourceTree is bound to the
+        // exact Document the analyzer ran against. Falling back to filePath lookup handles the
+        // warm-cache fast path where the Diagnostic came from a prior solution version.
+        Document? document = null;
+        if (diagnostic.Location.IsInSource && diagnostic.Location.SourceTree is { } sourceTree)
+        {
+            document = solution.GetDocument(sourceTree);
+        }
+
+        if (document is null)
+        {
+            var documentIds = solution.GetDocumentIdsWithFilePath(filePath);
+            if (!documentIds.IsDefaultOrEmpty)
+            {
+                document = solution.GetDocument(documentIds[0]);
+            }
+        }
+
+        // No Document means we cannot construct a CodeFixContext — provider's
+        // RegisterCodeFixesAsync needs the live document to inspect the diagnostic location.
+        // This is the workspace-level / generated-file path; surface providers at all is a
+        // best effort, so just report them by id without enumerating actions.
+        if (document is null)
+        {
+            return ProjectProvidersToFixOptions(providers, diagnostic.Id);
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var results = new List<CodeFixOptionDto>();
+        foreach (var provider in providers)
+        {
+            // Prefer the in-process variant from RefactoringService — same provider type +
+            // diagnostic + document arguments, no apply. Each provider may register multiple
+            // actions; capture them all so callers see every option (e.g. "Remove using" plus
+            // "Remove and sort usings" for CS8019).
+            var actions = await CaptureRegisteredActionsAsync(provider, document, diagnostic, ct).ConfigureAwait(false);
+            foreach (var action in actions)
+            {
+                var fixId = action.EquivalenceKey ?? action.Title ?? provider.GetType().Name;
+                if (!seen.Add(fixId))
+                {
+                    continue;
+                }
+                results.Add(new CodeFixOptionDto(
+                    FixId: fixId,
+                    Title: action.Title ?? fixId,
+                    Description: BuildFixDescription(provider, action)));
+            }
+        }
+
+        return results;
+    }
 
     /// <summary>
-    /// Returns a guidance message for diagnostics that do not have curated code_fix_preview
-    /// support but can be addressed via get_code_actions + preview_code_action.
+    /// Fallback emitter used when we know providers exist for the id but cannot construct
+    /// a per-document <see cref="CodeFixContext"/>. We still surface provider names so the
+    /// description ("fix options when available") is honest.
     /// </summary>
-    private static string? GetFixGuidance(string diagnosticId) =>
-        diagnosticId.ToUpperInvariant() switch
+    private static IReadOnlyList<CodeFixOptionDto> ProjectProvidersToFixOptions(
+        IReadOnlyList<CodeFixProvider> providers, string diagnosticId)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var results = new List<CodeFixOptionDto>();
+        foreach (var provider in providers)
         {
-            "CS0414" or "CS8600" or "CS8602" or "CS8603" or "CA2234" or "CA1852" =>
-                "This diagnostic does not have a curated code_fix_preview fix. " +
-                "Use get_code_actions at the diagnostic location, then preview_code_action to apply a Roslyn-provided fix.",
-            _ => null
-        };
+            var providerName = provider.GetType().Name;
+            if (!seen.Add(providerName))
+            {
+                continue;
+            }
+            results.Add(new CodeFixOptionDto(
+                FixId: providerName,
+                Title: providerName,
+                Description: $"Code fix provider for {diagnosticId} (loaded from {provider.GetType().Assembly.GetName().Name}). " +
+                             "No source document was available to enumerate specific fix actions; " +
+                             "use get_code_actions at the diagnostic location for the actionable list."));
+        }
+        return results;
+    }
+
+    private static string BuildFixDescription(CodeFixProvider provider, CodeAction action)
+    {
+        var assemblyName = provider.GetType().Assembly.GetName().Name ?? "unknown";
+        return $"Code fix \"{action.Title}\" registered by {provider.GetType().Name} ({assemblyName}).";
+    }
+
+    private static async Task<IReadOnlyList<CodeAction>> CaptureRegisteredActionsAsync(
+        CodeFixProvider provider, Document document, Diagnostic diagnostic, CancellationToken ct)
+    {
+        var captured = new List<CodeAction>();
+        var context = new CodeFixContext(document, diagnostic, (action, _) => captured.Add(action), ct);
+
+        try
+        {
+            await provider.RegisterCodeFixesAsync(context).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Best-effort enumeration: a provider that throws while inspecting the
+            // diagnostic location should not crash diagnostic_details for unrelated callers.
+            // The empty-actions case falls through to "no curated fixes" guidance.
+            return [];
+        }
+
+        return captured;
+    }
+
+    /// <summary>
+    /// Returns a guidance message that complements the SupportedFixes list. When no curated
+    /// fixes were resolved, points callers at get_code_actions + preview_code_action so they
+    /// get a uniform fallback path regardless of which analyzer pack is loaded.
+    /// </summary>
+    private static string? GetFixGuidance(string diagnosticId, IReadOnlyList<CodeFixOptionDto> supportedFixes)
+    {
+        if (supportedFixes.Count > 0)
+        {
+            return null;
+        }
+
+        return $"No code fix provider is currently loaded for '{diagnosticId}'. " +
+               "Use get_code_actions at the diagnostic location to list IDE-supplied actions, " +
+               "then preview_code_action to apply one. If you expected an analyzer-supplied fix, " +
+               "verify the analyzer NuGet package is restored and listed in list_analyzers.";
+    }
 
     private static bool DiagnosticMatchesLocation(Diagnostic diagnostic, string diagnosticId, string filePath, int line, int column)
     {

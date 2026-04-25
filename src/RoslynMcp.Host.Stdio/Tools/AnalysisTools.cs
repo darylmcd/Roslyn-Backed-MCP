@@ -136,7 +136,10 @@ public static class AnalysisTools
     }
 
     [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
-        "Get detailed information and curated fix options for a specific diagnostic occurrence. " +
+        "Get detailed information and available code fix options for a specific diagnostic occurrence. " +
+        "supportedFixes is populated from CodeFixProvider instances loaded via the CodeFixProviderRegistry " +
+        "(static IDE Features providers + per-project analyzer references). It will be empty when no provider is loaded for " +
+        "the diagnostic id; in that case guidanceMessage points to get_code_actions + preview_code_action as the fallback. " +
         "Position parameters accept either `line`/`column` or the `startLine`/`startColumn` naming used by other positional tools " +
         "(find_references, goto_definition, get_code_actions, …); supply exactly one pair.")]
     [McpToolMetadata("analysis", "stable", true, false,
