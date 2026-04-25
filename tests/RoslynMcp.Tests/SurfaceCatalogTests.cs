@@ -144,6 +144,122 @@ public sealed class SurfaceCatalogTests
         Assert.IsTrue(tools.TryGetProperty("experimental", out _));
     }
 
+    // get-prompt-text-publish-parameter-schema: catalog prompt entries must publish a
+    // parameters[] array per prompt so callers can build parametersJson for get_prompt_text
+    // without a 2-roundtrip learn-then-invoke loop. The 3-param `debug_test_failure` (1 required
+    // + 2 optional) is the representative shape from the plan: it covers required-parameter
+    // serialization, optional-parameter default-value serialization (string? defaulting to null),
+    // and the DI-service / CancellationToken exclusion (ITestRunnerService and `ct` must NOT
+    // appear).
+    [TestMethod]
+    public void Prompts_PublishParameterSchema_OnCatalogEntry()
+    {
+        var promptEntries = ServerSurfaceCatalog.Prompts;
+        // Every prompt must carry a non-null Parameters list — the empty-prompt case is allowed
+        // (some prompts take no user-facing args) but null is reserved for tools / resources.
+        foreach (var prompt in promptEntries)
+        {
+            Assert.IsNotNull(prompt.Parameters,
+                $"Prompt '{prompt.Name}' must publish a parameters[] array (got null).");
+        }
+
+        var debug = promptEntries.Single(p => p.Name == "debug_test_failure");
+        Assert.IsNotNull(debug.Parameters);
+        Assert.AreEqual(3, debug.Parameters!.Count,
+            "debug_test_failure exposes 3 user-facing params: workspaceId, projectName, filter "
+            + "(ITestRunnerService and CancellationToken are DI-resolved and must be excluded).");
+
+        var workspaceId = debug.Parameters.Single(p => p.Name == "workspaceId");
+        Assert.AreEqual("string", workspaceId.Type);
+        Assert.IsTrue(workspaceId.Required, "workspaceId has no default and must be Required=true.");
+        Assert.IsNull(workspaceId.DefaultValue);
+        Assert.AreEqual("The workspace session identifier", workspaceId.Description);
+
+        var projectName = debug.Parameters.Single(p => p.Name == "projectName");
+        Assert.AreEqual("string", projectName.Type, "Nullable reference type collapses to bare 'string' in the schema.");
+        Assert.IsFalse(projectName.Required, "projectName has a `= null` default and must be Required=false.");
+        Assert.IsNull(projectName.DefaultValue, "DefaultValue=null mirrors the C# `= null` default.");
+        Assert.AreEqual("Optional: specific test project name", projectName.Description);
+
+        var filter = debug.Parameters.Single(p => p.Name == "filter");
+        Assert.IsFalse(filter.Required);
+        Assert.IsNull(filter.DefaultValue);
+    }
+
+    [TestMethod]
+    public void Prompts_ExcludeServicesAndCancellationToken_FromParameterSchema()
+    {
+        // Guard against schema regression: every prompt parameter list must be free of
+        // CancellationToken and Microsoft.Extensions.* / interface-typed DI services. The
+        // catalog publishes only the values an agent must supply via parametersJson.
+        foreach (var prompt in ServerSurfaceCatalog.Prompts)
+        {
+            Assert.IsNotNull(prompt.Parameters);
+            foreach (var p in prompt.Parameters!)
+            {
+                Assert.AreNotEqual("CancellationToken", p.Type,
+                    $"Prompt '{prompt.Name}' parameter '{p.Name}' must not surface CancellationToken.");
+
+                // Heuristic: a leading 'I' followed by an uppercase letter strongly suggests an
+                // interface-typed DI service slipped through (e.g. 'IDiagnosticService'). The
+                // PromptParameterIndex.IsServiceType filter must drop those before publish.
+                var looksLikeInterface = p.Type.Length > 1
+                    && p.Type[0] == 'I'
+                    && char.IsUpper(p.Type[1]);
+                Assert.IsFalse(looksLikeInterface,
+                    $"Prompt '{prompt.Name}' parameter '{p.Name}' looks like an interface type ('{p.Type}') — DI services must be filtered out before publishing.");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void Prompts_PublishedAsJson_UsesCamelCaseSchemaFields()
+    {
+        // End-to-end: the camelCase serializer config that ServerResources uses must produce
+        // exactly the field names callers will read — `parameters` (not `Parameters`),
+        // `defaultValue` (not `DefaultValue`), etc. A regression to PascalCase would silently
+        // break consumers parsing by JSON-key.
+        var page = ServerSurfaceCatalog.PageEntries(
+            ServerSurfaceCatalog.Prompts, offset: 0, limit: 200, resourceName: "test");
+        var json = JsonSerializer.Serialize(page, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+        using var doc = JsonDocument.Parse(json);
+        var entries = doc.RootElement.GetProperty("entries");
+        var debug = entries.EnumerateArray().Single(e => e.GetProperty("name").GetString() == "debug_test_failure");
+
+        Assert.IsTrue(debug.TryGetProperty("parameters", out var parameters),
+            "Catalog prompt entry must publish 'parameters' (camelCase) field.");
+        Assert.AreEqual(JsonValueKind.Array, parameters.ValueKind);
+        Assert.AreEqual(3, parameters.GetArrayLength());
+
+        var workspaceIdParam = parameters.EnumerateArray().Single(p => p.GetProperty("name").GetString() == "workspaceId");
+        Assert.AreEqual("string", workspaceIdParam.GetProperty("type").GetString());
+        Assert.IsTrue(workspaceIdParam.GetProperty("required").GetBoolean());
+        Assert.IsTrue(workspaceIdParam.TryGetProperty("defaultValue", out var dv) && dv.ValueKind == JsonValueKind.Null,
+            "Required parameter must serialize defaultValue as JSON null.");
+        Assert.AreEqual("The workspace session identifier",
+            workspaceIdParam.GetProperty("description").GetString());
+    }
+
+    [TestMethod]
+    public void Prompts_OptionalNullableValueType_FormatsAsCSharpKeywordWithQuestionMark()
+    {
+        // refactor_and_validate has `int? endLine = null` and `int? endColumn = null` —
+        // the schema must report Required=false and DefaultValue=null with type label "int?".
+        // Picking this prompt (alongside debug_test_failure) gives coverage of nullable
+        // value-type parameters distinct from nullable reference-type parameters.
+        var refactor = ServerSurfaceCatalog.Prompts.SingleOrDefault(p => p.Name == "refactor_and_validate");
+        Assert.IsNotNull(refactor);
+        Assert.IsNotNull(refactor!.Parameters);
+
+        var endLine = refactor.Parameters!.Single(p => p.Name == "endLine");
+        Assert.AreEqual("int?", endLine.Type, "Nullable<int> formats as 'int?' for readability.");
+        Assert.IsFalse(endLine.Required);
+        Assert.IsNull(endLine.DefaultValue);
+    }
+
     private static string[] GetRegisteredNames<TAttribute>(Assembly assembly)
         where TAttribute : Attribute
     {
