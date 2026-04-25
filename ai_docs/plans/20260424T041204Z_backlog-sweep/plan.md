@@ -593,7 +593,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #431, 2026-04-25) |
 | **Backlog rows closed** | `revert-apply-by-sequence-number` |
 | **Diagnosis** | `revert_last_apply` is LIFO-only and gets cleared by auto-reload; late-session revert of an earlier apply requires hand edits. Row cites `src/RoslynMcp.Roslyn/Services/UndoService.cs` + `src/RoslynMcp.Host.Stdio/Tools/UndoTools.cs`. `workspace_changes` already tracks ordered applies with sequence numbers. |
 | **Approach** | Add `revert_apply_by_sequence(workspaceId, sequenceNumber)` to `UndoService` returning `{reverted, revertedOperation, affectedFiles}`. Fail cleanly when later applies depend on the target. Register in `UndoTools` as a new `[McpServerTool]`; add a `ServerSurfaceCatalog` entry (forced by RMCP001/RMCP002). Update `README.md` surface-count. Register `I{Undo}Service` test-fixture DI if not already present. |
@@ -653,7 +653,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #429, 2026-04-25) |
 | **Backlog rows closed** | `auto-reload-retry-inside-call` |
 | **Diagnosis** | `format_document_preview` / `get_completions` / `find_references_bulk` return "Document not found" or empty with `staleAction="auto-reloaded"` — server self-healed but caller saw an error. Row cites `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` + per-tool wrappers. |
 | **Approach** | In the stale-snapshot handler shared across tools (WorkspaceManager's post-reload path), retry the operation once against the refreshed snapshot before surfacing the error; annotate retried calls with `_meta.retriedAfterReload=true`. Cancellation token caps total time. |
@@ -713,7 +713,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #430, 2026-04-25) |
 | **Backlog rows closed** | `diagnostic-details-supported-fixes-empty` |
 | **Diagnosis** | Behavior per backlog row; code path = `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:138`. `supportedFixes:[]` for CA1826 / ASP0015 / MA0001 / SYSLIB1045 despite description advertising "curated fix options." No cross-layer drift. |
 | **Approach** | Prefer populating `supportedFixes` from the loaded `CodeFixProviderRegistry`. Fallback: soften the tool description to "fix options when available" if the registry doesn't expose the ids. |
