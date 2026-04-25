@@ -180,16 +180,110 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 using (await rwLock.WriterLockAsync(linked).ConfigureAwait(false))
                 {
                     EnsureWorkspaceStillExists(workspaceId);
-                    return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => action(linked)).ConfigureAwait(false);
+                    return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked)).ConfigureAwait(false);
                 }
             }
 
             using (await rwLock.ReaderLockAsync(linked).ConfigureAwait(false))
             {
                 EnsureWorkspaceStillExists(workspaceId);
-                return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => action(linked)).ConfigureAwait(false);
+                return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked)).ConfigureAwait(false);
             }
         }, linked).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// auto-reload-retry-inside-call: when <see cref="ApplyStalenessPolicyAsync"/> just
+    /// auto-reloaded the workspace for this call (<see cref="AmbientGateMetrics.StaleAction"/>
+    /// stamped <c>"auto-reloaded"</c>) and the action immediately fails with a transient
+    /// stale-snapshot error (<c>"Document not found"</c> / <c>"not found in workspace"</c>),
+    /// retry the action exactly once. The action's closure re-resolves through
+    /// <see cref="IWorkspaceManager.GetCurrentSolution"/> on each invocation, so the second
+    /// attempt sees the post-reload snapshot.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this exists:</b> the audit-driven workflow showed <c>format_document_preview</c>,
+    /// <c>get_completions</c>, and <c>find_references_bulk</c> returning <c>"Document not found"</c>
+    /// with <c>staleAction="auto-reloaded"</c> stamped — the reload had succeeded but the
+    /// action's first snapshot read still observed the pre-reload solution (file watcher /
+    /// MSBuildWorkspace settling window). The next-turn retry from the caller always succeeded.
+    /// </para>
+    /// <para>
+    /// <b>Cap and scope:</b> the retry is hard-capped at 1 (no cascade — see plan Risks). It
+    /// fires <i>only</i> when <c>StaleAction == "auto-reloaded"</c>, so error paths outside an
+    /// auto-reload window propagate unchanged. Total time is bounded by the request timeout's
+    /// linked cancellation token (<paramref name="ct"/>); a second attempt that runs out of
+    /// budget surfaces the original exception via the standard catch-and-rethrow at the end.
+    /// </para>
+    /// <para>
+    /// <b>Telemetry:</b> on retry, <see cref="AmbientGateMetrics.RetriedAfterReload"/> is set
+    /// to <see langword="true"/> regardless of whether the retry succeeds. Callers see the
+    /// flag in <c>_meta.retriedAfterReload</c> on both success envelopes (the read finally
+    /// landed) and error envelopes (the workspace really did lose the document).
+    /// </para>
+    /// </remarks>
+    private static async Task<T> RunActionWithPostReloadRetryAsync<T>(
+        Func<CancellationToken, Task<T>> action,
+        CancellationToken ct)
+    {
+        try
+        {
+            return await action(ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ShouldRetryAfterAutoReload(ex))
+        {
+            // Stamp the retry flag BEFORE the second attempt so the response envelope shows
+            // retriedAfterReload=true on both the success path AND the eventual-failure path.
+            // The eventual-failure path is informative for telemetry — it confirms the retry
+            // ran but the workspace genuinely lost the document.
+            if (AmbientGateMetrics.Current is { } metrics)
+            {
+                metrics.RetriedAfterReload = true;
+            }
+
+            ct.ThrowIfCancellationRequested();
+            return await action(ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="ex"/> is a transient stale-snapshot
+    /// error <i>and</i> the current request just auto-reloaded the workspace. The intersection
+    /// is deliberately narrow: any one condition alone is not enough to justify a retry.
+    /// </summary>
+    private static bool ShouldRetryAfterAutoReload(Exception ex)
+    {
+        if (AmbientGateMetrics.Current?.StaleAction != "auto-reloaded")
+        {
+            return false;
+        }
+
+        // Cancellation must always propagate immediately; a retry would just hit the same
+        // cancelled token. OperationCanceledException covers TaskCanceledException too.
+        if (ex is OperationCanceledException)
+        {
+            return false;
+        }
+
+        // Already retried once on this call — never cascade. Retry is hard-capped at 1.
+        if (AmbientGateMetrics.Current?.RetriedAfterReload == true)
+        {
+            return false;
+        }
+
+        // Stale-snapshot errors surface in three exception shapes across the service layer:
+        //   - InvalidOperationException("Document not found: ...") — DocumentResolution helper
+        //   - FileNotFoundException("Document not found in workspace: ...") — EditorConfigService,
+        //     FixAllService, FlowAnalysisService, OperationService
+        //   - KeyNotFoundException("Document not found: ...") / similar — SyntaxTools,
+        //     WorkspaceResources
+        // Match by message substring so any service that follows the same naming convention
+        // is covered without a hard-coded type list.
+        var message = ex.Message ?? string.Empty;
+        return ex is (InvalidOperationException or FileNotFoundException or KeyNotFoundException) &&
+               (message.Contains("Document not found", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("not found in workspace", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

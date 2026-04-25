@@ -513,6 +513,179 @@ public class WorkspaceExecutionGateTests
         Assert.AreEqual(1, manager.ReloadCount);
     }
 
+    // ---------- auto-reload-retry-inside-call: post-reload retry ----------
+
+    /// <summary>
+    /// auto-reload-retry-inside-call: after the gate auto-reloads a stale workspace, if the
+    /// action's first attempt fails with a transient stale-snapshot error
+    /// (<c>"Document not found"</c>), the gate retries exactly once. The closure re-resolves
+    /// against the post-reload snapshot, so the second attempt sees the fresh state and
+    /// succeeds. The response envelope carries <c>retriedAfterReload=true</c>.
+    /// </summary>
+    [TestMethod]
+    public async Task StalenessPolicy_AutoReload_ActionFailsWithDocumentNotFound_RetriesOnceAndSucceeds()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        var attempts = 0;
+        var result = await gate.RunReadAsync(WorkspaceA, _ =>
+        {
+            var n = Interlocked.Increment(ref attempts);
+            if (n == 1)
+            {
+                // Simulate the post-reload "Document not found" race the audit observed.
+                throw new InvalidOperationException("Document not found: C:/path/to/File.cs");
+            }
+            return Task.FromResult(42);
+        }, CancellationToken.None);
+
+        Assert.AreEqual(2, attempts, "Action must run twice — once for the failing attempt, once for the post-reload retry.");
+        Assert.AreEqual(42, result, "The retry's return value must propagate to the caller.");
+        Assert.AreEqual(1, manager.ReloadCount, "Auto-reload should fire exactly once for the stale workspace; the retry must not trigger a second reload.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.AreEqual("auto-reloaded", metrics!.StaleAction);
+        Assert.AreEqual(true, metrics.RetriedAfterReload,
+            "Successful retry after auto-reload must stamp retriedAfterReload=true so callers can correlate the recovered call.");
+    }
+
+    /// <summary>
+    /// auto-reload-retry-inside-call: cap the retry at 1. If the second attempt also fails
+    /// with the same transient error, the original exception propagates. The retry flag stays
+    /// <c>true</c> so the error envelope still records that a recovery attempt was made.
+    /// </summary>
+    [TestMethod]
+    public async Task StalenessPolicy_AutoReload_ActionAlwaysFails_RetriesOnceThenPropagates()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        var attempts = 0;
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            gate.RunReadAsync<int>(WorkspaceA, _ =>
+            {
+                Interlocked.Increment(ref attempts);
+                throw new InvalidOperationException("Document not found: C:/path/to/Missing.cs");
+            }, CancellationToken.None)).ConfigureAwait(false);
+
+        Assert.AreEqual(2, attempts, "Action must run twice (cap at 1 retry); a third attempt would indicate the cap was breached.");
+        Assert.AreEqual(1, manager.ReloadCount, "Reload count must remain 1 even when the retry also fails.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.AreEqual(true, metrics!.RetriedAfterReload,
+            "Even when the retry surfaces the original exception, the flag stamps so telemetry can attribute the failure.");
+    }
+
+    /// <summary>
+    /// auto-reload-retry-inside-call: only retry when the workspace was just auto-reloaded.
+    /// A "Document not found" without an auto-reload window is a permanent error (the file
+    /// genuinely is not in the solution), so retrying would just burn a round-trip.
+    /// </summary>
+    [TestMethod]
+    public async Task FreshWorkspace_ActionFailsWithDocumentNotFound_DoesNotRetry()
+    {
+        var manager = new FakeGateWorkspaceManager(); // not stale
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        var attempts = 0;
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            gate.RunReadAsync<int>(WorkspaceA, _ =>
+            {
+                Interlocked.Increment(ref attempts);
+                throw new InvalidOperationException("Document not found: C:/path/to/Missing.cs");
+            }, CancellationToken.None)).ConfigureAwait(false);
+
+        Assert.AreEqual(1, attempts, "Action must run exactly once when no auto-reload happened — Document-not-found is a permanent error here.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.IsNull(metrics!.StaleAction, "No stale workspace, no auto-reload, no stamped action.");
+        Assert.IsNull(metrics.RetriedAfterReload, "Retry flag must remain null outside the auto-reload window.");
+    }
+
+    /// <summary>
+    /// auto-reload-retry-inside-call: only retry on stale-snapshot exception shapes. An
+    /// unrelated <see cref="InvalidOperationException"/> (e.g. an analyzer crash) must
+    /// propagate immediately even after an auto-reload — silently retrying would mask
+    /// genuine bugs and burn user time.
+    /// </summary>
+    [TestMethod]
+    public async Task StalenessPolicy_AutoReload_ActionFailsWithUnrelatedError_DoesNotRetry()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        var attempts = 0;
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
+            gate.RunReadAsync<int>(WorkspaceA, _ =>
+            {
+                Interlocked.Increment(ref attempts);
+                // Not a stale-snapshot shape — analyzer-style failure.
+                throw new InvalidOperationException("Analyzer 'FooAnalyzer' crashed during compilation.");
+            }, CancellationToken.None)).ConfigureAwait(false);
+
+        Assert.AreEqual(1, attempts, "Unrelated exceptions must not trigger the retry path.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.AreEqual("auto-reloaded", metrics!.StaleAction);
+        Assert.IsNull(metrics.RetriedAfterReload, "Retry flag must remain null when the failure is outside the stale-snapshot shape.");
+    }
+
+    /// <summary>
+    /// auto-reload-retry-inside-call: cancellation must short-circuit the retry. If the
+    /// caller's request timeout fires (or they cancel), the second attempt must not run —
+    /// it would just hit the same cancelled token. The original exception propagates.
+    /// </summary>
+    [TestMethod]
+    public async Task StalenessPolicy_AutoReload_CancellationDuringFailureSkipsRetry()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        using var cts = new CancellationTokenSource();
+        var attempts = 0;
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(() =>
+            gate.RunReadAsync<int>(WorkspaceA, _ =>
+            {
+                Interlocked.Increment(ref attempts);
+                // Cancel before throwing the would-be-retryable exception. The retry path
+                // honors the linked token so the second attempt must NOT run.
+                cts.Cancel();
+                throw new InvalidOperationException("Document not found: C:/path/to/File.cs");
+            }, cts.Token)).ConfigureAwait(false);
+
+        Assert.AreEqual(1, attempts, "Cancellation between attempts must skip the retry — the second attempt would just hit the same cancelled token.");
+    }
+
     private sealed class ConcurrencyTracker
     {
         private int _current;
