@@ -693,7 +693,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | deferred (2026-04-25 — dedicated phased plan owns this work, see `ai_docs/plans/20260422T170500Z_test-parallelization-audit/plan.md`) |
 | **Backlog rows closed** | `ci-test-parallelization-audit` |
 | **Diagnosis** | `eng/verify-release.ps1` has 3 pre-existing cleanup-race flakes after the `[DoNotParallelize]` sweep completed. Row cites candidate locations `tests/RoslynMcp.Tests/AssemblyCleanup.cs`, `tests/RoslynMcp.Tests/TestBase.cs`, and "another teardown path." Dedicated phased plan already exists at `ai_docs/plans/20260422T170500Z_test-parallelization-audit/plan.md`. |
 | **Approach** | Phase 1: reproduce + name the failing tests (≥3 `verify-release.ps1` runs). Phase 2: localize the race to a single file. Phase 3: fix + add repeated-release stress gate (`eng/verify-release-stress.ps1` / CI). This initiative is the localization phase only — the fix ships as a follow-on row if the localization lands in a separate file budget. |
@@ -873,7 +873,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #441, 2026-04-25) |
 | **Backlog rows closed** | `test-related-files-service-refactor-underreporting` |
 | **Diagnosis** | `TestDiscoveryService` fallback leans on type-name/filename affinity; multi-file service changes underreport. Row cites 2026-04-23 sweep misses (`MutationAnalysisService` + `ScaffoldingService`, `CodePatternAnalyzer` + `TestDiscoveryService`). |
 | **Approach** | Broaden fallback heuristic to surface likely integration or neighboring service tests for multi-file changes: add namespace-neighbor and inbound-reference expansion when file-affinity match is empty. |
@@ -893,7 +893,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | deferred (2026-04-25 — heroic-last gate at sweep closeout; reactivate when 50+ project `workspace_load` timings land per `docs/large-solution-profiling-baseline.md`) |
 | **Backlog rows closed** | `workspace-process-pool-or-daemon` |
 | **Diagnosis** | Row explicitly depends on `large-solution profile` per `docs/large-solution-profiling-baseline.md`. No production code lands until profiling evidence (50+ project timings) shows `workspace_warm` is insufficient. Marked `heroic-last` — may `defer` at closeout per v4 guidance. |
 | **Approach** | Phase 1: capture representative 50+ project timings per baseline doc. Phase 2 (conditional): produce bounded design note comparing daemon / process-pool / shared-workspace. NO implementation within this initiative. |
