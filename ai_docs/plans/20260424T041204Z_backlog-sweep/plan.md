@@ -753,7 +753,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #433, 2026-04-25) |
 | **Backlog rows closed** | `split-class-preview-orphan-indent` |
 | **Diagnosis** | `split_class_preview` leaves orphan-indentation blank lines where removed members lived. Row cites `src/RoslynMcp.Roslyn/Services/ClassSplitOrchestrator.cs` + `src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs:43`. |
 | **Approach** | In `ClassSplitOrchestrator`, post-process the output: trim trailing whitespace on lines that become empty after member removal. |
@@ -793,7 +793,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #434, 2026-04-25) |
 | **Backlog rows closed** | `scaffold-test-preview-sibling-inference-overbroad` |
 | **Diagnosis** | `scaffold_test_preview` copies `[Trait("Category","Playwright")]`, Playwright usings, and 10+ unused imports from the MRU sibling fixture. Row cites `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs` + `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs:87`. |
 | **Approach** | Narrow sibling-inference to file-scoped namespace + base-class name only. Exclude `[Trait]` / `[Category]` / `[Collection]` attributes. Trim usings to those actually referenced in the generated body. |
