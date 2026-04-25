@@ -1,5 +1,8 @@
 # Backlog sweep plan — 20260424T041204Z
 
+<!-- purpose: In-repo planning pass for the 2026-04-24 backlog-sweep batch (44-row post-intake backlog). -->
+<!-- scope: in-repo -->
+
 Produced by `ai_docs/prompts/backlog-sweep-plan.md` v4 against the 44-row backlog
 (5 P2 + 29 P3 + 10 P4). Initiatives are ordered per Step 5 (correctness-class
 desc, context-cost asc within band, catalog+WorkspaceManager distribution).
