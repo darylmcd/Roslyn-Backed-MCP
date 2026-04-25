@@ -57,13 +57,13 @@ Capture the merge commit SHA for reporting.
 ### 3. Post-merge cleanup (from primary repo root)
 
 ```
-git fetch origin && git reset --hard origin/main
+git fetch origin && git merge --ff-only origin/main
 git worktree remove --force <worktreePath>        # skip if worktreePath is null
 git push origin --delete <branch> 2>/dev/null || true   # --delete-branch may have handled it
 git remote prune origin
 ```
 
-The `reset --hard origin/main` is required because `gh pr merge --squash` creates a new commit SHA on origin unrelated to any local commit, so `git pull --ff-only` can refuse or silently no-op.
+`git merge --ff-only` is the correct sync — local `main` should have no ahead commits (the orchestrator commits on `chore/reconcile-batch-N`, not on `main`), so a fast-forward to `origin/main` after fetch always succeeds. If ff-only ever refuses, that signals a real bug (someone committed directly to local main): emit `STATUS: error` with the merge output rather than papering over it with a destructive reset.
 
 ### 4. Plan-state handoff
 
@@ -76,10 +76,12 @@ transition in the batch-boundary reconcile PR, which atomically updates:
 - `CHANGELOG.md` `[Unreleased]` entries + Maintenance tallies.
 
 Rationale: `main` is branch-protected, so any local `plan.md` commit you make
-cannot be pushed — and the next reconciler's Step 3 `git reset --hard origin/main`
-would wipe it anyway. The 2026-04-18 backlog-sweep pass-4 retrospective confirmed
-5/5 reconciler plan.md commits were discarded in this way. The orchestrator does
-the work correctly once in the reconcile PR; reconcilers stay focused on merge + cleanup.
+cannot be pushed — and the next reconciler's Step 3 `git merge --ff-only origin/main`
+will refuse to fast-forward (because the local main has diverged) and force a
+manual reconciliation. The 2026-04-18 backlog-sweep pass-4 retrospective confirmed
+5/5 reconciler plan.md commits were discarded in earlier passes. The orchestrator
+does the work correctly once in the reconcile PR; reconcilers stay focused on
+merge + cleanup.
 
 ## Output contract
 
@@ -100,7 +102,7 @@ NOTES: <one line if anything unusual, else omit>
 
 - NEVER use `--admin` or `-f` to bypass failing checks or review gates.
 - NEVER force-push anywhere.
-- `git reset --hard` is ONLY allowed against `origin/main` during the post-merge sync.
+- NEVER use `git reset --hard` — `git merge --ff-only origin/main` is the post-merge sync. If ff-only refuses, that's a real divergence: report `STATUS: error` instead of forcing the reset.
 - NEVER edit `CHANGELOG.md`, `changelog.d/*.md`, or `ai_docs/backlog.md` — those belong to the orchestrator's batch-boundary reconcile PR (parallel mode) or to the `/draft-changelog-entry` + `/close-backlog-rows` skills (serial mode).
 - If `gh pr view` itself fails (network / auth / rate limit), retry once after 5s. If it still fails, emit `STATUS: error` with the `gh` error message — do not guess the PR state.
 - If `git worktree remove` fails (file lock, Windows testhost), emit the error in `NOTES:` but continue with the remaining cleanup. Do not abort — the merge itself succeeded.
