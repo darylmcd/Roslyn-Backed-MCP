@@ -94,4 +94,43 @@ public sealed class SymbolImpactSweepBudgetTests : SharedWorkspaceTestBase
         // populate up to their own cap.
         Assert.IsTrue(unboundedResult.References.Count >= cappedResult.References.Count);
     }
+
+    /// <summary>
+    /// Regression for `symbol-impact-sweep-suggested-tasks-count-drift` (P4): the
+    /// suggested-tasks string was previously built from the truncated list length
+    /// (`references.Count` after `Take(cap)`), so a 193-ref symbol capped at 10 reported
+    /// "Review 10 reference(s)" instead of the true blast radius. Reviewers cannot size the
+    /// work from the capped count. The fix captures pre-cap totals before the `Take(cap)`
+    /// pass and feeds those into the task-string builder.
+    /// </summary>
+    [TestMethod]
+    public async Task SweepAsync_SuggestedTasks_ReportsPreCapReferenceTotal()
+    {
+        var animalDoc = WorkspaceManager.GetCurrentSolution(WorkspaceId)
+            .Projects.SelectMany(p => p.Documents)
+            .FirstOrDefault(d => d.Name == "IAnimal.cs");
+        Assert.IsNotNull(animalDoc);
+
+        var locator = SymbolLocator.BySource(animalDoc.FilePath!, line: 5, column: 10);
+
+        // Run unbounded first to capture the true total — the IAnimal sample fixture has
+        // multiple references; we just need >= 2 to make the truncation observable.
+        var unboundedResult = await _impactSweepService.SweepAsync(WorkspaceId, locator, CancellationToken.None);
+        var totalReferenceCount = unboundedResult.References.Count;
+        Assert.IsTrue(totalReferenceCount >= 2,
+            $"sample fixture must have >=2 IAnimal references for this test to be meaningful (got {totalReferenceCount})");
+
+        // Cap to 1 so the truncated list length (1) differs from the pre-cap total (>=2).
+        var cappedResult = await _impactSweepService.SweepAsync(
+            WorkspaceId, locator, CancellationToken.None, summary: false, maxItemsPerCategory: 1);
+
+        Assert.AreEqual(1, cappedResult.References.Count, "guard: cap must have truncated to 1");
+
+        // The suggested-tasks string MUST cite the pre-cap total, not the capped list length.
+        var referenceTask = cappedResult.SuggestedTasks
+            .FirstOrDefault(t => t.StartsWith("Review ", StringComparison.Ordinal));
+        Assert.IsNotNull(referenceTask, "expected a 'Review N reference(s)' task entry");
+        StringAssert.Contains(referenceTask, $"Review {totalReferenceCount} reference(s)",
+            $"task-string must report pre-cap total {totalReferenceCount}, not truncated list length 1 (got: '{referenceTask}')");
+    }
 }

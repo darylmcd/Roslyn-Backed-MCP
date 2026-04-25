@@ -61,6 +61,15 @@ public sealed class ImpactSweepService : IImpactSweepService
         // surface paired-DTO mapper findings (To*/From* asymmetry).
         var persistenceFindings = await CollectPersistenceLayerFindingsAsync(workspaceId, locator, ct).ConfigureAwait(false);
 
+        // symbol-impact-sweep-suggested-tasks-count-drift: capture pre-cap totals BEFORE
+        // truncation so the suggested-tasks string reports the true blast radius (e.g. "Review
+        // 193 reference(s)") rather than the truncated list length ("Review 10 reference(s)").
+        // The capped lists are what we return to the caller, but reviewers need the unbounded
+        // count to size the work.
+        var totalReferenceCount = references.Count;
+        var totalDiagnosticCount = diagnostics.Count;
+        var totalMapperCount = mapperCallsites.Count;
+
         // symbol-impact-sweep-output-size-blowup: maxItemsPerCategory truncates each list
         // INDEPENDENTLY (so a 1500-ref symbol with 0 mapper callsites still returns the
         // mapper-callsite list). Persistence findings are not capped — they are always
@@ -72,7 +81,7 @@ public sealed class ImpactSweepService : IImpactSweepService
             diagnostics = diagnostics.Take(cap).ToList();
         }
 
-        var tasks = BuildSuggestedTasks(references.Count, diagnostics.Count, mapperCallsites.Count, persistenceFindings.Count);
+        var tasks = BuildSuggestedTasks(totalReferenceCount, totalDiagnosticCount, totalMapperCount, persistenceFindings.Count);
 
         return new SymbolImpactSweepDto(
             SymbolDisplay: symbolDisplay,
