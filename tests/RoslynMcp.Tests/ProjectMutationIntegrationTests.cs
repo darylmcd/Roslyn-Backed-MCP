@@ -141,6 +141,90 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task project_mutation_preview_xml_formatting_AddPackageReference_KeepsPropertyGroupAndItemGroupOnSeparateLines()
+    {
+        // project-mutation-preview-xml-formatting regression: the previous serializer left
+        // </PropertyGroup> and the freshly-inserted <ItemGroup> on the same line because
+        // ProjectMutationService.GetOrCreateItemGroup used two sequential AddAfterSelf calls
+        // (LIFO ordering) instead of the FORMAT-BUG-003-fixed splice already present in
+        // OrchestrationMsBuildXml. After consolidating onto OrchestrationMsBuildXml.GetOrCreateItemGroup,
+        // the diff must show </PropertyGroup> and <ItemGroup> on separate lines AND the new
+        // <PackageReference> indented as a child of <ItemGroup>, not glued to its opening tag.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+            workspace.WorkspaceId,
+            new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview);
+        var diff = preview.Changes.First().UnifiedDiff;
+        Assert.IsFalse(diff.Contains("</PropertyGroup><ItemGroup>", StringComparison.Ordinal),
+            $"project-mutation-preview-xml-formatting: </PropertyGroup> and <ItemGroup> must not be concatenated. Diff:\n{diff}");
+        Assert.IsFalse(diff.Contains("<ItemGroup><PackageReference", StringComparison.Ordinal),
+            $"project-mutation-preview-xml-formatting: <ItemGroup> and <PackageReference> must not be concatenated. Diff:\n{diff}");
+        // Sanity: the diff should contain a properly-indented PackageReference line beginning
+        // with the customary 4-space child indent inside <ItemGroup>.
+        StringAssert.Contains(diff, "    <PackageReference Include=\"Humanizer.Core\"",
+            $"Expected 4-space indented PackageReference. Diff:\n{diff}");
+    }
+
+    [TestMethod]
+    public async Task project_mutation_preview_xml_formatting_SetProjectProperty_KeepsNewPropertyOnOwnLine()
+    {
+        // project-mutation-preview-xml-formatting regression: SetElementValue inserts the new
+        // child XElement with no surrounding whitespace text nodes, which makes XmlWriter emit
+        // `<TargetFramework>...</TargetFramework><LangVersion>preview</LangVersion></PropertyGroup>`
+        // on a single line whenever the property is being added (vs updated). The fix routes
+        // through AddChildElementPreservingIndentation so the new property is on its own line
+        // with proper child indent.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewSetProjectPropertyAsync(
+            workspace.WorkspaceId,
+            new SetProjectPropertyDto("SampleLib", "LangVersion", "preview"),
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview);
+        var diff = preview.Changes.First().UnifiedDiff;
+        // The new <LangVersion> sibling must NOT be glued to a preceding closing tag (e.g.
+        // </ImplicitUsings><LangVersion> or </TreatWarningsAsErrors><LangVersion>).
+        Assert.IsFalse(System.Text.RegularExpressions.Regex.IsMatch(diff, @"</[A-Za-z]+><LangVersion>"),
+            $"project-mutation-preview-xml-formatting: <LangVersion> must not be glued to a preceding closing tag. Diff:\n{diff}");
+        // It also must not be glued to </PropertyGroup> on the trailing side.
+        Assert.IsFalse(diff.Contains("<LangVersion>preview</LangVersion></PropertyGroup>", StringComparison.Ordinal),
+            $"project-mutation-preview-xml-formatting: <LangVersion> must not be on the same line as </PropertyGroup>. Diff:\n{diff}");
+        // Sanity: the diff should contain a properly-indented <LangVersion> line.
+        StringAssert.Contains(diff, "    <LangVersion>preview</LangVersion>",
+            $"Expected 4-space indented <LangVersion>. Diff:\n{diff}");
+    }
+
+    [TestMethod]
+    public async Task project_mutation_preview_xml_formatting_AddCentralPackageVersion_KeepsItemGroupOnSeparateLine()
+    {
+        // project-mutation-preview-xml-formatting regression: same root cause as the
+        // package-reference and property-set defects — applied to Directory.Packages.props
+        // mutations. Previously the new <ItemGroup> wrapping the <PackageVersion> landed on
+        // the same line as </PropertyGroup> and the child was collapsed inside the wrapper.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewAddCentralPackageVersionAsync(
+            workspace.WorkspaceId,
+            new AddCentralPackageVersionDto("Humanizer.Core", "2.14.1"),
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview);
+        var diff = preview.Changes.First().UnifiedDiff;
+        Assert.IsFalse(diff.Contains("</PropertyGroup><ItemGroup>", StringComparison.Ordinal),
+            $"project-mutation-preview-xml-formatting: </PropertyGroup> and <ItemGroup> must not be concatenated. Diff:\n{diff}");
+        Assert.IsFalse(diff.Contains("<ItemGroup><PackageVersion", StringComparison.Ordinal),
+            $"project-mutation-preview-xml-formatting: <ItemGroup> and <PackageVersion> must not be concatenated. Diff:\n{diff}");
+        // Sanity: the diff should contain a properly-indented PackageVersion line.
+        StringAssert.Contains(diff, "    <PackageVersion Include=\"Humanizer.Core\"",
+            $"Expected 4-space indented PackageVersion. Diff:\n{diff}");
+    }
+
+    [TestMethod]
     public async Task Add_And_Remove_Target_Framework_Preview_And_Apply_Updates_Isolated_Project_File()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
