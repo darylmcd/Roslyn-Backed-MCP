@@ -58,4 +58,68 @@ public static class UndoTools
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
+
+    [McpServerTool(Name = "revert_apply_by_sequence", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
+     McpToolMetadata("undo", "stable", false, true,
+        "Revert a specific earlier apply identified by its workspace_changes sequence number."),
+     Description("Revert a specific earlier apply by its sequence number — the value reported by workspace_changes. Complements revert_last_apply: instead of LIFO, this revert targets any historical apply still in this session's revert history. Conservative dependency check: if a later apply touched any file that the target apply also touched, the revert is blocked and the offending later sequence numbers are returned in `blockingSequences` so the caller can revert them first. workspaceId is required. sequenceNumber must match a value returned by workspace_changes for this workspace. Returns `{reverted, revertedOperation, affectedFiles, reason?, blockingSequences?}` — `reason` is `unknown-sequence` when the sequence has no recorded snapshot, `dependency-blocked` when a later apply overlaps in files, and `revert-failed` when the snapshot exists but disk/workspace mechanics rejected the revert.")]
+    public static Task<string> RevertApplyBySequence(
+        IWorkspaceExecutionGate gate,
+        IUndoService undoService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("The sequence number reported by workspace_changes for the apply you want to revert")] int sequenceNumber,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            throw new ArgumentException("workspaceId is required. Pass the session id returned by workspace_load.");
+        }
+        if (sequenceNumber <= 0)
+        {
+            throw new ArgumentException("sequenceNumber must be a positive integer matching a value reported by workspace_changes.", nameof(sequenceNumber));
+        }
+        return gate.RunWriteAsync(workspaceId, async c =>
+        {
+            var result = await undoService.RevertBySequenceAsync(workspaceId, sequenceNumber, c).ConfigureAwait(false);
+
+            // Shape the response: include `reason`/`blockingSequences` only when present so success
+            // payloads stay clean. Failure payloads always carry `reason`.
+            object payload = result.Reverted
+                ? new
+                {
+                    reverted = true,
+                    revertedOperation = result.RevertedOperation,
+                    affectedFiles = result.AffectedFiles,
+                    sequenceNumber
+                }
+                : result.BlockingSequences is { Count: > 0 }
+                    ? new
+                    {
+                        reverted = false,
+                        reason = result.Reason,
+                        revertedOperation = result.RevertedOperation,
+                        affectedFiles = result.AffectedFiles,
+                        sequenceNumber,
+                        blockingSequences = result.BlockingSequences,
+                        message = "Cannot revert: a later apply touches one of the same files. " +
+                                  "Revert the listed blocking sequences first, then retry."
+                    }
+                    : new
+                    {
+                        reverted = false,
+                        reason = result.Reason,
+                        revertedOperation = result.RevertedOperation,
+                        affectedFiles = result.AffectedFiles,
+                        sequenceNumber,
+                        message = result.Reason switch
+                        {
+                            "unknown-sequence" => "No revert snapshot exists for that sequence number. " +
+                                                  "Either the sequence is from before this session, or the apply did not produce a revertable snapshot.",
+                            "revert-failed" => "The snapshot was located but disk/workspace mechanics rejected the revert.",
+                            _ => "Revert failed."
+                        }
+                    };
+            return JsonSerializer.Serialize(payload, JsonDefaults.Indented);
+        }, ct);
+    }
 }
