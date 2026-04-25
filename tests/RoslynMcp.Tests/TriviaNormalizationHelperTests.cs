@@ -128,4 +128,63 @@ public class TriviaNormalizationHelperTests
     }
 
     #endregion
+
+    #region RemoveOrphanIndentTrivia
+
+    [TestMethod]
+    public void RemoveOrphanIndentTrivia_StripsOrphanIndentBetweenMembers()
+    {
+        // Simulate the post-RemoveNodes(KeepExteriorTrivia) shape: an orphan-indent line (four
+        // spaces only) sandwiched between two end-of-line markers.
+        var source = "class C\r\n{\r\n    public int A;\r\n    \r\n    public int B;\r\n}\r\n";
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var root = tree.GetCompilationUnitRoot();
+
+        var result = TriviaNormalizationHelper.RemoveOrphanIndentTrivia(root);
+
+        var text = result.ToFullString();
+        // No line should be entirely whitespace after the trim.
+        var orphanLines = text.Split('\n')
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => line.Length > 0 && line.All(char.IsWhiteSpace))
+            .ToArray();
+        Assert.AreEqual(
+            0,
+            orphanLines.Length,
+            $"Expected no whitespace-only lines but found {orphanLines.Length}: [{string.Join(", ", orphanLines.Select(line => $"'{line}'"))}]\nFull text:\n{text}");
+        // The blank line between A and B is preserved as a true blank line (no orphan indent).
+        StringAssert.Contains(text, "public int A;\r\n\r\n    public int B;");
+    }
+
+    [TestMethod]
+    public void RemoveOrphanIndentTrivia_PreservesIndentationOfRealTokens()
+    {
+        var source = "class C\r\n{\r\n    public int A;\r\n    public int B;\r\n}\r\n";
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var root = tree.GetCompilationUnitRoot();
+
+        var result = TriviaNormalizationHelper.RemoveOrphanIndentTrivia(root);
+
+        // Idempotent: nothing to strip, output equals input.
+        Assert.AreEqual(source, result.ToFullString());
+    }
+
+    [TestMethod]
+    public void RemoveOrphanIndentTrivia_LeavesContentInsideVerbatimStringLiteralsAlone()
+    {
+        // A verbatim string with an internal whitespace-only line stored as part of the token's
+        // text (not as trivia). The rewriter must not touch this — string-level trims would.
+        var source = "class C\r\n{\r\n    public string S = @\"line1\r\n    \r\n    line3\";\r\n}\r\n";
+        var tree = CSharpSyntaxTree.ParseText(source);
+        var root = tree.GetCompilationUnitRoot();
+
+        var result = TriviaNormalizationHelper.RemoveOrphanIndentTrivia(root);
+
+        var text = result.ToFullString();
+        // The verbatim string content must be preserved byte-for-byte; the whitespace inside
+        // `@"..."` is part of the string literal token, not trivia.
+        StringAssert.Contains(text, "@\"line1\r\n    \r\n    line3\"");
+    }
+
+    #endregion
 }

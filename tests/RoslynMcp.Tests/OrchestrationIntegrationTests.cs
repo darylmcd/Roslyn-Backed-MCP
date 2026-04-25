@@ -249,6 +249,89 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task Split_Class_Preview_Trims_Orphan_Indent_Lines_Where_Members_Were_Removed()
+    {
+        // split-class-preview-orphan-indent regression:
+        // Pre-fix, `split_class_preview` left orphan-indentation blank lines where the removed
+        // members lived. RemoveNodes(KeepExteriorTrivia) preserves the leading whitespace of each
+        // removed member, surfacing as lines containing nothing but four-space indentation. The
+        // fix walks the modified type's trivia and strips WhitespaceTrivia sandwiched between two
+        // EndOfLineTrivia tokens. Real indentation that precedes a token (i.e. inside preserved
+        // members) is left alone.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        // Use a Dog source with three members and a trailing third member to exercise the case
+        // where a middle member is removed, leaving an orphan-indent blank line in its place.
+        const string DogSource = "namespace SampleLib;\n"
+            + "\n"
+            + "public class Dog : IAnimal\n"
+            + "{\n"
+            + "    public string Name => \"Dog\";\n"
+            + "\n"
+            + "    public string Speak() => \"Woof\";\n"
+            + "\n"
+            + "    public void Fetch(string item)\n"
+            + "    {\n"
+            + "        System.Console.WriteLine($\"Fetching {item}\");\n"
+            + "    }\n"
+            + "\n"
+            + "    public void Sleep() => System.Console.WriteLine(\"zzz\");\n"
+            + "}\n";
+        await File.WriteAllTextAsync(dogFilePath, DogSource, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await ClassSplitOrchestrator.PreviewSplitClassAsync(
+            workspace.WorkspaceId,
+            dogFilePath,
+            "Dog",
+            ["Fetch"],
+            "Dog.Behavior.cs",
+            CancellationToken.None);
+
+        // The preview diff for the original file must not contain any added lines that are
+        // entirely whitespace (`^\+\s+$` after trimming the leading `+`). Such lines are the
+        // exact symptom this initiative addresses.
+        var originalDiff = preview.Changes.First(change =>
+            string.Equals(change.FilePath, dogFilePath, StringComparison.OrdinalIgnoreCase)).UnifiedDiff;
+        var addedLines = originalDiff.Split('\n')
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => line.StartsWith('+') && !line.StartsWith("+++", StringComparison.Ordinal))
+            .ToArray();
+        var orphanIndentAddedLines = addedLines
+            .Where(line => line.Length > 1 && line[1..].Length > 0 && line[1..].All(char.IsWhiteSpace))
+            .ToArray();
+        Assert.AreEqual(
+            0,
+            orphanIndentAddedLines.Length,
+            $"split-class-preview-orphan-indent regression: post-split diff must not add orphan-indent blank lines. Offending lines:\n{string.Join("\n", orphanIndentAddedLines.Select(line => $"  '{line}'"))}\nFull diff:\n{originalDiff}");
+
+        // Apply the preview and re-inspect the persisted file: it must contain no whitespace-only
+        // lines where the Fetch method used to be.
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var originalContents = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
+        var orphanLines = originalContents.Split('\n')
+            .Select(line => line.TrimEnd('\r'))
+            .Where(line => line.Length > 0 && line.All(char.IsWhiteSpace))
+            .ToArray();
+        Assert.AreEqual(
+            0,
+            orphanLines.Length,
+            $"split-class-preview-orphan-indent regression: applied file must not contain whitespace-only lines. File:\n{originalContents}");
+
+        // Sanity: the moved member must be gone from the original and the preserved members must
+        // still be intact (so we know the trim did not chew anything important).
+        Assert.IsFalse(originalContents.Contains("void Fetch", StringComparison.Ordinal),
+            "Fetch must be removed from the original partial.");
+        StringAssert.Contains(originalContents, "public string Speak()",
+            "Speak must remain on the original partial.");
+        StringAssert.Contains(originalContents, "public void Sleep()",
+            "Sleep must remain on the original partial.");
+    }
+
+    [TestMethod]
     public async Task Extract_And_Wire_Interface_Preview_And_Apply_Rewrites_Di_Registration()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
