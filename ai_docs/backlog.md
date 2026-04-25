@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-25T18:20:17Z
+**updated_at:** 2026-04-25T20:16:32Z
 
 ## Agent contract
 
@@ -50,9 +50,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `project-mutation-preview-xml-formatting` | P4 | — | `add_package_reference_preview`, `set_project_property_preview`, `add_central_package_version_preview` emit collapsed single-line XML (`</PropertyGroup><ItemGroup>`, trailing whitespace) in preview diffs. Cosmetic but hurts review friction. Post-process the generated diff through a format pass in `src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs` + `OrchestrationMsBuildXml.cs` (tool: `src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs`). |
-| `semantic-search-duplicate-results-and-fallback-signal` | P4 | — | `semantic_search("classes implementing IDisposable", limit=10)` returns `JobProcessor` twice (identical `fullyQualifiedName` + `symbolHandle`), and the description advertises a Debug fallback payload (`fallbackStrategy`, `matchKind` per result) that isn't actually returned. Deduplicate by `symbolHandle` and surface `Debug.fallbackStrategy` / `matchKind` fields in `src/RoslynMcp.Roslyn/Services/CodePatternAnalyzer.cs` (tool: `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs:293` `semantic_search`; response DTO: `src/RoslynMcp.Core/Models/SemanticSearchResponseDto.cs`). |
-| `test-related-files-empty-result-explainability` | P4 | — | `test_related_files` currently returns only `tests` + `dotnetTestFilter` (`src/RoslynMcp.Core/Models/RelatedTestsForFilesDto.cs`), so an empty result cannot distinguish "no tests exist" from "heuristic miss." Extend the response, or add a companion diagnostic mode, to report scanned test projects, heuristics attempted, and miss reasons for each changed file. |
 | `test-related-files-service-refactor-underreporting` | P4 | — | `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs` still underreports service-layer refactors because its fallback path leans too heavily on type-name / filename affinity. Broaden the heuristic for multi-file service changes so it can surface likely integration or neighboring service tests before returning empty, and validate against the `MutationAnalysisService` + `ScaffoldingService` and `CodePatternAnalyzer` + `TestDiscoveryService` misses seen in the 2026-04-23 sweep. |
 | `workspace-process-pool-or-daemon` | P4 | `large-solution profile` | Do not start a daemon/process-pool implementation blindly. First capture representative 50+ project timings per `docs/large-solution-profiling-baseline.md`; only if `workspace_load` / reload P95 still blocks daily use after `workspace_warm` should the next plan produce a bounded design note comparing daemon, process-pool, and shared-workspace approaches, including lifecycle and failure-isolation hooks. |
 | `semantic-grep-identifier-scoped-search` | P4 | — | Agents want to grep inside C# code but exclude string/comment matches — current Grep returns hits inside CHANGELOG, markdown, and string literals (3 Roslyn-self-audit sessions in the 2026-04-10→04-24 retro: 57a0d696, 08adc1f1, cf2d0b85). Add `semantic_grep(pattern, scope=identifiers|strings|comments|all, projectFilter?) → [{filePath, line, column, tokenKind, snippet}]` as a thin wrapper on `SyntaxTree.DescendantTokens` + `SyntaxToken.Kind()` + regex match. Anchors: new service under `src/RoslynMcp.Roslyn/Services/`, new tool in `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs`. Weaker evidence (3 sessions, all self-audit) — P4 until an external-repo session reproduces the pattern. |

@@ -836,15 +836,15 @@
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
       "requiredAddenda": [],
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
+      "branch": "remediation/project-mutation-preview-xml-formatting",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/436",
+      "mergedAt": "2026-04-25T19:55:00Z",
+      "notes": "Helper consolidation — ProjectMutationService held private duplicates of GetOrCreateItemGroup/AddChildElementPreservingIndentation/RemoveElementCleanly/FormatProjectXml that pre-dated FORMAT-BUG-003 fix; consolidated onto OrchestrationMsBuildXml, promoted InsertFirstElementChildWithFormatting + new AppendRootChildWithFormatting into shared helper, rewrote SetElementValue call-sites; net -58 lines. Same root cause incidentally fixes set_conditional_property_preview / add_target_framework_preview / remove_target_framework_preview / add_project_reference_preview"
     },
     {
       "id": "semantic-search-duplicate-results-and-fallback-signal",
@@ -857,15 +857,15 @@
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
       "requiredAddenda": [],
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
+      "branch": "remediation/semantic-search-duplicate-results-and-fallback-signal",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/438",
+      "mergedAt": "2026-04-25T20:05:00Z",
+      "notes": "Scope drift: planned SemanticSearchResponseDto.cs, actual edits in SemanticSearchResultDto.cs + AdvancedAnalysisTools.cs (Debug payload was computed but never projected — tool-wrapper drop, not analyzer bug); 1 plan -> 3 actual prod files"
     },
     {
       "id": "test-related-files-empty-result-explainability",
@@ -878,15 +878,15 @@
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
       "requiredAddenda": [],
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": null,
+      "branch": "remediation/test-related-files-empty-result-explainability",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/437",
+      "mergedAt": "2026-04-25T20:14:00Z",
+      "notes": "Scope drift: 2 plan -> 3 actual prod files (added RelatedTestsForSymbolDto.cs + WorkspaceValidationService.cs to preserve test-related-response-envelope-parity contract from initiative #16); architectural fit, no shims"
     },
     {
       "id": "test-related-files-service-refactor-underreporting",
