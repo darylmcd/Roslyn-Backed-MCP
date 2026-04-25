@@ -633,7 +633,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #425, 2026-04-25) |
 | **Backlog rows closed** | `format-range-apply-preview-token-lifetime` |
 | **Diagnosis** | `format_range_apply(previewToken)` fails with "Preview token not found or expired" within 5s of preview when auto-reload intervenes. Row cites `src/RoslynMcp.Roslyn/Services/PreviewStore.cs` + `src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs:174`. |
 | **Approach** | Pin preview tokens to a workspace-version RANGE (instead of a single version) in `PreviewStore` so a single auto-reload between preview and apply does not invalidate the token. Apply still verifies the resulting edit against the current version. |
@@ -733,7 +733,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #424, 2026-04-25) |
 | **Backlog rows closed** | `fix-all-preview-silent-on-missing-provider-info-severity` |
 | **Diagnosis** | On Info-severity ids `fix_all_preview` returns empty/null guidance (indistinguishable from "no occurrences"); on Warning-severity ids it returns helpful `list_analyzers` guidance. Row cites `src/RoslynMcp.Roslyn/Services/FixAllService.cs` + `src/RoslynMcp.Host.Stdio/Tools/FixAllTools.cs:18`. |
 | **Approach** | In `FixAllService`, emit the same "no fix provider loaded" guidance regardless of severity; guidance should not key on severity. |
