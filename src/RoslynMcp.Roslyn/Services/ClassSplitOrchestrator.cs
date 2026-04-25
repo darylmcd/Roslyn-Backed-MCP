@@ -50,8 +50,16 @@ public sealed class ClassSplitOrchestrator : IClassSplitOrchestrator
             throw new InvalidOperationException($"Member(s) not found in '{typeName}': {string.Join(", ", missingNames)}");
         }
 
-        var partialOriginal = EnsurePartial(typeDeclaration.RemoveNodes(selectedMembers, SyntaxRemoveOptions.KeepExteriorTrivia)
-            ?? throw new InvalidOperationException("Failed to remove the selected members from the original type."));
+        // split-class-preview-orphan-indent:
+        // SyntaxRemoveOptions.KeepExteriorTrivia preserves the leading whitespace of removed
+        // members as orphan trivia, leaving lines that contain only indentation (e.g. four
+        // spaces followed by a newline) where the members used to live. Strip those orphans
+        // via TriviaNormalizationHelper.RemoveOrphanIndentTrivia, which targets only
+        // whitespace sandwiched between two end-of-line trivia tokens. Real indentation that
+        // immediately precedes a token (i.e. inside preserved members) is never touched.
+        var partialAfterRemoval = typeDeclaration.RemoveNodes(selectedMembers, SyntaxRemoveOptions.KeepExteriorTrivia)
+            ?? throw new InvalidOperationException("Failed to remove the selected members from the original type.");
+        var partialOriginal = EnsurePartial(TriviaNormalizationHelper.RemoveOrphanIndentTrivia(partialAfterRemoval));
         var updatedRoot = root.ReplaceNode(typeDeclaration, partialOriginal);
 
         // FORMAT-BUG-006 (dr-9-11-format-bug-006-duplicates-leading-trivia-into-b):

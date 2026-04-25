@@ -95,4 +95,67 @@ internal static class TriviaNormalizationHelper
         }
         return SyntaxFactory.TriviaList(result);
     }
+
+    /// <summary>
+    /// Removes "orphan-indent" whitespace trivia: <see cref="SyntaxKind.WhitespaceTrivia"/>
+    /// items sandwiched between two <see cref="SyntaxKind.EndOfLineTrivia"/> items, which
+    /// render as a line containing only whitespace. After
+    /// <see cref="SyntaxNode.RemoveNodes{TNode}"/> with
+    /// <see cref="SyntaxRemoveOptions.KeepExteriorTrivia"/>, the indentation that preceded
+    /// a removed member is preserved as such an orphan, leaving visible trailing-whitespace
+    /// lines in the output. This rewriter walks every token in the subtree and rebuilds
+    /// each token's leading and trailing trivia without those orphans. It NEVER touches
+    /// whitespace that immediately precedes a token (real indentation), so intentional
+    /// indentation inside preserved members is left alone.
+    /// </summary>
+    public static TNode RemoveOrphanIndentTrivia<TNode>(TNode node) where TNode : SyntaxNode
+    {
+        return (TNode)new OrphanIndentRewriter().Visit(node);
+    }
+
+    private sealed class OrphanIndentRewriter : CSharpSyntaxRewriter
+    {
+        public override SyntaxToken VisitToken(SyntaxToken token)
+        {
+            var newLeading = TryStripOrphanIndent(token.LeadingTrivia);
+            var newTrailing = TryStripOrphanIndent(token.TrailingTrivia);
+            if (newLeading is { } leading)
+            {
+                token = token.WithLeadingTrivia(leading);
+            }
+            if (newTrailing is { } trailing)
+            {
+                token = token.WithTrailingTrivia(trailing);
+            }
+            return base.VisitToken(token);
+        }
+    }
+
+    /// <summary>
+    /// Returns a trivia list with all whitespace-only lines collapsed to bare end-of-line trivia,
+    /// or <c>null</c> when no orphans are present (allowing the caller to skip a token rewrite).
+    /// A whitespace-only line is a <see cref="SyntaxKind.WhitespaceTrivia"/> that is followed by
+    /// an <see cref="SyntaxKind.EndOfLineTrivia"/> (i.e. it is not the indentation that precedes
+    /// a real token). <see cref="SyntaxTriviaList"/> is a value type, so a <c>null</c> sentinel
+    /// is used instead of reference equality (CA2013).
+    /// </summary>
+    private static SyntaxTriviaList? TryStripOrphanIndent(SyntaxTriviaList input)
+    {
+        var rebuilt = (List<SyntaxTrivia>?)null;
+        for (var i = 0; i < input.Count; i++)
+        {
+            var trivia = input[i];
+            var isOrphanIndent = trivia.IsKind(SyntaxKind.WhitespaceTrivia)
+                && i + 1 < input.Count
+                && input[i + 1].IsKind(SyntaxKind.EndOfLineTrivia);
+            if (isOrphanIndent)
+            {
+                rebuilt ??= new List<SyntaxTrivia>(input.Take(i));
+                // Skip the orphan whitespace; the following EOL is preserved by the next iteration.
+                continue;
+            }
+            rebuilt?.Add(trivia);
+        }
+        return rebuilt is null ? null : SyntaxFactory.TriviaList(rebuilt);
+    }
 }
