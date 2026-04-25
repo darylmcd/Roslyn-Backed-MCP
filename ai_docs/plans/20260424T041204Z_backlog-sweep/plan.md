@@ -813,7 +813,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #436, 2026-04-25) |
 | **Backlog rows closed** | `project-mutation-preview-xml-formatting` |
 | **Diagnosis** | `add_package_reference_preview`, `set_project_property_preview`, `add_central_package_version_preview` emit collapsed single-line XML. Row cites `src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs` + `OrchestrationMsBuildXml.cs` + `src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs`. |
 | **Approach** | Post-process generated diffs through a format pass in `OrchestrationMsBuildXml.cs` before returning. Handle `</PropertyGroup><ItemGroup>`, trailing whitespace, and preserve intentional comment/trivia spacing. |
@@ -833,7 +833,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #438, 2026-04-25) |
 | **Backlog rows closed** | `semantic-search-duplicate-results-and-fallback-signal` |
 | **Diagnosis** | `semantic_search("classes implementing IDisposable")` returns `JobProcessor` twice; advertised `fallbackStrategy` / `matchKind` fields missing. Row cites `src/RoslynMcp.Roslyn/Services/CodePatternAnalyzer.cs` + `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs:293` + DTO `src/RoslynMcp.Core/Models/SemanticSearchResponseDto.cs`. |
 | **Approach** | Dedupe by `symbolHandle` in `CodePatternAnalyzer`; populate `Debug.fallbackStrategy` + `matchKind` fields per result (already captured internally, just not projected to the DTO). |
@@ -853,7 +853,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #437, 2026-04-25) |
 | **Backlog rows closed** | `test-related-files-empty-result-explainability` |
 | **Diagnosis** | `test_related_files` empty result cannot distinguish "no tests exist" from "heuristic miss." Row cites `src/RoslynMcp.Core/Models/RelatedTestsForFilesDto.cs` + the service layer. |
 | **Approach** | Extend `RelatedTestsForFilesDto` with `diagnostics: {scannedTestProjects, heuristicsAttempted, missReasons[]}`. Populate from `TestDiscoveryService`. |
