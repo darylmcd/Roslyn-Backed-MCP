@@ -55,6 +55,7 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `prompts/standardize-backlog-hygiene.md` | Reference prompt for backlog/workflow hygiene alignment |
 | `prompts/deep-review-and-refactor.md` | Living prompt for comprehensive MCP deep-review and promotion scoring |
 | `prompts/stress-test-external-repo.md` | Performance and correctness stress-test protocol for large external solutions |
+| `prompts/roslyn-mcp-multisession-retro.md` | Cross-repo retrospective prompt that scans Claude Code session transcripts for Roslyn MCP issues, missing-tool gaps, and recommendations |
 
 ## Reports And Archive
 
