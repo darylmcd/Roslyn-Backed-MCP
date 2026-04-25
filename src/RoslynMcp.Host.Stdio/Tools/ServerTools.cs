@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Core.Services;
@@ -14,9 +15,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class ServerTools
 {
     /// <summary>
-    /// mcp-connection-session-resilience + connection-state-ready-unsatisfiable-preload:
-    /// canonical shape for the <c>connection</c> subfield emitted by <c>server_info</c>
-    /// and the <c>server_heartbeat</c> tool.
+    /// mcp-connection-session-resilience + connection-state-ready-unsatisfiable-preload
+    /// + host-recycle-opacity: builds the <see cref="ConnectionStateDto"/> emitted by
+    /// <c>server_info</c> and <c>server_heartbeat</c>.
     /// <para>
     /// Consumers use this block to distinguish "transport reachable" from
     /// "workspace-scoped tools will succeed":
@@ -34,21 +35,38 @@ public static class ServerTools
     /// advances off pre-load on its own — a workspace_load call is required — so the
     /// state is now named <c>"idle"</c> to reflect reality.
     /// </para>
+    /// <para>
+    /// <strong>host-recycle-opacity:</strong> the FIRST probe of a freshly-started host
+    /// process surfaces <c>previousStdioPid</c> / <c>previousExitedAt</c> /
+    /// <c>previousRecycleReason</c> drawn from the <see cref="HostProcessMetadataStore"/>
+    /// snapshot published via <see cref="HostProcessMetadataSnapshotProvider"/>. Subsequent
+    /// probes omit those fields (consume-once semantics) so callers always know "this is the
+    /// first probe after the recycle". Unit-test paths that construct ServerTools without
+    /// publishing a snapshot get clean cold-start behavior — the optional fields are absent.
+    /// </para>
     /// </summary>
-    private static object BuildConnection(IWorkspaceManager workspace)
+    internal static ConnectionStateDto BuildConnection(IWorkspaceManager workspace)
     {
         var loadedWorkspaceCount = workspace.ListWorkspaces().Count;
         // connection-state-ready-unsatisfiable-preload: pre-load state is "idle", not
         // "initializing". The server does not auto-advance from pre-load; a workspace_load
         // call is the only transition, so the label must be terminal, not transient.
         var state = loadedWorkspaceCount >= 1 ? "ready" : "idle";
-        return new
-        {
-            state,
-            loadedWorkspaceCount,
-            stdioPid = Environment.ProcessId,
-            serverStartedAt = s_serverStartedAtUtc.ToString("O")
-        };
+
+        // host-recycle-opacity: drain the previous-process snapshot exactly once. The provider
+        // returns null after the first call, so subsequent probes see clean state. Tests that
+        // construct ServerTools without wiring the snapshot (provider unset) get null here
+        // and the optional fields are omitted from the JSON.
+        var previous = HostProcessMetadataSnapshotProvider.Consume();
+
+        return new ConnectionStateDto(
+            State: state,
+            LoadedWorkspaceCount: loadedWorkspaceCount,
+            StdioPid: Environment.ProcessId,
+            ServerStartedAt: s_serverStartedAtUtc.ToString("O"),
+            PreviousStdioPid: previous?.StdioPid,
+            PreviousExitedAtUtc: previous?.ExitedAtUtc,
+            PreviousRecycleReason: previous?.RecycleReason);
     }
 
     /// <summary>

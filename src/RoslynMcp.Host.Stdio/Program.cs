@@ -97,6 +97,18 @@ var assemblyVersion = typeof(RoslynMcp.Host.Stdio.McpLoggingProvider).Assembly
 StartupDiagnostics.LogStartup(startupLogger, surfaceReport, assemblyVersion);
 SurfaceRegistrationSnapshot.Value = surfaceReport;
 
+// host-recycle-opacity: read the previous host process's exit metadata (if any) from disk
+// and publish it for the FIRST server_info / server_heartbeat probe to surface. The
+// provider's Consume() drains the snapshot exactly once — subsequent probes see clean state.
+// The on-disk record is deleted by LoadPrevious() so we never replay a stale snapshot across
+// multiple processes. Cold start with no prior record publishes null, which the provider
+// treats as "no previous-* fields ever". The store is also kept around so the
+// ApplicationStopping handler can write the current process's exit metadata on shutdown.
+var hostProcessMetadataLogger = host.Services.GetRequiredService<ILoggerFactory>()
+    .CreateLogger("HostProcessMetadata");
+var hostProcessMetadataStore = new HostProcessMetadataStore(hostProcessMetadataLogger);
+HostProcessMetadataSnapshotProvider.Publish(hostProcessMetadataStore.LoadPrevious());
+
 // FLAG-D: Emit a structured Information event when the host starts with no loaded workspaces.
 // Clients that surface MCP `notifications/message` (via McpLoggingProvider) will see this
 // proactively after a transparent subprocess restart instead of discovering the missing
@@ -120,6 +132,14 @@ lifetime.ApplicationStopping.Register(() =>
     {
         disposable.Dispose();
     }
+
+    // host-recycle-opacity: persist current-process exit metadata so the NEXT host process
+    // can surface previousStdioPid / previousExitedAt / previousRecycleReason on its first
+    // probe. We tag this path "graceful" — the only call site here is the
+    // ApplicationStopping hook, which only fires on a clean shutdown. Future watchdog /
+    // idle-eviction code that knows specifically why it terminated will pass its own reason.
+    hostProcessMetadataStore.WriteCurrent(recycleReason: "graceful");
+
     // Flush stdout so buffered MCP JSON responses are delivered before the process exits.
     // Without this, non-SDK clients using bash pipes may receive 0 bytes on stdout.
     Console.Out.Flush();
