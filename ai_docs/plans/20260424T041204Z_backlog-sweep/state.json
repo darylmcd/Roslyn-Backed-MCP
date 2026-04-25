@@ -773,15 +773,15 @@
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
       "requiredAddenda": [],
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
+      "branch": "remediation/split-class-preview-orphan-indent",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/433",
+      "mergedAt": "2026-04-25T18:00:00Z",
+      "notes": "Implemented as trivia-level rewriter (TriviaNormalizationHelper.RemoveOrphanIndentTrivia) for verbatim-string-literal safety; new helper class is minor scope expansion (1 plan -> 2 prod files); 955/955 Release tests passing"
     },
     {
       "id": "symbol-impact-sweep-suggested-tasks-count-drift",
@@ -815,15 +815,15 @@
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
       "requiredAddenda": [],
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
+      "branch": "remediation/scaffold-test-preview-sibling-inference-overbroad",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/434",
+      "mergedAt": "2026-04-25T18:15:00Z",
+      "notes": "Optional Compilation? parameter on ExtractPatternFromSource + InferSibling*FromRecent for graceful degradation when test container lacks semantic context; both internal call-sites in ScaffoldingService now pass non-null compilation, no documented external callers — orchestrator accepted as graceful-degradation, not backcompat shim (similar pattern to #431's optional IChangeTracker)"
     },
     {
       "id": "project-mutation-preview-xml-formatting",
