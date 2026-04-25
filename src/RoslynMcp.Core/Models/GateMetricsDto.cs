@@ -24,6 +24,16 @@ namespace RoslynMcp.Core.Models;
 /// not stale or the policy was set to <c>off</c>.
 /// </param>
 /// <param name="StaleReloadMs">Milliseconds spent inside <c>workspace_reload</c> when <paramref name="StaleAction"/> is <c>auto-reloaded</c>. <see langword="null"/> otherwise.</param>
+/// <param name="RetriedAfterReload">
+/// auto-reload-retry-inside-call: <see langword="true"/> when the workspace execution gate
+/// retried the action once after an auto-reload because the first attempt failed with a
+/// transient stale-snapshot error (e.g., <c>"Document not found"</c>). Surfaces in the
+/// response envelope so callers can correlate "auto-reloaded" calls that needed an
+/// internal second pass to succeed; <see langword="null"/> when no retry occurred (the
+/// common case). When the retry itself fails, the original exception is propagated and
+/// this flag remains <see langword="null"/> — callers see the structured error without a
+/// false success signal.
+/// </param>
 public sealed record GateMetricsDto(
     string? GateMode,
     long QueuedMs,
@@ -31,4 +41,5 @@ public sealed record GateMetricsDto(
     int? HeartbeatCount,
     long ElapsedMs = 0,
     string? StaleAction = null,
-    long? StaleReloadMs = null);
+    long? StaleReloadMs = null,
+    bool? RetriedAfterReload = null);

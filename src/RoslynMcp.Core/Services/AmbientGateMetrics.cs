@@ -74,5 +74,13 @@ public sealed class GateMetricsBuilder
     /// <summary>Milliseconds spent reloading when <see cref="StaleAction"/> is <c>auto-reloaded</c>.</summary>
     public long? StaleReloadMs { get; set; }
 
-    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs);
+    /// <summary>
+    /// auto-reload-retry-inside-call: <see langword="true"/> when the workspace execution gate
+    /// retried the action once after an auto-reload (because the first attempt failed with a
+    /// transient stale-snapshot error such as <c>"Document not found"</c>). Stays <see langword="null"/>
+    /// when no retry occurred or when the retry itself failed.
+    /// </summary>
+    public bool? RetriedAfterReload { get; set; }
+
+    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload);
 }
