@@ -114,7 +114,16 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
 
         // Stage 3: discover related tests for the changed files (no test execution yet).
         var related = changedFiles.Count == 0
-            ? new RelatedTestsForFilesDto([], string.Empty, new PaginationInfo(0, 0, false))
+            ? new RelatedTestsForFilesDto(
+                [],
+                string.Empty,
+                new PaginationInfo(0, 0, false),
+                // test-related-files-empty-result-explainability: empty changed-file set is not
+                // a heuristic miss — flag it explicitly so the caller doesn't second-guess.
+                new RelatedTestsDiagnosticsDto(
+                    ScannedTestProjects: 0,
+                    HeuristicsAttempted: [],
+                    MissReasons: ["no changed source files supplied; related-test discovery skipped"]))
             : await _testDiscovery
                 .FindRelatedTestsForFilesAsync(workspaceId, changedFiles, MaxRelatedTestsCap, ct)
                 .ConfigureAwait(false);
