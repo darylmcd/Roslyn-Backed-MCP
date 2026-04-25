@@ -56,10 +56,16 @@ public static class PromptShimTools
         // Prompt methods return Task<IEnumerable<PromptMessage>> (or sometimes the
         // synchronous variant). Await the task and project messages into a JSON-friendly shape.
         var messages = await UnwrapPromptResultAsync(result).ConfigureAwait(false);
+
+        // get-prompt-text-publish-parameter-schema: surface the same parameter schema the
+        // catalog publishes so a caller introspecting via the tool channel (no resource/list
+        // round-trip) gets the names/types/required flags in one hop.
+        var parameterSchema = PromptParameterIndex.GetParameters(promptName);
         var dto = new
         {
             promptName,
-            parameterCount = method.GetParameters().Count(p => !IsServiceType(p.ParameterType) && p.ParameterType != typeof(CancellationToken)),
+            parameterCount = parameterSchema.Count,
+            parameters = parameterSchema,
             messages = messages.Select(m => new
             {
                 role = m.Role.ToString().ToLowerInvariant(),

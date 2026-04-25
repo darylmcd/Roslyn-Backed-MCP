@@ -134,13 +134,18 @@ public static partial class ServerSurfaceCatalog
         entries.Count(entry => string.Equals(entry.SupportTier, tier, StringComparison.Ordinal));
 
     private static SurfaceEntry Tool(string name, string category, string supportTier, bool readOnly, bool destructive, string summary) =>
-        new("tool", name, category, supportTier, readOnly, destructive, summary, null);
+        new("tool", name, category, supportTier, readOnly, destructive, summary, UriTemplate: null, Parameters: null);
 
     private static SurfaceEntry Resource(string name, string category, string supportTier, bool readOnly, bool destructive, string summary, string uriTemplate) =>
-        new("resource", name, category, supportTier, readOnly, destructive, summary, uriTemplate);
+        new("resource", name, category, supportTier, readOnly, destructive, summary, uriTemplate, Parameters: null);
 
+    // get-prompt-text-publish-parameter-schema: the prompt factory always splices the
+    // PromptParameterIndex's reflected parameter list onto the entry. Reflection runs once at
+    // type init (Lazy<>), so populating per-row here is O(1) lookup after the first hit.
     private static SurfaceEntry Prompt(string name, string category, string supportTier, bool readOnly, bool destructive, string summary) =>
-        new("prompt", name, category, supportTier, readOnly, destructive, summary, null);
+        new("prompt", name, category, supportTier, readOnly, destructive, summary,
+            UriTemplate: null,
+            Parameters: PromptParameterIndex.GetParameters(name));
 }
 
 /// <summary>
@@ -154,6 +159,12 @@ public static partial class ServerSurfaceCatalog
 /// <param name="Destructive">When <see langword="true"/>, the entry performs an irreversible or high-impact change.</param>
 /// <param name="Summary">A short human-readable description of what the entry does.</param>
 /// <param name="UriTemplate">The URI template for resource entries, or <see langword="null"/> for tools and prompts.</param>
+/// <param name="Parameters">
+/// get-prompt-text-publish-parameter-schema: the user-facing parameter schema for prompt entries
+/// (<see cref="ServerSurfaceCatalog.Prompts"/>); <see langword="null"/> for tools and resources.
+/// Excludes DI-resolved services and <see cref="CancellationToken"/> — only the values an agent
+/// must supply via <c>parametersJson</c> on <c>get_prompt_text</c>.
+/// </param>
 public sealed record SurfaceEntry(
     string Kind,
     string Name,
@@ -162,7 +173,26 @@ public sealed record SurfaceEntry(
     bool ReadOnly,
     bool Destructive,
     string Summary,
-    string? UriTemplate);
+    string? UriTemplate,
+    IReadOnlyList<PromptParameterEntry>? Parameters);
+
+/// <summary>
+/// get-prompt-text-publish-parameter-schema: per-parameter schema row published on each
+/// prompt entry in <c>roslyn://server/catalog/prompts/{offset}/{limit}</c>. Lets callers
+/// build the <c>parametersJson</c> argument for <c>get_prompt_text</c> without a failing
+/// invocation to discover the signature.
+/// </summary>
+/// <param name="Name">The parameter name, matching the prompt method's parameter symbol.</param>
+/// <param name="Type">A C#-style type label (e.g. <c>string</c>, <c>int?</c>, <c>List&lt;string&gt;</c>).</param>
+/// <param name="Required">When <see langword="true"/>, the parameter has no default and MUST be supplied.</param>
+/// <param name="DefaultValue">The default value for optional parameters, or <see langword="null"/> when required (or when the default is itself <see langword="null"/>).</param>
+/// <param name="Description">The <see cref="System.ComponentModel.DescriptionAttribute"/> text on the parameter, when present.</param>
+public sealed record PromptParameterEntry(
+    string Name,
+    string Type,
+    bool Required,
+    object? DefaultValue,
+    string? Description);
 
 /// <summary>
 /// Provides a count summary of stable and experimental entries for each surface kind.
