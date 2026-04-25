@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-25T20:16:32Z
+**updated_at:** 2026-04-25T22:00:00Z
 
 ## Agent contract
 
@@ -68,5 +68,6 @@
 | `docs/large-solution-profiling-baseline.md` | Evidence gate for daemon/process-pool performance work. |
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Intake procedure for future audit batches. |
 | `ai_docs/plans/20260422T223000Z_backlog-sweep/plan.md` | Prior sweep (20260422T223000Z). Shipped 14 initiatives across 14 PRs; closed 9 backlog rows (P2: 0, P3: 4, P4: 5). |
+| `ai_docs/plans/20260424T041204Z_backlog-sweep/plan.md` | Active sweep against the 44-initiative audit-intake batch (5 P2 + 29 P3 + 10 P4). 41 merged / 3 pending as of 2026-04-25; remaining rows above are the open carry-overs. |
 | `review-inbox/` | Staging folder for the NEXT audit batch (flat directory; `/backlog-intake` reads here). |
 | `review-inbox/archive/<batch-ts>/` | Processed audit/retro/promotion batches — one subdirectory per successful intake, named by the intake commit's UTC timestamp. Backlog rows citing specific files are anchored here. Batch `20260424T031936Z` holds the 14-file cross-repo audit + retro batch that produced the current rows. Keep until every row sourced from a batch is closed or superseded, then delete that subdirectory. |
