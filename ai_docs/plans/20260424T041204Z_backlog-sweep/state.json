@@ -3,8 +3,8 @@
   "createdAt": "2026-04-24T04:12:04Z",
   "schemaVersion": 2,
   "bootstrapCaveat": true,
-  "completed": false,
-  "completedAt": null,
+  "completed": true,
+  "completedAt": "2026-04-25T21:39:34Z",
   "initiatives": [
     {
       "id": "scaffold-test-preview-dotted-identifier",
@@ -710,7 +710,7 @@
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
       "requiredAddenda": [],
-      "status": "pending",
+      "status": "deferred",
       "correctnessClass": "P3-correctness",
       "scheduleHint": null,
       "changelogCategory": "Maintenance",
@@ -718,7 +718,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "dedicated phased plan exists at ai_docs/plans/20260422T170500Z_test-parallelization-audit/"
+      "notes": "Deferred 2026-04-25 — dedicated phased plan exists at ai_docs/plans/20260422T170500Z_test-parallelization-audit/. Backlog row remains open; that plan owns the localization + fix phases."
     },
     {
       "id": "diagnostic-details-supported-fixes-empty",
@@ -899,15 +899,15 @@
       "testFilesAdded": 1,
       "toolPolicy": "edit-only",
       "requiredAddenda": [],
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Fixed",
-      "branch": null,
+      "branch": "remediation/test-related-files-service-refactor-underreporting",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": ""
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/441",
+      "mergedAt": "2026-04-25T21:37:55Z",
+      "notes": "Test class lives at tests/RoslynMcp.Tests/ValidationToolsIntegrationTests.cs (not TestDiscoveryServiceTests as plan suggested). Two 1-hop expansions added (inbound-reference + namespace-neighbor); both gated to empty-primary-result path. Diagnostics envelope's HeuristicsAttempted + MissReasons surface broadening behavior. CI-parity verify-release.ps1 ran 966/966 tests green."
     },
     {
       "id": "workspace-process-pool-or-daemon",
@@ -920,7 +920,7 @@
       "testFilesAdded": 0,
       "toolPolicy": "edit-only",
       "requiredAddenda": [],
-      "status": "pending",
+      "status": "deferred",
       "correctnessClass": "P4",
       "scheduleHint": "heroic-last",
       "changelogCategory": "Maintenance",
@@ -928,7 +928,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "heroic-last; likely defer at closeout per v4 guidance — investigation phase gated on large-solution profile evidence"
+      "notes": "Deferred 2026-04-25 at sweep closeout per v4 heroic-last guidance — investigation phase remains gated on large-solution profile evidence (docs/large-solution-profiling-baseline.md). Backlog row remains open; reactivate when 50+ project workspace_load timings land."
     }
   ]
 }
