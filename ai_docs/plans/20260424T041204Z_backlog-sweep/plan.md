@@ -573,7 +573,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #422, 2026-04-25) |
 | **Backlog rows closed** | `host-recycle-opacity` |
 | **Diagnosis** | `server_info.connection` carries no history of host-process restarts. Row cites `src/RoslynMcp.Host.Stdio/Tools/ServerTools.cs:64` + the connection-state DTO under `src/RoslynMcp.Core/Models/`. |
 | **Approach** | In the host's process-lifecycle module (near `ServerTools` composition), capture `previousStdioPid` / `previousExitedAt` / `previousRecycleReason` from disk-persisted process metadata on startup. Surface these on the first `server_info` / `server_heartbeat` probe after restart; clear after emission. |
@@ -673,7 +673,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #421, 2026-04-25) |
 | **Backlog rows closed** | `get-prompt-text-publish-parameter-schema` |
 | **Diagnosis** | `roslyn://server/catalog/prompts/*` lists `name`/`summary`/`supportTier` only; callers must invoke `get_prompt_text` with empty `parametersJson` to discover required params. Row cites `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Resources.cs`, `ServerSurfaceCatalog.cs`, `src/RoslynMcp.Host.Stdio/Tools/PromptShimTools.cs`. |
 | **Approach** | Extend the catalog resource DTO to include `parameters: [{name, type, required, defaultValue, description}]` per prompt, sourced from `[McpServerPrompt]` attributes at reflection time. Update `PromptShimTools` if it exposes a parallel introspection path. |
@@ -773,7 +773,7 @@ backlog rows rather than bundling.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #420, 2026-04-25) |
 | **Backlog rows closed** | `symbol-impact-sweep-suggested-tasks-count-drift` |
 | **Diagnosis** | `symbol_impact_sweep` reports `suggestedTasks: ["Review 10 reference(s)..."]` despite `totalCount=193`. Row cites `src/RoslynMcp.Roslyn/Services/ImpactSweepService.cs` + `src/RoslynMcp.Host.Stdio/Tools/ImpactSweepTools.cs:17`. |
 | **Approach** | Use the pre-cap `totalCount` in the `suggestedTasks` string builder instead of the truncated list length. |
