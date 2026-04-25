@@ -306,11 +306,16 @@ public static class AdvancedAnalysisTools
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var response = await codePatternAnalyzer.SemanticSearchAsync(workspaceId, query, projectName, limit, c);
+            // semantic-search-duplicate-results-and-fallback-signal: project the Debug
+            // payload (parsedTokens / appliedPredicates / fallbackStrategy) so callers
+            // can decode why a verbose natural-language query landed on a particular
+            // strategy. Per-result MatchKind is part of the result rows themselves.
             return JsonSerializer.Serialize(new
             {
                 count = response.Results.Count,
                 results = response.Results,
-                warning = response.Warning
+                warning = response.Warning,
+                debug = response.Debug
             }, JsonDefaults.Indented);
         }, ct);
     }

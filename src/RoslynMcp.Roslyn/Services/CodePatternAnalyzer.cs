@@ -141,11 +141,19 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<SemanticSearchResultDto>();
+        // BUG fix (semantic-search-duplicate-results-and-fallback-signal): partial classes,
+        // multi-targeted projects, and linked source files cause the same ISymbol to be
+        // surfaced via multiple syntax trees / declarations. Walking MemberDeclarationSyntax
+        // node-by-node would emit one row per declaration site. Dedupe by SymbolHandle (the
+        // canonical identifier we already publish) so callers never see the same symbol twice.
+        var seenHandles = new HashSet<string>(StringComparer.Ordinal);
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
         var parse = ParseSemanticQuery(decodedQuery);
         bool Combined(ISymbol s) => parse.Predicates.All(p => p(s));
-        await CollectSemanticSearchMatchesAsync(solution, projects, Combined, limit, results, ct).ConfigureAwait(false);
+        await CollectSemanticSearchMatchesAsync(
+            solution, projects, Combined, limit, results, seenHandles, "structured", ct)
+            .ConfigureAwait(false);
 
         string? warning = null;
         var fallbackStrategy = results.Count > 0 ? "structured" : "none";
@@ -155,7 +163,8 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
         {
             var term = decodedQuery.Trim();
             bool NameMatch(ISymbol s) => s.Name.Contains(term, StringComparison.OrdinalIgnoreCase);
-            await CollectSemanticSearchMatchesAsync(solution, projects, NameMatch, limit, results, ct)
+            await CollectSemanticSearchMatchesAsync(
+                solution, projects, NameMatch, limit, results, seenHandles, "name-substring", ct)
                 .ConfigureAwait(false);
             if (results.Count > 0)
             {
@@ -180,7 +189,8 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
                 }
                 return false;
             }
-            await CollectSemanticSearchMatchesAsync(solution, projects, TokenOrMatch, limit, results, ct)
+            await CollectSemanticSearchMatchesAsync(
+                solution, projects, TokenOrMatch, limit, results, seenHandles, "token-or-match", ct)
                 .ConfigureAwait(false);
             if (results.Count > 0)
             {
@@ -208,6 +218,8 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
         Func<ISymbol, bool> symbolMatches,
         int limit,
         List<SemanticSearchResultDto> results,
+        HashSet<string> seenHandles,
+        string matchKind,
         CancellationToken ct)
     {
         foreach (var project in projects)
@@ -239,6 +251,9 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
                     if (location is null) continue;
                     var lineSpan = location.GetLineSpan();
 
+                    var handle = SymbolHandleSerializer.CreateHandle(symbol);
+                    if (!seenHandles.Add(handle)) continue;
+
                     results.Add(new SemanticSearchResultDto(
                         symbol.Name,
                         symbol.Kind.ToString(),
@@ -247,7 +262,8 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
                         symbol.ToDisplayString(),
                         symbol.ContainingType?.Name,
                         symbol.ContainingNamespace?.ToDisplayString(),
-                        SymbolHandleSerializer.CreateHandle(symbol)));
+                        handle,
+                        matchKind));
                 }
             }
         }
