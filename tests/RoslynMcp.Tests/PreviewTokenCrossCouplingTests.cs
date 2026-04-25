@@ -136,14 +136,15 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// Workspace lifecycle still invalidates tokens: a <see cref="WorkspaceManager.ReloadAsync"/>
-    /// disposes the underlying MSBuildWorkspace and the Solution references captured by
-    /// every live preview become orphans, so the preview store's lifecycle hook must drop
-    /// them. This is the ONE code path that should still invalidate siblings, and the
-    /// "stale" error message must still surface to callers.
+    /// format-range-apply-preview-token-lifetime: a SINGLE reload no longer wipes live
+    /// tokens. <see cref="PreviewStore.DefaultMaxVersionSpan"/> = 1 means a token stored at
+    /// version V survives one auto-reload bump to V+1. The apply path's
+    /// <c>RebaseModifiedSolutionOntoCurrentAsync</c> replays the captured diff onto the
+    /// post-reload solution, so the file-creation produced by the preview lands on disk
+    /// even though the underlying <c>MSBuildWorkspace</c> was disposed during reload.
     /// </summary>
     [TestMethod]
-    public async Task Workspace_Reload_Still_Invalidates_All_Live_Tokens()
+    public async Task Workspace_Reload_Within_Pinned_Range_Keeps_Token_Redeemable()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
         var targetFilePath = workspace.GetPath("SampleLib", "Generated", "ReloadInvalidates.cs");
@@ -157,14 +158,47 @@ public sealed class PreviewTokenCrossCouplingTests : IsolatedWorkspaceTestBase
             CancellationToken.None);
         Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken));
 
-        // Lifecycle event — drops all tokens (captured Solution refs now orphaned).
+        // Single reload bumps the workspace version once — within DefaultMaxVersionSpan=1,
+        // so InvalidateOnVersionBump leaves this token alone.
         await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
 
         var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
 
-        Assert.IsFalse(applyResult.Success,
-            "Reload must still invalidate live preview tokens.");
+        Assert.IsTrue(applyResult.Success,
+            $"Token stored at V should survive a single reload to V+1 with DefaultMaxVersionSpan=1. Error: {applyResult.Error}");
+        Assert.IsTrue(File.Exists(targetFilePath), "Apply must persist the file even after one intervening reload.");
+    }
+
+    /// <summary>
+    /// format-range-apply-preview-token-lifetime: bounded-range guarantee — a SECOND reload
+    /// pushes the workspace version past the pinned ceiling
+    /// (V + <see cref="PreviewStore.DefaultMaxVersionSpan"/> = V + 1), so the token MUST
+    /// drop and the apply path must surface the "stale" rejection. Guards against the range
+    /// policy regressing into "tokens never expire on reload."
+    /// </summary>
+    [TestMethod]
+    public async Task Workspace_Reload_Twice_Drops_Token_And_Surfaces_Stale_Error()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var targetFilePath = workspace.GetPath("SampleLib", "Generated", "TwoReloadsDrop.cs");
+
+        var preview = await FileOperationService.PreviewCreateFileAsync(
+            workspace.WorkspaceId,
+            new CreateFileDto(
+                "SampleLib",
+                targetFilePath,
+                "namespace SampleLib.Generated;\n\npublic sealed class TwoReloadsDrop { }\n"),
+            CancellationToken.None);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken));
+
+        // Two reload bumps push version past the pinned ceiling — token gets dropped.
+        await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
+        await WorkspaceManager.ReloadAsync(workspace.WorkspaceId, CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsFalse(applyResult.Success, "Two reloads must push past the pinned ceiling and drop the token.");
         StringAssert.Contains(applyResult.Error ?? string.Empty, "stale");
-        Assert.IsFalse(File.Exists(targetFilePath), "Invalidated token must not mutate disk.");
+        Assert.IsFalse(File.Exists(targetFilePath), "Dropped token must not mutate disk.");
     }
 }

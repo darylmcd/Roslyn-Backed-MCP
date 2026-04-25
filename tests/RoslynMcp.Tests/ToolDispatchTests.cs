@@ -218,5 +218,7 @@ public sealed class ToolDispatchTests
         public void Invalidate(string token) => throw new NotSupportedException();
 
         public void InvalidateAll(string? workspaceId = null) => throw new NotSupportedException();
+
+        public void InvalidateOnVersionBump(string workspaceId, int newWorkspaceVersion) => throw new NotSupportedException();
     }
 }

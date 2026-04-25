@@ -356,8 +356,15 @@ public class IntegrationTests : SharedWorkspaceTestBase
         }
     }
 
+    /// <summary>
+    /// format-range-apply-preview-token-lifetime: tokens survive a single auto-reload
+    /// (one version bump within DefaultMaxVersionSpan = 1) but a second reload pushes past
+    /// the pinned ceiling and drops the token, surfacing the "stale" rejection. End-to-end
+    /// integration variant — mirrors PreviewStoreTests' unit-level coverage and ensures the
+    /// rejection still flows up through <c>RefactoringService.ApplyRefactoringAsync</c>.
+    /// </summary>
     [TestMethod]
-    public async Task Preview_Token_Is_Rejected_When_Workspace_Becomes_Stale()
+    public async Task Preview_Token_Is_Rejected_After_Two_Reloads()
     {
         var isolatedSolutionPath = CreateSampleSolutionCopy();
         var isolatedRoot = Path.GetDirectoryName(isolatedSolutionPath)!;
@@ -372,10 +379,12 @@ public class IntegrationTests : SharedWorkspaceTestBase
                 isolatedWorkspaceId,
                 serviceFilePath,
                 CancellationToken.None);
+            // Two reloads push the version past the pinned ceiling (V + 1) — token dropped.
+            await WorkspaceManager.ReloadAsync(isolatedWorkspaceId, CancellationToken.None);
             await WorkspaceManager.ReloadAsync(isolatedWorkspaceId, CancellationToken.None);
 
             var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
-            Assert.IsFalse(applyResult.Success, "Stale previews should be rejected.");
+            Assert.IsFalse(applyResult.Success, "Two reloads must push past the pinned ceiling and reject the apply.");
             StringAssert.Contains(applyResult.Error ?? string.Empty, "stale");
         }
         finally

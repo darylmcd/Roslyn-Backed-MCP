@@ -18,16 +18,47 @@ namespace RoslynMcp.Roslyn.Services;
 /// AND the <c>ModifiedSolution</c> (with the preview's edits applied). The apply path computes
 /// the preview's intended diff as <c>ModifiedSolution.GetChanges(OriginalSolution)</c> and
 /// replays only THAT diff onto the current workspace solution. Sibling <c>*_apply</c> calls
-/// against unrelated files no longer invalidate this entry: the workspace lifecycle (Close,
-/// Reload) is the only event that drops tokens via <see cref="InvalidateAll"/>. The workspace
-/// version tracked on the entry is retained for telemetry and diagnostics only — it is no
-/// longer used to reject an apply.
+/// against unrelated files no longer invalidate this entry: token pruning is driven by
+/// workspace lifecycle alone — close uses <see cref="InvalidateAll"/>, reload uses the
+/// pinned-range <see cref="InvalidateOnVersionBump"/> (see paragraph below).
+/// </para>
+/// <para>
+/// <b>format-range-apply-preview-token-lifetime:</b> reload-driven invalidation now follows a
+/// pinned workspace-version range instead of nuking every token on every reload. Each entry
+/// records a <see cref="PreviewEntry.MaxRedeemableVersion"/> ceiling at Store time, computed
+/// as <c>WorkspaceVersion + <see cref="DefaultMaxVersionSpan"/></c>. The
+/// <see cref="InvalidateOnVersionBump"/> hook (called from
+/// <c>WorkspaceManager.LoadIntoSessionAsync</c> after the post-reload version bump) drops only
+/// the entries whose ceiling has been crossed, so a preview &#x2192; one auto-reload &#x2192;
+/// apply sequence inside the TTL window still redeems. The captured Solution snapshots are
+/// immutable Roslyn graphs and remain readable after the workspace's <c>MSBuildWorkspace</c>
+/// is disposed by reload — the apply path's existing
+/// <c>RebaseModifiedSolutionOntoCurrentAsync</c> in <c>RefactoringService</c> replays the
+/// preview's diff onto the post-reload solution by file path, not by lineage. Workspace close
+/// still wipes every token via <see cref="InvalidateAll"/>; that path remains correct because
+/// the workspace itself is going away.
 /// </para>
 /// </remarks>
 public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPreviewStore
 {
-    public PreviewStore(int maxEntries = 20, TimeSpan? ttl = null)
-        : base(maxEntries, ttl ?? TimeSpan.FromMinutes(5)) { }
+    /// <summary>
+    /// format-range-apply-preview-token-lifetime: ceiling on how many workspace-version bumps
+    /// a preview token may survive past its store-time version before
+    /// <see cref="InvalidateOnVersionBump"/> drops it. <c>1</c> means a token stored at version
+    /// <c>V</c> is still redeemable at <c>V+1</c> (one intervening auto-reload OR one sibling
+    /// apply) but not at <c>V+2</c>. Selected to bound stale-preview risk while covering the
+    /// observed preview &#x2192; auto-reload &#x2192; apply window (typically &lt;5 s in
+    /// practice). The TTL bound on the store still applies independently.
+    /// </summary>
+    public const int DefaultMaxVersionSpan = 1;
+
+    private readonly int _maxVersionSpan;
+
+    public PreviewStore(int maxEntries = 20, TimeSpan? ttl = null, int maxVersionSpan = DefaultMaxVersionSpan)
+        : base(maxEntries, ttl ?? TimeSpan.FromMinutes(5))
+    {
+        _maxVersionSpan = maxVersionSpan >= 0 ? maxVersionSpan : DefaultMaxVersionSpan;
+    }
 
     /// <summary>
     /// Legacy overload — assumes the preview's diff was not truncated. Kept so unrelated
@@ -68,7 +99,18 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         int workspaceVersion,
         string description,
         bool diffTruncated)
-        => StoreEntry(new PreviewEntry(workspaceId, originalSolution, modifiedSolution, workspaceVersion, description, diffTruncated, DateTime.UtcNow));
+        => StoreEntry(new PreviewEntry(
+            workspaceId,
+            originalSolution,
+            modifiedSolution,
+            workspaceVersion,
+            // format-range-apply-preview-token-lifetime: pin the redeemable version range at
+            // Store time so InvalidateOnVersionBump can drop only entries whose range has been
+            // exceeded, rather than wiping every token on every reload.
+            MaxRedeemableVersion: workspaceVersion + _maxVersionSpan,
+            description,
+            diffTruncated,
+            DateTime.UtcNow));
 
     /// <summary>
     /// Convenience: when the caller has a freshly-computed <see cref="FileChangeDto"/> list
@@ -117,11 +159,24 @@ public sealed class PreviewStore : BoundedStore<PreviewStore.PreviewEntry>, IPre
         return (entry.WorkspaceId, entry.OriginalSolution, entry.ModifiedSolution, entry.WorkspaceVersion, entry.Description, entry.DiffTruncated);
     }
 
+    /// <inheritdoc />
+    public void InvalidateOnVersionBump(string workspaceId, int newWorkspaceVersion)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(workspaceId);
+        InvalidateWhere(entry =>
+            string.Equals(entry.WorkspaceId, workspaceId, StringComparison.Ordinal)
+            && newWorkspaceVersion > entry.MaxRedeemableVersion);
+    }
+
     public sealed record PreviewEntry(
         string WorkspaceId,
         Solution OriginalSolution,
         Solution ModifiedSolution,
         int WorkspaceVersion,
+        // format-range-apply-preview-token-lifetime: ceiling for InvalidateOnVersionBump.
+        // Computed at Store time as `WorkspaceVersion + DefaultMaxVersionSpan`. An entry is
+        // dropped on reload only when the post-bump workspace version exceeds this ceiling.
+        int MaxRedeemableVersion,
         string Description,
         bool DiffTruncated,
         DateTime CreatedAt) : IBoundedStoreEntry;
