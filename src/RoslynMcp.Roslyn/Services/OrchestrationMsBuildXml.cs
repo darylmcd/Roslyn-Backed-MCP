@@ -16,20 +16,69 @@ internal static class OrchestrationMsBuildXml
         }
 
         var itemGroup = new XElement("ItemGroup");
-        var root = document.Root;
-        if (root is null)
+        if (document.Root is null)
         {
             return itemGroup;
         }
 
-        // FORMAT-BUG-003 fix: splice the new ItemGroup between existing elements with matching
-        // indent + line-ending trivia so the serializer does not produce
-        // `<ItemGroup><PackageReference .../></ItemGroup>` on a single line or glue
-        // `</Project>` onto the preceding element. A single AddAfterSelf call with both nodes
-        // preserves document order (`[lastElement][leading-whitespace][itemGroup][trailing-whitespace]`)
-        // instead of the LIFO semantics of two sequential calls. The trailing XText keeps
-        // `</Project>` on its own line after the new ItemGroup even when the caller just pruned
-        // the only prior trailing whitespace (via `RemoveElementCleanly` on a lone ItemGroup).
+        // FORMAT-BUG-003 fix is implemented inside AppendRootChildWithFormatting: it splices the
+        // new ItemGroup between existing elements with matching indent + line-ending trivia so
+        // the serializer does not produce `<ItemGroup><PackageReference .../></ItemGroup>` on a
+        // single line or glue `</Project>` onto the preceding element.
+        AppendRootChildWithFormatting(document, itemGroup);
+        return itemGroup;
+    }
+
+    /// <summary>
+    /// Inserts <paramref name="element"/> as the first child of the document root with a leading
+    /// newline + indent so the new element does not end up concatenated onto the opening
+    /// <c>&lt;Project&gt;</c> tag (or onto the existing first child). Used when a mutation needs
+    /// a brand-new root-level element (e.g. a fresh <c>PropertyGroup</c>) emitted at the top.
+    /// project-mutation-preview-xml-formatting: previously a duplicate of this lived in
+    /// <c>ProjectMutationService</c>; consolidating here so root-child insertion shares one
+    /// trivia-aware implementation across orchestrators and the project-mutation service.
+    /// </summary>
+    internal static void InsertFirstElementChildWithFormatting(XDocument document, XElement element)
+    {
+        var root = document.Root;
+        if (root is null)
+        {
+            return;
+        }
+
+        var lineEnding = DetectLineEnding(document);
+        const string indent = "  ";
+        var firstElement = root.Elements().FirstOrDefault();
+        if (firstElement is not null)
+        {
+            firstElement.AddBeforeSelf(element);
+            firstElement.AddBeforeSelf(new XText(lineEnding + indent));
+            return;
+        }
+
+        root.Add(new XText(lineEnding + indent));
+        root.Add(element);
+        root.Add(new XText(lineEnding));
+    }
+
+    /// <summary>
+    /// Appends <paramref name="element"/> as the last child of the document root with a leading
+    /// newline + indent splice so the new element is on its own line and the closing
+    /// <c>&lt;/Project&gt;</c> tag stays on the next line. project-mutation-preview-xml-formatting:
+    /// pulled out of <c>GetOrCreateItemGroup</c> so other root-level inserts (e.g. a brand-new
+    /// conditional <c>PropertyGroup</c> in <c>set_conditional_property_preview</c>) get the same
+    /// FORMAT-BUG-003-style splice instead of <c>document.Root?.Add(element)</c>, which produces
+    /// <c>...&lt;/PreviousElement&gt;&lt;NewElement&gt;...&lt;/NewElement&gt;&lt;/Project&gt;</c> on a
+    /// single line.
+    /// </summary>
+    internal static void AppendRootChildWithFormatting(XDocument document, XElement element)
+    {
+        var root = document.Root;
+        if (root is null)
+        {
+            return;
+        }
+
         var lineEnding = DetectLineEnding(document);
         const string indent = "  ";
         if (root.Elements().Any())
@@ -37,28 +86,27 @@ internal static class OrchestrationMsBuildXml
             var lastElement = root.Elements().Last();
             if (lastElement.NextNode is XText existingTrailing && string.IsNullOrWhiteSpace(existingTrailing.Value))
             {
-                lastElement.AddAfterSelf(new XText(lineEnding + indent), itemGroup);
+                lastElement.AddAfterSelf(new XText(lineEnding + indent), element);
             }
             else
             {
-                lastElement.AddAfterSelf(new XText(lineEnding + indent), itemGroup, new XText(lineEnding));
+                lastElement.AddAfterSelf(new XText(lineEnding + indent), element, new XText(lineEnding));
             }
         }
         else
         {
             root.Add(new XText(lineEnding + indent));
-            root.Add(itemGroup);
+            root.Add(element);
             root.Add(new XText(lineEnding));
         }
-
-        return itemGroup;
     }
 
     /// <summary>
     /// Adds <paramref name="child"/> to <paramref name="parent"/> with a leading newline + detected
     /// child indent so a fresh element does not end up concatenated onto the previous sibling or
-    /// the parent's closing tag. Mirrors <c>ProjectMutationService.AddChildElementPreservingIndentation</c>
-    /// for orchestrators that mutate csproj / Directory.Packages.props files.
+    /// the parent's closing tag. project-mutation-preview-xml-formatting: now the canonical
+    /// implementation — <c>ProjectMutationService</c> previously held a near-duplicate that
+    /// produced collapsed XML inside freshly-created PropertyGroup/ItemGroup parents.
     /// </summary>
     internal static void AddChildElementPreservingIndentation(XElement parent, XElement child)
     {

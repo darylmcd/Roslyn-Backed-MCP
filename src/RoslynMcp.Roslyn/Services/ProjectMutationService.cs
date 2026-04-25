@@ -1,6 +1,4 @@
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Xml;
 using System.Xml.Linq;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -91,8 +89,8 @@ public sealed class ProjectMutationService : IProjectMutationService
                 packageReference.Add(new XAttribute("Version", request.Version));
             }
 
-            var itemGroup = GetOrCreateItemGroup(document, "PackageReference");
-            AddChildElementPreservingIndentation(itemGroup, packageReference);
+            var itemGroup = OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "PackageReference");
+            OrchestrationMsBuildXml.AddChildElementPreservingIndentation(itemGroup, packageReference);
         }, $"Add package reference '{request.PackageId}'", ct, warnings).ConfigureAwait(false);
     }
 
@@ -107,7 +105,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 throw new InvalidOperationException($"Package reference '{request.PackageId}' was not found.");
             }
 
-            RemoveElementCleanly(element);
+            OrchestrationMsBuildXml.RemoveElementCleanly(element);
         }, $"Remove package reference '{request.PackageId}'", ct);
     }
 
@@ -132,8 +130,10 @@ public sealed class ProjectMutationService : IProjectMutationService
                 throw new InvalidOperationException($"Project reference '{referencedProject.Name}' already exists.");
             }
 
-            GetOrCreateItemGroup(document, "ProjectReference")
-                .Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
+            var itemGroup = OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "ProjectReference");
+            OrchestrationMsBuildXml.AddChildElementPreservingIndentation(
+                itemGroup,
+                new XElement("ProjectReference", new XAttribute("Include", relativePath)));
         }, $"Add project reference '{request.ReferencedProjectName}'", ct);
     }
 
@@ -156,7 +156,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 throw new InvalidOperationException($"Project reference '{request.ReferencedProjectName}' was not found.");
             }
 
-            RemoveElementCleanly(element);
+            OrchestrationMsBuildXml.RemoveElementCleanly(element);
         }, $"Remove project reference '{request.ReferencedProjectName}'", ct);
     }
 
@@ -172,18 +172,32 @@ public sealed class ProjectMutationService : IProjectMutationService
                 // Create a new PropertyGroup if none exists (e.g., Directory.Build.props-based projects).
                 // Insert with line breaks so the project file does not become a single-line malformed document.
                 propertyGroup = new XElement("PropertyGroup");
-                InsertFirstElementChildWithFormatting(document, propertyGroup);
+                OrchestrationMsBuildXml.InsertFirstElementChildWithFormatting(document, propertyGroup);
             }
 
             // Detect no-op: check if property already has the target value
-            var existingValue = propertyGroup.Element(request.PropertyName)?.Value;
-            if (string.Equals(existingValue, request.Value, StringComparison.Ordinal))
+            var existingElement = propertyGroup.Element(request.PropertyName);
+            if (string.Equals(existingElement?.Value, request.Value, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
                     $"No changes needed — property '{request.PropertyName}' is already set to '{request.Value}'.");
             }
 
-            propertyGroup.SetElementValue(request.PropertyName, request.Value);
+            // project-mutation-preview-xml-formatting: SetElementValue inserts a new XElement with
+            // no surrounding text nodes, which causes the serializer to emit
+            // `<TargetFramework>...</TargetFramework><LangVersion>preview</LangVersion></PropertyGroup>`
+            // on a single line whenever the property is being added (not just updated). Route through
+            // AddChildElementPreservingIndentation so the new child gets proper child-indent trivia.
+            if (existingElement is not null)
+            {
+                existingElement.Value = request.Value;
+            }
+            else
+            {
+                OrchestrationMsBuildXml.AddChildElementPreservingIndentation(
+                    propertyGroup,
+                    new XElement(request.PropertyName, request.Value));
+            }
         }, $"Set project property '{request.PropertyName}'", ct);
     }
 
@@ -247,8 +261,15 @@ public sealed class ProjectMutationService : IProjectMutationService
 
             list.Add(request.TargetFramework);
             var propertyGroup = new XElement("PropertyGroup");
-            propertyGroup.Add(new XElement("TargetFrameworks", string.Join(";", list)));
-            InsertFirstElementChildWithFormatting(document, propertyGroup);
+            // project-mutation-preview-xml-formatting: insert the empty PropertyGroup first so
+            // AddChildElementPreservingIndentation can detect parent indentation from its
+            // previous-sibling text node (without insertion first the new element has no
+            // surrounding text, so child indentation defaults to "  " instead of the project's
+            // "    " for nested elements).
+            OrchestrationMsBuildXml.InsertFirstElementChildWithFormatting(document, propertyGroup);
+            OrchestrationMsBuildXml.AddChildElementPreservingIndentation(
+                propertyGroup,
+                new XElement("TargetFrameworks", string.Join(";", list)));
         }, $"Add target framework '{request.TargetFramework}'", ct).ConfigureAwait(false);
     }
 
@@ -327,16 +348,14 @@ public sealed class ProjectMutationService : IProjectMutationService
             }
 
             var propertyGroup = new XElement("PropertyGroup");
-            if (list.Count == 1)
-            {
-                propertyGroup.Add(new XElement("TargetFramework", list[0]));
-            }
-            else
-            {
-                propertyGroup.Add(new XElement("TargetFrameworks", string.Join(";", list)));
-            }
-
-            InsertFirstElementChildWithFormatting(document, propertyGroup);
+            // project-mutation-preview-xml-formatting: insert empty PropertyGroup first, then add
+            // the TargetFramework(s) child via the trivia-aware helper. See note in
+            // PreviewAddTargetFrameworkAsync for why this two-step ordering matters.
+            OrchestrationMsBuildXml.InsertFirstElementChildWithFormatting(document, propertyGroup);
+            var tfElement = list.Count == 1
+                ? new XElement("TargetFramework", list[0])
+                : new XElement("TargetFrameworks", string.Join(";", list));
+            OrchestrationMsBuildXml.AddChildElementPreservingIndentation(propertyGroup, tfElement);
         }, $"Remove target framework '{request.TargetFramework}'", ct).ConfigureAwait(false);
     }
 
@@ -351,7 +370,20 @@ public sealed class ProjectMutationService : IProjectMutationService
                 .FirstOrDefault(candidate => string.Equals((string?)candidate.Attribute("Condition"), request.Condition, StringComparison.Ordinal))
                 ?? AddConditionalPropertyGroup(document, request.Condition);
 
-            propertyGroup.SetElementValue(request.PropertyName, request.Value);
+            // project-mutation-preview-xml-formatting: same trivia-collapse defect as
+            // PreviewSetProjectPropertyAsync — see note there. SetElementValue produces collapsed
+            // single-line PropertyGroup output for newly-inserted children.
+            var existingElement = propertyGroup.Element(request.PropertyName);
+            if (existingElement is not null)
+            {
+                existingElement.Value = request.Value;
+            }
+            else
+            {
+                OrchestrationMsBuildXml.AddChildElementPreservingIndentation(
+                    propertyGroup,
+                    new XElement(request.PropertyName, request.Value));
+            }
         }, $"Set project property '{request.PropertyName}' when {request.Condition}", ct);
     }
 
@@ -374,11 +406,11 @@ public sealed class ProjectMutationService : IProjectMutationService
                 throw new InvalidOperationException($"Central package version '{request.PackageId}' already exists.");
             }
 
-            var itemGroup = GetOrCreateItemGroup(document, "PackageVersion");
+            var itemGroup = OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "PackageVersion");
             var packageVersion = new XElement("PackageVersion",
                 new XAttribute("Include", request.PackageId),
                 new XAttribute("Version", request.Version));
-            AddChildElementPreservingIndentation(itemGroup, packageVersion);
+            OrchestrationMsBuildXml.AddChildElementPreservingIndentation(itemGroup, packageVersion);
         }, $"Add central package version '{request.PackageId}'", ct);
     }
 
@@ -402,7 +434,7 @@ public sealed class ProjectMutationService : IProjectMutationService
                 throw new InvalidOperationException($"Central package version '{request.PackageId}' was not found.");
             }
 
-            RemoveElementCleanly(element);
+            OrchestrationMsBuildXml.RemoveElementCleanly(element);
         }, $"Remove central package version '{request.PackageId}'", ct);
     }
 
@@ -483,33 +515,13 @@ public sealed class ProjectMutationService : IProjectMutationService
         var document = XDocument.Parse(originalContent, LoadOptions.PreserveWhitespace);
         mutator(document);
 
-        // BUG-N14: emit readable multi-line XML instead of a single-line <Project> blob.
-        var updatedContent = FormatProjectXml(document, originalContent);
+        // BUG-N14 + project-mutation-preview-xml-formatting: emit readable multi-line XML instead
+        // of a single-line <Project> blob. Delegates to OrchestrationMsBuildXml.FormatProjectXml
+        // which uses MemoryStream + XmlWriter (preserves UTF-8 encoding declaration when present).
+        var updatedContent = OrchestrationMsBuildXml.FormatProjectXml(document, originalContent);
         var diff = DiffGenerator.GenerateUnifiedDiff(originalContent, updatedContent, filePath);
         var token = _previewStore.Store(workspaceId, filePath, updatedContent, _workspace.GetCurrentVersion(workspaceId), description);
         return new RefactoringPreviewDto(token, description, [new FileChangeDto(filePath, diff)], warnings);
-    }
-
-    private static string FormatProjectXml(XDocument document, string originalContent)
-    {
-        var lineEnding = DetectLineEnding(document);
-        var hadXmlDeclaration = originalContent.AsSpan().TrimStart().StartsWith("<?xml".AsSpan(), StringComparison.Ordinal);
-        var sb = new StringBuilder();
-        var settings = new XmlWriterSettings
-        {
-            Indent = true,
-            IndentChars = "  ",
-            NewLineChars = lineEnding,
-            OmitXmlDeclaration = !hadXmlDeclaration,
-            Encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
-        };
-
-        using (var writer = XmlWriter.Create(sb, settings))
-        {
-            document.Save(writer);
-        }
-
-        return sb.ToString();
     }
 
     private ProjectStatusDto ResolveProject(string workspaceId, string projectName)
@@ -518,213 +530,6 @@ public sealed class ProjectMutationService : IProjectMutationService
                    string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
                ?? throw new InvalidOperationException($"Project not found: {projectName}");
-    }
-
-    /// <summary>
-    /// apply-project-mutation-whitespace: removes <paramref name="element"/> together with the
-    /// preceding whitespace text node so an add→remove round-trip leaves the file byte-identical
-    /// instead of leaving a blank line where the element used to be. If the element was the only
-    /// real child of its parent <see cref="XElement"/> (typical: a single <c>PackageReference</c>
-    /// inside an <c>ItemGroup</c>), the parent is removed too along with its surrounding
-    /// whitespace, keeping a clean csproj.
-    /// </summary>
-    private static void RemoveElementCleanly(XElement element)
-    {
-        var parent = element.Parent;
-        RemoveNodeAndAdjacentWhitespace(element);
-
-        // If the parent is now empty, prune it too. Otherwise the project file accumulates
-        // `<ItemGroup />` orphans after the last reference is removed.
-        if (parent is not null
-            && parent != parent.Document?.Root
-            && !parent.Elements().Any())
-        {
-            foreach (var ws in parent.Nodes().OfType<XText>().ToList())
-            {
-                ws.Remove();
-            }
-            RemoveNodeAndAdjacentWhitespace(parent);
-        }
-    }
-
-    /// <summary>
-    /// Removes <paramref name="node"/> together with one whitespace text neighbor so an
-    /// add → remove round-trip leaves the document layout intact. Prefers the leading text
-    /// node (typical indent that visually accompanied the element); falls back to the trailing
-    /// text node when the element was inserted via <see cref="XContainer.AddAfterSelf(object)"/>
-    /// (which produces <c>[previous-element][element][trailing-whitespace]</c> rather than
-    /// <c>[previous-element][leading-whitespace][element]</c>). Only pure-whitespace XText nodes
-    /// are touched; comments and other significant nodes are preserved.
-    /// </summary>
-    private static void RemoveNodeAndAdjacentWhitespace(XNode node)
-    {
-        if (node.PreviousNode is XText leading && string.IsNullOrWhiteSpace(leading.Value))
-        {
-            leading.Remove();
-        }
-        else if (node.NextNode is XText trailing && string.IsNullOrWhiteSpace(trailing.Value))
-        {
-            trailing.Remove();
-        }
-        node.Remove();
-    }
-
-    private static XElement GetOrCreateItemGroup(XDocument document, string itemName)
-    {
-        var existingGroup = document.Root?.Elements("ItemGroup")
-            .FirstOrDefault(group => group.Elements(itemName).Any());
-        if (existingGroup is not null)
-        {
-            return existingGroup;
-        }
-
-        var itemGroup = new XElement("ItemGroup");
-        var root = document.Root;
-        if (root is null)
-        {
-            return itemGroup;
-        }
-
-        var lineEnding = DetectLineEnding(document);
-        const string indent = "  ";
-        if (root.Elements().Any())
-        {
-            var lastElement = root.Elements().Last();
-            lastElement.AddAfterSelf(new XText(lineEnding + indent));
-            lastElement.AddAfterSelf(itemGroup);
-        }
-        else
-        {
-            root.Add(new XText(lineEnding + "  "));
-            root.Add(itemGroup);
-            root.Add(new XText(lineEnding));
-        }
-
-        return itemGroup;
-    }
-
-    /// <summary>
-    /// Inserts an element as the first child of the document root with a leading newline and indent,
-    /// avoiding inline concatenation on the same line as the opening <c>&lt;Project&gt;</c> tag.
-    /// </summary>
-    private static void InsertFirstElementChildWithFormatting(XDocument document, XElement element)
-    {
-        var root = document.Root;
-        if (root is null)
-        {
-            return;
-        }
-
-        var lineEnding = DetectLineEnding(document);
-        const string indent = "  ";
-        var firstElement = root.Elements().FirstOrDefault();
-        if (firstElement is not null)
-        {
-            firstElement.AddBeforeSelf(element);
-            firstElement.AddBeforeSelf(new XText(lineEnding + indent));
-            return;
-        }
-
-        root.Add(new XText(lineEnding + indent));
-        root.Add(element);
-        root.Add(new XText(lineEnding));
-    }
-
-    private static void AddChildElementPreservingIndentation(XElement parent, XElement child)
-    {
-        var trailingWhitespace = parent.Nodes().OfType<XText>().LastOrDefault(node =>
-            node.NextNode is null && string.IsNullOrWhiteSpace(node.Value));
-
-        var childIndentation = DetectChildIndentation(parent);
-        var lineEnding = DetectLineEnding(parent.Document);
-
-        if (trailingWhitespace is not null)
-        {
-            trailingWhitespace.AddBeforeSelf(new XText(lineEnding + childIndentation));
-            trailingWhitespace.AddBeforeSelf(child);
-            return;
-        }
-
-        if (!parent.HasElements)
-        {
-            var parentIndentation = DetectParentIndentation(parent);
-            parent.Add(new XText(lineEnding + childIndentation));
-            parent.Add(child);
-            parent.Add(new XText(lineEnding + parentIndentation));
-            return;
-        }
-
-        // Existing siblings: insert newline + indent before the new element (matches first-child formatting)
-        var lastElement = parent.Elements().LastOrDefault();
-        if (lastElement is not null)
-        {
-            lastElement.AddAfterSelf(new XText(lineEnding + childIndentation), child);
-            return;
-        }
-
-        parent.Add(child);
-    }
-
-    private static string DetectChildIndentation(XElement parent)
-    {
-        var firstChild = parent.Elements().FirstOrDefault();
-        if (firstChild?.PreviousNode is XText previousText)
-        {
-            var indentation = GetTrailingIndentation(previousText.Value);
-            if (indentation is not null)
-            {
-                return indentation;
-            }
-        }
-
-        return DetectParentIndentation(parent) + "  ";
-    }
-
-    private static string DetectParentIndentation(XElement element)
-    {
-        if (element.PreviousNode is XText previousText)
-        {
-            return GetTrailingIndentation(previousText.Value) ?? string.Empty;
-        }
-
-        return string.Empty;
-    }
-
-    private static string? GetTrailingIndentation(string whitespace)
-    {
-        if (string.IsNullOrWhiteSpace(whitespace))
-        {
-            var newlineIndex = whitespace.LastIndexOf('\n');
-            if (newlineIndex >= 0)
-            {
-                return whitespace[(newlineIndex + 1)..];
-            }
-        }
-
-        return null;
-    }
-
-    private static string DetectLineEnding(XDocument? document)
-    {
-        if (document is null)
-        {
-            return Environment.NewLine;
-        }
-
-        foreach (var textNode in document.DescendantNodes().OfType<XText>())
-        {
-            if (textNode.Value.Contains("\r\n", StringComparison.Ordinal))
-            {
-                return "\r\n";
-            }
-
-            if (textNode.Value.Contains("\n", StringComparison.Ordinal))
-            {
-                return "\n";
-            }
-        }
-
-        return Environment.NewLine;
     }
 
     private static string NormalizeInclude(string? include)
@@ -766,8 +571,13 @@ public sealed class ProjectMutationService : IProjectMutationService
 
     private static XElement AddConditionalPropertyGroup(XDocument document, string condition)
     {
+        // project-mutation-preview-xml-formatting: previously this called document.Root?.Add(propertyGroup)
+        // which produced `</PreviousElement><PropertyGroup Condition="...">...</PropertyGroup></Project>`
+        // on a single line (no trivia, no line breaks). Route through the trivia-aware splice helper
+        // shared with GetOrCreateItemGroup so the new conditional group lands on its own line and
+        // </Project> stays on the next line.
         var propertyGroup = new XElement("PropertyGroup", new XAttribute("Condition", condition));
-        document.Root?.Add(propertyGroup);
+        OrchestrationMsBuildXml.AppendRootChildWithFormatting(document, propertyGroup);
         return propertyGroup;
     }
 
