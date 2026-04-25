@@ -88,9 +88,11 @@ internal sealed class TestServiceContainer
         var mutationAnalysisService = new MutationAnalysisService(
             workspaceManager,
             NullLogger<MutationAnalysisService>.Instance);
+        var codeFixRegistry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);
         var diagnosticService = new DiagnosticService(
             workspaceManager,
             compilationCache,
+            codeFixRegistry,
             NullLogger<DiagnosticService>.Instance);
         var undoService = new UndoService(NullLogger<UndoService>.Instance, workspaceManager);
         var changeTracker = new ChangeTracker(workspaceManager);
@@ -153,7 +155,7 @@ internal sealed class TestServiceContainer
                 NullLogger<RefactoringService>.Instance,
                 undoService,
                 changeTracker,
-                new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance),
+                codeFixRegistry,
                 new PostApplySymbolResolver()),
             BuildService = new BuildService(
                 workspaceManager,
