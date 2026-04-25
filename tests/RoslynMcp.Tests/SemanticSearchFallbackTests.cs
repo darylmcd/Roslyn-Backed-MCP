@@ -113,4 +113,73 @@ public sealed class SemanticSearchFallbackTests : SharedWorkspaceTestBase
             CollectionAssert.DoesNotContain(response.Debug.ParsedTokens.ToList(), stopword);
         }
     }
+
+    // ── semantic-search-duplicate-results-and-fallback-signal ──
+
+    /// <summary>
+    /// Regression for <c>semantic-search-duplicate-results-and-fallback-signal</c>: partial
+    /// classes, multi-targeted projects, and nested-type traversal previously caused the same
+    /// symbol to be surfaced twice (identical fully-qualified name + identical SymbolHandle).
+    /// The dedupe-by-handle guard added in <c>CollectSemanticSearchMatchesAsync</c> must
+    /// guarantee all returned handles are unique for any query.
+    /// </summary>
+    [TestMethod]
+    public async Task SemanticSearch_StructuredQuery_ResultHandlesAreUnique()
+    {
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
+
+        // Query that exercises the structured path with multiple predicates ("classes" +
+        // "implementing interface"), which is the exact scenario the backlog row called out
+        // (`semantic_search("classes implementing IDisposable")` used to return JobProcessor
+        // twice with identical SymbolHandle).
+        var response = await CodePatternAnalyzer.SemanticSearchAsync(
+            workspaceId, "classes implementing IDisposable", "SampleLib", 50, CancellationToken.None);
+
+        Assert.IsTrue(response.Results.Count > 0, "Expected at least one IDisposable class.");
+        var handles = response.Results.Select(r => r.SymbolHandle).ToList();
+        var distinct = handles.Distinct(StringComparer.Ordinal).ToList();
+        Assert.AreEqual(handles.Count, distinct.Count,
+            "Each semantic-search result must have a unique SymbolHandle (dedupe guard).");
+    }
+
+    /// <summary>
+    /// Each result must declare which matching strategy produced it via <c>MatchKind</c>.
+    /// Structured-predicate hits report "structured".
+    /// </summary>
+    [TestMethod]
+    public async Task SemanticSearch_StructuredQuery_PerResultMatchKindIsStructured()
+    {
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
+
+        var response = await CodePatternAnalyzer.SemanticSearchAsync(
+            workspaceId, "classes implementing IDisposable", "SampleLib", 50, CancellationToken.None);
+
+        Assert.IsTrue(response.Results.Count > 0);
+        Assert.IsTrue(
+            response.Results.All(r => r.MatchKind == "structured"),
+            "All structured-query results must report MatchKind == 'structured'.");
+    }
+
+    /// <summary>
+    /// Verbose-query fallback path must propagate "token-or-match" as the per-result MatchKind
+    /// so the caller can see why a particular row showed up.
+    /// </summary>
+    [TestMethod]
+    public async Task SemanticSearch_VerboseQuery_PerResultMatchKindIsTokenOrMatch()
+    {
+        var workspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
+
+        var response = await CodePatternAnalyzer.SemanticSearchAsync(
+            workspaceId,
+            "tell me about the Dog animal type inside the SampleLib namespace please",
+            "SampleLib",
+            50,
+            CancellationToken.None);
+
+        Assert.IsTrue(response.Results.Count > 0);
+        Assert.AreEqual("token-or-match", response.Debug!.FallbackStrategy);
+        Assert.IsTrue(
+            response.Results.All(r => r.MatchKind == "token-or-match"),
+            "All token-or-fallback results must report MatchKind == 'token-or-match'.");
+    }
 }
