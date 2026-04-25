@@ -591,10 +591,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // not destroy those references. The apply path rebases each token's snapshot
             // against the CURRENT solution via `modifiedSolution.GetChanges(currentSolution)`
             // at redemption time (RefactoringService.ApplyRefactoringAsync), so unrelated
-            // workspace moves don't need to invalidate tokens. InvalidateAll remains wired
-            // to workspace-lifecycle events (Close, LoadIntoSessionAsync) where the underlying
-            // MSBuildWorkspace is disposed and the captured Solution references become
-            // orphaned.
+            // workspace moves don't need to invalidate tokens.
+            //
+            // format-range-apply-preview-token-lifetime: sibling-apply bumps the session
+            // version (above) but does NOT call any preview-store invalidation here — pruning
+            // is reload- and close-driven only. The pinned-range eviction triggered by the
+            // next reload uses the live `session.Version` so any version bumps that have
+            // happened in the meantime (sibling apply, prior reload) count against each
+            // token's pinned ceiling at that point.
             LogChangesApplied(_logger, workspaceId, session.Version, null);
         }
         else
@@ -730,7 +734,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             session.RestoreRequired = restoreRequired;
             session.LoadedAtUtc = DateTimeOffset.UtcNow;
             session.IncrementVersion();
-            _previewStore.InvalidateAll(session.WorkspaceId);
+            // format-range-apply-preview-token-lifetime: drop only the tokens whose pinned
+            // workspace-version range has been exceeded by this reload bump (default span = 1,
+            // so a preview → single-reload → apply sequence inside the TTL window still
+            // redeems). Replaces the prior unconditional `InvalidateAll` that surfaced as
+            // "Preview token not found or expired" on every `*_apply` racing a watcher-driven
+            // auto-reload. The captured Roslyn `Solution` snapshots are immutable graphs and
+            // remain readable after the prior `MSBuildWorkspace` is disposed below — the apply
+            // path's `RebaseModifiedSolutionOntoCurrentAsync` matches documents by file path,
+            // so the post-reload `ProjectId`/`DocumentId` lineage divergence is handled.
+            _previewStore.InvalidateOnVersionBump(session.WorkspaceId, session.Version);
 
             // Transfer succeeded — dispose the prior workspace AFTER readers can no longer
             // latch onto it through `session.Workspace`. Null out our local so the finally

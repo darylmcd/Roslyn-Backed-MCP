@@ -66,6 +66,22 @@ public abstract class BoundedStore<TEntry> where TEntry : IBoundedStoreEntry
         }
     }
 
+    /// <summary>
+    /// Drops every entry for which <paramref name="shouldDrop"/> returns <see langword="true"/>.
+    /// Hook for derived stores that need a richer eviction policy than workspace-id matching
+    /// (e.g. <c>PreviewStore.InvalidateOnVersionBump</c>, which compares the post-bump
+    /// workspace version against a per-entry pinned-range ceiling).
+    /// </summary>
+    protected void InvalidateWhere(Func<TEntry, bool> shouldDrop)
+    {
+        ArgumentNullException.ThrowIfNull(shouldDrop);
+        foreach (var kvp in _entries)
+        {
+            if (shouldDrop(kvp.Value))
+                _entries.TryRemove(kvp.Key, out _);
+        }
+    }
+
     public string? PeekWorkspaceId(string token)
     {
         if (!_entries.TryGetValue(token, out var entry))

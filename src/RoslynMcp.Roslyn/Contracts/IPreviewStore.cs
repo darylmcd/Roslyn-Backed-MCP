@@ -71,6 +71,33 @@ public interface IPreviewStore
     void InvalidateAll(string? workspaceId = null);
 
     /// <summary>
+    /// <b>format-range-apply-preview-token-lifetime:</b> drops only the entries belonging to
+    /// <paramref name="workspaceId"/> whose pinned workspace-version range no longer covers
+    /// <paramref name="newWorkspaceVersion"/>. Each entry is pinned at Store time to a range
+    /// <c>[StoreVersion, StoreVersion + MaxVersionSpan]</c>; an auto-reload that nudges the
+    /// workspace version by one bump leaves tokens in the range valid (so a preview → reload
+    /// → apply sequence that fits inside a single version bump still redeems), while a second
+    /// reload pushes the version past the pinned ceiling and the token is dropped.
+    /// </summary>
+    /// <remarks>
+    /// Replaces the prior "wipe-on-reload" behavior at
+    /// <c>WorkspaceManager.LoadIntoSessionAsync</c>, which called
+    /// <see cref="InvalidateAll(string)"/> indiscriminately and surfaced as
+    /// <c>"Preview token not found or expired"</c> on every <c>format_range_apply</c>
+    /// (and other <c>*_apply</c>) call that raced against a file-watcher auto-reload within
+    /// the preview's TTL window. The captured <c>OriginalSolution</c>/<c>ModifiedSolution</c>
+    /// snapshots are immutable Roslyn graphs and remain readable after the underlying
+    /// <c>MSBuildWorkspace</c> is disposed by reload, so the apply path's existing
+    /// cross-lineage rebase (<c>RebaseModifiedSolutionOntoCurrentAsync</c> in
+    /// <c>RefactoringService</c>) safely replays the preview's diff onto the post-reload
+    /// solution. <see cref="InvalidateAll(string)"/> remains the right call for the
+    /// workspace-close path, where the workspace is going away entirely.
+    /// </remarks>
+    /// <param name="workspaceId">The workspace whose entries are version-checked.</param>
+    /// <param name="newWorkspaceVersion">The post-bump workspace version.</param>
+    void InvalidateOnVersionBump(string workspaceId, int newWorkspaceVersion);
+
+    /// <summary>
     /// Returns the workspace identifier associated with a preview token without consuming the entry,
     /// or <see langword="null"/> if the token is expired or not found.
     /// </summary>
