@@ -1,6 +1,6 @@
 ---
 name: workspace-health
-description: "One-shot status report on the running Roslyn MCP server and any loaded workspaces. Use when: troubleshooting the server, onboarding a session, confirming readiness before a sensitive operation, listing loaded workspaces, or checking for staleness/degraded state."
+description: "One-shot status report on the running Roslyn MCP server and any loaded workspaces. Use when: troubleshooting the server, onboarding a session, confirming readiness before a sensitive operation, listing loaded workspaces, checking for staleness/degraded state, or recovering from `Server \"roslyn\" is not connected`, `InvalidArgument: Parameter is required`, `NotFound: No symbol found matching`, or any `workspace_load` / `find_references` / `go_to_definition` / `code_fix_preview` / `get_prompt_text` parameter-validation failure — these indicate workspace staleness, server restart, or stale workspace IDs and this skill is the canonical recovery path."
 user-invocable: true
 argument-hint: "(optional) workspace ID to focus on; default: all"
 ---
