@@ -77,18 +77,13 @@ public sealed class FixAllService : IFixAllService
             ?? FindCodeFixProvider(analyzerAssemblyProviders, diagnosticId);
         if (provider is null)
         {
-            var alternativeHint = GetAlternativeToolHint(diagnosticId);
             return new FixAllPreviewDto(
                 PreviewToken: "",
                 DiagnosticId: diagnosticId,
                 Scope: scope,
                 FixedCount: 0,
                 Changes: [],
-                GuidanceMessage:
-                    $"No code fix provider is loaded for diagnostic '{diagnosticId}'. " +
-                    (alternativeHint ?? "Restore analyzer packages (IDE/CA rules). Use list_analyzers to see loaded diagnostic IDs. " +
-                        "If this is an Info/IDE-series diagnostic without a built-in fix, consider add_pragma_suppression " +
-                        "or an editorconfig severity bump via set_diagnostic_severity."));
+                GuidanceMessage: BuildNoProviderGuidance(diagnosticId));
         }
 
         var fixAllProvider = provider.GetFixAllProvider();
@@ -606,11 +601,48 @@ public sealed class FixAllService : IFixAllService
     }
 
     /// <summary>
+    /// Builds the uniform "no fix provider loaded" guidance returned when neither the
+    /// reflection-loaded CSharp.Features fix providers nor the project's analyzer-reference
+    /// fix providers cover <paramref name="diagnosticId"/>. The message has the same structural
+    /// shape regardless of the diagnostic's severity or whether the id is IDE-prefixed: it
+    /// always names the diagnostic, calls out <c>list_analyzers</c> as the discovery tool, and
+    /// suggests <c>add_pragma_suppression</c> / <c>set_diagnostic_severity</c> as fallbacks.
+    /// When a known id has a more specific alternative tool (e.g. <c>organize_usings_preview</c>
+    /// for <c>IDE0005</c>), that hint is appended.
+    /// </summary>
+    /// <remarks>
+    /// fix-all-preview-silent-on-missing-provider-info-severity: previously the IDE-prefixed
+    /// switch arm in <see cref="GetAlternativeToolHint"/> displaced the <c>list_analyzers</c>
+    /// fallback, so Info-severity ids like <c>IDE0130</c>/<c>IDE0290</c>/<c>IDE0008</c>
+    /// returned a guidance shape that omitted the <c>list_analyzers</c> pointer that
+    /// non-IDE Warning ids (<c>CA1826</c>/<c>xUnit1051</c>) carried. Severity and id-prefix
+    /// must not gate the <c>list_analyzers</c> reference — the baseline guidance is uniform,
+    /// and id-specific tool hints are additive.
+    /// </remarks>
+    internal static string BuildNoProviderGuidance(string diagnosticId)
+    {
+        var baseline =
+            $"No code fix provider is loaded for diagnostic '{diagnosticId}'. " +
+            "Restore analyzer packages (IDE/CA rules). Use list_analyzers to see loaded diagnostic IDs. " +
+            "If this diagnostic has no built-in fix, consider add_pragma_suppression " +
+            "or an editorconfig severity bump via set_diagnostic_severity.";
+
+        var hint = GetAlternativeToolHint(diagnosticId);
+        return hint is null ? baseline : baseline + " " + hint;
+    }
+
+    /// <summary>
     /// Returns an alternative tool suggestion for known IDE diagnostics that lack FixAll providers.
     /// Many IDE code fix providers require constructor parameters that cannot be satisfied via
     /// reflection instantiation, so they are silently skipped. This mapping directs agents to
     /// the correct alternative tool or manual workaround.
     /// </summary>
+    /// <remarks>
+    /// This helper returns ONLY id-specific tool hints — the generic "no provider loaded /
+    /// use list_analyzers" baseline lives in <see cref="BuildNoProviderGuidance"/> and is
+    /// emitted unconditionally. Adding a new id-specific hint here will append it to the
+    /// uniform baseline; do NOT re-state the baseline pointers in the per-id strings.
+    /// </remarks>
     private static string? GetAlternativeToolHint(string diagnosticId) =>
         diagnosticId.ToUpperInvariant() switch
         {
@@ -619,9 +651,6 @@ public sealed class FixAllService : IFixAllService
             "IDE0055" => "Use format_document_preview / format_document_apply for formatting fixes.",
             "IDE0160" or "IDE0161" => "Block-scoped vs file-scoped namespace preferences must be applied manually or with code_fix_preview on individual instances.",
             "IDE0290" => "Primary constructor conversion must be applied manually or with code_fix_preview on individual instances.",
-            _ when diagnosticId.StartsWith("IDE", StringComparison.OrdinalIgnoreCase) =>
-                $"The IDE code fix provider for '{diagnosticId}' could not be loaded (constructor requirements). " +
-                "Try code_fix_preview on individual instances, or use list_analyzers to check if the diagnostic is present.",
             _ => null
         };
 

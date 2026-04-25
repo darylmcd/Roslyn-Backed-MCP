@@ -175,6 +175,83 @@ public sealed class FixAllServiceTests
 
         StringAssert.Contains(thrown.Message, "Sequence contains no elements");
     }
+
+    // ----------------------------------------------------------------------
+    // fix-all-preview-silent-on-missing-provider-info-severity regression coverage.
+    //
+    // Backlog observation: when the registered provider lookup misses (no static
+    // nor analyzer-reference provider covers the id), Info-severity IDE ids
+    // (IDE0130 / IDE0290 / IDE0008) used to return guidance that omitted the
+    // list_analyzers pointer, while Warning-severity non-IDE ids (CA1826 /
+    // xUnit1051) returned a helpful list_analyzers-bearing message. The fix
+    // routes both severities through BuildNoProviderGuidance, which always emits
+    // the same baseline (id name + list_analyzers + add_pragma_suppression /
+    // set_diagnostic_severity fallback) and APPENDS any id-specific tool hint.
+    // Severity and id-prefix must not gate the baseline pointers.
+    // ----------------------------------------------------------------------
+
+    [TestMethod]
+    public void BuildNoProviderGuidance_Info_IDE0130_Includes_List_Analyzers_Pointer()
+    {
+        // IDE0130 (using-directive placement) is Info severity in default editorconfig
+        // and previously fell into the IDE-prefixed switch arm that displaced the
+        // list_analyzers reference. Guarantee the baseline pointer survives.
+        var guidance = FixAllService.BuildNoProviderGuidance("IDE0130");
+
+        StringAssert.Contains(guidance, "IDE0130");
+        StringAssert.Contains(guidance, "No code fix provider is loaded");
+        StringAssert.Contains(guidance, "list_analyzers");
+        StringAssert.Contains(guidance, "add_pragma_suppression");
+        StringAssert.Contains(guidance, "set_diagnostic_severity");
+    }
+
+    [TestMethod]
+    public void BuildNoProviderGuidance_Warning_CA1826_Includes_List_Analyzers_Pointer()
+    {
+        // CA1826 (use-method-instead-of-linq) is Warning severity and non-IDE.
+        // It must produce the SAME baseline as the Info IDE0130 case — the only
+        // legitimate difference is whether GetAlternativeToolHint adds an id-specific
+        // appendage. Severity and id-prefix do not gate the baseline.
+        var guidance = FixAllService.BuildNoProviderGuidance("CA1826");
+
+        StringAssert.Contains(guidance, "CA1826");
+        StringAssert.Contains(guidance, "No code fix provider is loaded");
+        StringAssert.Contains(guidance, "list_analyzers");
+        StringAssert.Contains(guidance, "add_pragma_suppression");
+        StringAssert.Contains(guidance, "set_diagnostic_severity");
+    }
+
+    [TestMethod]
+    public void BuildNoProviderGuidance_Info_And_Warning_Share_Baseline_Shape()
+    {
+        // Direct cross-severity invariant: when neither id has an id-specific hint
+        // appended, the two strings must be byte-identical except for the diagnostic
+        // id substitution. Precludes a future refactor from re-introducing a
+        // severity-keyed branch silently.
+        var info = FixAllService.BuildNoProviderGuidance("IDE0130");
+        var warn = FixAllService.BuildNoProviderGuidance("CA1826");
+
+        // Strip the id from each so the rest of the message can be compared.
+        var infoCanonical = info.Replace("IDE0130", "<ID>", StringComparison.Ordinal);
+        var warnCanonical = warn.Replace("CA1826", "<ID>", StringComparison.Ordinal);
+
+        Assert.AreEqual(warnCanonical, infoCanonical,
+            "Severity and id-prefix must not affect the baseline guidance shape.");
+    }
+
+    [TestMethod]
+    public void BuildNoProviderGuidance_Appends_IdSpecific_Hint_When_Available()
+    {
+        // IDE0005 has a documented organize_usings_preview alternative; the hint
+        // should be appended to (not replace) the uniform baseline. This is the
+        // one place severity-of-id-shape DOES legitimately differ — but only
+        // additively.
+        var guidance = FixAllService.BuildNoProviderGuidance("IDE0005");
+
+        StringAssert.Contains(guidance, "IDE0005");
+        StringAssert.Contains(guidance, "list_analyzers");                      // baseline survives
+        StringAssert.Contains(guidance, "organize_usings_preview");             // id-specific append
+    }
 }
 
 #pragma warning restore RS2008
