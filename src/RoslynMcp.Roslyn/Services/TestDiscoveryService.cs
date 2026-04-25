@@ -124,10 +124,36 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         var total = enriched.Count;
         var page = enriched.Take(maxResults).ToList();
         var dotnetFilter = SynthesizeDotnetTestFilter(page.Select(t => t.FullyQualifiedName));
+
+        // test-related-files-empty-result-explainability: parity with files-mode envelope.
+        // Symbol-mode misses break down into "symbol did not resolve" vs "symbol resolved
+        // but heuristic + reference sweep matched zero tests".
+        var missReasons = new List<string>();
+        if (symbol is null)
+        {
+            missReasons.Add("locator did not resolve to any workspace symbol");
+        }
+        else if (enriched.Count == 0)
+        {
+            var searchTerms = string.Join(", ", BuildRelatedTestSearchTerms(symbol).OrderBy(t => t, StringComparer.Ordinal));
+            missReasons.Add(
+                discovery.TestProjects.Sum(p => p.Tests.Count) == 0
+                    ? "symbol resolved but the workspace contains no discovered tests"
+                    : $"symbol resolved but no discovered test name/path matched terms [{searchTerms}] and the reference sweep produced no test-file overlaps");
+        }
+        var heuristicsAttempted = symbol is null
+            ? (IReadOnlyList<string>)[]
+            : ["symbol-name", "container-name", "reference-sweep"];
+        var diagnostics = new RelatedTestsDiagnosticsDto(
+            ScannedTestProjects: discovery.TestProjects.Count,
+            HeuristicsAttempted: heuristicsAttempted,
+            MissReasons: missReasons);
+
         return new RelatedTestsForSymbolDto(
             page,
             dotnetFilter,
-            new PaginationInfo(Total: total, Returned: page.Count, HasMore: total > page.Count));
+            new PaginationInfo(Total: total, Returned: page.Count, HasMore: total > page.Count),
+            diagnostics);
     }
 
     /// <summary>
@@ -335,6 +361,13 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
         var testToTriggers = new Dictionary<string, List<string>>(StringComparer.Ordinal);
 
+        // test-related-files-empty-result-explainability: track per-file outcomes so an empty
+        // Tests list can be explained — "path did not resolve to a workspace document",
+        // "no type/file-name term matched", etc. — instead of leaving the caller to guess.
+        var filesThatMatched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var missReasons = new List<string>();
+        var anyDocumentResolved = false;
+
         foreach (var filePath in filePaths)
         {
             var document = solution
@@ -343,10 +376,20 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                 .FirstOrDefault(d => d.FilePath is not null &&
                     string.Equals(Path.GetFullPath(d.FilePath), Path.GetFullPath(filePath), StringComparison.OrdinalIgnoreCase));
 
-            if (document is null) continue;
+            if (document is null)
+            {
+                missReasons.Add($"path '{filePath}' did not resolve to a workspace document");
+                continue;
+            }
 
             var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
-            if (root is null) continue;
+            if (root is null)
+            {
+                missReasons.Add($"path '{filePath}' resolved to a document with no syntax tree");
+                continue;
+            }
+
+            anyDocumentResolved = true;
 
             var searchTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -360,6 +403,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             // Also use the file name as a search term
             searchTerms.Add(Path.GetFileNameWithoutExtension(filePath));
 
+            var perFileMatchCount = 0;
             foreach (var (projectName, test) in allTests)
             {
                 if (!searchTerms.Any(term =>
@@ -375,6 +419,20 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                     testToTriggers[key] = triggers;
                 }
                 triggers.Add(filePath);
+                perFileMatchCount++;
+            }
+
+            if (perFileMatchCount == 0)
+            {
+                var renderedTerms = string.Join(", ", searchTerms.OrderBy(t => t, StringComparer.Ordinal));
+                missReasons.Add(
+                    allTests.Count == 0
+                        ? $"path '{filePath}' resolved but the workspace contains no discovered tests"
+                        : $"path '{filePath}' resolved but no discovered test name/path matched any of [{renderedTerms}]");
+            }
+            else
+            {
+                filesThatMatched.Add(filePath);
             }
         }
 
@@ -404,10 +462,18 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             .ToList();
 
         var dotnetFilter = SynthesizeDotnetTestFilter(results.Select(t => t.FullyQualifiedName));
+        var heuristicsAttempted = anyDocumentResolved
+            ? (IReadOnlyList<string>)["type-name", "file-name"]
+            : [];
+        var diagnostics = new RelatedTestsDiagnosticsDto(
+            ScannedTestProjects: discovery.TestProjects.Count,
+            HeuristicsAttempted: heuristicsAttempted,
+            MissReasons: missReasons);
         return new RelatedTestsForFilesDto(
             results,
             dotnetFilter,
-            new PaginationInfo(Total: total, Returned: results.Count, HasMore: total > results.Count));
+            new PaginationInfo(Total: total, Returned: results.Count, HasMore: total > results.Count),
+            diagnostics);
     }
 
     private static readonly HashSet<string> TestAttributeNames = new(StringComparer.Ordinal)

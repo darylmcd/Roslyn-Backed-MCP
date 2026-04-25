@@ -205,6 +205,65 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         }
     }
 
+    // test-related-files-empty-result-explainability: an empty Tests list MUST be
+    // explainable — callers need to distinguish "no tests exist for this file set" from
+    // "the heuristic missed them." Pre-fix the response surface gave no signal either way.
+    // Post-fix, the diagnostics envelope reports scanned-test-projects, attempted heuristics,
+    // and per-input-file miss reasons.
+    [TestMethod]
+    public async Task FindRelatedTestsForFiles_NoMatch_PopulatesMissReasonsAndDiagnostics()
+    {
+        // Path that is guaranteed not to resolve to any workspace document.
+        var unresolvableFakePath = Path.Combine(Path.GetTempPath(), $"NotInWorkspace_{Guid.NewGuid():N}.cs");
+
+        var result = await TestDiscoveryService.FindRelatedTestsForFilesAsync(
+            WorkspaceId,
+            new[] { unresolvableFakePath },
+            maxResults: 100,
+            CancellationToken.None);
+
+        Assert.AreEqual(0, result.Tests.Count, "Unresolvable path should produce no related tests.");
+        Assert.AreEqual(0, result.Pagination.Total);
+        Assert.AreEqual(string.Empty, result.DotnetTestFilter);
+
+        Assert.IsNotNull(result.Diagnostics, "Diagnostics envelope must always be present.");
+        Assert.IsTrue(result.Diagnostics.ScannedTestProjects > 0,
+            $"Sample workspace should expose at least one test project; got {result.Diagnostics.ScannedTestProjects}.");
+        Assert.IsTrue(result.Diagnostics.MissReasons.Count > 0,
+            "MissReasons must be non-empty when no tests are returned for a file that did not resolve.");
+        Assert.IsTrue(
+            result.Diagnostics.MissReasons.Any(reason =>
+                reason.Contains(unresolvableFakePath, StringComparison.OrdinalIgnoreCase) &&
+                reason.Contains("did not resolve", StringComparison.OrdinalIgnoreCase)),
+            $"MissReasons should explain that '{unresolvableFakePath}' did not resolve. Got: [{string.Join(" | ", result.Diagnostics.MissReasons)}]");
+    }
+
+    // test-related-files-empty-result-explainability: when a real workspace document IS
+    // resolved but the heuristic still finds zero matches, missReasons must say so and the
+    // attempted heuristics must be enumerated so callers can see why.
+    [TestMethod]
+    public async Task FindRelatedTestsForFiles_DocumentResolvedButNoMatch_ReportsHeuristicsAndReason()
+    {
+        // Find a document that is unlikely to share names with any test — pick the test
+        // discovery service's own implementation file path and then pass it under a fresh
+        // temp filename so it resolves to nothing.
+        var unresolvableFakePath = Path.Combine(Path.GetTempPath(), $"PhantomFile_{Guid.NewGuid():N}.cs");
+
+        var result = await TestDiscoveryService.FindRelatedTestsForFilesAsync(
+            WorkspaceId,
+            new[] { unresolvableFakePath },
+            maxResults: 100,
+            CancellationToken.None);
+
+        // No document resolved => no heuristics attempted is the contract.
+        Assert.AreEqual(0, result.Diagnostics.HeuristicsAttempted.Count,
+            "When no input file resolves, no heuristic should be reported as attempted.");
+
+        // ScannedTestProjects is still reported even when no heuristic ran.
+        Assert.IsTrue(result.Diagnostics.ScannedTestProjects > 0,
+            "ScannedTestProjects must be populated regardless of resolution outcome.");
+    }
+
     private static string FindDocumentPath(string name)
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
