@@ -352,7 +352,18 @@ public sealed class ScaffoldingService : IScaffoldingService
         // referenceTestFile is supplied we use that as the pattern source; otherwise we
         // auto-detect the most-recently-modified `*Tests.cs` in the project directory. Empty
         // string opts out of inference.
-        var siblingInference = InferSiblingTestPattern(request.ReferenceTestFile, projectDirectory, testFilePath);
+        // Per scaffold-test-preview-sibling-inference-overbroad: we pass the test project's
+        // compilation so usings can be trimmed to those actually referenced by the captured
+        // surface (base list + ctor params). Without semantic resolution the scaffold pulls in
+        // every using from the sibling fixture (typically 10+ unused imports).
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var testRoslynProject = solution.Projects.FirstOrDefault(p =>
+            string.Equals(p.Name, project.Name, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.FilePath, project.FilePath, StringComparison.OrdinalIgnoreCase));
+        var testProjectCompilation = testRoslynProject is null
+            ? null
+            : await testRoslynProject.GetCompilationAsync(ct).ConfigureAwait(false);
+        var siblingInference = InferSiblingTestPattern(request.ReferenceTestFile, projectDirectory, testFilePath, testProjectCompilation);
         var siblingWarnings = siblingInference.Warnings;
 
         var content = BuildTestContent(
@@ -405,14 +416,19 @@ public sealed class ScaffoldingService : IScaffoldingService
         }
 
         var framework = ResolveTestFramework(request.TestFramework, testProject.FilePath);
-        var siblingInference = InferSiblingPatternFromRecent(projectDirectory, testFilePath, maxSiblings: 3);
+        var testRoslynProject = solution.Projects.FirstOrDefault(p =>
+            string.Equals(p.Name, testProject.Name, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(p.FilePath, testProject.FilePath, StringComparison.OrdinalIgnoreCase));
+        // Per scaffold-test-preview-sibling-inference-overbroad: pass the test project's
+        // compilation to trim usings semantically.
+        var testCompilation = testRoslynProject is null
+            ? null
+            : await testRoslynProject.GetCompilationAsync(ct).ConfigureAwait(false);
+        var siblingInference = InferSiblingPatternFromRecent(projectDirectory, testFilePath, maxSiblings: 3, testCompilation);
 
         var serviceNamespace = serviceSymbol.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : serviceSymbol.ContainingNamespace.ToDisplayString();
-        var testRoslynProject = solution.Projects.FirstOrDefault(p =>
-            string.Equals(p.Name, testProject.Name, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(p.FilePath, testProject.FilePath, StringComparison.OrdinalIgnoreCase));
         var nsubstituteAvailable = IsNSubstituteAvailable(testRoslynProject);
         var constructorArgs = BuildConstructorArgs(serviceSymbol, nsubstituteAvailable);
         var publicMethods = CollectPublicTestableMethods(serviceSymbol);
@@ -589,9 +605,14 @@ public sealed class ScaffoldingService : IScaffoldingService
     /// repo-convention defaults (returns <see cref="SiblingInferenceResult.None"/>) when no
     /// sibling fixtures exist — the per-framework emitter then writes the framework's standard
     /// boilerplate.
+    /// <para>
+    /// When <paramref name="compilation"/> is non-null, captured <c>using</c> directives are
+    /// trimmed via semantic resolution to only those required by the captured surface. See
+    /// <c>scaffold-test-preview-sibling-inference-overbroad</c>.
+    /// </para>
     /// </summary>
     private static SiblingInferenceResult InferSiblingPatternFromRecent(
-        string projectDirectory, string destinationFilePath, int maxSiblings)
+        string projectDirectory, string destinationFilePath, int maxSiblings, Compilation? compilation = null)
     {
         if (!Directory.Exists(projectDirectory))
             return SiblingInferenceResult.None;
@@ -624,7 +645,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         {
             var primary = siblings[0];
             var sourceText = File.ReadAllText(primary.FullName);
-            var pattern = ExtractPatternFromSource(sourceText, primary.Name);
+            var pattern = ExtractPatternFromSource(sourceText, primary.Name, compilation, primary.FullName);
             return new SiblingInferenceResult(pattern, warnings);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -1597,11 +1618,17 @@ public sealed class ScaffoldingService : IScaffoldingService
     /// parameters into a <see cref="SiblingTestPattern"/>. Scaffold generators replicate the
     /// captured shape so integration-test conventions carry over to the new file. A deliberate
     /// opt-out is supported by passing an empty string for <paramref name="referenceTestFile"/>.
+    /// <para>
+    /// When <paramref name="compilation"/> is non-null, captured <c>using</c> directives are
+    /// trimmed via semantic resolution to only those required by the captured surface (base
+    /// types + constructor parameter types). See <c>scaffold-test-preview-sibling-inference-overbroad</c>.
+    /// </para>
     /// </summary>
     internal static SiblingInferenceResult InferSiblingTestPattern(
         string? referenceTestFile,
         string projectDirectory,
-        string destinationFilePath)
+        string destinationFilePath,
+        Compilation? compilation = null)
     {
         // Explicit opt-out: empty string means "do not infer".
         if (referenceTestFile is not null && string.IsNullOrWhiteSpace(referenceTestFile))
@@ -1634,7 +1661,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         try
         {
             var sourceText = File.ReadAllText(resolved);
-            var pattern = ExtractPatternFromSource(sourceText, Path.GetFileName(resolved));
+            var pattern = ExtractPatternFromSource(sourceText, Path.GetFileName(resolved), compilation, resolved);
             return new SiblingInferenceResult(pattern, warnings);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -1677,8 +1704,21 @@ public sealed class ScaffoldingService : IScaffoldingService
     /// constructor parameters (for <c>IClassFixture&lt;T&gt;</c> / fixture injection),
     /// and any <c>using</c>s we'll need to carry over so the scaffolded file compiles.
     /// Returns <c>null</c> when the file isn't parseable or has no class declaration.
+    /// <para>
+    /// Per <c>scaffold-test-preview-sibling-inference-overbroad</c>: when a non-null
+    /// <paramref name="compilation"/> is supplied, the captured <c>using</c> set is trimmed
+    /// to only those required to resolve identifiers actually referenced in the captured
+    /// surface (base list + constructor parameter types) — semantic resolution is performed
+    /// against the test project's compilation. Without this trim the scaffold pulls in every
+    /// <c>using</c> from the sibling fixture (typically 10+ unused imports when the MRU
+    /// sibling is a Playwright / Selenium fixture).
+    /// </para>
     /// </summary>
-    private static SiblingTestPattern? ExtractPatternFromSource(string sourceText, string sourceFileName)
+    private static SiblingTestPattern? ExtractPatternFromSource(
+        string sourceText,
+        string sourceFileName,
+        Compilation? compilation,
+        string? sourceFilePath)
     {
         var tree = CSharpSyntaxTree.ParseText(sourceText);
         var root = tree.GetCompilationUnitRoot();
@@ -1720,12 +1760,115 @@ public sealed class ScaffoldingService : IScaffoldingService
         // Collect usings so the scaffolded file can compile. We deliberately do NOT
         // replicate the sibling's namespace declaration — the scaffolder already picks the
         // correct namespace for the new file from the target test project.
-        var usings = root.Usings
+        var allUsings = root.Usings
             .Select(u => u.Name?.ToString().Trim() ?? string.Empty)
             .Where(s => s.Length > 0)
             .ToList();
 
-        return new SiblingTestPattern(attributes, baseTypes, parameters, usings, sourceFileName);
+        // Per scaffold-test-preview-sibling-inference-overbroad: trim usings to those
+        // actually required to resolve identifiers in the captured surface. When a Compilation
+        // is supplied AND the sibling syntax tree is part of it, we use semantic resolution to
+        // determine the required namespaces. Otherwise we fall back to keeping all usings (the
+        // pre-fix behavior) so callers without a Compilation don't silently lose usings.
+        var trimmedUsings = TrimUsingsToReferencedNamespaces(
+            classDecl, ctor, allUsings, compilation, sourceFilePath);
+
+        return new SiblingTestPattern(attributes, baseTypes, parameters, trimmedUsings, sourceFileName);
+    }
+
+    /// <summary>
+    /// Per scaffold-test-preview-sibling-inference-overbroad: returns the subset of
+    /// <paramref name="allUsings"/> that semantic resolution proves are required by identifier
+    /// references inside the captured surface — the class declaration's <c>BaseList</c> and the
+    /// constructor's parameter type list. When no Compilation is supplied (or the sibling's
+    /// syntax tree isn't part of it), returns <paramref name="allUsings"/> unchanged so
+    /// callers without semantic context don't silently drop required imports.
+    /// </summary>
+    private static IReadOnlyList<string> TrimUsingsToReferencedNamespaces(
+        ClassDeclarationSyntax classDecl,
+        ConstructorDeclarationSyntax? ctor,
+        IReadOnlyList<string> allUsings,
+        Compilation? compilation,
+        string? sourceFilePath)
+    {
+        if (compilation is null || allUsings.Count == 0)
+            return allUsings;
+
+        // Locate the syntax tree in the compilation. Match by absolute file path. If the
+        // sibling source isn't part of the compilation (e.g. a referenceTestFile pointing
+        // outside the loaded workspace), we conservatively keep all usings.
+        SyntaxTree? siblingTree = null;
+        if (!string.IsNullOrEmpty(sourceFilePath))
+        {
+            var fullPath = Path.GetFullPath(sourceFilePath);
+            siblingTree = compilation.SyntaxTrees.FirstOrDefault(t =>
+                !string.IsNullOrEmpty(t.FilePath) &&
+                string.Equals(Path.GetFullPath(t.FilePath), fullPath, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (siblingTree is null)
+            return allUsings;
+
+        var semanticModel = compilation.GetSemanticModel(siblingTree);
+
+        // Re-find the class declaration in the compilation's tree (the parsed-from-text tree
+        // we extracted above is a different syntax tree instance; semantic model needs the
+        // tree owned by the compilation).
+        var siblingRoot = siblingTree.GetCompilationUnitRoot();
+        var compilationClassDecl = siblingRoot.DescendantNodes()
+            .OfType<ClassDeclarationSyntax>()
+            .FirstOrDefault(c => string.Equals(c.Identifier.ValueText, classDecl.Identifier.ValueText, StringComparison.Ordinal)
+                              && c.SpanStart == classDecl.SpanStart);
+        if (compilationClassDecl is null)
+            return allUsings;
+
+        // Collect every identifier-name reference in the captured surface (BaseList + ctor
+        // parameter types). Resolve each to a symbol via the semantic model and pull its
+        // ContainingNamespace. The resulting set of namespace strings is what the scaffolded
+        // file needs to bring into scope to compile.
+        var referencedNamespaces = new HashSet<string>(StringComparer.Ordinal);
+
+        var surfaceNodes = new List<SyntaxNode>();
+        if (compilationClassDecl.BaseList is not null)
+            surfaceNodes.AddRange(compilationClassDecl.BaseList.Types.Select(t => t.Type));
+
+        var compilationCtor = compilationClassDecl.Members
+            .OfType<ConstructorDeclarationSyntax>()
+            .FirstOrDefault(c => !c.Modifiers.Any(m => m.IsKind(SyntaxKind.StaticKeyword)));
+        if (compilationCtor is not null)
+        {
+            foreach (var p in compilationCtor.ParameterList.Parameters)
+            {
+                if (p.Type is not null)
+                    surfaceNodes.Add(p.Type);
+            }
+        }
+
+        foreach (var node in surfaceNodes)
+        {
+            // For each type-reference node (TypeSyntax), resolve every IdentifierNameSyntax /
+            // GenericNameSyntax descendant. This catches both the outer type and any generic
+            // type arguments (e.g. IClassFixture<CustomWebApplicationFactory> resolves both
+            // IClassFixture and CustomWebApplicationFactory).
+            foreach (var nameNode in node.DescendantNodesAndSelf().OfType<SimpleNameSyntax>())
+            {
+                var typeInfo = semanticModel.GetTypeInfo(nameNode).Type
+                    ?? semanticModel.GetSymbolInfo(nameNode).Symbol as ITypeSymbol;
+                if (typeInfo is null)
+                    continue;
+                var ns = typeInfo.ContainingNamespace;
+                if (ns is null || ns.IsGlobalNamespace)
+                    continue;
+                var nsString = ns.ToDisplayString();
+                if (!string.IsNullOrEmpty(nsString))
+                    referencedNamespaces.Add(nsString);
+            }
+        }
+
+        // Keep only usings whose name matches one of the referenced namespaces. Framework
+        // usings are also filtered downstream in BuildSiblingFragments — the trim here just
+        // narrows the set to namespaces semantic resolution proved are needed.
+        return allUsings.Where(u => referencedNamespaces.Contains(u)).ToList();
     }
 
     private static string BuildTestContent(
@@ -1843,6 +1986,22 @@ public sealed class ScaffoldingService : IScaffoldingService
         string.Equals(ns, "NUnit.Framework", StringComparison.Ordinal) ||
         string.Equals(ns, "Microsoft.VisualStudio.TestTools.UnitTesting", StringComparison.Ordinal);
 
+    /// <summary>
+    /// Returns <c>true</c> when the captured class-level attribute should be filtered from
+    /// the scaffolded output. The blocklist covers two distinct categories:
+    /// <list type="bullet">
+    ///   <item><description>Framework class markers (<c>[TestClass]</c>, <c>[TestFixture]</c>) —
+    ///   the per-framework emitter unconditionally injects the canonical attribute, so carrying
+    ///   it from the sibling would double-emit it.</description></item>
+    ///   <item><description>Convention-tagging attributes (<c>[Trait]</c>, <c>[Category]</c>,
+    ///   <c>[TestCategory]</c>, <c>[Collection]</c>) — these classify the sibling fixture into a
+    ///   test bucket (e.g. <c>[Trait("Category","Playwright")]</c>) and over-broadly leak that
+    ///   classification onto an unrelated scaffold target. Per the
+    ///   <c>scaffold-test-preview-sibling-inference-overbroad</c> initiative, these attributes
+    ///   should NOT carry across — sibling-inference is narrowed to file-scoped namespace +
+    ///   base-class-name shape only.</description></item>
+    /// </list>
+    /// </summary>
     private static bool IsFrameworkClassAttribute(string attribute)
     {
         // Strip the surrounding brackets and any argument list so bare-name matching works.
@@ -1852,9 +2011,18 @@ public sealed class ScaffoldingService : IScaffoldingService
         var parenIdx = inner.IndexOf('(');
         if (parenIdx >= 0) inner = inner[..parenIdx];
         inner = inner.Trim();
-        return string.Equals(inner, "TestClass", StringComparison.Ordinal)
-            || string.Equals(inner, "TestFixture", StringComparison.Ordinal)
-            || string.Equals(inner, "Collection", StringComparison.Ordinal); // xUnit collection, often sibling-specific
+        // Framework class markers — the per-framework emitter always injects the canonical
+        // attribute, so we filter the sibling's copy to avoid double-emit.
+        if (string.Equals(inner, "TestClass", StringComparison.Ordinal)
+            || string.Equals(inner, "TestFixture", StringComparison.Ordinal))
+            return true;
+        // Convention-tagging attributes — carrying these from a sibling fixture leaks the
+        // sibling's bucket classification (e.g. Playwright/Integration/UI) onto an unrelated
+        // scaffold target. Filter aggressively.
+        return string.Equals(inner, "Trait", StringComparison.Ordinal)
+            || string.Equals(inner, "Category", StringComparison.Ordinal)
+            || string.Equals(inner, "TestCategory", StringComparison.Ordinal)
+            || string.Equals(inner, "Collection", StringComparison.Ordinal);
     }
 
     /// <summary>

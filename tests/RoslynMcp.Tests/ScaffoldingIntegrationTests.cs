@@ -335,36 +335,42 @@ public class HiddenBehavior
     }
 
     [TestMethod]
-    public async Task Scaffold_Test_With_ReferenceTestFile_Replicates_IClassFixture_Pattern()
+    public async Task Scaffold_Test_With_ReferenceTestFile_Replicates_FixturePattern_AndTrimsAttributesAndUsings()
     {
-        // Regression for scaffold-test-sibling-pattern-inference: when a referenceTestFile
-        // exposes an ASP.NET Core integration-test shape (class attribute + constructor-injected
-        // IClassFixture<TestFactory>), the scaffolded output should mirror the class-level
-        // attribute, base-list / constructor-fixture shape, and required usings so the
-        // convention carries over without a manual rewrite.
+        // Regression for scaffold-test-sibling-pattern-inference + post-fix narrowing per
+        // scaffold-test-preview-sibling-inference-overbroad: when a referenceTestFile exposes
+        // a constructor-injected fixture shape, the scaffold should mirror the structural
+        // pieces (base list + ctor params) but NOT carry convention-tagging attributes
+        // ([TestCategory], [Trait], [Category], [Collection]) and SHOULD trim usings to those
+        // semantically required by the captured surface.
+        //
+        // The sibling here uses real types from SampleLib (Shape from SampleLib.Hierarchy as
+        // the constructor-injected dependency) so the test project's compilation can verify
+        // the using-trim retains required namespaces via semantic resolution.
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
 
-        // Seed a sibling test file that exercises the full pattern we want replicated.
-        var siblingPath = workspace.GetPath("SampleLib.Tests", "HealthEndpointTests.cs");
+        // Seed a sibling test file that exercises the full pattern we want replicated, plus
+        // a [TestCategory] tag that should be filtered (per the overbroad-inference fix).
+        var siblingPath = workspace.GetPath("SampleLib.Tests", "ShapeRendererTests.cs");
         await File.WriteAllTextAsync(siblingPath, """
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Acme.Integration.Support;
+using SampleLib.Hierarchy;
 
 namespace SampleLib.Tests;
 
 [TestCategory("Integration")]
 [TestClass]
-public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
+public class ShapeRendererTests
 {
-    private readonly CustomWebApplicationFactory _factory;
+    private readonly Shape _shape;
 
-    public HealthEndpointTests(CustomWebApplicationFactory factory)
+    public ShapeRendererTests(Shape shape)
     {
-        _factory = factory;
+        _shape = shape;
     }
 
     [TestMethod]
-    public void HealthEndpoint_Returns_Ok() { }
+    public void Render_Returns_Ok() { }
 }
 """, CancellationToken.None);
 
@@ -386,33 +392,129 @@ public class HealthEndpointTests : IClassFixture<CustomWebApplicationFactory>
 
         var contents = await File.ReadAllTextAsync(scaffoldPath, CancellationToken.None);
 
-        // Class-level [TestCategory] attribute from the sibling should land on the scaffold.
+        // Per scaffold-test-preview-sibling-inference-overbroad: [TestCategory] is a
+        // convention-tagging attribute that should NOT carry across — sibling-inference is
+        // narrowed to file-scoped namespace + base-class-name shape only.
+        Assert.IsFalse(contents.Contains("[TestCategory(\"Integration\")]"),
+            "Sibling [TestCategory] must NOT be replicated on the scaffold — convention-tagging " +
+            "attributes leak the sibling's bucket classification onto an unrelated target.");
+
         // [TestClass] is emitted unconditionally by the MSTest framework builder — the
         // sibling's own [TestClass] is filtered so we don't double-emit it.
-        StringAssert.Contains(contents, "[TestCategory(\"Integration\")]",
-            "Sibling class-level [TestCategory] should be replicated on the scaffold.");
         var testClassOccurrences = System.Text.RegularExpressions.Regex
             .Matches(contents, @"\[TestClass\]").Count;
         Assert.AreEqual(1, testClassOccurrences,
             "[TestClass] must appear exactly once — the sibling's attribute is filtered so the framework builder emits the canonical one.");
 
-        // Base list / fixture interface: IClassFixture<CustomWebApplicationFactory> carries over.
-        StringAssert.Contains(contents, ": IClassFixture<CustomWebApplicationFactory>",
-            "IClassFixture<T> base from the sibling should be replicated on the scaffold.");
-
-        // Constructor-injected fixture: the sibling's `CustomWebApplicationFactory factory` parameter
-        // lands as a constructor parameter, is stored in a `_factory` field, and is assigned in the body.
-        StringAssert.Contains(contents, "private readonly CustomWebApplicationFactory _factory;",
+        // Constructor-injected fixture: the sibling's `Shape shape` parameter lands as a
+        // constructor parameter, is stored in a `_shape` field, and is assigned in the body.
+        // This is the load-bearing replication shape — DI fixture support is exactly why we
+        // capture the constructor parameters at all.
+        StringAssert.Contains(contents, "private readonly Shape _shape;",
             "Constructor-injected fixture should become a readonly field.");
         StringAssert.Contains(contents,
-            "public AnimalServiceGeneratedTests(CustomWebApplicationFactory factory)",
+            "public AnimalServiceGeneratedTests(Shape shape)",
             "Constructor signature should mirror the sibling's constructor parameters.");
-        StringAssert.Contains(contents, "_factory = factory;",
+        StringAssert.Contains(contents, "_shape = shape;",
             "Constructor body should assign the injected fixture to the generated field.");
 
-        // Required `using` from the sibling carries over so the scaffold compiles.
-        StringAssert.Contains(contents, "using Acme.Integration.Support;",
-            "Sibling-carried using directive should be replicated so the scaffold resolves its types.");
+        // Required `using` from the sibling carries over because semantic resolution proves
+        // it's needed by the captured ctor-param type (Shape). Per the overbroad-inference
+        // fix, only usings the trim verifies are required carry across — the rest are dropped.
+        StringAssert.Contains(contents, "using SampleLib.Hierarchy;",
+            "Sibling-carried using directive should be replicated when the trim verifies it's " +
+            "required by the captured ctor-param surface.");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_With_PlaywrightSibling_DoesNotLeak_AttributesOrUsings()
+    {
+        // Regression for scaffold-test-preview-sibling-inference-overbroad. When the MRU sibling
+        // is a Playwright fixture (`[TestCategory("Playwright")]` + `[Trait("Category","Playwright")]`
+        // + 10+ Playwright usings), the auto-detected sibling-inference path should NOT leak any
+        // of those bucket-classification attributes or unused usings into a non-Playwright scaffold.
+        // Sibling-inference is narrowed to file-scoped namespace + base-class-name shape only;
+        // attribute carry is filtered to drop convention tags; usings are trimmed via semantic
+        // resolution to those required by the captured surface.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        // Seed a Playwright-style sibling fixture in the test project. This becomes the MRU
+        // sibling auto-detected by scaffold_test_preview when no explicit reference is supplied.
+        var playwrightSiblingPath = workspace.GetPath("SampleLib.Tests", "PlaywrightFlowTests.cs");
+        await File.WriteAllTextAsync(playwrightSiblingPath, """
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Microsoft.Playwright;
+using Microsoft.Playwright.MSTest;
+using Microsoft.Playwright.NUnit;
+using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Net.Http;
+using System.Diagnostics;
+using System.IO;
+
+namespace SampleLib.Tests;
+
+[TestCategory("Playwright")]
+[TestCategory("UI")]
+[TestClass]
+public class PlaywrightFlowTests
+{
+    [TestMethod]
+    public async Task Login_Flow_Works() { await Task.CompletedTask; }
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        // No explicit reference — the MRU auto-detection should pick the Playwright sibling.
+        // The bug under fix would copy [TestCategory("Playwright")], [TestCategory("UI")], and
+        // every using above into the AnimalService scaffold.
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            // ReferenceTestFile is null (default) — exercise the MRU auto-detection path.
+            new ScaffoldTestDto("SampleLib.Tests", "AnimalService"),
+            CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+            preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var scaffoldPath = workspace.GetPath("SampleLib.Tests", "AnimalServiceGeneratedTests.cs");
+        Assert.IsTrue(File.Exists(scaffoldPath), $"Expected scaffolded file at {scaffoldPath}.");
+        var contents = await File.ReadAllTextAsync(scaffoldPath, CancellationToken.None);
+
+        // No [TestCategory] tags should leak from the Playwright sibling — they're explicitly
+        // blocklisted as convention-tagging attributes.
+        Assert.IsFalse(contents.Contains("[TestCategory(\"Playwright\")]"),
+            "Playwright sibling's [TestCategory(\"Playwright\")] must not leak into a non-Playwright scaffold.");
+        Assert.IsFalse(contents.Contains("[TestCategory(\"UI\")]"),
+            "Playwright sibling's [TestCategory(\"UI\")] must not leak into a non-Playwright scaffold.");
+
+        // No Playwright usings should carry — semantic resolution proves none of them are
+        // required by the captured surface (which is empty here: no base list, no ctor params).
+        Assert.IsFalse(contents.Contains("using Microsoft.Playwright"),
+            "No Microsoft.Playwright.* using should leak from the sibling — these are unused imports.");
+
+        // Other unused System.* imports from the sibling should also be dropped (the captured
+        // surface is empty, so the trim retains nothing). The framework using and the explicit
+        // target-type using are added by the scaffolder itself, not from sibling carry.
+        Assert.IsFalse(contents.Contains("using System.Diagnostics;"),
+            "Sibling's unused System.Diagnostics import must not leak — trim removes unreferenced usings.");
+        Assert.IsFalse(contents.Contains("using System.Net.Http;"),
+            "Sibling's unused System.Net.Http import must not leak — trim removes unreferenced usings.");
+
+        // The scaffold must still emit the framework using (always injected) and the target-type
+        // using (added explicitly from the resolved target type's namespace).
+        StringAssert.Contains(contents, "using Microsoft.VisualStudio.TestTools.UnitTesting;",
+            "Framework using must be emitted by the per-framework builder regardless of sibling shape.");
+        StringAssert.Contains(contents, "using SampleLib;",
+            "Target-type's containing-namespace using must be emitted by the scaffolder.");
+
+        // Sanity: the scaffold should still produce a valid class for AnimalService.
+        StringAssert.Contains(contents, "public class AnimalServiceGeneratedTests",
+            "Scaffold class declaration should be emitted normally despite sibling carry being trimmed.");
     }
 
     [TestMethod]
