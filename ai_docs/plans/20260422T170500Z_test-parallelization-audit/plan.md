@@ -117,7 +117,7 @@ and contingent on Phase 1 findings.
 
 ### 1. `test-parallel-audit-phase1-triage` — Reproduce the 3 flakes + diagnose root cause
 
-**Status:** pending · **Order:** 1 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Maintenance
+**Status:** completed (2026-04-26, local branch `docs/test-parallel-phase1-triage`) · **Order:** 1 · **Correctness class:** P3-UX · **Schedule hint:** — · **Estimated context:** 35000 tokens · **CHANGELOG category:** Maintenance
 
 | Field | Content |
 |---|---|
@@ -132,7 +132,9 @@ and contingent on Phase 1 findings.
 | Performance review | N/A — investigation phase. |
 | CHANGELOG category | Maintenance |
 | CHANGELOG entry (draft) | **Maintenance:** Triage report for 3 `verify-release.ps1` flakes surfaced in PR #322 landing checks. Classifies each as teardown-race / dispose-race / fixture-copy-race / other and points Phase 2 at a specific code-path fix (`ci-test-parallelization-audit`). |
-| Backlog sync | No row closed yet. If the row was removed from `ai_docs/backlog.md` during the 2026-04-19 sweep close, restore it with the updated phrasing so Phase 3 has a row to close. |
+| Backlog sync | No row closed yet. The row is present and was updated with Phase 1's no-repro result plus the next fresh-evidence directive. |
+
+**Phase 1 result:** `ai_docs/reports/test-parallelization-triage-2026-04-22.md` records PR #322's three historical failures and 25 consecutive local `eng/verify-release.ps1 -Configuration Release -NoCoverage` passes on 2026-04-26. Current frequency: 0/25 failures. Phase 2 must not implement the suspected teardown fix without fresh failure evidence.
 
 ---
 
