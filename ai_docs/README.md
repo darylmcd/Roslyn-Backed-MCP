@@ -34,12 +34,6 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `references/tooling/mcp-clients.md` | MCP client integration notes |
 | `references/mcp-server-best-practices.md` | MCP error-model, filter pipeline, and protocol hygiene guidance |
 
-## Planning And Active Work
-
-| File | Purpose |
-|------|---------|
-| `plans/20260422T170500Z_test-parallelization-audit/plan.md` | In-repo phased plan for the deferred test-parallelization audit |
-
 ## Procedures And Prompts
 
 | File | Purpose |
@@ -72,7 +66,7 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | Task | Files to read |
 |------|---------------|
 | First session / orientation | `AGENTS.md` -> `../CI_POLICY.md` -> `workflow.md` -> `runtime.md` -> `architecture.md` |
-| Planning or "what next?" in this repo | `planning_index.md` -> `backlog.md` -> relevant file under `plans/` |
+| Planning or "what next?" in this repo | `planning_index.md` -> `backlog.md` |
 | Fix a bug in Roslyn services | `architecture.md` -> `domains/roslyn-services/reference.md` -> `backlog.md` |
 | C# refactor or multi-file semantic change | `runtime.md` -> `bootstrap-read-tool-primer.md` -> `domains/tool-usage-guide.md` |
 | Add or change a tool | `domains/host-stdio/reference.md` -> `references/mcp-server-best-practices.md` -> `domains/roslyn-services/reference.md` -> `references/testing.md` |
