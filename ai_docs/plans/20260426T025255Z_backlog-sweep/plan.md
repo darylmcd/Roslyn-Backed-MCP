@@ -112,7 +112,7 @@ field already assumes the no-backcompat constraint.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #455, 2026-04-26) |
 | **Backlog rows closed** | `find-type-consumers-file-granularity-rollup` |
 | **Diagnosis** | Agents looking for "which files touch this type" fall back to Grep (≥5 refactor sessions in the 2026-04-10→04-24 retro: 57a0d696, bfe7443f, ac8b4d93, 08adc1f1, b3e4cb62) because `find_references` returns per-site hits with no per-file rollup. Row cites `src/RoslynMcp.Roslyn/Services/ReferenceService.cs` (reuse reference index) and a new tool registration in `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs`. |
 | **Approach** | New `find_type_consumers(typeName, limit) → [{filePath, kinds: [using\|ctor\|inherit\|field\|local], count}]` MCP tool. Implementation reuses the existing reference index in `ReferenceService` — group results by file path, classify each site's `kind` (using-directive / ctor invocation / inherit / field declaration / local declaration) via syntax-node walk, return aggregated rollup. Standard 3-layer pattern: Core contract DTO, Roslyn service method, Host.Stdio tool wrapper, catalog entry, DI line. |
@@ -152,7 +152,7 @@ field already assumes the no-backcompat constraint.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #453, 2026-04-26) |
 | **Backlog rows closed** | `posttool-verify-skills-on-shipped-skill-edits` |
 | **Diagnosis** | `eng/verify-skills-are-generic.ps1` is gated by `just ci` + `verify-release.ps1`, so an `ai_docs/` / `eng/` / `backlog.md` leak inside a `./skills/**/SKILL.md` is caught at CI, not at edit-time — round-trip waste per retro observation. Anchor: `hooks/hooks.json`. |
 | **Approach** | Add a new PostToolUse entry in `hooks/hooks.json` matching `Edit\|Write\|MultiEdit` with a path filter `^skills/.*\.md$` (relative to repo root). On match, invoke `pwsh eng/verify-skills-are-generic.ps1` and surface violations the same turn. Use the `command` hook type (not `prompt` — the script is fast and deterministic; output should be displayed verbatim). Timeout-bounded (default ~5s; the script is <1s on this repo). |
@@ -172,7 +172,7 @@ field already assumes the no-backcompat constraint.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | obsolete (audit found 0 poll-loop offenders; backlog row closed with rationale) |
 | **Backlog rows closed** | `skills-remove-server-heartbeat-polling` |
 | **Diagnosis** | The `/roslyn-mcp:complexity` skill (and any wait-loop in sibling skills under `skills/`) polls `mcp__roslyn__server_heartbeat` in a loop — one session in the 2026-04-10→04-24 retro (b5464409) logged 78 heartbeat calls inside a single `/complexity` invocation; two others logged 8 and 6. Plan-draft grep over `skills/` returns **17 skill files mentioning `server_heartbeat`** — but most reference it once for the `state in {idle, ready}` precheck (introduced in PR #393, `connection-state-ready-unsatisfiable-preload`), not in a poll loop. The actual offenders are skills that loop with a `wait`/`retry` instruction around the heartbeat call. |
 | **Approach** | Audit all 17 hits. For each, classify as (a) single precheck — keep as-is, this is the canonical pattern post-PR #393; (b) poll-loop — replace with a single `server_info` (or `workspace_status`) check followed by bounded backoff if the user explicitly named "wait until ready". Replace any "while not ready: heartbeat; sleep" pattern with "if not ready after one check, ask user / abort with actionable message". Update each offender's SKILL.md with the corrected pattern. Cap edits at ≤4 SKILL.md files per Rule 3 — if more files actually need changes, split into a follow-up initiative. |
@@ -192,7 +192,7 @@ field already assumes the no-backcompat constraint.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #454, 2026-04-26) |
 | **Backlog rows closed** | `response-format-json-markdown-parameter` |
 | **Diagnosis** | MCP best-practices: summary-shaped tools should support `response_format: "json" \| "markdown"` (default `json` preserves wire compatibility). Current state: all 162 tools return JSON only. Highest-value candidate per row: `validate_workspace` (typically 120-line JSON → ~30-line table). Anchors: `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs` (verified live). Other candidates (`server_info`, `workspace_list`, `workspace_status`, `symbol_impact_sweep`, `project_diagnostics(summary)`) are out of scope for this initiative — they get their own rows after this one ships and validates the pattern. |
 | **Approach** | Narrow scope to `validate_workspace` only (Rule 3 file budget). Add `responseFormat?: "json" \| "markdown"` parameter to the tool method in `ValidationBundleTools.cs`. Build a `ValidateWorkspaceMarkdownFormatter.cs` helper that takes the existing `ValidateWorkspaceResponseDto` and emits a compact markdown summary table (status / error count / warning count / per-test rollup). Default behavior unchanged (json). |
