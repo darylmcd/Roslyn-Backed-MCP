@@ -49,5 +49,6 @@ public static partial class ServerSurfaceCatalog
         Tool("verify_pragma_suppresses", "validation", "stable", true, false, "Verify an existing #pragma warning disable/restore pair covers a fire line."),
         Tool("find_duplicated_code", "advanced-analysis", "stable", true, false, "Alias for find_duplicated_methods (cross-MCP-server name compatibility)."),
         Tool("get_test_coverage_map", "validation", "stable", false, false, "Alias for test_coverage (cross-MCP-server name compatibility)."),
+        Tool("semantic_grep", "analysis", "experimental", true, false, "Token-aware regex search over C# code (identifier / string / comment scopes)."),
     ];
 }
