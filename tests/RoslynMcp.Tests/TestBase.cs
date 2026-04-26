@@ -27,6 +27,7 @@ public abstract class TestBase
     protected static ReferenceService ReferenceService { get; private set; } = null!;
     protected static SymbolRelationshipService SymbolRelationshipService { get; private set; } = null!;
     protected static MutationAnalysisService MutationAnalysisService { get; private set; } = null!;
+    protected static TypeConsumersService TypeConsumersService { get; private set; } = null!;
     protected static DiagnosticService DiagnosticService { get; private set; } = null!;
     protected static RefactoringService RefactoringService { get; private set; } = null!;
     protected static BuildService BuildService { get; private set; } = null!;
@@ -124,6 +125,7 @@ public abstract class TestBase
         ReferenceService = services.ReferenceService;
         SymbolRelationshipService = services.SymbolRelationshipService;
         MutationAnalysisService = services.MutationAnalysisService;
+        TypeConsumersService = services.TypeConsumersService;
         DiagnosticService = services.DiagnosticService;
         RefactoringService = services.RefactoringService;
         BuildService = services.BuildService;
