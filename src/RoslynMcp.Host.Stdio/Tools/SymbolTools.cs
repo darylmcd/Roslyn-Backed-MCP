@@ -426,6 +426,24 @@ public static class SymbolTools
         }, ct);
     }
 
+    [McpServerTool(Name = "find_type_consumers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("File-granularity rollup of consumers for a named type. Returns one entry per source file that references the type, with a deduped list of usage `kinds` (using | ctor | inherit | field | local | other) and the total `count` of reference sites in that file. Removes the Grep fallback for 'which files touch this type' workflows. Pass typeName as a fully qualified metadata name (e.g. 'SampleLib.IAnimal' or 'System.Collections.Generic.List`1') or a short type name when unambiguous; generic arity uses backtick notation. Response shape: { count, items: [{ filePath, kinds, count }] } sorted by descending site count then ascending file path.")]
+    [McpToolMetadata("symbols", "experimental", true, false,
+        "Roll up reference sites per file for a named type, classified by usage kind.")]
+    public static Task<string> FindTypeConsumers(
+        IWorkspaceExecutionGate gate,
+        ITypeConsumersService typeConsumersService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Type name to resolve. Accepts a fully qualified metadata name (e.g. 'Namespace.TypeName' or 'List`1') or a short type name when unambiguous.")] string typeName,
+        [Description("Maximum number of file rollup entries to return (default: 100)")] int limit = 100,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await typeConsumersService.FindTypeConsumersAsync(workspaceId, typeName, limit, c);
+            return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
+        }, ct);
+    }
+
     [McpServerTool(Name = "find_property_writes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all locations where a property is assigned to (written). Each write carries a WriteKind bucket: ObjectInitializer (safe for init), Assignment (post-construction), OutRef (passed by out/ref), or PrimaryConstructorBind (the property is a positional-record primary-ctor parameter and the site is a `new T(value)` construction that binds this positional slot — find-property-writes-positional-record-silent-zero).")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find property write sites and classify object-initializer writes.")]
