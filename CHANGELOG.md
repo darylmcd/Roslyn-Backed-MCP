@@ -16,6 +16,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.33.0] - 2026-04-26
+
+### Added
+
+- **Added:** RMCP010 analyzer (`StdoutWriteAnalyzer`) that prevents `Console.Out.Write*` / `Trace.WriteLine` from leaking into `RoslynMcp.Host.Stdio` (would corrupt the stdio NDJSON framing). Allow-listed `Console.Out.Flush*` (protocol-required) and `Console.Error.*` (stderr-safe). Closes `stdio-host-stdout-audit`.
+- **Added:** PreToolUse guard in `hooks/hooks.json` that blocks `Edit`/`Write`/`MultiEdit` on release-managed files (`Directory.Build.props`, `BannedSymbols.txt`, the 5 version files, `.claude-plugin/{plugin,marketplace}.json`, `hooks/hooks.json`, `eng/verify-version-drift.ps1`, `eng/verify-skills-are-generic.ps1`) unless the agent's rationale contains `ack: release-managed`. Documented in `ai_docs/workflow.md`. Closes `pretooluse-block-release-critical-file-edits`.
+- **Added:** Cross-server tool aliases (`get_symbol_outline` → `document_symbols`, `find_duplicated_code` → `find_duplicated_methods`, `get_test_coverage_map` → `test_coverage`) so agents migrating from python-refactor (Jedi) land on the canonical tool. Aliases include a `deprecation.canonicalName` field on the response envelope; canonical tools include the same field with `null` value to keep the schema uniform. Closes `roslyn-mcp-sister-tool-name-aliases`.
+- **Added:** `find_type_consumers(typeName, limit) → [{filePath, kinds, count}]` MCP tool — file-granularity rollup over the existing reference index, removes the Grep fallback for "which files touch this type" workflows. Site kinds classified as `using-directive` / `ctor` / `inherit` / `field-declaration` / `local-declaration` (with `other` for unrecognized contexts). Registered in the experimental tier; surface count bumped to **166 tools** (111 stable / 55 experimental). Closes `find-type-consumers-file-granularity-rollup`.
+- **Added:** PostToolUse hook in `hooks/hooks.json` that runs `eng/verify-skills-are-generic.ps1` on every `skills/**/SKILL.md` edit, surfacing shipped-skill genericity violations the same turn instead of waiting for the CI gate. Dispatches through a thin stdin-JSON wrapper at `eng/verify-skills-on-edit.ps1` to avoid brittle inline shell quoting. Closes `posttool-verify-skills-on-shipped-skill-edits`.
+- **Added:** `validate_workspace` accepts `responseFormat: "json" | "markdown"` (default `null` → bit-for-bit identical JSON envelope; `"markdown"` returns a compact summary table with per-diagnostic / per-test rows capped at 20 each). Other summary-shaped tools (`server_info`, `workspace_list`, etc.) will adopt the pattern in follow-up rows. Closes `response-format-json-markdown-parameter`.
+- **Added:** `semantic_grep(pattern, scope=identifiers|strings|comments|all, projectFilter?) → [{filePath, line, column, tokenKind, snippet}]` MCP tool — token-aware grep over C# code, lets agents avoid false-positive matches inside string literals or comments. Walks `SyntaxTree.DescendantTokens` per workspace document and filters by `SyntaxToken.Kind()`. Capped at 500 hits per call. Registered in the experimental tier; surface count bumped to **167 tools** (111 stable / 56 experimental). Closes `semantic-grep-identifier-scoped-search`.
+
+### Maintenance
+
+- **Maintenance:** Widen `pr-reconciler` subagent's pending-checks poll budget from 1×60s retry (~120s ceiling) to 12×60s retries (~12-min ceiling) with progress notifications between attempts. Failing checks still short-circuit the early-exit path. Removes false-`not-ready` returns on slow `validate` jobs. Closes `pr-reconciler-poll-budget-tightness`.
+
 ## [1.32.0] - 2026-04-25
 
 ### Fixed
