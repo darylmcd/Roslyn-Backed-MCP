@@ -15,6 +15,7 @@ internal sealed class TestServiceContainer
     public required SymbolRelationshipService SymbolRelationshipService { get; init; }
     public required MutationAnalysisService MutationAnalysisService { get; init; }
     public required TypeConsumersService TypeConsumersService { get; init; }
+    public required SemanticGrepService SemanticGrepService { get; init; }
     public required DiagnosticService DiagnosticService { get; init; }
     public required RefactoringService RefactoringService { get; init; }
     public required BuildService BuildService { get; init; }
@@ -147,6 +148,9 @@ internal sealed class TestServiceContainer
             TypeConsumersService = new TypeConsumersService(
                 workspaceManager,
                 NullLogger<TypeConsumersService>.Instance),
+            SemanticGrepService = new SemanticGrepService(
+                workspaceManager,
+                NullLogger<SemanticGrepService>.Instance),
             SymbolRelationshipService = new SymbolRelationshipService(
                 workspaceManager,
                 referenceService,

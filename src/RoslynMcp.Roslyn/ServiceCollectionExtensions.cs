@@ -55,6 +55,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISymbolRelationshipService, SymbolRelationshipService>();
         services.AddSingleton<IMutationAnalysisService, MutationAnalysisService>();
         services.AddSingleton<ITypeConsumersService, TypeConsumersService>();
+        services.AddSingleton<ISemanticGrepService, SemanticGrepService>();
         services.AddSingleton<IDiagnosticService, DiagnosticService>();
         services.AddSingleton<IBuildService, BuildService>();
         services.AddSingleton<ITestRunnerService, TestRunnerService>();

@@ -86,7 +86,7 @@ See [SECURITY.md](SECURITY.md) for disclosure policy.
 
 ## Live Surface
 
-The current release exposes **166 tools** (111 stable / 55 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental).
+The current release exposes **167 tools** (111 stable / 56 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental).
 
 Use the running server for the authoritative live catalog and support tiers:
 

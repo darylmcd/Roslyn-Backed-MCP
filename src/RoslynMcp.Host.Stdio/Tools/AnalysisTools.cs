@@ -409,4 +409,24 @@ public static class AnalysisTools
             }, JsonDefaults.Indented);
         }, ct);
     }
+
+    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Token-aware regex search over the loaded C# workspace. Walks every document's syntax tokens (and comment trivia) and applies the supplied .NET regex to the text of tokens whose syntactic kind matches `scope`. Lets callers exclude false-positive matches that plain text grep would return inside string literals or comments. Scopes: `identifiers` (identifier tokens only), `strings` (string-literal tokens — verbatim, interpolated text, raw, char, utf8), `comments` (single-line, multi-line, and doc-comment trivia), or `all` (the union). Optional `projectFilter` restricts the walk by Project.Name. Hard-capped at 500 hits per call to bound response size — narrow `pattern` or `projectFilter` if hits are truncated. Response shape: { count, items: [{ filePath, line, column, tokenKind, snippet }] } sorted by ascending file/line/column.")]
+    [McpToolMetadata("analysis", "experimental", true, false,
+        "Token-aware regex search over C# code (identifier / string / comment scopes).")]
+    public static Task<string> SemanticGrep(
+        IWorkspaceExecutionGate gate,
+        ISemanticGrepService semanticGrepService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description(".NET regex pattern to match against token text.")] string pattern,
+        [Description("Token-kind scope: 'identifiers' | 'strings' | 'comments' | 'all'.")] string scope = "identifiers",
+        [Description("Optional: case-sensitive Project.Name filter to scope the walk.")] string? projectFilter = null,
+        [Description("Maximum hits to return (default 500; hard cap to bound response size).")] int limit = 500,
+        CancellationToken ct = default)
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            var results = await semanticGrepService.SearchAsync(workspaceId, pattern, scope, projectFilter, limit, c);
+            return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
+        }, ct);
+    }
 }
