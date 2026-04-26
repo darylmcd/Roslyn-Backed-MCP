@@ -3,8 +3,8 @@
   "createdAt": "2026-04-26T02:52:55Z",
   "schemaVersion": 2,
   "bootstrapCaveat": true,
-  "completed": false,
-  "completedAt": null,
+  "completed": true,
+  "completedAt": "2026-04-26T15:42:02Z",
   "initiatives": [
     {
       "id": "stdio-host-stdout-audit",
@@ -185,15 +185,15 @@
       "testFilesAdded": 2,
       "toolPolicy": "edit-only",
       "requiredAddenda": ["test-fixture-di", "readme-surface-count"],
-      "status": "pending",
+      "status": "merged",
       "correctnessClass": "P4",
       "scheduleHint": null,
       "changelogCategory": "Added",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Rule 3 new-MCP-tool structural-unit exemption: 4 structural units (Core DTO/interface, new SemanticGrepService, Host.Stdio AnalysisTools, catalog+DI) plus README surface-count addendum. testFilesAdded counts new test class + TestBase.cs DI modification. Catalog-touching but well-separated from initiatives 3/4 by 4 non-catalog initiatives. P4-weak-evidence (3 self-audit sessions); revisit if external-repo sessions reproduce within 30 days."
+      "branch": "remediation/semantic-grep-identifier-scoped-search",
+      "worktreePath": ".worktrees/semantic-grep-identifier-scoped-search",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/457",
+      "mergedAt": "2026-04-26T15:30:00Z",
+      "notes": "Rule 3 new-MCP-tool structural-unit exemption: 4 structural units (Core DTO/interface, new SemanticGrepService, Host.Stdio AnalysisTools, catalog+DI) plus README surface-count addendum. Registered as experimental tier (new tool, soak before promotion). Surface bumped 166→167 (111 stable / 56 experimental). Release verifier 1001/1001 tests passed. P4-weak-evidence: revisit if external-repo sessions don't reproduce the value within 30 days."
     },
     {
       "id": "pretooluse-apply-preview-token-invariant",

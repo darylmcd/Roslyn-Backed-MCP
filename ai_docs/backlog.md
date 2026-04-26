@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-26T15:12:18Z
+**updated_at:** 2026-04-26T15:42:02Z
 
 ## Agent contract
 
@@ -55,7 +55,6 @@
 | id | pri | deps | do |
 |----|-----|------|-----|
 | `tool-annotation-population-audit` | Low | — | MCP best-practices: tools should declare `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint` annotations so clients (including the PreToolUse apply-gate hook) can route decisions off structured metadata instead of tool-name patterns. Verify via `server_info.surface` + a spot-check on `src/RoslynMcp.Host.Stdio/Tools/*Apply*.cs` and `*Preview*.cs` whether the `[McpServerTool]` attributes already carry these. If missing, populate: every `*_apply` → `destructiveHint: true`; every `*_preview` / read-shape tool → `readOnlyHint: true`; workspace-scoped tools → `openWorldHint: false`. Close-immediately if already populated. |
-| `semantic-grep-identifier-scoped-search` | Low | — | Agents want to grep inside C# code but exclude string/comment matches — current Grep returns hits inside CHANGELOG, markdown, and string literals (3 Roslyn-self-audit sessions in the 2026-04-10→04-24 retro: 57a0d696, 08adc1f1, cf2d0b85). Add `semantic_grep(pattern, scope=identifiers|strings|comments|all, projectFilter?) → [{filePath, line, column, tokenKind, snippet}]` as a thin wrapper on `SyntaxTree.DescendantTokens` + `SyntaxToken.Kind()` + regex match. Anchors: new service under `src/RoslynMcp.Roslyn/Services/`, new tool in `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs`. Weaker evidence — Low until an external-repo session reproduces the pattern. |
 
 ## Defer
 

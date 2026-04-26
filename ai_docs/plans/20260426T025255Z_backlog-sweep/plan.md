@@ -212,7 +212,7 @@ field already assumes the no-backcompat constraint.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #457, 2026-04-26) |
 | **Backlog rows closed** | `semantic-grep-identifier-scoped-search` |
 | **Diagnosis** | Agents want to grep inside C# code but exclude string/comment matches — current Grep returns hits inside CHANGELOG, markdown, and string literals (3 Roslyn-self-audit sessions in the 2026-04-10→04-24 retro: 57a0d696, 08adc1f1, cf2d0b85). Row classifies as P4 with weak evidence (3 self-audit sessions, no external-repo reproduction). Anchors: new service under `src/RoslynMcp.Roslyn/Services/`, new tool in `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs`. |
 | **Approach** | New `semantic_grep(pattern, scope=identifiers\|strings\|comments\|all, projectFilter?) → [{filePath, line, column, tokenKind, snippet}]` MCP tool. Implementation walks `SyntaxTree.DescendantTokens` per workspace document, filters by `SyntaxToken.Kind()` (identifier vs string-literal vs trivia), runs the regex against matching tokens, returns ranked hits. Standard 3-layer pattern. |
