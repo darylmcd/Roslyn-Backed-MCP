@@ -52,7 +52,7 @@ field already assumes the no-backcompat constraint.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #449, 2026-04-26) |
 | **Backlog rows closed** | `stdio-host-stdout-audit` |
 | **Diagnosis** | MCP best-practices (2026-04 ref): stdio servers must NOT write to stdout — the framing channel shares it. Plan-draft grep over `src/RoslynMcp.Host.Stdio/` for `Console\.Write\|Console\.Out\.\|stdout\.Write\|Trace\.WriteLine` returned **4 hits, all in `Program.cs`, all `Console.Out.Flush()`** (lines 20, 145, 156, 157). Flush is protocol-correct — stdio framing requires explicit flush after ND-JSON write — NOT a stdout-write violation. So the audit reveals zero current leaks; work scope shifts from "find and fix" to "preventive invariant gate" per the row's last clause ("Add an analyzer or test that asserts no direct stdout writes in `src/RoslynMcp.Host.Stdio/**/*.cs`"). |
 | **Approach** | Add a new Roslyn analyzer (`StdoutWriteAnalyzer`) under `analyzers/ServerSurfaceCatalogAnalyzer/` that flags `Console.Write*`, `Console.Out.Write*`, `Console.Out.WriteLine*`, `Console.Error.Write*`, `stdout.Write*`, `Trace.WriteLine` calls in `RoslynMcp.Host.Stdio.dll`. Allow-list `Console.Out.Flush()` / `FlushAsync()` (protocol framing); allow-list `Console.Error.*` (stderr is fine for stdio servers). Diagnostic id: RMCP010. Update `analyzers/ServerSurfaceCatalogAnalyzer/AnalyzerReleases.Unshipped.md` to register the new diagnostic. Add a regression test asserting current `Program.cs` contents pass and a synthetic `Console.WriteLine("test")` fails. |
@@ -72,7 +72,7 @@ field already assumes the no-backcompat constraint.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #448, 2026-04-26) |
 | **Backlog rows closed** | `pretooluse-block-release-critical-file-edits` |
 | **Diagnosis** | Accidental agent edits to release-managed files (`Directory.Build.props`, `BannedSymbols.txt`, the 5 version files, `hooks/hooks.json` itself, `eng/verify-skills-are-generic.ps1`) have shipped drift historically (cross-ref: 1.28.0 parallel-PR changelog-append friction). No PreToolUse guard exists today — drift is caught at CI gate after the agent has already shipped. Row cites `hooks/hooks.json` as the single anchor. |
 | **Approach** | Add a new PreToolUse entry in `hooks/hooks.json` with `matcher: "Edit\|Write\|MultiEdit"` and a prompt-style hook that inspects the target path. Block when path matches the release-managed set (regex over: `Directory.Build.props$`, `BannedSymbols.txt$`, the 5 version files, `\.claude-plugin/(plugin\|marketplace)\.json$`, `eng/verify-version-drift\.ps1$`, `hooks/hooks\.json$`, `eng/verify-skills-are-generic\.ps1$`). Allow override with the literal phrase `ack: release-managed` in the agent's edit rationale. Document in `ai_docs/workflow.md` § *Release-managed file guard*. |
@@ -92,7 +92,7 @@ field already assumes the no-backcompat constraint.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #450, 2026-04-26) |
 | **Backlog rows closed** | `roslyn-mcp-sister-tool-name-aliases` |
 | **Diagnosis** | Agents repeatedly call Roslyn tools with python-refactor names and hit `<tool_use_error>Error: No such tool available: mcp__roslyn__<name></tool_use_error>` — 6 occurrences in the 2026-04-10→04-24 retro across `get_symbol_outline` (→ `document_symbols`), `find_duplicated_code` (→ `find_duplicated_methods` / `find_duplicate_helpers`), `get_test_coverage_map` (→ `test_coverage`). Anchor: `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs` (and 8 partials by category). |
 | **Approach** | Register thin alias `[McpServerTool]` methods that delegate to canonical implementations. For each alias, the tool wrapper returns the canonical response shape with an additional top-level `deprecation: { canonicalName: "<name>", reason: "alias for cross-MCP-server name compatibility" }` field so agents see the migration path inline. Aliases land in `ServerSurfaceCatalog.Symbols.cs` / `.Analysis.cs` partials matching the canonical tool's category, and in the corresponding `Tools/*.cs` file as thin delegating methods. |
@@ -132,7 +132,7 @@ field already assumes the no-backcompat constraint.
 
 | Field | Content |
 |-------|---------|
-| **Status** | pending |
+| **Status** | merged (PR #447, 2026-04-26) |
 | **Backlog rows closed** | `pr-reconciler-poll-budget-tightness` |
 | **Diagnosis** | The `pr-reconciler` subagent's `BLOCKED-with-pending-checks` rule (`.claude/agents/pr-reconciler.md:38`) is "wait 60s, retry once; if still not green, emit STATUS: not-ready and exit" — ~120s effective ceiling, but this repo's `validate` job (full Release-mode test run) routinely takes 8-12 min. The reconciler returned `not-ready` on every initiative-PR's first dispatch, forcing the orchestrator to bash-poll then re-dispatch (observed twice in the 2026-04-25 sweep: PRs #441 and #442). Anchor: `.claude/agents/pr-reconciler.md` (rule table at L38; gh-failure rule at L107). |
 | **Approach** | Replace the single retry with a bounded backoff loop in the rule table: "wait 60s, retry up to 12 times (12-min ceiling) with progress notifications between attempts; if still not green after 12 retries, emit STATUS: not-ready". Keep the early-exit path for genuinely-failing checks (any check `fail`/`error`) — only widen the budget for `IN_PROGRESS` / `PENDING`. Update the documentation row in the rule table. |
