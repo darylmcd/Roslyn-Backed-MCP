@@ -45,6 +45,7 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `procedures/audit-21-implementation-plan.md` | In-repo implementation plan for AUDIT-21 |
 | `prompts/backlog-sweep-plan.md` | Planner prompt for batching backlog rows into shippable initiatives |
 | `prompts/backlog-sweep-execute.md` | Executor prompt for shipping the next pending initiative |
+| `prompts/profile-large-solution.md` | Runbook for collecting 50+ project Roslyn MCP profiling evidence |
 | `prompts/standardize-documentation.md` | Cross-repo prompt for doc-audit-driven documentation cleanup |
 | `prompts/standardize-backlog-hygiene.md` | Reference prompt for backlog/workflow hygiene alignment |
 | `prompts/deep-review-and-refactor.md` | Living prompt for comprehensive MCP deep-review and promotion scoring |

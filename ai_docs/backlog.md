@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-26T20:38:05Z
+**updated_at:** 2026-04-26T21:39:11Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `pretooluse-apply-preview-token-invariant` | Medium | — | Still valid after the 2026-04-26 plan cleanup: `hooks/hooks.json` still protects `mcp__roslyn__*_apply` through transcript-scanning prompt text, and the 2026-04-26 multi-session retro reconfirms valid preview-token flows blocked as `preview-token-apply-gate` across sessions 34ca7601, 7e2befc9, 1d93dd85, d8763f40, and aef3fb58. Re-review before implementation because many apply handlers already accept `previewToken`; next deliverable is a bounded design/plan deciding whether to replace the hook with deterministic token validation, remove the transcript hook in favor of existing tool-level token requirements, or split remaining gaps by tool family. Anchors: `hooks/hooks.json`, `src/RoslynMcp.Roslyn/Services/PreviewStore.cs`, `src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs`, `src/RoslynMcp.Host.Stdio/Tools/*Tools.cs`. Evidence: `ai_docs/reports/20260426T162740Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §4. |
 
 ## Low
 
@@ -60,7 +59,7 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `workspace-process-pool-or-daemon` | Defer | `large-solution profile` | Still valid after the 2026-04-26 plan cleanup: `docs/large-solution-profiling-baseline.md` only contains the small sample-solution smoke and explicitly says it is not a substitute for 50+ project profiling. Do not start a daemon/process-pool implementation blindly. First capture representative 50+ project timings; only if `workspace_load` / reload P95 still blocks daily use after `workspace_warm` should the next plan produce a bounded design note comparing daemon, process-pool, and shared-workspace approaches, including lifecycle and failure-isolation hooks. Deferred until profile evidence justifies the work. |
+| `workspace-process-pool-or-daemon` | Defer | future worse-profile evidence | Representative 227-project OrchardCore profile captured on 2026-04-26 did not justify daemon/process-pool implementation: `workspace_load` P95 was 44.85s, `symbol_search` P95 was 1.18s, and `find_references` P95 was 997ms, all below `docs/large-solution-profiling-baseline.md` thresholds. Keep this deferred unless a larger/worse customer-scale profile or daily-use evidence shows `workspace_load` / reload P95 blocking work after `workspace_warm`; then produce a bounded design note comparing daemon, process-pool, and shared-workspace approaches, including lifecycle and failure-isolation hooks. Evidence: `docs/large-solution-profiling-baseline.md` recorded OrchardCore run; local raw artifacts under `artifacts/large-solution-profiling/20260426T212443Z/`. |
 
 ## Refs
 
@@ -74,6 +73,5 @@
 | `ai_docs/runtime.md` | Bootstrap scope policy — distinguishes main-checkout self-edit (no `*_apply`) from worktree/parallel-subagent sessions. |
 | `docs/large-solution-profiling-baseline.md` | Evidence gate for daemon/process-pool performance work. |
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Intake procedure for future audit batches. |
-| `ai_docs/reports/20260426T162740Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` | Multi-session retro source; §4 findings were deduped against current backlog and merged PR history on 2026-04-26, leaving only `preview-token-apply-gate` active via `pretooluse-apply-preview-token-invariant`. |
 | `review-inbox/` | Staging folder for the NEXT audit batch (flat directory; `/backlog-intake` reads here). |
 | `review-inbox/archive/<batch-ts>/` | Processed audit/retro/promotion batches — one subdirectory per successful intake. Keep until every row sourced from a batch is closed or superseded, then delete that subdirectory. |
