@@ -1,6 +1,8 @@
 using System.ComponentModel;
+using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Formatters;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -19,7 +21,7 @@ public static class ValidationBundleTools
     [McpServerTool(Name = "validate_workspace", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "experimental", true, false,
         "Composite post-edit validation: compile_check + project_diagnostics (errors) + test_related_files (+ optional test_run)."),
-     Description("One-call post-edit validation bundle. Runs an in-memory compile_check, harvests Error-severity compiler+analyzer diagnostics, discovers tests related to the changed file set, and (when runTests=true) executes those tests. Returns an aggregate envelope with overallStatus = clean | compile-error | analyzer-error | test-failure. Pass `summary=true` on multi-project solutions where the default response (per-diagnostic detail + per-test rows) exceeds the MCP cap (Jellyfin: 135 KB).")]
+     Description("One-call post-edit validation bundle. Runs an in-memory compile_check, harvests Error-severity compiler+analyzer diagnostics, discovers tests related to the changed file set, and (when runTests=true) executes those tests. Returns an aggregate envelope with overallStatus = clean | compile-error | analyzer-error | test-failure. Pass `summary=true` on multi-project solutions where the default response (per-diagnostic detail + per-test rows) exceeds the MCP cap (Jellyfin: 135 KB). Pass `responseFormat=\"markdown\"` for a compact ~30-line summary table when the JSON envelope is overkill — verdict (overallStatus) is preserved across both shapes.")]
     public static Task<string> ValidateWorkspace(
         IWorkspaceExecutionGate gate,
         IWorkspaceValidationService validationService,
@@ -27,12 +29,13 @@ public static class ValidationBundleTools
         [Description("Optional: explicit list of changed file paths. When omitted, the change tracker's session-wide change set is used. Empty list means no test discovery.")] string[]? changedFilePaths = null,
         [Description("When true, runs the discovered related tests via dotnet test --filter. Default: false (discovery only).")] bool runTests = false,
         [Description("When true, drops the per-diagnostic ErrorDiagnostics list and per-test DiscoveredTests list to keep the response under the MCP cap on large solutions. OverallStatus + counts still surface the verdict. Default false preserves the v1.18 shape.")] bool summary = false,
+        [Description("Response shape: \"json\" (default) returns the indented JSON envelope; \"markdown\" returns a compact summary table built from the same DTO so the verdict is identical across shapes. Case-insensitive.")] string? responseFormat = null,
         CancellationToken ct = default)
-        => ToolDispatch.ReadByWorkspaceIdAsync(
-            gate,
-            workspaceId,
-            c => validationService.ValidateAsync(workspaceId, changedFilePaths, runTests, c, summary),
-            ct);
+        => gate.RunReadAsync(workspaceId, async c =>
+        {
+            var dto = await validationService.ValidateAsync(workspaceId, changedFilePaths, runTests, c, summary).ConfigureAwait(false);
+            return RenderValidationResponse(dto, responseFormat);
+        }, ct);
 
     [McpServerTool(Name = "validate_recent_git_changes", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "experimental", true, false,
@@ -75,5 +78,24 @@ public static class ValidationBundleTools
             var envelope = ToolErrorHandler.ClassifyAndFormat(ex, "validate_recent_git_changes");
             return ToolErrorHandler.InjectMetaIfPossible(envelope, "validate_recent_git_changes");
         }
+    }
+
+    /// <summary>
+    /// response-format-json-markdown-parameter: branch on the
+    /// <paramref name="responseFormat"/> string and serialize the DTO accordingly.
+    /// Default (null / empty / "json") preserves the indented JSON wire shape so
+    /// existing callers see no change. "markdown" returns the formatter output as
+    /// a plain string. Unknown values fall through to JSON rather than throwing,
+    /// matching the permissive contract used by other optional shape parameters
+    /// (e.g. <c>summary</c>).
+    /// </summary>
+    internal static string RenderValidationResponse(Core.Services.WorkspaceValidationDto dto, string? responseFormat)
+    {
+        if (!string.IsNullOrWhiteSpace(responseFormat)
+            && string.Equals(responseFormat, "markdown", StringComparison.OrdinalIgnoreCase))
+        {
+            return ValidateWorkspaceMarkdownFormatter.Format(dto);
+        }
+        return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
     }
 }
