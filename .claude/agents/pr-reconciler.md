@@ -35,7 +35,7 @@ Decision table:
 | Condition | Action | `MERGED_BY` in report |
 |---|---|---|
 | `state == "OPEN"` AND `mergeable == "MERGEABLE"` AND `mergeStateStatus == "CLEAN"` | proceed to step 2 | `pr-reconciler` |
-| `mergeStateStatus == "BLOCKED"` due to pending checks | wait 60s, retry once; if still not green, emit `STATUS: not-ready` and exit | — |
+| `mergeStateStatus == "BLOCKED"` due to pending checks | wait 60s, retry up to 12 times (12-min ceiling) with a one-line progress notification between attempts (e.g. `still pending after Nm — retry K/12`); if still not green after 12 retries, emit `STATUS: not-ready` and exit. Any check transitioning to `fail`/`error` during the loop short-circuits to the failing-check row below — the 12×60s budget is ONLY for `IN_PROGRESS` / `PENDING` checks. | — |
 | Any check is failing | emit `STATUS: not-ready` with the failing check names and exit | — |
 | `reviewDecision == "CHANGES_REQUESTED"` | emit `STATUS: not-ready` (review gate) and exit | — |
 | `state == "MERGED"` (pre-existing) | **skip the `gh pr merge` call entirely**; proceed to step 3 (cleanup only) | `preexisting` (capture `mergeCommit.oid` as `MERGE_SHA`) |
