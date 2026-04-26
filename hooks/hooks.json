@@ -22,6 +22,16 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -NonInteractive -File ${CLAUDE_PROJECT_DIR}/eng/verify-skills-on-edit.ps1",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "mcp__roslyn__server_info",
         "hooks": [
           {
