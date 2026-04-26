@@ -263,7 +263,7 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_duplicated_methods", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Find clusters of near-duplicate method bodies by AST-normalized hash."),
-     Description("Find clusters of method bodies whose AST-normalized structure is identical (or very close) — surfaces internal copy-paste that should be extracted to a shared helper. Normalization strips trivia, renames locals/parameters to ordinal placeholders, and compares the canonical SyntaxKind sequence, so cosmetic differences (formatting, local names, parameter names) don't affect bucketing. Overloads with identical bodies cluster; overloads with different bodies do not (bucketing is by body-shape, not method name). Auto-generated files (.g.cs, .Designer.cs, obj/), abstract declarations, and partial methods without bodies are excluded. Tune `minLines` up to reduce noise (default 10); narrow `projectFilter` for large solutions. `similarityThreshold` gates exact-structural matches only in the current implementation — near-miss bucketing is reserved for a future iteration, so any value in [0,1] behaves the same as 1.0.")]
+     Description("Find clusters of method bodies whose AST-normalized structure is identical (or very close) — surfaces internal copy-paste that should be extracted to a shared helper. Normalization strips trivia, renames locals/parameters to ordinal placeholders, and compares the canonical SyntaxKind sequence, so cosmetic differences (formatting, local names, parameter names) don't affect bucketing. Overloads with identical bodies cluster; overloads with different bodies do not (bucketing is by body-shape, not method name). Auto-generated files (.g.cs, .Designer.cs, obj/), abstract declarations, and partial methods without bodies are excluded. Tune `minLines` up to reduce noise (default 10); narrow `projectFilter` for large solutions. `similarityThreshold` gates exact-structural matches only in the current implementation — near-miss bucketing is reserved for a future iteration, so any value in [0,1] behaves the same as 1.0. Response shape: { count, groups, deprecation } — deprecation is null on the canonical tool and populated on aliases (e.g. find_duplicated_code).")]
     public static Task<string> FindDuplicatedMethods(
         IWorkspaceExecutionGate gate,
         IDuplicateMethodDetectorService duplicateMethodDetectorService,
@@ -272,6 +272,22 @@ public static class AdvancedAnalysisTools
         [Description("Structural similarity threshold in [0.0, 1.0] (default: 0.85). Exact structural duplicates score 1.0; the current implementation reports only exact-structural matches, so any value <= 1.0 behaves identically.")] double similarityThreshold = 0.85,
         [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
         [Description("Maximum number of groups to return (default: 50).")] int limit = 50,
+        CancellationToken ct = default)
+    {
+        return FindDuplicatedMethodsCore(gate, duplicateMethodDetectorService, workspaceId, minLines, similarityThreshold, projectFilter, limit, deprecation: null, ct);
+    }
+
+    // roslyn-mcp-sister-tool-name-aliases: shared core invoked by both the canonical
+    // `find_duplicated_methods` tool and the `find_duplicated_code` alias.
+    internal static Task<string> FindDuplicatedMethodsCore(
+        IWorkspaceExecutionGate gate,
+        IDuplicateMethodDetectorService duplicateMethodDetectorService,
+        string workspaceId,
+        int minLines,
+        double similarityThreshold,
+        string? projectFilter,
+        int limit,
+        ToolAliasDeprecation? deprecation,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
@@ -286,8 +302,40 @@ public static class AdvancedAnalysisTools
                     Limit = limit
                 },
                 c);
-            return JsonSerializer.Serialize(new { count = results.Count, groups = results }, JsonDefaults.Indented);
+            return JsonSerializer.Serialize(new { count = results.Count, groups = results, deprecation }, JsonDefaults.Indented);
         }, ct);
+    }
+
+    // roslyn-mcp-sister-tool-name-aliases: thin alias for callers carrying the python-refactor
+    // (Jedi) tool name `find_duplicated_code`. The plan-document evidence cites both
+    // `find_duplicated_methods` and `find_duplicate_helpers` as candidate canonicals; the
+    // broader semantic match is `find_duplicated_methods` (clusters of internal copy-paste),
+    // so the alias delegates there. Callers wanting the BCL/NuGet-wrapper detection should
+    // call `find_duplicate_helpers` directly.
+    [McpServerTool(Name = "find_duplicated_code", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
+     McpToolMetadata("advanced-analysis", "stable", true, false,
+        "Alias for find_duplicated_methods (cross-MCP-server name compatibility)."),
+     Description("Alias for `find_duplicated_methods` (cross-MCP-server name compatibility — matches the python-refactor tool name). Returns the canonical find_duplicated_methods response envelope ({ count, groups, deprecation }) with deprecation.canonicalName populated. Note: the python-refactor server has only one duplicate-detection tool while this server has two — `find_duplicated_methods` (clusters of internal copy-paste, picked here as the broader match) and `find_duplicate_helpers` (private/internal helpers that re-wrap a BCL/NuGet symbol). Call those canonicals directly when you need the targeted shape.")]
+    public static Task<string> FindDuplicatedCode(
+        IWorkspaceExecutionGate gate,
+        IDuplicateMethodDetectorService duplicateMethodDetectorService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Minimum body line count for a method to be considered (default: 10).")] int minLines = 10,
+        [Description("Structural similarity threshold in [0.0, 1.0] (default: 0.85).")] double similarityThreshold = 0.85,
+        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
+        [Description("Maximum number of groups to return (default: 50).")] int limit = 50,
+        CancellationToken ct = default)
+    {
+        return FindDuplicatedMethodsCore(
+            gate,
+            duplicateMethodDetectorService,
+            workspaceId,
+            minLines,
+            similarityThreshold,
+            projectFilter,
+            limit,
+            ToolAliasDeprecation.ForSisterAlias("find_duplicated_methods"),
+            ct);
     }
 
     [McpServerTool(Name = "semantic_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),

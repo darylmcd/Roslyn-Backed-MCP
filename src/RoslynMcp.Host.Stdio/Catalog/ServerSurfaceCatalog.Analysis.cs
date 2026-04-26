@@ -47,5 +47,7 @@ public static partial class ServerSurfaceCatalog
         Tool("get_operations", "advanced-analysis", "stable", true, false, "Get the IOperation tree for behavioral analysis at a source position."),
         Tool("analyze_snippet", "analysis", "stable", true, false, "Analyze a C# code snippet in an ephemeral workspace without loading a solution."),
         Tool("verify_pragma_suppresses", "validation", "stable", true, false, "Verify an existing #pragma warning disable/restore pair covers a fire line."),
+        Tool("find_duplicated_code", "advanced-analysis", "stable", true, false, "Alias for find_duplicated_methods (cross-MCP-server name compatibility)."),
+        Tool("get_test_coverage_map", "validation", "stable", false, false, "Alias for test_coverage (cross-MCP-server name compatibility)."),
     ];
 }

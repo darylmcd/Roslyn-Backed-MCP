@@ -152,7 +152,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get all symbol declarations (types, methods, properties, fields) in a document as a hierarchical tree")]
+    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get all symbol declarations (types, methods, properties, fields) in a document as a hierarchical tree. Response shape: { count, symbols, deprecation } — deprecation is null on the canonical tool and populated on aliases (e.g. get_symbol_outline).")]
     [McpToolMetadata("symbols", "stable", true, false,
         "List declared symbols in a document.")]
     public static Task<string> GetDocumentSymbols(
@@ -163,12 +163,52 @@ public static class SymbolTools
         [Description("Absolute path to the source file")] string filePath,
         CancellationToken ct = default)
     {
+        return GetDocumentSymbolsCore(server, gate, symbolSearchService, workspaceId, filePath, deprecation: null, ct);
+    }
+
+    // roslyn-mcp-sister-tool-name-aliases: shared core invoked by both the canonical
+    // `document_symbols` tool and the `get_symbol_outline` alias. The alias passes a populated
+    // `deprecation` envelope so callers can see the canonical name inline; the canonical method
+    // passes `null` so the response schema always carries the field.
+    internal static Task<string> GetDocumentSymbolsCore(
+        McpServer server,
+        IWorkspaceExecutionGate gate,
+        ISymbolSearchService symbolSearchService,
+        string workspaceId,
+        string filePath,
+        ToolAliasDeprecation? deprecation,
+        CancellationToken ct = default)
+    {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
             var results = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, c);
-            return JsonSerializer.Serialize(new { count = results.Count, symbols = results }, JsonDefaults.Indented);
+            return JsonSerializer.Serialize(new { count = results.Count, symbols = results, deprecation }, JsonDefaults.Indented);
         }, ct);
+    }
+
+    // roslyn-mcp-sister-tool-name-aliases: thin alias for callers carrying the python-refactor
+    // (Jedi) tool name `get_symbol_outline`. Delegates to the canonical `document_symbols`
+    // implementation and surfaces the migration path inline via the `deprecation` envelope.
+    [McpServerTool(Name = "get_symbol_outline", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Alias for `document_symbols` (cross-MCP-server name compatibility — matches the python-refactor tool name). Returns the canonical document_symbols response envelope ({ count, symbols, deprecation }) with deprecation.canonicalName populated. Prefer `document_symbols` directly in new code.")]
+    [McpToolMetadata("symbols", "stable", true, false,
+        "Alias for document_symbols (cross-MCP-server name compatibility).")]
+    public static Task<string> GetSymbolOutline(
+        McpServer server,
+        IWorkspaceExecutionGate gate,
+        ISymbolSearchService symbolSearchService,
+        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Absolute path to the source file")] string filePath,
+        CancellationToken ct = default)
+    {
+        return GetDocumentSymbolsCore(
+            server,
+            gate,
+            symbolSearchService,
+            workspaceId,
+            filePath,
+            ToolAliasDeprecation.ForSisterAlias("document_symbols"),
+            ct);
     }
 
     [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member. Response shape: { count, items }; each item is a SymbolDto (Name, FullyQualifiedName, FilePath, StartLine, etc.). Auto-promotes to the virtual/interface root: override chains, explicit interface implementations, and implicit interface implementations are normalized before the search so callers can anchor at the implementation or declaration site and get the same result set. Metadata-boundary members (e.g. IEquatable<T>.Equals) now surface with FilePath=null so count matches member_hierarchy.")]
