@@ -16,15 +16,15 @@
       "productionFilesTouched": 0,
       "testFilesAdded": 0,
       "toolPolicy": "edit-only",
-      "status": "pending",
+      "status": "completed",
       "correctnessClass": "P3-UX",
       "scheduleHint": null,
       "changelogCategory": "Maintenance",
-      "branch": null,
+      "branch": "docs/test-parallel-phase1-triage",
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Investigate phase. Writes ai_docs/reports/test-parallelization-triage-2026-04-22.md classifying each flake by race-shape (cleanup-teardown-race / workspacemanager-dispose-race / fixture-copy-race / other). Also re-adds the ci-test-parallelization-audit row to backlog.md if missing — plan-time audit found the row is absent from the current backlog.md despite state.json marking it as deferred-not-closed."
+      "notes": "Completed 2026-04-26. Wrote ai_docs/reports/test-parallelization-triage-2026-04-22.md. PR #322 named the historical failures, but 25 consecutive local eng/verify-release.ps1 -Configuration Release -NoCoverage runs passed with 1001/1001 tests each (0/25 current reproductions). Backlog row is present and was updated with the no-repro result. Phase 2 must not implement the old suspected teardown fix without fresh failure evidence."
     },
     {
       "id": "test-parallel-audit-phase2-fix-race",
