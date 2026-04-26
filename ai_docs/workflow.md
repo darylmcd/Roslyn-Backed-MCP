@@ -48,6 +48,54 @@ repo root:
 
 See `prompts/backlog-sweep-execute.md` § Step 8 for the subagent-flow wording.
 
+## Release-managed file guard
+
+A PreToolUse hook in `hooks/hooks.json` (matcher `Edit|Write|MultiEdit`) blocks
+edits to release-managed files unless the agent explicitly acknowledges the
+policy. The guarded set:
+
+| # | Path | Why guarded |
+|---|------|-------------|
+| 1 | `Directory.Build.props` | Canonical `<Version>` source. |
+| 2 | `BannedSymbols.txt` | Repo-wide banned-API list (release-critical analyzer input). |
+| 3 | `manifest.json` (repo root) | Version mirror — one of 5 enumerated by `eng/verify-version-drift.ps1`. |
+| 4 | `.claude-plugin/plugin.json` | Plugin manifest version. |
+| 5 | `.claude-plugin/marketplace.json` | Marketplace manifest version (`plugins[0].version`). |
+| 6 | `CHANGELOG.md` (repo root) | Top `## [X.Y.Z]` header is part of the version-drift check. |
+| 7 | `eng/verify-version-drift.ps1` | The drift-detector script itself. |
+| 8 | `hooks/hooks.json` | The hook config — editing it accidentally would silently disarm guards. |
+| 9 | `eng/verify-skills-are-generic.ps1` | The skills-genericity guard script. |
+
+Files 1, 3, 4, 5, and 6 are the five version-source locations enumerated by
+`eng/verify-version-drift.ps1`. Files 2, 7, 8, and 9 are additional
+release-critical infrastructure.
+
+**Bypass mechanism.** The guard is prompt-based (the LLM evaluator inspects the
+recent assistant reasoning). To bypass it for an intentional edit, include the
+literal phrase `ack: release-managed` (case-sensitive, with the colon and
+space) in the assistant reasoning text accompanying the tool call. The
+phrase must appear in natural-language reasoning — synthesizing it inside the
+file `content` / `new_string` does not count.
+
+**Canonical workflows that don't need the override:**
+
+- Bumping the version: use `/bump <major|minor|patch>` — the bump skill edits
+  files 1, 3, 4, 5, 6 atomically. Include `ack: release-managed` in the bump
+  rationale to satisfy the guard.
+- Cutting a release: use `/release-cut` — wraps `/bump` and includes the
+  necessary acknowledgement.
+- Changelog fragments: write to `changelog.d/<row-id>.md` (NOT to file 6
+  directly). `/bump` consumes the fragments at release time.
+
+**False-positive note.** Test fixtures named `manifest.json` under
+`tests/**/Fixtures/` are not the version source and are not blocked. The
+evaluator distinguishes by path context.
+
+**Relationship to CI gate.** This hook is advisory-at-edit-time;
+`eng/verify-version-drift.ps1` (run from `eng/verify-release.ps1`) remains the
+authoritative merge gate. The hook prevents accidental drift earlier — at the
+agent's keystroke rather than at PR review.
+
 ## Ownership
 
 - Validation and merge gating belong to `../CI_POLICY.md`.
