@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-26T20:13:50Z
+**updated_at:** 2026-04-26T20:38:05Z
 
 ## Agent contract
 
@@ -47,14 +47,12 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `ci-test-parallelization-audit` | Medium | — | Phase 1 triage named the historical PR #322 failures but did not reproduce them on the current checkout: 25 consecutive `eng/verify-release.ps1 -Configuration Release -NoCoverage` runs passed with 1001/1001 tests each. Evidence: `ai_docs/reports/test-parallelization-triage-2026-04-22.md`. Do not implement the old suspected teardown fix blindly; if a fresh flake appears, start with the still-risky manual isolated-copy path in `tests/RoslynMcp.Tests/IntegrationTests.cs` (`Preview_Token_Is_Rejected_After_Two_Reloads`) and ensure the loaded workspace is closed before deleting the copied root. Otherwise close or reclassify this row as stale evidence in the next docs/state follow-up. |
-| `pretooluse-apply-preview-token-invariant` | Medium | — | The `PreToolUse:mcp__roslyn__*_apply` hook at `hooks/hooks.json` still scans the session transcript for a matching `*_preview` and false-positive-blocks `*_apply` 8 times across 4 refactor sessions in the 2026-04-10→04-24 retro (`format_range_apply`, `extract_interface_apply`, `create_file_apply`, `fix_all_apply`, `move_type_to_file_apply`) — prior work (PR #234, PR #230) softened cold-subagent and composite-preview cases but the structural scan remains. The 2026-04-26 multi-session retro reconfirms the same open finding as `preview-token-apply-gate` across sessions 34ca7601, 7e2befc9, 1d93dd85, d8763f40, and aef3fb58; keep this as the single deduped backlog row for that finding. Return a short-lived `previewToken` on every `*_preview` response and require it on every `*_apply`; rewrite the hook to validate by token presence instead of transcript grep. Anchors: `src/RoslynMcp.Roslyn/Services/PreviewStore.cs` (already issues tokens for most previews — extend to the remaining preview tools), `src/RoslynMcp.Host.Stdio/Tools/*Apply*.cs` (add required `previewToken` parameter on every `*_apply`), `hooks/hooks.json` (flip scan → token compare). Evidence: `ai_docs/reports/20260426T162740Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §4 `preview-token-apply-gate`. Distinct from `format-range-apply-preview-token-lifetime` (that row tunes token lifetime; this row tightens the apply-gate invariant). |
+| `pretooluse-apply-preview-token-invariant` | Medium | — | Still valid after the 2026-04-26 plan cleanup: `hooks/hooks.json` still protects `mcp__roslyn__*_apply` through transcript-scanning prompt text, and the 2026-04-26 multi-session retro reconfirms valid preview-token flows blocked as `preview-token-apply-gate` across sessions 34ca7601, 7e2befc9, 1d93dd85, d8763f40, and aef3fb58. Re-review before implementation because many apply handlers already accept `previewToken`; next deliverable is a bounded design/plan deciding whether to replace the hook with deterministic token validation, remove the transcript hook in favor of existing tool-level token requirements, or split remaining gaps by tool family. Anchors: `hooks/hooks.json`, `src/RoslynMcp.Roslyn/Services/PreviewStore.cs`, `src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs`, `src/RoslynMcp.Host.Stdio/Tools/*Tools.cs`. Evidence: `ai_docs/reports/20260426T162740Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §4. |
 
 ## Low
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `tool-annotation-population-audit` | Low | — | MCP best-practices: tools should declare `readOnlyHint` / `destructiveHint` / `idempotentHint` / `openWorldHint` annotations so clients (including the PreToolUse apply-gate hook) can route decisions off structured metadata instead of tool-name patterns. Verify via `server_info.surface` + a spot-check on `src/RoslynMcp.Host.Stdio/Tools/*Apply*.cs` and `*Preview*.cs` whether the `[McpServerTool]` attributes already carry these. If missing, populate: every `*_apply` → `destructiveHint: true`; every `*_preview` / read-shape tool → `readOnlyHint: true`; workspace-scoped tools → `openWorldHint: false`. Close-immediately if already populated. |
 
 ## Defer
 
@@ -62,7 +60,7 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `workspace-process-pool-or-daemon` | Defer | `large-solution profile` | Do not start a daemon/process-pool implementation blindly. First capture representative 50+ project timings per `docs/large-solution-profiling-baseline.md`; only if `workspace_load` / reload P95 still blocks daily use after `workspace_warm` should the next plan produce a bounded design note comparing daemon, process-pool, and shared-workspace approaches, including lifecycle and failure-isolation hooks. Deferred until profile evidence justifies the work. |
+| `workspace-process-pool-or-daemon` | Defer | `large-solution profile` | Still valid after the 2026-04-26 plan cleanup: `docs/large-solution-profiling-baseline.md` only contains the small sample-solution smoke and explicitly says it is not a substitute for 50+ project profiling. Do not start a daemon/process-pool implementation blindly. First capture representative 50+ project timings; only if `workspace_load` / reload P95 still blocks daily use after `workspace_warm` should the next plan produce a bounded design note comparing daemon, process-pool, and shared-workspace approaches, including lifecycle and failure-isolation hooks. Deferred until profile evidence justifies the work. |
 
 ## Refs
 
@@ -74,12 +72,8 @@
 | `ai_docs/prompts/backlog-sweep-execute.md` | Executor companion; consumes the `state.json` the planner emits and vets each initiative against Rules 3/4/5 before starting work. |
 | `ai_docs/bootstrap-read-tool-primer.md` | Self-edit session read-only tool primer (Roslyn-MCP read-side tools to prefer over Bash/Grep). |
 | `ai_docs/runtime.md` | Bootstrap scope policy — distinguishes main-checkout self-edit (no `*_apply`) from worktree/parallel-subagent sessions. |
-| `ai_docs/plans/20260422T170500Z_test-parallelization-audit/plan.md` | Dedicated phased plan for `ci-test-parallelization-audit`. |
 | `docs/large-solution-profiling-baseline.md` | Evidence gate for daemon/process-pool performance work. |
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Intake procedure for future audit batches. |
-| `ai_docs/plans/20260422T223000Z_backlog-sweep/plan.md` | Prior sweep (20260422T223000Z). Shipped 14 initiatives across 14 PRs; closed 9 backlog rows. |
-| `ai_docs/plans/20260424T041204Z_backlog-sweep/plan.md` | Closed sweep against the 44-initiative audit-intake batch (5 P2 + 29 P3 + 10 P4). 42 merged / 2 deferred as of 2026-04-25 — `ci-test-parallelization-audit` (dedicated phased plan) and `workspace-process-pool-or-daemon` (heroic-last, profile-evidence gated). |
-| `ai_docs/plans/20260426T025255Z_backlog-sweep/plan.md` | Active sweep plan against the open backlog after the 20260424T041204Z sweep finalized. |
 | `ai_docs/reports/20260426T162740Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` | Multi-session retro source; §4 findings were deduped against current backlog and merged PR history on 2026-04-26, leaving only `preview-token-apply-gate` active via `pretooluse-apply-preview-token-invariant`. |
 | `review-inbox/` | Staging folder for the NEXT audit batch (flat directory; `/backlog-intake` reads here). |
 | `review-inbox/archive/<batch-ts>/` | Processed audit/retro/promotion batches — one subdirectory per successful intake. Keep until every row sourced from a batch is closed or superseded, then delete that subdirectory. |

@@ -1,0 +1,33 @@
+{
+  "planPath": "ai_docs/plans/20260426T204501Z_backlog-sweep/plan.md",
+  "createdAt": "2026-04-26T20:45:01Z",
+  "schemaVersion": 2,
+  "bootstrapCaveat": true,
+  "completed": false,
+  "completedAt": null,
+  "initiatives": [
+    {
+      "id": "pretooluse-apply-preview-token-invariant",
+      "title": "Remove transcript-grep apply gate",
+      "order": 1,
+      "backlogRowsClosed": [
+        "pretooluse-apply-preview-token-invariant"
+      ],
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 25000,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
+      "toolPolicy": "edit-only",
+      "requiredAddenda": [],
+      "status": "pending",
+      "correctnessClass": "P3-correctness",
+      "scheduleHint": null,
+      "changelogCategory": "Fixed",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Verified hooks/hooks.json still has transcript-based apply gating and ToolDispatch.ApplyByTokenAsync plus PreviewStore already enforce previewToken validity. Remove the hook unless implementation finds a protected apply tool without previewToken, in which case split that gap."
+    }
+  ]
+}
