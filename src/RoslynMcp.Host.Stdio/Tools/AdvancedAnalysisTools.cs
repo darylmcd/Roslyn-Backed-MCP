@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -51,13 +52,16 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "get_di_registrations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Inspect DI registration patterns in source."),
-     Description("Scan the solution for dependency injection registrations (AddSingleton, AddScoped, AddTransient) and return the service-to-implementation mappings. Pass showLifetimeOverrides=true to additionally emit per-service-type override chains (winning lifetime, lifetime-mismatch flag, dead-registration count) — opt-in to keep the default payload shape stable.")]
+     Description("Scan the solution for dependency injection registrations (AddSingleton, AddScoped, AddTransient) and return the service-to-implementation mappings. Pass showLifetimeOverrides=true to additionally emit per-service-type override chains (winning lifetime, lifetime-mismatch flag, dead-registration count) — opt-in to keep the default payload shape stable. Pass summary=true for large graphs to return aggregate counts plus a bounded page of override-chain summaries instead of full registrations/overrideChains.")]
     public static Task<string> GetDiRegistrations(
         IWorkspaceExecutionGate gate,
         IDiRegistrationService diRegistrationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
         [Description("When true, also emit overrideChains[] grouping registrations by service type with the winning lifetime, lifetime-mismatch flag (Singleton vs Scoped vs Transient), and dead-registration count. Default: false (legacy shape: count + registrations[]).")] bool showLifetimeOverrides = false,
+        [Description("When true, return a compact aggregate shape for large DI graphs. The detailed legacy/default response is unchanged when false.")] bool summary = false,
+        [Description("0-based offset into the compact override-chain summary page when summary=true. Ignored for detailed responses.")] int offset = 0,
+        [Description("Maximum override-chain summaries returned when summary=true. Clamped to [1, 500]. Ignored for detailed responses.")] int limit = 50,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
@@ -65,12 +69,26 @@ public static class AdvancedAnalysisTools
             if (!showLifetimeOverrides)
             {
                 var results = await diRegistrationService.GetDiRegistrationsAsync(workspaceId, projectName, c);
+                if (summary)
+                {
+                    return JsonSerializer.Serialize(
+                        BuildDiRegistrationSummary(results, [], offset, limit),
+                        JsonDefaults.Indented);
+                }
+
                 return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
             }
 
             // di-lifetime-mismatch-detection: opt-in path returns the legacy registrations
             // list (unchanged shape) plus the per-service-type override chains.
             var scan = await diRegistrationService.GetDiRegistrationsWithOverridesAsync(workspaceId, projectName, c);
+            if (summary)
+            {
+                return JsonSerializer.Serialize(
+                    BuildDiRegistrationSummary(scan.Registrations, scan.OverrideChains, offset, limit),
+                    JsonDefaults.Indented);
+            }
+
             return JsonSerializer.Serialize(new
             {
                 count = scan.Registrations.Count,
@@ -79,6 +97,45 @@ public static class AdvancedAnalysisTools
                 overrideChains = scan.OverrideChains,
             }, JsonDefaults.Indented);
         }, ct);
+    }
+
+    private static DiRegistrationSummaryResultDto BuildDiRegistrationSummary(
+        IReadOnlyList<DiRegistrationDto> registrations,
+        IReadOnlyList<DiRegistrationOverrideChainDto> overrideChains,
+        int offset,
+        int limit)
+    {
+        var clampedOffset = Math.Clamp(offset, 0, overrideChains.Count);
+        var clampedLimit = Math.Clamp(limit, 1, 500);
+        var page = overrideChains
+            .Skip(clampedOffset)
+            .Take(clampedLimit)
+            .Select(chain => new DiRegistrationOverrideChainSummaryDto(
+                chain.ServiceType,
+                chain.Registrations.Count,
+                chain.WinningLifetime,
+                chain.WinningImplementationType,
+                chain.LifetimesDiffer,
+                chain.DeadRegistrationCount))
+            .ToList();
+
+        return new DiRegistrationSummaryResultDto(
+            Count: registrations.Count,
+            DistinctServiceTypeCount: registrations
+                .Select(registration => registration.ServiceType)
+                .Distinct(StringComparer.Ordinal)
+                .Count(),
+            ByLifetime: registrations
+                .GroupBy(registration => registration.Lifetime, StringComparer.Ordinal)
+                .OrderBy(group => group.Key, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal),
+            OverrideChainCount: overrideChains.Count,
+            LifetimeMismatchCount: overrideChains.Count(chain => chain.LifetimesDiffer),
+            DeadRegistrationCount: overrideChains.Sum(chain => chain.DeadRegistrationCount),
+            Offset: clampedOffset,
+            Limit: clampedLimit,
+            HasMore: clampedOffset + page.Count < overrideChains.Count,
+            OverrideChains: page);
     }
 
     [McpServerTool(Name = "get_complexity_metrics", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),

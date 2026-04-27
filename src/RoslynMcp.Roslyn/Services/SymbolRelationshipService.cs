@@ -94,9 +94,9 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         return new TypeHierarchyDto(
             namedType.Name, namedType.ToDisplayString(),
             selfLoc?.GetLineSpan().Path, selfLoc?.GetLineSpan().StartLinePosition.Line + 1,
-            baseTypes.Count > 0 ? baseTypes : null,
-            derivedTypes.Count > 0 ? derivedTypes : null,
-            interfacesList.Count > 0 ? interfacesList : null);
+            baseTypes,
+            derivedTypes,
+            interfacesList);
     }
 
     private static TypeHierarchyDto BuildHierarchyEntry(INamedTypeSymbol type)
@@ -107,9 +107,9 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             type.ToDisplayString(),
             loc?.GetLineSpan().Path,
             loc?.GetLineSpan().StartLinePosition.Line + 1,
-            null,
-            null,
-            null);
+            [],
+            [],
+            []);
     }
 
     public async Task<MemberHierarchyDto?> GetMemberHierarchyAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)

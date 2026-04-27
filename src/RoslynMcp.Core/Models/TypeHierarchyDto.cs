@@ -8,6 +8,6 @@ public sealed record TypeHierarchyDto(
     string FullyQualifiedName,
     string? FilePath,
     int? StartLine,
-    IReadOnlyList<TypeHierarchyDto>? BaseTypes,
-    IReadOnlyList<TypeHierarchyDto>? DerivedTypes,
-    IReadOnlyList<TypeHierarchyDto>? Interfaces);
+    IReadOnlyList<TypeHierarchyDto> BaseTypes,
+    IReadOnlyList<TypeHierarchyDto> DerivedTypes,
+    IReadOnlyList<TypeHierarchyDto> Interfaces);

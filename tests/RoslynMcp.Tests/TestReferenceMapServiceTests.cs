@@ -86,7 +86,7 @@ public sealed class TestReferenceMapServiceTests : SharedWorkspaceTestBase
     public async Task BuildAsync_ProjectName_ProductiveProject_FiltersCollectedSymbols()
     {
         // SampleLib is the productive project; filtering to it should shrink the productive
-        // symbol set vs the unscoped sweep.
+        // symbol set vs the unscoped sweep while still scanning the solution's test projects.
         var unscoped = await Service.BuildAsync(
             WorkspaceId, projectName: null, offset: 0, limit: 500, CancellationToken.None);
         var scoped = await Service.BuildAsync(
@@ -96,6 +96,13 @@ public sealed class TestReferenceMapServiceTests : SharedWorkspaceTestBase
         var scopedTotal = scoped.TotalCoveredCount + scoped.TotalUncoveredCount;
         Assert.IsTrue(scopedTotal <= unscopedTotal,
             $"Scoped total ({scopedTotal}) must not exceed unscoped total ({unscopedTotal}) — filter should narrow, not expand.");
+        CollectionAssert.Contains(
+            scoped.InspectedTestProjects.ToList(),
+            "SampleLib.Tests",
+            "Productive-project scope must still scan eligible test projects.");
+        Assert.IsFalse(
+            scoped.Notes.Any(note => note.Contains("No test projects detected", StringComparison.Ordinal)),
+            "A productive-project filter must not report that no tests exist when the workspace has test projects.");
     }
 
     [TestMethod]
