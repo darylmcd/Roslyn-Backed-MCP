@@ -16,6 +16,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.33.1] - 2026-04-27
+
+### Fixed
+
+- **Fixed:** Removed the transcript-scanning PreToolUse gate for Roslyn apply tools, relying on required `previewToken` inputs and tool-level preview-store validation instead. Closes `pretooluse-apply-preview-token-invariant`.
+- **Fixed:** Closed the eligible backlog rows from the 2026-04-24 review-inbox batch: `test_reference_map` now scans tests for productive-project scopes, `get_di_registrations` has compact summary paging, build diagnostics can recover Roslyn end spans, `type_hierarchy` emits empty arrays for empty relationship buckets, and `rename_preview` gives actionable guidance for unresolved metadata-name member targets. Closes `test-reference-map-productive-project-scope`, `get-di-registrations-summary-mode`, `build-workspace-diagnostic-span-enrichment`, `type-hierarchy-empty-collections`, and `rename-preview-bare-member-guidance`.
+
+### Maintenance
+
+- **Maintenance:** Replaced the prompt-based PreToolUse guard for release-managed files with a command-based hook (`eng/guard-release-managed-files.ps1`) that uses a sentinel-file override (`.release-managed-edit-allowed`, gitignored). The previous design instructed a judge LLM to scan the agent's reasoning prose for an `ack: release-managed` phrase; in practice the judge did not reliably receive the prose and either blocked legitimate `/bump` flows or hallucinated matches against newly created files. The new guard inspects only `tool_input.file_path` (deterministic) and the sentinel mtime (1800 s TTL). Skills that mutate release-managed files (`/bump`, `/release-cut`, `/ship`) `touch` the sentinel before mutating and remove it at end of flow. Closes (in this PR) the inability of `/release-cut` to bump version files when the prompt-based judge denied the override.
+
 ## [1.33.0] - 2026-04-26
 
 ### Added

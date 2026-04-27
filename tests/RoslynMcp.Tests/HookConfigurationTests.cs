@@ -30,12 +30,11 @@ public sealed class HookConfigurationTests
 
         var releaseGuard = preToolUseHooks.SingleOrDefault(entry =>
             GetMatcher(entry) == "Edit|Write|MultiEdit" &&
-            GetPromptTexts(entry).Any(prompt =>
-                prompt.Contains("release-managed file set", StringComparison.Ordinal) &&
-                prompt.Contains("ack: release-managed", StringComparison.Ordinal)));
+            GetCommands(entry).Any(command =>
+                command.Contains("guard-release-managed-files", StringComparison.Ordinal)));
 
         Assert.AreEqual(JsonValueKind.Object, releaseGuard.ValueKind,
-            "The Edit/Write/MultiEdit release-managed file guard must stay configured.");
+            "The Edit/Write/MultiEdit release-managed file guard must stay configured (command-based hook calling eng/guard-release-managed-files.ps1).");
     }
 
     [TestMethod]
@@ -97,6 +96,19 @@ public sealed class HookConfigurationTests
                 hook.TryGetProperty("prompt", out var prompt))
             {
                 yield return prompt.GetString() ?? string.Empty;
+            }
+        }
+    }
+
+    private static IEnumerable<string> GetCommands(JsonElement entry)
+    {
+        foreach (var hook in entry.GetProperty("hooks").EnumerateArray())
+        {
+            if (hook.TryGetProperty("type", out var type) &&
+                type.GetString() == "command" &&
+                hook.TryGetProperty("command", out var command))
+            {
+                yield return command.GetString() ?? string.Empty;
             }
         }
     }
