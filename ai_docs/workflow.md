@@ -70,26 +70,40 @@ Files 1, 3, 4, 5, and 6 are the five version-source locations enumerated by
 `eng/verify-version-drift.ps1`. Files 2, 7, 8, and 9 are additional
 release-critical infrastructure.
 
-**Bypass mechanism.** The guard is prompt-based (the LLM evaluator inspects the
-recent assistant reasoning). To bypass it for an intentional edit, include the
-literal phrase `ack: release-managed` (case-sensitive, with the colon and
-space) in the assistant reasoning text accompanying the tool call. The
-phrase must appear in natural-language reasoning — synthesizing it inside the
-file `content` / `new_string` does not count.
+**Bypass mechanism.** The guard is command-based — `eng/guard-release-managed-files.ps1`
+inspects only `tool_input.file_path` (deterministic) and looks for an override
+sentinel at the repo root: `.release-managed-edit-allowed` (gitignored). If the
+sentinel exists and its mtime is within the TTL (default 1800 s, override via
+`RELEASE_SENTINEL_TTL_SECONDS`), the edit is allowed. Otherwise the edit is
+blocked with exit code 2 and a message pointing back here.
 
-**Canonical workflows that don't need the override:**
+To bypass for an intentional ad-hoc edit, `touch` the sentinel:
+
+    New-Item -ItemType File -Force .release-managed-edit-allowed | Out-Null
+
+…then perform the edit. The sentinel is gitignored and stale-cleaned by the
+TTL. Skills that mutate release-managed files (`/bump`, `/release-cut`,
+`/ship`) create the sentinel before mutating and remove it at end of flow, so
+the override is invisible to normal release workflows.
+
+**History note.** The original guard (1.32.x and earlier) was prompt-based and
+required the literal phrase `ack: release-managed` in the agent's reasoning
+prose. In practice the judge LLM did not reliably receive that prose — it
+either denied legitimate `/bump` flows or hallucinated rule matches against
+unrelated new files. The sentinel-based replacement landed in 1.33.1 (see
+CHANGELOG).
+
+**Canonical workflows that don't need to touch the sentinel manually:**
 
 - Bumping the version: use `/bump <major|minor|patch>` — the bump skill edits
-  files 1, 3, 4, 5, 6 atomically. Include `ack: release-managed` in the bump
-  rationale to satisfy the guard.
-- Cutting a release: use `/release-cut` — wraps `/bump` and includes the
-  necessary acknowledgement.
+  files 1, 3, 4, 5, 6 atomically and manages the sentinel for you.
+- Cutting a release: use `/release-cut` — wraps `/bump` end-to-end.
 - Changelog fragments: write to `changelog.d/<row-id>.md` (NOT to file 6
   directly). `/bump` consumes the fragments at release time.
 
 **False-positive note.** Test fixtures named `manifest.json` under
-`tests/**/Fixtures/` are not the version source and are not blocked. The
-evaluator distinguishes by path context.
+`tests/**/Fixtures/` are not the version source and are not blocked. The guard
+script's path filter excludes `(^|/)(tests|fixtures)/`.
 
 **Relationship to CI gate.** This hook is advisory-at-edit-time;
 `eng/verify-version-drift.ps1` (run from `eng/verify-release.ps1`) remains the

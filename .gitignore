@@ -499,3 +499,6 @@ $RECYCLE.BIN/
 # Claude Code plugin loader's canonical MCP-server descriptor and must
 # ship with the marketplace install.
 !/.mcp.json
+
+# Release-managed edit override sentinel (created by /bump, /release-cut, /ship; transient)
+.release-managed-edit-allowed

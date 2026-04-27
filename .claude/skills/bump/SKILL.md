@@ -53,7 +53,15 @@ Display the new version and confirm with the user before proceeding.
 
 ### Step 3: Edit Version Files 1-4
 
-Edit each of the first four version files using the Edit tool, replacing the old version with the new version:
+First, create the release-managed-edit override sentinel so the PreToolUse guard (`eng/guard-release-managed-files.ps1`) allows the version-file edits:
+
+```bash
+touch .release-managed-edit-allowed
+```
+
+The sentinel is gitignored and has a 1800 s TTL. See `ai_docs/workflow.md` § Release-managed file guard.
+
+Then edit each of the first four version files using the Edit tool, replacing the old version with the new version:
 
 1. **`Directory.Build.props`**: Replace `<Version>OLD</Version>` with `<Version>NEW</Version>`
 2. **`.claude-plugin/plugin.json`**: Replace `"version": "OLD"` with `"version": "NEW"` (the first occurrence)
@@ -132,7 +140,17 @@ Run `eng/verify-version-drift.ps1` via Bash to confirm all 5 files agree on the 
 
 Also confirm `changelog.d/` now contains only `README.md` — every fragment that was present at Step 4 start should have been consumed and deleted.
 
-### Step 6: Report
+### Step 6: Cleanup sentinel
+
+Remove the override sentinel created in Step 3 so subsequent edits go through the normal guard:
+
+```bash
+rm -f .release-managed-edit-allowed
+```
+
+(It is gitignored, so a leftover sentinel does not pollute the commit, but removing it keeps the override contract honest.)
+
+### Step 7: Report
 
 Display a summary:
 - Previous version → New version
