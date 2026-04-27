@@ -129,6 +129,20 @@ public class ServiceCoverageTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task GetTypeHierarchy_LeafType_Returns_Empty_Collections()
+    {
+        var hierarchy = await SymbolRelationshipService.GetTypeHierarchyAsync(
+            WorkspaceId,
+            SymbolLocator.ByMetadataName("SampleLib.AnimalService"),
+            CancellationToken.None);
+
+        Assert.IsNotNull(hierarchy, "Type hierarchy should not be null for AnimalService.");
+        Assert.AreEqual(0, hierarchy.BaseTypes.Count, "Leaf type baseTypes should serialize as an empty array, not null.");
+        Assert.AreEqual(0, hierarchy.DerivedTypes.Count, "Leaf type derivedTypes should serialize as an empty array, not null.");
+        Assert.AreEqual(0, hierarchy.Interfaces.Count, "Leaf type interfaces should serialize as an empty array, not null.");
+    }
+
+    [TestMethod]
     public async Task GetSignatureHelp_Returns_Method_Signature()
     {
         var animalServicePath = FindDocumentPath("AnimalService.cs");

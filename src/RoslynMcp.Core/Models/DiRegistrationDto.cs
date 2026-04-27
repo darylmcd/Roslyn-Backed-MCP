@@ -59,3 +59,31 @@ public sealed record DiRegistrationOverrideChainDto(
 public sealed record DiRegistrationScanResult(
     IReadOnlyList<DiRegistrationDto> Registrations,
     IReadOnlyList<DiRegistrationOverrideChainDto> OverrideChains);
+
+/// <summary>
+/// Compact response shape for large DI registration scans. The detailed registration and
+/// override-chain lists can exceed client payload caps on large solutions; this summary keeps
+/// aggregate counts plus a bounded page of override-chain headers.
+/// </summary>
+public sealed record DiRegistrationSummaryResultDto(
+    int Count,
+    int DistinctServiceTypeCount,
+    IReadOnlyDictionary<string, int> ByLifetime,
+    int OverrideChainCount,
+    int LifetimeMismatchCount,
+    int DeadRegistrationCount,
+    int Offset,
+    int Limit,
+    bool HasMore,
+    IReadOnlyList<DiRegistrationOverrideChainSummaryDto> OverrideChains);
+
+/// <summary>
+/// Compact per-service override-chain row used by <see cref="DiRegistrationSummaryResultDto"/>.
+/// </summary>
+public sealed record DiRegistrationOverrideChainSummaryDto(
+    string ServiceType,
+    int RegistrationCount,
+    string WinningLifetime,
+    string WinningImplementationType,
+    bool LifetimesDiffer,
+    int DeadRegistrationCount);

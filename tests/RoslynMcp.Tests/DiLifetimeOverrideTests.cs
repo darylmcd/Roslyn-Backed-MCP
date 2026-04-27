@@ -1,4 +1,6 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
@@ -137,6 +139,43 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
         Assert.IsFalse(
             scan.OverrideChains.Any(c => c.ServiceType.EndsWith("IBaz", StringComparison.Ordinal)),
             "A service registered exactly once is not an override and must be omitted from the chain output.");
+    }
+
+    [TestMethod]
+    public async Task Summary_Mode_Returns_Compact_Counts_And_Paged_Override_Chains()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services)\n    {\n        services.AddSingleton<IFoo, FooSingleton>();\n        services.AddScoped<IFoo, FooScoped>();\n        services.TryAddSingleton<IBar, BarFirst>();\n        services.TryAddSingleton<IBar, BarSecond>();\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var json = await AdvancedAnalysisTools.GetDiRegistrations(
+            WorkspaceExecutionGate,
+            DiRegistrationService,
+            workspace.WorkspaceId,
+            projectName: "SampleLib",
+            showLifetimeOverrides: true,
+            summary: true,
+            offset: 0,
+            limit: 1,
+            ct: CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.AreEqual(2, root.GetProperty("count").GetInt32(),
+            "count preserves the detailed legacy registration count and excludes TryAdd* entries.");
+        Assert.AreEqual(2, root.GetProperty("overrideChainCount").GetInt32());
+        Assert.AreEqual(1, root.GetProperty("limit").GetInt32());
+        Assert.IsTrue(root.GetProperty("hasMore").GetBoolean(),
+            "limit=1 should surface hasMore when more override-chain summaries exist.");
+        Assert.IsTrue(root.TryGetProperty("overrideChains", out var overrideChains));
+        Assert.AreEqual(1, overrideChains.GetArrayLength());
+        Assert.IsFalse(root.TryGetProperty("registrations", out _),
+            "summary=true should not include the full registrations list.");
     }
 
     /// <summary>

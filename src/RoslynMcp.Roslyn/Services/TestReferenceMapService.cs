@@ -31,7 +31,7 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
         var solution = _workspace.GetCurrentSolution(workspaceId);
 
         // Phase 1: scope projects + classify test-vs-productive.
-        var (scopedProjects, testProjectIds, productiveScopeProjects) =
+        var (testScanProjects, mockDriftScopeProjects, testProjectIds, productiveScopeProjects) =
             ScopeProjects(solution, status, projectName);
 
         // Phase 2: collect every public/internal productive-symbol declaration from the
@@ -43,19 +43,21 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
         // Phase 3: walk each test project's test methods and record references to
         // productive symbols.
         var (productiveSymbols, scannedTestProjects) = await RecordTestProjectReferencesAsync(
-            solution, scopedProjects, testProjectIds, allProductive, ct).ConfigureAwait(false);
+            solution, testScanProjects, testProjectIds, allProductive, ct).ConfigureAwait(false);
 
         var notes = new List<string>();
         if (scannedTestProjects.Count == 0)
         {
-            notes.Add("No test projects detected (IsTestProject=true). Coverage defaults to 0%.");
+            notes.Add(testProjectIds.Count == 0
+                ? "No test projects detected (IsTestProject=true). Coverage defaults to 0%."
+                : "No test projects matched the requested project scope. Coverage defaults to 0%.");
         }
         notes.Add(
             "Static reference analysis misses reflection, DI-constructed calls, and mocks. " +
             "Runtime coverage from test_coverage remains the authoritative view for those.");
 
         // Item 9: detect NSubstitute mock-drift across the same test projects.
-        var mockDrift = await DetectMockDriftAsync(solution, scopedProjects, testProjectIds, ct).ConfigureAwait(false);
+        var mockDrift = await DetectMockDriftAsync(solution, mockDriftScopeProjects, testProjectIds, ct).ConfigureAwait(false);
 
         // Phase 4: compute ordered sets + stable pagination.
         var coveredAll = productiveSymbols
@@ -74,24 +76,25 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
 
     /// <summary>
     /// Resolve the project-scope triple used by the rest of <see cref="BuildAsync"/>:
-    /// (a) the set of projects covered by <paramref name="projectName"/> (or every project when
-    /// it is null/empty), (b) the test-project ids across the full solution, and (c) the
-    /// productive-scope subset (dr-9-5-bug-pagination-001: a productive <paramref name="projectName"/>
-    /// restricts the collected symbol set to that project alone). Throws when
-    /// <paramref name="projectName"/> matches nothing.
+    /// (a) the test projects to scan for references, (b) the projects to scan for mock drift,
+    /// (c) the test-project ids across the full solution, and (d) the productive-symbol scope.
+    /// A productive <paramref name="projectName"/> restricts the collected symbol set to that
+    /// project but still scans solution test projects so the coverage map can show which tests
+    /// exercise those productive symbols. Throws when <paramref name="projectName"/> matches nothing.
     /// </summary>
-    private static (List<Project> ScopedProjects, HashSet<ProjectId> TestProjectIds, IReadOnlyList<Project> ProductiveScopeProjects) ScopeProjects(
+    private static (IReadOnlyList<Project> TestScanProjects, IReadOnlyList<Project> MockDriftScopeProjects, HashSet<ProjectId> TestProjectIds, IReadOnlyList<Project> ProductiveScopeProjects) ScopeProjects(
         Solution solution,
         WorkspaceStatusDto status,
         string? projectName)
     {
-        var scopedProjects = string.IsNullOrWhiteSpace(projectName)
+        var allProjects = solution.Projects.ToList();
+        var matchedProjects = string.IsNullOrWhiteSpace(projectName)
             ? solution.Projects.ToList()
             : solution.Projects.Where(p =>
                 string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(p.FilePath, projectName, StringComparison.OrdinalIgnoreCase)).ToList();
 
-        if (scopedProjects.Count == 0)
+        if (matchedProjects.Count == 0)
         {
             throw new InvalidOperationException(
                 $"test_reference_map: project '{projectName}' not found in workspace.");
@@ -107,15 +110,27 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
                 testProjectIds.Add(project.Id);
         }
 
-        // dr-9-5-bug-pagination-001: when projectName matches a PRODUCTIVE project, restrict
-        // the collected productive-symbol set to that project's symbols. Pre-fix, projectName
-        // only influenced which test projects got scanned, so passing a productive project
-        // returned the full unfiltered productive set.
-        var productiveScopeProjects = !string.IsNullOrWhiteSpace(projectName)
-            ? scopedProjects.Where(p => !testProjectIds.Contains(p.Id)).ToList()
-            : (IReadOnlyList<Project>)solution.Projects.Where(p => !testProjectIds.Contains(p.Id)).ToList();
+        var allTestProjects = allProjects.Where(p => testProjectIds.Contains(p.Id)).ToList();
+        var allProductiveProjects = allProjects.Where(p => !testProjectIds.Contains(p.Id)).ToList();
+        if (string.IsNullOrWhiteSpace(projectName))
+        {
+            return (allTestProjects, allTestProjects, testProjectIds, allProductiveProjects);
+        }
 
-        return (scopedProjects, testProjectIds, productiveScopeProjects);
+        var matchedTestProjects = matchedProjects.Where(p => testProjectIds.Contains(p.Id)).ToList();
+        var matchedProductiveProjects = matchedProjects.Where(p => !testProjectIds.Contains(p.Id)).ToList();
+
+        // Productive project filter: keep the productive symbol denominator narrow, but scan
+        // all known tests. The old implementation used matchedProjects for both, so a
+        // productive-only scope scanned zero tests and emitted a misleading "no tests" note.
+        if (matchedProductiveProjects.Count > 0)
+        {
+            return (allTestProjects, allTestProjects, testProjectIds, matchedProductiveProjects);
+        }
+
+        // Test project filter: scan only that test project, but keep the productive denominator
+        // solution-wide so the result answers "what does this test project cover?"
+        return (matchedTestProjects, matchedTestProjects, testProjectIds, allProductiveProjects);
     }
 
     /// <summary>

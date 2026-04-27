@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-26T21:39:11Z
+**updated_at:** 2026-04-27T12:43:57Z
 
 ## Agent contract
 

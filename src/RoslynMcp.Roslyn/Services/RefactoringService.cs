@@ -55,7 +55,7 @@ public sealed class RefactoringService : IRefactoringService
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
-            throw new InvalidOperationException("No symbol found for the provided rename target.");
+            throw new InvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
 
         if (!symbol.Locations.Any(static l => l.IsInSource))
         {
@@ -117,6 +117,25 @@ public sealed class RefactoringService : IRefactoringService
         }
 
         return new RefactoringPreviewDto(token, description, changes, warnings);
+    }
+
+    private static string BuildRenameTargetNotFoundMessage(SymbolLocator locator)
+    {
+        if (locator.HasMetadataName)
+        {
+            return $"No symbol found for metadataName '{locator.MetadataName}'. " +
+                   "For member renames, pass a fully qualified target such as Namespace.Type.Member or ContainingType.Member, " +
+                   "or use a symbolHandle from document_symbols/enclosing_symbol for precise targeting.";
+        }
+
+        if (locator.HasHandle)
+        {
+            return "No symbol found for the supplied symbolHandle. The handle may be from a previous workspace version; " +
+                   "refresh it with document_symbols or enclosing_symbol before retrying.";
+        }
+
+        return $"No symbol found at {locator.FilePath}:{locator.Line}:{locator.Column}. " +
+               "Place the location on the identifier to rename, or use a symbolHandle from document_symbols/enclosing_symbol.";
     }
 
     /// <summary>

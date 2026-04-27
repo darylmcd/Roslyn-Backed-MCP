@@ -131,6 +131,20 @@ public sealed class RefactoringToolsIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task RenamePreview_BareMemberMetadataName_Returns_Targeting_Guidance()
+    {
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            RefactoringService.PreviewRenameAsync(
+                WorkspaceId,
+                SymbolLocator.ByMetadataName("GetAllAnimals"),
+                "GetAllAnimalsRenamed",
+                CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "ContainingType.Member");
+        StringAssert.Contains(ex.Message, "symbolHandle");
+    }
+
+    [TestMethod]
     public async Task OrganizeUsings_RemovesUnusedUsings_DoesNotLeaveBlankLines()
     {
         // Build an isolated workspace, seed a file with multiple unused usings,
