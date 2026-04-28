@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
@@ -57,23 +58,49 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
             }
         }
 
-        var results = new List<CouplingMetricsDto>(candidates.Count);
-        foreach (var (type, project, compilation) in candidates)
-        {
-            if (ct.IsCancellationRequested) break;
+        // coupling-metrics-p50-borderline-on-15s-solution-budget: parallelize the per-type metric
+        // computation. Each candidate's ComputeAfferentCouplingAsync calls SymbolFinder over the
+        // whole solution and is the dominant cost on multi-project workspaces (12807ms p50 observed
+        // on a 7-project / 571-doc solution against the 15s budget). Roslyn's Compilation /
+        // SemanticModel / SymbolFinder are documented thread-safe for read-only operations, the
+        // logger is thread-safe, and the only shared mutable state is the result accumulator —
+        // which is now a ConcurrentBag.
+        var results = new ConcurrentBag<CouplingMetricsDto>();
 
-            try
+        // Cap parallelism at the lower of (CPU count, candidate count) — over-subscribing the
+        // SymbolFinder pipeline yields no win and burns thread-pool slots that the rest of the
+        // server may need for concurrent reads.
+        var maxDop = Math.Max(1, Math.Min(Environment.ProcessorCount, candidates.Count));
+        var parallelOptions = new ParallelOptions
+        {
+            CancellationToken = ct,
+            MaxDegreeOfParallelism = maxDop,
+        };
+
+        try
+        {
+            await Parallel.ForEachAsync(candidates, parallelOptions, async (candidate, token) =>
             {
-                var metrics = await ComputeMetricsAsync(type, project, compilation, solution, ct).ConfigureAwait(false);
-                results.Add(metrics);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "Failed to compute coupling metrics for type '{TypeName}', skipping",
-                    type.ToDisplayString());
-            }
+                var (type, project, compilation) = candidate;
+                try
+                {
+                    var metrics = await ComputeMetricsAsync(type, project, compilation, solution, token).ConfigureAwait(false);
+                    results.Add(metrics);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to compute coupling metrics for type '{TypeName}', skipping",
+                        type.ToDisplayString());
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Surface cancellation, but return the partial results gathered so far. This matches
+            // the prior serial behaviour where mid-loop cancellation broke out and let callers
+            // observe whatever had been computed before the break.
         }
 
         // Order: highest instability first (the "unstable" types most at risk of upstream churn),
