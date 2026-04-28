@@ -54,7 +54,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #474, 2026-04-28) |
 | Backlog rows closed | `symbol-info-not-found-message-locator-vs-location` |
 | Diagnosis | When `symbol_info` is called with `metadataName` only (no file/line/column) and resolution fails, the error reads *"No symbol found at the specified location"* — but the caller did not supply a location. The misnaming makes diagnosis harder. Anchors: tool registration [src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs](../../../src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs); resolver [src/RoslynMcp.Roslyn/Services/SymbolNavigationService.cs](../../../src/RoslynMcp.Roslyn/Services/SymbolNavigationService.cs). Both files exist as cited. |
 | Approach | Locate the throw/return that produces *"No symbol found at the specified location"* (likely in `SymbolNavigationService` or a shared resolver). Branch the message text on which locator field was supplied: `metadataName` only → *"No symbol found for metadata name '<name>'"*; `filePath`+`line`+`column` → *"No symbol found at <file>:<line>:<col>"*; `symbolHandle` only → *"No symbol found for symbol handle '<handle>'"*. If multiple fields are supplied, pick the most specific (location > handle > metadataName). Investigate at execute time whether the misnaming is shared with sibling navigation tools (`go_to_definition`, `goto_type_definition`); if yes, centralize at the resolver layer; if `symbol_info`-only, contain. |
@@ -90,7 +90,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #473, 2026-04-28) |
 | Backlog rows closed | `dead-logger-fields-roslyn-services-batch-1` |
 | Diagnosis | Four services in `RoslynMcp.Roslyn.Services` declare `private readonly ILogger<T> _logger` and assign it from a constructor parameter, but no method ever reads `_logger`. Write count = 1 (ctor); read count = 0. Verified anchors at expected lines: [BulkRefactoringService.cs:16](../../../src/RoslynMcp.Roslyn/Services/BulkRefactoringService.cs), [CodeMetricsService.cs:14](../../../src/RoslynMcp.Roslyn/Services/CodeMetricsService.cs), [CompletionService.cs:13](../../../src/RoslynMcp.Roslyn/Services/CompletionService.cs), [ConsumerAnalysisService.cs:14](../../../src/RoslynMcp.Roslyn/Services/ConsumerAnalysisService.cs). All four use traditional ctors, not C# 12 primary ctors as the row's prose implies; the fix shape is the same (drop field + ctor param + assignment). DI auto-resolves logger registrations via `AddLogging()`, so no `ServiceCollectionExtensions` change is required. |
 | Approach | For each of the 4 services: delete `_logger` field declaration, remove `ILogger<T>` from ctor signature, remove `_logger = logger;` assignment. Drop `using Microsoft.Extensions.Logging;` if no other references. Run `mcp__roslyn__find_references` on each ctor before editing to surface any direct-`new` call sites in tests or DI helpers that would need the parameter list updated. |

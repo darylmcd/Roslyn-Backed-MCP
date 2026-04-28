@@ -71,7 +71,7 @@
     {
       "id": "symbol-info-not-found-message-locator-vs-location",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "priority": "P3",
       "backlogRowsClosed": ["symbol-info-not-found-message-locator-vs-location"],
       "rowsClosedCount": 1,
@@ -81,11 +81,11 @@
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "touchesHotspot": false,
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "branch": "remediation/symbol-info-not-found-message-locator-vs-location",
+      "worktreePath": ".worktrees/symbol-info-not-found-message-locator-vs-location",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/474",
+      "mergedAt": "2026-04-28T19:16:42Z",
+      "notes": "Subagent took containment path per plan Risks: only symbol_info fixed; sibling navigation tools (symbol_relationships, goto_type_definition, find_consumers, AnalysisTools.cs lines 232/258/308/358) still return legacy text and were deliberately deferred. Spin-off row navigation-tools-misnamed-locator-error added in this reconcile PR. Architecture choice: branching logic placed in new SymbolLocatorFactory.cs at the locator-construction layer rather than SymbolNavigationService — different shape than plan suggested, same result. Wave 3 (retry of clean-abandoned wave 2 attempt)."
     },
     {
       "id": "apply-composite-preview-name-friction",
@@ -111,21 +111,21 @@
     {
       "id": "dead-logger-fields-roslyn-services-batch-1",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "priority": "P3",
       "backlogRowsClosed": ["dead-logger-fields-roslyn-services-batch-1"],
       "rowsClosedCount": 1,
       "productionFilesTouched": 4,
-      "testFilesAdded": 1,
+      "testFilesAdded": 3,
       "estimatedContextTokens": 28000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "touchesHotspot": false,
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Backlog row prose says 'primary-ctor parameter'; verified the four services use traditional ctors. Fix shape unchanged."
+      "branch": "remediation/dead-logger-fields-roslyn-services-batch-1",
+      "worktreePath": ".worktrees/dead-logger-fields-roslyn-services-batch-1",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/473",
+      "mergedAt": "2026-04-28T19:16:33Z",
+      "notes": "Subagent shipped 3 test files (1 new + 2 modified) instead of 1: had to update direct-new callers in CodeMetricsNestingTests.cs and TestServiceContainer.cs after dropping the ILogger<T> ctor parameter. Within Rule 4's ≤3 test-file cap. Wave 3 unblocks batch-2 and batch-3 dependent rows."
     },
     {
       "id": "di-graph-triple-registration-cleanup",
