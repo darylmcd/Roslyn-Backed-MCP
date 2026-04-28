@@ -11,7 +11,8 @@
     "info": 1
   },
   "vettingOverride": false,
-  "completed": false,
+  "completed": true,
+  "completedAt": "2026-04-28T19:52:48Z",
   "skippedRows": [
     {
       "rowId": "dead-logger-fields-roslyn-services-batch-2",
@@ -130,41 +131,41 @@
     {
       "id": "di-graph-triple-registration-cleanup",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "priority": "P3",
       "backlogRowsClosed": ["di-graph-triple-registration-cleanup"],
       "rowsClosedCount": 1,
-      "productionFilesTouched": 3,
-      "testFilesAdded": 1,
+      "productionFilesTouched": 2,
+      "testFilesAdded": 3,
       "estimatedContextTokens": 32000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "touchesHotspot": true,
       "hotspotFiles": ["src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs"],
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "branch": "remediation/di-graph-triple-registration-cleanup",
+      "worktreePath": ".worktrees/di-graph-triple-registration-cleanup",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/477",
+      "mergedAt": "2026-04-28T19:52:48Z",
+      "notes": "The '9 types × 3 registrations' pattern lived 1× in Program.cs + 2× in test-fixture DI builders (StartupDiagnosticsTests + ToolDiResolutionTests), not in 3 production composition fragments as the plan suggested. Architecturally correct fix was to extract a shared `AddRoslynMcpHostServices` extension consumed by all 3 call sites — eliminates the documented drift hazard rather than just removing duplicate `AddSingleton` lines. 18 duplicate registration lines collapse into 9 lines in the new extension; 3 regression tests added (1 retained, 2 new). Hotspot file ServiceCollectionExtensions.cs (Roslyn-layer) was NOT touched — actual hotspot was Program.cs + Host.Stdio/ServiceCollectionExtensions.cs (the Host-layer file)."
     },
     {
       "id": "coupling-metrics-p50-borderline-on-15s-solution-budget",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "priority": "P3",
       "backlogRowsClosed": ["coupling-metrics-p50-borderline-on-15s-solution-budget"],
       "rowsClosedCount": 1,
-      "productionFilesTouched": 2,
+      "productionFilesTouched": 1,
       "testFilesAdded": 1,
       "estimatedContextTokens": 55000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "touchesHotspot": false,
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Profiling step gates the rest of the work; if dominant cost is workspace warm-up rather than symbol walk, scope may need a re-plan or spin-off."
+      "branch": "remediation/coupling-metrics-p50-borderline-on-15s-solution-budget",
+      "worktreePath": ".worktrees/coupling-metrics-p50-borderline-on-15s-solution-budget",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/476",
+      "mergedAt": "2026-04-28T19:52:37Z",
+      "notes": "Hypothesis confirmed: dominant cost was per-type SymbolFinder.FindReferencesAsync awaited serially. Fix parallelizes via Parallel.ForEachAsync (DOP = ProcessorCount, capped by candidate count) into a ConcurrentBag. Plan misnamed the host file (CodeMetricsService.cs) — actual location is CouplingAnalysisService.cs. SampleLib per-project budget test went 1000ms → 13ms; verify-release.ps1 passed (1024/1024); verify-ai-docs.ps1 passed. Full-repo re-measurement against the released roslynmcp.exe is the canonical confirmation but cannot be run from inside the worktree against the unbuilt binary."
     }
   ]
 }

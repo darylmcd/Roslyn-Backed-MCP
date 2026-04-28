@@ -108,7 +108,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #477, 2026-04-28) |
 | Backlog rows closed | `di-graph-triple-registration-cleanup` |
 | Diagnosis | `get_di_registrations(showLifetimeOverrides=true, summary=true)` reports 9 service types each registered 3 times across composition-root layers. `lifetimesDiffer=false` so no functional bug — last-write-wins — but 18 dead lines obscure intent. Cited examples: `ILatestVersionProvider`, `NuGetVersionChecker`, `ExecutionGateOptions`, `PreviewStoreOptions`, `ScriptingServiceOptions` (full set enumerable via `get_di_registrations` at execute time). Anchors: [src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs](../../../src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs), [src/RoslynMcp.Host.Stdio/Program.cs](../../../src/RoslynMcp.Host.Stdio/Program.cs). Any other composition fragments (e.g. `Host.Stdio/Extensions/ServiceCollectionExtensions.cs`) that call `services.Add*<T>()` for the cited types contribute. |
 | Approach | (a) Run `mcp__roslyn__get_di_registrations` against the loaded workspace to capture the full duplicate list (verify 9 types and their identity). (b) For each duplicated type, decide an owning layer: Roslyn-internal services (`NuGetVersionChecker`, `ILatestVersionProvider`) → `RoslynMcp.Roslyn.ServiceCollectionExtensions`; options bound to config (`ExecutionGateOptions`, `PreviewStoreOptions`, `ScriptingServiceOptions`) → wherever the binding source lives. (c) Remove redundant `services.Add*` calls, leaving exactly one per type. (d) Preserve any `[Conditional]` or feature-flag-wrapped registration that is not actually redundant. Confirm `lifetimesDiffer == false` per type before each delete (the audit asserted this; verify per type to avoid flipping behavior). |
@@ -126,7 +126,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #476, 2026-04-28) |
 | Backlog rows closed | `coupling-metrics-p50-borderline-on-15s-solution-budget` |
 | Diagnosis | `get_coupling_metrics` p50 was 12807ms on this 7-project / 571-doc solution during Phase 2 of the 2026-04-27 self-audit, against the 15s solution-scan budget. No regression vs prior runs but trending toward budget. Hypothesis: per-type symbol-walk re-enumerates the full solution instead of scoping `SymbolFinder` work to one project at a time when `projectName` is supplied. Anchors: service [src/RoslynMcp.Roslyn/Services/CodeMetricsService.cs](../../../src/RoslynMcp.Roslyn/Services/CodeMetricsService.cs) (look for `GetCouplingMetricsAsync`), tool registration [src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs](../../../src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs) (`GetCouplingMetrics`). Both files exist as cited. |
 | Approach | (a) **Profile first** — capture a baseline via stopwatch test or BenchmarkDotNet (preferred if a Benchmarks project exists); record the dominant cost in `GetCouplingMetricsAsync`. (b) Apply the smallest scoping change that respects `projectName`: when non-null, restrict the project loop to that one project; skip cross-project resolution unless data shape requires it. (c) When `projectName` is null, evaluate whether `Parallel.ForEachAsync` over projects is safe (Roslyn `Compilation` is thread-safe for read-only ops; verify for `SymbolFinder`). (d) Re-run the benchmark; record before/after in PR description. **If the dominant cost is workspace warm-up rather than the symbol walk, scoping won't help — surface a follow-up backlog row and exit, still shipping the profiling artifact.** |
