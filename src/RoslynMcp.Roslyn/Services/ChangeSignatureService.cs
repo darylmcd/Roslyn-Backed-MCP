@@ -37,6 +37,28 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         if (string.IsNullOrWhiteSpace(request.Op))
             throw new ArgumentException("ChangeSignatureRequest.Op is required.", nameof(request));
 
+        // change-signature-preview-metadataname-shape-error-actionability:
+        // Reject parenthesized metadataName up-front with an actionable error. The shape
+        // `Namespace.Type.Method(string)` is what an agent that copy/pastes a Roslyn
+        // ToDisplayString() output naturally produces, but `compilation.GetTypeByMetadataName`
+        // does NOT accept parentheses — it returns null, the fallback "split-at-last-dot"
+        // path also fails (containing-type-name still contains parens), and the service
+        // ultimately surfaces the misleading "requires a method symbol; resolved null"
+        // error which names the wrong cause. Pre-check is method-style-scoped (this
+        // service ONLY accepts method symbols, so the rejection cannot swallow a
+        // legitimate property-indexer-accessor or other non-method kind that
+        // `SymbolResolver.ResolveByMetadataNameAsync` is shared with from non-method
+        // tools). Plan rationale: ai_docs/plans/20260428T124405Z_backlog-sweep/plan.md
+        // initiative `change-signature-preview-metadataname-shape-error-actionability`.
+        if (locator.HasMetadataName && locator.MetadataName!.Contains('('))
+        {
+            throw new ArgumentException(
+                $"metadataName must be a bare method name (e.g. 'Foo.Bar.Baz') with file/line/column for disambiguation, " +
+                $"OR a symbolHandle from symbol_search; received '{locator.MetadataName}' which contains a parenthesized " +
+                $"signature. Drop the '(...)' or use symbolHandle.",
+                nameof(locator));
+        }
+
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
 

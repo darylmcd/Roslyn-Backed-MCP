@@ -30,7 +30,7 @@ public static class ChangeSignatureTools
         [Description("Optional: 1-based line number of the method declaration")] int? line = null,
         [Description("Optional: 1-based column number of the method declaration")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
-        [Description("Optional: fully qualified metadata name of the method")] string? metadataName = null,
+        [Description("Optional: bare fully-qualified method name without parentheses (e.g. 'Foo.Bar.Baz'). For overloaded methods supply file/line/column to disambiguate, or use symbolHandle from symbol_search. Parenthesized signatures like 'Foo.Bar.Baz(string)' are NOT accepted.")] string? metadataName = null,
         [Description("Parameter name. For op='add': the new parameter's name. For op='remove': the existing parameter to drop (or use position). For op='rename': the current name.")] string? name = null,
         [Description("op='rename' only: the new parameter name.")] string? newName = null,
         [Description("op='add' only: the parameter type (e.g. 'string', 'IReadOnlyList<int>', 'CancellationToken').")] string? parameterType = null,
