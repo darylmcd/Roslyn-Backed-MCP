@@ -28,7 +28,7 @@ public static partial class ServerSurfaceCatalog
         Tool("migrate_package_preview", "orchestration", "experimental", true, false, "Preview migrating a package across affected projects."),
         Tool("split_class_preview", "orchestration", "experimental", true, false, "Preview splitting a class into a new partial file."),
         Tool("extract_and_wire_interface_preview", "orchestration", "experimental", true, false, "Preview extracting an interface and updating DI registrations."),
-        Tool("apply_composite_preview", "orchestration", "experimental", false, true, "Apply a previously previewed orchestration operation."),
+        Tool("apply_composite_preview", "orchestration", "experimental", false, true, "DESTRUCTIVE — applies a previously-previewed orchestration operation to disk. Pair with a *_preview call in the same session."),
         Tool("get_syntax_tree", "syntax", "stable", true, false, "Return a structured syntax tree for a document or range."),
         Tool("security_diagnostics", "security", "stable", true, false, "Return security-relevant diagnostics with OWASP categorization and fix hints."),
         Tool("security_analyzer_status", "security", "stable", true, false, "Check which security analyzer packages are present and recommend missing ones."),
