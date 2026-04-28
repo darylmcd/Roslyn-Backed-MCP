@@ -90,7 +90,7 @@
     {
       "id": "apply-composite-preview-name-friction",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "priority": "P3",
       "backlogRowsClosed": ["apply-composite-preview-name-friction"],
       "rowsClosedCount": 1,
@@ -102,11 +102,11 @@
       "touchesHotspot": true,
       "hotspotFiles": ["src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs"],
       "rule3Exemption": "tool-surface-only",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Rule 3 exemption: tool-surface-only, 2 files (catalog summary + tool [Description])."
+      "branch": "remediation/apply-composite-preview-name-friction",
+      "worktreePath": ".worktrees/apply-composite-preview-name-friction",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/471",
+      "mergedAt": "2026-04-28T18:28:01Z",
+      "notes": "Rule 3 exemption: tool-surface-only, 2 files (catalog summary + tool [Description]). Wave 2 subagent hit account usage-limit cutoff after the 2 production edits; orchestrator session added the missing regression test, ran full CI-parity (1017 tests pass), committed, pushed, opened PR #471. Sibling initiative #3 (symbol-info) clean-abandoned in same wave (no work to recover) — still pending."
     },
     {
       "id": "dead-logger-fields-roslyn-services-batch-1",
