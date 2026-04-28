@@ -64,7 +64,13 @@ public static class SymbolTools
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await symbolSearchService.GetSymbolInfoAsync(workspaceId, locator, c, allowAdjacent);
-            if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+            if (result is null)
+            {
+                // symbol-info-not-found-message-locator-vs-location: name the locator field the
+                // caller actually supplied instead of the legacy "at the specified location" text,
+                // which misled agents who passed only metadataName (no location at all).
+                throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
+            }
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
