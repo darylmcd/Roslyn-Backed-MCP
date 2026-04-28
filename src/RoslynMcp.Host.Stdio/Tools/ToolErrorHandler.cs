@@ -23,6 +23,22 @@ internal static class ToolErrorHandler
         // structured category wins over the dictionary walk's InvalidOperation fallback.
         [typeof(StaleWorkspaceTransitionException)] = (ex, _) => new("StaleWorkspaceTransition",
             $"Workspace is transitioning between snapshots: {ex.Message}"),
+        // mcp-error-category-workspace-evicted-on-host-recycle: a workspace lookup miss that
+        // originated from a host recycle (graceful prior-process exit) or an explicit Close
+        // surfaces as WorkspaceEvicted with both serverStartedAt and (when known) the prior
+        // workspaceLoadedAt embedded in the message. WorkspaceEvictedException derives from
+        // KeyNotFoundException so existing catch-sites still observe it as a lookup miss; it
+        // is registered BEFORE the base KeyNotFoundException entry below so the dictionary
+        // walk's IsAssignableFrom check produces the more-specific category.
+        [typeof(WorkspaceEvictedException)] = (ex, _) =>
+        {
+            var evicted = (WorkspaceEvictedException)ex;
+            var loadedAtSegment = evicted.WorkspaceLoadedAtUtc is { } loadedAt
+                ? $" workspaceLoadedAt={loadedAt:O};"
+                : string.Empty;
+            return new("WorkspaceEvicted",
+                $"{ex.Message} serverStartedAt={evicted.ServerStartedAtUtc:O};{loadedAtSegment}");
+        },
         [typeof(FileNotFoundException)] = (ex, _) => new("FileNotFound",
             $"File not found: {ex.Message}. Verify the file path is absolute and the file exists on disk. " +
             "If the workspace was recently reloaded, the file may have been removed."),
@@ -196,7 +212,14 @@ internal static class ToolErrorHandler
         // just need to re-resolve against the fresh compilation and retry. Scope is
         // deliberately narrow — any KeyNotFoundException outside a reload window still
         // falls through to the generic NotFound handler.
-        if (ex is KeyNotFoundException &&
+        //
+        // mcp-error-category-workspace-evicted-on-host-recycle: WorkspaceEvictedException
+        // derives from KeyNotFoundException for catch-site compatibility, so the generic
+        // `is KeyNotFoundException` test above would otherwise re-classify a recycle-eviction
+        // as WorkspaceReloadedDuringCall whenever the in-call gate reported a stale auto-
+        // reload. Exclude the more-specific eviction type here so the dictionary handler
+        // below (registered with explicit `typeof(WorkspaceEvictedException)`) wins.
+        if (ex is KeyNotFoundException && ex is not WorkspaceEvictedException &&
             AmbientGateMetrics.Current?.StaleAction == "auto-reloaded")
         {
             return new("WorkspaceReloadedDuringCall",
