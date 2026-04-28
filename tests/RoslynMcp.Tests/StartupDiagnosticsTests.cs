@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Diagnostics;
 using RoslynMcp.Host.Stdio.Services;
@@ -196,19 +197,16 @@ public sealed class StartupDiagnosticsTests
         var builder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
         builder.Logging.ClearProviders();
 
-        builder.Services.AddSingleton(new WorkspaceManagerOptions());
-        builder.Services.AddSingleton(new ValidationServiceOptions());
-        builder.Services.AddSingleton(new PreviewStoreOptions());
-        builder.Services.AddSingleton(new ExecutionGateOptions());
-        builder.Services.AddSingleton(new SecurityOptions());
-        builder.Services.AddSingleton(new ScriptingServiceOptions());
-
-        builder.Services.AddSingleton<HttpClient>();
-        builder.Services.AddSingleton<NuGetVersionChecker>();
-        builder.Services.AddSingleton<ILatestVersionProvider>(
-            sp => sp.GetRequiredService<NuGetVersionChecker>());
-
-        builder.Services.AddRoslynServices();
+        // Mirror the production composition root via the shared
+        // AddRoslynMcpHostServices extension so production and test DI graphs
+        // cannot drift (di-graph-triple-registration-cleanup).
+        builder.Services.AddRoslynMcpHostServices(
+            new WorkspaceManagerOptions(),
+            new ValidationServiceOptions(),
+            new PreviewStoreOptions(),
+            new ExecutionGateOptions(),
+            new SecurityOptions(),
+            new ScriptingServiceOptions());
 
         // WithTools/Resources/PromptsFromAssembly register each attributed method as
         // a singleton McpServerTool/Resource/Prompt in DI. No transport needed for

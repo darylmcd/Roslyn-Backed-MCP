@@ -2,9 +2,9 @@ using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Server;
+using RoslynMcp.Host.Stdio;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
-using RoslynMcp.Roslyn;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -118,29 +118,24 @@ public sealed class ToolDiResolutionTests
     }
 
     /// <summary>
-    /// Mirrors the service registrations in <c>src/RoslynMcp.Host.Stdio/Program.cs</c>.
-    /// When Program.cs adds a new service, update here too — or a new tool method that
-    /// injects an unregistered service will fail <see cref="EveryToolMethod_InterfaceParameter_ResolvesFromHostServiceProvider"/>
-    /// and flag the drift.
+    /// Mirrors the service registrations in <c>src/RoslynMcp.Host.Stdio/Program.cs</c>
+    /// via the shared <c>AddRoslynMcpHostServices</c> extension method, so this test
+    /// fixture stays in lock-step with production composition automatically — adding
+    /// a new host-side singleton in the extension lights it up here too
+    /// (di-graph-triple-registration-cleanup).
     /// </summary>
     private static ServiceProvider BuildHostServiceProvider()
     {
         var services = new ServiceCollection();
         services.AddLogging(b => b.ClearProviders());
 
-        services.AddSingleton(new WorkspaceManagerOptions());
-        services.AddSingleton(new ValidationServiceOptions());
-        services.AddSingleton(new PreviewStoreOptions());
-        services.AddSingleton(new ExecutionGateOptions());
-        services.AddSingleton(new SecurityOptions());
-        services.AddSingleton(new ScriptingServiceOptions());
-
-        services.AddSingleton<HttpClient>();
-        services.AddSingleton<NuGetVersionChecker>();
-        services.AddSingleton<ILatestVersionProvider>(
-            sp => sp.GetRequiredService<NuGetVersionChecker>());
-
-        services.AddRoslynServices();
+        services.AddRoslynMcpHostServices(
+            new WorkspaceManagerOptions(),
+            new ValidationServiceOptions(),
+            new PreviewStoreOptions(),
+            new ExecutionGateOptions(),
+            new SecurityOptions(),
+            new ScriptingServiceOptions());
 
         return services.BuildServiceProvider();
     }
