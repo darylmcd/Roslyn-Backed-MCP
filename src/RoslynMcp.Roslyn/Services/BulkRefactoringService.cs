@@ -5,7 +5,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -13,13 +12,11 @@ public sealed class BulkRefactoringService : IBulkRefactoringService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
-    private readonly ILogger<BulkRefactoringService> _logger;
 
-    public BulkRefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<BulkRefactoringService> logger)
+    public BulkRefactoringService(IWorkspaceManager workspace, IPreviewStore previewStore)
     {
         _workspace = workspace;
         _previewStore = previewStore;
-        _logger = logger;
     }
 
     public async Task<RefactoringPreviewDto> PreviewBulkReplaceTypeAsync(

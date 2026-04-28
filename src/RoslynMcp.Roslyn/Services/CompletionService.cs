@@ -3,19 +3,16 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Completion;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class CompletionService : ICompletionService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ILogger<CompletionService> _logger;
 
-    public CompletionService(IWorkspaceManager workspace, ILogger<CompletionService> logger)
+    public CompletionService(IWorkspaceManager workspace)
     {
         _workspace = workspace;
-        _logger = logger;
     }
 
     public async Task<CompletionResultDto> GetCompletionsAsync(
