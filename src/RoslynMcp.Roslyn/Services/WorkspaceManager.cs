@@ -52,6 +52,15 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private readonly IFileWatcherService _fileWatcher;
     private readonly WorkspaceManagerOptions _options;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
+    /// <summary>
+    /// mcp-error-category-workspace-evicted-on-host-recycle: tracks workspace ids that were
+    /// closed (or disposed) IN THIS PROCESS along with their original <c>loadedAt</c> so a
+    /// subsequent lookup can throw <see cref="WorkspaceEvictedException"/> with the recorded
+    /// timestamp instead of a bare <see cref="KeyNotFoundException"/>. Bounded so a long-lived
+    /// host that loads/closes many workspaces doesn't grow this map without bound.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _evictedWorkspaces = new(StringComparer.Ordinal);
+    private const int MaxEvictedWorkspaceRecords = 128;
     /// <summary>Limits concurrent workspace sessions; paired with <see cref="Close"/> and <see cref="Dispose"/>.</summary>
     private readonly SemaphoreSlim _workspaceSlots;
 
@@ -249,6 +258,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             return false;
         }
 
+        // mcp-error-category-workspace-evicted-on-host-recycle: record the original loadedAt
+        // before the session is disposed so a subsequent lookup against this id can surface
+        // the structured WorkspaceEvictedException with the timestamp populated.
+        RecordEviction(workspaceId, session.LoadedAtUtc);
+
         _fileWatcher.Unwatch(workspaceId);
         _previewStore.InvalidateAll(workspaceId);
         session.Dispose();
@@ -256,6 +270,28 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         RaiseWorkspaceClosed(workspaceId);
         LogWorkspaceClosed(_logger, workspaceId, null);
         return true;
+    }
+
+    /// <summary>
+    /// Records an in-process workspace eviction so a subsequent lookup against the same id
+    /// can surface a structured <see cref="WorkspaceEvictedException"/>. Bounded eviction:
+    /// once <see cref="MaxEvictedWorkspaceRecords"/> entries are tracked we drop a single
+    /// oldest record (best-effort; the map is not strictly time-ordered, so "oldest" is
+    /// whatever the dictionary enumerator surfaces first — adequate for a degraded "we used
+    /// to know about this id" signal where the exact timestamp ordering does not matter).
+    /// </summary>
+    private void RecordEviction(string workspaceId, DateTimeOffset loadedAtUtc)
+    {
+        _evictedWorkspaces[workspaceId] = loadedAtUtc;
+
+        if (_evictedWorkspaces.Count > MaxEvictedWorkspaceRecords)
+        {
+            foreach (var key in _evictedWorkspaces.Keys)
+            {
+                if (_evictedWorkspaces.Count <= MaxEvictedWorkspaceRecords) break;
+                _evictedWorkspaces.TryRemove(key, out _);
+            }
+        }
     }
 
     /// <summary>
@@ -619,6 +655,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var ids = _sessions.Keys.ToArray();
         foreach (var session in _sessions.Values)
         {
+            // mcp-error-category-workspace-evicted-on-host-recycle: record each session's
+            // loadedAt before dispose. Disposal during Dispose is the in-process equivalent
+            // of a graceful host recycle for callers in the SAME process — they should see
+            // WorkspaceEvicted, not NotFound, on subsequent lookups (e.g. test-fixture
+            // cleanup and re-init scenarios).
+            RecordEviction(session.WorkspaceId, session.LoadedAtUtc);
             session.Dispose();
         }
         var n = _sessions.Count;
@@ -1429,6 +1471,46 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             var activeCount = _sessions.Count;
             var activeIds = string.Join(", ", _sessions.Keys.Take(5));
             LogSessionNotFound(_logger, workspaceId, activeCount, activeIds, null);
+
+            // mcp-error-category-workspace-evicted-on-host-recycle: distinguish a typo'd
+            // workspaceId from a workspace that was evicted by an explicit Close, by host
+            // disposal, or by a graceful prior-process recycle. The structural signal lets
+            // callers branch on category="WorkspaceEvicted" and recover via workspace_load
+            // (rehydrate the prior solution) instead of double-checking the id they sent.
+            //
+            // Detection precedence:
+            //   1. In-process eviction record — exact match on workspaceId. Carries the
+            //      original loadedAt so the envelope can surface both timestamps.
+            //   2. Cross-process recycle signal — Program.cs publishes the prior process's
+            //      recycle reason via WorkspaceEvictionRegistry. When the registry reports
+            //      a recycle AND this manager has zero live sessions (the prior process
+            //      owned the missing id), surface as WorkspaceEvicted with no loadedAt
+            //      (the prior loadedAt was lost with the prior process).
+            //   3. Otherwise the lookup is genuinely a typo or a never-loaded id — fall
+            //      through to the existing KeyNotFoundException path.
+            if (_evictedWorkspaces.TryGetValue(workspaceId, out var evictedLoadedAt))
+            {
+                throw new WorkspaceEvictedException(
+                    workspaceId,
+                    WorkspaceEvictionRegistry.ServerStartedAtUtc,
+                    evictedLoadedAt,
+                    $"Workspace '{workspaceId}' was evicted from the live session set " +
+                    $"(originally loaded at {evictedLoadedAt:O}). " +
+                    "Call workspace_load with the original solution path to rehydrate, " +
+                    "then re-issue this call against the new workspaceId.");
+            }
+
+            if (WorkspaceEvictionRegistry.WasHostRecycled && activeCount == 0)
+            {
+                throw new WorkspaceEvictedException(
+                    workspaceId,
+                    WorkspaceEvictionRegistry.ServerStartedAtUtc,
+                    $"Workspace '{workspaceId}' belongs to a prior host process that exited " +
+                    $"(reason: {WorkspaceEvictionRegistry.PreviousRecycleReason ?? "unknown"}). " +
+                    $"The current process started at {WorkspaceEvictionRegistry.ServerStartedAtUtc:O} " +
+                    "and has no live sessions. Call workspace_load with the original solution path " +
+                    "to rehydrate, then re-issue this call against the new workspaceId.");
+            }
 
             throw new KeyNotFoundException(
                 $"Workspace '{workspaceId}' was not found. " +

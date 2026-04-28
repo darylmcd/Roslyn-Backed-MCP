@@ -107,7 +107,32 @@ SurfaceRegistrationSnapshot.Value = surfaceReport;
 var hostProcessMetadataLogger = host.Services.GetRequiredService<ILoggerFactory>()
     .CreateLogger("HostProcessMetadata");
 var hostProcessMetadataStore = new HostProcessMetadataStore(hostProcessMetadataLogger);
-HostProcessMetadataSnapshotProvider.Publish(hostProcessMetadataStore.LoadPrevious());
+var previousHostMetadata = hostProcessMetadataStore.LoadPrevious();
+HostProcessMetadataSnapshotProvider.Publish(previousHostMetadata);
+
+// mcp-error-category-workspace-evicted-on-host-recycle: also publish the recycle signal
+// to the WorkspaceEvictionRegistry so WorkspaceManager.GetRequiredSession can throw a
+// structured WorkspaceEvictedException on workspace lookups for ids owned by the prior
+// process. Unlike HostProcessMetadataSnapshotProvider (consume-once for server_info),
+// the registry signal must persist for the lifetime of the process — every workspace
+// lookup miss in a recycled host needs to consult it. The serverStartedAt timestamp is
+// sourced from Process.StartTime to align with the value server_info / server_heartbeat
+// surface in their connection.serverStartedAt field.
+DateTimeOffset serverStartedAtUtc;
+try
+{
+    serverStartedAtUtc = System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime();
+}
+catch
+{
+    // Some sandboxed hosts (containers without /proc, hardened Windows accounts) reject
+    // StartTime reads. Fall back to "now" — the registry's purpose is recycle detection,
+    // and a small drift in serverStartedAt does not undermine the WasHostRecycled signal.
+    serverStartedAtUtc = DateTime.UtcNow;
+}
+RoslynMcp.Core.Services.WorkspaceEvictionRegistry.PublishRecycleContext(
+    serverStartedAtUtc,
+    previousHostMetadata?.RecycleReason);
 
 // FLAG-D: Emit a structured Information event when the host starts with no loaded workspaces.
 // Clients that surface MCP `notifications/message` (via McpLoggingProvider) will see this
