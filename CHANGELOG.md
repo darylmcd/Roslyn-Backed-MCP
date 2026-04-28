@@ -16,6 +16,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.33.2] - 2026-04-28
+
+### Fixed
+
+- **Fixed:** `change_signature_preview` rejection of parenthesized `metadataName` (e.g. `Foo.Bar.Baz(string)`) now names the shape mismatch and points at the supported form (bare method name + position, or `symbolHandle` from `symbol_search`) instead of the vague `"requires a method symbol; resolved null"`. Closes `change-signature-preview-metadataname-shape-error-actionability` (PR #467).
+- **Fixed:** workspace-scoped tool calls after a graceful host recycle now return `category="WorkspaceEvicted"` with `serverStartedAt` and `workspaceLoadedAt` in the structured envelope, distinguishing recycle-eviction from a typo'd `workspaceId` (was indistinguishably `category="NotFound"`). Adds `WorkspaceEvictedException` in `RoslynMcp.Core` and threads `serverStartedAt` from composition root through `WorkspaceManager`. Closes `mcp-error-category-workspace-evicted-on-host-recycle` (PR #468).
+- **Fixed:** `symbol_info` not-found errors now name the locator field that was supplied (`metadataName` / `filePath:line:col` / `symbolHandle`) instead of the generic *"No symbol found at the specified location"* text. Branching logic placed in a new `SymbolLocatorFactory` so the message differentiation is reusable; sibling navigation tools (`symbol_relationships`, `goto_type_definition`, `find_consumers`, `AnalysisTools` resolvers) still return the legacy text and are tracked for follow-up via `navigation-tools-misnamed-locator-error`. Closes `symbol-info-not-found-message-locator-vs-location` (PR #474).
+
+### Changed
+
+- **Changed:** `apply_composite_preview` catalog summary and tool `[Description]` now lead with a `DESTRUCTIVE` marker so agents reading `discover_capabilities` (or the tool-schema description) see the warning before invoking. Tool name is unchanged (rename to `composite_apply` deferred — would require a catalog version bump). Closes `apply-composite-preview-name-friction` (PR #471).
+- **Changed:** `get_coupling_metrics` per-type symbol walk now runs in parallel via `Parallel.ForEachAsync` (DOP = `Environment.ProcessorCount`, capped by candidate count) and accumulates results into a `ConcurrentBag`. Profiling confirmed `SymbolFinder.FindReferencesAsync` awaited serially per type was the dominant cost — not workspace warm-up. SampleLib per-project budget test went 1000ms → 13ms; baseline against the 7-project / 571-doc reference solution will be re-measured against the released binary post-merge. Closes `coupling-metrics-p50-borderline-on-15s-solution-budget` (PR #476).
+
+### Maintenance
+
+- **Maintenance:** dropped never-read `ILogger<T>` field and constructor parameter from 4 `RoslynMcp.Roslyn.Services` types (`BulkRefactoringService`, `CodeMetricsService`, `CompletionService`, `ConsumerAnalysisService`). Updated direct-`new` callers in `CodeMetricsNestingTests` and `TestServiceContainer` to match the new ctor signatures. Batch 1 of 3 — unblocks dependent batches 2 and 3. Closes `dead-logger-fields-roslyn-services-batch-1` (PR #473).
+- **Maintenance:** consolidated host-process composition root via a new shared `AddRoslynMcpHostServices` extension consumed by `Program.cs`, `StartupDiagnosticsTests`, and `ToolDiResolutionTests`. The `9 service types × 3 registrations` pattern lived 1× in `Program.cs` + 2× in test-fixture DI builders (not in 3 production composition fragments as originally suspected); collapsing the duplicates into one extension eliminates the documented drift hazard rather than just deleting `AddSingleton` lines. 18 duplicate registration lines reduced to 9; 3 regression tests added. Closes `di-graph-triple-registration-cleanup` (PR #477).
+
 ## [1.33.1] - 2026-04-27
 
 ### Fixed
