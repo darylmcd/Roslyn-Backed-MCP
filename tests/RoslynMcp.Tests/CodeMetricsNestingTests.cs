@@ -1,6 +1,5 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
-using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
@@ -281,7 +280,7 @@ public sealed class CodeMetricsNestingTests
                     fullPath))));
 
         var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
-        var service = new CodeMetricsService(wsManager, NullLogger<CodeMetricsService>.Instance);
+        var service = new CodeMetricsService(wsManager);
 
         var results = await service.GetComplexityMetricsAsync(
             WorkspaceId,

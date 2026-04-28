@@ -4,19 +4,16 @@ using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class ConsumerAnalysisService : IConsumerAnalysisService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ILogger<ConsumerAnalysisService> _logger;
 
-    public ConsumerAnalysisService(IWorkspaceManager workspace, ILogger<ConsumerAnalysisService> logger)
+    public ConsumerAnalysisService(IWorkspaceManager workspace)
     {
         _workspace = workspace;
-        _logger = logger;
     }
 
     public async Task<ConsumerAnalysisDto?> FindConsumersAsync(

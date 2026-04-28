@@ -4,19 +4,16 @@ using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class CodeMetricsService : ICodeMetricsService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ILogger<CodeMetricsService> _logger;
 
-    public CodeMetricsService(IWorkspaceManager workspace, ILogger<CodeMetricsService> logger)
+    public CodeMetricsService(IWorkspaceManager workspace)
     {
         _workspace = workspace;
-        _logger = logger;
     }
 
     public async Task<IReadOnlyList<ComplexityMetricsDto>> GetComplexityMetricsAsync(

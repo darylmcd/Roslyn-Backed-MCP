@@ -179,9 +179,7 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 NullLogger<TestDiscoveryService>.Instance,
                 validationOptions),
-            CompletionService = new CompletionService(
-                workspaceManager,
-                NullLogger<CompletionService>.Instance),
+            CompletionService = new CompletionService(workspaceManager),
             CodeActionService = new CodeActionService(
                 workspaceManager,
                 previewStore,
@@ -190,9 +188,7 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 compilationCache,
                 NullLogger<UnusedCodeAnalyzer>.Instance),
-            CodeMetricsService = new CodeMetricsService(
-                workspaceManager,
-                NullLogger<CodeMetricsService>.Instance),
+            CodeMetricsService = new CodeMetricsService(workspaceManager),
             NamespaceDependencyService = namespaceDependencyService,
             DiRegistrationService = diRegistrationService,
             NuGetDependencyService = nuGetDependencyService,
@@ -232,8 +228,7 @@ internal sealed class TestServiceContainer
             SyntaxService = new SyntaxService(workspaceManager),
             BulkRefactoringService = new BulkRefactoringService(
                 workspaceManager,
-                previewStore,
-                NullLogger<BulkRefactoringService>.Instance),
+                previewStore),
             CohesionAnalysisService = new CohesionAnalysisService(
                 workspaceManager,
                 NullLogger<CohesionAnalysisService>.Instance),
@@ -243,9 +238,7 @@ internal sealed class TestServiceContainer
             RecordFieldAdditionService = new RecordFieldAdditionService(
                 workspaceManager,
                 NullLogger<RecordFieldAdditionService>.Instance),
-            ConsumerAnalysisService = new ConsumerAnalysisService(
-                workspaceManager,
-                NullLogger<ConsumerAnalysisService>.Instance),
+            ConsumerAnalysisService = new ConsumerAnalysisService(workspaceManager),
             TypeExtractionService = new TypeExtractionService(
                 workspaceManager,
                 previewStore,
@@ -289,7 +282,7 @@ internal sealed class TestServiceContainer
                 NullLogger<ExtractMethodService>.Instance),
             ChangeTracker = changeTracker,
             RefactoringSuggestionService = new RefactoringSuggestionService(
-                new CodeMetricsService(workspaceManager, NullLogger<CodeMetricsService>.Instance),
+                new CodeMetricsService(workspaceManager),
                 new CohesionAnalysisService(workspaceManager, NullLogger<CohesionAnalysisService>.Instance),
                 new UnusedCodeAnalyzer(workspaceManager, compilationCache, NullLogger<UnusedCodeAnalyzer>.Instance),
                 NullLogger<RefactoringSuggestionService>.Instance),
