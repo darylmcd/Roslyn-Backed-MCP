@@ -72,7 +72,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #471, 2026-04-28) |
 | Backlog rows closed | `apply-composite-preview-name-friction` |
 | Diagnosis | Tool name `apply_composite_preview` reads as a preview but the tool is **destructive** — it applies a previously-staged composite preview to disk. Catalog summary at [src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs:31](../../../src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Orchestration.cs) currently reads *"Apply a previously previewed orchestration operation."* — no destructive-warning marker, so agents reading `discover_capabilities` output do not see the warning. Tool wrapper at [src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs](../../../src/RoslynMcp.Host.Stdio/Tools/OrchestrationTools.cs). The cheap fix is to lead the catalog summary with a destructive-warning marker; the rename to `composite_apply` would require a catalog version bump and is out of scope. |
 | Approach | Edit the catalog summary at `ServerSurfaceCatalog.Orchestration.cs:31` to: *"DESTRUCTIVE — applies a previously-previewed orchestration operation to disk. Pair with a *_preview call in the same session."* Mirror the warning onto the `[Description]` attribute of the corresponding method in `OrchestrationTools.cs`. Add a regression test asserting `summary.StartsWith("DESTRUCTIVE")`. If a marker token precedent exists for other destructive tools, match it; otherwise set the precedent. |
