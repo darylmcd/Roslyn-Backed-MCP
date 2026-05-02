@@ -6,7 +6,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CodeActions;
 using Microsoft.CodeAnalysis.CodeFixes;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -15,7 +14,6 @@ public sealed class DiagnosticService : IDiagnosticService
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
     private readonly ICodeFixProviderRegistry _codeFixRegistry;
-    private readonly ILogger<DiagnosticService> _logger;
 
     /// <summary>
     /// Cache of full per-project diagnostic lists, keyed by workspaceId. The detail-lookup
@@ -46,13 +44,11 @@ public sealed class DiagnosticService : IDiagnosticService
     public DiagnosticService(
         IWorkspaceManager workspace,
         ICompilationCache compilationCache,
-        ICodeFixProviderRegistry codeFixRegistry,
-        ILogger<DiagnosticService> logger)
+        ICodeFixProviderRegistry codeFixRegistry)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
         _codeFixRegistry = codeFixRegistry;
-        _logger = logger;
         _workspace.WorkspaceClosed += InvalidateWorkspaceCaches;
         // Item #7: `compile-check-stale-assembly-refs-post-reload` — drop cached analyzer
         // results synchronously on reload. The version check on read still catches stale

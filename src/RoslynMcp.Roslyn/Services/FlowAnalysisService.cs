@@ -2,19 +2,16 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class FlowAnalysisService : IFlowAnalysisService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ILogger<FlowAnalysisService> _logger;
 
-    public FlowAnalysisService(IWorkspaceManager workspace, ILogger<FlowAnalysisService> logger)
+    public FlowAnalysisService(IWorkspaceManager workspace)
     {
         _workspace = workspace;
-        _logger = logger;
     }
 
     public async Task<DataFlowAnalysisDto> AnalyzeDataFlowAsync(

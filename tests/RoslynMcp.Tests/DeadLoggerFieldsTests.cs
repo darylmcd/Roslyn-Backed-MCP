@@ -4,9 +4,10 @@ using RoslynMcp.Roslyn.Services;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Regression guard for backlog row <c>dead-logger-fields-roslyn-services-batch-1</c>.
+/// Regression guard for backlog rows <c>dead-logger-fields-roslyn-services-batch-1</c>
+/// and <c>dead-logger-fields-roslyn-services-batch-2</c>.
 ///
-/// Four services in <see cref="RoslynMcp.Roslyn.Services"/> previously declared a
+/// Eight services in <see cref="RoslynMcp.Roslyn.Services"/> previously declared a
 /// <c>private readonly ILogger&lt;T&gt; _logger</c> field that was assigned in the
 /// constructor but never read by any method. This test asserts that the field has
 /// been removed (and is not reintroduced) by reflecting on the type and confirming
@@ -25,6 +26,10 @@ public sealed class DeadLoggerFieldsTests
         typeof(CodeMetricsService),
         typeof(CompletionService),
         typeof(ConsumerAnalysisService),
+        typeof(DiagnosticService),
+        typeof(EditorConfigService),
+        typeof(FlowAnalysisService),
+        typeof(MutationAnalysisService),
     ];
 
     [TestMethod]
@@ -38,7 +43,7 @@ public sealed class DeadLoggerFieldsTests
 
             Assert.IsNull(
                 field,
-                $"{type.FullName} declares a '_logger' field. The dead-logger-fields-roslyn-services-batch-1 sweep removed this field because no method ever read it. If a logger is now genuinely needed, drop {type.Name} from TypesThatMustNotHaveDeadLoggerFields and add the call sites in the same change.");
+                $"{type.FullName} declares a '_logger' field. The dead-logger-fields-roslyn-services sweeps removed this field because no method ever read it. If a logger is now genuinely needed, drop {type.Name} from TypesThatMustNotHaveDeadLoggerFields and add the call sites in the same change.");
         }
     }
 }

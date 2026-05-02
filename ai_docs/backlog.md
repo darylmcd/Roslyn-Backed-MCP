@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-04-28T19:57:35Z
+**updated_at:** 2026-05-02T14:24:45Z
 
 ## Agent contract
 
@@ -52,8 +52,7 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `dead-logger-fields-roslyn-services-batch-2` | Low | `dead-logger-fields-roslyn-services-batch-1` | Same fix as batch-1 applied to the next 4 services in `RoslynMcp.Roslyn.Services`. Anchors: `src/RoslynMcp.Roslyn/Services/DiagnosticService.cs:18`, `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:13`, `src/RoslynMcp.Roslyn/Services/FlowAnalysisService.cs:12`, `src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs:16`. Regression test shape: extend the batch-1 reflection assertion to cover these 4 service types. Evidence: `review-inbox/archive/20260427T202515Z/20260427T202515Z_roslyn-backed-mcp_mcp-server-audit.md` §14.1 (split per Rule 3). |
-| `dead-logger-fields-roslyn-services-batch-3` | Low | `dead-logger-fields-roslyn-services-batch-2` | Last service in the dead-`_logger` cluster: `DuplicateMethodDetectorService` declares both a never-read `_logger` AND a never-read `_compilationCache` (both written once by the primary constructor). Drop both parameters from the constructor signature. Single-file change. Anchors: `src/RoslynMcp.Roslyn/Services/DuplicateMethodDetectorService.cs:24` (`_compilationCache`) + `:25` (`_logger`). Regression test shape: extend the batch-1/2 reflection assertion to cover the 9th service AND assert `_compilationCache` is gone. Evidence: `review-inbox/archive/20260427T202515Z/20260427T202515Z_roslyn-backed-mcp_mcp-server-audit.md` §14.1 (split per Rule 3). |
+| `dead-logger-fields-roslyn-services-batch-3` | Low | none | Last service in the dead-`_logger` cluster: `DuplicateMethodDetectorService` declares both a never-read `_logger` AND a never-read `_compilationCache` (both written once by the primary constructor). Drop both parameters from the constructor signature. Single-file change. Anchors: `src/RoslynMcp.Roslyn/Services/DuplicateMethodDetectorService.cs:24` (`_compilationCache`) + `:25` (`_logger`). Regression test shape: extend the batch-1/2 reflection assertion to cover the 9th service AND assert `_compilationCache` is gone. Evidence: `review-inbox/archive/20260427T202515Z/20260427T202515Z_roslyn-backed-mcp_mcp-server-audit.md` §14.1 (split per Rule 3). |
 | `navigation-tools-misnamed-locator-error` | Low | none | After PR #474 fixed `symbol_info`'s misnamed-error message branch, sibling navigation tools still return the legacy *"No symbol found at the specified location"* text regardless of which locator field was supplied. Apply the same locator-aware branching at the resolver layer (or via the new `SymbolLocatorFactory` helper from PR #474) so all navigation tools surface the supplied-field name. Affected sites cited by PR #474 author: `symbol_relationships`, `goto_type_definition`, `find_consumers`; `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs` lines 232/258/308/358. Anchors: `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs`, plus the resolvers behind `symbol_relationships`, `goto_type_definition`, `find_consumers`. Regression test shape: 3 tests per affected tool (one per locator shape) asserting message names supplied field. Evidence: PR #474 (closed `symbol-info-not-found-message-locator-vs-location` with deliberate containment to symbol_info per Rule 1; sibling tools deferred to this row). |
 
 ## Defer
