@@ -87,15 +87,12 @@ internal sealed class TestServiceContainer
         var referenceService = new ReferenceService(
             workspaceManager,
             NullLogger<ReferenceService>.Instance);
-        var mutationAnalysisService = new MutationAnalysisService(
-            workspaceManager,
-            NullLogger<MutationAnalysisService>.Instance);
+        var mutationAnalysisService = new MutationAnalysisService(workspaceManager);
         var codeFixRegistry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);
         var diagnosticService = new DiagnosticService(
             workspaceManager,
             compilationCache,
-            codeFixRegistry,
-            NullLogger<DiagnosticService>.Instance);
+            codeFixRegistry);
         var changeTracker = new ChangeTracker(workspaceManager);
         var undoService = new UndoService(NullLogger<UndoService>.Instance, workspaceManager, changeTracker);
         var msBuildEvaluationService = new MsBuildEvaluationService(workspaceManager);
@@ -251,9 +248,7 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 previewStore,
                 NullLogger<TypeMoveService>.Instance),
-            FlowAnalysisService = new FlowAnalysisService(
-                workspaceManager,
-                NullLogger<FlowAnalysisService>.Instance),
+            FlowAnalysisService = new FlowAnalysisService(workspaceManager),
             CompileCheckService = compileCheckService,
             AnalyzerInfoService = new AnalyzerInfoService(
                 workspaceManager,
@@ -272,7 +267,6 @@ internal sealed class TestServiceContainer
                 new ScriptingServiceOptions()),
             EditorConfigService = new EditorConfigService(
                 workspaceManager,
-                NullLogger<EditorConfigService>.Instance,
                 undoService,
                 changeTracker),
             MsBuildEvaluationService = msBuildEvaluationService,

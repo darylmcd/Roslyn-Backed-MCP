@@ -3,25 +3,21 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class EditorConfigService : IEditorConfigService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ILogger<EditorConfigService> _logger;
     private readonly IUndoService? _undoService;
     private readonly IChangeTracker? _changeTracker;
 
     public EditorConfigService(
         IWorkspaceManager workspace,
-        ILogger<EditorConfigService> logger,
         IUndoService? undoService = null,
         IChangeTracker? changeTracker = null)
     {
         _workspace = workspace;
-        _logger = logger;
         _undoService = undoService;
         _changeTracker = changeTracker;
     }

@@ -6,19 +6,16 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class MutationAnalysisService : IMutationAnalysisService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ILogger<MutationAnalysisService> _logger;
 
-    public MutationAnalysisService(IWorkspaceManager workspace, ILogger<MutationAnalysisService> logger)
+    public MutationAnalysisService(IWorkspaceManager workspace)
     {
         _workspace = workspace;
-        _logger = logger;
     }
 
     public async Task<ImpactAnalysisDto?> AnalyzeImpactAsync(
