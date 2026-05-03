@@ -1,5 +1,4 @@
 using System.Text.Json;
-using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
@@ -256,13 +255,7 @@ public sealed class AliasToolsTests : SharedWorkspaceTestBase
     private static class ServiceContainer
     {
         private static readonly Lazy<DuplicateMethodDetectorService> s_dup = new(() =>
-        {
-            var compilationCache = new CompilationCache(WorkspaceManager);
-            return new DuplicateMethodDetectorService(
-                WorkspaceManager,
-                compilationCache,
-                NullLogger<DuplicateMethodDetectorService>.Instance);
-        });
+            new DuplicateMethodDetectorService(WorkspaceManager));
 
         public static DuplicateMethodDetectorService DuplicateMethodDetectorService => s_dup.Value;
     }

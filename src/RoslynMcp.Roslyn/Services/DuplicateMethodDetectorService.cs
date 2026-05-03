@@ -4,7 +4,6 @@ using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -21,17 +20,10 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ICompilationCache _compilationCache;
-    private readonly ILogger<DuplicateMethodDetectorService> _logger;
 
-    public DuplicateMethodDetectorService(
-        IWorkspaceManager workspace,
-        ICompilationCache compilationCache,
-        ILogger<DuplicateMethodDetectorService> logger)
+    public DuplicateMethodDetectorService(IWorkspaceManager workspace)
     {
         _workspace = workspace;
-        _compilationCache = compilationCache;
-        _logger = logger;
     }
 
     public async Task<IReadOnlyList<DuplicatedMethodGroupDto>> FindDuplicatedMethodsAsync(
