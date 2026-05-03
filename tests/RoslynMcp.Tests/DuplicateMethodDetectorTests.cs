@@ -1,6 +1,5 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
-using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
@@ -421,11 +420,7 @@ public sealed class DuplicateMethodDetectorTests
         }
 
         var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
-        var cache = new CompilationCache(wsManager);
-        return new DuplicateMethodDetectorService(
-            wsManager,
-            cache,
-            NullLogger<DuplicateMethodDetectorService>.Instance);
+        return new DuplicateMethodDetectorService(wsManager);
     }
 
     /// <summary>
@@ -475,11 +470,7 @@ public sealed class DuplicateMethodDetectorTests
         }
 
         var wsManager = new TestWorkspaceManager(WorkspaceId, adhoc);
-        var cache = new CompilationCache(wsManager);
-        var service = new DuplicateMethodDetectorService(
-            wsManager,
-            cache,
-            NullLogger<DuplicateMethodDetectorService>.Instance);
+        var service = new DuplicateMethodDetectorService(wsManager);
         return (service, adhoc);
     }
 

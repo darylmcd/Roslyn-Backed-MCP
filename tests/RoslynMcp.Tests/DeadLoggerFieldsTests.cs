@@ -4,10 +4,11 @@ using RoslynMcp.Roslyn.Services;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Regression guard for backlog rows <c>dead-logger-fields-roslyn-services-batch-1</c>
-/// and <c>dead-logger-fields-roslyn-services-batch-2</c>.
+/// Regression guard for backlog rows <c>dead-logger-fields-roslyn-services-batch-1</c>,
+/// <c>dead-logger-fields-roslyn-services-batch-2</c>, and
+/// <c>dead-logger-fields-roslyn-services-batch-3</c>.
 ///
-/// Eight services in <see cref="RoslynMcp.Roslyn.Services"/> previously declared a
+/// Nine services in <see cref="RoslynMcp.Roslyn.Services"/> previously declared a
 /// <c>private readonly ILogger&lt;T&gt; _logger</c> field that was assigned in the
 /// constructor but never read by any method. This test asserts that the field has
 /// been removed (and is not reintroduced) by reflecting on the type and confirming
@@ -30,6 +31,7 @@ public sealed class DeadLoggerFieldsTests
         typeof(EditorConfigService),
         typeof(FlowAnalysisService),
         typeof(MutationAnalysisService),
+        typeof(DuplicateMethodDetectorService),
     ];
 
     [TestMethod]
@@ -45,5 +47,17 @@ public sealed class DeadLoggerFieldsTests
                 field,
                 $"{type.FullName} declares a '_logger' field. The dead-logger-fields-roslyn-services sweeps removed this field because no method ever read it. If a logger is now genuinely needed, drop {type.Name} from TypesThatMustNotHaveDeadLoggerFields and add the call sites in the same change.");
         }
+    }
+
+    [TestMethod]
+    public void DuplicateMethodDetector_DoesNotDeclareDeadCompilationCacheField()
+    {
+        var field = typeof(DuplicateMethodDetectorService).GetField(
+            "_compilationCache",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+
+        Assert.IsNull(
+            field,
+            $"{typeof(DuplicateMethodDetectorService).FullName} declares a '_compilationCache' field. The duplicate-method detector is syntax-only and does not need a compilation cache dependency.");
     }
 }
