@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-04T20:01:53Z
+**updated_at:** 2026-05-04T21:25:00Z
 
 ## Agent contract
 
@@ -42,7 +42,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `inv-arg-envelope-schema-hint` | High | none | The `InvalidArgument` error envelope (built in `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs` around lines 49 / 264-288) names the offending parameter and the tool, but the trailing guidance — *"Check that all required parameters are provided and values match the expected types"* — gives no schema. Cold-context subagents (frequent in `/backlog-sweep:execute` parallel mode) cannot derive call shape from the error alone and round-trip through `server_info` or provoke another failure. Append a one-line `schemaHint` field to the envelope, sourced from the existing tool-catalog metadata (`ServerSurfaceCatalog.*.cs`) at error-build time, of shape `"<tool-name>(<param>: <type> [<one-line description>])"`. Anchors: `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs`, `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs` (catalog lookup). Regression test shape: extend `tests/RoslynMcp.Tests/ErrorResponseObservabilityTests.cs` with cases asserting `schemaHint` presence + content for `workspace_load(missing path)`, `find_references(missing locator)`, `get_prompt_text(missing required param)`. Evidence: `ai_docs/reports/20260504T200153Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §3#2 — 199 `InvalidArgument` matches across 25 of 40 deep-read sessions (62.5%, highest-recurrence finding in window). |
 
 ## Medium
 
