@@ -23,7 +23,7 @@
     {
       "id": "inv-arg-envelope-schema-hint",
       "order": 1,
-      "status": "pending",
+      "status": "in-progress",
       "priority": "High",
       "backlogRowsClosed": ["inv-arg-envelope-schema-hint"],
       "rowsClosedCount": 1,
@@ -35,8 +35,8 @@
       "scheduleHint": null,
       "touchesHotspot": true,
       "hotspotFiles": ["src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs"],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/inv-arg-envelope-schema-hint",
+      "worktreePath": ".worktrees/inv-arg-envelope-schema-hint",
       "prUrl": null,
       "mergedAt": null,
       "notes": "Catalog touch is read-only lookup helper consumption; aim to avoid adding new public catalog API. May influence whether initiative #6 (validate-locator-preflight-tool) closes obsolete after re-measurement."
