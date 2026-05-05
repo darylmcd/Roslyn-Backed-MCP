@@ -33,7 +33,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, hotspot-tou
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #485, 2026-05-05) |
 | Backlog rows closed | `apply-with-verify-false-positive-audit` |
 | Diagnosis | Verified live. `src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs` and `src/RoslynMcp.Roslyn/Services/EditService.cs` are the implementation anchors. Today's multi-session retro (`ai_docs/reports/20260504T200153Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §3#4) recorded 36 rollback events across 14 sessions and estimated ~5 false positives from a sample read — that estimate is soft. This row is **investigation-first**: the deliverable is a measurement report, not a behavior change. If the audit confirms false-positive rate ≥10%, spin off an implementation row that ports the diff-based logic from `validate_recent_git_changes` into `apply_with_verify`. |
 | Approach | (a) Read both `ApplyWithVerifyTool.cs` and `EditService.cs` end-to-end to document current verify semantics (count-based vs diagnostic-id-based). (b) Read `validate_recent_git_changes` implementation as the diff-based reference. (c) Pull the 14 rollback-affected session JSONLs (paths in retro report's CSV sibling) and extract for each: pre-apply diagnostic baseline, post-apply diagnostic set, the rolled-back diff. (d) Categorize each rollback as true-positive (apply introduced new diagnostics) or false-positive (verify tripped on pre-existing). (e) Write `ai_docs/reports/<ts>_apply-verify-rollback-audit.md` with the count, ratio, and recommendation. |
@@ -51,7 +51,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, hotspot-tou
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #486, 2026-05-05) |
 | Backlog rows closed | `workspace-drift-check-tool` |
 | Diagnosis | Verified live. `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` exists (hotspot per addenda — touch through interface only). `workspace_health` already reports degraded state but does NOT enumerate drifted files or recommend conditional reload — confirmed by reading `tests/RoslynMcp.Tests/WorkspaceManagerEvictionTests.cs` and existing tool surface. The retro (`ai_docs/reports/20260504T200153Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §3#1) shows 5 explicit silent-stale sessions; under-counted because the failure mode is wrong-data not thrown-error. Adding a fast `workspace_drift_check` tool that compares file mtime vs workspace-snapshot-time without performing a full reload lets agents branch — call `workspace_reload` only when needed. |
 | Approach | New tool following the addenda's structural-unit shape (Core+Roslyn+Host.Stdio): (a) `src/RoslynMcp.Core/Services/IWorkspaceDriftService.cs` — interface returning `WorkspaceDriftResult { stale: bool, files_drifted: string[], recommended: "reload" \| "noop" }` plus `src/RoslynMcp.Core/Models/WorkspaceDriftResult.cs` for the DTO. (b) `src/RoslynMcp.Roslyn/Services/WorkspaceDriftService.cs` — implementation; iterates loaded documents, compares filesystem mtime vs snapshot ingest time, returns the diff. Uses a read-only accessor on `WorkspaceManager` (do not mutate hotspot). (c) `src/RoslynMcp.Host.Stdio/Tools/WorkspaceDriftTool.cs` — `[McpServerTool]` wrapper. (d) Catalog registration in `ServerSurfaceCatalog.Workspace.cs` partial (RMCP001/RMCP002 analyzers will enforce). (e) DI registration in `src/RoslynMcp.Host.Stdio/Extensions/ServiceCollectionExtensions.cs`. |
