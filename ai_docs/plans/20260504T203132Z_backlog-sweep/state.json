@@ -85,7 +85,7 @@
     {
       "id": "navigation-tools-misnamed-locator-error",
       "order": 4,
-      "status": "in-progress",
+      "status": "merged",
       "priority": "Low",
       "backlogRowsClosed": ["navigation-tools-misnamed-locator-error"],
       "rowsClosedCount": 1,
@@ -97,14 +97,14 @@
       "touchesHotspot": false,
       "branch": "remediation/navigation-tools-misnamed-locator-error",
       "worktreePath": ".worktrees/navigation-tools-misnamed-locator-error",
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Mechanical replacement at 4 throw sites with SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator). Live throw sites differ from backlog-row text — executor uses live grep."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/488",
+      "mergedAt": "2026-05-05T14:24:12Z",
+      "notes": "Mechanical replacement at 4 throw sites with SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator). find_consumers handle-only test omitted — handle resolver throws ArgumentException upstream before reaching the not-found branch."
     },
     {
       "id": "find-references-project-filter",
       "order": 5,
-      "status": "pending",
+      "status": "in-progress",
       "priority": "Low",
       "backlogRowsClosed": ["find-references-project-filter"],
       "rowsClosedCount": 1,
@@ -116,8 +116,8 @@
       "scheduleHint": null,
       "touchesHotspot": true,
       "hotspotFiles": ["src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Analysis.cs"],
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/find-references-project-filter",
+      "worktreePath": ".worktrees/find-references-project-filter",
       "prUrl": null,
       "mergedAt": null,
       "notes": "Catalog touch is description-only (no new tool registration). Backlog row's anchor 'SymbolReferenceService.cs' is stale — actual file is 'ReferenceService.cs'."
