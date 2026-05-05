@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-04T21:25:00Z
+**updated_at:** 2026-05-05T13:15:00Z
 
 ## Agent contract
 
@@ -48,7 +48,6 @@
 | id | pri | deps | do |
 |----|-----|------|-----|
 | `workspace-drift-check-tool` | Medium | none | Add a fast `workspace_drift_check` tool to surface stale-snapshot risk after out-of-band `Edit`/`Write` mutations, before agents read against the in-memory MSBuildWorkspace. Returns `{ stale: bool, files_drifted: string[], recommended: "reload" \| "noop" }` from a file-mtime vs workspace-snapshot-time comparison (no full reload). Lets agents branch — call `workspace_reload` only when needed instead of either always-reload (slow) or never-reload (silent stale reads). Anchors: new `src/RoslynMcp.Core/Services/IWorkspaceDriftService.cs` + `src/RoslynMcp.Roslyn/Services/WorkspaceDriftService.cs` + `src/RoslynMcp.Host.Stdio/Tools/WorkspaceDriftTool.cs` (structural-unit shape, ≤4 units), plus catalog registration. `WorkspaceManager.cs` is a hotspot — touch it through interface only. Regression test shape: 1 fixture covering (a) clean workspace → noop, (b) edited file → stale + recommended reload, (c) deleted file → stale. Evidence: `ai_docs/reports/20260504T200153Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §3#1 / §4#2 — 5 explicit silent-stale sessions, likely under-counted because the failure mode is wrong-data not thrown-error. |
-| `apply-with-verify-false-positive-audit` | Medium | none | **Investigation, not implementation.** Audit `apply_with_verify` rollback logic to determine whether a diff-based comparison (post-apply diagnostics minus pre-apply baseline) would eliminate the ~5/36 false-positive rollbacks observed across 14 sessions where verify tripped on a pre-existing diagnostic the apply didn't introduce. Output: a short report under `ai_docs/reports/<ts>_apply-verify-rollback-audit.md` measuring actual false-positive rate against a representative sample (re-run failing applies with diff-based verify and count divergences). If confirmed ≥10% false-positive rate, spin off an implementation row; if not, close obsolete. Anchors: `src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs`, `src/RoslynMcp.Roslyn/Services/EditService.cs`. `validate_recent_git_changes` already uses diff-based logic and is the reference implementation. Evidence: `ai_docs/reports/20260504T200153Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §3#4 — 36 rollback events, ~5 estimated false-positive from sample reads (soft signal, hence audit-first). |
 
 ## Low
 
