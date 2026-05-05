@@ -1,6 +1,8 @@
 using System.ComponentModel;
+using System.Text.Json;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -29,10 +31,22 @@ public static class WorkspaceWarmTools
         IWorkspaceWarmService warmService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: project names to warm. Case-insensitive; unknown names are silently skipped. Omit or pass an empty array to warm every project in the solution.")] string[]? projects = null,
+        IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
-        => ToolDispatch.ReadByWorkspaceIdAsync(
-            gate,
-            workspaceId,
-            c => warmService.WarmAsync(workspaceId, projects, c),
-            ct);
+    {
+        // workspace-warm stage emissions: clients see "scheduling-warm → warming-projects →
+        // done" instead of waiting silently for the ~17s P95 warm on OrchardCore-class
+        // solutions. Per-project N/M is intentionally not emitted here — IWorkspaceWarmService
+        // doesn't accept progress and adding it would require interface + impl edits past the
+        // audit-coverage initiative scope. See ProgressHelper remarks for the label-naming
+        // contract.
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            ProgressHelper.ReportStage(progress, 0, 3, "scheduling-warm");
+            ProgressHelper.ReportStage(progress, 1, 3, "warming-projects");
+            var result = await warmService.WarmAsync(workspaceId, projects, c).ConfigureAwait(false);
+            ProgressHelper.ReportStage(progress, 3, 3, "done");
+            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+        }, ct);
+    }
 }

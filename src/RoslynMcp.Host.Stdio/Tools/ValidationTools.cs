@@ -21,11 +21,17 @@ public static class ValidationTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
+        // build-workspace stage emissions: clients see "preparing-build → msbuild-running →
+        // done" instead of waiting silently for an MSBuild target sweep across N projects.
+        // Per-project N/M is intentionally not emitted — IBuildService doesn't accept
+        // progress and adding it would require interface edits past the audit-coverage
+        // initiative scope. See ProgressHelper remarks for the label-naming contract.
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ProgressHelper.Report(progress, 0, 1);
+            ProgressHelper.ReportStage(progress, 0, 3, "preparing-build");
+            ProgressHelper.ReportStage(progress, 1, 3, "msbuild-running");
             var result = await buildService.BuildWorkspaceAsync(workspaceId, c);
-            ProgressHelper.Report(progress, 1, 1);
+            ProgressHelper.ReportStage(progress, 3, 3, "done");
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
@@ -149,11 +155,18 @@ public static class ValidationTools
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
+        // test-run stage emissions: clients see "discovering-tests → running-tests → done"
+        // instead of waiting silently while dotnet-test enumerates assemblies, builds the
+        // host, runs the suite, and parses TRX. Per-project N/M is intentionally not
+        // emitted — ITestRunnerService doesn't accept progress and adding it would require
+        // interface edits past the audit-coverage initiative scope. See ProgressHelper
+        // remarks for the label-naming contract.
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ProgressHelper.Report(progress, 0, 1);
+            ProgressHelper.ReportStage(progress, 0, 3, "discovering-tests");
+            ProgressHelper.ReportStage(progress, 1, 3, "running-tests");
             var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
-            ProgressHelper.Report(progress, 1, 1);
+            ProgressHelper.ReportStage(progress, 3, 3, "done");
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
