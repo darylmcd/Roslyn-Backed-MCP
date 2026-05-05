@@ -87,7 +87,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, hotspot-tou
 
 | Field | Content |
 |---|---|
-| Status | in-progress (branch: remediation/find-references-project-filter, worktree: .worktrees/find-references-project-filter) |
+| Status | merged (PR #490, 2026-05-05) |
 | Backlog rows closed | `find-references-project-filter` |
 | Diagnosis | Verified live. `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs` carries the `find_references` and `find_consumers` tool wrappers (4 mentions confirmed via grep). The backlog row's anchor `src/RoslynMcp.Roslyn/Services/SymbolReferenceService.cs` is **stale** — actual file is `src/RoslynMcp.Roslyn/Services/ReferenceService.cs` (verified via `ls src/RoslynMcp.Roslyn/Services/`). `src/RoslynMcp.Roslyn/Services/ConsumerAnalysisService.cs` exists as cited. `semantic_grep` already accepts a `projectFilter` parameter — established precedent for the param shape. |
 | Approach | (a) Add optional `projectFilter: string?` (single project name; comma-separated for multi) to `find_references` and `find_consumers` `[McpServerTool]` wrappers in `AnalysisTools.cs`. (b) Thread the filter through to `ReferenceService.FindReferencesAsync` and `ConsumerAnalysisService` — accept an optional `IReadOnlyCollection<string>?` of project names; when non-null, filter the result enumeration by `Project.Name`. (c) Match `semantic_grep`'s parameter description text for consistency. |
@@ -105,7 +105,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, hotspot-tou
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | deferred (re-measurement window not elapsed; re-evaluate after 2026-05-12 — see state.json notes) |
 | Backlog rows closed | `validate-locator-preflight-tool` |
 | Diagnosis | Verified live. `src/RoslynMcp.Host.Stdio/Tools/SymbolLocatorFactory.cs` exists (added by PR #474) with `Create(...)` factory and `FormatSymbolNotFoundMessage(locator)` helper — both reusable. The retro (§4#4) cites 6 sessions that hit post-hoc shape errors and would have benefited from pre-flight validation. **Deps note:** This row depends on initiative #1 (`inv-arg-envelope-schema-hint`) — if `schemaHint` lets agents self-correct from `find_references` errors directly, this row may close obsolete and never ship. Plan-time recommendation: ship initiative #1 first, re-measure error-recovery patterns over a 7-day window, then decide whether to ship this row. **If re-measurement closes this obsolete, skip with `obsolete:` rather than ship.** |
 | Approach | New read-only tool following the structural-unit shape: (a) `src/RoslynMcp.Core/Services/ISymbolLocatorValidator.cs` — interface. (b) `src/RoslynMcp.Core/Models/SymbolLocatorValidationResult.cs` — DTO `{ valid: bool, mode: "filePath" \| "metadataName" \| "symbolHandle" \| null, normalized: string?, hint: string? }`. (c) `src/RoslynMcp.Roslyn/Services/SymbolLocatorValidator.cs` — implementation; reuses `SymbolLocatorFactory.Create()` in a try/catch and returns shape rather than throwing. Validates parseability of `metadataName` against Roslyn's `SymbolKey`/`MetadataName` parser — does NOT resolve the symbol (that's `find_references`' job). (d) `src/RoslynMcp.Host.Stdio/Tools/SymbolLocatorTool.cs` — `[McpServerTool]` wrapper. (e) Catalog registration in `ServerSurfaceCatalog.Symbols.cs` partial. (f) DI in `ServiceCollectionExtensions.cs`. |
