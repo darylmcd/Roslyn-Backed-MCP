@@ -17,7 +17,7 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
     }
 
     public async Task<ConsumerAnalysisDto?> FindConsumersAsync(
-        string workspaceId, SymbolLocator locator, CancellationToken ct)
+        string workspaceId, SymbolLocator locator, CancellationToken ct, IReadOnlyCollection<string>? projectFilter = null)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         // Throw on unresolved symbol so callers see a structured NotFound envelope
@@ -26,6 +26,16 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();
+        // find-references-project-filter: scope consumer classification to the supplied projects.
+        // Case-sensitive Project.Name match (matches semantic_grep + ReferenceService semantics).
+        // Null/empty filter preserves unfiltered behavior byte-for-byte.
+        if (projectFilter is { Count: > 0 })
+        {
+            var filterSet = new HashSet<string>(projectFilter, StringComparer.Ordinal);
+            refLocations = refLocations
+                .Where(r => r.Document?.Project.Name is { } name && filterSet.Contains(name))
+                .ToList();
+        }
 
         // The materializer fetches syntax roots + semantic models in parallel under a bounded
         // semaphore. This is the dominant cost for high-fanout types like IWorkspaceManager.

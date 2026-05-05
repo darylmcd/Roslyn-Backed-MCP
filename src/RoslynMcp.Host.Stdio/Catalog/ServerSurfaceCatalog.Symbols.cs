@@ -7,7 +7,7 @@ public static partial class ServerSurfaceCatalog
         Tool("symbol_search", "symbols", "stable", true, false, "Search symbols by name across the workspace."),
         Tool("symbol_info", "symbols", "stable", true, false, "Inspect the symbol at a source location."),
         Tool("go_to_definition", "symbols", "stable", true, false, "Navigate to the symbol definition."),
-        Tool("find_references", "symbols", "stable", true, false, "Find references to a symbol."),
+        Tool("find_references", "symbols", "stable", true, false, "Find references to a symbol. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated)."),
         Tool("find_implementations", "symbols", "stable", true, false, "Find implementations of an interface or abstract member."),
         Tool("document_symbols", "symbols", "stable", true, false, "List declared symbols in a document."),
         Tool("find_overrides", "symbols", "stable", true, false, "Find overrides of a virtual or abstract member."),
