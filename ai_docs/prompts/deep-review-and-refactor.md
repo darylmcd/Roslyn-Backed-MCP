@@ -664,6 +664,89 @@ This prompt writes **raw per-run evidence only**. Multi-repo campaigns synthesiz
 - When the run happens outside Roslyn-Backed-MCP, copy the raw file into the sibling repo's `ai_docs/audit-reports/` so `eng/stage-review-inbox.ps1` discovers it on the next `/backlog-intake` pass (or pass an explicit source path via the skill's `--sibling-parent` flag).
 - Do **not** place raw audit files under `ai_docs/reports/` — that directory is for synthesized rollups.
 
+### Promotion scorecard JSON (sibling artifact — MANDATORY when `mode=promotion-only` or `mode=full`)
+
+In addition to the human-readable `.md` report, write a machine-readable scorecard at:
+
+**`<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json`**
+
+This file is **overwritten** each run. Schema:
+
+```json
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-05T18:36:19Z",
+  "mode": "promotion-only",
+  "auditedRepo": "roslyn-backed-mcp",
+  "auditReportPath": "ai_docs/audit-reports/20260505T183619Z_roslyn-backed-mcp_mcp-server-audit.md",
+  "serverVersion": "1.33.2",
+  "catalogVersion": "2026.04",
+  "experimentalSurface": {
+    "tools": 56,
+    "resources": 4,
+    "prompts": 20
+  },
+  "scorecard": [
+    {
+      "kind": "tool",
+      "name": "scaffold_test_apply",
+      "category": "scaffolding",
+      "currentTier": "experimental",
+      "recommendation": "promote",
+      "evidenceCount": 8,
+      "evidence": [
+        "phase-12 apply round-trip clean (preview-token honored, post-apply compile_check green)",
+        "phase-17 negative probe — stale token rejected with actionable error",
+        "phase-8 test_discover finds new test, test_run green",
+        "p50 elapsedMs=1240ms (within writer budget 30s)",
+        "schema accurate vs. live behavior",
+        "no entries in phase-1 debug log",
+        "skill `generate-tests` consumes it cleanly (Phase 16b)",
+        "no relevant backlog rows"
+      ],
+      "blockers": []
+    },
+    {
+      "kind": "tool",
+      "name": "split_class_preview",
+      "category": "refactoring",
+      "currentTier": "experimental",
+      "recommendation": "needs-more-evidence",
+      "evidenceCount": 2,
+      "evidence": [
+        "phase-10 preview emitted valid partial classes",
+        "p50 elapsedMs=480ms"
+      ],
+      "blockers": [
+        "no apply round-trip exercised (apply sibling skipped-safety in conservative mode)",
+        "no negative-probe evidence on shared-state across the split"
+      ]
+    }
+  ],
+  "summary": {
+    "promote": 1,
+    "keep-experimental": 0,
+    "needs-more-evidence": 1,
+    "deprecate": 0,
+    "blocked": 0
+  }
+}
+```
+
+**Field rules:**
+
+- `recommendation` ∈ `"promote" | "keep-experimental" | "needs-more-evidence" | "deprecate"`. Mirror the per-call recommendation captured in the `.md` report's *Experimental promotion scorecard* section. Do not invent recommendations beyond what the human-readable scorecard contains.
+- `currentTier` is the live value from `roslyn://server/catalog` per entry. Do **not** infer it from the prompt.
+- `evidence` is a flat string array — one short sentence per supporting probe. Match the per-call promotion-signal lines captured in the draft (principle #14).
+- `blockers` is empty when `recommendation == "promote"`; populated with concrete missing evidence otherwise.
+- Skip rows for entries marked `blocked` in the coverage ledger — they cannot be scored. Track them in `summary.blocked` only.
+
+**Why this exists.** `/release-cut` (via `/publish-preflight`) reads this file as a **promotion gate** — when fresh and any row is `recommendation: "promote"`, the maintainer is prompted to flip the tier in the same release. Without the JSON, promotion stays implicit and the audit's promotion lane has no operational consequence.
+
+**Staleness contract.** The JSON is a snapshot, not a journal. `/publish-preflight` warns when `generatedAt` is older than 30 days; older than 90 days, the file should be ignored entirely (recommend a fresh `/audit-deep mode=promotion-only` run).
+
+**Skip when `mode=read-only`** — read-only runs cannot exercise apply round-trips, so `recommendation` for writer tools defaults to `needs-more-evidence`. Writing a misleading scorecard is worse than writing none. Mark the run header *"promotion scorecard skipped per mode=read-only"* and proceed.
+
 ### Naming scheme (`<timestamp>_<repo-id>`)
 
 - `<timestamp>`: current UTC `yyyyMMddTHHmmssZ`.
