@@ -85,7 +85,7 @@
     {
       "id": "navigation-tools-misnamed-locator-error",
       "order": 4,
-      "status": "pending",
+      "status": "in-progress",
       "priority": "Low",
       "backlogRowsClosed": ["navigation-tools-misnamed-locator-error"],
       "rowsClosedCount": 1,
@@ -95,8 +95,8 @@
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "touchesHotspot": false,
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/navigation-tools-misnamed-locator-error",
+      "worktreePath": ".worktrees/navigation-tools-misnamed-locator-error",
       "prUrl": null,
       "mergedAt": null,
       "notes": "Mechanical replacement at 4 throw sites with SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator). Live throw sites differ from backlog-row text — executor uses live grep."
