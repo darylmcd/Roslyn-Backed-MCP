@@ -29,11 +29,20 @@ public static class WorkspaceTools
     {
         return gate.RunLoadGateAsync(async c =>
         {
-            ProgressHelper.Report(progress, 0, 1);
+            // workspace-load stage emissions: clients see "validating-path → opening-workspace
+            // → checking-restore → done" instead of waiting silently for a ~45s P95 cold load
+            // on large solutions (OrchardCore, etc.). The stage labels are kebab-case and
+            // stable; total is the stage count (4) so client progress bars track correctly.
+            // Per-project N/M is intentionally not emitted here — IWorkspaceManager.LoadAsync
+            // doesn't expose intra-load progress and adding it would balloon scope past the
+            // audit-coverage initiative. See ProgressHelper remarks for the label-naming contract.
+            ProgressHelper.ReportStage(progress, 0, 4, "validating-path");
             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
+            ProgressHelper.ReportStage(progress, 1, 4, "opening-workspace");
             var status = await workspace.LoadAsync(path, c).ConfigureAwait(false);
+            ProgressHelper.ReportStage(progress, 2, 4, "checking-restore");
             status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, c).ConfigureAwait(false);
-            ProgressHelper.Report(progress, 1, 1);
+            ProgressHelper.ReportStage(progress, 4, 4, "done");
             _ = NotifyResourcesChangedAsync(server);
             return verbose
                 ? JsonSerializer.Serialize(status, JsonDefaults.Indented)
