@@ -81,6 +81,16 @@ public abstract class TestBase
     protected static ExceptionFlowService ExceptionFlowService { get; private set; } = null!;
     protected static WorkspaceWarmService WorkspaceWarmService { get; private set; } = null!;
     protected static WorkspaceDriftService WorkspaceDriftService { get; private set; } = null!;
+
+    /// <summary>
+    /// On-disk workspace cache store rooted under the test temp tree. Internal infrastructure
+    /// added by <c>workspace-cache-store-infrastructure</c>; not consumed by any other service
+    /// yet (the consumer wiring lands in <c>workspace-load-uses-cache-fast-path</c>). Tests
+    /// that exercise the store directly still construct their own instance against an isolated
+    /// temp directory; this static is for fixtures that want the shared default.
+    /// </summary>
+    protected static IWorkspaceCacheStore WorkspaceCacheStore { get; private set; } = null!;
+
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -181,6 +191,13 @@ public abstract class TestBase
         ExceptionFlowService = services.ExceptionFlowService;
         WorkspaceWarmService = services.WorkspaceWarmService;
         WorkspaceDriftService = services.WorkspaceDriftService;
+
+        // workspace-cache-store-infrastructure: rooted in a per-assembly temp directory so
+        // shared-fixture tests don't pollute the user's real ~/.roslyn-mcp/cache during runs.
+        // Tests that need control over the cache directory still construct their own instance
+        // (see WorkspaceCacheStoreRoundTripTests / WorkspaceCacheStoreInvalidationTests).
+        var sharedCacheRoot = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "workspace-cache-store");
+        WorkspaceCacheStore = new WorkspaceCacheStore(sharedCacheRoot);
 
         RepositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
         SampleSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");
