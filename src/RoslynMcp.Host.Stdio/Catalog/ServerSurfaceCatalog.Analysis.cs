@@ -34,7 +34,7 @@ public static partial class ServerSurfaceCatalog
         Tool("validate_workspace", "validation", "experimental", true, false, "Composite post-edit validation: compile_check + project_diagnostics (errors) + test_related_files (+ optional test_run)."),
         Tool("validate_recent_git_changes", "validation", "experimental", true, false, "post-edit-validate-workspace-scoped-to-touched-files: auto-scoped validation companion that derives changedFilePaths from git status --porcelain, falls back to full-workspace scope with a warning when git is unavailable or the solution is outside a git repo."),
         Tool("test_coverage", "validation", "stable", false, false, "Run coverage collection for test execution."),
-        Tool("find_consumers", "analysis", "stable", true, false, "Find all types that depend on a given type or interface, classified by dependency kind."),
+        Tool("find_consumers", "analysis", "stable", true, false, "Find all types that depend on a given type or interface, classified by dependency kind. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated)."),
         Tool("get_cohesion_metrics", "analysis", "stable", true, false, "Measure type cohesion via LCOM4 metrics, identifying independent method clusters."),
         Tool("get_coupling_metrics", "analysis", "stable", true, false, "Measure per-type afferent/efferent coupling + Martin's instability index."),
         Tool("preview_record_field_addition", "analysis", "experimental", true, false, "Pre-flight audit: every site impacted by adding a positional field to a record."),

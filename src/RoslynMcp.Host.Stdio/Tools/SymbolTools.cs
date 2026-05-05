@@ -98,9 +98,9 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution. Response shape: { count, totalCount, hasMore, offset, limit, items } where items is the paged LocationDto list. Pass `summary=true` to drop per-ref preview text — useful for high-fan-out symbols where the default payload exceeds the MCP cap (Jellyfin's IUserManager: 154 KB on 233 refs).")]
+    [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution. Response shape: { count, totalCount, hasMore, offset, limit, items } where items is the paged LocationDto list. Pass `summary=true` to drop per-ref preview text — useful for high-fan-out symbols where the default payload exceeds the MCP cap (Jellyfin's IUserManager: 154 KB on 233 refs). Optional `projectFilter` (case-sensitive Project.Name; comma-separated for multi) restricts the result to references hosted in the listed project(s) — matches semantic_grep's filter semantics.")]
     [McpToolMetadata("symbols", "stable", true, false,
-        "Find references to a symbol.")]
+        "Find references to a symbol. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated).")]
     public static Task<string> FindReferences(
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
@@ -113,13 +113,15 @@ public static class SymbolTools
         [Description("Maximum number of references to return (default: 100)")] int limit = 100,
         [Description("Number of references to skip before returning results (default: 0)")] int offset = 0,
         [Description("When true, drops per-ref preview text to keep the response small for high-fan-out symbols. File path + line + column + classification still populated. Default false preserves the v1.18.2 shape.")] bool summary = false,
+        [Description("Optional: case-sensitive Project.Name filter to scope the result; comma-separated for multiple projects (e.g. 'Foo.Core,Foo.Tests'). Null/empty preserves the unfiltered solution-wide walk.")] string? projectFilter = null,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             ParameterValidation.ValidatePagination(offset, limit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
-            var results = await referenceService.FindReferencesAsync(workspaceId, locator, c, summary);
+            var filterSet = ParseProjectFilter(projectFilter);
+            var results = await referenceService.FindReferencesAsync(workspaceId, locator, c, summary, filterSet);
             var paged = results.Skip(offset).Take(limit).ToList();
             var hasMore = offset + paged.Count < results.Count;
             return JsonSerializer.Serialize(new
@@ -571,6 +573,22 @@ public static class SymbolTools
             var result = await completionService.GetCompletionsAsync(workspaceId, filePath, line, column, filterText, maxItems, c);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
+    }
+
+    /// <summary>
+    /// find-references-project-filter: parses the comma-separated <c>projectFilter</c> wire
+    /// parameter into the <see cref="IReadOnlyCollection{T}"/> shape consumed by
+    /// <see cref="IReferenceService.FindReferencesAsync"/> and
+    /// <see cref="IConsumerAnalysisService.FindConsumersAsync"/>. Whitespace around each
+    /// entry is trimmed and empty fragments are dropped; null / whitespace-only input maps to
+    /// <c>null</c> so the underlying services skip the filter pass entirely.
+    /// </summary>
+    internal static IReadOnlyCollection<string>? ParseProjectFilter(string? projectFilter)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilter)) return null;
+        var entries = projectFilter
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return entries.Length == 0 ? null : entries;
     }
 
 }

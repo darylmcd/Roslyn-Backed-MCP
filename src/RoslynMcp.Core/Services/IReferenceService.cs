@@ -17,7 +17,13 @@ public interface IReferenceService
     /// <see cref="LocationDto"/> has <c>PreviewText = null</c>; file path + line + column
     /// + classification still populated. Default <c>false</c> preserves the v1.18.2 shape.
     /// </param>
-    Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool summary = false);
+    /// <param name="projectFilter">
+    /// Optional case-sensitive set of <c>Project.Name</c> values to scope the result to.
+    /// When non-null and non-empty, only references whose document belongs to a matching
+    /// project are returned (matches <c>semantic_grep</c>'s <c>projectFilter</c> semantics).
+    /// When null/empty, behavior is byte-identical to the unfiltered call.
+    /// </param>
+    Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool summary = false, IReadOnlyCollection<string>? projectFilter = null);
     /// <summary>
     /// Finds every implementation of an interface or abstract member resolved at
     /// <paramref name="locator"/>.

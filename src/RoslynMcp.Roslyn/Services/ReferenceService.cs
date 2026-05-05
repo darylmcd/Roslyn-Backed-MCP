@@ -18,7 +18,7 @@ public sealed class ReferenceService : IReferenceService
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool summary = false)
+    public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool summary = false, IReadOnlyCollection<string>? projectFilter = null)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
         // Throw on unresolved symbol so callers get a structured NotFound envelope
@@ -27,6 +27,18 @@ public sealed class ReferenceService : IReferenceService
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();
+        // find-references-project-filter: when projectFilter is supplied, drop reference locations
+        // whose document does not belong to a named project before materializing (saves the per-ref
+        // syntax-root + preview-text fetches for filtered-out hits). Case-sensitive Project.Name
+        // match — matches semantic_grep's existing projectFilter semantics. Null/empty filter is a
+        // no-op so unfiltered behavior remains byte-identical.
+        if (projectFilter is { Count: > 0 })
+        {
+            var filterSet = new HashSet<string>(projectFilter, StringComparer.Ordinal);
+            refLocations = refLocations
+                .Where(r => r.Document?.Project.Name is { } name && filterSet.Contains(name))
+                .ToList();
+        }
         var dtos = await ReferenceLocationMaterializer.MaterializeDtosAsync(refLocations, ct, summary).ConfigureAwait(false);
         // FLAG-8b-A: stable sort by (FilePath, StartLine, StartColumn) so parallel callers get
         // identical ordering. Roslyn's symbol-enumeration walker may otherwise produce different
