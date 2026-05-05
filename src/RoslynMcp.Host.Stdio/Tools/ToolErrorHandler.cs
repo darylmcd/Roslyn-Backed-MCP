@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -269,19 +270,22 @@ internal static class ToolErrorHandler
             case ArgumentNullException nullArgEx:
                 info = new("InvalidArgument",
                     $"Required parameter '{nullArgEx.ParamName ?? "<unknown>"}' is missing or null. " +
-                    "Provide a value for this parameter and retry.");
+                    "Provide a value for this parameter and retry.",
+                    ParamName: nullArgEx.ParamName);
                 return true;
 
             case ArgumentOutOfRangeException rangeEx:
                 info = new("InvalidArgument",
                     $"Parameter '{rangeEx.ParamName ?? "<unknown>"}' has an out-of-range value: {rangeEx.Message}. " +
-                    "Check the tool schema for the accepted range.");
+                    "Check the tool schema for the accepted range.",
+                    ParamName: rangeEx.ParamName);
                 return true;
 
             case ArgumentException argEx:
                 info = new("InvalidArgument",
                     $"Parameter '{argEx.ParamName ?? "<unknown>"}' is invalid: {argEx.Message}. " +
-                    "Check that all required parameters are provided and values match the expected types.");
+                    "Check that all required parameters are provided and values match the expected types.",
+                    ParamName: argEx.ParamName);
                 return true;
 
             case FormatException fmtEx:
@@ -380,19 +384,85 @@ internal static class ToolErrorHandler
         }
         else
         {
-            var error = new
+            // inv-arg-envelope-schema-hint: attach a one-line schema hint for InvalidArgument
+            // envelopes so cold-context callers can re-call without round-tripping through
+            // server_info. Hint is omitted (rather than emitted as null) when the failing
+            // parameter cannot be resolved against the tool catalog — keeps the envelope
+            // shape stable for downstream parsers that do not expect the field.
+            var schemaHint = info.Category == "InvalidArgument"
+                ? BuildSchemaHint(toolName, info.ParamName)
+                : null;
+            if (schemaHint is not null)
             {
-                error = true,
-                category = info.Category,
-                tool = toolName,
-                message = info.Message,
-                exceptionType = ex.GetType().Name,
-            };
-            return JsonSerializer.Serialize(error, JsonDefaults.Indented);
+                var error = new
+                {
+                    error = true,
+                    category = info.Category,
+                    tool = toolName,
+                    message = info.Message,
+                    exceptionType = ex.GetType().Name,
+                    schemaHint,
+                };
+                return JsonSerializer.Serialize(error, JsonDefaults.Indented);
+            }
+            else
+            {
+                var error = new
+                {
+                    error = true,
+                    category = info.Category,
+                    tool = toolName,
+                    message = info.Message,
+                    exceptionType = ex.GetType().Name,
+                };
+                return JsonSerializer.Serialize(error, JsonDefaults.Indented);
+            }
         }
     }
 
-    internal readonly record struct ErrorInfo(string Category, string Message);
+    /// <summary>
+    /// inv-arg-envelope-schema-hint: format a one-line schema hint sourced from the live
+    /// tool catalog. Returns the matching parameter's signature when <paramref name="paramName"/>
+    /// is known, the full tool signature when only the tool is known, or <see langword="null"/>
+    /// when the tool itself is not in the index (e.g. resource calls). Description text is
+    /// trimmed to the first sentence to keep the hint compact.
+    /// </summary>
+    private static string? BuildSchemaHint(string toolName, string? paramName)
+    {
+        if (!string.IsNullOrEmpty(paramName))
+        {
+            var schema = ToolParameterIndex.GetParameter(toolName, paramName);
+            if (schema is not null) return FormatParameter(toolName, schema);
+        }
+
+        var all = ToolParameterIndex.GetParameters(toolName);
+        if (all.Count == 0) return null;
+
+        var formatted = string.Join(", ", all.Select(p => $"{p.Name}: {p.Type}{(p.Required ? string.Empty : "?")}"));
+        return $"{toolName}({formatted})";
+    }
+
+    private static string FormatParameter(string toolName, ToolParameterSchema schema)
+    {
+        var requiredMark = schema.Required ? string.Empty : "?";
+        var description = string.IsNullOrEmpty(schema.Description)
+            ? string.Empty
+            : $" — {TrimToFirstSentence(schema.Description)}";
+        return $"{toolName}({schema.Name}: {schema.Type}{requiredMark}{description})";
+    }
+
+    private static string TrimToFirstSentence(string text)
+    {
+        // Tool descriptions often span multiple sentences (intent + caveats). Hint stays
+        // useful when only the first sentence ships; longer text bloats the envelope without
+        // proportional information gain. Cap at 160 chars even for single-sentence text so
+        // multi-kilobyte descriptions can't leak verbatim.
+        var period = text.IndexOf(". ", StringComparison.Ordinal);
+        var firstSentence = period > 0 ? text[..period] : text;
+        return firstSentence.Length > 160 ? firstSentence[..160] + "…" : firstSentence;
+    }
+
+    internal readonly record struct ErrorInfo(string Category, string Message, string? ParamName = null);
 }
 
 /// <summary>

@@ -96,4 +96,83 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
         Assert.AreEqual("roslyn://workspace/{workspaceId}/projects",
             doc.RootElement.GetProperty("tool").GetString());
     }
+
+    // inv-arg-envelope-schema-hint: cold-context callers (parallel-mode subagents) cannot
+    // read prior-turn calls, so an InvalidArgument envelope must carry enough schema text
+    // to compose a re-call without round-tripping through server_info. The hint is sourced
+    // from the live tool catalog via reflection — these tests pin the envelope contract
+    // and the cold-cache resolution path.
+
+    [TestMethod]
+    public void InvalidArgument_KnownParam_EmitsSchemaHintNamingThatParameter()
+    {
+        var ex = new ArgumentException("Missing 'path'.", paramName: "path");
+        var json = ToolErrorHandler.ClassifyAndFormat(ex, "workspace_load");
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual("workspace_load", doc.RootElement.GetProperty("tool").GetString());
+        Assert.IsTrue(doc.RootElement.TryGetProperty("schemaHint", out var hintProp),
+            $"InvalidArgument envelope with known ParamName must carry schemaHint. Envelope: {json}");
+        var hint = hintProp.GetString();
+        Assert.IsNotNull(hint);
+        StringAssert.Contains(hint, "workspace_load(",
+            "schemaHint must lead with the tool signature.");
+        StringAssert.Contains(hint, "path",
+            "schemaHint must name the failing parameter.");
+    }
+
+    [TestMethod]
+    public void InvalidArgument_NullParam_EmitsToolLevelSchemaHintListingAllParameters()
+    {
+        // ParamName is unknown (e.g. JSON deserialization fails before binding picks a
+        // parameter). The envelope falls back to a tool-level signature so the caller
+        // can still see what shape the tool accepts.
+        var ex = new System.Text.Json.JsonException("Unexpected token at line 1.");
+        var json = ToolErrorHandler.ClassifyAndFormat(ex, "find_references");
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.IsTrue(doc.RootElement.TryGetProperty("schemaHint", out var hintProp),
+            $"InvalidArgument envelope must carry schemaHint even when ParamName is null. Envelope: {json}");
+        var hint = hintProp.GetString();
+        Assert.IsNotNull(hint);
+        StringAssert.Contains(hint, "find_references(",
+            "Tool-level schemaHint must lead with the tool signature.");
+        // find_references accepts a workspaceId plus several locator alternatives — at
+        // least one of these must surface in the fallback hint.
+        Assert.IsTrue(
+            hint.Contains("workspaceId") || hint.Contains("metadataName") || hint.Contains("filePath"),
+            $"Tool-level schemaHint must list user-facing parameters. Got: {hint}");
+    }
+
+    [TestMethod]
+    public void InvalidArgument_UnknownTool_OmitsSchemaHintRatherThanEmittingNull()
+    {
+        // Resource URIs and unknown tool names should NOT emit a stray schemaHint — the
+        // envelope's downstream JSON parsers in observability tools rely on the field
+        // being absent rather than null when no hint is available.
+        var ex = new ArgumentException("Bad input.", paramName: "whatever");
+        var json = ToolErrorHandler.ClassifyAndFormat(ex, "this_tool_does_not_exist_anywhere");
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+        Assert.IsFalse(doc.RootElement.TryGetProperty("schemaHint", out _),
+            $"Unknown tool must not emit a schemaHint key. Envelope: {json}");
+    }
+
+    [TestMethod]
+    public void NonInvalidArgument_NeverEmitsSchemaHint()
+    {
+        // schemaHint is exclusively for InvalidArgument envelopes — adding it to other
+        // categories (NotFound, Timeout, InternalError, …) would conflate parameter-shape
+        // guidance with state/runtime issues.
+        var ex = new KeyNotFoundException("Workspace 'abc' is not loaded.");
+        var json = ToolErrorHandler.ClassifyAndFormat(ex, "workspace_status");
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("NotFound", doc.RootElement.GetProperty("category").GetString());
+        Assert.IsFalse(doc.RootElement.TryGetProperty("schemaHint", out _),
+            $"Non-InvalidArgument envelope must not carry schemaHint. Got: {json}");
+    }
 }
