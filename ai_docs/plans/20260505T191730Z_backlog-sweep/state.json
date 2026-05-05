@@ -34,7 +34,7 @@
     {
       "id": "progress-emit-audit-coverage",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "priority": "High",
       "backlogRowsClosed": ["progress-emit-audit-coverage"],
       "rowsClosedCount": 1,
@@ -46,14 +46,14 @@
       "touchesHotspot": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Investigation-style audit + emission additions. ProgressHelper extensions plus emission points in WorkspaceTools and ValidationTools. Test fixture uses an IProgress<> recorder mock to avoid timing flakes."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/503",
+      "mergedAt": "2026-05-05T21:14:11Z",
+      "notes": "Investigation-style audit + emission additions. ProgressHelper extensions plus emission points in WorkspaceTools and (newly-discovered) WorkspaceWarmTools — workspace_warm lives in its own file, plan listed it under WorkspaceTools.cs. 4 production files within Rule 3 cap. Per-project N/M counts deferred (would require IWorkspaceManager/IWorkspaceWarmService interface edits past audit-coverage scope)."
     },
     {
       "id": "workspace-cache-store-infrastructure",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "priority": "High",
       "backlogRowsClosed": ["workspace-cache-store-infrastructure"],
       "rowsClosedCount": 1,
@@ -63,14 +63,14 @@
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "touchesHotspot": true,
-      "hotspotFiles": ["src/RoslynMcp.Host.Stdio/Extensions/ServiceCollectionExtensions.cs"],
+      "hotspotFiles": ["src/RoslynMcp.Host.Stdio/ServiceCollectionExtensions.cs"],
       "rule3Exemption": "structural-unit",
       "structuralUnits": 3,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "3 structural units (Core contract + Roslyn impl + DI registration). 4th file is the mandatory TestBase.cs DI addition (counted, not exempt). No WorkspaceManager touch in this row — pure infrastructure."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/505",
+      "mergedAt": "2026-05-05T21:17:56Z",
+      "notes": "3 structural units (Core contract + Roslyn impl + DI registration) + TestBase.cs DI addition (4 prod files total). Subagent confirmed correct path src/RoslynMcp.Host.Stdio/ServiceCollectionExtensions.cs (no /Extensions/ subdir, fixing the review-flagged stale anchor in this PR's data)."
     },
     {
       "id": "tool-output-schema-infrastructure",
@@ -137,7 +137,7 @@
     {
       "id": "mcp-registry-publication",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["mcp-registry-publication"],
       "rowsClosedCount": 1,
@@ -149,14 +149,14 @@
       "touchesHotspot": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Pure outreach/manifest work. No src/ changes. Cheapest initiative in the Medium band — schedule first within the band so it lands quickly."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/502",
+      "mergedAt": "2026-05-05T21:14:07Z",
+      "notes": "Subagent drafted .claude-plugin/server.json (canonical filename per 2025-12-11 server.schema.json) + README badge. Maintainer follow-up: install mcp-publisher, run mcp-publisher login github + publish, post-approval flip badge from 'submission pending' to 'live'."
     },
     {
       "id": "apply-with-verify-diff-not-counts",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["apply-with-verify-diff-not-counts"],
       "rowsClosedCount": 1,
@@ -168,9 +168,9 @@
       "touchesHotspot": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Reuses the existing diff helper from validate_recent_git_changes. The underlying service impl in src/RoslynMcp.Roslyn/Services/ is the canonical edit point — confirm at impl time."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/504",
+      "mergedAt": "2026-05-05T21:17:52Z",
+      "notes": "Subagent introduced new helper src/RoslynMcp.Roslyn/Helpers/DiagnosticIdentitySet.cs keyed by id|file|line. Edited ApplyWithVerifyTool.cs + IEditService.cs (Core) + EditService.cs (Roslyn). 4 production files. Identity tuple keeps line tiebreaker per the apply-with-verify-false-positive-audit warning about line-altogether drops; line-shift edge case explicitly out of scope."
     },
     {
       "id": "elicit-workspace-path-on-missing-required-arg",

@@ -17,7 +17,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #503, 2026-05-05) |
 | Backlog rows closed | `progress-emit-audit-coverage` |
 | Diagnosis | Audit-investigation initiative, not a single-bug fix. Per row: 8 tools currently take `IProgress<ProgressNotificationValue>` but coverage is uneven; the dominant blockers are `workspace_load` (~45s P95 on OrchardCore), `workspace_warm` (~17s P95), `build_workspace`, and `test_run`. Verified live: `src/RoslynMcp.Host.Stdio/Tools/ProgressHelper.cs` exists and is the canonical emission helper; `WorkspaceTools.cs` and `ValidationTools.cs` are the named anchors. The investigation is "audit each long-running tool: emits progress, or documented as 'fast enough not to need it'" — this is observable / measurable, not speculative. |
 | Approach | (a) Read each cited tool's implementation and tabulate emission points (none / coarse / stage-fine). (b) For `workspace_load`, add stage emission at: evaluating-msbuild, restoring, opening N/M projects, done. (c) For `workspace_warm`, emit at: scheduling, project N/M warmed, done. (d) For `build_workspace`, emit at: msbuild target start, project N/M built. (e) For `test_run`, emit at: discovering, project N/M running, assertion summary. Helper extension to `ProgressHelper` for the new stage-label shapes. Tools that don't pass the "fast enough" bar gain emission; tools that do are documented in code comments with the elapsed-budget rationale. |
@@ -35,7 +35,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #505, 2026-05-05) |
 | Backlog rows closed | `workspace-cache-store-infrastructure` |
 | Diagnosis | Verified live. `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` is the consumer that the *next* row (`workspace-load-uses-cache-fast-path`) will wire — but this row explicitly does NOT touch it. The row scopes itself to the new `IWorkspaceCacheStore` contract + on-disk impl + DI registration, with `WorkspaceManager` deferred to the dependent row. OrchardCore profile evidence (`docs/large-solution-profiling-baseline.md`) shows workspace_load P95 = 44.85s — the lever this initiative starts building. |
 | Approach | (a) New `src/RoslynMcp.Core/Services/IWorkspaceCacheStore.cs` with read/write/invalidate methods keyed by `(solution-hash, sdk-version, msbuild-graph-hash)`. (b) New `src/RoslynMcp.Roslyn/Services/WorkspaceCacheStore.cs` with on-disk JSON + version-tagged serialization under `~/.roslyn-mcp/cache/<solution-hash>/<sdk-version>/<msbuild-graph-hash>/`. Cached data: evaluated MSBuild project graph (project paths + references) and per-project MetadataReference list (path + mtime). NOT cached: compilation snapshots, analyzer state. (c) DI registration in `src/RoslynMcp.Host.Stdio/Extensions/ServiceCollectionExtensions.cs`. |
@@ -107,7 +107,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #502, 2026-05-05) |
 | Backlog rows closed | `mcp-registry-publication` |
 | Diagnosis | Pure outreach + manifest work. No `src/` changes. Verified live: `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json` exist; root `README.md` carries install snippets. The MCP Registry submission process must be re-confirmed at submission time — its API and listing format may have evolved since the roadmap entry was written. |
 | Approach | (a) Confirm the MCP Registry's current submission process (web form / API / PR-to-registry). (b) Author a registry manifest entry from `plugin.json` + `marketplace.json` data. (c) Submit. (d) Once approved, add a registry-link / badge to root `README.md` and to `plugin.json` (if a registry-link field exists per current spec). |
@@ -125,7 +125,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #504, 2026-05-05) |
 | Backlog rows closed | `apply-with-verify-diff-not-counts` |
 | Diagnosis | Verified live. `src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs` exists; `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs` carries the diff helper used by `validate_recent_git_changes`. Today's verify step compares pre/post-apply error counts; ~14% of rollbacks (5/36 over 14 days) are false positives where a pre-existing diagnostic flipped severity class on the post-apply build path even though the apply itself was innocent. The diff helper already exists; reuse it. |
 | Approach | (a) Switch the verify step in `ApplyWithVerifyTool` (or its underlying `IApplyWithVerifyService` impl) from count-delta to identity-diff: compare diagnostic identity (id + file + line) pre/post-apply rather than counts. (b) Reuse the diff helper in `ValidationBundleTools.cs`; no new diff logic. (c) Rollback only when the post-apply diagnostic set has *new* identities (not in pre-apply set) — pre-existing diagnostics whose severity flipped don't trigger rollback. (d) Confirm the underlying service impl in `src/RoslynMcp.Roslyn/Services/` is the right edit point (not the tool wrapper). |
