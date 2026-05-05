@@ -1,0 +1,30 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.darylmcd/roslyn-mcp",
+  "description": "Local-first MCP server for semantic C# analysis, navigation, validation, and refactoring on real .sln / .slnx / .csproj workspaces. Powered by Roslyn and MSBuildWorkspace; runs over stdio; ships as a .NET global tool.",
+  "repository": {
+    "url": "https://github.com/darylmcd/Roslyn-Backed-MCP",
+    "source": "github"
+  },
+  "version": "1.33.2",
+  "websiteUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP",
+  "packages": [
+    {
+      "registryType": "nuget",
+      "registryBaseUrl": "https://api.nuget.org/v3/index.json",
+      "identifier": "Darylmcd.RoslynMcp",
+      "version": "1.33.2",
+      "runtimeHint": "dnx",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "tool": "github.com/darylmcd/Roslyn-Backed-MCP",
+      "license": "MIT",
+      "keywords": ["csharp", "dotnet", "roslyn", "refactoring", "analysis", "mcp"]
+    }
+  }
+}
