@@ -1,6 +1,7 @@
 # Roslyn-Backed MCP Server
 
 [![CI](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/workflows/ci.yml)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-submission%20pending-lightgrey)](https://registry.modelcontextprotocol.io/)
 
 Local-first MCP (Model Context Protocol) server for semantic C# analysis, navigation, validation, and refactoring on real `.sln` / `.slnx` / `.csproj` workspaces. It uses Roslyn and `MSBuildWorkspace`, runs over stdio, and does not require Visual Studio.
 
@@ -59,6 +60,14 @@ Point the client at the installed tool:
 ```
 
 For NDJSON framing, handshake order, and minimal Python/C# client examples, see [docs/stdio-client-integration.md](docs/stdio-client-integration.md).
+
+### MCP Registry (submission pending)
+
+The server is also being published to the public [MCP Registry](https://registry.modelcontextprotocol.io/). Once the submission is approved, MCP-Registry-aware clients will be able to discover and install the server by name.
+
+Draft manifest: [`.claude-plugin/server.json`](.claude-plugin/server.json) — published name `io.github.darylmcd/roslyn-mcp`, NuGet package `Darylmcd.RoslynMcp`, runtime `dnx`.
+
+Until the submission is approved, prefer the [Global Tool](#install-as-a-global-tool) or [Claude Code Plugin](#claude-code-plugin) install paths above. After approval, this section will be updated with the registry URL and the registry-aware client install snippet.
 
 ## Configuration
 
