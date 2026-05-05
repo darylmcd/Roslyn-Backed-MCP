@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-05T15:10:00Z
+**updated_at:** 2026-05-05T15:15:00Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `workspace-drift-check-tool` | Medium | none | Add a fast `workspace_drift_check` tool to surface stale-snapshot risk after out-of-band `Edit`/`Write` mutations, before agents read against the in-memory MSBuildWorkspace. Returns `{ stale: bool, files_drifted: string[], recommended: "reload" \| "noop" }` from a file-mtime vs workspace-snapshot-time comparison (no full reload). Lets agents branch — call `workspace_reload` only when needed instead of either always-reload (slow) or never-reload (silent stale reads). Anchors: new `src/RoslynMcp.Core/Services/IWorkspaceDriftService.cs` + `src/RoslynMcp.Roslyn/Services/WorkspaceDriftService.cs` + `src/RoslynMcp.Host.Stdio/Tools/WorkspaceDriftTool.cs` (structural-unit shape, ≤4 units), plus catalog registration. `WorkspaceManager.cs` is a hotspot — touch it through interface only. Regression test shape: 1 fixture covering (a) clean workspace → noop, (b) edited file → stale + recommended reload, (c) deleted file → stale. Evidence: `ai_docs/reports/20260504T200153Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §3#1 / §4#2 — 5 explicit silent-stale sessions, likely under-counted because the failure mode is wrong-data not thrown-error. |
 
 ## Low
 
