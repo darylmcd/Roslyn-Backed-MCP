@@ -96,7 +96,9 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 
 4. **Sanity-check the catalog resource.** Read `roslyn://server/catalog` and confirm per-category counts match `server_info.surface`. A mismatch here is a P2 finding.
 
-**Hard-gate checkpoint:** Is `server_info` callable? Is `connection.state == ready`? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Any `no` is a halt-or-escalate, not a silent proceed.
+5. **Workspace health probe (post-load).** After Phase 0 loads a workspace, call `workspace_health(workspaceId)` once before Phase 1's first semantic call. Capture `status` (`healthy` / `degraded` / `unhealthy`), `staleness` indicators, and any returned remediation hints. A non-`healthy` status before any mutation is a P1 finding — surface it and either reload or halt; do not march on against a degraded workspace. (`server_heartbeat` covers transport readiness; `workspace_health` covers per-workspace state.)
+
+**Hard-gate checkpoint:** Is `server_info` callable? Is `connection.state == ready`? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` (once a workspace is loaded) return `healthy`? Any `no` is a halt-or-escalate, not a silent proceed.
 
 ---
 
@@ -115,8 +117,12 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 11. **Seed the coverage ledger** from the live catalog so every tool/resource/prompt has a planned phase or a provisional skip reason. No hand-maintained list; trust `roslyn://server/catalog`.
 12. **Seed the promotion scorecard** with one row per experimental entry (tool + resource + prompt). Leave `recommendation` blank until Final surface closure.
 13. **Seed the Performance baseline** table. Every exercised read surface contributes a row; writers contribute in Phase 8b.5.
+14. **Live-surface drift detection.** After seeding the coverage ledger, diff its tool/resource/prompt name set against the names this prompt mentions in its phase guidance:
+    - **Names in catalog but never named in the prompt's phase guidance** → log under *Improvement suggestions* as `guidance gap (not coverage gap)` — the live ledger still drives coverage, but the prompt's phase mapping has missed an opportunity to give targeted treatment.
+    - **Names this prompt mentions in code-fenced examples or numbered steps but absent from the catalog** → P1 FAIL under *MCP server issues* with category `prompt drift`. The prompt is referencing a removed/renamed surface and would mislead a cold-context reader.
+    - When a separate `/surface-audit` skill is available in the host, prefer delegating this diff to it (one structured table back) rather than re-walking the catalog from scratch in the main agent.
 
-**MCP audit checkpoint:** Did `workspace_load` succeed? Does `workspace_list` show the session? Did `dotnet restore` complete (or was step 10 marked `blocked` with a reason)? Were isolation path, repo shape, debug-log channel, and seeded ledger/scorecard/baseline tables all captured? On total load failure, mark workspace-scoped rows `blocked` and continue only with workspace-independent families (`server_info`, server resources, `analyze_snippet`, `evaluate_csharp`, prompts the client can render offline).
+**MCP audit checkpoint:** Did `workspace_load` succeed? Does `workspace_list` show the session? Did `dotnet restore` complete (or was step 10 marked `blocked` with a reason)? Did `workspace_health` return `healthy` (Phase -1 step 5)? Were isolation path, repo shape, debug-log channel, and seeded ledger/scorecard/baseline tables all captured? Did drift detection (step 14) produce its two output buckets (or report "none")? On total load failure, mark workspace-scoped rows `blocked` and continue only with workspace-independent families (`server_info`, server resources, `analyze_snippet`, `evaluate_csharp`, prompts the client can render offline).
 
 ---
 
@@ -145,7 +151,9 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 4. `find_unused_symbols(includePublic=false)`.
 5. `find_unused_symbols(includePublic=true)` — public APIs with zero internal references?
 6. `find_duplicated_methods` and `find_duplicate_helpers` — cross-check output against reads of the flagged locations; note any false positives (the BCL-wrapper false positive is tracked as `find-duplicate-helpers-framework-wrapper-false-positive`).
-7. `find_dead_locals` on a few chosen methods (complements `find_unused_symbols`'s symbol-level scope).
+7. `find_duplicated_code` — token-stream-level duplication (broader than `find_duplicated_methods`); spot-check 2–3 reported clusters against actual source ranges.
+8. `find_dead_locals` on a few chosen methods (complements `find_unused_symbols`'s symbol-level scope).
+9. `find_dead_fields` — class-field-level dead detection; complements `find_unused_symbols(includePublic=false)` with finer granularity at private/internal field scope.
 8. `get_namespace_dependencies` — circular dependencies?
 9. `get_nuget_dependencies` — audit package references.
 10. `suggest_refactorings` — ranked aggregation across complexity / cohesion / dead code. Do the recommended tool sequences match the actual tools for each category?
@@ -165,6 +173,7 @@ For each key type:
 5. `find_implementations` on any interface/abstract type discovered. Verify completeness.
 6. `find_references`.
 7. `find_consumers` — dependency-kind classification.
+7b. `find_type_consumers` on the same type — type-scoped consumer enumeration; cross-check against `find_consumers`. Discrepancies between symbol-scoped and type-scoped surfaces are FLAG worthy.
 8. `find_shared_members` — private members shared across public methods.
 9. `find_type_mutations`. v1.8+ classifies each mutating member by `MutationScope` (`FieldWrite` / `CollectionWrite` / `IO` / `Network` / `Process` / `Database`). Types whose whole purpose is IO (e.g. a snapshot store) should now report their `WriteAllText` / `Delete` methods with `MutationScope=IO`, even without instance-field reassignment.
 10. `find_type_usages` — return types, parameters, fields, casts.
@@ -336,6 +345,7 @@ Delegate heavy validation where possible (full-suite `test_run`, `test_coverage`
 8. `test_run` with no filter — full suite.
 9. `test_coverage`.
 10. `test_reference_map(projectName?)` — verify `{ coveredSymbols, uncoveredSymbols, coveragePercent, inspectedTestProjects, notes, mockDriftWarnings? }`. For repos using NSubstitute, check `mockDriftWarnings` flags interface methods production calls that the matching test class never stubs. For repos with no test project, the response should be a clean empty-with-reason result, not an error.
+10b. `get_test_coverage_map(projectName?)` — production-symbol → covering-test-method map. Cross-check that any production symbol classified as `covered` in `test_reference_map` has at least one entry in `get_test_coverage_map`; an empty map for a `covered` symbol is a FLAG.
 11. `validate_workspace(changedFilePaths=null, runTests=false)` — verify `overallStatus ∈ {clean, compile-error, analyzer-error, test-failure}`. Probe `changedFilePaths=null` to confirm auto-scoping off `IChangeTracker`. In `full-surface` mode, probe `runTests=true` on the disposable checkout. **Negative probe:** fabricated `changedFilePaths` entry → clean "no related tests" result (not a crash).
 12. `validate_recent_git_changes` — if git metadata is accessible, validate the last commit's touched files. Verify the bundle composes `compile_check` + diagnostics + related-tests correctly and reports a clean status on a passing commit.
 
@@ -431,9 +441,11 @@ Use the schema in *Output Format → Concurrency matrix*. Every cell has a value
 1. Perform exactly one low-impact Roslyn apply whose reversal is safe — `format_document_preview` → `format_document_apply` on a single file is the canonical probe (prefer one already touched in Phase 6). This becomes the new top of the undo stack.
 2. `revert_last_apply` — only the audit-only apply is undone; Phase 6 changes remain.
 3. `compile_check`.
-4. Only Roslyn solution-level changes are revertible. If `revert_last_apply` errors or no-ops, document it.
+4. **`revert_apply_by_sequence` — non-tip rollback.** Add a SECOND audit-only apply on top of the same Phase-6 stack (a different `format_document_apply`-style probe), then call `revert_apply_by_sequence(sequenceNumber=<the-first-audit-only-apply>)`. Verify only the targeted entry is undone; the second audit-only apply remains. Negative probe: pass an out-of-range or already-reverted sequence number — expect a clear error, not silent success. After verification, `revert_last_apply` to clear the surviving audit-only entry.
+5. `compile_check`.
+6. Only Roslyn solution-level changes are revertible. If `revert_last_apply` / `revert_apply_by_sequence` error or no-op, document it.
 
-**MCP audit checkpoint:** Does `revert_last_apply` restore the prior state? Does it report what was undone? Does it return a clear "nothing to revert" when called twice in succession?
+**MCP audit checkpoint:** Does `revert_last_apply` restore the prior state? Does it report what was undone? Does it return a clear "nothing to revert" when called twice in succession? Does `revert_apply_by_sequence` correctly undo a non-tip entry without disturbing later entries? Does it reject out-of-range sequence numbers cleanly?
 
 ---
 
@@ -442,11 +454,12 @@ Use the schema in *Output Format → Concurrency matrix*. Every cell has a value
 1. `semantic_search("async methods returning Task<bool>")`. v1.8+ HTML-decodes ingress — a client that double-encodes (`Task&lt;bool&gt;`) gets the same results as the unencoded query.
 2. `semantic_search("methods returning Task<bool>")` — broader paraphrase; explain the delta in modifier-sensitive matching.
 3. `semantic_search("classes implementing IDisposable")` — cross-check against `find_implementations(IDisposable)`.
-4. `find_reflection_usages` — `typeof`, `GetMethod`, `Activator`, etc.
-5. `get_di_registrations` — full DI wiring audit.
-6. `source_generated_documents` — source-gen outputs listed.
+4. `semantic_grep` with a structural / regex-style pattern (e.g. a method-call shape or LINQ chain). Different surface from `semantic_search` — pattern-based rather than natural-language. Verify the result set is non-empty on a known-good pattern, and that an intentionally bogus pattern produces a clean empty result rather than a crash.
+5. `find_reflection_usages` — `typeof`, `GetMethod`, `Activator`, etc.
+6. `get_di_registrations` — full DI wiring audit.
+7. `source_generated_documents` — source-gen outputs listed.
 
-**MCP audit checkpoint:** Do paired `semantic_search` queries return relevant and explainable differences? Does `find_reflection_usages` find all reflection patterns? Does `get_di_registrations` parse all registration styles? Are source-gen documents correctly listed?
+**MCP audit checkpoint:** Do paired `semantic_search` queries return relevant and explainable differences? Does `semantic_grep` produce sensible structural matches and reject malformed patterns cleanly? Does `find_reflection_usages` find all reflection patterns? Does `get_di_registrations` parse all registration styles? Are source-gen documents correctly listed?
 
 ---
 
@@ -458,9 +471,10 @@ Use the schema in *Output Format → Concurrency matrix*. Every cell has a value
 2. `scaffold_test_preview` for an existing type. v1.8+ constructor-arg expressions: `IEnumerable<T>` / `ICollection<T>` / `IList<T>` / `IReadOnlyList<T>` → `System.Array.Empty<T>()`; dictionaries → `new Dictionary<K,V>()`; `string` → `string.Empty`. Previously every parameter was `default(T)`.
 3. `scaffold_test_batch_preview(testProjectName, targets=[{targetTypeName, targetMethodName?}, …])` on 3–5 targets. Verify one composite token covers every generated file (not N tokens). Apply via `preview_multi_file_edit_apply` (**not** `apply_composite_preview`). Confirm every scaffolded test is discoverable.
 4. `scaffold_first_test_file_preview` for a project that has no test file yet — bootstraps the test project shape.
-5. In `full-surface`: apply one scaffold; verify with `compile_check` + `test_discover`.
+5. In `full-surface`: apply one scaffold via `scaffold_type_apply` (using a token from `scaffold_type_preview`) — verify the resulting file matches the preview diff and that `compile_check` passes.
+6. In `full-surface`: apply one test scaffold via `scaffold_test_apply` (using a token from `scaffold_test_preview`) — verify the new test is discoverable via `test_discover` and runs green via `test_run`.
 
-**MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace and produce `internal sealed class` by default? Does the interface-stub emission toggle on `implementInterface`? Does `scaffold_test_preview` produce compiling stubs that run green? Does `scaffold_test_batch_preview` emit one composite token? Does `scaffold_first_test_file_preview` bootstrap cleanly?
+**MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace and produce `internal sealed class` by default? Does the interface-stub emission toggle on `implementInterface`? Does `scaffold_type_apply` produce the file the preview promised? Does `scaffold_test_preview` produce compiling stubs that run green? Does `scaffold_test_apply` discover and run cleanly? Does `scaffold_test_batch_preview` emit one composite token? Does `scaffold_first_test_file_preview` bootstrap cleanly?
 
 ---
 
@@ -486,11 +500,12 @@ Use the schema in *Output Format → Concurrency matrix*. Every cell has a value
 1. `go_to_definition` on a usage → correct declaration.
 2. `goto_type_definition` on a variable → the type, not the variable declaration.
 3. `enclosing_symbol` inside a method → the method.
-4. `get_completions` after a dot. v1.8+ ranks locals/parameters → type members → types → long tail. For `filterText="To"`, in-scope `ToString` should appear before namespace-qualified externals like `ToBase64Transform`.
-5. `find_references_bulk` with multiple symbol handles — batch results match individual `find_references`.
-6. `find_overrides` on a virtual method; `find_base_members` on an override.
+4. `get_symbol_outline` on a non-trivial file (≥3 types or ≥10 members) — verify the outline tree depth, kind classification, and ordering match what `document_symbols` returns. Drift between these two surfaces (different kinds, different ordering, or one missing a member the other lists) is a FLAG.
+5. `get_completions` after a dot. v1.8+ ranks locals/parameters → type members → types → long tail. For `filterText="To"`, in-scope `ToString` should appear before namespace-qualified externals like `ToBase64Transform`.
+6. `find_references_bulk` with multiple symbol handles — batch results match individual `find_references`.
+7. `find_overrides` on a virtual method; `find_base_members` on an override.
 
-**MCP audit checkpoint:** Are navigation results accurate? Does `get_completions` rank sensibly? Does `find_references_bulk` match individual calls?
+**MCP audit checkpoint:** Are navigation results accurate? Does `get_symbol_outline` agree with `document_symbols`? Does `get_completions` rank sensibly? Does `find_references_bulk` match individual calls?
 
 ---
 
