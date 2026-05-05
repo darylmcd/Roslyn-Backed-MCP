@@ -21,9 +21,9 @@ public interface IEditService
     /// When <c>true</c>, run <c>compile_check</c> scoped to the owning project of
     /// <paramref name="filePath"/> after the edit is persisted. The new-error set
     /// is attached to <see cref="TextEditResultDto.Verification"/>. Pre-existing
-    /// errors unrelated to the edit are filtered out via a pre-vs-post fingerprint
-    /// diff, so a repo that already fails to compile will not mis-attribute its
-    /// errors to this call.
+    /// errors unrelated to the edit are filtered out via a pre-vs-post identity
+    /// diff (id+file+line — see <c>DiagnosticIdentitySet</c>), so a repo that
+    /// already fails to compile will not mis-attribute its errors to this call.
     /// </param>
     /// <param name="autoRevertOnError">
     /// When <c>true</c> AND <paramref name="verify"/> surfaces new compile errors,

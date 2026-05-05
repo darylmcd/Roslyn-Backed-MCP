@@ -64,9 +64,10 @@ public sealed class EditService : IEditService
         }
 
         // semantic-edit-with-compile-check-wrapper: capture the pre-edit diagnostic
-        // fingerprint set BEFORE we mutate the workspace so the verify pass can tell
-        // NEW errors from pre-existing ones. Lives outside ApplyTextEditsCoreAsync
-        // because MultiFile runs the capture once at the batch boundary.
+        // identity set BEFORE we mutate the workspace so the verify pass can tell
+        // NEW errors from pre-existing ones. Identity = id|file|line (see
+        // DiagnosticIdentitySet). Lives outside ApplyTextEditsCoreAsync because
+        // MultiFile runs the capture once at the batch boundary.
         var projectFilter = verify ? document.Project.Name : null;
         var preErrorBaseline = verify
             ? await CapturePreEditBaselineAsync(workspaceId, projectFilter, ct).ConfigureAwait(false)
@@ -578,10 +579,12 @@ public sealed class EditService : IEditService
     // --------------------------------------------------------------------------
 
     /// <summary>
-    /// Captures a stable per-error fingerprint set for the current workspace so the
+    /// Captures a stable per-error identity set for the current workspace so the
     /// post-edit verify pass can subtract pre-existing errors from the introduced set.
-    /// Fingerprint format mirrors <c>ApplyWithVerifyTool.ExtractErrorFingerprints</c>:
-    /// <c>id|file:line:col|message</c>. When <paramref name="projectFilter"/> is
+    /// Identity format is supplied by <see cref="DiagnosticIdentitySet"/>: <c>id|file|line</c>
+    /// (apply-with-verify-diff-not-counts). The previous fingerprint included column AND
+    /// message text — both can flip across the pre-vs-post pair without the apply being
+    /// to blame, producing false-positive rollbacks. When <paramref name="projectFilter"/> is
     /// non-null, the baseline is scoped to that single project — cheaper and more
     /// precise than a full-solution compile for single-file edits.
     /// </summary>
@@ -601,7 +604,7 @@ public sealed class EditService : IEditService
         }
 
         // Page size of 500 covers most single-project repos. If a project legitimately
-        // has more than 500 errors, the fingerprint set will be an over-count — not a
+        // has more than 500 errors, the identity set will be an over-count — not a
         // correctness hazard (any such error will also appear post-edit and be filtered
         // out), just a performance one.
         var baseline = await _compileCheckService.CheckAsync(
@@ -609,17 +612,9 @@ public sealed class EditService : IEditService
             new CompileCheckOptions(ProjectFilter: projectFilter, SeverityFilter: "error", Limit: 500),
             ct).ConfigureAwait(false);
 
-        var fingerprints = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var d in baseline.Diagnostics)
-        {
-            if (!string.Equals(d.Severity, "Error", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            fingerprints.Add(FormatErrorFingerprint(d));
-        }
+        var identities = DiagnosticIdentitySet.ExtractErrorIdentities(baseline);
 
-        return new PreEditBaseline(fingerprints, baseline.ErrorCount);
+        return new PreEditBaseline(identities, baseline.ErrorCount);
     }
 
     /// <summary>
@@ -660,8 +655,8 @@ public sealed class EditService : IEditService
             {
                 continue;
             }
-            var fingerprint = FormatErrorFingerprint(d);
-            if (!preEditBaseline.ErrorFingerprints.Contains(fingerprint))
+            var identity = DiagnosticIdentitySet.FormatIdentity(d);
+            if (!preEditBaseline.ErrorIdentities.Contains(identity))
             {
                 newDiagnostics.Add(d);
             }
@@ -729,14 +724,12 @@ public sealed class EditService : IEditService
                     "The workspace is in an inconsistent state — inspect and call revert_last_apply manually.");
     }
 
-    private static string FormatErrorFingerprint(DiagnosticDto d)
-        => $"{d.Id}|{d.FilePath}:{d.StartLine}:{d.StartColumn}|{d.Message}";
-
     /// <summary>
-    /// Holds the pre-edit fingerprint set plus the total pre-existing error count so the
-    /// verify outcome can report both the delta and the baseline headline number.
+    /// Holds the pre-edit identity set (id|file|line — see <see cref="DiagnosticIdentitySet"/>)
+    /// plus the total pre-existing error count so the verify outcome can report both the
+    /// delta and the baseline headline number.
     /// </summary>
     private sealed record PreEditBaseline(
-        HashSet<string> ErrorFingerprints,
+        HashSet<string> ErrorIdentities,
         int ErrorCount);
 }
