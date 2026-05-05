@@ -44,7 +44,7 @@
     {
       "id": "apply-with-verify-false-positive-audit",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["apply-with-verify-false-positive-audit"],
       "rowsClosedCount": 1,
@@ -54,16 +54,16 @@
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "touchesHotspot": false,
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Investigation-only initiative. Deliverable is ai_docs/reports/<ts>_apply-verify-rollback-audit.md classifying 14 rollback sessions as TP/FP. May spin off a follow-on implementation row."
+      "branch": "remediation/apply-with-verify-false-positive-audit",
+      "worktreePath": ".worktrees/apply-with-verify-false-positive-audit",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/485",
+      "mergedAt": "2026-05-05T13:48:18Z",
+      "notes": "Audit found retro's premise was incorrect — implementation is already diff-based via fingerprint Except. Recommended close-obsolete; no follow-on implementation row. Real edge case (line-shift fingerprint instability) documented in audit report; spin-off conditional on future evidence."
     },
     {
       "id": "workspace-drift-check-tool",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["workspace-drift-check-tool"],
       "rowsClosedCount": 1,
@@ -76,11 +76,11 @@
       "hotspotFiles": ["src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Workspace.cs", "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"],
       "rule3Exemption": "structural-unit",
       "structuralUnits": 4,
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Rule 3 structural-unit exemption: 4 units (Core+Roslyn+Host.Stdio+Registration), 5 files plus DI line + TestBase.cs DI registration. WorkspaceManager touch must be read-only accessor only."
+      "branch": "remediation/workspace-drift-check-tool",
+      "worktreePath": ".worktrees/workspace-drift-check-tool",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/486",
+      "mergedAt": "2026-05-05T13:48:22Z",
+      "notes": "Shipped via initiative-executor subagent. No WorkspaceManager.cs hotspot touch — used existing WorkspaceStatusDto.LoadedAtUtc + GetCurrentSolution. Test count 1031 → 1035 (+4 new). DI registration landed in src/RoslynMcp.Roslyn/ServiceCollectionExtensions.cs (Roslyn-layer extension method, not the Host.Stdio one — addenda's listed file was approximate)."
     },
     {
       "id": "navigation-tools-misnamed-locator-error",
