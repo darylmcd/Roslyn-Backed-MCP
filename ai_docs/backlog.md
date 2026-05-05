@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-05T13:15:00Z
+**updated_at:** 2026-05-05T15:05:00Z
 
 ## Agent contract
 
@@ -80,3 +80,4 @@
 | `review-inbox/` | Staging folder for the NEXT audit batch (flat directory; `/backlog-intake` reads here). |
 | `review-inbox/archive/<batch-ts>/` | Processed audit/retro/promotion batches — one subdirectory per successful intake. Keep until every row sourced from a batch is closed or superseded, then delete that subdirectory. |
 | `ai_docs/plans/20260428T124405Z_backlog-sweep/plan.md` | Backlog sweep (20260428T124405Z). Shipped 7 initiatives across 7 PRs (#467, #468, #471, #473, #474, #476, #477); closed 7 backlog rows. |
+| `ai_docs/plans/20260504T203132Z_backlog-sweep/plan.md` | Backlog sweep (20260504T203132Z). Shipped 5 initiatives across 5 PRs (#483, #485, #486, #488, #490); closed 5 backlog rows. Initiative #6 (`validate-locator-preflight-tool`) deferred pending re-measurement of locator-shape error rate after #1's `schemaHint` lands — re-evaluate after 2026-05-12. |

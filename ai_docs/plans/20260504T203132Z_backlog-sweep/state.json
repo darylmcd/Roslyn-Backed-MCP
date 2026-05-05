@@ -1,5 +1,7 @@
 {
   "schemaVersion": 2,
+  "completed": true,
+  "completedAt": "2026-05-05T15:05:00Z",
   "generatedAt": "2026-05-04T20:31:32Z",
   "backlogSnapshot": "2026-05-04T20:01:53Z",
   "addendaLoaded": true,
@@ -104,7 +106,7 @@
     {
       "id": "find-references-project-filter",
       "order": 5,
-      "status": "in-progress",
+      "status": "merged",
       "priority": "Low",
       "backlogRowsClosed": ["find-references-project-filter"],
       "rowsClosedCount": 1,
@@ -118,14 +120,14 @@
       "hotspotFiles": ["src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Analysis.cs"],
       "branch": "remediation/find-references-project-filter",
       "worktreePath": ".worktrees/find-references-project-filter",
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Catalog touch is description-only (no new tool registration). Backlog row's anchor 'SymbolReferenceService.cs' is stale — actual file is 'ReferenceService.cs'."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/490",
+      "mergedAt": "2026-05-05T15:00:16Z",
+      "notes": "Catalog touch landed in both ServerSurfaceCatalog.Analysis.cs (find_consumers) and ServerSurfaceCatalog.Symbols.cs (find_references) — required for [McpToolMetadata] ↔ catalog parity per SurfaceCatalogTests. Backlog row's anchor 'SymbolReferenceService.cs' was stale — actual file is 'ReferenceService.cs'."
     },
     {
       "id": "validate-locator-preflight-tool",
       "order": 6,
-      "status": "pending",
+      "status": "deferred",
       "priority": "Low",
       "backlogRowsClosed": ["validate-locator-preflight-tool"],
       "rowsClosedCount": 1,
@@ -143,7 +145,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Rule 3 structural-unit exemption: 4 units. After initiative #1 ships, re-measure InvalidArgument-on-locator-tools rate; if rate drops ≥80%, mark obsolete and skip. Hotspot non-adjacent to #3 (positions 3 and 6)."
+      "notes": "Deferred 2026-05-05 by /backlog-sweep:execute orchestrator. Plan-time recommendation requires re-measuring InvalidArgument-on-locator-tools rate over a 7-day window after initiative #1 (inv-arg-envelope-schema-hint, merged 2026-05-05T13:07Z) ships. Window has not elapsed (~2h since #1 merged at decision time) and no automated telemetry pipeline exists for the orchestrator to query. Re-evaluate after 2026-05-12: if schemaHint reduces locator-shape errors ≥80%, mark obsolete; otherwise re-plan and ship. Rule 3 structural-unit exemption: 4 units. Hotspot non-adjacent to #3 (positions 3 and 6)."
     }
   ]
 }
