@@ -327,7 +327,7 @@ public static class SymbolTools
             ParameterValidation.ValidatePagination(0, limit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await symbolRelationshipService.GetSymbolRelationshipsAsync(workspaceId, locator, preferDeclaringMember, c);
-            if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+            if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
             var references = result.References.Take(limit).ToList();
             var implementations = result.Implementations.Take(limit).ToList();
             var baseMembers = result.BaseMembers.Take(limit).ToList();

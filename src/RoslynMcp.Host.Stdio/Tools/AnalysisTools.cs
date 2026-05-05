@@ -254,8 +254,9 @@ public static class AnalysisTools
         {
             ParameterValidation.ValidatePagination(0, callersLimit);
             ParameterValidation.ValidatePagination(0, calleesLimit);
-            var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName), c);
-            if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+            var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+            var result = await symbolRelationshipService.GetCallersCalleesAsync(workspaceId, locator, c);
+            if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
 
             var callers = result.Callers.Take(callersLimit).ToList();
             var callees = result.Callees.Take(calleesLimit).ToList();
@@ -300,12 +301,13 @@ public static class AnalysisTools
             ParameterValidation.ValidatePagination(referencesOffset, referencesLimit);
             if (declarationsLimit < 1) throw new ArgumentException("declarationsLimit must be >= 1.", nameof(declarationsLimit));
             var paging = new ImpactAnalysisPaging(referencesOffset, referencesLimit, declarationsLimit);
+            var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await mutationAnalysisService.AnalyzeImpactAsync(
                 workspaceId,
-                SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName),
+                locator,
                 paging,
                 c);
-            if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+            if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
 
             // Summary mode drops the materialized per-ref / per-decl arrays. Paging knobs
             // are still echoed so callers paging follow-up requests get the same envelope

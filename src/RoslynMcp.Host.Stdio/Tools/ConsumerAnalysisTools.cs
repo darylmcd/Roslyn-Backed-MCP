@@ -29,7 +29,7 @@ public static class ConsumerAnalysisTools
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await consumerAnalysisService.FindConsumersAsync(workspaceId, locator, c);
-            if (result is null) throw new KeyNotFoundException("No symbol found at the specified location");
+            if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }

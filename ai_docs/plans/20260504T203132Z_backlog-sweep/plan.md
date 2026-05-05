@@ -69,7 +69,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, hotspot-tou
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | in-progress (branch: remediation/navigation-tools-misnamed-locator-error, worktree: .worktrees/navigation-tools-misnamed-locator-error) |
 | Backlog rows closed | `navigation-tools-misnamed-locator-error` |
 | Diagnosis | Verified live (per yesterday's planning verification, re-verified today): 4 throw sites with the legacy literal `"No symbol found at the specified location"` across 3 files — `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:258` (callers_callees), `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:308` (find_consumers), `src/RoslynMcp.Host.Stdio/Tools/ConsumerAnalysisTools.cs:32`, `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:330`. Each site has a `SymbolLocator` in scope (built one or two lines above the throw). Helper `SymbolLocatorFactory.FormatSymbolNotFoundMessage(SymbolLocator)` exists at `src/RoslynMcp.Host.Stdio/Tools/SymbolLocatorFactory.cs:100` (added by PR #474). Backlog row text cites lines `232/258/308/358` in `AnalysisTools.cs` and tool names `symbol_relationships`, `goto_type_definition`, `find_consumers`; live grep finds throws only at 258/308 in `AnalysisTools.cs`. Executor should ship against live throw sites regardless of backlog text drift. |
 | Approach | Replace the literal at each of the 4 throw sites with `SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator)`. Where the locator local is named differently, hoist or rename to a local before the service call. No service-layer changes. |
