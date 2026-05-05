@@ -15,7 +15,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, hotspot-tou
 
 | Field | Content |
 |---|---|
-| Status | in-progress (branch: remediation/inv-arg-envelope-schema-hint, worktree: .worktrees/inv-arg-envelope-schema-hint) |
+| Status | merged (PR #483, 2026-05-05) |
 | Backlog rows closed | `inv-arg-envelope-schema-hint` |
 | Diagnosis | Verified live. `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs` line 49 maps `ArgumentException → "InvalidArgument"` envelope; lines 264–288 build envelopes for `MissingFieldException` / `FormatException` shapes. The current envelope shape is `{ category, tool, message, exceptionType }` — no `schemaHint` or schema reference. Cold-context subagents (frequent in `/backlog-sweep:execute` parallel mode) cannot reference prior turns and re-derive the call shape from the error alone. The catalog (`src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.*.cs` partials) carries the full parameter list per tool — sourcing a one-line hint at error-build time is a single catalog lookup. |
 | Approach | (a) Extend the envelope record/anonymous-object shape in `ToolErrorHandler.cs` to include `schemaHint: string?`. (b) Where the failing parameter is known (the `ArgumentException` and `Missing*` paths already capture the parameter name), look up the tool's catalog entry, find the matching parameter, and format `"<tool-name>(<param>: <type> [<one-line description>])"`. (c) Where parameter name is not known, omit `schemaHint` (don't emit an empty key — keep the envelope shape stable for downstream parsers). (d) Cache the catalog → tool-name lookup in a static `FrozenDictionary` to avoid per-error overhead. |
