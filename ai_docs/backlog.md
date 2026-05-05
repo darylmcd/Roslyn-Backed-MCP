@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-05T15:35:00Z
+**updated_at:** 2026-05-05T18:50:00Z
 
 ## Agent contract
 
@@ -54,7 +54,7 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `audit-deep-release-cut-promotion-gate` | Low | `audit-deep-skill-migration` | Wire `/audit-deep mode=promotion-only` into the `/release-cut` pipeline as an optional promotion gate. (1) Have `audit-deep` write a machine-readable `ai_docs/audit-reports/_latest-promotion-scorecard.json` alongside the human-readable report, with `generated_at`, per-tool `recommendation`, and evidence counts. (2) `/publish-preflight` (consumed by `/release-cut`) reads the scorecard: if older than 30 days → WARN "scorecard stale; consider re-running"; if any `promote` recommendations → prompt user to promote in this release; otherwise silent. (3) Add a new `/roslyn-mcp:promote-tier <tool> stable` skill that flips the catalog tier marker per accepted recommendation. Anchors: new write logic in `skills/audit-deep/SKILL.md`, integration hook in `.claude/skills/publish-preflight/SKILL.md`, new `skills/promote-tier/SKILL.md`. Regression test shape: 2 tests — (a) scorecard JSON shape parses cleanly; (b) `publish-preflight` correctly flags a stale scorecard and skips silently when fresh-with-no-promotions. Evidence: 2026-05-05 audit-deep deep-dive (this session) S6 discussion; today promotion is implicit with no paper trail. |
+| `promote-tier-skill` | Low | none | Add a `/roslyn-mcp:promote-tier <tool-or-resource-or-prompt> <stable\|experimental>` skill that automates the tier flip the `/publish-preflight` Step 8 gate currently surfaces as a manual checklist. For a tool: locate the `[McpToolMetadata("category", "experimental", ...)]` annotation on the tool's method (use `mcp__roslyn__symbol_search` to find the method by tool name; the literal lives at parameter index 1 of the attribute), edit the literal, locate the matching entry in `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.<Category>.cs`, edit that literal, run `dotnet test --filter SurfaceCatalogTests` to confirm parity. For resources: edit `src/RoslynMcp.Host.Stdio/Resources/ServerResources.cs`. For prompts: edit `src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.*.cs`. Anchors: new `.claude/skills/promote-tier/SKILL.md` (maintainer-side; this is an internal release-cut helper, not a consumer-facing plugin skill). Regression test shape: 1 fixture exercising a round-trip — promote a known experimental tool to stable, build to confirm `SurfaceCatalogTests` parity passes, then revert via the inverse call (`promote-tier <tool> experimental`) and reconfirm. Evidence: 2026-05-05 audit-deep promotion-gate landed (PRs #494 + #496); `/publish-preflight` Step 8 today emits a manual `Edit: ...` checklist for each `recommendation: "promote"` row — this skill replaces that with one tool call. Pieces A and B (scorecard JSON emission + publish-preflight gate) shipped in PR #496; this row covers only piece C (automation). |
 
 ## Defer
 
