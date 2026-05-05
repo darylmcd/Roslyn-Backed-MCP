@@ -80,6 +80,7 @@ public abstract class TestBase
     protected static InterfaceExtractionService InterfaceExtractionService { get; private set; } = null!;
     protected static ExceptionFlowService ExceptionFlowService { get; private set; } = null!;
     protected static WorkspaceWarmService WorkspaceWarmService { get; private set; } = null!;
+    protected static WorkspaceDriftService WorkspaceDriftService { get; private set; } = null!;
     protected static string RepositoryRootPath { get; private set; } = null!;
     protected static string SampleSolutionPath { get; private set; } = null!;
     protected static string BuildFailureSolutionPath { get; private set; } = null!;
@@ -179,6 +180,7 @@ public abstract class TestBase
         InterfaceExtractionService = services.InterfaceExtractionService;
         ExceptionFlowService = services.ExceptionFlowService;
         WorkspaceWarmService = services.WorkspaceWarmService;
+        WorkspaceDriftService = services.WorkspaceDriftService;
 
         RepositoryRootPath = TestFixtureFileSystem.FindRepositoryRoot();
         SampleSolutionPath = TestFixtureFileSystem.FindFixturePath(RepositoryRootPath, "SampleSolution", "SampleSolution.slnx", "SampleSolution.sln");

@@ -119,6 +119,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ITestReferenceMapService, TestReferenceMapService>();
         services.AddSingleton<IWorkspaceValidationService, WorkspaceValidationService>();
         services.AddSingleton<IWorkspaceWarmService, WorkspaceWarmService>();
+        services.AddSingleton<IWorkspaceDriftService, WorkspaceDriftService>();
         services.AddSingleton<IChangeSignatureService, ChangeSignatureService>();
         services.AddSingleton<ISymbolRefactorService, SymbolRefactorService>();
         services.AddSingleton<IExceptionFlowService, ExceptionFlowService>();
