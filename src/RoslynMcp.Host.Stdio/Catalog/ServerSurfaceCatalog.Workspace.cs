@@ -17,5 +17,6 @@ public static partial class ServerSurfaceCatalog
         Tool("source_generated_documents", "workspace", "stable", true, false, "List source-generated documents for a workspace or project."),
         Tool("get_source_text", "workspace", "stable", true, false, "Read source text as the Roslyn workspace currently sees it (may differ from disk if workspace hasn't been reloaded)."),
         Tool("workspace_changes", "workspace", "stable", true, false, "List all mutations applied to a workspace during this session, with descriptions, affected files, tool names, and timestamps."),
+        Tool("workspace_drift_check", "workspace", "experimental", true, false, "Compare the in-memory workspace snapshot against filesystem mtimes; return drift status, drifted file paths, and a reload/noop recommendation."),
     ];
 }
