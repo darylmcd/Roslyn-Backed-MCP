@@ -3,7 +3,14 @@
   "generatedAt": "2026-05-05T19:17:30Z",
   "backlogSnapshot": "2026-05-05T19:30:00Z",
   "addendaLoaded": true,
-  "reviewStatus": "pending",
+  "reviewStatus": "passed-with-warnings",
+  "reviewedAt": "2026-05-05T19:50:00Z",
+  "reviewFindings": {
+    "block": 0,
+    "warn": 2,
+    "info": 4
+  },
+  "reviewArtifact": "ai_docs/plans/20260505T191730Z_backlog-sweep/review.md",
   "vettingOverride": false,
   "skippedRows": [
     {
