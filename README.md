@@ -42,7 +42,7 @@ dotnet run --project src/RoslynMcp.Host.Stdio
 /plugin install roslyn-mcp@roslyn-mcp-marketplace
 ```
 
-The plugin bundles the MCP server, 31 skills, and safety hooks. For packaging, reinstall, and local plugin-dev details, see [docs/setup.md](docs/setup.md) and [docs/reinstall.md](docs/reinstall.md).
+The plugin bundles the MCP server, 32 skills, and safety hooks. For packaging, reinstall, and local plugin-dev details, see [docs/setup.md](docs/setup.md) and [docs/reinstall.md](docs/reinstall.md).
 
 ### Any Stdio MCP Client
 

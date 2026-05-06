@@ -1,4 +1,6 @@
 # Plan review — 2026-05-04T20:42:00Z
+<!-- purpose: Review findings for the 20260504T203132Z backlog sweep plan. -->
+<!-- scope: in-repo -->
 
 **Plan reviewed:** `ai_docs/plans/20260504T203132Z_backlog-sweep/`
 **Reviewer mode:** /backlog-sweep:review

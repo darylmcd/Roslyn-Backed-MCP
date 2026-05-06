@@ -82,7 +82,7 @@ Reason:
 Delivered:
 
 - `.claude-plugin/plugin.json` and `marketplace.json` for distribution via GitHub
-- 31 bundled skills spanning analysis, refactoring, search, testing, workspace/session, documentation, and release workflows
+- 32 bundled skills spanning analysis, refactoring, search, testing, workspace/session, documentation, and release workflows
 - Safety hooks: PreToolUse apply guard, PostToolUse compile-check reminder
 
 Future direction:

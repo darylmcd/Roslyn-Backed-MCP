@@ -11,6 +11,7 @@ recommendation: close-obsolete (with optional spin-off for line-shift fingerprin
 ---
 
 # `apply_with_verify` rollback false-positive audit
+<!-- purpose: Audit report for the apply_with_verify rollback false-positive backlog row. -->
 
 ## Trigger
 

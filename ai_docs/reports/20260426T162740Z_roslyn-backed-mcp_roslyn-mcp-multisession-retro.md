@@ -26,6 +26,7 @@ truncated: false
 ---
 
 # Roslyn MCP multi-session retrospective - 2026-04-26 - 14-day window
+<!-- purpose: Multi-session Roslyn MCP retrospective report generated on 2026-04-26. -->
 
 ## 1. Session classification
 
@@ -353,4 +354,3 @@ JSON-aware scan found 1,294 actual mcp__roslyn__* calls. The raw extractor marke
 The window is mixed-heavy: 42 refactoring / 21 release-operational / 37 planning-docs / 98 mixed across 198 included sessions. Friction concentrates in reliability and ergonomics: preview/apply gating, workspace lifecycle, catalog/schema drift, and low-friction verification, rather than pure absence of semantic read tools. Repo skew is significant: 94 of 198 included sessions came from roslyn-backed-mcp, and many findings are self-edit or audit-prompt shaped, so future retros should compare a consumer-heavy window before promoting every item. Next time I would default to workspace_load + read-only Roslyn verification earlier in self-edit sessions and reserve shell dotnet build/test for CI parity. The 14-day window was long enough for recurring patterns, but several proposed gaps still lean on 1-2 high-signal sessions; widening to 30 days would improve priority confidence.
 
 MCP availability note for this run: .mcp.json declares a roslyn stdio server via roslynmcp, ai_docs/runtime.md documents Roslyn MCP as the default C# tool surface, and the live current session verified server_info for roslyn-mcp 1.33.0 with zero loaded workspaces.
-

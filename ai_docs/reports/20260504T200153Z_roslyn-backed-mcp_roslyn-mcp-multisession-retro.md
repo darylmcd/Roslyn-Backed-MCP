@@ -26,6 +26,7 @@ truncated_reason: "Capped at 40 largest-by-Roslyn-MCP-mention out of 209 relevan
 ---
 
 # Roslyn MCP multi-session retrospective — 2026-05-04 — 14-day window
+<!-- purpose: Multi-session Roslyn MCP retrospective report generated on 2026-05-04. -->
 
 ## 1. Session classification
 

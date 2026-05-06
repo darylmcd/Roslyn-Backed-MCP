@@ -1,4 +1,5 @@
 # Sampling-driven tool flows — spike note
+<!-- purpose: Spike results for sampling-driven MCP tool flows. -->
 
 **Initiative:** `sampling-driven-tool-flows-spike`
 **Date:** 2026-05-05
