@@ -34,7 +34,7 @@
     {
       "id": "validate-workspace-markdown-formatter-decomposition",
       "order": 1,
-      "status": "pending",
+      "status": "in-review",
       "priority": "Medium",
       "backlogRowsClosed": ["validate-workspace-markdown-formatter-decomposition"],
       "rowsClosedCount": 1,
@@ -45,11 +45,11 @@
       "scheduleHint": null,
       "touchesHotspot": true,
       "hotspotFiles": ["src/RoslynMcp.Host.Stdio/Formatters/ValidateWorkspaceMarkdownFormatter.cs"],
-      "branch": null,
+      "branch": "remediation/validate-workspace-markdown-formatter-decomposition",
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/533",
       "mergedAt": null,
-      "notes": "Pure formatter decomposition; preserve byte-stable output."
+      "notes": "PR #533 opened. Pure formatter decomposition; preserve byte-stable output."
     },
     {
       "id": "test-discovery-service-complexity-refactor",

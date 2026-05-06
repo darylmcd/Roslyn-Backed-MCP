@@ -21,7 +21,7 @@ This follow-on plan consumes the three remaining actionable Medium backlog rows 
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | in-review (PR #533, 2026-05-06) |
 | Backlog rows closed | `validate-workspace-markdown-formatter-decomposition` |
 | Diagnosis | `ValidateWorkspaceMarkdownFormatter.Format` owns the verdict line plus metrics, diagnostics, discovered tests, failures, rerun-filter, and warning table branches in one method. The current design is defensible because the formatter is a small pure function with all output logic in one place; extraction still wins because the method is already a complexity hotspot and response-format changes now require reviewing unrelated table branches. |
 | Approach | Extract private section writers and small table helpers while preserving byte-stable markdown output. |
