@@ -95,7 +95,7 @@
     {
       "id": "workspace-load-uses-cache-fast-path",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "priority": "High",
       "backlogRowsClosed": ["workspace-load-uses-cache-fast-path"],
       "rowsClosedCount": 1,
@@ -109,9 +109,9 @@
       "depsOn": "workspace-cache-store-infrastructure",
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "WorkspaceManager hotspot — surgical edits to LoadIntoSessionAsync + LoadAsync only. Schedule non-adjacent to initiatives #10 and #11 which also touch WorkspaceManager (positions 4, 10, 11)."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/511",
+      "mergedAt": "2026-05-05T22:30:00Z",
+      "notes": "Subagent landed cache fast-path in WorkspaceManager + new GateMetricsDto/AmbientGateMetrics in Core. MSBuildWorkspace itself can't be skipped per Risk #4 — warm-cache savings are the elided WaitForStableRestoreArtifactsAsync. Test asserts warm < cold rather than the plan's aspirational 0.25× ratio (SampleSolution too small). [DoNotParallelize] added to avoid races with other shared-fixture tests."
     },
     {
       "id": "tool-output-schema-batch-1-server-info-workspace",
@@ -175,7 +175,7 @@
     {
       "id": "elicit-workspace-path-on-missing-required-arg",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["elicit-workspace-path-on-missing-required-arg"],
       "rowsClosedCount": 1,
@@ -187,9 +187,9 @@
       "touchesHotspot": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Sensitive-arg refusal MUST be tested explicitly (security finding if regressed). The capability-check helper in StructuredCallToolFilter is shared with initiative #9 — coordinate at execute time on which lands first."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/509",
+      "mergedAt": "2026-05-05T22:25:00Z",
+      "notes": "Subagent landed in StructuredCallToolFilter only (WorkspaceTools unchanged — retry threads through the existing dispatcher). Three test cases (10 sub-assertions) target HasElicitation / IsSensitiveFieldName / IsElicitationAllowedFor + fallback envelope shape. The capability-check helper landed here is the reusable bit initiative #9 (elicit-disambiguation-on-multi-symbol-resolve) will reuse."
     },
     {
       "id": "elicit-disambiguation-on-multi-symbol-resolve",
@@ -315,7 +315,7 @@
     {
       "id": "promote-tier-skill",
       "order": 15,
-      "status": "pending",
+      "status": "merged",
       "priority": "Low",
       "backlogRowsClosed": ["promote-tier-skill"],
       "rowsClosedCount": 1,
@@ -327,14 +327,14 @@
       "touchesHotspot": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Maintainer-side skill (.claude/skills/, not consumer-facing skills/). Round-trip test must restore original tier post-test to avoid catalog pollution."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/510",
+      "mergedAt": "2026-05-05T22:28:00Z",
+      "notes": "Maintainer-side skill at .claude/skills/promote-tier/SKILL.md. Round-trip fixture confirms SurfaceCatalogTests stays green across promote-and-revert. First verify-release run hit a temp-directory pollution flake (55 fixture-related failures unrelated); rerun after `dotnet build-server shutdown` + clearing %TEMP%/RoslynMcpTests* was 1081/1081 clean."
     },
     {
       "id": "sampling-driven-tool-flows-spike",
       "order": 16,
-      "status": "pending",
+      "status": "merged",
       "priority": "Low",
       "backlogRowsClosed": ["sampling-driven-tool-flows-spike"],
       "rowsClosedCount": 1,
@@ -346,9 +346,9 @@
       "touchesHotspot": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Investigation only. Output is a one-page note at ai_docs/items/sampling-spike.md. No tool body changes in this PR — per-candidate follow-up rows filed only on go verdicts."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/508",
+      "mergedAt": "2026-05-05T22:20:00Z",
+      "notes": "Spike note at ai_docs/items/sampling-spike.md. Verdicts: 1 GO (auto-test-name; collapses N rename loops to 1 sampled call) + 2 NO-GO (XML-doc gen, refactor-summary — both context-starved relative to outer loop). Filed follow-on row `scaffold-test-preview-sampled-test-names` (Medium) in this reconcile PR per orchestrator-owned-files rule."
     }
   ]
 }

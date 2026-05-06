@@ -71,7 +71,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #511, 2026-05-05) |
 | Backlog rows closed | `workspace-load-uses-cache-fast-path` |
 | Diagnosis | Verified live. `WorkspaceManager.LoadIntoSessionAsync` is the canonical entry point per the row's anchor; `WorkspaceExecutionGate.cs` carries the load-gate metrics path. Cache store from initiative #2 is the prerequisite contract. Target: cut workspace_load P95 from ~45s to ~5–10s on warm-cache reload. |
 | Approach | (a) `WorkspaceManager.LoadIntoSessionAsync` consults `IWorkspaceCacheStore.TryGetAsync(...)` first; on hit, skip MSBuild SDK resolution and use the persisted project-graph + metadata-reference list to seed the workspace. Semantic models still build on demand. (b) On miss, run the existing cold-load path; on success, write fresh entries to the cache before returning. (c) `WorkspaceExecutionGate` emits a `cacheHit: bool` metric so future profiling can isolate the warm-cache path. (d) No behavior change when cache is invalidated or absent — just falls through. |
@@ -143,7 +143,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #509, 2026-05-05) |
 | Backlog rows closed | `elicit-workspace-path-on-missing-required-arg` |
 | Diagnosis | Verified live. `src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs` is the filter that maps exceptions to the error envelope today; `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs` carries the `workspace_load` tool. Retro §3 #2: 199 `InvalidArgument` matches across 25 of 40 sessions; the largest cluster is missing `path` on `workspace_load`. MCP `elicitation/create` (2025-06-18) — wrapped by the C# SDK as `McpServer.ElicitAsync` — provides a fallback path when the client declares the `elicitation` capability. |
 | Approach | (a) In `StructuredCallToolFilter`, intercept `InvalidArgument: missing 'path'` from `workspace_load`. (b) Check the client's `elicitation` capability (via the `IMcpServer` instance the filter has access to; if not, plumb it). (c) If supported: call `ElicitAsync` with a strict path-only schema, retry the tool call with the elicited path, and return the success response. If declined or unsupported: return the existing `schemaHint`-augmented envelope (current behavior). (d) Strict scope: `workspace_load.path` only. Sensitive argument elicitation (credentials, tokens, secrets) is forbidden per MCP spec § Elicitation security; the filter MUST refuse to elicit anything outside the allowlist. |
@@ -269,7 +269,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #510, 2026-05-05) |
 | Backlog rows closed | `promote-tier-skill` |
 | Diagnosis | Verified live. `[McpToolMetadata]` annotations live next to `[McpServerTool]` methods; the tier literal is parameter index 1 of the attribute. `ServerSurfaceCatalog.<Category>.cs` partials carry the matching catalog entry; `SurfaceCatalogTests` enforces parity. `/publish-preflight` Step 8 emits a manual `Edit: ...` checklist for each `recommendation: "promote"` row; this skill replaces that with one tool call. |
 | Approach | (a) Create `.claude/skills/promote-tier/SKILL.md` (maintainer-side; this is an internal release-cut helper, NOT a consumer-facing plugin skill). (b) Skill input: tool/resource/prompt name + target tier (`stable` or `experimental`). (c) Use `mcp__roslyn__symbol_search` to find the method by name; locate the `[McpToolMetadata]` attribute via `find_references` to the attribute type; edit the literal at parameter index 1. (d) Locate the matching `ServerSurfaceCatalog.<Category>.cs` entry by tool name; edit the tier literal. (e) For resources: edit `src/RoslynMcp.Host.Stdio/Resources/ServerResources.cs`. For prompts: edit `src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.*.cs`. (f) Run `dotnet test --filter SurfaceCatalogTests` to confirm parity post-edit. |
@@ -287,7 +287,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #508, 2026-05-05) |
 | Backlog rows closed | `sampling-driven-tool-flows-spike` |
 | Diagnosis | Investigation row, not an implementation row. The spike's deliverable is a one-page note (`ai_docs/items/sampling-spike.md`) with go/no-go per candidate; per-candidate follow-up rows are filed only on go. The row marks itself **weaker evidence — N until at least one candidate shows clear value**. The spike is bounded — half-day, no production code beyond the note. |
 | Approach | (a) Read the C# SDK's `McpServerExtensions.SampleAsync` surface and document the call shape. (b) For each candidate (auto-XML-doc generation, refactor-summary text from `workspace_changes`, auto-test-name from method-name + test-class context), prototype a sample call against a fixture and capture (i) cost, (ii) latency, (iii) quality vs the agent's outer-loop equivalent. (c) Write `ai_docs/items/sampling-spike.md` with go/no-go + brief rationale per candidate. (d) File per-candidate follow-up backlog rows for each `go`; do not enable sampling on any tool in this PR. |
