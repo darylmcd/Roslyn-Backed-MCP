@@ -1,5 +1,7 @@
 {
   "schemaVersion": 2,
+  "completed": true,
+  "completedAt": "2026-05-06T22:37:20Z",
   "generatedAt": "2026-05-06T21:11:52Z",
   "backlogSnapshot": "2026-05-06T21:07:03Z",
   "addendaLoaded": true,
@@ -74,21 +76,21 @@
     {
       "id": "scaffold-test-preview-sampled-test-names",
       "order": 3,
-      "status": "in-review",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["scaffold-test-preview-sampled-test-names"],
       "rowsClosedCount": 1,
       "productionFilesTouched": 4,
-      "testFilesAdded": 2,
+      "testFilesExtended": 1,
       "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "touchesHotspot": false,
       "branch": "remediation/scaffold-test-preview-sampled-test-names",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Implementation branch validates the opt-in sampling path and deterministic default; awaiting PR."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/537",
+      "mergedAt": "2026-05-06T22:36:58Z",
+      "notes": "PR #537 merged. Opt-in sampled test names preserve the deterministic default and degrade to placeholder warnings when sampling is unavailable or invalid."
     }
   ]
 }
