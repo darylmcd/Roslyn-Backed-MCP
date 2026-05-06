@@ -1,0 +1,61 @@
+---
+name: audit-deep
+description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard + plugin-skill audit, run against a loaded C# repo. Three modes — `full`, `promotion-only`, `read-only`. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
+user-invocable: true
+argument-hint: "[mode=full|promotion-only|read-only] (default: full)"
+---
+
+# /roslyn-mcp:audit-deep $ARGUMENTS
+
+Run a comprehensive Roslyn-MCP audit against the current repository. The skill bundles its own audit prompt — no per-repo prompt copy is required.
+
+## Step 1 — Hard precondition: Roslyn MCP server must be callable
+
+This skill is a **null-op without the Roslyn MCP server**. The audit's entire purpose is to exercise the server's live surface — without it, the run produces no audit-grade evidence.
+
+1. Verify `mcp__roslyn__server_info` appears in your current tool surface and call it. The response must include `connection.state: "ready"`.
+2. If the call fails, the tool is missing, or `connection.state` is `initializing` / `degraded` / absent, **stop and report**:
+
+   > *"This skill requires the Roslyn MCP server (`mcp__roslyn__*` tools must be callable, `connection.state` must be `ready`). Start the server — for example `dotnet tool run roslynmcp` or ensure the plugin's stdio entry is active in your client config — confirm `mcp__roslyn__server_info` returns `ready`, then re-invoke this skill."*
+
+   Do **not** substitute `Read`, `Grep`, `Bash: dotnet build`, or any other host-side fallback. There is no generic non-MCP audit fallback in this skill — a broken server precondition halts the run.
+
+## Step 2 — Parse `$ARGUMENTS` and pick the mode prompt
+
+Recognized tokens (the only valid values for `mode`):
+
+- `mode=full` (default) — full-repo sweep, including refactor pass with apply-mode mutations on a disposable worktree.
+- `mode=promotion-only` — exercise the experimental-tier surface to produce a promotion scorecard. No Phase 6 product mutations.
+- `mode=read-only` — preview-only / read-only across the entire surface. No applies anywhere. Promotion scorecard skipped (writers default to `needs-more-evidence`).
+
+Unrecognized modes — including the historical `focused` value — are **not supported**; reject with a one-line message and ask the user to pick one of the three above.
+
+Resolve the prompt body in this order:
+
+1. `mode=full` → read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/full.md` and run it verbatim.
+2. `mode=promotion-only` → read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/promotion-only.md` and run it verbatim.
+3. `mode=read-only` → read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/read-only.md` and run it verbatim.
+
+The mode prompts are the source of truth. They define every phase, every output schema, and every hard-gate checkpoint. This SKILL.md only routes to them — do not paraphrase or restructure their phase order in your output.
+
+## Step 3 — Mutation safety: read-only against the audited repo's main branch
+
+The audit is **read-only against the audited repository's `main` branch**. Phase 6 (refactor pass, `mode=full` only) writes apply-mode mutations, but only inside a disposable worktree the prompt creates and tracks. The flow is:
+
+1. Before any Phase 6 apply, the prompt records a disposable branch / worktree / clone path in the report header (the *Isolation* row).
+2. Phase 6's preview → apply chains run against that disposable checkout.
+3. The audit report summarizes the changes; the operator decides whether to PR them. The audited repo's `main` branch is never directly mutated.
+
+`mode=promotion-only` and `mode=read-only` skip Phase 6 entirely — no apply chains run, and the disposable worktree is optional.
+
+## Step 4 — Execute the chosen prompt
+
+Read the resolved prompt file in full and follow it phase by phase. Persist the audit draft after each phase as the prompt instructs — the canonical report path lives in the prompt's *Output Format* section.
+
+## Hard rules
+
+- **Server-required.** No generic non-MCP fallback exists. If `mcp__roslyn__server_info` is not callable or `connection.state` is not `ready`, halt.
+- **Read-only against `main`.** All apply-mode mutations confine to the disposable worktree the prompt creates. Never push or merge from inside this skill.
+- **No PR.** This skill produces an audit report, not a refactor PR. Phase 6 mutations land in the disposable checkout's git history; the operator opens any PR separately.
+- **Cite, don't summarize.** Every finding must reference a concrete file:line and a tool call — no abstract claims.
+- **Mode is sticky.** Once you pick a mode in Step 2, the prompt's phase gating (which phases run in apply mode vs preview-only vs skipped) is fixed for the run.
