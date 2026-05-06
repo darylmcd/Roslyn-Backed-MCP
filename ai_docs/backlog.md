@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-06T22:14:44Z
+**updated_at:** 2026-05-06T22:37:20Z
 
 ## Agent contract
 
@@ -81,4 +81,5 @@
 | `ai_docs/plans/20260428T124405Z_backlog-sweep/plan.md` | Backlog sweep (20260428T124405Z). Shipped 7 initiatives across 7 PRs (#467, #468, #471, #473, #474, #476, #477); closed 7 backlog rows. |
 | `ai_docs/plans/20260504T203132Z_backlog-sweep/plan.md` | Backlog sweep (20260504T203132Z). Shipped 5 initiatives across 5 PRs (#483, #485, #486, #488, #490); closed 5 backlog rows. Initiative #6 (`validate-locator-preflight-tool`) deferred pending re-measurement of locator-shape error rate after #1's `schemaHint` lands — re-evaluate after 2026-05-12. |
 | `ai_docs/plans/20260505T191730Z_backlog-sweep/plan.md` | Backlog sweep (20260505T191730Z). Shipped 16 initiatives across 16 PRs (#502, #503, #504, #505, #508, #509, #510, #511, #515, #516, #517, #519, #520, #526, #528, #530); closed 15 unique backlog rows. Reconcile PRs #527 and #529 kept plan state current. |
+| `ai_docs/plans/20260506T211152Z_backlog-sweep/plan.md` | Backlog sweep (20260506T211152Z). Shipped 3 initiatives across 3 PRs (#533, #535, #537); closed 3 backlog rows. Reconcile PRs #534 and #536 kept plan state current. |
 | `ai_docs/reports/20260505_mcp-best-practices-restored-rows.md` | Provenance + recovery context for the 14 backlog rows added 2026-05-05 from the MCP-best-practices comparison (rec A–J + Tier 1 follow-on). Maps each row id → recommendation letter; lists cross-cutting evidence sources. Read this first when picking up any of the rec-A through rec-J rows. |

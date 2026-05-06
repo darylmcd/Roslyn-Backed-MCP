@@ -53,7 +53,7 @@ This follow-on plan consumes the three remaining actionable Medium backlog rows 
 
 | Field | Content |
 |---|---|
-| Status | in-review |
+| Status | merged (PR #537, 2026-05-06) |
 | Backlog rows closed | `scaffold-test-preview-sampled-test-names` |
 | Diagnosis | `scaffold_test_preview` always emits `<TargetMethodName>_Needs_Test`, pushing naming work back to the outer agent. The current design is defensible because deterministic placeholders avoid model-dependent behavior and work for clients without sampling; a gated `useSampling=false` default preserves that behavior while letting capable clients collapse rename loops. |
 | Approach | Add a nullable sampling path to `ScaffoldingTools.PreviewScaffoldTest` and `IScaffoldingService.PreviewScaffoldTestAsync`; when enabled and sampling succeeds, replace the placeholder with a sanitized sampled Given/When/Then name. |
