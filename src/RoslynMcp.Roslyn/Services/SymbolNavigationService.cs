@@ -22,6 +22,7 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
 
     public async Task<IReadOnlyList<LocationDto>> GoToDefinitionAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolNavigationService.GoToDefinitionAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return [];
@@ -41,6 +42,7 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
 
     public async Task<IReadOnlyList<LocationDto>> GoToTypeDefinitionAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolNavigationService.GoToTypeDefinitionAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return [];
@@ -129,6 +131,7 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
 
     public async Task<SymbolDto?> GetEnclosingSymbolAsync(string workspaceId, string filePath, int line, int column, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolNavigationService.GetEnclosingSymbolAsync: workspaceId={WorkspaceId} filePath={FilePath} line={Line} column={Column}", workspaceId, filePath, line, column);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null) return null;
@@ -176,6 +179,7 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
     /// </summary>
     public async Task<PositionProbeDto?> ProbePositionAsync(string workspaceId, string filePath, int line, int column, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolNavigationService.ProbePositionAsync: workspaceId={WorkspaceId} filePath={FilePath} line={Line} column={Column}", workspaceId, filePath, line, column);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null) return null;

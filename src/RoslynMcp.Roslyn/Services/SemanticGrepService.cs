@@ -46,6 +46,7 @@ public sealed class SemanticGrepService : ISemanticGrepService
         int limit,
         CancellationToken ct)
     {
+        _logger.LogDebug("SemanticGrepService.SearchAsync: workspaceId={WorkspaceId} scope={Scope} pattern={Pattern} projectFilter={ProjectFilter} limit={Limit}", workspaceId, scope, pattern, projectFilter, limit);
         if (string.IsNullOrEmpty(pattern))
         {
             throw new ArgumentException("pattern must be non-empty.", nameof(pattern));

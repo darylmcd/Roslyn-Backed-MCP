@@ -24,6 +24,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
 
     public async Task<TypeHierarchyDto?> GetTypeHierarchyAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolRelationshipService.GetTypeHierarchyAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not INamedTypeSymbol namedType) return null;
@@ -114,6 +115,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
 
     public async Task<MemberHierarchyDto?> GetMemberHierarchyAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolRelationshipService.GetMemberHierarchyAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
@@ -131,6 +133,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
 
     public async Task<SymbolRelationshipsDto?> GetSymbolRelationshipsAsync(string workspaceId, SymbolLocator locator, bool preferDeclaringMember, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolRelationshipService.GetSymbolRelationshipsAsync: workspaceId={WorkspaceId} locator={Locator} preferDeclaringMember={PreferDeclaringMember}", workspaceId, locator, preferDeclaringMember);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
@@ -165,6 +168,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
 
     public async Task<SignatureHelpDto?> GetSignatureHelpAsync(string workspaceId, SymbolLocator locator, bool preferDeclaringMember, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolRelationshipService.GetSignatureHelpAsync: workspaceId={WorkspaceId} locator={Locator} preferDeclaringMember={PreferDeclaringMember}", workspaceId, locator, preferDeclaringMember);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null)
@@ -190,6 +194,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
 
     public async Task<CallerCalleeDto?> GetCallersCalleesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolRelationshipService.GetCallersCalleesAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is null) return null;

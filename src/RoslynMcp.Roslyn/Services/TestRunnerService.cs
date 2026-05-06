@@ -43,6 +43,7 @@ public sealed partial class TestRunnerService : ITestRunnerService
 
     public async Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct)
     {
+        _logger.LogDebug("TestRunnerService.RunTestsAsync: workspaceId={WorkspaceId} projectName={ProjectName} filter={Filter}", workspaceId, projectName, filter);
         var status = await _workspaceManager.GetStatusAsync(workspaceId, ct).ConfigureAwait(false);
 
         if (projectName is not null)
