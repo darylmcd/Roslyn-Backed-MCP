@@ -187,6 +187,8 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var animalServicePath = FindDocumentPath("AnimalService.cs");
         var refsJson = await SymbolTools.FindReferences(
+            server: null!,
+            WorkspaceManager,
             WorkspaceExecutionGate,
             ReferenceService,
             WorkspaceId,

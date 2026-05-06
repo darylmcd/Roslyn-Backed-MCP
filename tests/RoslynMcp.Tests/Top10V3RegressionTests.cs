@@ -31,7 +31,7 @@ public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
+                server: null!, WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
                 query: "AnimalService",
                 projectName: null, kind: null, @namespace: null, limit: 10,
                 CancellationToken.None));
@@ -58,7 +58,7 @@ public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
+                server: null!, WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
                 query: query,
                 projectName: null, kind: null, @namespace: null, limit: 50,
                 CancellationToken.None));
@@ -86,7 +86,7 @@ public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
-                WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
+                server: null!, WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
                 query: "AnimalService",
                 projectName: null, kind: null, @namespace: null, limit: 10,
                 CancellationToken.None));

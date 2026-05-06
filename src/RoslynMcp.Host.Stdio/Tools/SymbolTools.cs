@@ -1,10 +1,14 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using McpServer = ModelContextProtocol.Server.McpServer;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Middleware;
+using RoslynMcp.Roslyn.Contracts;
+using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -16,6 +20,7 @@ public static class SymbolTools
     [McpToolMetadata("symbols", "stable", true, false,
         "Search symbols by name across the workspace.")]
     public static Task<string> SearchSymbols(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -41,6 +46,44 @@ public static class SymbolTools
                 }, JsonDefaults.Indented);
             }
             var results = await symbolSearchService.SearchSymbolsAsync(workspaceId, query, projectName, kind, @namespace, limit, c);
+
+            // elicit-disambiguation-on-multi-symbol-resolve: when the search returns >1 candidate
+            // and the client supports MCP elicitation, ask the agent which candidate to focus on
+            // and return ONLY that one with a chosenViaElicitation marker. Purely additive: if the
+            // client lacks elicitation OR the user declines, fall through to the existing list shape.
+            if (results.Count > 1 && StructuredCallToolFilter.HasElicitation(server?.ClientCapabilities))
+            {
+                var options = new List<(string Key, string Label)>(results.Count);
+                for (var i = 0; i < results.Count; i++)
+                {
+                    var r = results[i];
+                    var label = string.IsNullOrEmpty(r.FilePath)
+                        ? $"{r.Kind} {r.FullyQualifiedName}"
+                        : $"{r.Kind} {r.FullyQualifiedName} — {Path.GetFileName(r.FilePath)}:{r.StartLine}";
+                    options.Add((i.ToString(System.Globalization.CultureInfo.InvariantCulture), label));
+                }
+
+                var chosenKey = await StructuredCallToolFilter.TryElicitChoiceAsync(
+                    server,
+                    paramName: "choice",
+                    title: "Pick a symbol",
+                    description: $"symbol_search returned {results.Count} candidates for '{query}'. Pick one to focus on.",
+                    options,
+                    c).ConfigureAwait(false);
+
+                if (chosenKey is not null
+                    && int.TryParse(chosenKey, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var idx)
+                    && idx >= 0 && idx < results.Count)
+                {
+                    return JsonSerializer.Serialize(new
+                    {
+                        count = 1,
+                        symbols = new[] { results[idx] },
+                        chosenViaElicitation = true,
+                    }, JsonDefaults.Indented);
+                }
+            }
+
             return JsonSerializer.Serialize(new { count = results.Count, symbols = results }, JsonDefaults.Indented);
         }, ct);
     }
@@ -79,6 +122,8 @@ public static class SymbolTools
     [McpToolMetadata("symbols", "stable", true, false,
         "Navigate to the symbol definition.")]
     public static Task<string> GoToDefinition(
+        McpServer server,
+        IWorkspaceManager workspaceManager,
         IWorkspaceExecutionGate gate,
         ISymbolNavigationService symbolNavigationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -92,6 +137,19 @@ public static class SymbolTools
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+
+            // elicit-disambiguation-on-multi-symbol-resolve: see find_references for rationale.
+            var disambiguation = await TryDisambiguateMetadataNameAsync(
+                server, workspaceManager, workspaceId, locator, "go_to_definition", c).ConfigureAwait(false);
+            if (disambiguation.ListEnvelope is not null)
+            {
+                return disambiguation.ListEnvelope;
+            }
+            if (disambiguation.ChosenLocator is not null)
+            {
+                locator = disambiguation.ChosenLocator;
+            }
+
             var results = await symbolNavigationService.GoToDefinitionAsync(workspaceId, locator, c);
             if (results.Count == 0) throw new KeyNotFoundException("No definition found for the symbol at the specified location");
             return JsonSerializer.Serialize(new { count = results.Count, locations = results }, JsonDefaults.Indented);
@@ -102,6 +160,8 @@ public static class SymbolTools
     [McpToolMetadata("symbols", "stable", true, false,
         "Find references to a symbol. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated).")]
     public static Task<string> FindReferences(
+        McpServer server,
+        IWorkspaceManager workspaceManager,
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -120,6 +180,24 @@ public static class SymbolTools
         {
             ParameterValidation.ValidatePagination(offset, limit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+
+            // elicit-disambiguation-on-multi-symbol-resolve: when locator.HasMetadataName and the
+            // name resolves to multiple candidates (overloads, partial classes, member-vs-type
+            // collisions), try elicitation first; if accepted, swap the locator for the chosen
+            // symbol's stable handle and continue. If unsupported / declined, return the
+            // disambiguation list response (additive). Position-based locators already pin a
+            // single symbol, so this branch is metadata-name-only.
+            var disambiguation = await TryDisambiguateMetadataNameAsync(
+                server, workspaceManager, workspaceId, locator, "find_references", c).ConfigureAwait(false);
+            if (disambiguation.ListEnvelope is not null)
+            {
+                return disambiguation.ListEnvelope;
+            }
+            if (disambiguation.ChosenLocator is not null)
+            {
+                locator = disambiguation.ChosenLocator;
+            }
+
             var filterSet = ParseProjectFilter(projectFilter);
             var results = await referenceService.FindReferencesAsync(workspaceId, locator, c, summary, filterSet);
             var paged = results.Skip(offset).Take(limit).ToList();
@@ -589,6 +667,119 @@ public static class SymbolTools
         var entries = projectFilter
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return entries.Length == 0 ? null : entries;
+    }
+
+    /// <summary>
+    /// elicit-disambiguation-on-multi-symbol-resolve: outcome of the disambiguation gate.
+    /// At most one of <see cref="ChosenLocator"/> / <see cref="ListEnvelope"/> is non-null;
+    /// both null means "no disambiguation needed — caller proceeds with the original locator".
+    /// </summary>
+    /// <param name="ChosenLocator">A new <see cref="SymbolLocator"/> bound to the chosen candidate's stable handle, when the user accepted an elicitation prompt.</param>
+    /// <param name="ListEnvelope">A pre-serialized JSON envelope listing the candidates, when elicitation is unavailable / declined and the caller should short-circuit.</param>
+    internal readonly record struct DisambiguationOutcome(
+        SymbolLocator? ChosenLocator,
+        string? ListEnvelope);
+
+    /// <summary>
+    /// elicit-disambiguation-on-multi-symbol-resolve: when <paramref name="locator"/> is a
+    /// metadata-name locator that resolves to multiple symbols (overloads, partial-class
+    /// siblings, member-vs-type collisions), try MCP elicitation. Returns:
+    /// <list type="bullet">
+    ///   <item><b>ChosenLocator</b> set: the user picked one — caller swaps the locator and continues.</item>
+    ///   <item><b>ListEnvelope</b> set: client lacks elicitation OR user declined — caller returns the additive disambiguation-list JSON.</item>
+    ///   <item>both null: no ambiguity (zero or one candidate) — caller proceeds with the original locator.</item>
+    /// </list>
+    /// Position-based and handle-based locators are not disambiguated here — they already pin one symbol.
+    /// </summary>
+    internal static async Task<DisambiguationOutcome> TryDisambiguateMetadataNameAsync(
+        McpServer? server,
+        IWorkspaceManager workspaceManager,
+        string workspaceId,
+        SymbolLocator locator,
+        string toolName,
+        CancellationToken ct)
+    {
+        if (!locator.HasMetadataName || string.IsNullOrEmpty(locator.MetadataName))
+        {
+            return default;
+        }
+
+        var solution = workspaceManager.GetCurrentSolution(workspaceId);
+        var candidates = await SymbolHandleSerializer
+            .FindAllByMetadataNameAsync(solution, locator.MetadataName, ct)
+            .ConfigureAwait(false);
+
+        if (candidates.Count <= 1)
+        {
+            // 0 → caller will surface NotFound from the underlying service.
+            // 1 → unambiguous, no elicitation needed.
+            return default;
+        }
+
+        // Build candidate display payloads ONCE — reused for the elicit prompt and the
+        // fallback list response so the labels the user sees are byte-identical to the
+        // labels a non-elicit client would receive.
+        var labels = new List<string>(candidates.Count);
+        var handles = new List<string>(candidates.Count);
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            labels.Add(SymbolHandleSerializer.BuildDisplayLabel(candidates[i]));
+            handles.Add(SymbolHandleSerializer.CreateHandle(candidates[i]));
+        }
+
+        // Try elicitation first.
+        if (StructuredCallToolFilter.HasElicitation(server?.ClientCapabilities))
+        {
+            var options = new List<(string Key, string Label)>(candidates.Count);
+            for (var i = 0; i < candidates.Count; i++)
+            {
+                options.Add((i.ToString(System.Globalization.CultureInfo.InvariantCulture), labels[i]));
+            }
+
+            var chosenKey = await StructuredCallToolFilter.TryElicitChoiceAsync(
+                server,
+                paramName: "choice",
+                title: "Pick a symbol",
+                description:
+                    $"{toolName}: '{locator.MetadataName}' resolves to {candidates.Count} candidates " +
+                    "(overloads, partial classes, or inherited members). Pick which one to use.",
+                options,
+                ct).ConfigureAwait(false);
+
+            if (chosenKey is not null
+                && int.TryParse(chosenKey, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var idx)
+                && idx >= 0 && idx < candidates.Count)
+            {
+                var chosenLocator = SymbolLocatorFactory.Create(
+                    filePath: null, line: null, column: null,
+                    symbolHandle: handles[idx], metadataName: null);
+                return new DisambiguationOutcome(chosenLocator, null);
+            }
+            // user declined / cancelled / SDK error → fall through to the additive list shape.
+        }
+
+        // Fallback list envelope (byte-identical regardless of whether elicitation was tried).
+        var entries = new List<object>(candidates.Count);
+        for (var i = 0; i < candidates.Count; i++)
+        {
+            entries.Add(new
+            {
+                label = labels[i],
+                symbolHandle = handles[i],
+                kind = candidates[i].Kind.ToString(),
+            });
+        }
+
+        var envelope = JsonSerializer.Serialize(new
+        {
+            ambiguous = true,
+            metadataName = locator.MetadataName,
+            count = candidates.Count,
+            candidates = entries,
+            note = "Metadata name resolved to multiple symbols. Re-call this tool with the chosen 'symbolHandle'.",
+        }, JsonDefaults.Indented);
+
+        return new DisambiguationOutcome(null, envelope);
     }
 
 }
