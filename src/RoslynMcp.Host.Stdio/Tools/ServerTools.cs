@@ -93,7 +93,8 @@ public static class ServerTools
 
     [McpServerTool(Name = "server_info", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("server", "stable", true, false,
-        "Inspect server capabilities, versions, and support tiers."),
+        "Inspect server capabilities, versions, and support tiers.",
+        outputSchemaTypeRef: typeof(ServerInfoDto)),
      Description("Get server version, capabilities, runtime information, and loaded workspace count. workspaceCount reflects sessions at call time and may briefly lag if invoked in parallel with or immediately after workspace_load; use workspace_list for authoritative session enumeration. Prompts tier note: the response carries prompts.stable and prompts.experimental from the live catalog; all currently-exposed prompts are experimental until promoted, so stable=0 with a nonzero experimental count is expected — it is NOT a missing-surface bug. Connection readiness: the response includes a `connection` subfield with state=idle|ready|degraded, loadedWorkspaceCount, stdioPid, and serverStartedAt — use this (or the lighter `server_heartbeat` tool) to distinguish transport-reachable from workspace-loaded before calling workspace-scoped tools. State machine: `idle` = transport up but no workspace loaded (terminal pre-load state; server does NOT auto-advance — call `workspace_load` to transition to `ready`). `ready` = at least one workspace loaded; workspace-scoped tools will resolve. `degraded` = reserved for future use (not emitted today). Prompts that previously gated on `state==ready` to mean 'server responsive' should gate on `state in {idle, ready}`; prompts that genuinely require a loaded workspace should continue to gate on `state==ready`.")]
     public static Task<string> GetServerInfo(
         IWorkspaceManager workspace,
@@ -116,41 +117,28 @@ public static class ServerTools
                               && Version.TryParse(latestVersion, out var latestParsed)
                               && latestParsed > currentParsed;
 
-        var info = new
-        {
-            server = "roslyn-mcp",
-            version,
-            productShape = "local-first",
-            runtime = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
-            os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
-            roslynVersion = typeof(Microsoft.CodeAnalysis.SyntaxNode).Assembly.GetName().Version?.ToString() ?? "unknown",
-            workspaceCount = wsCount,
-            workspaceCountHint = wsCount == 0
+        var registeredSnapshot = SurfaceRegistrationSnapshot.Value;
+        var info = new ServerInfoDto(
+            Server: "roslyn-mcp",
+            Version: version,
+            ProductShape: "local-first",
+            Runtime: System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription,
+            Os: System.Runtime.InteropServices.RuntimeInformation.OSDescription,
+            RoslynVersion: typeof(Microsoft.CodeAnalysis.SyntaxNode).Assembly.GetName().Version?.ToString() ?? "unknown",
+            WorkspaceCount: wsCount,
+            WorkspaceCountHint: wsCount == 0
                 ? "If you just called workspace_load, workspaceCount may still be 0 briefly; call workspace_list for authoritative session ids."
                 : null,
             // mcp-connection-session-resilience: explicit connection readiness so consumers
             // can distinguish transport-up from workspace-loaded without guessing via
             // workspaceCount. Same shape as `server_heartbeat` but carried inline on
             // server_info so existing pollers get it without a second round-trip.
-            connection = BuildConnection(workspace),
-            catalogVersion = ServerSurfaceCatalog.CatalogVersion,
-            surface = new
-            {
-                tools = new
-                {
-                    stable = catalogSummary.StableTools,
-                    experimental = catalogSummary.ExperimentalTools
-                },
-                resources = new
-                {
-                    stable = catalogSummary.StableResources,
-                    experimental = catalogSummary.ExperimentalResources
-                },
-                prompts = new
-                {
-                    stable = catalogSummary.StablePrompts,
-                    experimental = catalogSummary.ExperimentalPrompts
-                },
+            Connection: BuildConnection(workspace),
+            CatalogVersion: ServerSurfaceCatalog.CatalogVersion,
+            Surface: new ServerSurfaceCountsDto(
+                Tools: new SurfaceTierCountsDto(catalogSummary.StableTools, catalogSummary.ExperimentalTools),
+                Resources: new SurfaceTierCountsDto(catalogSummary.StableResources, catalogSummary.ExperimentalResources),
+                Prompts: new SurfaceTierCountsDto(catalogSummary.StablePrompts, catalogSummary.ExperimentalPrompts),
                 // concurrent-mcp-instances-no-tools: runtime-observed counts captured at
                 // host.Build() from McpServer.ServerOptions.{Tool,Resource,Prompt}Collection.
                 // A client that sees `surface.tools.registered == 0` here has reached a
@@ -158,42 +146,29 @@ public static class ServerTools
                 // an unambiguous server-side failure distinct from catalog drift. Null
                 // when the snapshot was not populated (unit-test paths that construct
                 // ServerTools directly without booting the host).
-                registered = SurfaceRegistrationSnapshot.Value is { } snapshot ? new
-                {
-                    tools = snapshot.ToolsRegistered,
-                    resources = snapshot.ResourcesRegistered,
-                    prompts = snapshot.PromptsRegistered,
-                    parityOk = snapshot.AllParityOk
-                } : null
-            },
-            productBoundaries = new[]
-            {
+                Registered: registeredSnapshot is null ? null : new SurfaceRegisteredCountsDto(
+                    Tools: registeredSnapshot.ToolsRegistered,
+                    Resources: registeredSnapshot.ResourcesRegistered,
+                    Prompts: registeredSnapshot.PromptsRegistered,
+                    ParityOk: registeredSnapshot.AllParityOk)),
+            ProductBoundaries:
+            [
                 "Stable support targets the local stdio host on a developer workstation.",
                 "Workspace state comes from on-disk MSBuildWorkspace snapshots rather than unsaved editor buffers.",
                 "Remote HTTP/SSE hosting is not part of the current stable release contract."
-            },
-            capabilities = new
-            {
-                tools = true,
-                resources = true,
-                prompts = true,
-                logging = true,
-                progress = true
-            },
+            ],
+            Capabilities: new ServerCapabilitiesDto(Tools: true, Resources: true, Prompts: true, Logging: true, Progress: true),
             // server-info-update-latest-inverted: only emit `latest` when the registry
             // reports a STRICTLY GREATER version than the running build. Pre-fix the
             // field surfaced any cached registry value (Jellyfin 2026-04-16: latest=1.16.0
             // while current=1.18.2 — the cached value was older). The new contract: if
             // `latest` is present, it is genuinely newer than `current`. updateAvailable
             // remains for callers that prefer the boolean.
-            update = latestVersion is not null ? new
-            {
-                current = currentSemver,
-                latest = updateAvailable ? latestVersion : null,
-                updateAvailable,
-                command = updateAvailable ? "dotnet tool update -g Darylmcd.RoslynMcp" : (string?)null
-            } : null
-        };
+            Update: latestVersion is null ? null : new ServerUpdateInfoDto(
+                Current: currentSemver,
+                Latest: updateAvailable ? latestVersion : null,
+                UpdateAvailable: updateAvailable,
+                Command: updateAvailable ? "dotnet tool update -g Darylmcd.RoslynMcp" : null));
 
         return Task.FromResult(JsonSerializer.Serialize(info, JsonDefaults.Indented));
     }
@@ -207,11 +182,12 @@ public static class ServerTools
     /// </summary>
     [McpServerTool(Name = "server_heartbeat", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("server", "stable", true, false,
-        "Lightweight connection readiness probe — returns state/loadedWorkspaceCount/stdioPid/serverStartedAt without the full server_info payload."),
+        "Lightweight connection readiness probe — returns state/loadedWorkspaceCount/stdioPid/serverStartedAt without the full server_info payload.",
+        outputSchemaTypeRef: typeof(ServerHeartbeatDto)),
      Description("Return the connection readiness block only — state=idle|ready|degraded, loadedWorkspaceCount, stdioPid, and serverStartedAt. Cheaper than server_info (no version, catalog, or update metadata). State machine: `idle` = transport up but no workspace loaded (terminal pre-load state; server does NOT auto-advance — call `workspace_load` to transition to `ready`). `ready` = at least one workspace loaded; workspace-scoped tools will resolve. `degraded` = reserved for future use (not emitted today). Use this to poll for 'at least one workspace loaded' before calling workspace-scoped tools; do NOT poll waiting for `idle` to transition off its own — a `workspace_load` call is required.")]
     public static Task<string> GetServerHeartbeat(IWorkspaceManager workspace)
     {
-        var payload = new { connection = BuildConnection(workspace) };
+        var payload = new ServerHeartbeatDto(BuildConnection(workspace));
         return Task.FromResult(JsonSerializer.Serialize(payload, JsonDefaults.Indented));
     }
 }
