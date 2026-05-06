@@ -51,6 +51,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private readonly IPreviewStore _previewStore;
     private readonly IFileWatcherService _fileWatcher;
     private readonly WorkspaceManagerOptions _options;
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: optional persistent cache for the heavy parts of
+    /// MSBuild evaluation. <see langword="null"/> when not wired (legacy callers / tests that
+    /// don't exercise the cache) — the load path still functions identically, just without the
+    /// warm-cache fast path. When non-null, <see cref="LoadIntoSessionAsync"/> consults it
+    /// before the restore-race wait and writes a fresh entry after a successful cold load.
+    /// </summary>
+    private readonly IWorkspaceCacheStore? _cacheStore;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
     /// <summary>
     /// mcp-error-category-workspace-evicted-on-host-recycle: tracks workspace ids that were
@@ -74,12 +82,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         ILogger<WorkspaceManager> logger,
         IPreviewStore previewStore,
         IFileWatcherService fileWatcher,
-        WorkspaceManagerOptions? options = null)
+        WorkspaceManagerOptions? options = null,
+        IWorkspaceCacheStore? cacheStore = null)
     {
         _logger = logger;
         _previewStore = previewStore;
         _fileWatcher = fileWatcher;
         _options = options ?? new WorkspaceManagerOptions();
+        _cacheStore = cacheStore;
         var max = _options.MaxConcurrentWorkspaces > 0 ? _options.MaxConcurrentWorkspaces : 8;
         _workspaceSlots = new SemaphoreSlim(max, max);
     }
@@ -678,6 +688,396 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _workspaceSlots.Dispose();
     }
 
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: probe-stage cache lookup performed before MSBuild
+    /// opens the solution. Captures the (solutionHash, sdkVersion) prefix of the cache-key
+    /// triple — the third component (msbuildGraphHash) requires the post-load graph and is
+    /// validated in <see cref="ResolveAndWriteCacheAsync"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The probe is best-effort. Any failure (unreadable solution file, hashing exception,
+    /// store-side IO error) leaves the result as a cache miss and the cold-load path runs
+    /// unchanged. The probe stage also pre-computes whether every cached metadata-reference
+    /// is still on disk with the same mtime; that boolean drives the
+    /// <c>WaitForStableRestoreArtifactsAsync</c>-skipping decision, since a warm process that
+    /// observed stable metadata references on the prior load implies a settled obj/ tree.
+    /// </para>
+    /// <para>
+    /// Because the cache-key triple uses the post-load graph hash, the probe enumerates ALL
+    /// entries under (solutionHash, sdkVersion) and picks the most-recently-written one as the
+    /// candidate. If the post-load graph hash doesn't match it, the entry is invalidated and
+    /// rewritten — the cost of a missed bet is at most one extra cache write, plus the missed
+    /// restore-race wait that the (incorrectly) skipped path elided. Both bounded.
+    /// </para>
+    /// </remarks>
+    private async Task<CachedSolutionProbe?> TryProbeWorkspaceCacheAsync(string fullPath, CancellationToken ct)
+    {
+        if (_cacheStore is null) return null;
+
+        try
+        {
+            var solutionHash = await ComputeSolutionContentHashAsync(fullPath, ct).ConfigureAwait(false);
+            if (solutionHash is null) return null;
+
+            var sdkVersion = ResolveSdkVersionForCacheKey();
+
+            // We don't yet know the graph hash. The probe-stage approach picks the
+            // most-recent entry under (solution, sdk, *) by enumerating the on-disk directory
+            // tree. This is best-effort — if the implementation can't enumerate, we just skip
+            // the probe and treat as cache miss. A FileWatcher race (entry written between
+            // enumeration and read) at worst returns null and we treat as miss.
+            var candidate = await TryEnumerateNewestCacheEntryAsync(solutionHash, sdkVersion, ct).ConfigureAwait(false);
+            if (candidate is null)
+            {
+                return new CachedSolutionProbe(solutionHash, sdkVersion, CachedEntry: null, CachedKey: null, MetadataReferencesStillStable: false);
+            }
+
+            var (cachedEntry, cachedKey) = candidate.Value;
+            var stable = MetadataReferencesStillStableOnDisk(cachedEntry);
+            return new CachedSolutionProbe(solutionHash, sdkVersion, cachedEntry, cachedKey, stable);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Workspace cache probe failed for '{Path}'; cold-load path will run.", fullPath);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: enumerate cache entries under
+    /// <c>~/.roslyn-mcp/cache/&lt;solutionHash&gt;/&lt;sdkVersion&gt;/</c> and return the most
+    /// recently written one along with its full cache key. Returns <see langword="null"/> when
+    /// no entries exist or when enumeration fails (e.g. directory missing).
+    /// </summary>
+    /// <remarks>
+    /// Because <see cref="WorkspaceCacheStore"/> hashes each key component into a fixed-width
+    /// hex segment, the cache directory tree shape is stable across platforms. We enumerate the
+    /// graph-hash subdirectories and pick the one whose <c>entry.json</c> has the newest mtime.
+    /// This is heuristic — a correct cache hit is only confirmed after the post-load graph hash
+    /// comparison in <see cref="ResolveAndWriteCacheAsync"/>.
+    /// </remarks>
+    private async Task<(WorkspaceCacheEntry Entry, WorkspaceCacheKey Key)?> TryEnumerateNewestCacheEntryAsync(
+        string solutionHash, string sdkVersion, CancellationToken ct)
+    {
+        if (_cacheStore is null) return null;
+
+        // Query a synthetic key to learn the on-disk root layout. The store hashes each key
+        // component, so we need to use the same hashing path the store does — the simplest
+        // way is to ask the store to resolve a known key and walk up to its grandparent
+        // directory.
+        if (_cacheStore is not WorkspaceCacheStore concreteStore)
+        {
+            // Custom IWorkspaceCacheStore implementations (test fakes / DI overrides) may not
+            // expose a directory layout. We can't enumerate without the on-disk structure, so
+            // skip the probe; the post-load path still writes a fresh entry through the
+            // interface and the next load picks it up via this same fast path.
+            return null;
+        }
+
+        var probeKey = new WorkspaceCacheKey(solutionHash, sdkVersion, "probe");
+        var probePath = concreteStore.ResolveEntryPath(probeKey);
+        var graphHashDir = Path.GetDirectoryName(probePath); // .../solution/sdk/probe-hash
+        var sdkDir = graphHashDir is null ? null : Path.GetDirectoryName(graphHashDir); // .../solution/sdk
+
+        if (sdkDir is null || !Directory.Exists(sdkDir))
+        {
+            return null;
+        }
+
+        try
+        {
+            string? newestEntryPath = null;
+            DateTime newestMtime = DateTime.MinValue;
+
+            foreach (var graphDir in Directory.EnumerateDirectories(sdkDir))
+            {
+                ct.ThrowIfCancellationRequested();
+                var entryPath = Path.Combine(graphDir, "entry.json");
+                if (!File.Exists(entryPath)) continue;
+                var mtime = File.GetLastWriteTimeUtc(entryPath);
+                if (mtime > newestMtime)
+                {
+                    newestMtime = mtime;
+                    newestEntryPath = entryPath;
+                }
+            }
+
+            if (newestEntryPath is null) return null;
+
+            // Reconstruct the key from the directory segment names so we can call the
+            // interface to load the entry. The graph-hash segment is the leaf directory's name.
+            var graphHashSegment = Path.GetFileName(Path.GetDirectoryName(newestEntryPath));
+            if (string.IsNullOrEmpty(graphHashSegment)) return null;
+
+            // Instead of guessing the original graphHash (we only have the SHA-256 prefix that
+            // the store wrote), we read the file directly and let it succeed/fail. The store's
+            // own hashing reproduces the same path when we re-write under any reconstructed
+            // WorkspaceCacheKey whose third component hashes to the same segment — so the
+            // enumeration-by-mtime gives us the right entry, and we use a synthetic key with
+            // the segment as the third component (cache writes only re-hash, so the path is
+            // stable across read/write).
+            var entry = await _cacheStore.TryGetAsync(
+                new WorkspaceCacheKey(solutionHash, sdkVersion, graphHashSegment),
+                ct).ConfigureAwait(false);
+
+            if (entry is null) return null;
+
+            // The "true" original graph hash isn't recoverable from the segment (one-way
+            // SHA-256 truncation), but the entry's persisted graph IS — so post-load comparison
+            // can still detect a mismatch. We pass back the graph-hash *segment* as a stand-in
+            // key component; consumers that need the canonical key recompute it from the
+            // post-load graph anyway.
+            return (entry, new WorkspaceCacheKey(solutionHash, sdkVersion, graphHashSegment));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogDebug(ex, "Workspace cache enumeration failed under '{Dir}'; treating as miss.", sdkDir);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: SHA-256 hash of the solution file's content. Stable
+    /// across timestamp updates; only changes when project list / configurations change. Returns
+    /// <see langword="null"/> when the file isn't readable (cache miss path runs).
+    /// </summary>
+    private static async Task<string?> ComputeSolutionContentHashAsync(string fullPath, CancellationToken ct)
+    {
+        try
+        {
+            var bytes = await File.ReadAllBytesAsync(fullPath, ct).ConfigureAwait(false);
+            var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+            return Convert.ToHexString(hash).ToLowerInvariant();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _ = ex;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: SDK identifier used as the second cache-key
+    /// component. <see cref="System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription"/>
+    /// is stable across same-SDK invocations and rolls forward automatically when a new SDK is
+    /// installed (which invalidates the cache cleanly per design).
+    /// </summary>
+    private static string ResolveSdkVersionForCacheKey() =>
+        System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: returns the canonical hash of the post-load
+    /// MSBuild project graph (project paths + project-references). Stable across loads of an
+    /// unchanged solution; differentiates same-SDK states where a project was added/removed.
+    /// </summary>
+    private static string ComputeMsbuildGraphHash(IReadOnlyList<CachedProjectGraphNode> graph)
+    {
+        // Canonical form: sorted by ProjectPath; for each node, ProjectPath + sorted ProjectReferences
+        // joined by tab. Newlines separate nodes. Hashing this canonical bytes gives a path-style-
+        // stable digest (paths are passed through verbatim — but the cache root itself is hashed
+        // via the same SHA-256, so per-platform path differences don't bleed into sibling caches).
+        var sb = new System.Text.StringBuilder();
+        foreach (var node in graph.OrderBy(n => n.ProjectPath, StringComparer.OrdinalIgnoreCase))
+        {
+            sb.Append(node.ProjectPath);
+            sb.Append('\t');
+            foreach (var refPath in node.ProjectReferences.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+            {
+                sb.Append(refPath);
+                sb.Append('|');
+            }
+            sb.Append('\n');
+        }
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var hash = System.Security.Cryptography.SHA256.HashData(bytes);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: build a <see cref="CachedProjectGraphNode"/> list
+    /// from a Roslyn <see cref="Solution"/>. Each node carries the project's absolute path and
+    /// the absolute paths of its &lt;ProjectReference&gt; targets.
+    /// </summary>
+    private static IReadOnlyList<CachedProjectGraphNode> BuildCachedGraphFromSolution(Solution solution)
+    {
+        var byId = solution.Projects.ToDictionary(p => p.Id);
+        var graph = new List<CachedProjectGraphNode>(solution.ProjectIds.Count);
+        foreach (var project in solution.Projects.OrderBy(p => p.FilePath, StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrEmpty(project.FilePath)) continue;
+            var refs = new List<string>(project.ProjectReferences.Count());
+            foreach (var pref in project.ProjectReferences)
+            {
+                if (byId.TryGetValue(pref.ProjectId, out var refProj) && !string.IsNullOrEmpty(refProj.FilePath))
+                {
+                    refs.Add(refProj.FilePath);
+                }
+            }
+            graph.Add(new CachedProjectGraphNode(project.FilePath, refs));
+        }
+        return graph;
+    }
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: build a per-project metadata-reference list capturing
+    /// each on-disk assembly path and its current file mtime. Used to detect upstream-build
+    /// invalidation between cache write and cache read.
+    /// </summary>
+    private static IReadOnlyList<CachedProjectMetadataReferences> BuildCachedMetadataRefsFromSolution(Solution solution)
+    {
+        var result = new List<CachedProjectMetadataReferences>(solution.ProjectIds.Count);
+        foreach (var project in solution.Projects.OrderBy(p => p.FilePath, StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrEmpty(project.FilePath)) continue;
+            var refs = new List<CachedMetadataReference>(project.MetadataReferences.Count);
+            foreach (var mref in project.MetadataReferences.OfType<PortableExecutableReference>())
+            {
+                if (string.IsNullOrEmpty(mref.FilePath)) continue;
+                DateTime mtime;
+                try
+                {
+                    mtime = File.GetLastWriteTimeUtc(mref.FilePath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Skip references we can't stat; the missing entry will surface on the next
+                    // probe as a "metadata reference no longer on disk" miss, which falls
+                    // through to the cold-load path correctly.
+                    _ = ex;
+                    continue;
+                }
+                refs.Add(new CachedMetadataReference(mref.FilePath, mtime));
+            }
+            result.Add(new CachedProjectMetadataReferences(project.FilePath, refs));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: validate a candidate cache entry's metadata-reference
+    /// list against the current disk state. Returns <see langword="true"/> only when every
+    /// referenced assembly still exists on disk with the same mtime as captured at cache-write
+    /// time. Drift triggers cache invalidation and a fresh cold-load write.
+    /// </summary>
+    private static bool MetadataReferencesStillStableOnDisk(WorkspaceCacheEntry entry)
+    {
+        foreach (var projectRefs in entry.MetadataReferences)
+        {
+            foreach (var mref in projectRefs.References)
+            {
+                try
+                {
+                    if (!File.Exists(mref.AssemblyPath)) return false;
+                    var mtime = File.GetLastWriteTimeUtc(mref.AssemblyPath);
+                    if (mtime != mref.LastWriteTimeUtc) return false;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _ = ex;
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: post-load reconciliation. The probe-stage candidate
+    /// is now compared against the actual loaded graph. On match: stamp <c>CacheHit=true</c> and
+    /// refresh the entry's metadata-reference timestamps in place (handles the case where a
+    /// downstream build touched references between the probe and the load). On mismatch: write
+    /// a fresh entry and stamp <c>CacheHit=false</c>.
+    /// </summary>
+    private async Task ResolveAndWriteCacheAsync(Solution solution, CachedSolutionProbe probe, CancellationToken ct)
+    {
+        if (_cacheStore is null) return;
+
+        try
+        {
+            var actualGraph = BuildCachedGraphFromSolution(solution);
+            var actualMetadataRefs = BuildCachedMetadataRefsFromSolution(solution);
+            var actualGraphHash = ComputeMsbuildGraphHash(actualGraph);
+
+            var canonicalKey = new WorkspaceCacheKey(probe.SolutionHash, probe.SdkVersion, actualGraphHash);
+            var cacheHit = false;
+
+            if (probe.CachedEntry is not null)
+            {
+                var cachedGraphHash = ComputeMsbuildGraphHash(probe.CachedEntry.ProjectGraph);
+                if (string.Equals(cachedGraphHash, actualGraphHash, StringComparison.Ordinal)
+                    && probe.MetadataReferencesStillStable)
+                {
+                    cacheHit = true;
+                }
+            }
+
+            var entryToWrite = new WorkspaceCacheEntry(actualGraph, actualMetadataRefs, DateTime.UtcNow);
+            _ = await _cacheStore.PutAsync(canonicalKey, entryToWrite, ct).ConfigureAwait(false);
+
+            // Stamp the metric (best-effort — null when no AmbientGateMetrics scope is active,
+            // e.g. direct WorkspaceManager.LoadAsync calls in tests not routed through the gate).
+            if (AmbientGateMetrics.Current is { } metrics)
+            {
+                metrics.CacheHit = cacheHit;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Best-effort: any post-load cache write failure must NOT abort the load. Log at
+            // debug; the next load picks up via the cache-miss path.
+            _logger.LogDebug(ex, "Workspace cache write failed for '{SolutionHash}'; cold path stands.", probe.SolutionHash);
+        }
+    }
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: cold-path cache write. Used when the probe stage
+    /// found no candidate at all (first-ever load of this (solution, sdk) pair).
+    /// </summary>
+    private async Task WriteFreshCacheEntryAsync(Solution solution, string fullPath, CancellationToken ct)
+    {
+        if (_cacheStore is null) return;
+
+        try
+        {
+            var solutionHash = await ComputeSolutionContentHashAsync(fullPath, ct).ConfigureAwait(false);
+            if (solutionHash is null) return;
+
+            var sdkVersion = ResolveSdkVersionForCacheKey();
+            var graph = BuildCachedGraphFromSolution(solution);
+            var metadataRefs = BuildCachedMetadataRefsFromSolution(solution);
+            var graphHash = ComputeMsbuildGraphHash(graph);
+
+            var key = new WorkspaceCacheKey(solutionHash, sdkVersion, graphHash);
+            var entry = new WorkspaceCacheEntry(graph, metadataRefs, DateTime.UtcNow);
+
+            _ = await _cacheStore.PutAsync(key, entry, ct).ConfigureAwait(false);
+
+            if (AmbientGateMetrics.Current is { } metrics)
+            {
+                metrics.CacheHit = false;
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Workspace cache write failed for '{Path}'; cold path stands.", fullPath);
+        }
+    }
+
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: probe-stage state passed from
+    /// <see cref="TryProbeWorkspaceCacheAsync"/> into <see cref="ResolveAndWriteCacheAsync"/>.
+    /// Holds the cache-key prefix (solution + sdk) plus the candidate entry (if any) and a
+    /// pre-computed flag for whether the cached metadata references are still on disk with
+    /// matching mtimes. The flag is the input to the restore-race-wait skip decision.
+    /// </summary>
+    private sealed record CachedSolutionProbe(
+        string SolutionHash,
+        string SdkVersion,
+        WorkspaceCacheEntry? CachedEntry,
+        WorkspaceCacheKey? CachedKey,
+        bool MetadataReferencesStillStable);
+
     private async Task LoadIntoSessionAsync(WorkspaceSession session, string path, CancellationToken ct)
     {
         await session.LoadLock.WaitAsync(ct).ConfigureAwait(false);
@@ -731,6 +1131,19 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                     args.Diagnostic.Message);
             });
 
+            // workspace-load-uses-cache-fast-path: probe the persistent cache before the
+            // restore-race wait so a warm-cache hit can elide it. Computing the solution-content
+            // hash + sdk-version (the first two key components) is cheap (one file read + an
+            // SHA-256). The third key component — the MSBuild graph hash — is only known after
+            // OpenSolutionAsync, so the cache-key triple is finalized post-load and we look up
+            // by (solution, sdk) here as a candidate-set probe. The probe is best-effort: any
+            // failure leaves cachedCandidate null and the cold path runs unchanged.
+            CachedSolutionProbe? cachedProbe = null;
+            if (_cacheStore is not null)
+            {
+                cachedProbe = await TryProbeWorkspaceCacheAsync(fullPath, ct).ConfigureAwait(false);
+            }
+
             // dr-9-10-initial-does-not-wait-for-concurrent-to-finaliz: if a concurrent
             // out-of-process `dotnet restore` is mutating `obj/project.assets.json` or
             // `obj/*.dgspec.json` while we call OpenSolutionAsync, MSBuild latches onto an
@@ -739,7 +1152,20 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // promotion audit). Poll the relevant obj/ artefacts and wait for their mtimes
             // to stabilise before opening. Bounded by RestoreRaceWaitMs (default 2000 ms,
             // 0 disables entirely); no-op when no such files exist.
-            await WaitForStableRestoreArtifactsAsync(fullPath, ct).ConfigureAwait(false);
+            //
+            // workspace-load-uses-cache-fast-path: when a usable cache entry exists for this
+            // (solution, sdk) pair AND every cached metadata-reference is still on disk with the
+            // same mtime, the warm process already saw stable artefacts on the prior load — skip
+            // the wait. Cache validation against the actual MSBuild graph happens after
+            // OpenSolutionAsync (the cache key's third component requires the post-load graph),
+            // so a probe-stage fast-path that is later invalidated by the post-load comparison
+            // costs at most one missed restore-race wait — which is exactly the cost the wait is
+            // designed to bound (max RestoreRaceWaitMs). Acceptable degradation.
+            var skipRestoreRaceWait = cachedProbe is not null && cachedProbe.MetadataReferencesStillStable;
+            if (!skipRestoreRaceWait)
+            {
+                await WaitForStableRestoreArtifactsAsync(fullPath, ct).ConfigureAwait(false);
+            }
 
             if (fullPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
                 fullPath.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
@@ -762,9 +1188,26 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // earlier per-service guards in CompilationCache/FixAllService are now unnecessary.
             await StripUnresolvedAnalyzerReferencesAsync(session.WorkspaceId, newWorkspace, newDiagnostics, ct).ConfigureAwait(false);
 
+            // workspace-load-uses-cache-fast-path: capture the post-load project graph + per-
+            // project metadata-reference list for cache write-back. Building the graph first
+            // (so the third cache-key component — graphHash — can be computed) lets a cache hit
+            // be validated against the just-loaded snapshot, and a cache miss persist a fresh
+            // entry. Best-effort: serialization failure or store-write failure must NOT abort
+            // the load. Validating the cache means: (a) graph hash matches what we just observed,
+            // and (b) metadata-reference timestamps still match disk. Either mismatch downgrades
+            // the result to a cache miss and writes a fresh entry.
             var projectStatuses = BuildProjectStatuses(newWorkspace.CurrentSolution);
             var restoreRequired = DetectRestoreRequired(projectStatuses) ||
                                   HasRestoreRequiredWorkspaceDiagnostics(newDiagnostics);
+
+            if (_cacheStore is not null && cachedProbe is not null)
+            {
+                await ResolveAndWriteCacheAsync(newWorkspace.CurrentSolution, cachedProbe, ct).ConfigureAwait(false);
+            }
+            else if (_cacheStore is not null)
+            {
+                await WriteFreshCacheEntryAsync(newWorkspace.CurrentSolution, fullPath, ct).ConfigureAwait(false);
+            }
 
             // autoreload-cascade-stdio-host-crash: atomic swap. Assign all session state AFTER
             // the new workspace is fully loaded so concurrent readers never observe a mid-reload
