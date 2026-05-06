@@ -54,7 +54,7 @@
     {
       "id": "test-discovery-service-complexity-refactor",
       "order": 2,
-      "status": "pending",
+      "status": "in-review",
       "priority": "Medium",
       "backlogRowsClosed": ["test-discovery-service-complexity-refactor"],
       "rowsClosedCount": 1,
@@ -65,11 +65,11 @@
       "scheduleHint": null,
       "touchesHotspot": true,
       "hotspotFiles": ["src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs"],
-      "branch": null,
+      "branch": "remediation/test-discovery-service-complexity-refactor",
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/535",
       "mergedAt": null,
-      "notes": "Structural extraction only; preserve ordering and cancellation behavior."
+      "notes": "PR #535 opened. Structural extraction only; preserve ordering and cancellation behavior."
     },
     {
       "id": "scaffold-test-preview-sampled-test-names",
