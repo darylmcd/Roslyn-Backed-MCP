@@ -37,7 +37,7 @@ This follow-on plan consumes the three remaining actionable Medium backlog rows 
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | in-review (PR #535, 2026-05-06) |
 | Backlog rows closed | `test-discovery-service-complexity-refactor` |
 | Diagnosis | `FindRelatedTestsForFilesAsync` and `CollectFallbackMatchesAsync` are large branch-heavy methods. The current design is defensible because the code keeps the test-discovery workflow linear and local; extraction still wins because the methods are measured complexity hotspots and future edge cases will otherwise keep landing inside the same two blocks. |
 | Approach | Extract cohesive helpers around input normalization, direct reference matching, fallback matching, and heuristic construction without changing public behavior. |
