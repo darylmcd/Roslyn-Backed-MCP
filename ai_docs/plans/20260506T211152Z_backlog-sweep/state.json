@@ -74,7 +74,7 @@
     {
       "id": "scaffold-test-preview-sampled-test-names",
       "order": 3,
-      "status": "pending",
+      "status": "in-review",
       "priority": "Medium",
       "backlogRowsClosed": ["scaffold-test-preview-sampled-test-names"],
       "rowsClosedCount": 1,
@@ -84,11 +84,11 @@
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "touchesHotspot": false,
-      "branch": null,
+      "branch": "remediation/scaffold-test-preview-sampled-test-names",
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Sampling path must be opt-in and preserve deterministic placeholder default."
+      "notes": "Implementation branch validates the opt-in sampling path and deterministic default; awaiting PR."
     }
   ]
 }

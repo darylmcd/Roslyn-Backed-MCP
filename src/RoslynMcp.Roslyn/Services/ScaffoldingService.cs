@@ -326,7 +326,11 @@ public sealed class ScaffoldingService : IScaffoldingService
         return CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: false, nsubstituteAvailable);
     }
 
-    public async Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(string workspaceId, ScaffoldTestDto request, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(
+        string workspaceId,
+        ScaffoldTestDto request,
+        CancellationToken ct,
+        ITestNameSuggestionProvider? testNameSuggestionProvider = null)
     {
         var project = ResolveProject(workspaceId, request.TestProjectName);
         ValidateIsTestProject(project);
@@ -365,14 +369,78 @@ public sealed class ScaffoldingService : IScaffoldingService
             : await testRoslynProject.GetCompilationAsync(ct).ConfigureAwait(false);
         var siblingInference = InferSiblingTestPattern(request.ReferenceTestFile, projectDirectory, testFilePath, testProjectCompilation);
         var siblingWarnings = siblingInference.Warnings;
+        var sampledTestName = await SuggestSampledTestNameAsync(
+            request,
+            simpleTypeName,
+            typeInfo.TargetNamespace,
+            typeInfo.TargetMethod,
+            projectDirectory,
+            testFilePath,
+            testNameSuggestionProvider,
+            ct).ConfigureAwait(false);
 
         var content = BuildTestContent(
             testNamespace, request, simpleTypeName, typeInfo.TargetNamespace, typeInfo.ConstructorArgs, framework,
-            typeInfo.TargetMethod, typeInfo.MatchedType, siblingInference.Pattern);
+            typeInfo.TargetMethod, typeInfo.MatchedType, siblingInference.Pattern, sampledTestName.MethodName);
         var preview = await _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, testFilePath, content), ct).ConfigureAwait(false);
 
-        var combinedWarnings = CombineWarnings(typeInfo.Warnings, siblingWarnings);
+        var combinedWarnings = CombineWarnings(typeInfo.Warnings, siblingWarnings, sampledTestName.Warning);
         return combinedWarnings.Count == 0 ? preview : preview with { Warnings = combinedWarnings };
+    }
+
+    private static async Task<TestNameSuggestionResult> SuggestSampledTestNameAsync(
+        ScaffoldTestDto request,
+        string simpleTypeName,
+        string targetNamespace,
+        IMethodSymbol? targetMethod,
+        string projectDirectory,
+        string testFilePath,
+        ITestNameSuggestionProvider? provider,
+        CancellationToken ct)
+    {
+        if (!request.UseSampling || string.IsNullOrWhiteSpace(request.TargetMethodName))
+        {
+            return new TestNameSuggestionResult(null);
+        }
+
+        if (provider is null)
+        {
+            return new TestNameSuggestionResult(
+                null,
+                "useSampling was true but no sampling provider was available; emitted the deterministic placeholder test name.");
+        }
+
+        try
+        {
+            var context = new ScaffoldTestNameSuggestionContext(
+                simpleTypeName,
+                request.TargetMethodName,
+                FormatMethodSignature(targetMethod),
+                string.IsNullOrWhiteSpace(targetNamespace) ? null : targetNamespace,
+                CollectSiblingTestMethodNames(projectDirectory, testFilePath, maxNames: 6));
+            var result = await provider.SuggestTestNameAsync(context, ct).ConfigureAwait(false);
+            var normalized = NormalizeSuggestedTestMethodName(result.MethodName);
+            if (normalized is not null)
+            {
+                return result with { MethodName = normalized };
+            }
+
+            return string.IsNullOrWhiteSpace(result.MethodName)
+                ? new TestNameSuggestionResult(null, result.Warning)
+                : new TestNameSuggestionResult(
+                    null,
+                    AppendWarning(result.Warning, $"Sampled test method name '{result.MethodName}' was not a valid C# identifier; emitted the deterministic placeholder test name."));
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new TestNameSuggestionResult(
+                null,
+                $"Sampling test-name suggestion failed ({ex.GetType().Name}: {ex.Message}); emitted the deterministic placeholder test name.");
+        }
     }
 
     /// <summary>
@@ -859,15 +927,21 @@ public sealed class ScaffoldingService : IScaffoldingService
         return sb.ToString();
     }
 
-    private static IReadOnlyList<string> CombineWarnings(List<string>? a, IReadOnlyList<string>? b)
+    private static IReadOnlyList<string> CombineWarnings(List<string>? a, IReadOnlyList<string>? b, string? c = null)
     {
-        if ((a is null || a.Count == 0) && (b is null || b.Count == 0))
+        if ((a is null || a.Count == 0) && (b is null || b.Count == 0) && string.IsNullOrWhiteSpace(c))
             return Array.Empty<string>();
         var combined = new List<string>();
         if (a is not null) combined.AddRange(a);
         if (b is not null) combined.AddRange(b);
+        if (!string.IsNullOrWhiteSpace(c)) combined.Add(c);
         return combined;
     }
+
+    private static string AppendWarning(string? existingWarning, string warning)
+        => string.IsNullOrWhiteSpace(existingWarning)
+            ? warning
+            : $"{existingWarning} {warning}";
 
     private static string ResolveTestFramework(string? requested, string? projectFilePath)
     {
@@ -1880,11 +1954,12 @@ public sealed class ScaffoldingService : IScaffoldingService
         string framework,
         IMethodSymbol? targetMethod,
         INamedTypeSymbol? matchedType,
-        SiblingTestPattern? siblingPattern)
+        SiblingTestPattern? siblingPattern,
+        string? suggestedMethodName = null)
     {
         var methodName = string.IsNullOrWhiteSpace(request.TargetMethodName)
             ? "Generated_Test"
-            : $"{request.TargetMethodName}_Needs_Test";
+            : suggestedMethodName ?? $"{request.TargetMethodName}_Needs_Test";
 
         var usingDirective = string.IsNullOrWhiteSpace(targetNamespace)
             ? string.Empty
@@ -1906,6 +1981,130 @@ public sealed class ScaffoldingService : IScaffoldingService
             "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
             _ => BuildMSTestTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
         };
+    }
+
+    private static string? FormatMethodSignature(IMethodSymbol? method)
+    {
+        if (method is null)
+        {
+            return null;
+        }
+
+        var parameters = string.Join(", ", method.Parameters.Select(p => $"{p.Type.ToMinimalDisplay()} {p.Name}"));
+        return $"{method.ReturnType.ToMinimalDisplay()} {method.Name}({parameters})";
+    }
+
+    private static IReadOnlyList<string> CollectSiblingTestMethodNames(
+        string projectDirectory,
+        string destinationFilePath,
+        int maxNames)
+    {
+        if (!Directory.Exists(projectDirectory))
+        {
+            return Array.Empty<string>();
+        }
+
+        var destinationNormalized = Path.GetFullPath(destinationFilePath);
+        var names = new List<string>();
+        foreach (var file in Directory.EnumerateFiles(projectDirectory, "*Tests.cs", SearchOption.AllDirectories)
+                     .Where(p =>
+                     {
+                         var normalized = Path.GetFullPath(p);
+                         if (string.Equals(normalized, destinationNormalized, StringComparison.OrdinalIgnoreCase))
+                         {
+                             return false;
+                         }
+
+                         var rel = Path.GetRelativePath(projectDirectory, normalized);
+                         return !rel.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                             .Any(seg => string.Equals(seg, "obj", StringComparison.OrdinalIgnoreCase)
+                                      || string.Equals(seg, "bin", StringComparison.OrdinalIgnoreCase));
+                     })
+                     .Select(p => new FileInfo(p))
+                     .OrderByDescending(fi => fi.LastWriteTimeUtc))
+        {
+            try
+            {
+                var tree = CSharpSyntaxTree.ParseText(File.ReadAllText(file.FullName));
+                var root = tree.GetRoot();
+                foreach (var method in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+                {
+                    if (!LooksLikeTestMethod(method))
+                    {
+                        continue;
+                    }
+
+                    names.Add(method.Identifier.Text);
+                    if (names.Count >= maxNames)
+                    {
+                        return names;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                continue;
+            }
+        }
+
+        return names;
+    }
+
+    private static bool LooksLikeTestMethod(MethodDeclarationSyntax method)
+        => method.AttributeLists
+            .SelectMany(static list => list.Attributes)
+            .Select(static attr => attr.Name.ToString())
+            .Any(static name =>
+                name.Contains("TestMethod", StringComparison.Ordinal) ||
+                name.Contains("Test", StringComparison.Ordinal) ||
+                name.Contains("Fact", StringComparison.Ordinal) ||
+                name.Contains("Theory", StringComparison.Ordinal));
+
+    private static string? NormalizeSuggestedTestMethodName(string? rawName)
+    {
+        if (string.IsNullOrWhiteSpace(rawName))
+        {
+            return null;
+        }
+
+        var candidate = rawName
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault(line => !line.StartsWith("```", StringComparison.Ordinal));
+        if (string.IsNullOrWhiteSpace(candidate))
+        {
+            return null;
+        }
+
+        candidate = candidate.Trim('`', '"', '\'', ';', ' ');
+        var colon = candidate.LastIndexOf(':');
+        if (colon >= 0 && colon < candidate.Length - 1)
+        {
+            candidate = candidate[(colon + 1)..].Trim();
+        }
+        if (candidate.EndsWith("()", StringComparison.Ordinal))
+        {
+            candidate = candidate[..^2].Trim();
+        }
+        var paren = candidate.IndexOf('(');
+        if (paren > 0)
+        {
+            candidate = candidate[..paren].Trim();
+        }
+        var parts = candidate.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (parts.Length > 0)
+        {
+            candidate = parts[^1];
+        }
+
+        try
+        {
+            IdentifierValidation.ThrowIfInvalidIdentifier(candidate, "sampled test method name");
+            return candidate;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

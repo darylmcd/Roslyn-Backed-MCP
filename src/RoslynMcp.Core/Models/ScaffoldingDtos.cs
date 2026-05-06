@@ -49,12 +49,17 @@ public sealed record ScaffoldTestBatchTargetDto(
 /// in the target test project and uses that as the reference. Set to the empty string to
 /// opt out of inference entirely.
 /// </param>
+/// <param name="UseSampling">
+/// When true, clients that support MCP sampling may request a model-suggested test method name.
+/// The default false path preserves the deterministic <c>&lt;TargetMethodName&gt;_Needs_Test</c> placeholder.
+/// </param>
 public sealed record ScaffoldTestDto(
     string TestProjectName,
     string TargetTypeName,
     string? TargetMethodName = null,
     string TestFramework = "auto",
-    string? ReferenceTestFile = null);
+    string? ReferenceTestFile = null,
+    bool UseSampling = false);
 
 /// <summary>
 /// Represents a request to scaffold the FIRST test file for a service that has no existing

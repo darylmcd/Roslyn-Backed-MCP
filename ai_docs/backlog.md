@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-06T21:42:46Z
+**updated_at:** 2026-05-06T22:14:44Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `scaffold-test-preview-sampled-test-names` | Medium | none | Plumb `IMcpServer` into `ScaffoldingTools.PreviewScaffoldTest` (and the underlying `IScaffoldingService.PreviewScaffoldTestAsync`) and add a sampled `SuggestTestNameAsync` step gated behind a `useSampling: bool = false` parameter so non-sampling clients see no behavior change. When `useSampling=true` and the client declares the `sampling` capability, replace the placeholder `<TargetMethodName>_Needs_Test` with a model-suggested Given/When/Then test method name (e.g. `LoadIntoSessionAsync_WhenCacheMiss_FallsThroughToColdLoad`) computed from the target method's signature + sibling-test-class examples. Collapses N rename round-trips per N-test scaffold pass to 1 sampled call. Anchors: `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs`, `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs` (`PreviewScaffoldTestAsync` + `_Needs_Test` placeholder site at line 1887). Regression test shape: 2 — (a) `useSampling: false` returns `_Needs_Test` placeholder unchanged (default behavior preserved); (b) `useSampling: true` against a mock client that returns a string returns a non-placeholder name. Evidence: `ai_docs/items/sampling-spike.md` § Verdicts — only `go` candidate from the 2026-05-05 spike (cost $0.001–$0.003/call, latency 0.6–1.2s, equivalent-to-better quality vs outer-loop). Source: spike's "GO" verdict; sibling candidates 1+2 (XML-doc gen, refactor-summary) ruled NO-GO. |
 
 ## Low
 
