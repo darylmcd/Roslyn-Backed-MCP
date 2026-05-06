@@ -104,8 +104,8 @@
       "estimatedContextTokens": 40000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "touchesHotspot": true,
-      "hotspotFiles": ["src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"],
+      "touchesHotspot": false,
+      "hotspotFiles": [],
       "depsOn": "workspace-cache-store-infrastructure",
       "branch": null,
       "worktreePath": null,
@@ -213,7 +213,7 @@
     {
       "id": "workspace-cache-prewarm-on-load",
       "order": 10,
-      "status": "pending",
+      "status": "in-progress",
       "priority": "Medium",
       "backlogRowsClosed": ["workspace-cache-prewarm-on-load"],
       "rowsClosedCount": 1,
@@ -225,11 +225,11 @@
       "touchesHotspot": true,
       "hotspotFiles": ["src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs"],
       "depsOn": "workspace-load-uses-cache-fast-path",
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/workspace-cache-prewarm-on-load",
+      "worktreePath": ".worktrees/workspace-cache-prewarm-on-load",
       "prUrl": null,
       "mergedAt": null,
-      "notes": "WorkspaceManager hotspot — surgical post-load step. May extend IWorkspaceCacheStore contract; if so file count goes to 4. Non-adjacent to initiatives #4 and #11."
+      "notes": "Execution started on remediation/workspace-cache-prewarm-on-load. Wiring is at the workspace_load host-tool boundary to avoid a WorkspaceManager <-> WorkspaceWarmService dependency cycle; persisted Roslyn warm artifacts are intentionally not implemented because compilation/semantic-model warm state is process-local."
     },
     {
       "id": "workspace-warm-default-above-50-projects",

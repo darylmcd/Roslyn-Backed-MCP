@@ -61,6 +61,7 @@ public sealed class ProgressEmissionTests : SharedWorkspaceTestBase
             server: null!,
             gate: WorkspaceExecutionGate,
             workspace: WorkspaceManager,
+            warmService: WorkspaceWarmService,
             commandRunner: DotnetCommandRunner,
             path: SampleSolutionPath,
             verbose: false,

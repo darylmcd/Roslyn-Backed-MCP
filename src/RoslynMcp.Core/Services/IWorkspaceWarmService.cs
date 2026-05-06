@@ -12,9 +12,10 @@ namespace RoslynMcp.Core.Services;
 /// <remarks>
 /// <para>
 /// <b>Opt-in only.</b> Per the 2026-04-14 user preference against blocking tool
-/// registration, warming never runs automatically on <c>workspace_load</c>. Callers that
-/// prefer cold-start latency continue to pay it on the first read; callers that want
-/// the warm-start profile invoke <see cref="WarmAsync"/> explicitly after load.
+/// registration, warming is never a default side effect of <c>workspace_load</c>. Callers
+/// that prefer cold-start latency continue to pay it on the first read; callers that want
+/// the warm-start profile either invoke <see cref="WarmAsync"/> explicitly after load or
+/// pass <c>prewarm: true</c> to <c>workspace_load</c>.
 /// </para>
 /// <para>
 /// <b>No default timeout.</b> Warming all projects in a large solution can take tens
