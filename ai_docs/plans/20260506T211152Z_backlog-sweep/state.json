@@ -34,7 +34,7 @@
     {
       "id": "validate-workspace-markdown-formatter-decomposition",
       "order": 1,
-      "status": "in-review",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["validate-workspace-markdown-formatter-decomposition"],
       "rowsClosedCount": 1,
@@ -48,8 +48,8 @@
       "branch": "remediation/validate-workspace-markdown-formatter-decomposition",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/533",
-      "mergedAt": null,
-      "notes": "PR #533 opened. Pure formatter decomposition; preserve byte-stable output."
+      "mergedAt": "2026-05-06T21:35:20Z",
+      "notes": "PR #533 merged. Pure formatter decomposition; preserved byte-stable output."
     },
     {
       "id": "test-discovery-service-complexity-refactor",
