@@ -13,8 +13,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 [McpServerToolType]
 public static class WorkspaceTools
 {
+    private const int AutoPrewarmProjectThreshold = 50;
 
-    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. Set autoRestore=true to run dotnet restore and one follow-up reload when the loaded status reports restoreRequired=true. Set prewarm=true to immediately run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; the response then includes a prewarm result block. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 8) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error.")]
+    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. Set autoRestore=true to run dotnet restore and one follow-up reload when the loaded status reports restoreRequired=true. Set prewarm=true to immediately run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, workspace_load automatically prewarms solutions with more than 50 projects. The response includes a prewarm result block only when warming ran. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 8) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error.")]
     [McpToolMetadata("workspace", "stable", false, false,
         "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session.")]
     public static Task<string> LoadWorkspace(
@@ -26,7 +27,7 @@ public static class WorkspaceTools
         [Description("Absolute path to a .sln, .slnx, or .csproj file")] string path,
         [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
         [Description("When true and the loaded status reports restoreRequired=true, run `dotnet restore` on the target and reload once before returning.")] bool autoRestore = false,
-        [Description("When true, run `workspace_warm` immediately after the load (and any auto-restore reload) succeeds, then include the warm result in the response. Omit or pass false to preserve the cold-load profile.")] bool? prewarm = null,
+        [Description("When true, run `workspace_warm` immediately after the load (and any auto-restore reload) succeeds, then include the warm result in the response. When omitted, large solutions with more than 50 projects are prewarmed automatically. Pass false to opt out and preserve the cold-load profile.")] bool? prewarm = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
@@ -36,29 +37,33 @@ public static class WorkspaceTools
             // → checking-restore → done" instead of waiting silently for a ~45s P95 cold load
             // on large solutions (OrchardCore, etc.). The stage labels are kebab-case and
             // stable; total is the stage count so client progress bars track correctly. The
-            // opt-in prewarm path adds "prewarming-workspace" before "done".
+            // opt-in or auto-large-solution prewarm path adds "prewarming-workspace" before
+            // "done". For omitted prewarm, the project-count threshold can only be evaluated
+            // after load returns, so the progress denominator may expand from 4 to 5 on
+            // >50-project solutions.
             // Per-project N/M is intentionally not emitted here — IWorkspaceManager.LoadAsync
             // doesn't expose intra-load progress and adding it would balloon scope past the
             // audit-coverage initiative. See ProgressHelper remarks for the label-naming contract.
-            var shouldPrewarm = prewarm == true;
-            var totalStages = shouldPrewarm ? 5 : 4;
+            var totalStages = prewarm == true ? 5 : 4;
             ProgressHelper.ReportStage(progress, 0, totalStages, "validating-path");
             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
             var status = await workspace.LoadAsync(path, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
             status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, c).ConfigureAwait(false);
+            var shouldPrewarm = ShouldPrewarmAfterLoad(prewarm, status);
+            var resolvedTotalStages = shouldPrewarm ? 5 : totalStages;
             WorkspaceWarmResult? prewarmResult = null;
             if (shouldPrewarm)
             {
-                ProgressHelper.ReportStage(progress, 3, totalStages, "prewarming-workspace");
+                ProgressHelper.ReportStage(progress, 3, resolvedTotalStages, "prewarming-workspace");
                 prewarmResult = await gate.RunReadAsync(
                     status.WorkspaceId,
                     warmCt => warmService.WarmAsync(status.WorkspaceId, projects: null, warmCt),
                     c).ConfigureAwait(false);
             }
 
-            ProgressHelper.ReportStage(progress, totalStages, totalStages, "done");
+            ProgressHelper.ReportStage(progress, resolvedTotalStages, resolvedTotalStages, "done");
             _ = NotifyResourcesChangedAsync(server);
             return SerializeWorkspaceLoadResult(status, verbose, prewarmResult);
         }, ct);
@@ -328,6 +333,9 @@ public static class WorkspaceTools
         payload["prewarm"] = JsonSerializer.SerializeToNode(prewarmResult, JsonDefaults.Indented);
         return payload.ToJsonString(JsonDefaults.Indented);
     }
+
+    private static bool ShouldPrewarmAfterLoad(bool? prewarm, WorkspaceStatusDto status) =>
+        prewarm ?? status.ProjectCount > AutoPrewarmProjectThreshold;
 
     private static string BuildRestoreFailureMessage(string targetPath, CommandExecutionDto execution)
     {

@@ -3,7 +3,7 @@ using RoslynMcp.Core.Models;
 namespace RoslynMcp.Core.Services;
 
 /// <summary>
-/// Opt-in compilation prewarm for a loaded workspace. Forces Roslyn's
+/// Compilation prewarm for a loaded workspace. Forces Roslyn's
 /// <c>GetCompilationAsync</c> and semantic-model resolution across the workspace (or a
 /// filtered project set) so the next read-side tool call (e.g. <c>symbol_search</c>,
 /// <c>find_references</c>) does not pay the full cold-start penalty (~4600ms on a
@@ -11,11 +11,11 @@ namespace RoslynMcp.Core.Services;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Opt-in only.</b> Per the 2026-04-14 user preference against blocking tool
-/// registration, warming is never a default side effect of <c>workspace_load</c>. Callers
-/// that prefer cold-start latency continue to pay it on the first read; callers that want
-/// the warm-start profile either invoke <see cref="WarmAsync"/> explicitly after load or
-/// pass <c>prewarm: true</c> to <c>workspace_load</c>.
+/// <b>Explicit opt-out.</b> <c>workspace_load</c> automatically invokes this path for
+/// solutions with more than 50 projects when the caller omits <c>prewarm</c>. Callers that
+/// prefer cold-start latency can pass <c>prewarm: false</c>; callers that want the
+/// warm-start profile on smaller solutions either invoke <see cref="WarmAsync"/> explicitly
+/// after load or pass <c>prewarm: true</c> to <c>workspace_load</c>.
 /// </para>
 /// <para>
 /// <b>No default timeout.</b> Warming all projects in a large solution can take tens

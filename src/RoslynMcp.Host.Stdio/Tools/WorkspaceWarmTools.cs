@@ -15,11 +15,10 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// the warm until it completes.
 /// </summary>
 /// <remarks>
-/// Per the 2026-04-14 user preference, warming is never default-on. Callers decide when
-/// (if ever) to pay the prewarm cost: either by invoking this tool after load, or by
-/// passing <c>prewarm: true</c> to <c>workspace_load</c>. The standalone tool remains
-/// experimental precisely so the shape can evolve without a stability contract on the
-/// opt-in timing semantics.
+/// The standalone tool remains experimental precisely so the shape can evolve without a
+/// stability contract on explicit warm timing. <c>workspace_load</c> may invoke the same
+/// service automatically for large solutions when the caller omits <c>prewarm</c>; callers
+/// can still pass <c>prewarm: false</c> to keep a cold-load profile.
 /// </remarks>
 [McpServerToolType]
 public static class WorkspaceWarmTools
@@ -27,7 +26,7 @@ public static class WorkspaceWarmTools
     [McpServerTool(Name = "workspace_warm", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("workspace", "experimental", false, false,
         "Opt-in compilation prewarm: force GetCompilationAsync + first-semantic-model resolution across the workspace to cut the cold-start penalty of the first read-side tool call."),
-     Description("Opt-in compilation prewarm for a loaded workspace. Forces Roslyn's internal compilation cache and semantic-model cache to populate by calling GetCompilationAsync on every project (or the subset named by the `projects` filter) and resolving one semantic model per project. On a mid-sized solution this shifts the ~4600ms cold-start penalty of the first symbol_search / find_references call into this single explicit warm invocation, so follow-up reads run at ~40ms. Never runs automatically — callers invoke this tool explicitly after workspace_load when they want the warm-start profile. Returns ElapsedMs so callers can budget subsequent invocations; a repeat call on an unchanged workspace returns ColdCompilationCount=0 and typically ElapsedMs < 10% of the first call. No internal timeout — the caller's CancellationToken is the only cap.")]
+     Description("Opt-in compilation prewarm for a loaded workspace. Forces Roslyn's internal compilation cache and semantic-model cache to populate by calling GetCompilationAsync on every project (or the subset named by the `projects` filter) and resolving one semantic model per project. On a mid-sized solution this shifts the ~4600ms cold-start penalty of the first symbol_search / find_references call into this explicit warm invocation, so follow-up reads run at ~40ms. workspace_load may run the same warm path automatically for solutions with more than 50 projects unless the caller passes prewarm=false. Returns ElapsedMs so callers can budget subsequent invocations; a repeat call on an unchanged workspace returns ColdCompilationCount=0 and typically ElapsedMs < 10% of the first call. No internal timeout — the caller's CancellationToken is the only cap.")]
     public static Task<string> WorkspaceWarm(
         IWorkspaceExecutionGate gate,
         IWorkspaceWarmService warmService,
