@@ -75,11 +75,11 @@
     {
       "id": "tool-output-schema-infrastructure",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "priority": "High",
       "backlogRowsClosed": ["tool-output-schema-infrastructure"],
       "rowsClosedCount": 1,
-      "productionFilesTouched": 3,
+      "productionFilesTouched": 4,
       "testFilesAdded": 1,
       "estimatedContextTokens": 55000,
       "toolPolicy": "edit-only",
@@ -88,9 +88,9 @@
       "hotspotFiles": ["src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs"],
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Wiring only — no per-tool catalog entries change here. Possible 4th file: csproj package add for JsonSchema.Net if S.T.J built-in schema-gen proves insufficient. Hotspot non-adjacent to initiative #5 (positions 3 and 5)."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/516",
+      "mergedAt": "2026-05-06T00:00:00Z",
+      "notes": "Wiring only — no per-tool catalog entries change. 4 production files (added ToolOutputSchemaIndex.cs reflection cache mirroring PromptParameterIndex pattern); JsonSchema.Net package not needed (S.T.J built-in JsonSchemaExporter handled DTO records cleanly). Within Rule 3."
     },
     {
       "id": "workspace-load-uses-cache-fast-path",
@@ -194,7 +194,7 @@
     {
       "id": "elicit-disambiguation-on-multi-symbol-resolve",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["elicit-disambiguation-on-multi-symbol-resolve"],
       "rowsClosedCount": 1,
@@ -206,9 +206,9 @@
       "touchesHotspot": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Reuses the StructuredCallToolFilter capability-check helper from initiative #8. Scope is symbol_search + find_references + go_to_definition only; sibling navigation tools deferred to follow-on rows if friction emerges."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/517",
+      "mergedAt": "2026-05-06T00:00:00Z",
+      "notes": "Reuses StructuredCallToolFilter capability-check helper from initiative #8. Scope: symbol_search + find_references + go_to_definition. SymbolHandleSerializer promoted to public (members already public) so new BuildDisplayLabel / FindAllByMetadataNameAsync helpers reachable from Host.Stdio. 4 existing test files updated to pass the new McpServer + IWorkspaceManager parameters explicitly."
     },
     {
       "id": "workspace-cache-prewarm-on-load",
@@ -254,11 +254,11 @@
     {
       "id": "audit-deep-skill-create-and-mode-split",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["audit-deep-skill-migration"],
-      "rowsClosedCount": 1,
-      "productionFilesTouched": 4,
+      "rowsClosedCount": 0,
+      "productionFilesTouched": 5,
       "testFilesAdded": 1,
       "estimatedContextTokens": 55000,
       "toolPolicy": "edit-only",
@@ -268,9 +268,9 @@
       "structuralUnits": 4,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Heroic-bundle pre-split (split A): structural migration + B1-B5 fixes. Paired with initiative #13 which closes the same backlog row via the (S2)+(S5) pieces. Both this and #13's PR cite the same row id; the executor's close-rows step fires once across both PRs (the second PR's close-rows is a no-op if the row is already closed)."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/515",
+      "mergedAt": "2026-05-06T00:00:00Z",
+      "notes": "Heroic-bundle pre-split (split A): structural migration + B1-B5 fixes shipped. Paired with initiative #13 which ships (S2)+(S5) pieces. Backlog row `audit-deep-skill-migration` REMAINS OPEN until #13 lands — orchestrator removes it in #13's reconcile PR. ai_docs/prompts/deep-review-and-refactor.md converted to thin pointer (5th file, deletion-or-pointer was Approach option). 1 known-flaky perf test in CI required a re-run; markdown-only PR — unrelated."
     },
     {
       "id": "audit-deep-archive-and-surface-audit-integration",
