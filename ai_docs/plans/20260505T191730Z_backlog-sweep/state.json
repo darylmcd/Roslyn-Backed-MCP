@@ -234,7 +234,7 @@
     {
       "id": "workspace-warm-default-above-50-projects",
       "order": 11,
-      "status": "in-review",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["workspace-warm-default-above-50-projects"],
       "rowsClosedCount": 1,
@@ -248,7 +248,7 @@
       "branch": "remediation/workspace-warm-default-above-50-projects",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/528",
-      "mergedAt": null,
+      "mergedAt": "2026-05-06T20:40:44Z",
       "notes": "PR #528 opened. The implementation resolves omitted prewarm after load because project count is only known from WorkspaceStatusDto; explicit prewarm=false remains the opt-out."
     },
     {

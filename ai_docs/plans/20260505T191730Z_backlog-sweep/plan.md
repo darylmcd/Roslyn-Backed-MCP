@@ -199,7 +199,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | in-review (PR #528, branch: `remediation/workspace-warm-default-above-50-projects`) |
+| Status | merged (PR #528, 2026-05-06) |
 | Backlog rows closed | `workspace-warm-default-above-50-projects` |
 | Diagnosis | Verified live. The row's own `do` text says "may be obsoleted by `workspace-cache-prewarm-on-load`". After initiative #10 ships, this row collapses to a one-line default flip: `prewarm: true` becomes the default when the loaded solution exceeds a project-count threshold. **Pre-flight at execute time:** if the default flip is genuinely 1 line, ship as a small initiative; if `prewarm`'s implementation makes the default-flip risky (cache-write contention on first load, cold-start regression on small solutions), mark `obsolete (subsumed by initiative #10)` and skip. |
 | Approach | (a) After initiative #10 lands, set `prewarm: true` as the default in `workspace_load` when `LoadedSolution.ProjectCount > 50` and the caller did not pass `prewarm` explicitly. (b) Add `warm: false` opt-out semantics if not already provided by initiative #10 (single-flag opt-out is required by the row). |
