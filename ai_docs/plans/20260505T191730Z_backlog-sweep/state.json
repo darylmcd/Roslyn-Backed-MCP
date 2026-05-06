@@ -116,7 +116,7 @@
     {
       "id": "tool-output-schema-batch-1-server-info-workspace",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "priority": "High",
       "backlogRowsClosed": ["tool-output-schema-batch-1-server-info-workspace"],
       "rowsClosedCount": 1,
@@ -125,14 +125,14 @@
       "estimatedContextTokens": 60000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "touchesHotspot": true,
-      "hotspotFiles": ["src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Workspace.cs"],
+      "touchesHotspot": false,
+      "hotspotFiles": [],
       "depsOn": "tool-output-schema-infrastructure",
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Annotation-only updates across 6 tools in 4 files. At Rule 3's 4-file cap. If DTO visibility issues arise at impl time, split into smaller batches (server-only, then workspace-only). Non-adjacent to initiative #3 (positions 3 and 5)."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/520",
+      "mergedAt": "2026-05-06T00:00:00Z",
+      "notes": "All 6 tools wired via [McpToolMetadata(outputSchemaTypeRef:)]. ServerSurfaceCatalog.Workspace.cs NOT touched — catalog factory's Tool() helper already calls ToolOutputSchemaIndex.GetSchema(name). server_info / server_heartbeat / workspace_list refactored from anon-objects to typed DTO bodies (new file: ServerToolDtos.cs); on-the-wire JSON shape preserved bit-for-bit. Out-of-scope follow-up flagged: ToolOutputSchemaIndex.GenerateSchema uses JsonSerializerOptions.Default (PascalCase) while runtime serialization uses camelCase — schema casing mismatch."
     },
     {
       "id": "mcp-registry-publication",
@@ -275,7 +275,7 @@
     {
       "id": "audit-deep-archive-and-surface-audit-integration",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["audit-deep-skill-migration"],
       "rowsClosedCount": 1,
@@ -288,9 +288,9 @@
       "depsOn": "audit-deep-skill-create-and-mode-split",
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Heroic-bundle pre-split (split B): archive script + /surface-audit Phase 0 wiring. The S5 + S2 pieces of audit-deep-skill-migration that didn't fit in initiative #12's structural-unit budget. Closes the same backlog row id as #12; second-to-merge no-ops the row deletion."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/519",
+      "mergedAt": "2026-05-06T00:00:00Z",
+      "notes": "Heroic-bundle pre-split (split B): archive script + /surface-audit Phase 0 wiring shipped. Added -ReportsRelativePath override to keep the shipped skill generic (verify-skills-are-generic.ps1 blocks ai_docs/ literals in skills/). Now closing the audit-deep-skill-migration backlog row (paired with merged #12)."
     },
     {
       "id": "audit-deep-subagent-orchestration",
