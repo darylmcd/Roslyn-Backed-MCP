@@ -253,7 +253,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | in-review (PR #530, 2026-05-06) |
 | Backlog rows closed | `audit-deep-subagent-orchestration` |
 | Diagnosis | Per the row, the `/audit-deep` `mode=full` run can take 90–180 min and consume large chunks of the orchestrator's context window for raw tool output. The prompt's principle #1 already says "delegate long-running/log-heavy validation to subagents" but the offload pattern isn't formalized. Phase 6 (refactoring) and the preview/apply chains MUST stay inline (workspace-version-sensitive per principle #3). Phases 1, 2, 8, 8b are the offload candidates. |
 | Approach | (a) Create `.claude/agents/audit-phase-runner.md` with the subagent definition: takes a phase number + repo context, runs the phase's tool calls, returns a structured-summary message (pass/fail counts, failing test names, duration, anomalies — never raw logs). (b) Update `skills/audit-deep/SKILL.md` (post-migration) with orchestrator logic that spawns the subagent for Phases 1, 2, 8, 8b and inlines Phases -1, 0, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 16b, 17, 18. (c) Define the structured-summary message contract (markdown table format the orchestrator parses). (d) Per the addenda's hooks-block-subagents caveat: the subagent's `toolPolicy` is `edit-only` (no `*_apply` calls in audit phases). |

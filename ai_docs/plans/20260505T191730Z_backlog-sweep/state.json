@@ -306,11 +306,11 @@
       "scheduleHint": null,
       "touchesHotspot": false,
       "depsOn": "audit-deep-skill-create-and-mode-split",
-      "branch": null,
+      "branch": "remediation/audit-deep-subagent-orchestration",
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/530",
       "mergedAt": null,
-      "notes": "Phase-runner subagent + orchestration logic in the post-migration SKILL.md. Phase 6 stays inline; Phases 1, 2, 8, 8b offload to subagent."
+      "notes": "PR #530 opened. Phase-runner subagent + orchestration logic in the post-migration SKILL.md. Phase 6 stays inline; Phases 1, 2, 8, 8b offload to subagent."
     },
     {
       "id": "promote-tier-skill",
