@@ -48,9 +48,25 @@ internal static class ValidateWorkspaceMarkdownFormatter
 
         var sb = new StringBuilder(1024);
 
+        AppendHeader(sb, dto);
+        AppendMetrics(sb, dto);
+        AppendErrorDiagnostics(sb, dto.ErrorDiagnostics);
+        AppendDiscoveredTests(sb, dto.DiscoveredTests);
+        AppendTestFailures(sb, dto.TestRunResult);
+        AppendRerunFilter(sb, dto.DotnetTestFilter);
+        AppendWarnings(sb, dto.Warnings);
+
+        return sb.ToString();
+    }
+
+    private static void AppendHeader(StringBuilder sb, WorkspaceValidationDto dto)
+    {
         sb.Append("# validate_workspace — ").AppendLine(dto.OverallStatus);
         sb.AppendLine();
+    }
 
+    private static void AppendMetrics(StringBuilder sb, WorkspaceValidationDto dto)
+    {
         sb.AppendLine("| Metric | Value |");
         sb.AppendLine("|--------|-------|");
         AppendRow(sb, "Overall status", dto.OverallStatus);
@@ -68,8 +84,11 @@ internal static class ValidateWorkspaceMarkdownFormatter
             AppendRow(sb, "Tests failed", run.Failed.ToString(CultureInfo.InvariantCulture));
             AppendRow(sb, "Tests skipped", run.Skipped.ToString(CultureInfo.InvariantCulture));
         }
+    }
 
-        if (dto.ErrorDiagnostics.Count > 0)
+    private static void AppendErrorDiagnostics(StringBuilder sb, IReadOnlyList<DiagnosticDto> diagnostics)
+    {
+        if (diagnostics.Count > 0)
         {
             sb.AppendLine();
             sb.AppendLine("## Error diagnostics");
@@ -77,7 +96,7 @@ internal static class ValidateWorkspaceMarkdownFormatter
             sb.AppendLine("| Id | File | Line | Message |");
             sb.AppendLine("|----|------|------|---------|");
             var shown = 0;
-            foreach (var diag in dto.ErrorDiagnostics)
+            foreach (var diag in diagnostics)
             {
                 if (shown >= MaxDiagnosticRows) break;
                 var lineText = diag.StartLine?.ToString(CultureInfo.InvariantCulture) ?? "";
@@ -88,14 +107,17 @@ internal static class ValidateWorkspaceMarkdownFormatter
                   .AppendLine(" |");
                 shown++;
             }
-            if (dto.ErrorDiagnostics.Count > MaxDiagnosticRows)
+            if (diagnostics.Count > MaxDiagnosticRows)
             {
-                sb.Append("| … | (").Append((dto.ErrorDiagnostics.Count - MaxDiagnosticRows).ToString(CultureInfo.InvariantCulture))
+                sb.Append("| … | (").Append((diagnostics.Count - MaxDiagnosticRows).ToString(CultureInfo.InvariantCulture))
                   .AppendLine(" more truncated) | | |");
             }
         }
+    }
 
-        if (dto.DiscoveredTests.Count > 0)
+    private static void AppendDiscoveredTests(StringBuilder sb, IReadOnlyList<RelatedTestCaseDto> discoveredTests)
+    {
+        if (discoveredTests.Count > 0)
         {
             sb.AppendLine();
             sb.AppendLine("## Discovered tests");
@@ -103,7 +125,7 @@ internal static class ValidateWorkspaceMarkdownFormatter
             sb.AppendLine("| Test | Project |");
             sb.AppendLine("|------|---------|");
             var shown = 0;
-            foreach (var test in dto.DiscoveredTests)
+            foreach (var test in discoveredTests)
             {
                 if (shown >= MaxTestRows) break;
                 sb.Append("| ").Append(EscapeCell(test.DisplayName))
@@ -111,14 +133,17 @@ internal static class ValidateWorkspaceMarkdownFormatter
                   .AppendLine(" |");
                 shown++;
             }
-            if (dto.DiscoveredTests.Count > MaxTestRows)
+            if (discoveredTests.Count > MaxTestRows)
             {
-                sb.Append("| (").Append((dto.DiscoveredTests.Count - MaxTestRows).ToString(CultureInfo.InvariantCulture))
+                sb.Append("| (").Append((discoveredTests.Count - MaxTestRows).ToString(CultureInfo.InvariantCulture))
                   .AppendLine(" more truncated) | |");
             }
         }
+    }
 
-        if (dto.TestRunResult is { Failures.Count: > 0 } runResult)
+    private static void AppendTestFailures(StringBuilder sb, TestRunResultDto? testRunResult)
+    {
+        if (testRunResult is { Failures.Count: > 0 } runResult)
         {
             sb.AppendLine();
             sb.AppendLine("## Test failures");
@@ -140,24 +165,28 @@ internal static class ValidateWorkspaceMarkdownFormatter
                   .AppendLine(" more truncated) | |");
             }
         }
+    }
 
-        if (dto.DotnetTestFilter is { Length: > 0 } filter)
+    private static void AppendRerunFilter(StringBuilder sb, string? dotnetTestFilter)
+    {
+        if (dotnetTestFilter is { Length: > 0 } filter)
         {
             sb.AppendLine();
             sb.Append("**Re-run filter:** `dotnet test --filter ").Append(filter).AppendLine("`");
         }
+    }
 
-        if (dto.Warnings.Count > 0)
+    private static void AppendWarnings(StringBuilder sb, IReadOnlyList<string> warnings)
+    {
+        if (warnings.Count > 0)
         {
             sb.AppendLine();
             sb.AppendLine("## Warnings");
-            foreach (var warning in dto.Warnings)
+            foreach (var warning in warnings)
             {
                 sb.Append("- ").AppendLine(warning);
             }
         }
-
-        return sb.ToString();
     }
 
     private static void AppendRow(StringBuilder sb, string metric, string value)
