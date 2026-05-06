@@ -730,12 +730,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             var candidate = await TryEnumerateNewestCacheEntryAsync(solutionHash, sdkVersion, ct).ConfigureAwait(false);
             if (candidate is null)
             {
-                return new CachedSolutionProbe(solutionHash, sdkVersion, CachedEntry: null, CachedKey: null, MetadataReferencesStillStable: false);
+                return new CachedSolutionProbe(
+                    solutionHash, sdkVersion, CachedEntry: null, MetadataReferencesStillStable: false);
             }
 
-            var (cachedEntry, cachedKey) = candidate.Value;
-            var stable = MetadataReferencesStillStableOnDisk(cachedEntry);
-            return new CachedSolutionProbe(solutionHash, sdkVersion, cachedEntry, cachedKey, stable);
+            var stable = MetadataReferencesStillStableOnDisk(candidate);
+            return new CachedSolutionProbe(solutionHash, sdkVersion, candidate, stable);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -747,8 +747,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// <summary>
     /// workspace-load-uses-cache-fast-path: enumerate cache entries under
     /// <c>~/.roslyn-mcp/cache/&lt;solutionHash&gt;/&lt;sdkVersion&gt;/</c> and return the most
-    /// recently written one along with its full cache key. Returns <see langword="null"/> when
-    /// no entries exist or when enumeration fails (e.g. directory missing).
+    /// recently written entry. Returns <see langword="null"/> when no entries exist or when
+    /// enumeration fails (e.g. directory missing).
     /// </summary>
     /// <remarks>
     /// Because <see cref="WorkspaceCacheStore"/> hashes each key component into a fixed-width
@@ -757,7 +757,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// This is heuristic — a correct cache hit is only confirmed after the post-load graph hash
     /// comparison in <see cref="ResolveAndWriteCacheAsync"/>.
     /// </remarks>
-    private async Task<(WorkspaceCacheEntry Entry, WorkspaceCacheKey Key)?> TryEnumerateNewestCacheEntryAsync(
+    private async Task<WorkspaceCacheEntry?> TryEnumerateNewestCacheEntryAsync(
         string solutionHash, string sdkVersion, CancellationToken ct)
     {
         if (_cacheStore is null) return null;
@@ -805,30 +805,10 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
             if (newestEntryPath is null) return null;
 
-            // Reconstruct the key from the directory segment names so we can call the
-            // interface to load the entry. The graph-hash segment is the leaf directory's name.
-            var graphHashSegment = Path.GetFileName(Path.GetDirectoryName(newestEntryPath));
-            if (string.IsNullOrEmpty(graphHashSegment)) return null;
-
-            // Instead of guessing the original graphHash (we only have the SHA-256 prefix that
-            // the store wrote), we read the file directly and let it succeed/fail. The store's
-            // own hashing reproduces the same path when we re-write under any reconstructed
-            // WorkspaceCacheKey whose third component hashes to the same segment — so the
-            // enumeration-by-mtime gives us the right entry, and we use a synthetic key with
-            // the segment as the third component (cache writes only re-hash, so the path is
-            // stable across read/write).
-            var entry = await _cacheStore.TryGetAsync(
-                new WorkspaceCacheKey(solutionHash, sdkVersion, graphHashSegment),
-                ct).ConfigureAwait(false);
-
-            if (entry is null) return null;
-
-            // The "true" original graph hash isn't recoverable from the segment (one-way
-            // SHA-256 truncation), but the entry's persisted graph IS — so post-load comparison
-            // can still detect a mismatch. We pass back the graph-hash *segment* as a stand-in
-            // key component; consumers that need the canonical key recompute it from the
-            // post-load graph anyway.
-            return (entry, new WorkspaceCacheKey(solutionHash, sdkVersion, graphHashSegment));
+            // The graph directory name is already the hashed graph segment; the original graph
+            // hash is intentionally unrecoverable from that one-way segment. Reading the selected
+            // entry.json path directly avoids double-hashing the segment through ResolveEntryPath.
+            return await concreteStore.TryGetEntryAtPathAsync(newestEntryPath, ct).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -1075,7 +1055,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         string SolutionHash,
         string SdkVersion,
         WorkspaceCacheEntry? CachedEntry,
-        WorkspaceCacheKey? CachedKey,
         bool MetadataReferencesStillStable);
 
     private async Task LoadIntoSessionAsync(WorkspaceSession session, string path, CancellationToken ct)

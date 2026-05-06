@@ -3,19 +3,16 @@ using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Operations;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
 public sealed class OperationService : IOperationService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ILogger<OperationService> _logger;
 
-    public OperationService(IWorkspaceManager workspace, ILogger<OperationService> logger)
+    public OperationService(IWorkspaceManager workspace)
     {
         _workspace = workspace;
-        _logger = logger;
     }
 
     public async Task<OperationNodeDto?> GetOperationsAsync(

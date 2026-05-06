@@ -85,7 +85,7 @@ public sealed class RestructureService : IRestructureService
                 var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
                 if (root is null) continue;
 
-                var rewriter = new StructuralRewriter(patternNode, goalNode, patternPlaceholderNames, goalPlaceholderNames);
+                var rewriter = new StructuralRewriter(patternNode, goalNode, goalPlaceholderNames);
                 var newRoot = rewriter.Visit(root);
 
                 if (rewriter.MatchCount == 0 || newRoot is null) continue;
@@ -201,19 +201,16 @@ public sealed class RestructureService : IRestructureService
     {
         private readonly SyntaxNode _pattern;
         private readonly SyntaxNode _goal;
-        private readonly IReadOnlyCollection<string> _patternPlaceholderNames;
         private readonly IReadOnlyCollection<string> _goalPlaceholderNames;
         public int MatchCount { get; private set; }
 
         public StructuralRewriter(
             SyntaxNode pattern,
             SyntaxNode goal,
-            IReadOnlyCollection<string> patternPlaceholderNames,
             IReadOnlyCollection<string> goalPlaceholderNames)
         {
             _pattern = pattern;
             _goal = goal;
-            _patternPlaceholderNames = patternPlaceholderNames;
             _goalPlaceholderNames = goalPlaceholderNames;
         }
 

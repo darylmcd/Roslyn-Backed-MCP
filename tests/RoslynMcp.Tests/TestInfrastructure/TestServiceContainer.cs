@@ -99,8 +99,7 @@ internal sealed class TestServiceContainer
         var msBuildEvaluationService = new MsBuildEvaluationService(workspaceManager);
         var namespaceDependencyService = new NamespaceDependencyService(
             workspaceManager,
-            compilationCache,
-            NullLogger<NamespaceDependencyService>.Instance);
+            compilationCache);
         var diRegistrationService = new DiRegistrationService(
             workspaceManager,
             compilationCache,
@@ -233,22 +232,18 @@ internal sealed class TestServiceContainer
             CouplingAnalysisService = new CouplingAnalysisService(
                 workspaceManager,
                 NullLogger<CouplingAnalysisService>.Instance),
-            RecordFieldAdditionService = new RecordFieldAdditionService(
-                workspaceManager,
-                NullLogger<RecordFieldAdditionService>.Instance),
+            RecordFieldAdditionService = new RecordFieldAdditionService(workspaceManager),
             ConsumerAnalysisService = new ConsumerAnalysisService(workspaceManager),
             TypeExtractionService = new TypeExtractionService(
                 workspaceManager,
-                previewStore,
-                NullLogger<TypeExtractionService>.Instance),
+                previewStore),
             InterfaceExtractionService = new InterfaceExtractionService(
                 workspaceManager,
                 previewStore,
                 NullLogger<InterfaceExtractionService>.Instance),
             TypeMoveService = new TypeMoveService(
                 workspaceManager,
-                previewStore,
-                NullLogger<TypeMoveService>.Instance),
+                previewStore),
             FlowAnalysisService = new FlowAnalysisService(workspaceManager),
             CompileCheckService = compileCheckService,
             AnalyzerInfoService = new AnalyzerInfoService(
@@ -258,9 +253,7 @@ internal sealed class TestServiceContainer
                 workspaceManager,
                 previewStore,
                 NullLogger<FixAllService>.Instance),
-            OperationService = new OperationService(
-                workspaceManager,
-                NullLogger<OperationService>.Instance),
+            OperationService = new OperationService(workspaceManager),
             SnippetAnalysisService = new SnippetAnalysisService(
                 NullLogger<SnippetAnalysisService>.Instance),
             ScriptingService = new ScriptingService(

@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Schema;
+using System.Text.Json.Serialization.Metadata;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Catalog;
@@ -38,6 +39,11 @@ internal static class ToolOutputSchemaIndex
         TreatNullObliviousAsNonNullable = true,
     };
 
+    private static readonly JsonSerializerOptions s_schemaSerializerOptions = new(JsonDefaults.Indented)
+    {
+        TypeInfoResolver = JsonDefaults.Indented.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver(),
+    };
+
     private static readonly Lazy<IReadOnlyDictionary<string, JsonNode>> s_index =
         new(BuildIndex, LazyThreadSafetyMode.ExecutionAndPublication);
 
@@ -62,14 +68,14 @@ internal static class ToolOutputSchemaIndex
     public static IReadOnlyCollection<string> RegisteredToolNames => s_index.Value.Keys.ToArray();
 
     /// <summary>
-    /// Generates a JSON-Schema node for the given CLR type using the runtime's default
+    /// Generates a JSON-Schema node for the given CLR type using the server's runtime
     /// serializer options. Exposed <see langword="internal"/> so the dual-channel filter can
     /// also use it ad-hoc when the tool's response object is built but the cached schema is
     /// keyed off the tool name (cache hit) — both paths produce identical output for the same
     /// type.
     /// </summary>
     internal static JsonNode GenerateSchema(Type type) =>
-        JsonSchemaExporter.GetJsonSchemaAsNode(JsonSerializerOptions.Default, type, s_exportOptions);
+        JsonSchemaExporter.GetJsonSchemaAsNode(s_schemaSerializerOptions, type, s_exportOptions);
 
     private static IReadOnlyDictionary<string, JsonNode> BuildIndex()
     {
