@@ -15,9 +15,11 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// the warm until it completes.
 /// </summary>
 /// <remarks>
-/// Per the 2026-04-14 user preference, warming is never automatic. Callers decide when
-/// (if ever) to pay the prewarm cost — the tool is experimental precisely so the shape
-/// can evolve without a stability contract on the opt-in timing semantics.
+/// Per the 2026-04-14 user preference, warming is never default-on. Callers decide when
+/// (if ever) to pay the prewarm cost: either by invoking this tool after load, or by
+/// passing <c>prewarm: true</c> to <c>workspace_load</c>. The standalone tool remains
+/// experimental precisely so the shape can evolve without a stability contract on the
+/// opt-in timing semantics.
 /// </remarks>
 [McpServerToolType]
 public static class WorkspaceWarmTools
