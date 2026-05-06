@@ -1,4 +1,5 @@
 # Multi-session retrospective — Roslyn MCP issues, gaps, and recommendations (cross-repo, last N days)
+<!-- purpose: Prompt for producing a multi-session Roslyn MCP retrospective report. -->
 
 Review **recent Claude Code sessions across all repos** and produce a structured retrospective **report file** that captures Roslyn MCP server issues, missing-tool gaps, and recommendations worth fixing. The report is saved **locally** in the Roslyn MCP repo as a self-contained artifact — it is not pushed, appended, or synced to any external backlog. The maintainer can read the file directly when they want to triage findings.
 

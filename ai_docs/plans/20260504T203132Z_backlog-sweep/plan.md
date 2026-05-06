@@ -1,4 +1,6 @@
 # Backlog sweep plan — 20260504T203132Z
+<!-- purpose: Backlog sweep plan for the 20260504T203132Z initiative batch. -->
+<!-- scope: in-repo -->
 
 **Generated:** 2026-05-04T20:31:32Z
 **Backlog snapshot:** 2026-05-04T20:01:53Z
