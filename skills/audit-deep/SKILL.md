@@ -52,6 +52,43 @@ The audit is **read-only against the audited repository's `main` branch**. Phase
 
 Read the resolved prompt file in full and follow it phase by phase. Persist the audit draft after each phase as the prompt instructs — the canonical report path lives in the prompt's *Output Format* section.
 
+### Phase 0 hand-off: prefer `/surface-audit` for live-surface drift detection
+
+The mode prompts' Phase 0 includes a *live-surface drift detection* sub-step that diffs the seeded coverage ledger against names referenced in the prompt's phase guidance. When a separate `/surface-audit` skill is available in the host's tool surface, prefer delegating that diff to it (one structured table back) instead of re-walking the live catalog from scratch in this skill's main agent.
+
+- **When `/surface-audit` is available** — invoke it with the audited repo root, take the returned drift table, and paste it under Phase 0's drift-detection output slot. The two output buckets (`guidance gap` and `prompt drift`) map directly onto the structured table /surface-audit returns.
+- **When `/surface-audit` is not available** — fall through to the in-prompt logic in Phase 0 step 14. Do not block the audit on the optional skill: the prompt's drift-detection still produces a valid result without it. Note in the report header which path you took (`drift-detection: delegated to /surface-audit` vs `drift-detection: in-prompt`).
+
+Delegation is a performance and consistency optimization, not a correctness requirement; the in-prompt logic remains the authoritative fallback.
+
+## Operational notes
+
+### Archiving old audit reports — `scripts/archive-old-reports.ps1`
+
+Reports written to the audit-reports directory accumulate over time. The skill ships a small PowerShell wrapper at `skills/audit-deep/scripts/archive-old-reports.ps1` that moves `*.md` files older than N days (default 30) into a year-stamped `archive/<YYYY>/` subdirectory, where `<YYYY>` is each file's `LastWriteTime` year. The reports directory path defaults to the audit-deep convention and can be overridden via `-ReportsRelativePath`.
+
+Invocation (Bash on Windows or any shell with `pwsh` on path):
+
+```bash
+# Preview the archive plan without mutating anything.
+pwsh -NoProfile -File skills/audit-deep/scripts/archive-old-reports.ps1 -DryRun
+
+# Archive reports older than 60 days under the default reports directory.
+pwsh -NoProfile -File skills/audit-deep/scripts/archive-old-reports.ps1 -OlderThanDays 60
+
+# Archive against a non-default reports directory in a host repo.
+pwsh -NoProfile -File skills/audit-deep/scripts/archive-old-reports.ps1 -ReportsRelativePath docs/audits
+```
+
+Behavior contract:
+
+- **Pinned filenames are never archived** — `README.md` and `deep-review-session-checklist.md` stay in place regardless of age.
+- **Idempotent** — running twice is safe. The destination year-subdirectory is created on demand. If a file with the same name already exists at the destination, the move is skipped and a warning is emitted.
+- **Read-only when `-DryRun` is set** — no filesystem mutations occur; the script reports what it would do.
+- **Independent of the Roslyn MCP server** — unlike the audit itself, the archive script does not require any MCP tooling to be running.
+
+The script is invoked manually (no automatic scheduler today). Recommended cadence: run once at the end of each release cut or at the start of a new audit pass.
+
 ## Hard rules
 
 - **Server-required.** No generic non-MCP fallback exists. If `mcp__roslyn__server_info` is not callable or `connection.state` is not `ready`, halt.
