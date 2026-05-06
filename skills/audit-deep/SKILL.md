@@ -36,7 +36,7 @@ Resolve the prompt body in this order:
 2. `mode=promotion-only` → read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/promotion-only.md` and run it verbatim.
 3. `mode=read-only` → read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/read-only.md` and run it verbatim.
 
-The mode prompts are the source of truth. They define every phase, every output schema, and every hard-gate checkpoint. This SKILL.md only routes to them — do not paraphrase or restructure their phase order in your output.
+The mode prompts are the source of truth for phase content, output schema, and hard-gate checkpoints. This SKILL.md supplies the orchestration wrapper: when a phase is listed in the phase-runner offload map below, execute that phase through the `audit-phase-runner` subagent when the host supports subagents; otherwise run the same phase inline and record `phase-runner: inline fallback` in the report header.
 
 ## Step 3 — Mutation safety: read-only against the audited repo's main branch
 
@@ -48,7 +48,36 @@ The audit is **read-only against the audited repository's `main` branch**. Phase
 
 `mode=promotion-only` and `mode=read-only` skip Phase 6 entirely — no apply chains run, and the disposable worktree is optional.
 
-## Step 4 — Execute the chosen prompt
+## Step 4 — Phase-runner offload map
+
+Use the repo-local `audit-phase-runner` subagent for phases that are long-running or log-heavy but not workspace-version-sensitive:
+
+| Phase | Execution owner | Summary expected |
+|---|---|---|
+| Phase 1 — broad diagnostics scan | `audit-phase-runner` when available; inline fallback otherwise | diagnostics counts, top failures, elapsed time |
+| Phase 2 — code quality metrics | `audit-phase-runner` when available; inline fallback otherwise | hotspot counts, metric bands, elapsed time |
+| Phase 8 — build and test validation | `audit-phase-runner` when available; inline fallback otherwise | build/test verdict, pass/fail counts, failing names |
+| Phase 8b — concurrency audit | `audit-phase-runner` when available; inline fallback otherwise | concurrency matrix counts, anomalies, elapsed time |
+
+Run these phases inline in the main audit context: Phase -1, 0, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 16b, 17, and 18.
+
+Hard boundary: Phase 6 and every preview/apply chain stay inline. Do not delegate workspace-version-sensitive mutations, even in `mode=full`, because the runner does not share the main audit context's preview evidence or disposable-checkout mutation ledger.
+
+### Runner brief
+
+When delegating, pass a compact brief with:
+
+- `phase`: one of `1`, `2`, `8`, or `8b`
+- `mode`: the selected mode
+- `repoRoot`: absolute audited repo root
+- `workspaceId`: loaded workspace id when applicable
+- `solutionPath`: loaded solution or project path
+- `reportPath`: current audit report draft path
+- The relevant phase excerpt from the resolved mode prompt
+
+The runner must return the `## Audit Phase Runner Summary` markdown table defined in `.claude/agents/audit-phase-runner.md`. Paste that table into the phase's report slot. If the runner is unavailable, run the phase inline and emit the same summary table yourself.
+
+## Step 5 — Execute the chosen prompt
 
 Read the resolved prompt file in full and follow it phase by phase. Persist the audit draft after each phase as the prompt instructs — the canonical report path lives in the prompt's *Output Format* section.
 
