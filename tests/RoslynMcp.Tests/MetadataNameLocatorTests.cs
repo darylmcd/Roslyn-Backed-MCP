@@ -38,6 +38,8 @@ public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
     public async Task FindReferences_Accepts_MetadataName_Without_Source_Position()
     {
         var json = await SymbolTools.FindReferences(
+            server: null!,
+            WorkspaceManager,
             WorkspaceExecutionGate,
             ReferenceService,
             WorkspaceId,
@@ -110,6 +112,8 @@ public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
     public async Task GoToDefinition_Accepts_MetadataName_Without_Source_Position()
     {
         var json = await SymbolTools.GoToDefinition(
+            server: null!,
+            WorkspaceManager,
             WorkspaceExecutionGate,
             SymbolNavigationService,
             WorkspaceId,
@@ -131,6 +135,8 @@ public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
         var json = await ToolExecutionTestHarness.RunAsync(
             "find_references",
             () => SymbolTools.FindReferences(
+                server: null!,
+                WorkspaceManager,
                 WorkspaceExecutionGate,
                 ReferenceService,
                 WorkspaceId,
