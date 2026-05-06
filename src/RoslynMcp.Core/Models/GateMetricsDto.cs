@@ -34,6 +34,18 @@ namespace RoslynMcp.Core.Models;
 /// this flag remains <see langword="null"/> — callers see the structured error without a
 /// false success signal.
 /// </param>
+/// <param name="CacheHit">
+/// workspace-load-uses-cache-fast-path: set by <c>WorkspaceManager</c> during
+/// <c>workspace_load</c>/<c>workspace_reload</c>. <see langword="true"/> when the on-disk
+/// <c>IWorkspaceCacheStore</c> returned a usable entry whose persisted project graph matched
+/// the post-MSBuild project graph (the warm-cache fast path skipped the restore-race wait
+/// and refreshed the cached metadata-reference timestamps in place). <see langword="false"/>
+/// when the cache miss path ran (cold load wrote a fresh entry). <see langword="null"/> when
+/// no cache store was wired (legacy callers / test fixtures that constructed
+/// <c>WorkspaceManager</c> without a store) or the request did not touch the load gate.
+/// Lets future profiling isolate the warm-cache path from the cold path without external
+/// instrumentation.
+/// </param>
 public sealed record GateMetricsDto(
     string? GateMode,
     long QueuedMs,
@@ -42,4 +54,5 @@ public sealed record GateMetricsDto(
     long ElapsedMs = 0,
     string? StaleAction = null,
     long? StaleReloadMs = null,
-    bool? RetriedAfterReload = null);
+    bool? RetriedAfterReload = null,
+    bool? CacheHit = null);

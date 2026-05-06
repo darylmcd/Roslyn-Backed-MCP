@@ -82,5 +82,19 @@ public sealed class GateMetricsBuilder
     /// </summary>
     public bool? RetriedAfterReload { get; set; }
 
-    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload);
+    /// <summary>
+    /// workspace-load-uses-cache-fast-path: set by <c>WorkspaceManager</c> during
+    /// <c>workspace_load</c>/<c>workspace_reload</c>. <see langword="true"/> when the on-disk
+    /// <see cref="IWorkspaceCacheStore"/> returned a usable entry whose persisted project graph
+    /// matched the post-MSBuild project graph (the warm-cache fast path skipped the restore-race
+    /// wait and refreshed the cached metadata-reference timestamps in place). <see langword="false"/>
+    /// when the cache miss path ran (cold load wrote a fresh entry). <see langword="null"/> when
+    /// no cache store was wired (legacy callers / test fixtures that constructed
+    /// <c>WorkspaceManager</c> without a store) or the request did not touch the load gate.
+    /// Lets future profiling isolate the warm-cache path from the cold path without external
+    /// instrumentation.
+    /// </summary>
+    public bool? CacheHit { get; set; }
+
+    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit);
 }
