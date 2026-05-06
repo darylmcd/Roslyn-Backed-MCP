@@ -4,7 +4,6 @@ using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -18,16 +17,13 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly ICompilationCache _compilationCache;
-    private readonly ILogger<NamespaceDependencyService> _logger;
 
     public NamespaceDependencyService(
         IWorkspaceManager workspace,
-        ICompilationCache compilationCache,
-        ILogger<NamespaceDependencyService> logger)
+        ICompilationCache compilationCache)
     {
         _workspace = workspace;
         _compilationCache = compilationCache;
-        _logger = logger;
     }
 
     public async Task<NamespaceDependencyGraphDto> GetNamespaceDependenciesAsync(

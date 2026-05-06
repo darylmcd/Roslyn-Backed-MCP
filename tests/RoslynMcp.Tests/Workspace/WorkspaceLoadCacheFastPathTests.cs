@@ -18,15 +18,8 @@ namespace RoslynMcp.Tests.Workspace;
 /// </para>
 /// <para>
 /// The cold-load path is verified to stamp <see cref="AmbientGateMetrics.CacheHit"/> =
-/// <see langword="false"/>. Asserting <see langword="true"/> on the warm load is intentionally
-/// out of scope: the probe-stage entry lookup in
-/// <c>WorkspaceManager.TryEnumerateNewestCacheEntryAsync</c> currently double-hashes its third
-/// key component, so the warm path returns the cache-miss verdict even when a structurally valid
-/// entry is on disk. Tracking row: <c>workspace-cache-probe-double-hash-segment</c>. Once that
-/// fix lands, this test can grow a <see cref="AmbientGateMetrics.CacheHit"/> = <see langword="true"/>
-/// assertion on the warm load. Until then the unit-level round-trip / invalidation suites in
-/// <c>Services.WorkspaceCacheStoreRoundTripTests</c> / <c>WorkspaceCacheStoreInvalidationTests</c>
-/// cover the store contract.
+/// <see langword="false"/>, and the warm path is verified to stamp
+/// <see langword="true"/> after the probe reads the newest on-disk entry directly.
 /// </para>
 /// </remarks>
 [DoNotParallelize]
@@ -82,13 +75,8 @@ public sealed class WorkspaceLoadCacheFastPathTests : TestBase
     /// First load against an empty cache writes a fresh entry under
     /// <c>&lt;cache-root&gt;/&lt;solution-hash&gt;/&lt;sdk&gt;/&lt;graph-hash&gt;/entry.json</c>; a
     /// second load against the same cache root surfaces a functionally identical workspace and
-    /// preserves the on-disk entry. Cold-path metric (<see cref="AmbientGateMetrics.CacheHit"/>
-    /// = <see langword="false"/>) is asserted; warm-path engagement is intentionally NOT
-    /// asserted here because the probe-stage entry lookup currently double-hashes its third key
-    /// component (see <c>WorkspaceManager.TryEnumerateNewestCacheEntryAsync</c> and tracking row
-    /// <c>workspace-cache-probe-double-hash-segment</c>). The unit-level round-trip / invalidation
-    /// tests in <see cref="Services.WorkspaceCacheStoreRoundTripTests"/> and
-    /// <see cref="Services.WorkspaceCacheStoreInvalidationTests"/> verify the store contract.
+    /// preserves the on-disk entry. The cache-hit metric is asserted on both paths so the
+    /// probe-stage enumeration cannot silently fall back to cache-miss behavior.
     /// </summary>
     [TestMethod]
     public async Task ColdThenWarm_WritesEntry_AndWarmLoadProducesIdenticalWorkspace()
@@ -121,12 +109,16 @@ public sealed class WorkspaceLoadCacheFastPathTests : TestBase
         await using var warmManager = CreateManager(warmStore);
 
         Core.Models.WorkspaceStatusDto warmStatus;
+        bool? warmCacheHit;
         using (AmbientGateMetrics.BeginRequest())
         {
             warmStatus = await warmManager.LoadAsync(_solutionPath, CancellationToken.None);
+            warmCacheHit = AmbientGateMetrics.Snapshot()?.CacheHit;
         }
 
         Assert.IsNotNull(warmStatus, "Warm load should return a valid status.");
+        Assert.AreEqual(true, warmCacheHit,
+            "Warm load against a stable cache root must stamp CacheHit=true (probe path engaged).");
         Assert.AreEqual(coldStatus.Projects.Count, warmStatus.Projects.Count,
             "Warm-load workspace must surface the same project count as the cold-load workspace.");
 

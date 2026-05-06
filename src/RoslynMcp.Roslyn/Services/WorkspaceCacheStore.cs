@@ -91,6 +91,19 @@ public sealed class WorkspaceCacheStore : IWorkspaceCacheStore
         ct.ThrowIfCancellationRequested();
 
         var entryPath = ResolveEntryPath(key);
+        return TryGetEntryAtPathAsync(entryPath, ct);
+    }
+
+    /// <summary>
+    /// Reads a concrete <c>entry.json</c> path discovered by cache-root enumeration.
+    /// This intentionally bypasses cache-key hashing because the directory leaf is already
+    /// the hashed graph segment and the original graph hash cannot be recovered from it.
+    /// </summary>
+    internal Task<WorkspaceCacheEntry?> TryGetEntryAtPathAsync(string entryPath, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(entryPath);
+        ct.ThrowIfCancellationRequested();
+
         if (!File.Exists(entryPath))
         {
             return Task.FromResult<WorkspaceCacheEntry?>(null);

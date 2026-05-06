@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
-using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
@@ -28,12 +27,10 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class RecordFieldAdditionService : IRecordFieldAdditionService
 {
     private readonly IWorkspaceManager _workspace;
-    private readonly ILogger<RecordFieldAdditionService> _logger;
 
-    public RecordFieldAdditionService(IWorkspaceManager workspace, ILogger<RecordFieldAdditionService> logger)
+    public RecordFieldAdditionService(IWorkspaceManager workspace)
     {
         _workspace = workspace;
-        _logger = logger;
     }
 
     public async Task<RecordFieldAdditionImpactDto> PreviewAdditionAsync(

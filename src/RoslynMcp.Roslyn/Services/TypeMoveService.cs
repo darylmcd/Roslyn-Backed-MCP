@@ -6,7 +6,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
-using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -14,13 +13,11 @@ public sealed class TypeMoveService : ITypeMoveService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IPreviewStore _previewStore;
-    private readonly ILogger<TypeMoveService> _logger;
 
-    public TypeMoveService(IWorkspaceManager workspace, IPreviewStore previewStore, ILogger<TypeMoveService> logger)
+    public TypeMoveService(IWorkspaceManager workspace, IPreviewStore previewStore)
     {
         _workspace = workspace;
         _previewStore = previewStore;
-        _logger = logger;
     }
 
     public async Task<RefactoringPreviewDto> PreviewMoveTypeToFileAsync(

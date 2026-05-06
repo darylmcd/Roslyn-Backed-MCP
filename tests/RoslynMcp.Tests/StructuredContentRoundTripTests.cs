@@ -42,9 +42,9 @@ public sealed class StructuredContentRoundTripTests
             "Top-level schema for a record must be of type 'object'.");
 
         var properties = schemaObj["properties"]!.AsObject();
-        Assert.IsTrue(properties.ContainsKey("Name"), "Record's Name property must be in schema.");
-        Assert.IsTrue(properties.ContainsKey("Count"), "Record's Count property must be in schema.");
-        Assert.IsTrue(properties.ContainsKey("Loaded"), "Record's Loaded property must be in schema.");
+        Assert.IsTrue(properties.ContainsKey("name"), "Record's Name property must be camel-cased in schema.");
+        Assert.IsTrue(properties.ContainsKey("count"), "Record's Count property must be camel-cased in schema.");
+        Assert.IsTrue(properties.ContainsKey("loaded"), "Record's Loaded property must be camel-cased in schema.");
     }
 
     [TestMethod]
@@ -79,6 +79,17 @@ public sealed class StructuredContentRoundTripTests
         var structured = result.StructuredContent.Value;
         Assert.IsTrue(structured.TryGetProperty("name", out var nameProp));
         Assert.AreEqual("ws-1", nameProp.GetString());
+        var schema = ResolveSchemaForSample("sample_tool")!.AsObject();
+        var schemaKeys = schema["properties"]!.AsObject()
+            .Select(property => property.Key)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        var structuredKeys = structured.EnumerateObject()
+            .Select(property => property.Name)
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToArray();
+        CollectionAssert.AreEqual(schemaKeys, structuredKeys,
+            "Published outputSchema property names must exactly match the camelCase structuredContent payload keys.");
         Assert.IsFalse(structured.TryGetProperty("_meta", out _),
             "_meta MUST live ONLY in the text channel — duplicating it into structuredContent " +
             "would surface two observability blobs to the client (dedupe risk per plan).");
