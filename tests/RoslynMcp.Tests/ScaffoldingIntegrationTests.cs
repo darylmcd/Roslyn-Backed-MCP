@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -291,6 +292,83 @@ public sealed class Bar { }
         var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
         StringAssert.Contains(contents, "[TestMethod]");
         StringAssert.Contains(contents, "Speak_Needs_Test");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Preview_UseSamplingFalse_DoesNotCallSuggestionProvider()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var targetFilePath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
+        var provider = new RecordingTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "Dog",
+                "Speak",
+                ReferenceTestFile: string.Empty,
+                UseSampling: false),
+            CancellationToken.None,
+            provider);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.AreEqual(0, provider.CallCount, "Sampling provider must not be called unless useSampling is true.");
+        var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
+        StringAssert.Contains(contents, "Speak_Needs_Test");
+        Assert.IsFalse(contents.Contains("Speak_WhenDogIsReady_ReturnsBark"),
+            "Default deterministic scaffold should not use sampled names.");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Preview_UseSamplingTrue_UsesSuggestedMethodName()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var siblingPath = workspace.GetPath("SampleLib.Tests", "DogExistingTests.cs");
+        await File.WriteAllTextAsync(siblingPath, """
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace SampleLib.Tests;
+
+[TestClass]
+public sealed class DogExistingTests
+{
+    [TestMethod]
+    public void Speak_WhenQuiet_ReturnsEmpty()
+    {
+    }
+}
+""", CancellationToken.None);
+        var targetFilePath = workspace.GetPath("SampleLib.Tests", "DogGeneratedTests.cs");
+        var provider = new RecordingTestNameSuggestionProvider("Speak_WhenDogIsReady_ReturnsBark");
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto(
+                "SampleLib.Tests",
+                "Dog",
+                "Speak",
+                ReferenceTestFile: string.Empty,
+                UseSampling: true),
+            CancellationToken.None,
+            provider);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.AreEqual(1, provider.CallCount, "Sampling provider should be called once for an opted-in method-focused scaffold.");
+        Assert.IsNotNull(provider.LastContext);
+        Assert.AreEqual("Dog", provider.LastContext.TargetTypeName);
+        Assert.AreEqual("Speak", provider.LastContext.TargetMethodName);
+        StringAssert.Contains(provider.LastContext.TargetMethodSignature!, "Speak(");
+        CollectionAssert.Contains(provider.LastContext.SiblingTestMethodNames.ToList(), "Speak_WhenQuiet_ReturnsEmpty");
+
+        var contents = await File.ReadAllTextAsync(targetFilePath, CancellationToken.None);
+        StringAssert.Contains(contents, "Speak_WhenDogIsReady_ReturnsBark");
+        Assert.IsFalse(contents.Contains("Speak_Needs_Test"),
+            "Opted-in sampled scaffold should replace the deterministic placeholder with the suggested method name.");
     }
 
     [TestMethod]
@@ -764,5 +842,22 @@ public class SnapshotContentHasher
             "Static-members-only class scaffold must NOT emit `new SnapshotContentHasher(...)` in Arrange.");
         Assert.IsFalse(contents.Contains("var subject ="),
             "Static-members-only class scaffold must NOT emit a `subject` instance.");
+    }
+
+    private sealed class RecordingTestNameSuggestionProvider(string methodName) : ITestNameSuggestionProvider
+    {
+        public int CallCount { get; private set; }
+
+        public ScaffoldTestNameSuggestionContext? LastContext { get; private set; }
+
+        public Task<TestNameSuggestionResult> SuggestTestNameAsync(
+            ScaffoldTestNameSuggestionContext context,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            CallCount++;
+            LastContext = context;
+            return Task.FromResult(new TestNameSuggestionResult(methodName));
+        }
     }
 }

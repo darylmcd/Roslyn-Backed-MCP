@@ -21,7 +21,12 @@ public interface IScaffoldingService
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="request">The scaffolding parameters, including the test project name and target type.</param>
     /// <param name="ct">Cancellation token.</param>
-    Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(string workspaceId, ScaffoldTestDto request, CancellationToken ct);
+    /// <param name="testNameSuggestionProvider">Optional provider used only when <see cref="ScaffoldTestDto.UseSampling"/> is true.</param>
+    Task<RefactoringPreviewDto> PreviewScaffoldTestAsync(
+        string workspaceId,
+        ScaffoldTestDto request,
+        CancellationToken ct,
+        ITestNameSuggestionProvider? testNameSuggestionProvider = null);
 
     /// <summary>
     /// Previews scaffolding test files for multiple target types in a single composite preview.
@@ -46,3 +51,21 @@ public interface IScaffoldingService
     /// <param name="ct">Cancellation token.</param>
     Task<RefactoringPreviewDto> PreviewScaffoldFirstTestFileAsync(string workspaceId, ScaffoldFirstTestFileDto request, CancellationToken ct);
 }
+
+/// <summary>
+/// Transport-neutral bridge for opt-in test-method-name suggestions during scaffold preview.
+/// Implementations may use MCP sampling, fixtures, or a deterministic fake in tests.
+/// </summary>
+public interface ITestNameSuggestionProvider
+{
+    Task<TestNameSuggestionResult> SuggestTestNameAsync(ScaffoldTestNameSuggestionContext context, CancellationToken ct);
+}
+
+public sealed record ScaffoldTestNameSuggestionContext(
+    string TargetTypeName,
+    string TargetMethodName,
+    string? TargetMethodSignature,
+    string? TargetNamespace,
+    IReadOnlyList<string> SiblingTestMethodNames);
+
+public sealed record TestNameSuggestionResult(string? MethodName, string? Warning = null);

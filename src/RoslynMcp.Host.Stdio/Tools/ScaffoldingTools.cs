@@ -2,6 +2,7 @@ using System.ComponentModel;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -89,6 +90,7 @@ public static class ScaffoldingTools
         "Preview scaffolding a new test file (MSTest, xUnit, or NUnit; auto-detect or specify testFramework)."),
      Description("Preview scaffolding a new test file for a target type. Supports MSTest, xUnit, and NUnit (use testFramework or auto-detect from the test project's package references). When referenceTestFile is provided (or the test project contains a sibling *Tests.cs file — auto-detected by most-recently-modified), class-level attributes, base class, and constructor-injected fixture parameters (xUnit IClassFixture<T> pattern) are replicated onto the scaffolded output so ASP.NET Core integration-test conventions carry over without manual rewrite. Pass an empty string for referenceTestFile to opt out of inference.")]
     public static Task<string> PreviewScaffoldTest(
+        RequestContext<CallToolRequestParams> requestContext,
         IWorkspaceExecutionGate gate,
         IScaffoldingService scaffoldingService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -97,15 +99,91 @@ public static class ScaffoldingTools
         [Description("Optional: target method name for the generated test stub")] string? targetMethodName = null,
         [Description("Test framework: mstest, xunit, nunit, or auto (infer from PackageReference in the test csproj)")] string testFramework = "auto",
         [Description("Optional: absolute path to an existing sibling test file whose scaffolding (class attributes, base class, IClassFixture<T> constructor) should be replicated. When omitted, the most-recently-modified *Tests.cs in the target project is used. Pass an empty string to opt out of inference.")] string? referenceTestFile = null,
+        [Description("When true, request a sampled Given/When/Then test method name from the MCP client if it supports sampling. Defaults false to preserve deterministic placeholder output.")] bool useSampling = false,
         CancellationToken ct = default)
-        => ToolDispatch.ReadByWorkspaceIdAsync(
+    {
+        var testNameSuggestionProvider = useSampling && requestContext.Server is { } server
+            ? new McpSamplingTestNameSuggestionProvider(server)
+            : null;
+
+        return ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
             c => scaffoldingService.PreviewScaffoldTestAsync(
                 workspaceId,
-                new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName, testFramework, referenceTestFile),
-                c),
+                new ScaffoldTestDto(testProjectName, targetTypeName, targetMethodName, testFramework, referenceTestFile, useSampling),
+                c,
+                testNameSuggestionProvider),
             ct);
+    }
+
+    private sealed class McpSamplingTestNameSuggestionProvider(McpServer server) : ITestNameSuggestionProvider
+    {
+        public async Task<TestNameSuggestionResult> SuggestTestNameAsync(ScaffoldTestNameSuggestionContext context, CancellationToken ct)
+        {
+            if (server.ClientCapabilities?.Sampling is null)
+            {
+                return new TestNameSuggestionResult(
+                    null,
+                    "useSampling was true but the MCP client did not advertise sampling support; emitted the deterministic placeholder test name.");
+            }
+
+            try
+            {
+                var result = await server.SampleAsync(BuildRequest(context), ct).ConfigureAwait(false);
+                var text = result.Content
+                    .OfType<TextContentBlock>()
+                    .Select(static block => block.Text)
+                    .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
+                return new TestNameSuggestionResult(text);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return new TestNameSuggestionResult(
+                    null,
+                    $"Sampling test-name suggestion failed ({ex.GetType().Name}: {ex.Message}); emitted the deterministic placeholder test name.");
+            }
+        }
+
+        private static CreateMessageRequestParams BuildRequest(ScaffoldTestNameSuggestionContext context)
+            => new()
+            {
+                MaxTokens = 48,
+                Temperature = 0,
+                StopSequences = ["\n"],
+                SystemPrompt = "Return exactly one valid C# test method identifier. No markdown, no punctuation, no explanation.",
+                Messages =
+                [
+                    new SamplingMessage
+                    {
+                        Role = Role.User,
+                        Content =
+                        [
+                            new TextContentBlock
+                            {
+                                Text =
+                                    "Suggest a Given/When/Then test method name.\n" +
+                                    $"Target type: {context.TargetTypeName}\n" +
+                                    $"Target namespace: {context.TargetNamespace ?? "(global)"}\n" +
+                                    $"Target method: {context.TargetMethodName}\n" +
+                                    $"Signature: {context.TargetMethodSignature ?? context.TargetMethodName}\n" +
+                                    $"Sibling examples: {FormatSiblingExamples(context.SiblingTestMethodNames)}\n" +
+                                    "Format example: LoadIntoSessionAsync_WhenCacheMiss_FallsThroughToColdLoad"
+                            }
+                        ]
+                    }
+                ]
+            };
+
+        private static string FormatSiblingExamples(IReadOnlyList<string> siblingTestMethodNames)
+            => siblingTestMethodNames.Count == 0
+                ? "(none)"
+                : string.Join(", ", siblingTestMethodNames.Take(6));
+    }
 
     [McpServerTool(Name = "scaffold_test_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("scaffolding", "experimental", false, true,
