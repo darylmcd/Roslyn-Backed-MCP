@@ -55,6 +55,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         UnusedSymbolsAnalysisOptions options,
         CancellationToken ct)
     {
+        _logger.LogDebug("UnusedCodeAnalyzer.FindUnusedSymbolsAsync: workspaceId={WorkspaceId} projectFilter={ProjectFilter} includePublic={IncludePublic} limit={Limit}", workspaceId, options.ProjectFilter, options.IncludePublic, options.Limit);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<UnusedSymbolDto>();
         var processedSymbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
@@ -580,6 +581,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         DuplicateHelperAnalysisOptions options,
         CancellationToken ct)
     {
+        _logger.LogDebug("UnusedCodeAnalyzer.FindDuplicateHelpersAsync: workspaceId={WorkspaceId} projectFilter={ProjectFilter} limit={Limit}", workspaceId, options.ProjectFilter, options.Limit);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<DuplicateHelperDto>();
 
@@ -622,6 +624,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         DeadFieldsAnalysisOptions options,
         CancellationToken ct)
     {
+        _logger.LogDebug("UnusedCodeAnalyzer.FindDeadFieldsAsync: workspaceId={WorkspaceId} projectFilter={ProjectFilter} usageKindFilter={UsageKindFilter} includePublic={IncludePublic} limit={Limit}", workspaceId, options.ProjectFilter, options.UsageKindFilter, options.IncludePublic, options.Limit);
         ValidateDeadFieldUsageKindFilter(options.UsageKindFilter);
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
@@ -1088,6 +1091,7 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         DeadLocalsAnalysisOptions options,
         CancellationToken ct)
     {
+        _logger.LogDebug("UnusedCodeAnalyzer.FindDeadLocalsAsync: workspaceId={WorkspaceId} projectFilter={ProjectFilter} limit={Limit}", workspaceId, options.ProjectFilter, options.Limit);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<DeadLocalDto>();
 

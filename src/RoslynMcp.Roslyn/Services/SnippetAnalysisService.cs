@@ -24,6 +24,7 @@ public sealed class SnippetAnalysisService : ISnippetAnalysisService
 
     public Task<SnippetAnalysisDto> AnalyzeAsync(string code, string[]? usings, string kind, CancellationToken ct)
     {
+        _logger.LogDebug("SnippetAnalysisService.AnalyzeAsync: kind={Kind} codeLength={CodeLength} usingsCount={UsingsCount}", kind, code.Length, usings?.Length ?? 0);
         var allUsings = DefaultUsings
             .Concat(usings ?? [])
             .Distinct()

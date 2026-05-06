@@ -37,6 +37,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
     public async Task<IReadOnlyList<SymbolDto>> SearchSymbolsAsync(
         string workspaceId, string query, string? projectFilter, string? kindFilter, string? namespaceFilter, int limit, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolSearchService.SearchSymbolsAsync: workspaceId={WorkspaceId} query={Query} projectFilter={ProjectFilter} kindFilter={KindFilter} namespaceFilter={NamespaceFilter} limit={Limit}", workspaceId, query, projectFilter, kindFilter, namespaceFilter, limit);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<SymbolDto>();
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -223,6 +224,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
 
     public async Task<SymbolDto?> GetSymbolInfoAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool allowAdjacent = false)
     {
+        _logger.LogDebug("SymbolSearchService.GetSymbolInfoAsync: workspaceId={WorkspaceId} locator={Locator} allowAdjacent={AllowAdjacent}", workspaceId, locator, allowAdjacent);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         // symbol-info-lenient-whitespace-resolution: the tool flag maps inversely — strict=true
         // when the caller has NOT opted into adjacent-token walking. Default false preserves
@@ -233,6 +235,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
 
     public async Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(string workspaceId, string filePath, CancellationToken ct)
     {
+        _logger.LogDebug("SymbolSearchService.GetDocumentSymbolsAsync: workspaceId={WorkspaceId} filePath={FilePath}", workspaceId, filePath);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var document = SymbolResolver.FindDocument(solution, filePath);
         if (document is null)

@@ -33,6 +33,7 @@ public sealed class TypeConsumersService : ITypeConsumersService
         int limit,
         CancellationToken ct)
     {
+        _logger.LogDebug("TypeConsumersService.FindTypeConsumersAsync: workspaceId={WorkspaceId} typeName={TypeName} limit={Limit}", workspaceId, typeName, limit);
         if (string.IsNullOrWhiteSpace(typeName))
         {
             throw new ArgumentException("typeName must be non-empty.", nameof(typeName));

@@ -20,6 +20,7 @@ public sealed class ReferenceService : IReferenceService
 
     public async Task<IReadOnlyList<LocationDto>> FindReferencesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool summary = false, IReadOnlyCollection<string>? projectFilter = null)
     {
+        _logger.LogDebug("ReferenceService.FindReferencesAsync: workspaceId={WorkspaceId} locator={Locator} summary={Summary} projectFilterCount={ProjectFilterCount}", workspaceId, locator, summary, projectFilter?.Count ?? 0);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         // Throw on unresolved symbol so callers get a structured NotFound envelope
         // instead of an empty list they cannot distinguish from "valid symbol, zero references".
@@ -56,6 +57,7 @@ public sealed class ReferenceService : IReferenceService
         CancellationToken ct,
         bool includeGeneratedPartials = false)
     {
+        _logger.LogDebug("ReferenceService.FindImplementationsAsync: workspaceId={WorkspaceId} locator={Locator} includeGeneratedPartials={IncludeGeneratedPartials}", workspaceId, locator, includeGeneratedPartials);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
@@ -138,6 +140,7 @@ public sealed class ReferenceService : IReferenceService
 
     public async Task<IReadOnlyList<SymbolDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
+        _logger.LogDebug("ReferenceService.FindOverridesAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
@@ -295,6 +298,7 @@ public sealed class ReferenceService : IReferenceService
 
     public Task<IReadOnlyList<SymbolDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
+        _logger.LogDebug("ReferenceService.FindBaseMembersAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         return ResolveBaseMembersAsync(solution, locator, ct);
     }
@@ -320,6 +324,7 @@ public sealed class ReferenceService : IReferenceService
     public async Task<IReadOnlyList<BulkReferenceResultDto>> FindReferencesBulkAsync(
         string workspaceId, IReadOnlyList<BulkSymbolLocator> symbols, bool includeDefinition, CancellationToken ct)
     {
+        _logger.LogDebug("ReferenceService.FindReferencesBulkAsync: workspaceId={WorkspaceId} symbolCount={SymbolCount} includeDefinition={IncludeDefinition}", workspaceId, symbols.Count, includeDefinition);
         if (symbols.Count > 50)
             throw new ArgumentException("Maximum of 50 symbols per bulk request.");
 
