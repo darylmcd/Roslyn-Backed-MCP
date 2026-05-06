@@ -1,5 +1,7 @@
 {
   "schemaVersion": 2,
+  "completed": true,
+  "completedAt": "2026-05-06T21:07:03Z",
   "generatedAt": "2026-05-05T19:17:30Z",
   "backlogSnapshot": "2026-05-05T19:30:00Z",
   "addendaLoaded": true,
@@ -295,7 +297,7 @@
     {
       "id": "audit-deep-subagent-orchestration",
       "order": 14,
-      "status": "pending",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["audit-deep-subagent-orchestration"],
       "rowsClosedCount": 1,
@@ -309,8 +311,8 @@
       "branch": "remediation/audit-deep-subagent-orchestration",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/530",
-      "mergedAt": null,
-      "notes": "PR #530 opened. Phase-runner subagent + orchestration logic in the post-migration SKILL.md. Phase 6 stays inline; Phases 1, 2, 8, 8b offload to subagent."
+      "mergedAt": "2026-05-06T21:06:17Z",
+      "notes": "PR #530 merged. Phase-runner subagent + orchestration logic in the post-migration SKILL.md. Phase 6 stays inline; Phases 1, 2, 8, 8b offload to subagent."
     },
     {
       "id": "promote-tier-skill",
