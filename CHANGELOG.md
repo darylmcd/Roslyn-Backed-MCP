@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.34.1] - 2026-05-06
+
+### Fixed
+
+- **Fixed:** `WorkspaceLoadCacheFastPathTests.ColdThenWarm_*` no longer fails the release-publish workflow on a noise-margin stopwatch comparison. The previous timing assertion (`warmElapsedMs < coldElapsedMs`) was a flaky proxy for "warm-cache fast path engaged" against the 3-project SampleSolution fixture — wall-clock was dominated by MSBuild SDK resolution and shared-runner jitter routinely flipped the inequality (v1.34.0's publish-nuget runs failed twice for this reason). Replaced with cold-load behavioral assertion (`AmbientGateMetrics.CacheHit == false`), functional parity check, and entry-persistence check; warm-load `CacheHit == true` is intentionally not asserted yet because the probe-stage entry lookup in `WorkspaceManager.TryEnumerateNewestCacheEntryAsync` currently double-hashes its third key component (tracked as `workspace-cache-probe-double-hash-segment`). Closes `cache-fastpath-test-flakiness`.
+
+### Added
+
+- **Added:** `/roslyn-mcp:audit-deep` plugin skill — the comprehensive Roslyn MCP server audit + experimental-promotion scorecard + plugin-skill audit, now shipped with the plugin instead of relying on each consuming repo to keep `ai_docs/prompts/deep-review-and-refactor.md` current. Three modes: `full`, `promotion-only`, `read-only`. Skill requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts with a clear message when absent rather than running a non-MCP fallback. Phase 6 mutations confined to disposable worktrees the prompt creates (read-only against the audited repo's main). Closes (split A) `audit-deep-skill-migration` — paired with the archive-and-surface-audit-integration follow-on.
+- **Added:** `/roslyn-mcp:audit-deep` Phase 0 delegates drift detection to `/surface-audit` when available, and ships `skills/audit-deep/scripts/archive-old-reports.ps1` (with `-OlderThanDays`, `-DryRun`, `-ReportsRelativePath` flags) that moves audit-report markdown files older than 30 days into `archive/<YYYY>/`. `-ReportsRelativePath` keeps the shipped skill generic (consumer repos can point it anywhere). Closes the (S2) + (S5) follow-on pieces of `audit-deep-skill-migration` (paired with initiative #12).
+- **Added:** `symbol_search`, `find_references`, and `go_to_definition` invoke MCP `elicitation/create` when the resolved name is ambiguous (overloads, partial classes, inherited members) and the client declares the `elicitation` capability. The agent is asked to pick a candidate via a labeled select-from-N prompt; clients without elicitation continue to receive the existing disambiguation-list response (purely additive, no breaking change). Closes `elicit-disambiguation-on-multi-symbol-resolve`.
+- **Added:** MCP 2025-06-18 `outputSchema` + `structuredContent` infrastructure — `[McpToolMetadata]` accepts an optional `outputSchemaTypeRef`, schemas generate from existing DTO records via `System.Text.Json` `JsonSchemaExporter`, `StructuredCallToolFilter` emits both `content[].text` and `structuredContent` channels with a single `_meta` payload (no duplication). New `ToolOutputSchemaIndex` reflection cache mirrors the `PromptParameterIndex` pattern. No tools opted in this PR — per-tool batches follow. Closes `tool-output-schema-infrastructure`.
+- **Added:** `outputSchema` + `structuredContent` channel for 6 high-traffic read tools (`server_info`, `server_heartbeat`, `workspace_status`, `workspace_list`, `workspace_health`, `workspace_drift_check`). Clients with MCP 2025-06-18 support get typed structured payloads; clients without continue to receive the existing text-channel JSON unchanged. `server_info`, `server_heartbeat`, and `workspace_list` were refactored from anonymous-object response bodies to typed DTOs (new `ServerToolDtos.cs`) so `typeof(...)` is reachable in the `[McpToolMetadata]` annotation; on-the-wire JSON shape is preserved bit-for-bit. Closes `tool-output-schema-batch-1-server-info-workspace`.
+
 ## [1.34.0] - 2026-05-06
 
 ### Fixed
