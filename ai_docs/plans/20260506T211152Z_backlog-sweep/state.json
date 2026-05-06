@@ -54,7 +54,7 @@
     {
       "id": "test-discovery-service-complexity-refactor",
       "order": 2,
-      "status": "in-review",
+      "status": "merged",
       "priority": "Medium",
       "backlogRowsClosed": ["test-discovery-service-complexity-refactor"],
       "rowsClosedCount": 1,
@@ -68,8 +68,8 @@
       "branch": "remediation/test-discovery-service-complexity-refactor",
       "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/535",
-      "mergedAt": null,
-      "notes": "PR #535 opened. Structural extraction only; preserve ordering and cancellation behavior."
+      "mergedAt": "2026-05-06T22:00:10Z",
+      "notes": "PR #535 merged. Structural extraction only; preserved ordering and cancellation behavior."
     },
     {
       "id": "scaffold-test-preview-sampled-test-names",
