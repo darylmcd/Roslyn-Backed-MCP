@@ -107,7 +107,8 @@ public static class WorkspaceTools
 
     [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions. Returns a lean summary per workspace by default — pass verbose=true for the full per-project tree of every workspace.")]
     [McpToolMetadata("workspace", "stable", true, false,
-        "List active workspace sessions.")]
+        "List active workspace sessions.",
+        outputSchemaTypeRef: typeof(WorkspaceListDto))]
     public static Task<string> ListWorkspaces(
         IWorkspaceManager workspace,
         [Description("When true, return the full per-project tree and workspace diagnostics for each workspace. Default false returns only counts and load state.")] bool verbose = false)
@@ -115,11 +116,16 @@ public static class WorkspaceTools
         var workspaces = workspace.ListWorkspaces();
         if (verbose)
         {
+            // verbose mode emits the full WorkspaceStatusDto per workspace; the published
+            // outputSchema describes the default (verbose=false) shape only. Verbose callers
+            // still get valid JSON on the text channel — the structuredContent shape just
+            // won't match the advertised schema in that mode (documented opt-out).
             return Task.FromResult(JsonSerializer.Serialize(new { count = workspaces.Count, workspaces }, JsonDefaults.Indented));
         }
 
         var summaries = workspaces.Select(WorkspaceStatusSummaryDto.From).ToList();
-        return Task.FromResult(JsonSerializer.Serialize(new { count = summaries.Count, workspaces = summaries }, JsonDefaults.Indented));
+        var payload = new WorkspaceListDto(summaries.Count, summaries);
+        return Task.FromResult(JsonSerializer.Serialize(payload, JsonDefaults.Indented));
     }
 
     [McpServerTool(Name = "workspace_status", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
@@ -127,7 +133,8 @@ public static class WorkspaceTools
         "Default (verbose=false) returns summary JSON: isReady, isStale, workspaceErrorCount, restoreHint, solutionFileName, counts. " +
         "Pass verbose=true for the full per-project tree and workspace diagnostics.")]
     [McpToolMetadata("workspace", "stable", true, false,
-        "Inspect status, diagnostics, and stale-state information for a workspace.")]
+        "Inspect status, diagnostics, and stale-state information for a workspace.",
+        outputSchemaTypeRef: typeof(WorkspaceStatusSummaryDto))]
     public static Task<string> GetWorkspaceStatus(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
@@ -147,7 +154,8 @@ public static class WorkspaceTools
     [McpServerTool(Name = "workspace_health", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Alias for workspace_status with verbose=false — same summary JSON (isReady, restoreHint, solutionFileName, error counts). Use for agent bootstrap right after workspace_load.")]
     [McpToolMetadata("workspace", "stable", true, false,
-        "Lean workspace readiness summary (alias of workspace_status verbose=false).")]
+        "Lean workspace readiness summary (alias of workspace_status verbose=false).",
+        outputSchemaTypeRef: typeof(WorkspaceStatusSummaryDto))]
     public static Task<string> GetWorkspaceHealth(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
