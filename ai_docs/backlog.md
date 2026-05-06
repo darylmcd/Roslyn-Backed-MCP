@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-06T21:17:41Z
+**updated_at:** 2026-05-06T21:42:46Z
 
 ## Agent contract
 
@@ -48,7 +48,6 @@
 | id | pri | deps | do |
 |----|-----|------|-----|
 | `scaffold-test-preview-sampled-test-names` | Medium | none | Plumb `IMcpServer` into `ScaffoldingTools.PreviewScaffoldTest` (and the underlying `IScaffoldingService.PreviewScaffoldTestAsync`) and add a sampled `SuggestTestNameAsync` step gated behind a `useSampling: bool = false` parameter so non-sampling clients see no behavior change. When `useSampling=true` and the client declares the `sampling` capability, replace the placeholder `<TargetMethodName>_Needs_Test` with a model-suggested Given/When/Then test method name (e.g. `LoadIntoSessionAsync_WhenCacheMiss_FallsThroughToColdLoad`) computed from the target method's signature + sibling-test-class examples. Collapses N rename round-trips per N-test scaffold pass to 1 sampled call. Anchors: `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs`, `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs` (`PreviewScaffoldTestAsync` + `_Needs_Test` placeholder site at line 1887). Regression test shape: 2 — (a) `useSampling: false` returns `_Needs_Test` placeholder unchanged (default behavior preserved); (b) `useSampling: true` against a mock client that returns a string returns a non-placeholder name. Evidence: `ai_docs/items/sampling-spike.md` § Verdicts — only `go` candidate from the 2026-05-05 spike (cost $0.001–$0.003/call, latency 0.6–1.2s, equivalent-to-better quality vs outer-loop). Source: spike's "GO" verdict; sibling candidates 1+2 (XML-doc gen, refactor-summary) ruled NO-GO. |
-| `test-discovery-service-complexity-refactor` | Medium | none | Two methods in `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs` are the lowest-MI hotspots in the solution and continue to grow with every test-discovery edge case. Refactor each via `extract_method` to drop cyclomatic complexity below 15 and lines-of-code below 80 per method without behavior change. Targets: `CollectFallbackMatchesAsync` at line 578 (cyc=25, 145 LOC, MI=29.65, nesting=5) and `FindRelatedTestsForFilesAsync` at line 346 (cyc=22, 184 LOC, MI=27.19). Use `roslyn-mcp:refactor-loop` skill (preview → apply-with-verify → validate). Anchors: 1 file. Regression test shape: existing `TestDiscoveryService` test fixtures must remain green — no new tests required if extraction is purely structural. Evidence: `get_complexity_metrics` (minComplexity=15) in 2026-05-06 audit-toolset run; both methods top the hotspot list. Source: 2026-05-06 audit-toolset run. |
 
 ## Low
 
