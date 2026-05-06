@@ -89,7 +89,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #520, 2026-05-06) |
 | Backlog rows closed | `tool-output-schema-batch-1-server-info-workspace` |
 | Diagnosis | Verified live. The 6 tools in this batch (`server_info`, `server_heartbeat`, `workspace_status`, `workspace_list`, `workspace_health`, `workspace_drift_check`) have well-defined response DTOs already — confirmed by reading the tool methods in `ServerTools.cs`, `WorkspaceTools.cs`, `WorkspaceDriftTool.cs`. Each returns a typed object that gets JSON-serialized into the `TextContentBlock`. Once initiative #3 lands, attaching `outputSchemaTypeRef = typeof(<Dto>)` to each `[McpToolMetadata]` annotation enables the dual-channel response. |
 | Approach | (a) For each of the 6 tools, identify the response DTO type (cite type names in implementation). (b) Update each `[McpToolMetadata]` annotation to set `outputSchemaTypeRef = typeof(<DtoType>)`. (c) Verify schema generation succeeds for each DTO at static-init time (or at first call). (d) Update each catalog entry in `ServerSurfaceCatalog.*.cs` partials to expose the new schema field. (e) No tool body changes; this is annotation-only wiring. |
@@ -233,8 +233,8 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | pending |
-| Backlog rows closed | (split) `audit-deep-skill-migration` (paired with initiative #12) |
+| Status | merged (PR #519, 2026-05-06) |
+| Backlog rows closed | (split) `audit-deep-skill-migration` (paired with merged initiative #12 — closes the row) |
 | Diagnosis | The (S2) and (S5) pieces of the original heroic `audit-deep-skill-migration` row. (S2) wires Phase 0's drift-detection step (added in PR #494) to delegate to `/surface-audit` when available, instead of re-walking the catalog from scratch. (S5) adds an archive script that moves `ai_docs/audit-reports/*.md` older than N days into `archive/<YYYY>/`. Both are post-migration follow-ups that require the new skill structure to be in place. |
 | Approach | (a) Add a wrapper at `skills/audit-deep/scripts/archive-old-reports.ps1` that takes `-OlderThanDays` (default: 30) and `-DryRun` flags. The script uses `Get-ChildItem` over `ai_docs/audit-reports/*.md` and `Move-Item` into `ai_docs/audit-reports/archive/<YYYY>/`. (b) In `skills/audit-deep/SKILL.md`, add a Phase 0 step: when `/surface-audit` is available in the host, delegate the drift-detection sub-step to it (one structured table back) instead of re-walking the live catalog. (c) Document the archive script in the SKILL.md "operational notes" section with usage examples. |
 | Scope | Production files: 2 — `skills/audit-deep/scripts/archive-old-reports.ps1` (new), `skills/audit-deep/SKILL.md` (Phase 0 surface-audit delegation + archive-script doc paragraph). Within Rule 3 (2/4). Test files: 1 new — `tests/RoslynMcp.Tests/Skills/ArchiveOldReportsScriptTests.cs` (PowerShell-script invocation in dry-run mode against a synthetic file set). |
