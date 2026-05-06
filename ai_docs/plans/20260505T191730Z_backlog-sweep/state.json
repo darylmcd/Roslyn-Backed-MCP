@@ -213,7 +213,7 @@
     {
       "id": "workspace-cache-prewarm-on-load",
       "order": 10,
-      "status": "in-progress",
+      "status": "in-review",
       "priority": "Medium",
       "backlogRowsClosed": ["workspace-cache-prewarm-on-load"],
       "rowsClosedCount": 1,
@@ -227,9 +227,9 @@
       "depsOn": "workspace-load-uses-cache-fast-path",
       "branch": "remediation/workspace-cache-prewarm-on-load",
       "worktreePath": ".worktrees/workspace-cache-prewarm-on-load",
-      "prUrl": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/526",
       "mergedAt": null,
-      "notes": "Execution started on remediation/workspace-cache-prewarm-on-load. Wiring is at the workspace_load host-tool boundary to avoid a WorkspaceManager <-> WorkspaceWarmService dependency cycle; persisted Roslyn warm artifacts are intentionally not implemented because compilation/semantic-model warm state is process-local."
+      "notes": "PR #526 opened. Wiring is at the workspace_load host-tool boundary to avoid a WorkspaceManager <-> WorkspaceWarmService dependency cycle; persisted Roslyn warm artifacts are intentionally not implemented because compilation/semantic-model warm state is process-local."
     },
     {
       "id": "workspace-warm-default-above-50-projects",

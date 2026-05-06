@@ -181,7 +181,7 @@ Sort: priority band (High → Medium → Low), cost ASC within band, deps respec
 
 | Field | Content |
 |---|---|
-| Status | in-progress (branch: `remediation/workspace-cache-prewarm-on-load`, worktree: `.worktrees/workspace-cache-prewarm-on-load`) |
+| Status | in-review (PR #526, branch: `remediation/workspace-cache-prewarm-on-load`, worktree: `.worktrees/workspace-cache-prewarm-on-load`) |
 | Backlog rows closed | `workspace-cache-prewarm-on-load` |
 | Diagnosis | Verified live. The useful, implementable part is the opt-in `workspace_load(prewarm: true)` path. Persisting Roslyn compilation / semantic-model warm state across process restarts is not a valid cache-store extension because those objects are process-local Roslyn internals; the cache store continues to own MSBuild graph/reference metadata only. |
 | Approach | (a) Add nullable `prewarm` to the `workspace_load` tool (`true` warms, `false` explicitly opts out, omitted currently behaves cold). (b) After load and any auto-restore reload, invoke `WorkspaceWarmService.WarmAsync` through the existing per-workspace read gate. (c) Return the normal load payload, plus a `prewarm` result block only when the caller opted in. (d) Leave persisted warm-artifact caching out of scope as technically invalid for Roslyn compilation/semantic caches. |
