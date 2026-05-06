@@ -133,11 +133,19 @@ public static partial class ServerSurfaceCatalog
     private static int CountByTier(IReadOnlyList<SurfaceEntry> entries, string tier) =>
         entries.Count(entry => string.Equals(entry.SupportTier, tier, StringComparison.Ordinal));
 
+    // tool-output-schema-infrastructure: tool factory consults ToolOutputSchemaIndex so that
+    // any [McpToolMetadata(outputSchemaTypeRef: ...)]-annotated method publishes a JSON-Schema
+    // on its catalog entry without per-row plumbing in the partial-class files. Tools without
+    // an opt-in stay schema-less (OutputSchema == null) — the existing text-only contract.
     private static SurfaceEntry Tool(string name, string category, string supportTier, bool readOnly, bool destructive, string summary) =>
-        new("tool", name, category, supportTier, readOnly, destructive, summary, UriTemplate: null, Parameters: null);
+        new("tool", name, category, supportTier, readOnly, destructive, summary,
+            UriTemplate: null,
+            Parameters: null,
+            OutputSchema: ToolOutputSchemaIndex.GetSchema(name));
 
     private static SurfaceEntry Resource(string name, string category, string supportTier, bool readOnly, bool destructive, string summary, string uriTemplate) =>
-        new("resource", name, category, supportTier, readOnly, destructive, summary, uriTemplate, Parameters: null);
+        new("resource", name, category, supportTier, readOnly, destructive, summary, uriTemplate,
+            Parameters: null, OutputSchema: null);
 
     // get-prompt-text-publish-parameter-schema: the prompt factory always splices the
     // PromptParameterIndex's reflected parameter list onto the entry. Reflection runs once at
@@ -145,7 +153,8 @@ public static partial class ServerSurfaceCatalog
     private static SurfaceEntry Prompt(string name, string category, string supportTier, bool readOnly, bool destructive, string summary) =>
         new("prompt", name, category, supportTier, readOnly, destructive, summary,
             UriTemplate: null,
-            Parameters: PromptParameterIndex.GetParameters(name));
+            Parameters: PromptParameterIndex.GetParameters(name),
+            OutputSchema: null);
 }
 
 /// <summary>
@@ -165,6 +174,15 @@ public static partial class ServerSurfaceCatalog
 /// Excludes DI-resolved services and <see cref="CancellationToken"/> — only the values an agent
 /// must supply via <c>parametersJson</c> on <c>get_prompt_text</c>.
 /// </param>
+/// <param name="OutputSchema">
+/// tool-output-schema-infrastructure: the JSON-Schema describing the tool's
+/// <c>structuredContent</c> channel per MCP 2025-06-18 § Tools / Structured Content.
+/// <see langword="null"/> for tools without an <see cref="McpToolMetadataAttribute.OutputSchemaTypeRef"/>
+/// declaration (legacy text-only contract; structuredContent stays absent), and always
+/// <see langword="null"/> for resource and prompt entries. Generated lazily from the declared
+/// CLR type via <see cref="ToolOutputSchemaIndex"/>; the cache is shared across the catalog,
+/// the dispatch filter, and the catalog-document resource serializer.
+/// </param>
 public sealed record SurfaceEntry(
     string Kind,
     string Name,
@@ -174,7 +192,8 @@ public sealed record SurfaceEntry(
     bool Destructive,
     string Summary,
     string? UriTemplate,
-    IReadOnlyList<PromptParameterEntry>? Parameters);
+    IReadOnlyList<PromptParameterEntry>? Parameters,
+    System.Text.Json.Nodes.JsonNode? OutputSchema = null);
 
 /// <summary>
 /// get-prompt-text-publish-parameter-schema: per-parameter schema row published on each
