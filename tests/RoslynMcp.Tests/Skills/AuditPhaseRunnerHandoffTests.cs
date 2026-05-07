@@ -76,7 +76,7 @@ public sealed class AuditPhaseRunnerHandoffTests
     private static string ResolveSkillPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        return Path.Combine(repoRoot, "skills", "audit-deep", "SKILL.md");
+        return Path.Combine(repoRoot, ".claude", "skills", "mcp-server-stress", "SKILL.md");
     }
 
     private static string ResolveRunnerPath()

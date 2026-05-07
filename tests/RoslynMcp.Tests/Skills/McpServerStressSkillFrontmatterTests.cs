@@ -5,12 +5,13 @@ using RoslynMcp.Host.Stdio.Catalog;
 namespace RoslynMcp.Tests.Skills;
 
 /// <summary>
-/// audit-deep-skill-migration: structural + tool-reference parity for the shipped `audit-deep` skill.
+/// mcp-server-stress-relocate: structural + tool-reference parity for the maintainer-only
+/// `mcp-server-stress` skill (relocated from `skills/audit-deep/` to `.claude/skills/mcp-server-stress/`).
 ///
 /// Contract enforced here:
 ///   1. SKILL.md frontmatter has the expected fields (`name`, `description`, `user-invocable`, `argument-hint`)
 ///      and the `name` field matches the directory name. This is the same contract the deep-review prompt's
-///      Phase 16b applies dynamically via `glob skills/*/SKILL.md` — pinning it as a unit test means the build
+///      Phase 16b applies dynamically via `glob .claude/skills/*/SKILL.md` — pinning it as a unit test means the build
 ///      fails before a malformed skill ships.
 ///   2. The single canonical prompt file exists at the documented relative path under `prompts/prompt.md`.
 ///      The historical `prompts/full.md` / `prompts/promotion-only.md` / `prompts/read-only.md` mode wrappers
@@ -26,9 +27,9 @@ namespace RoslynMcp.Tests.Skills;
 /// contract.
 /// </summary>
 [TestClass]
-public sealed class AuditDeepSkillFrontmatterTests
+public sealed class McpServerStressSkillFrontmatterTests
 {
-    private const string SkillName = "audit-deep";
+    private const string SkillName = "mcp-server-stress";
 
     [TestMethod]
     public void Skill_FilePresent_AtExpectedPath()
@@ -36,7 +37,7 @@ public sealed class AuditDeepSkillFrontmatterTests
         var skillPath = ResolveSkillPath();
         Assert.IsTrue(
             File.Exists(skillPath),
-            $"audit-deep SKILL.md not found at {skillPath}. The shipped skill is the consumer-facing entry point — its absence makes /roslyn-mcp:audit-deep moot.");
+            $"mcp-server-stress SKILL.md not found at {skillPath}. The shipped skill is the consumer-facing entry point — its absence makes /mcp-server-stress moot.");
     }
 
     [TestMethod]
@@ -57,12 +58,12 @@ public sealed class AuditDeepSkillFrontmatterTests
         var description = frontmatter["description"];
         Assert.IsFalse(
             description.Contains("mode=", StringComparison.Ordinal),
-            $"audit-deep description must not mention `mode=` — the modes were collapsed into one canonical run. Actual: {description}");
+            $"mcp-server-stress description must not mention `mode=` — the modes were collapsed into one canonical run. Actual: {description}");
         var mentionsDisposableWorktree = description.Contains("disposable worktree", StringComparison.Ordinal);
         var mentionsScorecard = description.Contains("scorecard", StringComparison.Ordinal);
         Assert.IsTrue(
             mentionsDisposableWorktree || mentionsScorecard,
-            $"audit-deep description must mention either `disposable worktree` or `scorecard` — those are the canonical-run distinguishing features. Actual: {description}");
+            $"mcp-server-stress description must mention either `disposable worktree` or `scorecard` — those are the canonical-run distinguishing features. Actual: {description}");
     }
 
     [TestMethod]
@@ -74,24 +75,24 @@ public sealed class AuditDeepSkillFrontmatterTests
         // SKILL.md must route to the single-prompt path.
         Assert.IsTrue(
             contents.Contains("prompts/prompt.md", StringComparison.Ordinal),
-            "audit-deep SKILL.md must reference `prompts/prompt.md` — that is the single canonical prompt file. " +
+            "mcp-server-stress SKILL.md must reference `prompts/prompt.md` — that is the single canonical prompt file. " +
             "If you renamed the prompt, update the route in Step 2.");
 
         // Negative assertions — the historical mode tokens must not survive the collapse.
         Assert.IsFalse(
             contents.Contains("mode=full", StringComparison.Ordinal),
-            "audit-deep SKILL.md must not contain `mode=full` — the modes were collapsed into one canonical run by `mcp-server-stress-single-mode`.");
+            "mcp-server-stress SKILL.md must not contain `mode=full` — the modes were collapsed into one canonical run by `mcp-server-stress-single-mode`.");
         Assert.IsFalse(
             contents.Contains("mode=promotion-only", StringComparison.Ordinal),
-            "audit-deep SKILL.md must not contain `mode=promotion-only` — the modes were collapsed into one canonical run by `mcp-server-stress-single-mode`.");
+            "mcp-server-stress SKILL.md must not contain `mode=promotion-only` — the modes were collapsed into one canonical run by `mcp-server-stress-single-mode`.");
         Assert.IsFalse(
             contents.Contains("mode=read-only", StringComparison.Ordinal),
-            "audit-deep SKILL.md must not contain `mode=read-only` — the modes were collapsed into one canonical run by `mcp-server-stress-single-mode`.");
+            "mcp-server-stress SKILL.md must not contain `mode=read-only` — the modes were collapsed into one canonical run by `mcp-server-stress-single-mode`.");
 
         // The B4/B5 hard precondition — server-or-halt — must be unambiguous.
         Assert.IsTrue(
             contents.Contains("mcp__roslyn__server_info", StringComparison.Ordinal),
-            "audit-deep SKILL.md must require `mcp__roslyn__server_info` as the hard precondition (B4/B5). " +
+            "mcp-server-stress SKILL.md must require `mcp__roslyn__server_info` as the hard precondition (B4/B5). " +
             "Without this gate, the skill could fall back to a non-MCP audit and produce no audit-grade evidence.");
     }
 
@@ -99,11 +100,11 @@ public sealed class AuditDeepSkillFrontmatterTests
     public void Skill_PromptFile_ExistsAtDocumentedPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var promptPath = Path.Combine(repoRoot, "skills", SkillName, "prompts", "prompt.md");
+        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "prompt.md");
 
         Assert.IsTrue(File.Exists(promptPath),
-            $"audit-deep canonical prompt not found at {promptPath}. SKILL.md Step 2 routes to this single file; " +
-            "missing it breaks every invocation of /roslyn-mcp:audit-deep.");
+            $"mcp-server-stress canonical prompt not found at {promptPath}. SKILL.md Step 2 routes to this single file; " +
+            "missing it breaks every invocation of /mcp-server-stress.");
     }
 
     [TestMethod]
@@ -139,7 +140,7 @@ public sealed class AuditDeepSkillFrontmatterTests
 
         Assert.AreEqual(
             0, unknown.Count,
-            $"audit-deep SKILL.md references {unknown.Count} tool name(s) that do not exist in the live ServerSurfaceCatalog: " +
+            $"mcp-server-stress SKILL.md references {unknown.Count} tool name(s) that do not exist in the live ServerSurfaceCatalog: " +
             string.Join(", ", unknown.Distinct()) + ". " +
             "Per Phase 16b, this is a P2 FAIL — shipped skills must not reference renamed/removed tools.");
     }
@@ -147,7 +148,7 @@ public sealed class AuditDeepSkillFrontmatterTests
     private static string ResolveSkillPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        return Path.Combine(repoRoot, "skills", SkillName, "SKILL.md");
+        return Path.Combine(repoRoot, ".claude", "skills", SkillName, "SKILL.md");
     }
 
     private static Dictionary<string, string> ExtractFrontmatter(string contents, string skillPath)
@@ -156,7 +157,7 @@ public sealed class AuditDeepSkillFrontmatterTests
         // `key: "value"` or `key: value` lines — we do not need a YAML parser.
         var match = Regex.Match(contents, @"^---\s*\r?\n(?<body>.*?)\r?\n---\s*\r?\n", RegexOptions.Singleline);
         Assert.IsTrue(match.Success,
-            $"audit-deep SKILL.md at {skillPath} is missing a `---`-delimited frontmatter block at the file head.");
+            $"mcp-server-stress SKILL.md at {skillPath} is missing a `---`-delimited frontmatter block at the file head.");
 
         var dict = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var raw in match.Groups["body"].Value.Split('\n'))
@@ -184,14 +185,14 @@ public sealed class AuditDeepSkillFrontmatterTests
         string skillPath)
     {
         Assert.IsTrue(frontmatter.ContainsKey(field),
-            $"audit-deep frontmatter at {skillPath} is missing the `{field}` field.");
+            $"mcp-server-stress frontmatter at {skillPath} is missing the `{field}` field.");
         var actual = frontmatter[field];
         Assert.IsFalse(string.IsNullOrWhiteSpace(actual),
-            $"audit-deep frontmatter field `{field}` at {skillPath} is empty.");
+            $"mcp-server-stress frontmatter field `{field}` at {skillPath} is empty.");
         if (expectedValue is not null)
         {
             Assert.AreEqual(expectedValue, actual,
-                $"audit-deep frontmatter field `{field}` at {skillPath} must equal `{expectedValue}`.");
+                $"mcp-server-stress frontmatter field `{field}` at {skillPath} must equal `{expectedValue}`.");
         }
     }
 }
