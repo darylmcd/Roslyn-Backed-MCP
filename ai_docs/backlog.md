@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-07T21:37:36Z**
+**updated_at: 2026-05-07T22:23:37Z**
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `per-repo-promotion-scorecard` | Medium | `backlog-d-fragment-pattern` | Move `_latest-promotion-scorecard.json` from `<Roslyn-MCP-root>/ai_docs/audit-reports/` (last-write-wins single file across all audited repos) to per-audited-repo at `<X>/ai_docs/audit-reports/_latest-promotion-scorecard.json`. Update `/publish-preflight` Step 8 to gather scorecards from all configured sibling-audit repos and require quorum evidence (≥2 workspaces with `promote` recommendation, no `keep-experimental` or `deprecate` recommendations) before flipping a tier via `/promote-tier`. Today's design lets a single workspace's anomaly drive a tier flip — e.g., a tool that happens to fail on one repo's edge case gets `keep-experimental` even if it works cleanly on three other workspaces, or vice versa. Anchors: EDIT `.claude/skills/mcp-server-stress/prompt.md` (write scorecard locally, not cross-repo), EDIT `.claude/skills/publish-preflight/SKILL.md` Step 8 (multi-repo aggregation + quorum logic), EDIT `.claude/skills/promote-tier/SKILL.md` (accept aggregated input format), NEW `eng/aggregate-promotion-scorecards.ps1` (gather + merge helper). `productionFilesTouched: 4`. Regression test shape: synthetic fixture with 3 mock scorecards (2 promote, 1 needs-more-evidence) → aggregator emits `promote: ready`; same fixture with 1 promote, 1 keep-experimental → aggregator emits `blocked`. Evidence: 2026-05-07 design conversation — current single-file scorecard (`prompts/full.md:671`) reflects whichever workspace audited last; promotion decisions today are based on N=1 evidence. |
 
 ## Low
 

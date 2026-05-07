@@ -1,0 +1,268 @@
+#!/usr/bin/env pwsh
+<#
+.SYNOPSIS
+    Aggregate per-repo `_latest-promotion-scorecard.json` files from sibling
+    audit repos into a single quorum-aware verdict per tool / resource / prompt.
+
+.DESCRIPTION
+    Per the per-repo-promotion-scorecard initiative: each audited repo writes
+    `<audited-repo>/ai_docs/audit-reports/_latest-promotion-scorecard.json`
+    when /mcp-server-stress runs. This script gathers them across configured
+    sibling repos under a parent folder and merges them into one in-memory map
+    keyed by `<kind>|<name>`. Each entry is then assigned an aggregated verdict
+    using a quorum rule:
+
+      * `promote: ready`            — at least 2 sibling repos voted `promote`
+                                      AND zero `keep-experimental` votes
+                                      AND zero `deprecate` votes.
+      * `promote: blocked`          — at least one `keep-experimental` or
+                                      `deprecate` vote (a single workspace's
+                                      hard-stop blocks the quorum).
+      * `needs-more-evidence`       — fewer than 2 `promote` votes and no
+                                      blockers. Insufficient sample size to
+                                      flip a tier.
+
+    Discovery semantics mirror `eng/stage-review-inbox.ps1` (the convention
+    init 5 of the same backlog sweep established): walk every immediate
+    subdirectory under `$SiblingRepoParent` (defaults to the parent of this
+    repo), skip the running repo itself unless `-IncludeSelf`, and probe
+    each candidate's `ai_docs/audit-reports/_latest-promotion-scorecard.json`.
+
+    Missing scorecards are NOT errors. The aggregator simply notes
+    `missingFromRepos`. Empty configured sibling sets emit a clean
+    `no scorecards available` verdict with zero entries.
+
+    Output: a single JSON object on stdout. Shape:
+
+        {
+          "schemaVersion": 1,
+          "generatedAt": "<UTC ISO>",
+          "siblingReposScanned": [...],
+          "siblingReposWithScorecard": [...],
+          "siblingReposMissingScorecard": [...],
+          "entries": [
+            {
+              "kind": "tool",
+              "name": "scaffold_test_apply",
+              "category": "scaffolding",
+              "currentTier": "experimental",
+              "verdict": "promote: ready" | "promote: blocked" | "needs-more-evidence",
+              "promoteVotes": 2,
+              "keepExperimentalVotes": 0,
+              "deprecateVotes": 0,
+              "needsMoreEvidenceVotes": 1,
+              "sourceRepos": { "promote": [...], "keep-experimental": [...], ... },
+              "blockers": [...]
+            }
+          ],
+          "summary": {
+            "promoteReady": N,
+            "promoteBlocked": N,
+            "needsMoreEvidence": N,
+            "noScorecardsAvailable": $true|$false
+          }
+        }
+
+.PARAMETER SiblingRepoParent
+    Parent folder to scan for sibling repos. Defaults to the parent of this
+    repo (matches stage-review-inbox.ps1's discovery convention).
+
+.PARAMETER ExcludeRepoFolders
+    Extra folder names to skip under `$SiblingRepoParent`. The running repo's
+    own folder is excluded by default unless `-IncludeSelf` is passed.
+
+.PARAMETER IncludeSelf
+    Include this repo itself in the scan. Off by default — the audited-repo
+    pattern means scorecards land under each *audited* repo, and this repo
+    typically only audits siblings.
+
+.PARAMETER ScorecardRelativePath
+    Per-repo path to the scorecard. Defaults to
+    `ai_docs/audit-reports/_latest-promotion-scorecard.json`.
+
+.PARAMETER OutputFile
+    Optional file path. When set, the JSON is written to this path in addition
+    to stdout. Useful for callers that want both pipeable JSON and a persisted
+    artifact.
+
+.EXAMPLE
+    ./eng/aggregate-promotion-scorecards.ps1
+
+    Default: aggregate scorecards from every sibling repo under the parent
+    folder. Emit JSON to stdout.
+
+.EXAMPLE
+    ./eng/aggregate-promotion-scorecards.ps1 -SiblingRepoParent C:\Customer-Repos -OutputFile aggregated.json
+
+    Aggregate from a custom sibling parent and persist the JSON to disk.
+#>
+[CmdletBinding()]
+param(
+    [string]$SiblingRepoParent = '',
+    [string[]]$ExcludeRepoFolders = @(),
+    [switch]$IncludeSelf,
+    [string]$ScorecardRelativePath = 'ai_docs/audit-reports/_latest-promotion-scorecard.json',
+    [string]$OutputFile = ''
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoName = Split-Path -Leaf $repoRoot
+
+if (-not $SiblingRepoParent) {
+    $SiblingRepoParent = Split-Path -Parent $repoRoot
+}
+
+# Discover candidate repos.
+$roots = New-Object System.Collections.Generic.List[pscustomobject]
+if ($IncludeSelf) {
+    $roots.Add([pscustomobject]@{ Name = $repoName; Path = $repoRoot }) | Out-Null
+}
+
+if (Test-Path $SiblingRepoParent) {
+    $excludeSet = @{}
+    if (-not $IncludeSelf) { $excludeSet[$repoName] = $true }
+    foreach ($x in $ExcludeRepoFolders) { $excludeSet[$x] = $true }
+    Get-ChildItem -Path $SiblingRepoParent -Directory -ErrorAction SilentlyContinue |
+        Where-Object { -not $excludeSet.ContainsKey($_.Name) } |
+        ForEach-Object {
+            $roots.Add([pscustomobject]@{ Name = $_.Name; Path = $_.FullName }) | Out-Null
+        }
+}
+
+$siblingReposScanned = New-Object System.Collections.Generic.List[string]
+$siblingReposWithScorecard = New-Object System.Collections.Generic.List[string]
+$siblingReposMissingScorecard = New-Object System.Collections.Generic.List[string]
+
+# Map: "<kind>|<name>" -> aggregation accumulator.
+$entries = @{}
+
+foreach ($root in $roots) {
+    $siblingReposScanned.Add($root.Name) | Out-Null
+    $scorecardPath = Join-Path $root.Path $ScorecardRelativePath
+    if (-not (Test-Path -LiteralPath $scorecardPath)) {
+        $siblingReposMissingScorecard.Add($root.Name) | Out-Null
+        continue
+    }
+
+    try {
+        $raw = Get-Content -LiteralPath $scorecardPath -Raw -ErrorAction Stop
+        $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        # Treat malformed scorecards as missing — surface the sibling name so
+        # the operator can investigate. Do NOT crash the aggregator.
+        $siblingReposMissingScorecard.Add("$($root.Name) (malformed: $($_.Exception.Message))") | Out-Null
+        continue
+    }
+
+    $siblingReposWithScorecard.Add($root.Name) | Out-Null
+
+    if (-not $parsed.PSObject.Properties.Name -contains 'scorecard') { continue }
+    if ($null -eq $parsed.scorecard) { continue }
+
+    foreach ($entry in $parsed.scorecard) {
+        $kind = if ($entry.PSObject.Properties.Name -contains 'kind') { [string]$entry.kind } else { 'unknown' }
+        $name = if ($entry.PSObject.Properties.Name -contains 'name') { [string]$entry.name } else { '' }
+        if (-not $name) { continue }
+        $key = "$kind|$name"
+
+        if (-not $entries.ContainsKey($key)) {
+            $entries[$key] = [pscustomobject]@{
+                kind                  = $kind
+                name                  = $name
+                category              = if ($entry.PSObject.Properties.Name -contains 'category') { [string]$entry.category } else { '' }
+                currentTier           = if ($entry.PSObject.Properties.Name -contains 'currentTier') { [string]$entry.currentTier } else { '' }
+                promote               = New-Object System.Collections.Generic.List[string]
+                keepExperimental      = New-Object System.Collections.Generic.List[string]
+                needsMoreEvidence     = New-Object System.Collections.Generic.List[string]
+                deprecate             = New-Object System.Collections.Generic.List[string]
+                blockers              = New-Object System.Collections.Generic.List[string]
+            }
+        }
+
+        $rec = if ($entry.PSObject.Properties.Name -contains 'recommendation') { [string]$entry.recommendation } else { '' }
+        switch ($rec) {
+            'promote'             { $entries[$key].promote.Add($root.Name) | Out-Null }
+            'keep-experimental'   { $entries[$key].keepExperimental.Add($root.Name) | Out-Null }
+            'needs-more-evidence' { $entries[$key].needsMoreEvidence.Add($root.Name) | Out-Null }
+            'deprecate'           { $entries[$key].deprecate.Add($root.Name) | Out-Null }
+            default               { } # Ignore unknown recommendations.
+        }
+
+        if ($entry.PSObject.Properties.Name -contains 'blockers' -and $null -ne $entry.blockers) {
+            foreach ($b in $entry.blockers) {
+                if ($b) { $entries[$key].blockers.Add("[$($root.Name)] $b") | Out-Null }
+            }
+        }
+    }
+}
+
+# Compute aggregated verdicts.
+$aggregated = New-Object System.Collections.Generic.List[pscustomobject]
+$promoteReady = 0
+$promoteBlocked = 0
+$needsMore = 0
+
+foreach ($key in ($entries.Keys | Sort-Object)) {
+    $e = $entries[$key]
+    $promoteCount = $e.promote.Count
+    $blockerCount = $e.keepExperimental.Count + $e.deprecate.Count
+
+    if ($blockerCount -gt 0) {
+        $verdict = 'promote: blocked'
+        $promoteBlocked++
+    } elseif ($promoteCount -ge 2) {
+        $verdict = 'promote: ready'
+        $promoteReady++
+    } else {
+        $verdict = 'needs-more-evidence'
+        $needsMore++
+    }
+
+    $aggregated.Add([pscustomobject]@{
+        kind                    = $e.kind
+        name                    = $e.name
+        category                = $e.category
+        currentTier             = $e.currentTier
+        verdict                 = $verdict
+        promoteVotes            = $promoteCount
+        keepExperimentalVotes   = $e.keepExperimental.Count
+        deprecateVotes          = $e.deprecate.Count
+        needsMoreEvidenceVotes  = $e.needsMoreEvidence.Count
+        sourceRepos             = [pscustomobject]@{
+            promote             = @($e.promote)
+            'keep-experimental' = @($e.keepExperimental)
+            'needs-more-evidence' = @($e.needsMoreEvidence)
+            deprecate           = @($e.deprecate)
+        }
+        blockers                = @($e.blockers)
+    }) | Out-Null
+}
+
+$noScorecards = $siblingReposWithScorecard.Count -eq 0
+
+$result = [pscustomobject]@{
+    schemaVersion                  = 1
+    generatedAt                    = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    siblingReposScanned            = @($siblingReposScanned)
+    siblingReposWithScorecard      = @($siblingReposWithScorecard)
+    siblingReposMissingScorecard   = @($siblingReposMissingScorecard)
+    entries                        = @($aggregated)
+    summary                        = [pscustomobject]@{
+        promoteReady          = $promoteReady
+        promoteBlocked        = $promoteBlocked
+        needsMoreEvidence     = $needsMore
+        noScorecardsAvailable = $noScorecards
+    }
+}
+
+$json = $result | ConvertTo-Json -Depth 12
+
+if ($OutputFile) {
+    Set-Content -LiteralPath $OutputFile -Value $json -Encoding UTF8
+}
+
+# Always write JSON to stdout so callers can pipe.
+Write-Output $json

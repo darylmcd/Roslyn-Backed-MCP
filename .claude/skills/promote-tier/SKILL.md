@@ -11,6 +11,42 @@ You flip the support tier of one MCP tool, resource, or prompt atomically across
 
 This is a **maintainer-side** skill (lives at `.claude/skills/promote-tier/`, NOT `skills/promote-tier/`). It is invoked by the maintainer at release-cut time after `/publish-preflight` Step 8 surfaces promotion candidates. It is NOT shipped to plugin consumers.
 
+## Quorum requirement (read first)
+
+`/publish-preflight` Step 8 now feeds this skill from an **aggregated** scorecard produced by `eng/aggregate-promotion-scorecards.ps1`, which gathers per-repo `_latest-promotion-scorecard.json` files from every configured sibling repo and applies a quorum rule before recommending a tier flip:
+
+- A name is surfaced for promotion only when **≥2 sibling repos voted `promote`** AND **zero sibling repos voted `keep-experimental` or `deprecate`** (the aggregator emits `verdict: "promote: ready"`).
+- Single-workspace anomalies no longer drive tier decisions. A tool that worked cleanly on one workspace but failed on another stays experimental.
+
+**Maintainer override.** If a strong single-repo signal warrants flipping a tier without quorum (e.g. a tool whose only meaningful exercise repo is the one that audited it), the maintainer may invoke this skill directly with the name + target tier. There is **no flag** that bypasses the quorum gate at the aggregator layer — the override is simply "skip Step 8's surface and call `/promote-tier <name> <tier>` manually." Document the override rationale in the commit message or release notes so future audits can correlate the flip with its evidence.
+
+This skill itself does NOT enforce quorum — it is a mechanical two-site flip. Quorum is `/publish-preflight` Step 8's contract; this skill is invoked after Step 8 has either surfaced a quorum-passing candidate or the maintainer has chosen to override.
+
+## Aggregated input format (from `/publish-preflight` Step 8)
+
+The aggregator emits JSON of shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "kind": "tool",
+      "name": "scaffold_test_apply",
+      "category": "scaffolding",
+      "currentTier": "experimental",
+      "verdict": "promote: ready",
+      "promoteVotes": 2,
+      "sourceRepos": { "promote": ["repo-a", "repo-b"] }
+    }
+  ]
+}
+```
+
+Step 8 filters `entries[]` by `verdict == "promote: ready"` and surfaces each as a `/promote-tier <name> stable` invocation. This skill accepts the same `<name> <tier>` argument shape regardless of whether the source was an aggregated quorum or a single-repo override.
+
+The legacy single-file scorecard format (`scorecard[]` with per-entry `recommendation`) is no longer read by `/publish-preflight`; if a sibling repo still emits it at the deprecated `<Roslyn-MCP-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json` path, the aggregator ignores it and Step 8 surfaces a one-line WARN.
+
 ## Why this exists
 
 Today `/publish-preflight` Step 8 emits a manual `Edit:` checklist for each promotion-recommended row:
