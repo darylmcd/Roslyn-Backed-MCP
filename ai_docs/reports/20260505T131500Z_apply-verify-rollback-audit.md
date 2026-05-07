@@ -6,7 +6,7 @@ sources:
   - src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs
   - src/RoslynMcp.Roslyn/Services/EditService.cs
   - src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs
-  - ai_docs/reports/20260504T200153Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md
+  - 2026-05-04 multi-session retro claim, later removed after coverage audit
 recommendation: close-obsolete (with optional spin-off for line-shift fingerprint stability)
 ---
 
@@ -15,7 +15,7 @@ recommendation: close-obsolete (with optional spin-off for line-shift fingerprin
 
 ## Trigger
 
-Backlog row `apply-with-verify-false-positive-audit` (Medium, sourced from §3#4 / §4#3 of the 2026-05-04 multi-session retro). Retro claim: *"~5 of 36 rollback events across 14 sessions appear to be false positives — verify tripped on a pre-existing diagnostic the apply didn't introduce. Diff-based logic (already used by `validate_recent_git_changes`) would only fail on diagnostics introduced by the apply."*
+Backlog row `apply-with-verify-false-positive-audit` (Medium, sourced from the 2026-05-04 multi-session retro). Retro claim: *"~5 of 36 rollback events across 14 sessions appear to be false positives — verify tripped on a pre-existing diagnostic the apply didn't introduce. Diff-based logic (already used by `validate_recent_git_changes`) would only fail on diagnostics introduced by the apply."*
 
 Action item per backlog row: classify the 14 rollback sessions as TP/FP; if FP rate ≥10%, ship an implementation row; otherwise close obsolete.
 

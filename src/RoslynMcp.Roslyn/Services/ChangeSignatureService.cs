@@ -48,8 +48,8 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         // service ONLY accepts method symbols, so the rejection cannot swallow a
         // legitimate property-indexer-accessor or other non-method kind that
         // `SymbolResolver.ResolveByMetadataNameAsync` is shared with from non-method
-        // tools). Plan rationale: ai_docs/plans/20260428T124405Z_backlog-sweep/plan.md
-        // initiative `change-signature-preview-metadataname-shape-error-actionability`.
+        // tools). Shipped in PR #467 for
+        // `change-signature-preview-metadataname-shape-error-actionability`.
         if (locator.HasMetadataName && locator.MetadataName!.Contains('('))
         {
             throw new ArgumentException(

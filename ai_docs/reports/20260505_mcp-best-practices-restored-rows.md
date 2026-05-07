@@ -30,7 +30,7 @@ This note exists so the next agent picking up any of the recommendations has the
 
 ## Cross-cutting evidence sources cited by these rows
 
-- `ai_docs/reports/20260504T200153Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` — 14-day, 40-session retro. Cited for: §2a row 4 (locator ambiguity), §2b row 1 (locator preflight), §3 #2 (`InvalidArgument` cluster), §3 #4 (apply-with-verify rollback rate), §3 #6 (cold-load timeout cluster), §4 #6 (warm strategy).
+- 2026-05-04 14-day, 40-session retro. Cited for: locator ambiguity, locator preflight, `InvalidArgument` schema-hint friction, apply-with-verify rollback rate, cold-load timeout cluster, and warm strategy. The report file was removed after each actionable item was either shipped or represented in `ai_docs/backlog.md`.
 - `docs/large-solution-profiling-baseline.md` — OrchardCore (227 projects, captured 2026-04-26). Cited for: `workspace_load` P95 = 44.85s, `workspace_warm` P95 = 17.32s, `symbol_search` P95 = 1.18s, `find_references` P95 = 997ms.
 - `docs/roadmap.md` § HTTP/SSE Hosting + § Claude Code Plugin Distribution. Cited for: `http-streamable-host-project` deferral rationale; `mcp-registry-publication` alignment.
 - MCP spec 2025-06-18. Cited for: § Tools / Structured Content (rec A), § Elicitation (rec D), § Sampling (rec I), § Streamable HTTP transport (rec H).
