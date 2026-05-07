@@ -121,6 +121,12 @@ public sealed class WorkspaceManagerEvictionTests
                 "WorkspaceLoadedAt must be at or after the pre-load watermark.");
             Assert.AreEqual(WorkspaceEvictionRegistry.ServerStartedAtUtc, ex.ServerStartedAtUtc,
                 "ServerStartedAt must match the registry's reported value.");
+            // workspace-id-recovery-hints: same-process eviction MUST carry LoadedPath so
+            // the envelope can emit an exact workspace_load(path: ...) retry shape.
+            Assert.AreEqual(path, ex.LoadedPath,
+                "Same-process eviction must carry the recorded loadedPath.");
+            StringAssert.Contains(ex.Message, $"workspace_load(path: \"{path}\")",
+                "Eviction message must include the exact rehydration call shape.");
         }
         finally
         {
@@ -139,6 +145,7 @@ public sealed class WorkspaceManagerEvictionTests
     public async Task ClosedWorkspace_ToolEnvelope_Carries_WorkspaceEvicted_Category()
     {
         const string workspaceId = "ws-evicted-fixture-id";
+        const string loadedPath = @"C:\fixtures\Sample.slnx";
         var loadedAtUtc = DateTimeOffset.Parse("2026-04-27T08:15:30.0000000+00:00");
         var serverStartedAtUtc = DateTimeOffset.Parse("2026-04-27T08:14:00.0000000+00:00");
 
@@ -151,6 +158,7 @@ public sealed class WorkspaceManagerEvictionTests
                 workspaceId,
                 serverStartedAtUtc,
                 loadedAtUtc,
+                loadedPath,
                 $"Workspace '{workspaceId}' was evicted from the live session set."));
 
         using var json = JsonDocument.Parse(result);
@@ -171,6 +179,43 @@ public sealed class WorkspaceManagerEvictionTests
             "Envelope must surface serverStartedAt so callers can correlate with server_info.");
         StringAssert.Contains(message, $"workspaceLoadedAt={loadedAtUtc:O}",
             "Envelope must surface workspaceLoadedAt for same-process evictions.");
+        // workspace-id-recovery-hints: same-process envelopes carry the rehydration path
+        // and an exact workspace_load(path: ...) call shape so agents can copy-paste recovery.
+        StringAssert.Contains(message, $"loadedPath={loadedPath};",
+            "Envelope must surface loadedPath for same-process evictions.");
+        StringAssert.Contains(message, $"recovery=workspace_load(path: \"{loadedPath}\");",
+            "Envelope must include the exact workspace_load retry shape.");
+    }
+
+    /// <summary>
+    /// workspace-id-recovery-hints: cross-process recycle envelopes intentionally OMIT
+    /// the loadedPath / recovery segments — the prior session metadata was lost with the
+    /// process and there is no path to copy-paste. The envelope stays compact so the
+    /// caller's eye lands on the workspace_load-with-original-path prose in the message.
+    /// </summary>
+    [TestMethod]
+    public async Task RecycledHostEnvelope_OmitsLoadedPathAndRecoverySegments()
+    {
+        const string workspaceId = "ws-recycle-fixture-id";
+        var serverStartedAtUtc = DateTimeOffset.Parse("2026-04-27T09:00:00.0000000+00:00");
+
+        var result = await ToolExecutionTestHarness.RunAsync(
+            "workspace_changes",
+            () => throw new WorkspaceEvictedException(
+                workspaceId,
+                serverStartedAtUtc,
+                $"Workspace '{workspaceId}' belongs to a prior host process that exited."));
+
+        using var json = JsonDocument.Parse(result);
+        var message = json.RootElement.GetProperty("message").GetString()!;
+        StringAssert.Contains(message, $"serverStartedAt={serverStartedAtUtc:O}",
+            "Cross-process envelope must still carry serverStartedAt.");
+        Assert.IsFalse(message.Contains("workspaceLoadedAt="),
+            "Cross-process envelope must NOT emit workspaceLoadedAt — prior loadedAt is unrecoverable.");
+        Assert.IsFalse(message.Contains("loadedPath="),
+            "Cross-process envelope must NOT emit loadedPath — prior path is unrecoverable.");
+        Assert.IsFalse(message.Contains("recovery=workspace_load"),
+            "Cross-process envelope must NOT emit a recovery hint — no path to copy-paste.");
     }
 
     /// <summary>
@@ -283,6 +328,7 @@ public sealed class WorkspaceManagerEvictionTests
             "any-id",
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
+            @"C:\any\path.slnx",
             "test message");
 
         Assert.IsTrue(ex is KeyNotFoundException,

@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-07T18:30:00Z
+**updated_at:** 2026-05-07T19:15:00Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `workspace-id-recovery-hints` | Medium | none | Improve stale or missing `workspaceId` recovery ergonomics. Current errors distinguish `WorkspaceEvicted` and point at `workspace_list`, but older multi-session evidence showed agents still needed to manually infer the reload/retry path when a workspace was closed, reloaded, or the host restarted. Next deliverable: add a compact recovery hint to workspace-not-found / evicted envelopes that includes the loaded path when available and an exact `workspace_load(path: ...)` retry shape; preserve typoed-id behavior as `NotFound`. Anchors: `src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs`, `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs`, `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs`. Regression test shape: missing-id typo remains `NotFound`; closed/recycled id reports `WorkspaceEvicted` plus recovery hint/path when known. Evidence: 2026-04-26 multi-session retro sessions `5111f317`, `57a0d696`, `bbc10ec7`, `28e53529`, `c7518401`, `eac7f094`; partial mitigations already shipped via PR #468 and workspace status/heartbeat output schemas. |
 
 ## Low
 

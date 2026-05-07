@@ -77,24 +77,39 @@ public sealed class WorkspaceEvictedException : System.Collections.Generic.KeyNo
     public DateTimeOffset? WorkspaceLoadedAtUtc { get; }
 
     /// <summary>
+    /// Absolute path of the solution/project file the evicted workspace was originally
+    /// loaded from. Populated for same-process evictions where the manager retained the
+    /// session's <c>LoadedPath</c>; <see langword="null"/> for cross-process recycle
+    /// evictions where the prior session metadata was lost with the process. When
+    /// non-null, <c>ToolErrorHandler</c> surfaces it in the error envelope as
+    /// <c>loadedPath=...</c> alongside an exact <c>recovery=workspace_load(path: "...")</c>
+    /// hint so callers can copy-paste the rehydration call rather than guessing the
+    /// original path. Closes <c>workspace-id-recovery-hints</c> (2026-04-26 multi-session
+    /// retro evidence).
+    /// </summary>
+    public string? LoadedPath { get; }
+
+    /// <summary>
     /// Constructs the exception for a same-process eviction where the original
-    /// <c>loadedAt</c> is known.
+    /// <c>loadedAt</c> and <c>loadedPath</c> are known.
     /// </summary>
     public WorkspaceEvictedException(
         string workspaceId,
         DateTimeOffset serverStartedAtUtc,
         DateTimeOffset workspaceLoadedAtUtc,
+        string loadedPath,
         string message)
         : base(message)
     {
         WorkspaceId = workspaceId;
         ServerStartedAtUtc = serverStartedAtUtc;
         WorkspaceLoadedAtUtc = workspaceLoadedAtUtc;
+        LoadedPath = loadedPath;
     }
 
     /// <summary>
     /// Constructs the exception for a cross-process recycle eviction where the prior
-    /// session's <c>loadedAt</c> is unrecoverable.
+    /// session's <c>loadedAt</c> and <c>loadedPath</c> are unrecoverable.
     /// </summary>
     public WorkspaceEvictedException(
         string workspaceId,
@@ -105,6 +120,7 @@ public sealed class WorkspaceEvictedException : System.Collections.Generic.KeyNo
         WorkspaceId = workspaceId;
         ServerStartedAtUtc = serverStartedAtUtc;
         WorkspaceLoadedAtUtc = null;
+        LoadedPath = null;
     }
 }
 

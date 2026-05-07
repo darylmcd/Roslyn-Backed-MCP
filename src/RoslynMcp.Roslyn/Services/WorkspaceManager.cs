@@ -61,14 +61,17 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     private readonly IWorkspaceCacheStore? _cacheStore;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
     /// <summary>
-    /// mcp-error-category-workspace-evicted-on-host-recycle: tracks workspace ids that were
-    /// closed (or disposed) IN THIS PROCESS along with their original <c>loadedAt</c> so a
-    /// subsequent lookup can throw <see cref="WorkspaceEvictedException"/> with the recorded
-    /// timestamp instead of a bare <see cref="KeyNotFoundException"/>. Bounded so a long-lived
-    /// host that loads/closes many workspaces doesn't grow this map without bound.
+    /// mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
+    /// tracks workspace ids that were closed (or disposed) IN THIS PROCESS along with their
+    /// original <c>loadedAt</c> AND <c>loadedPath</c> so a subsequent lookup can throw
+    /// <see cref="WorkspaceEvictedException"/> with the recorded timestamp and the exact
+    /// rehydration path instead of a bare <see cref="KeyNotFoundException"/>. Bounded so a
+    /// long-lived host that loads/closes many workspaces doesn't grow this map without bound.
     /// </summary>
-    private readonly ConcurrentDictionary<string, DateTimeOffset> _evictedWorkspaces = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, EvictedSessionRecord> _evictedWorkspaces = new(StringComparer.Ordinal);
     private const int MaxEvictedWorkspaceRecords = 128;
+
+    private readonly record struct EvictedSessionRecord(DateTimeOffset LoadedAtUtc, string LoadedPath);
     /// <summary>Limits concurrent workspace sessions; paired with <see cref="Close"/> and <see cref="Dispose"/>.</summary>
     private readonly SemaphoreSlim _workspaceSlots;
 
@@ -268,10 +271,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             return false;
         }
 
-        // mcp-error-category-workspace-evicted-on-host-recycle: record the original loadedAt
-        // before the session is disposed so a subsequent lookup against this id can surface
-        // the structured WorkspaceEvictedException with the timestamp populated.
-        RecordEviction(workspaceId, session.LoadedAtUtc);
+        // mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
+        // record the original loadedAt and loadedPath before the session is disposed so a
+        // subsequent lookup against this id can surface the structured
+        // WorkspaceEvictedException with the timestamp AND the rehydration path populated.
+        RecordEviction(workspaceId, session.LoadedAtUtc, session.LoadedPath);
 
         _fileWatcher.Unwatch(workspaceId);
         _previewStore.InvalidateAll(workspaceId);
@@ -284,15 +288,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
     /// <summary>
     /// Records an in-process workspace eviction so a subsequent lookup against the same id
-    /// can surface a structured <see cref="WorkspaceEvictedException"/>. Bounded eviction:
-    /// once <see cref="MaxEvictedWorkspaceRecords"/> entries are tracked we drop a single
+    /// can surface a structured <see cref="WorkspaceEvictedException"/> with both the
+    /// original <c>loadedAt</c> and <c>loadedPath</c>. Bounded eviction: once
+    /// <see cref="MaxEvictedWorkspaceRecords"/> entries are tracked we drop a single
     /// oldest record (best-effort; the map is not strictly time-ordered, so "oldest" is
     /// whatever the dictionary enumerator surfaces first — adequate for a degraded "we used
     /// to know about this id" signal where the exact timestamp ordering does not matter).
     /// </summary>
-    private void RecordEviction(string workspaceId, DateTimeOffset loadedAtUtc)
+    private void RecordEviction(string workspaceId, DateTimeOffset loadedAtUtc, string? loadedPath)
     {
-        _evictedWorkspaces[workspaceId] = loadedAtUtc;
+        _evictedWorkspaces[workspaceId] = new EvictedSessionRecord(loadedAtUtc, loadedPath ?? string.Empty);
 
         if (_evictedWorkspaces.Count > MaxEvictedWorkspaceRecords)
         {
@@ -665,12 +670,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var ids = _sessions.Keys.ToArray();
         foreach (var session in _sessions.Values)
         {
-            // mcp-error-category-workspace-evicted-on-host-recycle: record each session's
-            // loadedAt before dispose. Disposal during Dispose is the in-process equivalent
-            // of a graceful host recycle for callers in the SAME process — they should see
-            // WorkspaceEvicted, not NotFound, on subsequent lookups (e.g. test-fixture
-            // cleanup and re-init scenarios).
-            RecordEviction(session.WorkspaceId, session.LoadedAtUtc);
+            // mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
+            // record each session's loadedAt and loadedPath before dispose. Disposal during
+            // Dispose is the in-process equivalent of a graceful host recycle for callers in
+            // the SAME process — they should see WorkspaceEvicted, not NotFound, on subsequent
+            // lookups (e.g. test-fixture cleanup and re-init scenarios), with the rehydration
+            // path embedded for one-shot recovery.
+            RecordEviction(session.WorkspaceId, session.LoadedAtUtc, session.LoadedPath);
             session.Dispose();
         }
         var n = _sessions.Count;
@@ -1910,15 +1916,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             //      (the prior loadedAt was lost with the prior process).
             //   3. Otherwise the lookup is genuinely a typo or a never-loaded id — fall
             //      through to the existing KeyNotFoundException path.
-            if (_evictedWorkspaces.TryGetValue(workspaceId, out var evictedLoadedAt))
+            if (_evictedWorkspaces.TryGetValue(workspaceId, out var evictedRecord))
             {
                 throw new WorkspaceEvictedException(
                     workspaceId,
                     WorkspaceEvictionRegistry.ServerStartedAtUtc,
-                    evictedLoadedAt,
+                    evictedRecord.LoadedAtUtc,
+                    evictedRecord.LoadedPath,
                     $"Workspace '{workspaceId}' was evicted from the live session set " +
-                    $"(originally loaded at {evictedLoadedAt:O}). " +
-                    "Call workspace_load with the original solution path to rehydrate, " +
+                    $"(originally loaded at {evictedRecord.LoadedAtUtc:O} from '{evictedRecord.LoadedPath}'). " +
+                    $"Call workspace_load(path: \"{evictedRecord.LoadedPath}\") to rehydrate, " +
                     "then re-issue this call against the new workspaceId.");
             }
 
