@@ -1,8 +1,8 @@
 ---
 name: audit-deep
-description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard + plugin-skill audit, run against a loaded C# repo. Three modes — `full`, `promotion-only`, `read-only`. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
+description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard + plugin-skill audit, run against a loaded C# repo. Single canonical run — always exercises apply tools against a disposable worktree the skill creates and tears down post-run, and always emits the promotion scorecard. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
 user-invocable: true
-argument-hint: "[mode=full|promotion-only|read-only] (default: full)"
+argument-hint: "[--no-worktree]"
 ---
 
 # /roslyn-mcp:audit-deep $ARGUMENTS
@@ -20,33 +20,34 @@ This skill is a **null-op without the Roslyn MCP server**. The audit's entire pu
 
    Do **not** substitute `Read`, `Grep`, `Bash: dotnet build`, or any other host-side fallback. There is no generic non-MCP audit fallback in this skill — a broken server precondition halts the run.
 
-## Step 2 — Parse `$ARGUMENTS` and pick the mode prompt
+## Step 2 — Read and run the canonical audit prompt
 
-Recognized tokens (the only valid values for `mode`):
+Read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/prompt.md` and run it verbatim. Always-on flags:
 
-- `mode=full` (default) — full-repo sweep, including refactor pass with apply-mode mutations on a disposable worktree.
-- `mode=promotion-only` — exercise the experimental-tier surface to produce a promotion scorecard. No Phase 6 product mutations.
-- `mode=read-only` — preview-only / read-only across the entire surface. No applies anywhere. Promotion scorecard skipped (writers default to `needs-more-evidence`).
+- **Promotion scorecard always emitted.** The `_latest-promotion-scorecard.json` sibling artifact is mandatory output.
+- **Phase 6 apply pass always exercised** against a disposable worktree the skill creates at run start and tears down at run end. The audited repo's working tree and `main` branch are never mutated by Phase 6.
 
-Unrecognized modes — including the historical `focused` value — are **not supported**; reject with a one-line message and ask the user to pick one of the three above.
+### Argument: `--no-worktree`
 
-Resolve the prompt body in this order:
+`$ARGUMENTS` may include the literal flag `--no-worktree`. Recognized tokens:
 
-1. `mode=full` → read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/full.md` and run it verbatim.
-2. `mode=promotion-only` → read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/promotion-only.md` and run it verbatim.
-3. `mode=read-only` → read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/read-only.md` and run it verbatim.
+- *(no flag, default)* — full canonical run with the disposable-worktree apply pass exercised.
+- `--no-worktree` — degraded-mode run for environments that genuinely cannot create a git worktree (tight CI sandbox, missing `git` binary, read-only checkout). When this flag is set, the prompt records the gap in the report header's *Isolation* row as `degraded — --no-worktree flag, Phase 6 applies skipped` and Phase 6 sub-phases that require a worktree are marked `skipped-safety — --no-worktree`. The promotion scorecard still emits, but writer recommendations default to `needs-more-evidence` for any tool whose round-trip evidence depended on the disposable worktree.
 
-The mode prompts are the source of truth for phase content, output schema, and hard-gate checkpoints. This SKILL.md supplies the orchestration wrapper: when a phase is listed in the phase-runner offload map below, execute that phase through the `audit-phase-runner` subagent when the host supports subagents; otherwise run the same phase inline and record `phase-runner: inline fallback` in the report header.
+Reject any other argument with a one-line message and ask the user to either drop the argument or pass `--no-worktree` explicitly.
 
-## Step 3 — Mutation safety: read-only against the audited repo's main branch
+The prompt is the source of truth for phase content, output schema, and hard-gate checkpoints. This SKILL.md supplies the orchestration wrapper: when a phase is listed in the phase-runner offload map below, execute that phase through the `audit-phase-runner` subagent when the host supports subagents; otherwise run the same phase inline and record `phase-runner: inline fallback` in the report header.
 
-The audit is **read-only against the audited repository's `main` branch**. Phase 6 (refactor pass, `mode=full` only) writes apply-mode mutations, but only inside a disposable worktree the prompt creates and tracks. The flow is:
+## Step 3 — Mutation safety: disposable worktree is mandatory (default mode)
 
-1. Before any Phase 6 apply, the prompt records a disposable branch / worktree / clone path in the report header (the *Isolation* row).
-2. Phase 6's preview → apply chains run against that disposable checkout.
-3. The audit report summarizes the changes; the operator decides whether to PR them. The audited repo's `main` branch is never directly mutated.
+The audit is **read-only against the audited repository's `main` branch**. Phase 6 (refactor pass) writes apply-mode mutations, but only inside a disposable worktree the prompt creates and tracks. The flow is:
 
-`mode=promotion-only` and `mode=read-only` skip Phase 6 entirely — no apply chains run, and the disposable worktree is optional.
+1. Before any Phase 6 apply, the prompt creates a disposable branch + worktree at run start and records the path in the report header (the *Isolation* row). This is **mandatory** in default mode — Phase 6 cannot run against the audited repo's primary checkout.
+2. Phase 6's preview → apply chains run against that disposable checkout. Applies are exercised as test fixtures of the apply-tool surface (preview→apply→revert round-trips, `compile_check` after apply, `build_workspace` + `test_run` after apply). The point is to exercise the write path of the MCP server, not to ship product changes.
+3. The disposable worktree is torn down at run end via `dotnet build-server shutdown` followed by `git worktree remove --force` (the Windows lock-release sequence documented in `ai_docs/prompts/backlog-sweep-addenda.md`'s `worktree_lock_release` field). Teardown runs even on apply failure — the prompt wraps the Phase 6 chain in `try/finally` discipline.
+4. The audited repo's `main` branch is **never** directly mutated. No PR is opened from the audit run. No commits land in the audited repo's history.
+
+The `--no-worktree` flag (Step 2) opts into a degraded mode where the disposable worktree is skipped — see Step 2 for the contract and the report-header record requirement.
 
 ## Step 4 — Phase-runner offload map
 
@@ -61,29 +62,28 @@ Use the repo-local `audit-phase-runner` subagent for phases that are long-runnin
 
 Run these phases inline in the main audit context: Phase -1, 0, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 16b, 17, and 18.
 
-Hard boundary: Phase 6 and every preview/apply chain stay inline. Do not delegate workspace-version-sensitive mutations, even in `mode=full`, because the runner does not share the main audit context's preview evidence or disposable-checkout mutation ledger.
+Hard boundary: Phase 6 and every preview/apply chain stay inline. Do not delegate workspace-version-sensitive mutations because the runner does not share the main audit context's preview evidence or disposable-worktree mutation ledger.
 
 ### Runner brief
 
 When delegating, pass a compact brief with:
 
 - `phase`: one of `1`, `2`, `8`, or `8b`
-- `mode`: the selected mode
 - `repoRoot`: absolute audited repo root
 - `workspaceId`: loaded workspace id when applicable
 - `solutionPath`: loaded solution or project path
 - `reportPath`: current audit report draft path
-- The relevant phase excerpt from the resolved mode prompt
+- The relevant phase excerpt from the canonical prompt
 
 The runner must return the `## Audit Phase Runner Summary` markdown table defined in `.claude/agents/audit-phase-runner.md`. Paste that table into the phase's report slot. If the runner is unavailable, run the phase inline and emit the same summary table yourself.
 
 ## Step 5 — Execute the chosen prompt
 
-Read the resolved prompt file in full and follow it phase by phase. Persist the audit draft after each phase as the prompt instructs — the canonical report path lives in the prompt's *Output Format* section.
+Read `prompts/prompt.md` in full and follow it phase by phase. Persist the audit draft after each phase as the prompt instructs — the canonical report path lives in the prompt's *Output Format* section.
 
 ### Phase 0 hand-off: prefer `/surface-audit` for live-surface drift detection
 
-The mode prompts' Phase 0 includes a *live-surface drift detection* sub-step that diffs the seeded coverage ledger against names referenced in the prompt's phase guidance. When a separate `/surface-audit` skill is available in the host's tool surface, prefer delegating that diff to it (one structured table back) instead of re-walking the live catalog from scratch in this skill's main agent.
+The prompt's Phase 0 includes a *live-surface drift detection* sub-step that diffs the seeded coverage ledger against names referenced in the prompt's phase guidance. When a separate `/surface-audit` skill is available in the host's tool surface, prefer delegating that diff to it (one structured table back) instead of re-walking the live catalog from scratch in this skill's main agent.
 
 - **When `/surface-audit` is available** — invoke it with the audited repo root, take the returned drift table, and paste it under Phase 0's drift-detection output slot. The two output buckets (`guidance gap` and `prompt drift`) map directly onto the structured table /surface-audit returns.
 - **When `/surface-audit` is not available** — fall through to the in-prompt logic in Phase 0 step 14. Do not block the audit on the optional skill: the prompt's drift-detection still produces a valid result without it. Note in the report header which path you took (`drift-detection: delegated to /surface-audit` vs `drift-detection: in-prompt`).
@@ -122,6 +122,6 @@ The script is invoked manually (no automatic scheduler today). Recommended caden
 
 - **Server-required.** No generic non-MCP fallback exists. If `mcp__roslyn__server_info` is not callable or `connection.state` is not `ready`, halt.
 - **Read-only against `main`.** All apply-mode mutations confine to the disposable worktree the prompt creates. Never push or merge from inside this skill.
-- **No PR.** This skill produces an audit report, not a refactor PR. Phase 6 mutations land in the disposable checkout's git history; the operator opens any PR separately.
+- **No PR.** This skill produces an audit report, not a refactor PR. Phase 6 mutations are exercised as apply-tool fixtures inside the disposable worktree and torn down at run end. There is nothing to PR.
 - **Cite, don't summarize.** Every finding must reference a concrete file:line and a tool call — no abstract claims.
-- **Mode is sticky.** Once you pick a mode in Step 2, the prompt's phase gating (which phases run in apply mode vs preview-only vs skipped) is fixed for the run.
+- **Disposable-worktree teardown is mandatory.** The Phase 6 apply chain runs inside `try/finally` so teardown executes even on apply failure. `dotnet build-server shutdown` always precedes `git worktree remove --force` on Windows.
