@@ -26,7 +26,7 @@
     {
       "id": "audit-deep-collapse-modes",
       "order": 1,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": ["mcp-server-stress-single-mode"],
       "productionFilesTouched": 4,
       "testFilesAdded": 1,
@@ -36,8 +36,8 @@
       "scheduleHint": null,
       "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/audit-deep-collapse-modes",
+      "worktreePath": ".worktrees/audit-deep-collapse-modes",
       "prUrl": null,
       "mergedAt": null,
       "notes": "Done in old location (skills/audit-deep/) BEFORE the relocate in initiative 2. Directory shrinks from 5 files to 3, keeping initiative 2 within Rule 3 cleanly."
