@@ -1,6 +1,6 @@
 ---
 name: release-cut
-description: "Atomic release pipeline — bump -> verify -> ship -> tag -> reinstall-both-layers. Use when: cutting a new release (major/minor/patch), turning [Unreleased] CHANGELOG content into a tagged+published version, or after validating a batch of merges ready for v-bump. Takes bump type as input: 'major', 'minor', or 'patch'. Delegates to /bump, /ship, and /roslyn-mcp:update; checkpointed so mid-flow failure is re-runnable."
+description: "Atomic release pipeline — bump -> verify -> ship -> tag -> reinstall-both-layers. Use when: cutting a new release (major/minor/patch), turning [Unreleased] CHANGELOG content into a tagged+published version, or after validating a batch of merges ready for v-bump. Takes bump type as input: 'major', 'minor', or 'patch'. Delegates to /bump, /ship, and the maintainer-local /update (NOT the shipped /roslyn-mcp:update — that one bottoms out at chat-side /plugin commands and leaves Layer 2 stale); checkpointed so mid-flow failure is re-runnable."
 user-invocable: true
 argument-hint: "patch | minor | major"
 ---
@@ -9,7 +9,7 @@ argument-hint: "patch | minor | major"
 
 You are a release engineer running the full release pipeline as a single atomic flow. Your job is to sequence the four discrete release phases (bump -> verify -> ship -> tag -> reinstall-both-layers) with shared error handling and checkpointed step output, so a mid-flow failure re-runs from the last successful checkpoint rather than restarting from the top.
 
-This skill exists because the four phases were previously invoked one-by-one and kept hitting the same Layer-2 gap across sessions: the `dotnet publish -p:ReinstallTool=true` command refreshes the global tool binary (Layer 1) but leaves the plugin cache stale (Layer 2), so consumers loaded the new binary alongside old skill/hook metadata. Delegating to `/roslyn-mcp:update` (which wraps both layers) is the fix.
+This skill exists because the four phases were previously invoked one-by-one and kept hitting the same Layer-2 gap across sessions: the `dotnet publish -p:ReinstallTool=true` command refreshes the global tool binary (Layer 1) but leaves the plugin cache stale (Layer 2), so consumers loaded the new binary alongside old skill/hook metadata. Delegating to the maintainer-local `/update` skill (the repo-local override at `.claude/skills/update/`, which wraps both layers via `eng/update-claude-plugin.ps1`) is the fix. Step 6 explicitly avoids the namespaced shipped form `/roslyn-mcp:update` because it cannot reference the in-repo PowerShell path and falls back to chat-side `/plugin` slash commands the agent cannot execute — that fallback is what bit v1.34.2's release-cut and what this skill is meant to prevent.
 
 ## Input
 
@@ -140,17 +140,24 @@ git ls-remote --tags origin refs/tags/vX.Y.Z
 
 If the tag already exists on origin (prior release-cut attempt got this far), skip. If the local and remote SHAs disagree, STOP and report — do not force-push a tag.
 
-### Step 6: Reinstall (delegate to `/roslyn-mcp:update`)
+### Step 6: Reinstall (delegate to the maintainer-local `/update`, NOT the shipped `/roslyn-mcp:update`)
 
-Invoke `/roslyn-mcp:update`. That skill handles both layers:
+`release-cut` runs from inside the Roslyn-Backed-MCP checkout, where a repo-local override at `.claude/skills/update/SKILL.md` handles Layer 2 agent-executably via `eng/update-claude-plugin.ps1`. The plugin-namespaced shipped form (`/roslyn-mcp:update`) bypasses the override and bottoms out at "tell the user to run `/plugin` commands in the chat input" — which leaves Layer 2 stale and forces a manual second pass. **Do not invoke the namespaced form here.**
 
-- **Layer 1 — Global tool binary.** Runs `dotnet tool update -g Darylmcd.RoslynMcp`. In a maintainer checkout, `just tool-update` pulls from NuGet.org; `just tool-install-local` installs from the local nupkg after `just pack`. The literal pin for in-repo publish paths is `-p:ReinstallTool=true` (dash form — the `/p:` form mangles on bash-on-Windows).
-- **Layer 2 — Claude Code plugin.** Tells the user to run `/plugin marketplace update roslyn-mcp-marketplace` and `/plugin install roslyn-mcp@roslyn-mcp-marketplace` in the Claude Code chat input (client-side slash commands, not agent-executed).
+Invoke the bare-name form: `Skill: update` (or `/update` if running interactively). That resolves to the repo-local override and walks through both layers:
 
-After `/roslyn-mcp:update` returns, verify both layers:
+- **Layer 1 — Global tool binary.** Runs `dotnet tool update -g Darylmcd.RoslynMcp`. In a maintainer checkout, `just tool-update` pulls from NuGet.org; `just tool-install-local` installs from the local `nupkg/Darylmcd.RoslynMcp.<ver>.nupkg` after `just pack`. The literal pin for in-repo publish paths is `-p:ReinstallTool=true` (dash form — the `/p:` form mangles on bash-on-Windows).
 
-1. **Layer 1:** Call `mcp__roslyn__server_info`. Confirm the reported `version` equals the new version (strip the `+hash` suffix before comparing).
-2. **Layer 2:** Inspect `~/.claude/plugins/cache/roslyn-mcp-marketplace/roslyn-mcp/` — confirm only the new-version subdirectory is present. If stale subdirectories remain, they will be pruned on the next Claude Code restart; surface this to the user as a reminder.
+  **NuGet indexing latency.** After Step 5 pushes the `vX.Y.Z` tag, `publish-nuget` workflow runs and the package lands on nuget.org — but NuGet's flat-container/registration feeds typically lag 5–30 min. If `dotnet tool update -g Darylmcd.RoslynMcp` reports "already installed" with the OLD version, NuGet hasn't indexed yet. Either wait, or run `just pack && just tool-install-local` to install from the just-built local nupkg immediately. The local-install path is the documented fast path for release-cut Step 6.
+
+- **Layer 2 — Claude Code plugin.** The repo-local override calls `pwsh -NoProfile -File eng/update-claude-plugin.ps1` directly — `git pull` of the marketplace clone at `~/.claude/plugins/marketplaces/roslyn-mcp-marketplace/`, re-sync the plugin cache at `~/.claude/plugins/cache/roslyn-mcp-marketplace/roslyn-mcp/<new-version>/` from git-tracked files, prune stale `<old-version>/` cache directories, update `installed_plugins.json` + `known_marketplaces.json`. No client-side slash commands needed. (The shipped skill cannot reference `eng/...` paths under `verify-skills-are-generic.ps1` so it falls back to documenting the slash-command path; the override exists precisely to close this gap inside the maintainer checkout.)
+
+After the update skill returns, verify both layers:
+
+1. **Layer 1 (binary on disk):** `dotnet tool list -g | grep -i roslyn` reports the new version. Note the running MCP server in this Claude Code session is still the OLD version — it was loaded into memory at Claude Code startup. `mcp__roslyn__server_info` will report the new version only after a Claude Code restart; do not treat the in-session report as a Layer-1 verification failure.
+2. **Layer 2:** Inspect `~/.claude/plugins/cache/roslyn-mcp-marketplace/roslyn-mcp/` — confirm only the new-version subdirectory is present. The PS script prunes the old one in the same run.
+
+If verification fails: report the specific layer and STOP. Do not claim "release complete" without both layers green.
 
 If either verification fails: report the specific layer and STOP. Do not claim "release complete" without both layers green.
 
@@ -209,4 +216,5 @@ Reminder: restart Claude Code to load the updated binary, skills, and hooks.
 - **`/bump`**: version-file edits only. Does not verify, ship, tag, or reinstall. Invoked as Step 2 of this skill.
 - **`/publish-preflight`**: checklist of validations (version drift, AI docs, build/test, CHANGELOG, security versions). Overlaps Step 3 but does NOT advance past verify. Run `/publish-preflight` ad-hoc to gate readiness; `/release-cut` assumes it has already passed (or runs the superset via `verify-release.ps1`).
 - **`/ship`**: commit + push + PR + squash-merge. No version bump, no tag, no reinstall. Invoked as Step 4 of this skill.
-- **`/roslyn-mcp:update`**: both-layer update only. No bump, no tag. Invoked as Step 6 of this skill.
+- **`/update` (maintainer-local override at `.claude/skills/update/`)**: both-layer update — Layer 1 via `dotnet tool update -g Darylmcd.RoslynMcp` (or `just tool-install-local` from local nupkg) + Layer 2 via `pwsh eng/update-claude-plugin.ps1`. No bump, no tag. **This is what Step 6 invokes.**
+- **`/roslyn-mcp:update` (shipped, plugin-namespaced)**: same Layer 1, but Layer 2 falls back to telling the user to run `/plugin marketplace update` + `/plugin install` in the chat input. Cannot be invoked from Step 6 — agent can't execute chat-side `/plugin` commands and the shipped skill is forbidden from referencing `eng/...` paths under `verify-skills-are-generic.ps1`. Reserved for non-maintainer consumers.
