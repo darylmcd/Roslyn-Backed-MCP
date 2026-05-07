@@ -677,7 +677,16 @@ This prompt writes **raw per-run evidence only**. Multi-repo campaigns synthesiz
 
 In addition to the human-readable `.md` report, write a machine-readable scorecard at:
 
-**`<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json`**
+**`<audited-repo-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json`**
+
+The scorecard now lives **next to its source evidence** in the audited repo's
+own `ai_docs/audit-reports/` folder, alongside the prose audit report. The
+older single-file location at `<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/`
+is **deprecated** — it was a last-write-wins file across all audited
+workspaces, which let a single workspace's anomaly drive promotion
+decisions. Cross-repo aggregation (quorum across sibling repos) is now
+the consumer's job: `/publish-preflight` Step 8 gathers per-repo
+scorecards via `eng/aggregate-promotion-scorecards.ps1`.
 
 This file is **overwritten** each run. Schema:
 
@@ -749,7 +758,7 @@ This file is **overwritten** each run. Schema:
 - `blockers` is empty when `recommendation == "promote"`; populated with concrete missing evidence otherwise.
 - Skip rows for entries marked `blocked` in the coverage ledger — they cannot be scored. Track them in `summary.blocked` only.
 
-**Why this exists.** `/release-cut` (via `/publish-preflight`) reads this file as a **promotion gate** — when fresh and any row is `recommendation: "promote"`, the maintainer is prompted to flip the tier in the same release. Without the JSON, promotion stays implicit and the audit's promotion lane has no operational consequence.
+**Why this exists.** `/release-cut` (via `/publish-preflight`) aggregates per-repo scorecards from configured sibling repos and applies a **quorum rule** (≥2 workspaces with `recommendation: "promote"`, no `keep-experimental` or `deprecate` blockers) before prompting the maintainer to flip a tier. Without the JSON, promotion stays implicit and the audit's promotion lane has no operational consequence. With per-repo scorecards plus quorum, single-workspace anomalies no longer drive tier decisions.
 
 **Staleness contract.** The JSON is a snapshot, not a journal. `/publish-preflight` warns when `generatedAt` is older than 30 days; older than 90 days, the file should be ignored entirely (recommend a fresh `/audit-deep` run).
 

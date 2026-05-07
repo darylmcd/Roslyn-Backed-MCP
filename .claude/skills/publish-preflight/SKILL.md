@@ -98,41 +98,54 @@ Check that both `.nupkg` and `.snupkg` are produced. Verify the `.nupkg` contain
 
 ### Step 8: Promotion Scorecard Gate (advisory, non-blocking)
 
-This step consumes the promotion scorecard emitted by `/mcp-server-stress`. It surfaces — but does not auto-apply — recommendations to promote experimental tools to stable in the upcoming release.
+This step consumes per-repo promotion scorecards emitted by `/mcp-server-stress` and aggregates them across all configured sibling repos. It surfaces — but does not auto-apply — recommendations to promote experimental tools to stable in the upcoming release.
 
-Read `ai_docs/audit-reports/_latest-promotion-scorecard.json`.
+**Aggregation contract.** Each audited repo writes its own `<audited-repo>/ai_docs/audit-reports/_latest-promotion-scorecard.json` (per-repo, alongside the prose audit report — the legacy `<Roslyn-MCP-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json` last-write-wins file is deprecated). The aggregator script gathers every sibling's scorecard, merges them keyed by `<kind>|<name>`, and emits a quorum-aware verdict per entry:
 
-**Branch on file presence + freshness:**
+- `promote: ready` — at least 2 sibling repos voted `promote` AND zero `keep-experimental` AND zero `deprecate` votes.
+- `promote: blocked` — at least one `keep-experimental` or `deprecate` vote (a single workspace's hard-stop blocks the quorum).
+- `needs-more-evidence` — fewer than 2 `promote` votes and no blockers.
+
+Run the aggregator via Bash:
+```
+pwsh -NoProfile -File eng/aggregate-promotion-scorecards.ps1
+```
+
+(Optional: pass `-SiblingRepoParent` and `-ExcludeRepoFolders` to override the discovery defaults; see the script's comment-based help via `pwsh -NoProfile -File eng/aggregate-promotion-scorecards.ps1 -?`.)
+
+The script emits a single JSON object on stdout. Parse it and branch on the result:
 
 | State | Decision | Output |
 |---|---|---|
-| File missing | INFO (not a fail) | "No promotion scorecard on file. Run `/mcp-server-stress` if you want a promotion gate this release. Otherwise no action needed." |
-| `generatedAt` ≤ 30 days old | PROCEED to inspection | Move to next bullet |
-| `generatedAt` 30–90 days old | WARN | "Promotion scorecard is N days stale. Consider re-running `/mcp-server-stress` before release; proceeding with stale data." |
-| `generatedAt` > 90 days old | TREAT AS MISSING | "Promotion scorecard is older than 90 days; ignoring. Re-run `/mcp-server-stress` if a promotion gate is desired this release." |
-| File malformed / wrong `schemaVersion` | WARN | "Promotion scorecard exists but is unparseable (schemaVersion=N expected 1, or JSON parse error). Treating as absent." |
+| `summary.noScorecardsAvailable == true` (zero siblings have a scorecard on file) | INFO (not a fail) | "No promotion scorecard on file from any sibling repo. Run `/mcp-server-stress` in a sibling repo if you want a promotion gate this release. Otherwise no action needed." |
+| Some siblings missing (`siblingReposMissingScorecard` non-empty AND `siblingReposWithScorecard` non-empty) | WARN, then PROCEED | "Promotion scorecards missing from these sibling repos: \<list\>. Aggregating across the \<N\> repos that do have scorecards." |
+| Per-repo scorecard older than 30 days | WARN per repo | "Promotion scorecard from \<repo\> is N days stale. Consider re-running `/mcp-server-stress` in that repo before release." |
+| Per-repo scorecard older than 90 days | TREAT AS MISSING for that repo | "Promotion scorecard from \<repo\> is older than 90 days; excluding from the quorum. Re-run `/mcp-server-stress` there if its evidence matters." |
+| Aggregator JSON malformed / wrong `schemaVersion` | WARN | "Aggregator output is unparseable (schemaVersion=N expected 1, or JSON parse error). Treating as absent." |
+| Legacy single-file scorecard found at `<Roslyn-MCP-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json` | WARN (one-line) | "scorecard at deprecated path: `<Roslyn-MCP-root>/...`; expected per-repo path under `<audited-repo>/ai_docs/audit-reports/`. The aggregator ignores this file. Migrate or delete it manually." |
 
-**When the scorecard is fresh:** filter `scorecard[]` to entries with `recommendation == "promote"`. For each:
+**When the aggregator returns entries:** filter `entries[]` by `verdict`:
 
-1. Note the entry's `name`, `kind`, `category`, `currentTier`.
-2. Locate the source-of-truth tier marker. For tools, this is the `[McpToolMetadata("category", "experimental", ...)]` attribute on the tool's method **plus** the matching entry in `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.<Category>.cs`. (For resources, `src/RoslynMcp.Host.Stdio/Resources/ServerResources.cs`. For prompts, `src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.*.cs`.)
-3. Build a checklist for the maintainer:
+1. **`verdict == "promote: ready"`** — promotion candidates. For each:
+   - Note the entry's `name`, `kind`, `category`, `currentTier`, `promoteVotes`, and `sourceRepos.promote` list.
+   - Build a checklist for the maintainer:
 
-   ```
-   Promotion candidates from <generatedAt>:
-   - <name> (<kind>, <category>) — currentTier=experimental, recommendation=promote, evidence=N items
-       Edit: src/RoslynMcp.Host.Stdio/Tools/<file>.cs   — flip "experimental" → "stable" on the [McpToolMetadata] for <name>
-       Edit: src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.<Category>.cs   — flip "experimental" → "stable" on the catalog entry for <name>
-       Verify: dotnet test --filter SurfaceCatalogTests   — parity check passes after both edits
-   ```
+     ```
+     Promotion candidates (quorum: ≥2 sibling repos with `promote`, 0 blockers):
+     - <name> (<kind>, <category>) — currentTier=experimental, promoteVotes=N from <repo-list>
+         Run: /promote-tier <name> stable
+         Verify: dotnet test --filter SurfaceCatalogTests   — parity check passes after the flip
+     ```
 
-4. Ask the user explicitly: *"N tools recommended for promotion in this release. Apply now (manual edits, then re-run `/publish-preflight`), defer to a follow-up release, or skip the gate?"*
+   - Ask the user explicitly: *"N tools recommended for promotion in this release. Apply now via `/promote-tier` (one per tool, then re-run `/publish-preflight`), defer to a follow-up release, or skip the gate?"*
 
-5. Whatever the user chooses, log the decision in the summary report. Promotion is **not** a precondition for publish — a maintainer can ship without acting on the scorecard. The gate's purpose is visibility, not enforcement.
+2. **`verdict == "promote: blocked"`** — surface as WARN with the per-repo blocker reasons from the entry's `blockers` array. Do not treat blocked entries as promotion candidates.
 
-**Pass** when the scorecard was either absent, treated-as-absent, or read cleanly. **Fail** is reserved for: scorecard present + fresh + malformed in a way that prevents reading recommendations (e.g. truncated JSON). Stale-but-readable is WARN, not FAIL.
+3. **`verdict == "needs-more-evidence"`** — informational only; list briefly and recommend re-running `/mcp-server-stress` in additional sibling repos to broaden the sample size.
 
-**(Future automation — backlog `audit-deep-release-cut-promotion-gate`: a `/promote-tier <tool> stable` skill will replace the manual edits in step 3 with one tool call. Until that ships, the manual checklist is the contract.)**
+4. Whatever the user chooses, log the decision in the summary report. Promotion is **not** a precondition for publish — a maintainer can ship without acting on the scorecard. The gate's purpose is visibility, not enforcement.
+
+**Pass** when the aggregator ran cleanly (regardless of whether any entries were `promote: ready`). **Fail** is reserved for: aggregator exit code non-zero, or output that prevents parsing. Stale-but-readable scorecards are WARN, not FAIL.
 
 ## Summary Report
 
