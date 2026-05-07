@@ -36,4 +36,4 @@
 - [x] `estimatedContextTokens` ≤ 80K (45K).
 - [x] `toolPolicy` set explicitly (`edit-only`).
 - [x] No two adjacent-`order` hotspot-touching initiatives — only one initiative.
-- [x] No `[label](src/...)` markdown links — all source citations use plain inline-code paths.
+- [x] No bracket-paren markdown links pointing into `src/` — all source citations use plain inline-code paths.
