@@ -43,6 +43,11 @@ Default (no flags): stage if `review-inbox/` is empty, verify against CHANGELOG,
 
 Skip this phase if `--skip-stage` is set.
 
+`eng/stage-review-inbox.ps1` discovers TWO artifact shapes from this repo and configured siblings:
+
+1. **Prose audit / retro / promotion reports** (`*_mcp-server-audit.md`, `*_experimental-promotion.md`, `*_roslyn-mcp-retro.md`) — moved into `review-inbox/` for the existing extraction flow.
+2. **`backlog.d/<finding-id>.md` fragments** — discovered at `<sibling-repo-root>/backlog.d/*.md` and at this repo's `backlog.d/`. Disambiguated from prose reports by the `severity:` frontmatter key; canonical schema at `ai_docs/items/backlog-d-fragment-schema.md`.
+
 ```bash
 pwsh -File eng/stage-review-inbox.ps1 -DryRun
 ```
@@ -53,9 +58,29 @@ Review the dry-run output. If the file list looks right:
 pwsh -File eng/stage-review-inbox.ps1
 ```
 
-If `--stage` was passed OR `review-inbox/` is empty at the start of the run, also run the real command. If the PS1 finishes with "No new artifacts found" AND `review-inbox/` is empty, refuse: `"Nothing to triage. Produce audits first via /mcp-server-stress (bundled prompt at .claude/skills/mcp-server-stress/prompts/prompt.md), then re-run."`
+If `--stage` was passed OR `review-inbox/` is empty at the start of the run, also run the real command. If the PS1 finishes with "No new artifacts found" AND `review-inbox/` is empty AND **no `backlog.d/` fragments exist anywhere**, refuse: `"Nothing to triage. Produce audits first via /mcp-server-stress (bundled prompt at .claude/skills/mcp-server-stress/prompts/prompt.md), then re-run."`
 
-Record the count: `N files staged from M repos` for the final summary.
+Record the count: `N reports + F fragments staged from M repos` for the final summary.
+
+### Phase 0.5 — Consume fragments (`backlog.d/` pattern)
+
+Fragments take a different path from prose reports. They are **not** moved into `review-inbox/`; instead intake reads them in place from each source repo's `backlog.d/`, dedupes, appends new rows, and **deletes the consumed fragments at the source**. The deletion IS the consumption record — there is no manifest file.
+
+For each configured sibling repo (and this repo) with a `backlog.d/` directory:
+
+1. **Walk** `<repo>/backlog.d/*.md`. For each file, parse YAML frontmatter; require `id`, `source_audit`, `source_repo`, `severity`, `area`, `anchors` (per `ai_docs/items/backlog-d-fragment-schema.md`). If any required key is missing OR `severity` / `area` is outside the documented enum OR `anchors` is empty OR the filename does not match `id`, **skip** that fragment with a warning — leave it on disk for the audit operator to fix. Do NOT delete malformed fragments.
+2. **Dedupe** each remaining fragment against existing `ai_docs/backlog.md` rows in this order:
+   - **Exact `(source_repo, id)` match** — if a backlog row already cites the same `source_repo` and the same row id, the fragment is a duplicate. Drop it from the candidate list AND delete the source fragment (the row already represents this finding).
+   - **Anchor-set similarity** — compare each fragment's `anchors` against existing rows. When ≥50 % of anchor paths overlap on the same shared code (typical for cross-repo audits hitting the same Roslyn-MCP server bug from two reporters), fold the fragment into the existing row's `do` cell — append the new `source_repo` and any unique anchors. Delete the source fragment after folding.
+   - **Already-shipped check** — same Phase 2 logic that runs on prose-report candidates (CHANGELOG / recent plans / git log).
+3. **Append** any non-duplicate, non-shipped fragments as new rows in `ai_docs/backlog.md`, classified by their `severity` field into the matching priority band. Use the body paragraph (finding + repro + proposed fix sketch) as the seed for the row's `do` cell; rewrite into the standard cell shape during Phase 4.
+4. **Delete** each consumed source fragment with `git rm` (when the sibling repo is git-tracked) or `Remove-Item` (when it is not). Track deletions for the final commit message.
+
+**Idempotency contract:** re-running intake on a clean `backlog.d/` (no fragments, or only fragments already represented in `ai_docs/backlog.md`) is a no-op. The deletion is what makes this true — once consumed, the fragment is gone, so the next pass sees nothing to consume.
+
+**Cross-repo mutation note:** intake **mutates audited sibling repos** by deleting fragments under their `backlog.d/`. This is intentional — it is how the consume-and-track pattern works without a manifest file. The audited repos' authors are expected to be aware that intake has this side effect; if a sibling repo wants to retain a record of what was reported, the prose `*_mcp-server-audit.md` under its `ai_docs/audit-reports/` is preserved and acts as the historical record.
+
+The existing prose-report ingestion flow (Phases 1–6) continues unchanged for `review-inbox/*.md` artifacts. Fragments and prose reports coexist; they are not mutually exclusive.
 
 ### Phase 1 — Extract actionable items (subagent)
 
