@@ -68,10 +68,54 @@ Output order:
 1. **Live surface summary** — 4-line block: version, tools, resources, prompts, skills (shipped / maintainer).
 2. **Drift table** — only rows where drift ≠ ok. If clean, say "no drift found across N scanned files."
 3. **Unverifiable claims** — separate table, for human review.
-4. **Suggested next steps** — a 1-3 line call-out naming the files to edit (but DO NOT edit them; this skill is read-only).
+4. **Skills audit table** — see "Skills audit" section below; one row per discovered SKILL.md.
+5. **Suggested next steps** — a 1-3 line call-out naming the files to edit (but DO NOT edit them; this skill is read-only).
+
+## Skills audit
+
+Skills are shipped (and maintainer-local) product surface that compose MCP tools into guided workflows. A broken tool reference in any SKILL.md breaks every plugin user. This static audit lane verifies each discovered skill against the live catalog. (Formerly Phase 16b of the `/mcp-server-stress` audit prompt; relocated here because it is a static-catalog check, not a server-execution check.)
+
+### Discover live skills
+
+The discovery surface is the union of two filesystem trees — both must be walked, and the live directories are the source of truth:
+
+- `Glob skills/*/SKILL.md` — shipped skills (plugin consumers see these).
+- `Glob .claude/skills/*/SKILL.md` — maintainer-local skills (this repo only; not shipped).
+
+Do NOT rely on a hand-maintained skill list — it drifts.
+
+### Per-skill verification (for each glob result)
+
+1. **Frontmatter parity.** `name` matches the directory name; `description` is non-empty and accurate.
+2. **Tool-reference resolution.** Extract every `mcp__roslyn__<tool>` reference from the SKILL.md body and any `prompts/*.md` siblings. Cross-check each against the live catalog from Step 1's `server_info` / `roslyn://server/catalog` capture. Any reference to a renamed/removed tool is a **P2 FAIL** — record it in the audit table and the suggested-next-steps section.
+3. **Doc consistency.** Output formats and field references in the SKILL.md body should match what the referenced tools actually return. Drift here is a FLAG, not a FAIL.
+
+Skills are **not** rows in `roslyn://server/catalog`; this audit is a quality/contract check, not a tier-promotion pipeline.
+
+### Tagging
+
+Each skill row gets one of: `pass`, `flag`, `fail`. A `fail` requires at least one tool reference that does not resolve to the live catalog or a missing/empty frontmatter field.
+
+### Skills audit table
+
+Append one row per discovered SKILL.md:
+
+| Skill | Tree | frontmatter_ok | tool_refs_valid (invalid_count) | tag | Notes |
+|-------|------|----------------|----------------------------------|-----|-------|
+| `surface-audit` | `.claude/skills` | yes | yes (0) | pass | |
+| `example-shipped` | `skills` | yes | no (2) | fail | references removed `old_tool_name`, `another_old` |
+
+### Skills audit checkpoint
+
+Before closing the report, confirm:
+
+- Do all live skills pass frontmatter parity?
+- Does any skill reference a removed/renamed tool (the P2 FAIL classification)?
+- If a skills tree was inaccessible (e.g. the shipped `skills/` tree is absent in a non-Roslyn-Backed-MCP repo checkout), is that recorded as `blocked — <tree> not accessible` rather than silently dropped?
 
 ## Non-goals
 
 - Does NOT edit documentation. The user decides which claims to update and in what PR.
 - Does NOT re-audit the old `## [1.x.y]` CHANGELOG sections. Frozen history is expected to drift from live.
 - Does NOT count backlog rows, plan initiatives, or CI steps — those are tracked elsewhere.
+- Does NOT execute skill workflows end-to-end against a live workspace — that is `/mcp-server-stress`'s lane (server-execution audit). This skill is the static-surface lane.
