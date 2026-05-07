@@ -1,8 +1,8 @@
 # Deep review & MCP audit — session checklist
 
-<!-- purpose: Fill-in worksheet for live deep-review runs; keep phase order aligned with prompts/deep-review-and-refactor.md. -->
+<!-- purpose: Fill-in worksheet for live deep-review runs; keep phase order aligned with the bundled mcp-server-stress prompt. -->
 
-Use with [`ai_docs/prompts/deep-review-and-refactor.md`](../prompts/deep-review-and-refactor.md). A full PASS/FAIL matrix needs an **interactive MCP session** (e.g. Cursor) with the server running (`dotnet run --project src/RoslynMcp.Host.Stdio` or global `roslynmcp`).
+Use with [`.claude/skills/mcp-server-stress/prompts/prompt.md`](../../.claude/skills/mcp-server-stress/prompts/prompt.md). A full PASS/FAIL matrix needs an **interactive MCP session** (e.g. Cursor) with the server running (`dotnet run --project src/RoslynMcp.Host.Stdio` or global `roslynmcp`).
 
 **Canonical output:** raw evidence goes to `yyyyMMddTHHmmssZ_<repo-id>_mcp-server-audit.md` in this directory (see [`README.md`](README.md)). This file is only a **worksheet** — not a substitute for that report.
 

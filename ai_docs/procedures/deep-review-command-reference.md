@@ -13,7 +13,7 @@ Set-Location C:\Code-Repo\Roslyn-Backed-MCP
 Run the audit prompt inside the repo being audited. The prompt emits a raw `*_mcp-server-audit.md` (and, when applicable, `*_experimental-promotion.md` / `*_roslyn-mcp-retro.md`) into that repo's `ai_docs/audit-reports/` or `ai_docs/reports/`.
 
 ```
-/deep-review-and-refactor
+/mcp-server-stress
 ```
 
 Produce audits across every sibling C# repo in the coverage matrix before running intake.

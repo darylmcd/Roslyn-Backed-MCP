@@ -53,5 +53,5 @@ If you just want files moved into `review-inbox/` without triage:
 
 - [`deep-review-program.md`](deep-review-program.md) — program context (coverage matrix, client lanes, cadence).
 - [`deep-review-command-reference.md`](deep-review-command-reference.md) — concrete commands.
-- [`../prompts/deep-review-and-refactor.md`](../prompts/deep-review-and-refactor.md) — per-repo raw audit prompt that produces the artifacts this skill consumes.
+- [`../../.claude/skills/mcp-server-stress/prompts/prompt.md`](../../.claude/skills/mcp-server-stress/prompts/prompt.md) — bundled audit prompt run by `/mcp-server-stress`; produces the artifacts this skill consumes.
 - [`../prompts/backlog-sweep-plan.md`](../prompts/backlog-sweep-plan.md) — planner prompt that consumes the backlog this skill produces.

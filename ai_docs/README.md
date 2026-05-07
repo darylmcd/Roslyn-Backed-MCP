@@ -48,7 +48,6 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `prompts/profile-large-solution.md` | Runbook for collecting 50+ project Roslyn MCP profiling evidence |
 | `prompts/standardize-documentation.md` | Cross-repo prompt for doc-audit-driven documentation cleanup |
 | `prompts/standardize-backlog-hygiene.md` | Reference prompt for backlog/workflow hygiene alignment |
-| `prompts/deep-review-and-refactor.md` | Living prompt for comprehensive MCP deep-review and promotion scoring |
 | `prompts/stress-test-external-repo.md` | Performance and correctness stress-test protocol for large external solutions |
 | `prompts/roslyn-mcp-multisession-retro.md` | Cross-repo retrospective prompt that scans Claude Code session transcripts for Roslyn MCP issues, missing-tool gaps, and recommendations |
 
@@ -79,5 +78,5 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | Coverage baseline / CI artifacts | `../docs/coverage-baseline.md` -> `references/testing.md` |
 | Experimental -> stable promotion review | `../docs/experimental-promotion-analysis.md` |
 | Large-solution profiling method | `../docs/large-solution-profiling-baseline.md` |
-| MCP deep-review audit session | `prompts/deep-review-and-refactor.md` -> `audit-reports/README.md` |
-| Multi-repo MCP deep-review batch | `procedures/deep-review-program.md` -> `procedures/deep-review-command-reference.md` -> `prompts/deep-review-and-refactor.md` -> `audit-reports/README.md` -> `reports/README.md` |
+| MCP deep-review audit session | `../.claude/skills/mcp-server-stress/prompts/prompt.md` -> `audit-reports/README.md` |
+| Multi-repo MCP deep-review batch | `procedures/deep-review-program.md` -> `procedures/deep-review-command-reference.md` -> `../.claude/skills/mcp-server-stress/prompts/prompt.md` -> `audit-reports/README.md` -> `reports/README.md` |

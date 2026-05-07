@@ -2,7 +2,7 @@
 
 <!-- purpose: Run multi-repo deep-review audits with consistent repo/client coverage, raw evidence storage, and deduped rollup intake. -->
 
-Use this procedure when `prompts/deep-review-and-refactor.md` is being run across multiple C# repositories and the result needs to drive backlog or release decisions.
+Use this procedure when the `/mcp-server-stress` skill (bundled prompt at `.claude/skills/mcp-server-stress/prompts/prompt.md`) is being run across multiple C# repositories and the result needs to drive backlog or release decisions.
 
 For concrete shell examples, see `deep-review-command-reference.md`.
 
@@ -20,7 +20,7 @@ For concrete shell examples, see `deep-review-command-reference.md`.
 
 Use this flow when the audited C# repository is outside this workspace.
 
-1. Run `prompts/deep-review-and-refactor.md` in the external repo.
+1. Run `/mcp-server-stress` (or its bundled prompt at `.claude/skills/mcp-server-stress/prompts/prompt.md`) in the external repo.
 2. Let the prompt write its raw file into that repo's `ai_docs/audit-reports/` (or copy into Roslyn-Backed-MCP when this workspace is the audit root).
 3. **Operator step:** from the Roslyn-Backed-MCP repo root, invoke the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill (`/backlog-intake`). It discovers sibling checkouts under the parent folder (e.g. `C:\Code-Repo\*`) via `eng/stage-review-inbox.ps1`, stages every `*_mcp-server-audit.md` / `*_experimental-promotion.md` / `*_roslyn-mcp-retro.md` into `review-inbox/`, then extracts / dedupes / anchor-verifies / ranks / splits and merges new rows into `ai_docs/backlog.md`. See [`deep-review-backlog-intake.md`](deep-review-backlog-intake.md).
 
@@ -129,7 +129,7 @@ Default intake is **driven by the [`backlog-intake`](../../.claude/skills/backlo
 ## Related
 
 - `deep-review-backlog-intake.md` — automation switches and manual follow-up
-- `prompts/deep-review-and-refactor.md` — per-repo raw audit prompt
+- `.claude/skills/mcp-server-stress/prompts/prompt.md` — bundled audit prompt run by `/mcp-server-stress`
 - `deep-review-command-reference.md` — concrete shell command examples for the workflow
 - `audit-reports/README.md` — raw audit output location
 - `reports/README.md` — synthesized rollup location

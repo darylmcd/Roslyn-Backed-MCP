@@ -98,7 +98,7 @@ Check that both `.nupkg` and `.snupkg` are produced. Verify the `.nupkg` contain
 
 ### Step 8: Promotion Scorecard Gate (advisory, non-blocking)
 
-This step consumes the promotion scorecard emitted by `/audit-deep mode=promotion-only`. It surfaces — but does not auto-apply — recommendations to promote experimental tools to stable in the upcoming release.
+This step consumes the promotion scorecard emitted by `/mcp-server-stress`. It surfaces — but does not auto-apply — recommendations to promote experimental tools to stable in the upcoming release.
 
 Read `ai_docs/audit-reports/_latest-promotion-scorecard.json`.
 
@@ -106,10 +106,10 @@ Read `ai_docs/audit-reports/_latest-promotion-scorecard.json`.
 
 | State | Decision | Output |
 |---|---|---|
-| File missing | INFO (not a fail) | "No promotion scorecard on file. Run `/audit-deep mode=promotion-only` if you want a promotion gate this release. Otherwise no action needed." |
+| File missing | INFO (not a fail) | "No promotion scorecard on file. Run `/mcp-server-stress` if you want a promotion gate this release. Otherwise no action needed." |
 | `generatedAt` ≤ 30 days old | PROCEED to inspection | Move to next bullet |
-| `generatedAt` 30–90 days old | WARN | "Promotion scorecard is N days stale. Consider re-running `/audit-deep mode=promotion-only` before release; proceeding with stale data." |
-| `generatedAt` > 90 days old | TREAT AS MISSING | "Promotion scorecard is older than 90 days; ignoring. Re-run `/audit-deep mode=promotion-only` if a promotion gate is desired this release." |
+| `generatedAt` 30–90 days old | WARN | "Promotion scorecard is N days stale. Consider re-running `/mcp-server-stress` before release; proceeding with stale data." |
+| `generatedAt` > 90 days old | TREAT AS MISSING | "Promotion scorecard is older than 90 days; ignoring. Re-run `/mcp-server-stress` if a promotion gate is desired this release." |
 | File malformed / wrong `schemaVersion` | WARN | "Promotion scorecard exists but is unparseable (schemaVersion=N expected 1, or JSON parse error). Treating as absent." |
 
 **When the scorecard is fresh:** filter `scorecard[]` to entries with `recommendation == "promote"`. For each:
