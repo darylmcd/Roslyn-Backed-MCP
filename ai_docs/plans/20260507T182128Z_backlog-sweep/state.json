@@ -121,7 +121,7 @@
     {
       "id": "per-repo-promotion-scorecard",
       "order": 6,
-      "status": "in-progress",
+      "status": "merged",
       "backlogRowsClosed": ["per-repo-promotion-scorecard"],
       "productionFilesTouched": 4,
       "testFilesAdded": 1,
@@ -132,9 +132,9 @@
       "fanoutEstimate": 4,
       "fanoutOversize": false,
       "branch": "remediation/per-repo-promotion-scorecard",
-      "worktreePath": ".worktrees/per-repo-promotion-scorecard",
-      "prUrl": null,
-      "mergedAt": null,
+      "worktreePath": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/552",
+      "mergedAt": "2026-05-07T22:46:22Z",
       "notes": "Depends on initiative 5 (uses the same sibling-repo discovery list /backlog-intake walks). Edits prompt.md — coordinate with initiative 5."
     }
   ],
@@ -142,5 +142,7 @@
   "snapshotDriftPolicy": {
     "maxDays": 3,
     "maxRowsChanged": 5
-  }
+  },
+  "completed": true,
+  "completedAt": "2026-05-07T22:46:22Z"
 }
