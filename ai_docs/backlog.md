@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-05-07T19:15:00Z
+**updated_at:** 2026-05-07T19:45:00Z
 
 ## Agent contract
 
@@ -83,3 +83,4 @@
 | `review-inbox/` | Staging folder for the NEXT audit batch (flat directory; `/backlog-intake` reads here). |
 | `review-inbox/archive/<batch-ts>/` | Processed audit/retro/promotion batches — one subdirectory per successful intake. Delete a batch after every actionable item is either shipped, explicitly rejected as stale, or summarized in current backlog rows. |
 | `ai_docs/reports/20260505_mcp-best-practices-restored-rows.md` | Provenance + recovery context for the 14 backlog rows added 2026-05-05 from the MCP-best-practices comparison (rec A–J + Tier 1 follow-on). Maps each row id → recommendation letter; lists cross-cutting evidence sources. Read this first when picking up any of the rec-A through rec-J rows. |
+| `ai_docs/plans/20260507T145540Z_backlog-sweep/plan.md` | Backlog sweep (2026-05-07T14:55:40Z). Shipped 1 initiative across 1 PR; closed 1 backlog row (`workspace-id-recovery-hints` via PR #542). |
