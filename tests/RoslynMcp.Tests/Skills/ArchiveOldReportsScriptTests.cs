@@ -5,9 +5,9 @@ namespace RoslynMcp.Tests.Skills;
 
 /// <summary>
 /// audit-deep-archive-and-surface-audit-integration: behavior tests for the
-/// `skills/audit-deep/scripts/archive-old-reports.ps1` PowerShell wrapper.
+/// `.claude/skills/mcp-server-stress/scripts/archive-old-reports.ps1` PowerShell wrapper.
 ///
-/// The script ships alongside the audit-deep skill and is invoked manually via
+/// The script ships alongside the mcp-server-stress skill and is invoked manually via
 /// `pwsh -NoProfile -File <path> [-OlderThanDays N] [-DryRun]`. Two contracts matter:
 ///
 ///   1. Dry-run mode performs no filesystem mutations and reports the planned moves.
@@ -163,7 +163,7 @@ public sealed class ArchiveOldReportsScriptTests
     private static string ResolveScriptPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        return Path.Combine(repoRoot, "skills", "audit-deep", "scripts", "archive-old-reports.ps1");
+        return Path.Combine(repoRoot, ".claude", "skills", "mcp-server-stress", "scripts", "archive-old-reports.ps1");
     }
 
     /// <summary>

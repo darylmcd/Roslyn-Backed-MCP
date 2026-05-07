@@ -6,7 +6,7 @@
 
 ## New canonical locations
 
-- **Single canonical run (full-surface audit + Phase 6 refactor on disposable worktree + promotion scorecard):** [`skills/audit-deep/prompts/prompt.md`](../../skills/audit-deep/prompts/prompt.md)
+- **Single canonical run (full-surface audit + Phase 6 refactor on disposable worktree + promotion scorecard):** [`.claude/skills/mcp-server-stress/prompts/prompt.md`](../../.claude/skills/mcp-server-stress/prompts/prompt.md)
 
 ## How to invoke
 

@@ -1,11 +1,11 @@
 ---
-name: audit-deep
-description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard + plugin-skill audit, run against a loaded C# repo. Single canonical run — always exercises apply tools against a disposable worktree the skill creates and tears down post-run, and always emits the promotion scorecard. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
+name: mcp-server-stress
+description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard + plugin-skill audit, run against a loaded C# repo. Single canonical run — always exercises apply tools against a disposable worktree the skill creates and tears down post-run, and always emits the promotion scorecard. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Maintainer-only skill (lives under `.claude/skills/`, not shipped to plugin consumers). Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
 user-invocable: true
 argument-hint: "[--no-worktree]"
 ---
 
-# /roslyn-mcp:audit-deep $ARGUMENTS
+# /mcp-server-stress $ARGUMENTS
 
 Run a comprehensive Roslyn-MCP audit against the current repository. The skill bundles its own audit prompt — no per-repo prompt copy is required.
 
@@ -22,7 +22,7 @@ This skill is a **null-op without the Roslyn MCP server**. The audit's entire pu
 
 ## Step 2 — Read and run the canonical audit prompt
 
-Read `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/prompts/prompt.md` and run it verbatim. Always-on flags:
+Read `${CLAUDE_PLUGIN_ROOT}/.claude/skills/mcp-server-stress/prompts/prompt.md` and run it verbatim. Always-on flags:
 
 - **Promotion scorecard always emitted.** The `_latest-promotion-scorecard.json` sibling artifact is mandatory output.
 - **Phase 6 apply pass always exercised** against a disposable worktree the skill creates at run start and tears down at run end. The audited repo's working tree and `main` branch are never mutated by Phase 6.
@@ -94,19 +94,19 @@ Delegation is a performance and consistency optimization, not a correctness requ
 
 ### Archiving old audit reports — `scripts/archive-old-reports.ps1`
 
-Reports written to the audit-reports directory accumulate over time. The skill ships a small PowerShell wrapper at `skills/audit-deep/scripts/archive-old-reports.ps1` that moves `*.md` files older than N days (default 30) into a year-stamped `archive/<YYYY>/` subdirectory, where `<YYYY>` is each file's `LastWriteTime` year. The reports directory path defaults to the audit-deep convention and can be overridden via `-ReportsRelativePath`.
+Reports written to the audit-reports directory accumulate over time. The skill ships a small PowerShell wrapper at `.claude/skills/mcp-server-stress/scripts/archive-old-reports.ps1` that moves `*.md` files older than N days (default 30) into a year-stamped `archive/<YYYY>/` subdirectory, where `<YYYY>` is each file's `LastWriteTime` year. The reports directory path defaults to the audit-deep convention and can be overridden via `-ReportsRelativePath`.
 
 Invocation (Bash on Windows or any shell with `pwsh` on path):
 
 ```bash
 # Preview the archive plan without mutating anything.
-pwsh -NoProfile -File skills/audit-deep/scripts/archive-old-reports.ps1 -DryRun
+pwsh -NoProfile -File .claude/skills/mcp-server-stress/scripts/archive-old-reports.ps1 -DryRun
 
 # Archive reports older than 60 days under the default reports directory.
-pwsh -NoProfile -File skills/audit-deep/scripts/archive-old-reports.ps1 -OlderThanDays 60
+pwsh -NoProfile -File .claude/skills/mcp-server-stress/scripts/archive-old-reports.ps1 -OlderThanDays 60
 
 # Archive against a non-default reports directory in a host repo.
-pwsh -NoProfile -File skills/audit-deep/scripts/archive-old-reports.ps1 -ReportsRelativePath docs/audits
+pwsh -NoProfile -File .claude/skills/mcp-server-stress/scripts/archive-old-reports.ps1 -ReportsRelativePath docs/audits
 ```
 
 Behavior contract:
