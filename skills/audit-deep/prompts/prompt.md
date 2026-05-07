@@ -1,6 +1,6 @@
 # Deep Code Review & Refactor Agent Prompt
 
-<!-- purpose: Living prompt for full-surface MCP audits, refactor exercises, and experimental→stable promotion scoring against the live Roslyn MCP server. Output is machine-parseable (fixed tables, dense per-call evidence, promotion scorecards). -->
+<!-- purpose: Living prompt for full-surface MCP audits, apply-tool exercise on a disposable worktree, and experimental→stable promotion scoring against the live Roslyn MCP server. Output is machine-parseable (fixed tables, dense per-call evidence, promotion scorecards). -->
 <!-- DO NOT DELETE THIS FILE.
      Living document. When tools, resources, prompts, or skills are added/removed,
      the Phase 0 live-catalog capture + glob-based skill discovery in this prompt
@@ -18,21 +18,15 @@ You are a senior .NET architect running a Roslyn-MCP audit against the loaded re
 
 1. **MCP server audit (primary).** For every tool, resource, and prompt, ask whether the result is correct, complete, and consistent with sibling surfaces. Record issues, coverage, per-call `_meta.elapsedMs`, and error quality.
 2. **Experimental promotion scorecard (primary).** Every experimental entry you exercise receives a rating — `promote`, `keep-experimental`, `needs-more-evidence`, or `deprecate` — with evidence citations. Feeds `docs/experimental-promotion-analysis.md` and release gating.
-3. **Refactor the target codebase (supporting).** **Phase 6 only.** Apply meaningful improvements, verify with `compile_check` / `build_workspace` / `test_run`. Those changes land in the target repo's git history; summarize them in the audit report's Phase 6 section.
+3. **Apply-tool exercise on a disposable worktree (supporting).** **Phase 6 only.** Drive preview→apply→revert round-trips, verify with `compile_check` / `build_workspace` / `test_run`. Applies are test fixtures of the apply-tool surface — they run inside a disposable worktree the prompt creates at run start and tears down at run end. The audited repo's `main` branch and primary working tree are never mutated; no commit ever lands in the audited repo's history; no PR is opened.
 
 A fourth lane — **plugin-skills audit** — runs in **Phase 16b** against `skills/*/SKILL.md` in the Roslyn-Backed-MCP repo. Skills are shipped product surface; a broken tool reference there breaks every plugin user.
 
-### Mode parameter
+### Run shape
 
-Set `mode` at the top of your run. Default: `full`.
+This prompt describes one canonical run. Phase 6 applies are always exercised against a disposable worktree the prompt creates at run start and tears down at run end (`dotnet build-server shutdown` + `git worktree remove --force`, in that order). The promotion scorecard is always emitted. Typical duration: 90–180 min.
 
-| `mode` | Phase 6 applies? | Promotion scorecard? | Typical duration |
-|---|---|---|---|
-| `full` | **yes** (on disposable isolation) | **yes** | 90–180 min |
-| `promotion-only` | **no** — preview every experimental tool; skip 6 entirely | **yes** (this is the point) | 40–70 min |
-| `read-only` | **no** — no applies anywhere; everything preview-only or `skipped-safety` | Partial (writers score `needs-more-evidence` for skipped round-trips) | 30–50 min |
-
-Record the chosen mode in the audit header. `promotion-only` replaces the deprecated standalone experimental-promotion prompt: scope to the experimental surface by pre-filtering the coverage ledger to `tier=experimental` and omit Phase 6 entirely; stable tools are exercised only when they serve as scaffolding for an experimental probe (e.g. `workspace_load`, `find_unused_symbols` to set up `remove_dead_code_preview`).
+A single optional flag exists: `--no-worktree`, a degraded mode for environments that genuinely cannot create a git worktree (tight CI sandbox, missing `git` binary, read-only checkout). When set, Phase 6 is skipped, the *Isolation* row records `degraded — --no-worktree flag, Phase 6 applies skipped`, and writer rows whose round-trip evidence depended on the disposable worktree default to `needs-more-evidence` in the scorecard. Record `--no-worktree` in the report header so consumers know which evidence is missing.
 
 **Known issues / prior findings.** When auditing Roslyn-Backed-MCP (or any repo that has access to it), cross-check `ai_docs/backlog.md` at the audited-repo root and cite matching ids. Otherwise use the closest prior source (previous audit report, issue tracker, repro list). If none exists, the regression section is **N/A**.
 
@@ -41,7 +35,7 @@ Record the chosen mode in the audit header. `promotion-only` replaces the deprec
 **Portability and completeness contract.**
 
 1. Runs against **any loadable C# repo**. Prefer `.sln` / `.slnx`; fall back to `.csproj`.
-2. **Default `full-surface`**; opt into `conservative` only when no disposable branch/worktree/clone is available. Record the disposable path (or the conservative rationale) before any write-capable call.
+2. The disposable worktree is created at run start and recorded in the *Isolation* header row before any write-capable call. `--no-worktree` opts into degraded mode where Phase 6 applies are skipped — record the rationale in the *Isolation* row.
 3. `server_info`, `roslyn://server/catalog`, and `roslyn://server/resource-templates` are the **authoritative live surface**. Any disagreement with prose in this prompt: the live catalog wins, and the drift is itself a finding.
 4. Build a live **coverage ledger** from the catalog. Every live tool, resource, and prompt ends with exactly one final status: `exercised`, `exercised-apply`, `exercised-preview-only`, `skipped-repo-shape`, `skipped-safety`, or `blocked`. Silent omissions mean the audit is incomplete. Columns: `kind`, `name`, `tier`, `category`, `status`, `phase`, `lastElapsedMs`, `notes`.
 5. If the MCP client cannot invoke a live resource/prompt family, mark those rows `blocked` with the client limitation. Blocked experimental entries score `needs-more-evidence` in the scorecard — never `promote`.
@@ -105,7 +99,7 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 ### Phase 0: Setup, live surface baseline, and repo shape
 
 1. Pick the entrypoint: `.sln` / `.slnx` / `.csproj`.
-2. Record `full-surface` (default) vs `conservative` and the disposable branch/worktree/clone path (or rationale).
+2. **Create the disposable worktree** (mandatory, default mode). Run `git worktree add ../<repo-name>-audit-deep-<ts> -b audit-deep/<ts>` from the audited repo root, where `<ts>` is the same UTC `yyyyMMddTHHmmssZ` used for the report filename. Record the absolute worktree path + branch name in the *Isolation* header row before any write-capable call. Phase 6's preview→apply chains run against this checkout; the audited repo's primary working tree is never touched. **`--no-worktree` flag:** record `degraded — --no-worktree flag, Phase 6 applies skipped` in the *Isolation* row and skip worktree creation entirely.
 3. **Debug-log channel check.** Is the client surfacing `notifications/message`? Record `yes` / `partial` / `no` in the header.
 4. Read `roslyn://server/resource-templates` to capture all resource URI templates.
 5. Call `workspace_load` (lean summary default; pass `verbose=true` only if you need the full project tree).
@@ -221,9 +215,13 @@ For each:
 
 ---
 
-### Phase 6: Refactoring pass
+### Phase 6: Apply-tool exercise on the disposable worktree
 
-**Product changes happen here only.** Phases 10 / 12 / 13 are preview-only by default. Skip Phase 6 entirely when `mode=promotion-only` or `mode=read-only`; in that case state **N/A — skipped per mode** in the Phase 6 report section and proceed.
+**Apply-mode mutations happen here only**, and only inside the disposable worktree created in Phase 0 step 2. Phases 10 / 12 / 13 also drive at least one preview→apply round-trip per applicable family (against the same disposable worktree). Skip Phase 6 only when `--no-worktree` was passed; in that case state **N/A — skipped per --no-worktree flag** in the Phase 6 report section and proceed.
+
+**The point of Phase 6 is to exercise the write path of the MCP server**, not to ship product changes. Applies are test fixtures: drive preview→apply→revert chains, verify behaviour with `compile_check` / `build_workspace` / `test_run` after each apply, and capture per-call evidence for the promotion scorecard. The disposable worktree is torn down at run end (see *Phase 6 teardown* below); nothing about Phase 6 produces a PR or a commit in the audited repo's history.
+
+**`try/finally` discipline.** Wrap the entire Phase 6 sub-phase chain in a `try/finally` (or your host's equivalent error-handling structure) so teardown runs even if an apply fails mid-chain. The skill's correctness contract is "the disposable worktree is gone when the run ends" — apply failures are evidence to record in the report, not reasons to leave the worktree behind.
 
 #### 6a. Fix All
 1. Pick a diagnostic with many occurrences (IDE0005, CS8600).
@@ -308,6 +306,20 @@ For each:
 #### 6m. Session change tracking
 1. After all Phase 6 applies, `workspace_changes` — verify every applied refactoring appears with correct descriptions, affected files, tool names, and timestamps; verify ordering.
 
+#### 6z. Disposable worktree teardown (mandatory, runs in `finally`)
+
+This sub-phase runs at the **end of Phase 6** as the `finally`-clause counterpart to the `try/finally` wrapping the Phase 6 chain. It also runs after Phases 10 / 12 / 13 if those phases issued additional applies inside the disposable worktree.
+
+1. **Release Windows file locks first.** Run `dotnet build-server shutdown` from the audited repo root (or the disposable worktree, equivalent). This releases `testhost.exe` / `VBCSCompiler.exe` locks on `bin/{Debug,Release}/net*/` directories. The command prints one informational line on stdout — that is normal, not an error.
+2. **Remove the worktree.** Run `git worktree remove --force <disposable-worktree-path>` from the audited repo root. The `--force` flag is required because Phase 6 leaves uncommitted apply-mode mutations in the worktree (intentionally — the point was to exercise the apply tools, not to commit their output).
+3. **Verify cleanup.** Run `git worktree list` from the audited repo root and confirm the disposable worktree is gone. Run `git status` from the audited repo's primary checkout and confirm it is clean (Phase 6 must not have leaked changes outside the worktree).
+4. **Branch cleanup.** Run `git branch -D audit-deep/<ts>` from the audited repo root to delete the disposable branch. The branch only existed to host worktree state; it has no upstream and no history worth preserving.
+5. **Record teardown outcome in the report header.** A new *Teardown* row: `clean` (worktree removed, branch deleted, primary checkout clean) / `partial — <what survived>` (e.g. `partial — branch survived; manual git branch -D required`) / `failed — <error>`.
+
+If teardown fails for an unexpected reason, surface the failure in the report's *MCP server issues* section as a P1 finding tagged `audit-deep teardown`. Do not retry blindly — the operator can clean up by hand.
+
+**`--no-worktree` mode:** sub-phase 6z is `skipped — no worktree was created`.
+
 **MCP audit checkpoint:** Does `fix_all_preview` find all instances without timing out? Does `rename_preview` catch references in comments/strings? Does `rename_apply.MutatedSymbol` resolve to the new identity? Does `bulk_replace_type_preview` miss any usages? Does `extract_type_preview` handle shared private members correctly? Does `format_range_preview` stay inside its range? Does `format_check` correctly report clean after the preceding format applies? Does `remove_dead_code_preview` touch only the targeted symbols? Does `set_diagnostic_severity` correctly create/update `.editorconfig`? Does `add_pragma_suppression` insert at the right line? Does `verify_pragma_suppresses` correctly validate scope? Does `extract_method_preview` infer correct parameters and return type? Do the advanced refactor previews each round-trip cleanly and return actionable errors on unsupported ops? Does `apply_with_verify` roll back cleanly on introduced errors? Does `workspace_changes` list every apply with correct ordering?
 
 **Cross-tool chain validation.** After `rename_apply`: `find_references` on the new name = preview count. After `extract_interface_apply`: `type_hierarchy` on the new interface shows the implementor. After `fix_all_apply`: `project_diagnostics` on that diagnostic id = 0. After `organize_usings_apply`: `get_source_text` shows sorted usings. After `extract_method_apply`: `find_references` on the new method ≥ 1. After all applies: `workspace_changes` entry count matches the apply count.
@@ -346,7 +358,7 @@ Delegate heavy validation where possible (full-suite `test_run`, `test_coverage`
 9. `test_coverage`.
 10. `test_reference_map(projectName?)` — verify `{ coveredSymbols, uncoveredSymbols, coveragePercent, inspectedTestProjects, notes, mockDriftWarnings? }`. For repos using NSubstitute, check `mockDriftWarnings` flags interface methods production calls that the matching test class never stubs. For repos with no test project, the response should be a clean empty-with-reason result, not an error.
 10b. `get_test_coverage_map(projectName?)` — production-symbol → covering-test-method map. Cross-check that any production symbol classified as `covered` in `test_reference_map` has at least one entry in `get_test_coverage_map`; an empty map for a `covered` symbol is a FLAG.
-11. `validate_workspace(changedFilePaths=null, runTests=false)` — verify `overallStatus ∈ {clean, compile-error, analyzer-error, test-failure}`. Probe `changedFilePaths=null` to confirm auto-scoping off `IChangeTracker`. In `full-surface` mode, probe `runTests=true` on the disposable checkout. **Negative probe:** fabricated `changedFilePaths` entry → clean "no related tests" result (not a crash).
+11. `validate_workspace(changedFilePaths=null, runTests=false)` — verify `overallStatus ∈ {clean, compile-error, analyzer-error, test-failure}`. Probe `changedFilePaths=null` to confirm auto-scoping off `IChangeTracker`. Probe `runTests=true` on the disposable worktree. **Negative probe:** fabricated `changedFilePaths` entry → clean "no related tests" result (not a crash).
 12. `validate_recent_git_changes` — if git metadata is accessible, validate the last commit's touched files. Verify the bundle composes `compile_check` + diagnostics + related-tests correctly and reports a clean status on a passing commit.
 
 If `test_discover` returns zero, record it and distinguish: `test_run` returns a clean zero-test result, `test_run` / `test_coverage` are `skipped-repo-shape`, or the server mishandles the no-test case.
@@ -417,18 +429,18 @@ Use the schema in *Output Format → Concurrency matrix*. Every cell has a value
 
 ### Phase 10: File, cross-project, and orchestration operations
 
-**Default:** inspect previews for every applicable family. In `full-surface` mode on a disposable checkout, drive at least one safe preview → apply → verification → cleanup chain per family that exposes an apply sibling. In `conservative` mode, apply siblings are `skipped-safety`.
+**Default:** inspect previews for every applicable family on the disposable worktree, and drive at least one safe preview → apply → verification → cleanup chain per family that exposes an apply sibling. Under `--no-worktree`, apply siblings are `skipped-safety — --no-worktree`.
 
 1. `move_type_to_file_preview` — move a type into its own file.
 2. `move_file_preview` — move with namespace update.
 3. `create_file_preview` — new source file.
-4. `delete_file_preview` — unused source file (safe target; do not apply in `conservative`).
+4. `delete_file_preview` — unused source file (safe target).
 5. Multi-project: `extract_interface_cross_project_preview`, `dependency_inversion_preview`, `move_type_to_project_preview`.
 6. If DI present: `extract_and_wire_interface_preview`.
 7. If a split candidate: `split_class_preview` and/or `split_service_with_di_preview`.
 8. If a package-migration candidate: `migrate_package_preview`.
-9. In `full-surface` on disposable: one safe file/type preview → apply → cleanup loop with `move_type_to_file_apply` / `create_file_apply` / `move_file_apply` / `delete_file_apply`.
-10. **`apply_composite_preview` — destructive despite the name.** Only call in `full-surface` on disposable; otherwise `skipped-safety` and note the naming friction.
+9. On the disposable worktree: one safe file/type preview → apply → cleanup loop with `move_type_to_file_apply` / `create_file_apply` / `move_file_apply` / `delete_file_apply`.
+10. **`apply_composite_preview` — destructive despite the name.** Only call on the disposable worktree; under `--no-worktree`, mark `skipped-safety — --no-worktree` and note the naming friction.
 
 **MCP audit checkpoint:** Do the previews produce valid diffs with correct namespace/reference updates? Does `extract_and_wire_interface_preview` correctly identify DI registrations? Does `split_class_preview` produce valid partial classes? Does `split_service_with_di_preview` produce valid DI rewires? Does the create/move/delete/apply round-trip leave the repo clean?
 
@@ -465,14 +477,14 @@ Use the schema in *Output Format → Concurrency matrix*. Every cell has a value
 
 ### Phase 12: Scaffolding
 
-**Default:** preview-only. In `full-surface` on disposable: apply one scaffold, verify, clean up. In `conservative`: `skipped-safety`.
+**Default:** previews on the disposable worktree, plus apply one scaffold, verify, clean up. Under `--no-worktree`: apply siblings are `skipped-safety — --no-worktree`.
 
 1. `scaffold_type_preview`. v1.8+ default is `internal sealed class`; records, interfaces, enums stay `public`. The file lands at `{projectRoot}/{namespace-folders}/T.cs` even when the namespace doesn't start with the project name. v1.17+ auto-implements interface stubs (`throw new NotImplementedException()` + required usings) when `baseType`/`interfaces` resolve to an interface with members — opt out with `implementInterface: false` and assert the body becomes empty.
 2. `scaffold_test_preview` for an existing type. v1.8+ constructor-arg expressions: `IEnumerable<T>` / `ICollection<T>` / `IList<T>` / `IReadOnlyList<T>` → `System.Array.Empty<T>()`; dictionaries → `new Dictionary<K,V>()`; `string` → `string.Empty`. Previously every parameter was `default(T)`.
 3. `scaffold_test_batch_preview(testProjectName, targets=[{targetTypeName, targetMethodName?}, …])` on 3–5 targets. Verify one composite token covers every generated file (not N tokens). Apply via `preview_multi_file_edit_apply` (**not** `apply_composite_preview`). Confirm every scaffolded test is discoverable.
 4. `scaffold_first_test_file_preview` for a project that has no test file yet — bootstraps the test project shape.
-5. In `full-surface`: apply one scaffold via `scaffold_type_apply` (using a token from `scaffold_type_preview`) — verify the resulting file matches the preview diff and that `compile_check` passes.
-6. In `full-surface`: apply one test scaffold via `scaffold_test_apply` (using a token from `scaffold_test_preview`) — verify the new test is discoverable via `test_discover` and runs green via `test_run`.
+5. Apply one scaffold via `scaffold_type_apply` (using a token from `scaffold_type_preview`) — verify the resulting file matches the preview diff and that `compile_check` passes.
+6. Apply one test scaffold via `scaffold_test_apply` (using a token from `scaffold_test_preview`) — verify the new test is discoverable via `test_discover` and runs green via `test_run`.
 
 **MCP audit checkpoint:** Does `scaffold_type_preview` infer the correct namespace and produce `internal sealed class` by default? Does the interface-stub emission toggle on `implementInterface`? Does `scaffold_type_apply` produce the file the preview promised? Does `scaffold_test_preview` produce compiling stubs that run green? Does `scaffold_test_apply` discover and run cleanly? Does `scaffold_test_batch_preview` emit one composite token? Does `scaffold_first_test_file_preview` bootstrap cleanly?
 
@@ -480,7 +492,7 @@ Use the schema in *Output Format → Concurrency matrix*. Every cell has a value
 
 ### Phase 13: Project mutation
 
-**Default:** preview-only. In `full-surface` on disposable: at least one reversible preview → `apply_project_mutation` → verify → inverse preview → reverse apply. In `conservative`: `skipped-safety`.
+**Default:** previews on the disposable worktree, plus at least one reversible preview → `apply_project_mutation` → verify → inverse preview → reverse apply. Under `--no-worktree`: apply siblings are `skipped-safety — --no-worktree`.
 
 1. `add_package_reference_preview` / `remove_package_reference_preview`.
 2. `add_project_reference_preview` / `remove_project_reference_preview`.
@@ -489,7 +501,7 @@ Use the schema in *Output Format → Concurrency matrix*. Every cell has a value
 5. `add_target_framework_preview` / `remove_target_framework_preview` (multi-targeting).
 6. If CPM: `add_central_package_version_preview` / `remove_central_package_version_preview`.
 7. `get_msbuild_properties` with `propertyNameFilter` / `includedNames` to probe a non-default path.
-8. In `full-surface`: apply + reverse one reversible mutation; verify with `workspace_reload` + `build_project` / `compile_check`.
+8. Apply + reverse one reversible mutation on the disposable worktree; verify with `workspace_reload` + `build_project` / `compile_check`.
 
 **MCP audit checkpoint:** Do the previews produce correct XML diffs? Do conditional-property conditions evaluate correctly? Do framework additions/removals look right? Does the forward-reverse apply round-trip work? Are multi-targeting / CPM correctly marked `skipped-repo-shape` when unused?
 
@@ -526,7 +538,7 @@ Use the schema in *Output Format → Concurrency matrix*. Every cell has a value
 
 ### Phase 16: Prompt verification (`prompts/list` + `prompts/get`)
 
-The live catalog is authoritative for prompt count. In `conservative`: exercise at least 6 prompts spanning error explanation / refactoring / review / testing / security / capability discovery (or all if fewer live). In `full-surface` / `promotion-only`: exercise every live prompt unless truly `skipped-repo-shape` or `blocked`.
+The live catalog is authoritative for prompt count. Exercise every live prompt unless truly `skipped-repo-shape` or `blocked`.
 
 **Per-prompt checklist:**
 
@@ -593,7 +605,7 @@ Deliberately probe edge cases. Verify inputs validated, error messages helpful, 
 
 #### 17d. Stale and double-apply
 1. `*_apply` with an already-consumed preview token → clear stale-token rejection.
-2. Fresh preview token → advance the workspace version with a separate low-impact mutation allowed by the current mode → attempt to apply the now-stale token → clear workspace-version/staleness rejection. In `conservative`, `skipped-safety` is acceptable.
+2. Fresh preview token → advance the workspace version with a separate low-impact mutation on the disposable worktree → attempt to apply the now-stale token → clear workspace-version/staleness rejection. Under `--no-worktree`, mark `skipped-safety — --no-worktree` (no apply available to invalidate the token).
 3. `revert_last_apply` twice in succession — second call returns clear "nothing to revert", not an error.
 
 #### 17e. Post-close operations
@@ -624,7 +636,7 @@ Re-test 3–5 previously recorded issues. Prefer `ai_docs/backlog.md` at the aud
 6. *Debug log capture* has at least one entry or explicitly states `client did not surface MCP log notifications`.
 7. **Compute the experimental promotion scorecard.** For each experimental entry, use this rubric:
    - **`promote`** — ALL of: exercised end-to-end with ≥1 non-default parameter path; schema matched behaviour on every probe; zero FAIL findings in this run or prior backlog; p50 `elapsedMs` within budget (single-symbol reads ≤5 s, solution scans ≤15 s, writers ≤30 s); preview/apply round-tripped cleanly where applicable; error path actionable on ≥1 negative probe; catalog description matched actual behaviour.
-   - **`keep-experimental`** — exercised with pass signal but missing ≥1 promote criterion (typically: writer round-trip not performed, or `conservative` gated the apply, or a non-default path was not probed).
+   - **`keep-experimental`** — exercised with pass signal but missing ≥1 promote criterion (typically: writer round-trip not performed, or `--no-worktree` gated the apply, or a non-default path was not probed).
    - **`needs-more-evidence`** — not exercised (`skipped-repo-shape` / `skipped-safety` / `blocked`) OR one exercise too shallow to judge. Default for `blocked` entries.
    - **`deprecate`** — exercised, produced FAIL findings warranting removal. Pair with an *MCP server issues* entry.
 8. *Schema vs behaviour drift*, *Error message quality*, *Parameter-path coverage*, *Performance baseline* tables populated. Every exercised tool contributes ≥1 row to *Performance baseline*; the other three can be empty-with-reason.
@@ -637,9 +649,9 @@ When all phases are done, `workspace_close` to release the session (if not alrea
 
 ## Output Format — MANDATORY
 
-### What goes in git (no audit file)
+### What goes in git (nothing from this audit)
 
-Meaningful refactoring from **Phase 6** is committed in the **target solution's** repository. A short *Phase 6 refactor summary* in the audit report (see *Report contents*) ties git history to tools exercised; the code changes themselves are not a separate file deliverable.
+The audit run produces no commits in the audited repo's history. Phase 6 applies are exercised inside the disposable worktree the prompt creates, and the worktree is torn down at run end (sub-phase 6z). The audited repo's primary working tree and `main` branch are never mutated. The deliverable is the audit report + the promotion scorecard JSON — see below.
 
 ### What goes in a file (incremental draft + final canonical output)
 
@@ -664,7 +676,7 @@ This prompt writes **raw per-run evidence only**. Multi-repo campaigns synthesiz
 - When the run happens outside Roslyn-Backed-MCP, copy the raw file into the sibling repo's `ai_docs/audit-reports/` so `eng/stage-review-inbox.ps1` discovers it on the next `/backlog-intake` pass (or pass an explicit source path via the skill's `--sibling-parent` flag).
 - Do **not** place raw audit files under `ai_docs/reports/` — that directory is for synthesized rollups.
 
-### Promotion scorecard JSON (sibling artifact — MANDATORY when `mode=promotion-only` or `mode=full`)
+### Promotion scorecard JSON (sibling artifact — MANDATORY)
 
 In addition to the human-readable `.md` report, write a machine-readable scorecard at:
 
@@ -676,7 +688,7 @@ This file is **overwritten** each run. Schema:
 {
   "schemaVersion": 1,
   "generatedAt": "2026-05-05T18:36:19Z",
-  "mode": "promotion-only",
+  "noWorktree": false,
   "auditedRepo": "roslyn-backed-mcp",
   "auditReportPath": "ai_docs/audit-reports/20260505T183619Z_roslyn-backed-mcp_mcp-server-audit.md",
   "serverVersion": "1.33.2",
@@ -718,7 +730,7 @@ This file is **overwritten** each run. Schema:
         "p50 elapsedMs=480ms"
       ],
       "blockers": [
-        "no apply round-trip exercised (apply sibling skipped-safety in conservative mode)",
+        "no apply round-trip exercised (apply sibling skipped-safety per --no-worktree)",
         "no negative-probe evidence on shared-state across the split"
       ]
     }
@@ -743,9 +755,9 @@ This file is **overwritten** each run. Schema:
 
 **Why this exists.** `/release-cut` (via `/publish-preflight`) reads this file as a **promotion gate** — when fresh and any row is `recommendation: "promote"`, the maintainer is prompted to flip the tier in the same release. Without the JSON, promotion stays implicit and the audit's promotion lane has no operational consequence.
 
-**Staleness contract.** The JSON is a snapshot, not a journal. `/publish-preflight` warns when `generatedAt` is older than 30 days; older than 90 days, the file should be ignored entirely (recommend a fresh `/audit-deep mode=promotion-only` run).
+**Staleness contract.** The JSON is a snapshot, not a journal. `/publish-preflight` warns when `generatedAt` is older than 30 days; older than 90 days, the file should be ignored entirely (recommend a fresh `/audit-deep` run).
 
-**Skip when `mode=read-only`** — read-only runs cannot exercise apply round-trips, so `recommendation` for writer tools defaults to `needs-more-evidence`. Writing a misleading scorecard is worse than writing none. Mark the run header *"promotion scorecard skipped per mode=read-only"* and proceed.
+**`--no-worktree` runs still emit the scorecard.** Apply round-trips that depended on the disposable worktree are recorded as `skipped-safety — --no-worktree` in the coverage ledger and the affected writer tools' `recommendation` will typically default to `needs-more-evidence`, with `blockers` citing the missing worktree. The scorecard JSON is still written so consumers see a fresh artifact and can decide for themselves whether the missing-worktree evidence matters for their gate.
 
 ### Naming scheme (`<timestamp>_<repo-id>`)
 
@@ -798,9 +810,9 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 - **Audited solution:**
 - **Audited revision:** (commit / branch if available)
 - **Entrypoint loaded:**
-- **Mode:** `full` / `promotion-only` / `read-only`
-- **Audit mode:** `full-surface` (default) / `conservative` (with reason)
-- **Isolation:** (disposable branch/worktree/clone path, or conservative rationale)
+- **Flags:** (none) / `--no-worktree`
+- **Isolation:** (absolute disposable worktree path + branch name, or `degraded — --no-worktree flag, Phase 6 applies skipped`)
+- **Teardown:** `clean` / `partial — <what survived>` / `failed — <error>` / `N/A — --no-worktree`
 - **Client:** (name/version; note if prompts or resources are client-blocked)
 - **Workspace id:**
 - **Warm-up:** `yes` / `no` (did you call `workspace_warm` after load?)
@@ -826,12 +838,13 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 ## 4. Verified tools (working)
 - `tool_name` — one-line observation (include p50 elapsedMs when available)
 
-## 5. Phase 6 refactor summary
-- **Target repo:**
-- **Scope:** (which 6a–6m sub-phases applied; or **N/A — skipped per mode** / **N/A — no applies** with reason)
-- **Changes:** bullets — symbol/file, tool used
-- **Verification:** `compile_check` / `test_run` / `build_workspace` outcomes
-- **Optional:** commit / PR reference
+## 5. Phase 6 apply-tool exercise summary
+- **Disposable worktree path:** absolute path (or `N/A — --no-worktree`)
+- **Disposable branch:** `audit-deep/<ts>` (or `N/A — --no-worktree`)
+- **Scope:** (which 6a–6m sub-phases ran; `**N/A — skipped per --no-worktree**` when degraded mode)
+- **Apply-tool calls:** bullets — preview→apply pairs exercised, with tool name + outcome
+- **Verification:** `compile_check` / `test_run` / `build_workspace` outcomes after applies
+- **Teardown outcome:** see header *Teardown* row; expand here if `partial` / `failed`
 
 ## 6. Performance baseline (`_meta.elapsedMs`)
 | Tool | Tier | Category | Calls | p50_ms | p90_ms | max_ms | Input scale | Budget | Notes |
@@ -952,4 +965,4 @@ That is the authoritative surface for any run. Trust those captures over any pro
 - **Script timeout.** `evaluate_csharp` honors `ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS` (default 10 s). Principle #9 governs multi-minute stalls.
 - **Write-lock model.** One per-workspace `AsyncReaderWriterLock` via `WorkspaceExecutionGate`. No dual-lock lane (historical `_rw-lock_` / `_legacy-mutex_` audit filenames are artifacts).
 - **v1.28+.** `workspace_warm` is the recommended post-`workspace_load` prime step. `rename_apply.MutatedSymbol` carries a fresh handle for chained calls.
-- **Experimental-promotion workflow.** This prompt's `mode=promotion-only` replaces the standalone experimental-promotion prompt — fold scorecard-only runs here.
+- **Experimental-promotion workflow.** The promotion scorecard (mandatory output of every run) replaces the deprecated standalone experimental-promotion prompt. Scorecard-only runs are no longer a separate mode — the canonical run always exercises the experimental surface and emits the scorecard.
