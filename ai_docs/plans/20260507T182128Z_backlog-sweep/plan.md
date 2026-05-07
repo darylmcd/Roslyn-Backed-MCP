@@ -63,7 +63,7 @@ Same as previous version. Pre-existing P4/Low rows not in scope for this sweep:
 
 | Field | Content |
 |---|---|
-| Status | in-progress (branch: remediation/mcp-server-stress-update-external-refs, worktree: .worktrees/mcp-server-stress-update-external-refs) |
+| Status | merged (PR #549, 2026-05-07) |
 | Backlog rows closed | `audit-deep-relocate-and-rename` |
 | Diagnosis | After initiative 2, three external references still point at the old skill name + path: `.claude/skills/publish-preflight/SKILL.md` (5 mentions of `/audit-deep mode=...`), `.claude/agents/audit-phase-runner.md` (the agent the audit skill orchestrates), and the orphaned `ai_docs/prompts/deep-review-and-refactor.md` (a pre-bundled-prompt era artifact the shipped skill no longer reads). Updating these in a separate initiative keeps each within Rule 3; bundling with initiative 2 would push it to 6 production files. |
 | Approach | (a) Edit `.claude/skills/publish-preflight/SKILL.md` lines 101, 109, 111, 112, 135 — replace `/audit-deep mode=promotion-only` with `/mcp-server-stress` (drop mode qualifier; default single-mode emits scorecard). (b) Edit `.claude/agents/audit-phase-runner.md` — rename references from `audit-deep` to `mcp-server-stress`; update any cited skill path. (c) Delete `ai_docs/prompts/deep-review-and-refactor.md` — no longer referenced by any skill; was the pre-bundled-prompt source. Verify with grep before deletion that no doc still links to it. |
@@ -81,7 +81,7 @@ Same as previous version. Pre-existing P4/Low rows not in scope for this sweep:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | in-progress (branch: remediation/extract-skills-audit-from-server-stress, worktree: .worktrees/extract-skills-audit-from-server-stress) |
 | Backlog rows closed | `extract-skills-audit-from-server-stress` |
 | Diagnosis | Phase 16b (`prompts/full.md:23,552-570`, now at `.claude/skills/mcp-server-stress/prompt.md` after initiatives 1+2) audits `skills/*/SKILL.md` against the live MCP catalog — verifies each shipped skill's tool references resolve. This is conceptually a static surface check, not a server-execution check. The existing `.claude/skills/surface-audit/` skill already owns the static-catalog audit lane. Keeping Phase 16b inside the server-stress skill is what coupled the skill to a Roslyn-MCP-repo checkout in the first place. |
 | Approach | (a) Read the current Phase 16b content from `.claude/skills/mcp-server-stress/prompt.md`. (b) Edit `.claude/skills/surface-audit/SKILL.md` — absorb the Phase 16b workflow as a new "Skills audit" section between the existing static-catalog and doc-claim sections; preserve the `glob skills/*/SKILL.md` discovery pattern, frontmatter parity check, tool-reference resolution check, and pass/flag/fail tagging; relocate the MCP audit checkpoint at end of Phase 16b (`prompts/full.md:570`) into surface-audit's report section. (c) Edit `.claude/skills/mcp-server-stress/prompt.md` — delete Phase 16b section + every "plugin-skills audit" mention; update the report-format table at lines 757-784 of the original full.md to drop the skills-audit row. (d) Update `tests/RoslynMcp.Tests/Skills/McpServerStressSkillFrontmatterTests.cs` — assert SKILL.md no longer mentions Phase 16b or "plugin-skill audit". |
