@@ -43,10 +43,9 @@ Each rollup should include:
 
 | File | Purpose |
 |------|---------|
-| `reports/2026-04-06-deep-review-rollup-example.md` | Concrete example of a synthesized deep-review rollup with deduped issues, blocked-client summary, and backlog actions. |
 | `reports/2026-04-06-test-suite-audit.md` | Cross-cutting audit of the test suite's speed, SRP, and setup costs. |
-| `reports/20260413T164400Z_deep-review-rollup.md` | Deep-review rollup for the 2026-04-13 batch (scaffold + input audit manifest). |
-| `reports/20260415T153515Z_deep-review-rollup.md` | Deep-review rollup for the 2026-04-15 batch. |
-| `reports/20260422T143323Z_deep-review-rollup.md` | Deep-review rollup for the 2026-04-22 batch. |
+| `reports/20260505_mcp-best-practices-restored-rows.md` | Provenance for active MCP best-practices backlog rows that remain open or deferred. |
+| `reports/20260505T131500Z_apply-verify-rollback-audit.md` | Actioning audit that closed `apply-with-verify-false-positive-audit` as obsolete. |
+| `reports/test-parallelization-triage-2026-04-22.md` | Test parallelization triage notes. |
 
 For the full deep-review workflow, start with `../procedures/deep-review-program.md`.
