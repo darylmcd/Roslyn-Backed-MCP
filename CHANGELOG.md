@@ -16,6 +16,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.34.2] - 2026-05-07
+
+### Changed
+
+- **Changed:** split related-file test discovery into primary match, fallback broadening, and result-building helpers while preserving existing discovery behavior. Closes `test-discovery-service-complexity-refactor`.
+- **Changed:** split `ValidateWorkspaceMarkdownFormatter.Format` into focused section writers while preserving the existing markdown response contract. Closes `validate-workspace-markdown-formatter-decomposition`.
+- **Changed:** `WorkspaceEvicted` envelopes now carry the originally-loaded solution path and an exact `recovery=workspace_load(path: "...")` retry shape when the eviction was a same-process trim (path was retained on the in-memory eviction record). Cross-process recycle envelopes still omit both fields because the prior process's session metadata is unrecoverable. Typoed-`workspaceId` lookups remain `category=NotFound`. `WorkspaceEvictedException.LoadedPath` is the new typed surface; the `WorkspaceManager._evictedWorkspaces` value type is now an `EvictedSessionRecord(LoadedAtUtc, LoadedPath)` record struct. Closes `workspace-id-recovery-hints`.
+- **Changed:** `workspace_load` now auto-runs `workspace_warm` for omitted `prewarm` on solutions with more than 50 projects, while explicit `prewarm: false` keeps the cold-load profile. Closes `workspace-warm-default-above-50-projects`.
+
+### Added
+
+- **Added:** `/roslyn-mcp:audit-deep` now documents a repo-local `audit-phase-runner` handoff for log-heavy read-side phases, keeping Phase 6 and preview/apply mutation chains inline. Closes `audit-deep-subagent-orchestration`.
+- **Added:** Design note `ai_docs/items/parameter-object-preview-design.md` for a future `parameter_object_preview` MCP tool. Specifies the tool contract, generated-DTO conventions (positional `record`), call-site rewrite policy (refuse default-value sites and `ref`/`out`/`in`/`params`/`this`/local-function targets; warn on reflective sites), cross-project pre-flight check, and Rule-3 file-count estimate (4 structural units / 6 prod files + 3 addenda + 1 test). Closes `parameter-object-preview-design`; opens follow-on row `parameter-object-preview-tool`.
+- **Added:** `scaffold_test_preview` can opt into MCP sampling for Given/When/Then test method names while preserving the deterministic placeholder default for non-sampling callers. Closes `scaffold-test-preview-sampled-test-names`.
+- **Added:** `workspace_load(prewarm: true)` now runs `workspace_warm` after a successful load and returns the warm result alongside the load summary; omitted or `false` preserves the cold-load profile. Closes `workspace-cache-prewarm-on-load`.
+
 ## [1.34.1] - 2026-05-06
 
 ### Fixed
