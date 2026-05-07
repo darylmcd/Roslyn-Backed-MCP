@@ -597,6 +597,32 @@ Re-test 3–5 previously recorded issues. Prefer `ai_docs/backlog.md` at the aud
 1. Read the prior source; select 3–5 items reproducible with the current workspace.
 2. For each, reproduce the exact scenario. Record **still reproduces** / **partially fixed** (describe) / **no longer reproduces — candidate for closure**.
 
+### Phase 19: Fragment emission (cross-repo backlog handoff)
+
+For each **actionable** finding in the audit report (anything that lands in section 13 *MCP server issues* or in section 14 *Improvement suggestions* with a concrete fix sketch), emit one **`backlog.d/` fragment** at:
+
+```
+<audited-repo-root>/backlog.d/<finding-id>.md
+```
+
+Schema is canonical at `<Roslyn-Backed-MCP-root>/ai_docs/items/backlog-d-fragment-schema.md` — read that file once if you have not seen it. The required frontmatter keys are: `id`, `source_audit`, `source_repo`, `severity`, `area`, `anchors`. The body is a single ≤6-sentence paragraph (finding + repro + proposed fix sketch).
+
+Steps:
+
+1. Ensure `<audited-repo-root>/backlog.d/` exists (`mkdir -p`).
+2. For each actionable finding, derive a kebab-case `<finding-id>` that prefixes the audited repo's id (e.g. `roslyn-mcp-find-references-stale-cache`, `tradewise-symbol-search-empty-query-overflow`). The filename and the frontmatter `id` must match exactly.
+3. Set `source_audit` to the basename of the prose audit report this run is producing (e.g. `20260507T203015Z_tradewise_mcp-server-audit.md`).
+4. Set `source_repo` to the audited repo's kebab-case id.
+5. Set `severity` to `P0` / `P1` / `P2` / `P3` matching the section 13 severity (or your own classification for section 14 entries: typically `P3` unless the suggestion blocks a concrete workflow, in which case `P2`).
+6. Set `area` to one of `tools` / `resources` / `prompts` / `skills` / `concurrency` / `perf` / `docs`.
+7. Set `anchors` to one or more `path/to/file.ext:LINE` strings (relative to the audited repo's root).
+
+Idempotency: if a fragment with the same filename already exists in `backlog.d/`, **do not overwrite it** — leave the existing fragment in place and skip emission for that finding. Re-running the audit on the same repo without intake-in-between is allowed; the second run is a no-op for fragments that have not changed.
+
+`**N/A — no actionable findings**` is a valid Phase 19 outcome when sections 13 + 14 are both empty.
+
+This phase replaces the prior cross-write of audit reports into `<Roslyn-MCP-root>/ai_docs/audit-reports/`. Fragments are now the only `/backlog-intake`-consumable artifact. The prose `*_mcp-server-audit.md` and the scorecard JSON stay where this run wrote them under `<audited-repo-root>/ai_docs/audit-reports/`; intake reads them only as back-references via the fragment's `source_audit` field.
+
 ---
 
 ### Final surface closure (mandatory before the report)
@@ -640,12 +666,11 @@ This prompt writes **raw per-run evidence only**. Multi-repo campaigns synthesiz
 
 ### Where to save the report
 
-**Canonical path:** `<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/<timestamp>_<repo-id>_mcp-server-audit.md`
+**Canonical path:** `<audited-repo-root>/ai_docs/audit-reports/<timestamp>_<repo-id>_mcp-server-audit.md`
 
 - `<timestamp>` = current UTC `yyyyMMddTHHmmssZ`.
-- If auditing Roslyn-Backed-MCP, use `ai_docs/audit-reports/` relative to that repo root.
-- Auditing another solution in a different workspace and **can't** write to Roslyn-Backed-MCP: write to the current workspace root as `ai_docs/audit-reports/<timestamp>_<repo-id>_mcp-server-audit.md` and state in the header: *"Intended final path: `<path-to-Roslyn-Backed-MCP>/ai_docs/audit-reports/…` — copy this file there before creating a rollup or backlog update."*
-- When the run happens outside Roslyn-Backed-MCP, copy the raw file into the sibling repo's `ai_docs/audit-reports/` so `eng/stage-review-inbox.ps1` discovers it on the next `/backlog-intake` pass (or pass an explicit source path via the skill's `--sibling-parent` flag).
+- The prose `.md` report ALWAYS stays in the audited repo's own `ai_docs/audit-reports/`. Do **not** cross-write it into `<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/` — that legacy cross-write path is removed in favor of the fragment pattern (see Phase 19).
+- Cross-repo handoff to `/backlog-intake` happens via the per-finding fragments emitted in Phase 19 (`<audited-repo-root>/backlog.d/<finding-id>.md`), NOT by relocating the prose report. Intake reads the fragment's `source_audit` field to back-reference the prose report when it needs additional context.
 - Do **not** place raw audit files under `ai_docs/reports/` — that directory is for synthesized rollups.
 
 ### Promotion scorecard JSON (sibling artifact — MANDATORY)
@@ -794,7 +819,7 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 - **Repo shape:**
 - **Prior issue source:**
 - **Debug log channel:** `yes` / `partial` / `no`
-- **Report path note:** (if not saved under Roslyn-Backed-MCP, state intended copy destination)
+- **Report path note:** (path under the audited repo's `ai_docs/audit-reports/`; cross-repo handoff is via Phase 19 fragments, not via copying the prose report)
 
 ## 2. Coverage summary
 | Kind | Category | Stable | Experimental | Exercised | Exercised-apply | Preview-only | Skipped-repo-shape | Skipped-safety | Blocked | Notes |
@@ -903,7 +928,7 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 
 ### Completion gate
 
-The file must exist at the canonical path above (or the documented fallback). Create `ai_docs/audit-reports/` if missing. The task is **incomplete** without this file.
+The prose `.md` report must exist at the canonical path above (under the audited repo's `ai_docs/audit-reports/`). Create the directory if missing. Phase 19 must have emitted at least one fragment under `<audited-repo-root>/backlog.d/` OR explicitly recorded `**N/A — no actionable findings**`. The task is **incomplete** without both gates passing.
 
 ---
 
