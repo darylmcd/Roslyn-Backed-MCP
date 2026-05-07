@@ -8,7 +8,7 @@
     {
       "id": "workspace-id-recovery-hints",
       "order": 1,
-      "status": "pending",
+      "status": "in-review",
       "backlogRowsClosed": ["workspace-id-recovery-hints"],
       "productionFilesTouched": 3,
       "testFilesAdded": 1,
@@ -16,9 +16,9 @@
       "estimatedContextTokens": 45000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "branch": null,
+      "branch": "remediation/workspace-id-recovery-hints",
       "worktreePath": null,
-      "prUrl": null,
+      "prUrl": "PENDING",
       "mergedAt": null,
       "notes": "Touches addenda hotspot WorkspaceManager.cs; single-initiative wave so no parallel-wave conflict. Cross-process recycle path correctly omits loadedPath (null)."
     }

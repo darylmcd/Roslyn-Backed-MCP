@@ -37,8 +37,16 @@ internal static class ToolErrorHandler
             var loadedAtSegment = evicted.WorkspaceLoadedAtUtc is { } loadedAt
                 ? $" workspaceLoadedAt={loadedAt:O};"
                 : string.Empty;
+            // workspace-id-recovery-hints: when LoadedPath is known (same-process eviction),
+            // surface it as a structured field plus an exact workspace_load(path: "...")
+            // recovery hint. Cross-process recycle leaves both segments empty so the
+            // envelope stays compact. The path is double-quoted so paths with spaces
+            // copy-paste cleanly.
+            var loadedPathSegment = !string.IsNullOrEmpty(evicted.LoadedPath)
+                ? $" loadedPath={evicted.LoadedPath}; recovery=workspace_load(path: \"{evicted.LoadedPath}\");"
+                : string.Empty;
             return new("WorkspaceEvicted",
-                $"{ex.Message} serverStartedAt={evicted.ServerStartedAtUtc:O};{loadedAtSegment}");
+                $"{ex.Message} serverStartedAt={evicted.ServerStartedAtUtc:O};{loadedAtSegment}{loadedPathSegment}");
         },
         [typeof(FileNotFoundException)] = (ex, _) => new("FileNotFound",
             $"File not found: {ex.Message}. Verify the file path is absolute and the file exists on disk. " +
