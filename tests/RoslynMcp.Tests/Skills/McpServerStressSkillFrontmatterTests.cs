@@ -97,6 +97,37 @@ public sealed class McpServerStressSkillFrontmatterTests
     }
 
     [TestMethod]
+    public void Skill_Body_HasNoPhase16bResidue()
+    {
+        // The plugin-skill audit (formerly Phase 16b) was extracted from /mcp-server-stress into /surface-audit
+        // by the `extract-skills-audit-from-server-stress` initiative. The relocate is the source of truth: once
+        // the workflow lives in /surface-audit, no token from the old phase is allowed to survive in either
+        // SKILL.md or the canonical prompt. A surviving token is a regression — agents would re-attempt the
+        // workflow inside /mcp-server-stress and either duplicate /surface-audit's output or stale-reference
+        // a phase that no longer exists.
+        var skillPath = ResolveSkillPath();
+        var skillContents = File.ReadAllText(skillPath);
+
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "prompt.md");
+        var promptContents = File.ReadAllText(promptPath);
+
+        Assert.IsFalse(
+            skillContents.Contains("Phase 16b", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must not contain `Phase 16b` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
+        Assert.IsFalse(
+            promptContents.Contains("Phase 16b", StringComparison.Ordinal),
+            "mcp-server-stress prompts/prompt.md must not contain `Phase 16b` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
+
+        Assert.IsFalse(
+            skillContents.Contains("plugin-skill", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must not contain `plugin-skill` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
+        Assert.IsFalse(
+            promptContents.Contains("plugin-skill", StringComparison.Ordinal),
+            "mcp-server-stress prompts/prompt.md must not contain `plugin-skill` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
+    }
+
+    [TestMethod]
     public void Skill_PromptFile_ExistsAtDocumentedPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();

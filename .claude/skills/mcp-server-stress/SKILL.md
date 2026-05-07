@@ -1,6 +1,6 @@
 ---
 name: mcp-server-stress
-description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard + plugin-skill audit, run against a loaded C# repo. Single canonical run — always exercises apply tools against a disposable worktree the skill creates and tears down post-run, and always emits the promotion scorecard. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Maintainer-only skill (lives under `.claude/skills/`, not shipped to plugin consumers). Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
+description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard, run against a loaded C# repo. Single canonical run — always exercises apply tools against a disposable worktree the skill creates and tears down post-run, and always emits the promotion scorecard. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Maintainer-only skill (lives under `.claude/skills/`, not shipped to plugin consumers). The static SKILL.md audit (frontmatter parity + tool-reference resolution against the live catalog) is owned by `/surface-audit`, not this skill. Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
 user-invocable: true
 argument-hint: "[--no-worktree]"
 ---
@@ -60,7 +60,7 @@ Use the repo-local `audit-phase-runner` subagent for phases that are long-runnin
 | Phase 8 — build and test validation | `audit-phase-runner` when available; inline fallback otherwise | build/test verdict, pass/fail counts, failing names |
 | Phase 8b — concurrency audit | `audit-phase-runner` when available; inline fallback otherwise | concurrency matrix counts, anomalies, elapsed time |
 
-Run these phases inline in the main audit context: Phase -1, 0, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 16b, 17, and 18.
+Run these phases inline in the main audit context: Phase -1, 0, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, and 18.
 
 Hard boundary: Phase 6 and every preview/apply chain stay inline. Do not delegate workspace-version-sensitive mutations because the runner does not share the main audit context's preview evidence or disposable-worktree mutation ledger.
 

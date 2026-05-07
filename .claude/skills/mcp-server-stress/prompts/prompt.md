@@ -8,7 +8,7 @@
 
 > **This prompt is a null-op without the Roslyn MCP server.** If `mcp__roslyn__server_info` is not callable in your current tool list, stop and ask the user to start the server. The very first step of Phase -1 verifies this as a hard gate.
 
-> **Primary purpose:** produce (1) an MCP server audit (bugs, incorrect results, gaps), (2) an experimental-tier promotion scorecard, and (3) a plugin-skill health report against one loaded C# repo. **Mechanism:** real refactoring plus tool calls that exercise the full surface.
+> **Primary purpose:** produce (1) an MCP server audit (bugs, incorrect results, gaps) and (2) an experimental-tier promotion scorecard against one loaded C# repo. **Mechanism:** real refactoring plus tool calls that exercise the full surface. The static SKILL.md audit (frontmatter parity + tool-reference resolution against the live catalog) lives in `/surface-audit`, not here.
 
 ---
 
@@ -20,7 +20,7 @@ You are a senior .NET architect running a Roslyn-MCP audit against the loaded re
 2. **Experimental promotion scorecard (primary).** Every experimental entry you exercise receives a rating — `promote`, `keep-experimental`, `needs-more-evidence`, or `deprecate` — with evidence citations. Feeds `docs/experimental-promotion-analysis.md` and release gating.
 3. **Apply-tool exercise on a disposable worktree (supporting).** **Phase 6 only.** Drive preview→apply→revert round-trips, verify with `compile_check` / `build_workspace` / `test_run`. Applies are test fixtures of the apply-tool surface — they run inside a disposable worktree the prompt creates at run start and tears down at run end. The audited repo's `main` branch and primary working tree are never mutated; no commit ever lands in the audited repo's history; no PR is opened.
 
-A fourth lane — **plugin-skills audit** — runs in **Phase 16b** against `skills/*/SKILL.md` in the Roslyn-Backed-MCP repo. Skills are shipped product surface; a broken tool reference there breaks every plugin user.
+The static skills audit (SKILL.md frontmatter parity + tool-reference resolution against the live catalog) is owned by `/surface-audit`, which walks both `skills/*/SKILL.md` (shipped) and `.claude/skills/*/SKILL.md` (maintainer-local). It is a static-catalog check, not a server-execution check, and is not part of this run.
 
 ### Run shape
 
@@ -30,7 +30,7 @@ A single optional flag exists: `--no-worktree`, a degraded mode for environments
 
 **Known issues / prior findings.** When auditing Roslyn-Backed-MCP (or any repo that has access to it), cross-check `ai_docs/backlog.md` at the audited-repo root and cite matching ids. Otherwise use the closest prior source (previous audit report, issue tracker, repro list). If none exists, the regression section is **N/A**.
 
-**Phase order.** Run in this order: **-1 → 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 8b → 10 → 9 → 11 → 12 → 13 → 14 → 15 → 16 → 16b → 17 → 18**. Phase 8b runs immediately after Phase 8 so it sees post-refactor state. Phase 9 runs after Phase 10 so `revert_last_apply` doesn't undo Phase 6 work. Phase 16b runs after Phase 16 to reuse the prompt-render context.
+**Phase order.** Run in this order: **-1 → 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 8b → 10 → 9 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18**. Phase 8b runs immediately after Phase 8 so it sees post-refactor state. Phase 9 runs after Phase 10 so `revert_last_apply` doesn't undo Phase 6 work.
 
 **Portability and completeness contract.**
 
@@ -41,8 +41,6 @@ A single optional flag exists: `--no-worktree`, a degraded mode for environments
 5. If the MCP client cannot invoke a live resource/prompt family, mark those rows `blocked` with the client limitation. Blocked experimental entries score `needs-more-evidence` in the scorecard — never `promote`.
 6. Record repo-shape constraints up front: single vs multi-project, tests, analyzers, source generators, DI, `.editorconfig`, Central Package Management, multi-targeting, network/restore constraints.
 7. Do not invent applicability. If the repo has no tests, no DI, no source generators, no multi-targeting, or only one project, record that and mark dependent steps `skipped-repo-shape`.
-8. Build a live **plugin-skill inventory** via `glob skills/*/SKILL.md` in Phase 16b (against the Roslyn-Backed-MCP repo root). Do NOT rely on a hand-maintained list; it drifts. When the audited repo is not Roslyn-Backed-MCP, note that skills are audited against the plugin repo and mark Phase 16b `blocked — skills directory not accessible` if no checkout is reachable.
-
 ### Execution strategy and context conservation
 
 1. Delegate long-running/log-heavy validation to subagents or background execution where available (full-suite `test_run`, `test_coverage`, shell-based builds). Keep experimental probes inline — promotion evidence is captured per call.
@@ -67,7 +65,6 @@ Fixed output slots in the report; capture in real time.
 12. **Output budget per turn.** When cumulative tool-result size passes ~250 KB, persist and start a new turn. Usual culprits: `compile_check`, `project_diagnostics`, `list_analyzers`, `get_namespace_dependencies`, `get_msbuild_properties`. Use pagination (`offset`, `limit`, `severity`, `file`). The `workspace_*` summary payloads (default) keep per-phase heartbeats at ~500 B; request `verbose=true` only when you need the full project tree.
 13. **Workspace heartbeat.** Call `workspace_list` before each new phase. If the workspace is gone, reload from the recorded entrypoint — do not march on against a dead workspace.
 14. **Experimental promotion signal (per call).** For every experimental tool/resource/prompt exercised, record one line in the draft: (a) correct result, (b) schema accurate, (c) error path actionable on at least one negative probe, (d) preview→apply round-trip clean where applicable, (e) wall-clock within budget for the input scale. Do not compute the final recommendation until Final surface closure — it must reflect all phases, not just first contact.
-15. **Skill parity.** In Phase 16b, every live skill must be audited against the live catalog. A skill referencing a renamed/removed tool is a P2+ ship blocker.
 
 ---
 
@@ -559,30 +556,6 @@ For every exercised prompt, append one row to the *Prompt verification* table.
 
 ---
 
-### Phase 16b: Claude Code plugin skills audit
-
-**Scope.** Roslyn-Backed-MCP ships a Claude Code plugin whose skills under `skills/*/SKILL.md` compose MCP tools into guided workflows. Phase 16b keeps them in sync with the live catalog.
-
-**Input.** Roslyn-Backed-MCP repo root. When auditing Roslyn-Backed-MCP itself, use the loaded workspace root. When auditing another repo, you MUST have filesystem access to a local Roslyn-Backed-MCP checkout; if not, mark this phase `blocked — plugin repo not accessible`.
-
-**Discover live skills — do not rely on a hand-maintained list.** Use `glob skills/*/SKILL.md` against the plugin repo root. The live directory is the source of truth; any hand-maintained skill list in documentation is advisory and may drift.
-
-**Per-skill verification (for each glob result):**
-
-1. **Frontmatter parity.** `name` matches the directory name; `description` is non-empty and accurate.
-2. **Tool-reference validity.** Extract every MCP tool name the skill body mentions (`Call \`tool_name\`` or workflow tables). Cross-check each against the live catalog. Any reference to a renamed/removed tool is a **P2 FAIL**; file in *MCP server issues* and the *Skills audit* table.
-3. **Workflow dry-run.** Pick realistic input (reuse Phase-1–3 evidence) and walk the workflow against the loaded workspace. Does each tool call have the data it needs? Does the sequence terminate cleanly? Does the output shape match what the workflow produces? Mark `pass` / `flag` / `fail`.
-4. **Safety rules.** Mutation skills (`refactor`, `migrate-package`, `code-actions`, `extract-method`, mutating `session-undo` flows, `dead-code`, `extract-method`, etc.) should require preview before apply where applicable and call `compile_check`-or-equivalent after apply.
-5. **Doc consistency.** Output format in the skill body should reference fields the exercised tools actually return. Drift here is a FLAG, not a FAIL.
-
-Skills are **not** rows in `roslyn://server/catalog`; Phase 16b is a quality/contract audit, not a tier-promotion pipeline.
-
-For every skill, append one row to the *Skills audit* table.
-
-**MCP audit checkpoint:** Do all live skills pass frontmatter parity? Any skill references a removed/renamed tool? Does each workflow produce the output it claims? Do mutation skills enforce preview → apply → verify? If the plugin repo wasn't accessible, is this phase correctly `blocked` with a clear reason?
-
----
-
 ### Phase 17: Boundary & negative testing
 
 Deliberately probe edge cases. Verify inputs validated, error messages helpful, no crashes.
@@ -640,8 +613,7 @@ Re-test 3–5 previously recorded issues. Prefer `ai_docs/backlog.md` at the aud
    - **`needs-more-evidence`** — not exercised (`skipped-repo-shape` / `skipped-safety` / `blocked`) OR one exercise too shallow to judge. Default for `blocked` entries.
    - **`deprecate`** — exercised, produced FAIL findings warranting removal. Pair with an *MCP server issues* entry.
 8. *Schema vs behaviour drift*, *Error message quality*, *Parameter-path coverage*, *Performance baseline* tables populated. Every exercised tool contributes ≥1 row to *Performance baseline*; the other three can be empty-with-reason.
-9. *Skills audit* has one row per live skill (or the phase is `blocked`).
-10. *Prompt verification* has one row per exercised prompt.
+9. *Prompt verification* has one row per exercised prompt.
 
 When all phases are done, `workspace_close` to release the session (if not already closed in Phase 17e).
 
@@ -705,7 +677,7 @@ This file is **overwritten** each run. Schema:
       "category": "scaffolding",
       "currentTier": "experimental",
       "recommendation": "promote",
-      "evidenceCount": 8,
+      "evidenceCount": 7,
       "evidence": [
         "phase-12 apply round-trip clean (preview-token honored, post-apply compile_check green)",
         "phase-17 negative probe — stale token rejected with actionable error",
@@ -713,7 +685,6 @@ This file is **overwritten** each run. Schema:
         "p50 elapsedMs=1240ms (within writer budget 30s)",
         "schema accurate vs. live behavior",
         "no entries in phase-1 debug log",
-        "skill `generate-tests` consumes it cleanly (Phase 16b)",
         "no relevant backlog rows"
       ],
       "blockers": []
@@ -782,21 +753,20 @@ The report is consumed by downstream agents. Dense tables, fixed schemas, one-li
 | 8 | Error message quality | Principle #4 output |
 | 9 | Parameter-path coverage | Principle #6 output |
 | 10 | Prompt verification | Phase 16 per-prompt table |
-| 11 | Skills audit | Phase 16b per-skill table |
-| 12 | Experimental promotion scorecard | Per-entry recommendation |
-| 13 | Debug log capture | Phase 0 channel output |
-| 14 | MCP server issues (bugs) | Per-issue detail |
-| 15 | Improvement suggestions | Actionable UX / output enrichment |
+| 11 | Experimental promotion scorecard | Per-entry recommendation |
+| 12 | Debug log capture | Phase 0 channel output |
+| 13 | MCP server issues (bugs) | Per-issue detail |
+| 14 | Improvement suggestions | Actionable UX / output enrichment |
 
 **Conditional sections (populate when data exists, otherwise `**N/A — <reason>**`):**
 
 | # | Section | Populate when |
 |---|---|---|
-| 16 | Concurrency matrix | Phase 8b ran with at least sequential baselines |
-| 17 | Writer reclassification verification | Phase 8b.5 exercised writers |
-| 18 | Response contract consistency | Principle #5 observed ≥1 inconsistency |
-| 19 | Known issue regression check | Prior source existed |
-| 20 | Known issue cross-check | New findings matched a backlog/issue id |
+| 15 | Concurrency matrix | Phase 8b ran with at least sequential baselines |
+| 16 | Writer reclassification verification | Phase 8b.5 exercised writers |
+| 17 | Response contract consistency | Principle #5 observed ≥1 inconsistency |
+| 18 | Known issue regression check | Prior source existed |
+| 19 | Known issue cross-check | New findings matched a backlog/issue id |
 
 Mandatory sections always render in full; conditional sections collapse to a single `**N/A — <reason>**` line when unpopulated.
 
@@ -824,7 +794,6 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 - **Repo shape:**
 - **Prior issue source:**
 - **Debug log channel:** `yes` / `partial` / `no`
-- **Plugin skills repo path:** absolute or relative path, or `blocked — <reason>`
 - **Report path note:** (if not saved under Roslyn-Backed-MCP, state intended copy destination)
 
 ## 2. Coverage summary
@@ -866,21 +835,17 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 | Prompt | schema_ok | actionable | hallucinated_tools | idempotent | elapsedMs | recommendation_seed | Notes |
 |--------|-----------|------------|---------------------|------------|-----------|----------------------|-------|
 
-## 11. Skills audit (Phase 16b)
-| Skill | frontmatter_ok | tool_refs_valid (invalid_count) | dry_run | safety_rules | Notes |
-|-------|----------------|----------------------------------|---------|--------------|-------|
-
-## 12. Experimental promotion scorecard
+## 11. Experimental promotion scorecard
 | Kind | Name | Category | Status | p50_ms | schema_ok | error_ok | round_trip_ok | Failures | Recommendation | Evidence |
 |------|------|----------|--------|--------|-----------|----------|----------------|----------|----------------|----------|
 
-## 13. Debug log capture
+## 12. Debug log capture
 | timestamp | level | logger | correlationId | eventName | message | Phase | Tool in flight |
 |-----------|-------|--------|----------------|-----------|---------|-------|----------------|
 
-## 14. MCP server issues (bugs)
+## 13. MCP server issues (bugs)
 
-### 14.1 <title or tool name>
+### 13.1 <title or tool name>
 | Field | Detail |
 |-------|--------|
 | Tool | |
@@ -892,10 +857,10 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 
 (repeat per issue, or write `**No new issues found**` when none)
 
-## 15. Improvement suggestions
+## 14. Improvement suggestions
 - `tool_name` — suggestion (UX / missing feature / workflow gap / output enrichment / schema mismatch)
 
-## 16. Concurrency matrix (Phase 8b)
+## 15. Concurrency matrix (Phase 8b)
 
 ### Concurrency probe set
 | Slot | Tool | Inputs (concise) | Classification | Notes |
@@ -920,19 +885,19 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 | Probe | Observed | Reader saw | Reader exception | correlationId | Expected | Pass / FLAG / FAIL | Notes |
 |-------|----------|-----------|------------------|---------------|----------|---------------------|-------|
 
-## 17. Writer reclassification verification (Phase 8b.5)
+## 16. Writer reclassification verification (Phase 8b.5)
 | # | Tool | Status | Wall-clock (ms) | Notes |
 |---|------|--------|------------------|-------|
 
-## 18. Response contract consistency
+## 17. Response contract consistency
 | Tools | Concept | Inconsistency | Notes |
 |-------|---------|---------------|-------|
 
-## 19. Known issue regression check (Phase 18)
+## 18. Known issue regression check (Phase 18)
 | Source id | Summary | Status |
 |-----------|---------|--------|
 
-## 20. Known issue cross-check
+## 19. Known issue cross-check
 - bullet list of newly observed issues that match a prior source
 ```
 
@@ -951,12 +916,6 @@ The body of this prompt **does not** embed hard-coded tool, resource, prompt, or
 | `server_info` | Version, catalog version, tier counts, `surface.registered.parityOk`, connection state | Phase -1 |
 | `roslyn://server/catalog` | Per-entry `Kind`, `Category`, `SupportTier`, metadata | Phase -1 / 0 |
 | `roslyn://server/resource-templates` | All resource URI templates | Phase 0 |
-
-Skills come from the filesystem:
-
-| Source | What it gives you | When captured |
-|---|---|---|
-| `glob skills/*/SKILL.md` (Roslyn-Backed-MCP repo) | Live skill directory — name, frontmatter, body, tool references | Phase 16b |
 
 That is the authoritative surface for any run. Trust those captures over any prose in this prompt.
 
