@@ -4,7 +4,24 @@
   "revisedAt": "2026-05-07T18:36:28Z",
   "backlogSnapshot": "2026-05-07T20:30:00Z",
   "addendaLoaded": true,
-  "reviewStatus": "pending",
+  "reviewStatus": "passed-with-warnings",
+  "reviewWarningReport": "2 adjacent-order conflicts on prompt.md (4 with 5, 5 with 6); 4 info findings (path inconsistency, conflict-degree, missing test in init 5). See review.md.",
+  "conflictGraph": {
+    "edges": [
+      {"a": "mcp-server-stress-update-external-refs", "b": "per-repo-promotion-scorecard", "sharedFiles": [".claude/skills/publish-preflight/SKILL.md"]},
+      {"a": "extract-skills-audit-from-server-stress", "b": "backlog-d-fragment-pattern", "sharedFiles": [".claude/skills/mcp-server-stress/prompts/prompt.md"]},
+      {"a": "extract-skills-audit-from-server-stress", "b": "per-repo-promotion-scorecard", "sharedFiles": [".claude/skills/mcp-server-stress/prompts/prompt.md"]},
+      {"a": "backlog-d-fragment-pattern", "b": "per-repo-promotion-scorecard", "sharedFiles": [".claude/skills/mcp-server-stress/prompts/prompt.md"]}
+    ],
+    "degrees": {
+      "audit-deep-collapse-modes": 0,
+      "mcp-server-stress-relocate": 0,
+      "mcp-server-stress-update-external-refs": 1,
+      "extract-skills-audit-from-server-stress": 2,
+      "backlog-d-fragment-pattern": 2,
+      "per-repo-promotion-scorecard": 3
+    }
+  },
   "initiatives": [
     {
       "id": "audit-deep-collapse-modes",
