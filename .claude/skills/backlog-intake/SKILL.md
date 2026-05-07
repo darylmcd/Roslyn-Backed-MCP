@@ -53,7 +53,7 @@ Review the dry-run output. If the file list looks right:
 pwsh -File eng/stage-review-inbox.ps1
 ```
 
-If `--stage` was passed OR `review-inbox/` is empty at the start of the run, also run the real command. If the PS1 finishes with "No new artifacts found" AND `review-inbox/` is empty, refuse: `"Nothing to triage. Produce audits first via ai_docs/prompts/deep-review-and-refactor.md, then re-run."`
+If `--stage` was passed OR `review-inbox/` is empty at the start of the run, also run the real command. If the PS1 finishes with "No new artifacts found" AND `review-inbox/` is empty, refuse: `"Nothing to triage. Produce audits first via /mcp-server-stress (bundled prompt at .claude/skills/mcp-server-stress/prompts/prompt.md), then re-run."`
 
 Record the count: `N files staged from M repos` for the final summary.
 

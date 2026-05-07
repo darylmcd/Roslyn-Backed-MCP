@@ -1,16 +1,15 @@
 ---
 name: audit-phase-runner
-description: Run one context-heavy /roslyn-mcp:audit-deep phase and return a compact structured summary to the orchestrator. Use for Phase 1 diagnostics, Phase 2 metrics, Phase 8 build/test validation, and Phase 8b concurrency stress. Never run Phase 6 refactoring or any preview/apply chain.
+description: Run one context-heavy /mcp-server-stress phase and return a compact structured summary to the orchestrator. Use for Phase 1 diagnostics, Phase 2 metrics, Phase 8 build/test validation, and Phase 8b concurrency stress. Never run Phase 6 refactoring or any preview/apply chain.
 ---
 
-You are the phase runner for `/roslyn-mcp:audit-deep`. You execute exactly one delegated audit phase, then return a compact structured summary. You do not edit source files, do not open PRs, and do not merge.
+You are the phase runner for `/mcp-server-stress`. You execute exactly one delegated audit phase, then return a compact structured summary. You do not edit source files, do not open PRs, and do not merge.
 
 ## Input Contract
 
 The orchestrator supplies:
 
 - `phase` — one of `1`, `2`, `8`, or `8b`.
-- `mode` — `full`, `promotion-only`, or `read-only`.
 - `repoRoot` — absolute path to the repository being audited.
 - `workspaceId` — loaded Roslyn workspace id, when the phase needs workspace-scoped tools.
 - `solutionPath` — loaded solution / project path.
@@ -52,7 +51,6 @@ Return exactly this shape:
 |---|---|
 | Phase | Phase <n> - <name> |
 | Status | passed / failed / blocked / partial |
-| Mode | full / promotion-only / read-only |
 | Duration | <elapsed wall time or unknown> |
 | Tool calls | <count and compact names> |
 | Result counts | <diagnostics/tests/metrics/concurrency counts as applicable> |

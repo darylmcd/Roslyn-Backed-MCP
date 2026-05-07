@@ -45,7 +45,7 @@ Same as previous version. Pre-existing P4/Low rows not in scope for this sweep:
 
 | Field | Content |
 |---|---|
-| Status | in-progress (branch: remediation/mcp-server-stress-relocate, worktree: .worktrees/mcp-server-stress-relocate) |
+| Status | merged (PR #548, 2026-05-07) |
 | Backlog rows closed | (none — paired with initiative 3) |
 | Diagnosis | The skill at `skills/audit-deep/` is shipped to NuGet consumers via the Roslyn-MCP plugin. Its primary purpose is to audit *this repo's own* server surface, scorecard, and skills inventory (`prompts/full.md:11,50,552-570,671`) — none of which is useful to a normal consumer. Move it to `.claude/skills/mcp-server-stress/` (maintainer-only) following the same pattern as `.claude/skills/update/`, `publish-preflight/`, `release-cut/`. Rename to `mcp-server-stress` to pair with the existing static `surface-audit` skill (the dynamic-execution counterpart). After initiative 1 the source directory has only 3 files (SKILL.md, prompt.md, archive-old-reports.ps1); this initiative is purely mechanical relocation plus a SKILL.md frontmatter/description edit. |
 | Approach | (a) `git mv skills/audit-deep .claude/skills/mcp-server-stress` — moves 3 files atomically: SKILL.md, prompts/prompt.md, scripts/archive-old-reports.ps1. (b) Edit the moved `.claude/skills/mcp-server-stress/SKILL.md` — frontmatter `name: audit-deep` → `name: mcp-server-stress`; description text rename `audit-deep` mentions → `mcp-server-stress`; intra-skill `${CLAUDE_PLUGIN_ROOT}/skills/audit-deep/...` references → `.claude/skills/mcp-server-stress/...`. (c) Update test files: `tests/RoslynMcp.Tests/Skills/AuditPhaseRunnerHandoffTests.cs` (lines 6, 79 — change path constant), `ArchiveOldReportsScriptTests.cs` (lines 7, 8, 10, 166 — change path constant), `AuditDeepSkillFrontmatterTests.cs` (line 28 `SkillName` constant `audit-deep` → `mcp-server-stress`, plus line-36 path; rename file + class to `McpServerStressSkillFrontmatterTests`). |
@@ -63,7 +63,7 @@ Same as previous version. Pre-existing P4/Low rows not in scope for this sweep:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | in-progress (branch: remediation/mcp-server-stress-update-external-refs, worktree: .worktrees/mcp-server-stress-update-external-refs) |
 | Backlog rows closed | `audit-deep-relocate-and-rename` |
 | Diagnosis | After initiative 2, three external references still point at the old skill name + path: `.claude/skills/publish-preflight/SKILL.md` (5 mentions of `/audit-deep mode=...`), `.claude/agents/audit-phase-runner.md` (the agent the audit skill orchestrates), and the orphaned `ai_docs/prompts/deep-review-and-refactor.md` (a pre-bundled-prompt era artifact the shipped skill no longer reads). Updating these in a separate initiative keeps each within Rule 3; bundling with initiative 2 would push it to 6 production files. |
 | Approach | (a) Edit `.claude/skills/publish-preflight/SKILL.md` lines 101, 109, 111, 112, 135 — replace `/audit-deep mode=promotion-only` with `/mcp-server-stress` (drop mode qualifier; default single-mode emits scorecard). (b) Edit `.claude/agents/audit-phase-runner.md` — rename references from `audit-deep` to `mcp-server-stress`; update any cited skill path. (c) Delete `ai_docs/prompts/deep-review-and-refactor.md` — no longer referenced by any skill; was the pre-bundled-prompt source. Verify with grep before deletion that no doc still links to it. |
