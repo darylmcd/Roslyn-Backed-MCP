@@ -44,7 +44,7 @@ The audit is **read-only against the audited repository's `main` branch**. Phase
 
 1. Before any Phase 6 apply, the prompt creates a disposable branch + worktree at run start and records the path in the report header (the *Isolation* row). This is **mandatory** in default mode — Phase 6 cannot run against the audited repo's primary checkout.
 2. Phase 6's preview → apply chains run against that disposable checkout. Applies are exercised as test fixtures of the apply-tool surface (preview→apply→revert round-trips, `compile_check` after apply, `build_workspace` + `test_run` after apply). The point is to exercise the write path of the MCP server, not to ship product changes.
-3. The disposable worktree is torn down at run end via `dotnet build-server shutdown` followed by `git worktree remove --force` (the Windows lock-release sequence documented in `ai_docs/prompts/backlog-sweep-addenda.md`'s `worktree_lock_release` field). Teardown runs even on apply failure — the prompt wraps the Phase 6 chain in `try/finally` discipline.
+3. The disposable worktree is torn down at run end via `dotnet build-server shutdown` followed by `git worktree remove --force` (the Windows lock-release sequence is mandatory; `dotnet build-server shutdown` releases `testhost.exe` / `VBCSCompiler.exe` locks on the worktree's `bin/` dirs). Teardown runs even on apply failure — the prompt wraps the Phase 6 chain in `try/finally` discipline.
 4. The audited repo's `main` branch is **never** directly mutated. No PR is opened from the audit run. No commits land in the audited repo's history.
 
 The `--no-worktree` flag (Step 2) opts into a degraded mode where the disposable worktree is skipped — see Step 2 for the contract and the report-header record requirement.

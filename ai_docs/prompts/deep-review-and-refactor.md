@@ -6,18 +6,15 @@
 
 ## New canonical locations
 
-- **Full mode (default — full-surface audit + Phase 6 refactor):** [`skills/audit-deep/prompts/full.md`](../../skills/audit-deep/prompts/full.md)
-- **Promotion-only mode (experimental-tier scorecard, no Phase 6):** [`skills/audit-deep/prompts/promotion-only.md`](../../skills/audit-deep/prompts/promotion-only.md)
-- **Read-only mode (no applies anywhere):** [`skills/audit-deep/prompts/read-only.md`](../../skills/audit-deep/prompts/read-only.md)
+- **Single canonical run (full-surface audit + Phase 6 refactor on disposable worktree + promotion scorecard):** [`skills/audit-deep/prompts/prompt.md`](../../skills/audit-deep/prompts/prompt.md)
 
 ## How to invoke
 
 From any Claude Code session with the `roslyn-mcp` plugin installed:
 
 ```
-/roslyn-mcp:audit-deep                       # mode=full (default)
-/roslyn-mcp:audit-deep mode=promotion-only
-/roslyn-mcp:audit-deep mode=read-only
+/roslyn-mcp:audit-deep                       # single canonical run (no modes)
+/roslyn-mcp:audit-deep --no-worktree         # degraded mode for CI environments without worktree access
 ```
 
 The skill's `SKILL.md` resolves the requested mode to one of the three prompt files above and runs it verbatim. Like the original prompt, the skill halts immediately if the Roslyn MCP server is not callable — there is no generic non-MCP fallback.
