@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-07T14:55:40Z",
+  "backlogSnapshot": "2026-05-07T18:30:00Z",
+  "addendaLoaded": true,
+  "reviewStatus": "passed",
+  "initiatives": [
+    {
+      "id": "workspace-id-recovery-hints",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": ["workspace-id-recovery-hints"],
+      "productionFilesTouched": 3,
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Touches addenda hotspot WorkspaceManager.cs; single-initiative wave so no parallel-wave conflict. Cross-process recycle path correctly omits loadedPath (null)."
+    }
+  ]
+}
