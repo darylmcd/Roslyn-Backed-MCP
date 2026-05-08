@@ -51,7 +51,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #567, 2026-05-08) |
 | Priority | Medium |
 | Backlog rows closed | `add-project-reference-self-reference-preview` |
 | Diagnosis | `src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs:112` resolves both projects and only checks whether the relative `ProjectReference` already exists; it does not reject `project.Id == referencedProject.Id` before diff creation. The tool wrapper at `src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs:70` forwards the request directly. |

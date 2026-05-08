@@ -46,7 +46,7 @@
     {
       "id": "add-project-reference-self-reference-preview",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["add-project-reference-self-reference-preview"],
       "productionFilesTouched": 1,
       "testFilesAdded": 1,
@@ -58,9 +58,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/567",
+      "mergedAt": "2026-05-08T18:49:08Z",
+      "notes": "Shipped as PR #567 (squash 1ef971fba344d6ffa506f2060f5b41fdb18be7dd). Rejected add_project_reference_preview self-references and project-reference cycles before diff generation."
     },
     {
       "id": "find-overrides-interface-root-empty",
