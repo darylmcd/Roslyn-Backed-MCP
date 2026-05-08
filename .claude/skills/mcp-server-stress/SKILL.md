@@ -2,7 +2,7 @@
 name: mcp-server-stress
 description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard, run against a loaded C# repo. Single canonical run — always exercises apply tools against a disposable worktree the skill creates and tears down post-run, and always emits the promotion scorecard. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Maintainer-only skill (lives under `.claude/skills/`, not shipped to plugin consumers). The static SKILL.md audit (frontmatter parity + tool-reference resolution against the live catalog) is owned by `/surface-audit`, not this skill. Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
 user-invocable: true
-argument-hint: "[--no-worktree]"
+argument-hint: "[<target-repo-path>] [--target=<path>] [--no-worktree]"
 ---
 
 # /mcp-server-stress $ARGUMENTS
@@ -27,14 +27,32 @@ Read `${CLAUDE_PLUGIN_ROOT}/.claude/skills/mcp-server-stress/prompts/prompt.md` 
 - **Promotion scorecard always emitted.** The `_latest-promotion-scorecard.json` sibling artifact is mandatory output.
 - **Phase 6 apply pass always exercised** against a disposable worktree the skill creates at run start and tears down at run end. The audited repo's working tree and `main` branch are never mutated by Phase 6.
 
-### Argument: `--no-worktree`
+### Arguments
 
-`$ARGUMENTS` may include the literal flag `--no-worktree`. Recognized tokens:
+`$ARGUMENTS` may include any combination of the following tokens, in any order. Tokens are space-separated.
+
+#### Target repo (default: current Claude Code session's repo root)
+
+The audit needs a C# workspace to load via `mcp__roslyn__workspace_load`. By default the audit targets the **current session's repo root** — the typical case when you invoke the skill from a Claude Code session inside the repo you want to audit. Override the target in two equivalent ways:
+
+- `--target=<absolute-path-or-repo-root>` — explicit flag form. Example: `--target=C:/Code-Repo/DotNet-Firewall-Analyzer`.
+- *(bare path)* — any single token in `$ARGUMENTS` that resolves to an existing directory containing a `.sln`/`.slnx`/`.csproj` file. Example: `/mcp-server-stress C:/Code-Repo/DotNet-Firewall-Analyzer`. The bare-path shorthand is purely ergonomic; the explicit `--target=` form is preferred in scripted invocations because it cannot collide with future flags.
+
+Resolution rules:
+
+1. If both `--target=<path>` and a bare path appear, **stop and report the conflict** — pick one form. Do not silently prefer one over the other.
+2. The resolved target path becomes the **audited repo root** throughout the prompt — *every* output path computed by the prompt (`<audited-repo>/ai_docs/audit-reports/...`, `<audited-repo>/backlog.d/...`, the disposable worktree base) anchors here, not at the agent session's CWD. This is the cross-repo invocation pattern: the agent session lives in `Roslyn-Backed-MCP`, but the audit reads from and writes evidence to `<target>` exclusively.
+3. If the resolved path does not exist, contains no `.sln`/`.slnx`/`.csproj`, or is not a git working tree, **stop and report** — the audit cannot proceed without a loadable workspace and a tree the disposable-worktree step can branch from.
+4. Pass the resolved target to the prompt's Phase 0 as the `workspace_load` argument; the prompt's *Isolation* row in the report header records the resolved target path so audit consumers can trace which workspace produced the report.
+
+#### `--no-worktree`
 
 - *(no flag, default)* — full canonical run with the disposable-worktree apply pass exercised.
 - `--no-worktree` — degraded-mode run for environments that genuinely cannot create a git worktree (tight CI sandbox, missing `git` binary, read-only checkout). When this flag is set, the prompt records the gap in the report header's *Isolation* row as `degraded — --no-worktree flag, Phase 6 applies skipped` and Phase 6 sub-phases that require a worktree are marked `skipped-safety — --no-worktree`. The promotion scorecard still emits, but writer recommendations default to `needs-more-evidence` for any tool whose round-trip evidence depended on the disposable worktree.
 
-Reject any other argument with a one-line message and ask the user to either drop the argument or pass `--no-worktree` explicitly.
+#### Reject
+
+Reject any token that is neither a valid target path, `--target=<path>`, nor `--no-worktree`. One-line message; ask the user to fix or drop the offending token.
 
 The prompt is the source of truth for phase content, output schema, and hard-gate checkpoints. This SKILL.md supplies the orchestration wrapper: when a phase is listed in the phase-runner offload map below, execute that phase through the `audit-phase-runner` subagent when the host supports subagents; otherwise run the same phase inline and record `phase-runner: inline fallback` in the report header.
 
