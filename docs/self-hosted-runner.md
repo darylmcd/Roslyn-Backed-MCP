@@ -35,24 +35,47 @@ Two options. Install-as-service is recommended for daily use; foreground mode is
 
 ### Option A — Install as Windows service (recommended)
 
-Requires elevated PowerShell. The service auto-starts on boot.
+Runner v2.334+ no longer ships `svc.cmd`. Service install is performed by re-running `config.cmd` with the `--runasservice` flag from elevated PowerShell. The service auto-starts on boot.
+
+If you registered the runner WITHOUT `--runasservice` (e.g. an interactive setup), you must deregister and reconfigure:
 
 ```powershell
-# Open PowerShell as Administrator, then:
+# In a non-elevated shell:
+$removeToken = (gh api -X POST repos/darylmcd/Roslyn-Backed-MCP/actions/runners/remove-token --jq '.token')
 Set-Location C:\Users\daryl\actions-runner
-.\svc.cmd install            # install as service running under NetworkService
-.\svc.cmd start              # start it
-.\svc.cmd status             # verify
+.\config.cmd remove --token $removeToken
+
+# Then in an Administrator PowerShell:
+$regToken = (gh api -X POST repos/darylmcd/Roslyn-Backed-MCP/actions/runners/registration-token --jq '.token')
+Set-Location C:\Users\daryl\actions-runner
+.\config.cmd --unattended `
+  --url https://github.com/darylmcd/Roslyn-Backed-MCP `
+  --token $regToken `
+  --name 'darylmcd-windows-dev' `
+  --labels 'roslynmcp-dev,windows-native' `
+  --work '_work' `
+  --replace `
+  --runasservice
 ```
 
-The service is named `actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev` (long but auto-generated).
+`--runasservice` registers the runner AND installs `RunnerService.exe` as a Windows service in one shot. The service name is auto-generated as `actions.runner.<owner>-<repo>.<runner-name>` — e.g. `actions.runner.darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev`.
 
-To stop / uninstall later:
+After config completes, the service is installed but may not be running yet. Start it:
 
 ```powershell
-.\svc.cmd stop
-.\svc.cmd uninstall
+$svc = Get-Service | Where-Object { $_.Name -like 'actions.runner.darylmcd-Roslyn-Backed-MCP*' } | Select-Object -First 1
+Start-Service -Name $svc.Name
 ```
+
+To stop / uninstall later, manage the service via standard Windows tooling:
+
+```powershell
+Stop-Service -Name $svc.Name
+Remove-Service -Name $svc.Name        # PS 6+
+# or:    sc.exe delete $svc.Name
+```
+
+Then run `.\config.cmd remove --token <removal-token>` to deregister from GitHub.
 
 ### Option B — Foreground mode (one-off testing)
 
@@ -112,9 +135,9 @@ After activation, push a no-op test PR to verify the workflow lands on the self-
 If you decide to abandon the self-hosted approach:
 
 1. Revert `.github/workflows/ci.yml` to `runs-on: ubuntu-latest` if activated.
-2. Stop and uninstall the service per [Option A above](#option-a--install-as-windows-service-recommended).
+2. Stop the service: `Stop-Service -Name <service-name>` (find via `Get-Service | Where-Object { $_.Name -like 'actions.runner.*' }`).
 3. Generate a removal token: `gh api -X POST repos/darylmcd/Roslyn-Backed-MCP/actions/runners/remove-token`.
-4. From the runner directory: `.\config.cmd remove --token <removal-token>`.
+4. From the runner directory: `.\config.cmd remove --token <removal-token>` — this deregisters from GitHub AND uninstalls the Windows service.
 5. Delete the runner directory: `Remove-Item -Recurse -Force C:\Users\daryl\actions-runner`.
 
 ## Cost / benefit
