@@ -15,7 +15,7 @@ Run the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill f
 
 The skill does end-to-end intake:
 
-1. **Stages** deep-review artifacts by invoking `eng/stage-review-inbox.ps1`, which discovers `*_mcp-server-audit.md`, `*_experimental-promotion.md`, and `*_roslyn-mcp-retro.md` files across sibling repos + this repo's own `ai_docs/audit-reports/` + `ai_docs/reports/`, and moves them into `review-inbox/`.
+1. **Stages** deep-review artifacts by invoking `eng/stage-review-inbox.ps1`, which discovers `*_mcp-server-audit.md`, `*_experimental-promotion.md`, and `*_roslyn-mcp-retro.md` files across sibling repos + this repo's own `ai_docs/audit-reports/` + `ai_docs/reports/`, and copies them into `review-inbox/` (default — preserves the canonical source location; pass `-Move` to clear the source instead).
 2. **Extracts** actionable items via a subagent (context-protecting).
 3. **Deduplicates** semantically across files (not literal-text matching).
 4. **Verifies** each candidate against `CHANGELOG.md` [Unreleased] + last 3 versions + the newest backlog-sweep plan, dropping items that have already shipped.
@@ -26,12 +26,12 @@ The skill does end-to-end intake:
 
 ## Staging only
 
-If you just want files moved into `review-inbox/` without triage:
+If you just want files copied into `review-inbox/` without triage:
 
 ```powershell
-./eng/stage-review-inbox.ps1
+./eng/stage-review-inbox.ps1                # default: copy (preserves canonical source)
 ./eng/stage-review-inbox.ps1 -DryRun        # preview only
-./eng/stage-review-inbox.ps1 -Copy          # copy instead of move
+./eng/stage-review-inbox.ps1 -Move          # move instead of copy (clears source)
 ```
 
 ## Skill flags

@@ -133,7 +133,7 @@ Default intake is **driven by the [`backlog-intake`](../../.claude/skills/backlo
 - `deep-review-command-reference.md` — concrete shell command examples for the workflow
 - `audit-reports/README.md` — raw audit output location
 - `reports/README.md` — synthesized rollup location
-- `../eng/stage-review-inbox.ps1` — discover + move audit/retro/promotion files from sibling repos into `review-inbox/`
+- `../eng/stage-review-inbox.ps1` — discover + copy audit/retro/promotion files from sibling repos into `review-inbox/` (default copy preserves the canonical source; `-Move` clears it)
 - `../.claude/skills/backlog-intake/SKILL.md` — `/backlog-intake` skill that consumes `review-inbox/` and produces backlog rows
 - `docs/release-policy.md` — release-gate requirements that consume audit evidence
 - `docs/experimental-promotion-analysis.md` — promotion decisions that use rollup-backed operational evidence
