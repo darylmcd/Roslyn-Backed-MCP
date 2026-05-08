@@ -22,6 +22,11 @@ internal static class AnalyzerReferenceIsolation
         string workspaceId,
         ILogger logger)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return 0;
+        }
+
         if (AssemblyLoaderField is null)
         {
             logger.LogWarning("Could not locate AnalyzerFileReference loader field; analyzer references will use Roslyn's default loader.");

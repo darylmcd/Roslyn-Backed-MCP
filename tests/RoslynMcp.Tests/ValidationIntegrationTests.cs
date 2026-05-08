@@ -60,6 +60,11 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SelfHostedWorkspace_AnalyzerReference_Loads_From_Shadow_Copy()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");
         var loaded = await WorkspaceManager.LoadAsync(repositorySolutionPath, CancellationToken.None);
 
@@ -92,15 +97,12 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
                 (build.Execution.StdOut + build.Execution.StdErr).Contains("MSB3027", StringComparison.OrdinalIgnoreCase),
                 "The self-hosted build must not hit the analyzer DLL file-lock retry path.");
 
-            if (OperatingSystem.IsWindows())
-            {
-                using var stream = new FileStream(
-                    analyzerReference.FullPath!,
-                    FileMode.Open,
-                    FileAccess.ReadWrite,
-                    FileShare.None);
-                Assert.IsTrue(stream.CanWrite, "The original analyzer DLL must remain writable after analyzer discovery.");
-            }
+            using var stream = new FileStream(
+                analyzerReference.FullPath!,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None);
+            Assert.IsTrue(stream.CanWrite, "The original analyzer DLL must remain writable after analyzer discovery.");
         }
         finally
         {
