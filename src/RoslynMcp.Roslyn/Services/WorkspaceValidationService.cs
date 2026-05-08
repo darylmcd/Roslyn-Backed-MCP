@@ -18,6 +18,8 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class WorkspaceValidationService : IWorkspaceValidationService
 {
     private const int MaxRelatedTestsCap = 50;
+    private static readonly TimeSpan DefaultGitStatusTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan DefaultValidationPhaseTimeout = TimeSpan.FromSeconds(25);
 
     private readonly ICompileCheckService _compile;
     private readonly IDiagnosticService _diagnostics;
@@ -25,6 +27,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private readonly ITestRunnerService _testRunner;
     private readonly IWorkspaceManager _workspace;
     private readonly IChangeTracker? _changeTracker;
+    private readonly TimeSpan _gitStatusTimeout;
+    private readonly TimeSpan _validationPhaseTimeout;
 
     public WorkspaceValidationService(
         ICompileCheckService compile,
@@ -33,6 +37,27 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         ITestRunnerService testRunner,
         IWorkspaceManager workspace,
         IChangeTracker? changeTracker = null)
+        : this(
+            compile,
+            diagnostics,
+            testDiscovery,
+            testRunner,
+            workspace,
+            changeTracker,
+            DefaultGitStatusTimeout,
+            DefaultValidationPhaseTimeout)
+    {
+    }
+
+    internal WorkspaceValidationService(
+        ICompileCheckService compile,
+        IDiagnosticService diagnostics,
+        ITestDiscoveryService testDiscovery,
+        ITestRunnerService testRunner,
+        IWorkspaceManager workspace,
+        IChangeTracker? changeTracker,
+        TimeSpan gitStatusTimeout,
+        TimeSpan validationPhaseTimeout)
     {
         _compile = compile;
         _diagnostics = diagnostics;
@@ -40,6 +65,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         _testRunner = testRunner;
         _workspace = workspace;
         _changeTracker = changeTracker;
+        _gitStatusTimeout = gitStatusTimeout > TimeSpan.Zero ? gitStatusTimeout : DefaultGitStatusTimeout;
+        _validationPhaseTimeout = validationPhaseTimeout > TimeSpan.Zero ? validationPhaseTimeout : DefaultValidationPhaseTimeout;
     }
 
     public Task<WorkspaceValidationDto> ValidateAsync(
@@ -64,7 +91,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         bool summary = false)
     {
         var solutionDir = ResolveSolutionDirectory(workspaceId);
-        var (gitFiles, gitWarnings) = await CollectGitChangedFilesAsync(solutionDir, ct).ConfigureAwait(false);
+        var (gitFiles, gitWarnings) = await CollectGitChangedFilesAsync(solutionDir, _gitStatusTimeout, ct)
+            .ConfigureAwait(false);
 
         // No-fallback path: git produced a (possibly empty) list of touched files. Forward
         // that list verbatim. An empty list is a meaningful signal (clean tree) — we do NOT
@@ -72,16 +100,30 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         // heavy full-workspace verify.
         if (gitWarnings.Count == 0)
         {
-            return await ValidateInternalAsync(workspaceId, gitFiles, runTests, ct, summary, warnings: Array.Empty<string>())
-                .ConfigureAwait(false);
+            try
+            {
+                return await ValidateInternalAsync(workspaceId, gitFiles, runTests, ct, summary, warnings: Array.Empty<string>())
+                    .ConfigureAwait(false);
+            }
+            catch (InternalValidationTimeoutException ex)
+            {
+                return CreateTimeoutResult(ex, gitFiles, Array.Empty<string>());
+            }
         }
 
         // Fallback: git was unavailable / repo not found / git exited with error. Widen to
         // full-workspace scope (changedFilePaths=null → change-tracker fallback → tool behaves
         // like validate_workspace did before this feature) and surface the warning so the
         // caller can tell why the scope is full instead of narrow.
-        return await ValidateInternalAsync(workspaceId, changedFilePaths: null, runTests, ct, summary, warnings: gitWarnings)
-            .ConfigureAwait(false);
+        try
+        {
+            return await ValidateInternalAsync(workspaceId, changedFilePaths: null, runTests, ct, summary, warnings: gitWarnings)
+                .ConfigureAwait(false);
+        }
+        catch (InternalValidationTimeoutException ex)
+        {
+            return CreateTimeoutResult(ex, Array.Empty<string>(), gitWarnings);
+        }
     }
 
     private async Task<WorkspaceValidationDto> ValidateInternalAsync(
@@ -95,16 +137,22 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         var (changedFiles, unknownFiles) = ResolveChangedFiles(workspaceId, changedFilePaths);
 
         // Stage 1: in-memory compile check across the whole workspace.
-        var compile = await _compile.CheckAsync(
-            workspaceId,
-            new CompileCheckOptions(SeverityFilter: "Error", Limit: 200),
+        var compile = await RunValidationPhaseAsync(
+            "compile_check",
+            token => _compile.CheckAsync(
+                workspaceId,
+                new CompileCheckOptions(SeverityFilter: "Error", Limit: 200),
+                token),
             ct).ConfigureAwait(false);
 
         // Stage 2: harvest error-severity diagnostics. Pull a slim subset of analyzer diagnostics
         // separately so the response captures CA*/IDE* errors (compile_check is compiler-only).
-        var diagResult = await _diagnostics.GetDiagnosticsAsync(
-            workspaceId, projectFilter: null, fileFilter: null,
-            severityFilter: "Error", diagnosticIdFilter: null, ct).ConfigureAwait(false);
+        var diagResult = await RunValidationPhaseAsync(
+            "project_diagnostics",
+            token => _diagnostics.GetDiagnosticsAsync(
+                workspaceId, projectFilter: null, fileFilter: null,
+                severityFilter: "Error", diagnosticIdFilter: null, token),
+            ct).ConfigureAwait(false);
         var allErrors = compile.Diagnostics
             .Concat(diagResult.CompilerDiagnostics)
             .Concat(diagResult.AnalyzerDiagnostics)
@@ -124,9 +172,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                     ScannedTestProjects: 0,
                     HeuristicsAttempted: [],
                     MissReasons: ["no changed source files supplied; related-test discovery skipped"]))
-            : await _testDiscovery
-                .FindRelatedTestsForFilesAsync(workspaceId, changedFiles, MaxRelatedTestsCap, ct)
-                .ConfigureAwait(false);
+            : await RunValidationPhaseAsync(
+                "test_related_files",
+                token => _testDiscovery.FindRelatedTestsForFilesAsync(
+                    workspaceId, changedFiles, MaxRelatedTestsCap, token),
+                ct).ConfigureAwait(false);
 
         // Stage 4: optionally run the related tests.
         TestRunResultDto? testRunResult = null;
@@ -134,9 +184,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         {
             try
             {
-                testRunResult = await _testRunner
-                    .RunTestsAsync(workspaceId, projectName: null, filter: related.DotnetTestFilter, ct)
-                    .ConfigureAwait(false);
+                testRunResult = await RunValidationPhaseAsync(
+                    "test_run",
+                    token => _testRunner.RunTestsAsync(
+                        workspaceId, projectName: null, filter: related.DotnetTestFilter, token),
+                    ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -313,6 +365,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     /// </summary>
     private static async Task<(IReadOnlyList<string> Files, IReadOnlyList<string> Warnings)> CollectGitChangedFilesAsync(
         string solutionDirectory,
+        TimeSpan timeout,
         CancellationToken ct)
     {
         // Fast pre-check: a `.git` directory / file (submodule, worktree) must exist somewhere
@@ -378,11 +431,21 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         string stderr;
         try
         {
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
-            var stderrTask = process.StandardError.ReadToEndAsync(ct);
-            await process.WaitForExitAsync(ct).ConfigureAwait(false);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(timeout);
+            var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+            var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
+            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
             stdout = await stdoutTask.ConfigureAwait(false);
             stderr = await stderrTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            try { process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            return (Array.Empty<string>(), new[]
+            {
+                $"git status exceeded the timeout of {timeout.TotalSeconds:F0} second(s); retryable=true; validated full workspace."
+            });
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
@@ -520,5 +583,85 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             || extension.Equals(".sln", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".props", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".targets", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<T> RunValidationPhaseAsync<T>(
+        string phase,
+        Func<CancellationToken, Task<T>> action,
+        CancellationToken ct)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(_validationPhaseTimeout);
+        try
+        {
+            return await action(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+        {
+            throw new InternalValidationTimeoutException(phase, _validationPhaseTimeout);
+        }
+    }
+
+    private static WorkspaceValidationDto CreateTimeoutResult(
+        InternalValidationTimeoutException timeout,
+        IReadOnlyList<string> changedFiles,
+        IReadOnlyList<string> priorWarnings)
+    {
+        var warning = $"validation phase '{timeout.Phase}' exceeded the internal timeout of "
+            + $"{timeout.Timeout.TotalSeconds:F0} second(s); retryable=true; changedFilePaths contains the git-derived scope.";
+        var warnings = priorWarnings.Concat(new[] { warning }).ToArray();
+        var command = new CommandExecutionDto(
+            Command: "validate_recent_git_changes",
+            Arguments: [timeout.Phase],
+            WorkingDirectory: string.Empty,
+            TargetPath: string.Empty,
+            ExitCode: -1,
+            Succeeded: false,
+            DurationMs: (long)timeout.Timeout.TotalMilliseconds,
+            StdOut: string.Empty,
+            StdErr: warning);
+        var failure = new TestRunResultDto(
+            command,
+            Total: 0,
+            Passed: 0,
+            Failed: 1,
+            Skipped: 0,
+            Failures: [],
+            FailureEnvelope: new TestRunFailureEnvelopeDto(
+                ErrorKind: "Timeout",
+                IsRetryable: true,
+                Summary: warning,
+                StdOutTail: null,
+                StdErrTail: warning));
+
+        return new WorkspaceValidationDto(
+            OverallStatus: "timeout",
+            ChangedFilePaths: changedFiles,
+            UnknownFilePaths: Array.Empty<string>(),
+            CompileResult: new CompileCheckDto(
+                Success: false,
+                ErrorCount: 0,
+                WarningCount: 0,
+                TotalDiagnostics: 0,
+                ReturnedDiagnostics: 0,
+                Offset: 0,
+                Limit: 200,
+                HasMore: false,
+                Diagnostics: Array.Empty<DiagnosticDto>(),
+                ElapsedMs: (long)timeout.Timeout.TotalMilliseconds,
+                Cancelled: true),
+            ErrorDiagnostics: Array.Empty<DiagnosticDto>(),
+            WarningCount: 0,
+            DiscoveredTests: Array.Empty<RelatedTestCaseDto>(),
+            DotnetTestFilter: null,
+            TestRunResult: failure,
+            Warnings: warnings);
+    }
+
+    private sealed class InternalValidationTimeoutException(string phase, TimeSpan timeout) : Exception(
+        $"validate_recent_git_changes phase '{phase}' exceeded the internal timeout of {timeout.TotalSeconds:F0} second(s).")
+    {
+        public string Phase { get; } = phase;
+        public TimeSpan Timeout { get; } = timeout;
     }
 }
