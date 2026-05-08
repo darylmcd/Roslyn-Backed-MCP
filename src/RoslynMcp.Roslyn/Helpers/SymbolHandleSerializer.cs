@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
@@ -178,8 +179,8 @@ public static class SymbolHandleSerializer
     /// that match the given <paramref name="metadataName"/> — types via
     /// <see cref="Compilation.GetTypeByMetadataName"/> AND members via the trailing-dot split
     /// (each <c>GetMembers(name)</c> overload contributes every overload). Results are
-    /// deduped by <see cref="SymbolEqualityComparer.Default"/> so the same partial declaration
-    /// from multiple <c>Compilation</c>s collapses to one entry.
+    /// deduped by a stable source-span key so the same source declaration from multiple
+    /// <c>Compilation</c>s collapses to one entry without collapsing real overloads.
     /// </summary>
     /// <remarks>
     /// This is the multi-result counterpart of
@@ -195,7 +196,7 @@ public static class SymbolHandleSerializer
         if (string.IsNullOrWhiteSpace(metadataName)) return Array.Empty<ISymbol>();
 
         var matches = new List<ISymbol>();
-        var seen = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var project in solution.Projects)
         {
@@ -205,9 +206,9 @@ public static class SymbolHandleSerializer
 
             // Type-by-full-name fast path — collect, do not return early.
             var typeSymbol = compilation.GetTypeByMetadataName(metadataName);
-            if (typeSymbol is not null && seen.Add(typeSymbol))
+            if (typeSymbol is not null)
             {
-                matches.Add(typeSymbol);
+                AddCandidateIfNew(matches, seen, typeSymbol);
             }
 
             // Member fallback: split at the LAST dot. All overloads of the named member
@@ -223,13 +224,66 @@ public static class SymbolHandleSerializer
 
             foreach (var member in containingType.GetMembers(memberName))
             {
-                if (seen.Add(member))
-                {
-                    matches.Add(member);
-                }
+                AddCandidateIfNew(matches, seen, member);
             }
         }
 
         return matches;
+    }
+
+    private static void AddCandidateIfNew(List<ISymbol> matches, HashSet<string> seen, ISymbol symbol)
+    {
+        if (seen.Add(CreateCandidateDedupeKey(symbol)))
+        {
+            matches.Add(symbol);
+        }
+    }
+
+    private static string CreateCandidateDedupeKey(ISymbol symbol)
+    {
+        var display = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+        var sourceLocation = symbol.Locations.FirstOrDefault(location => location.IsInSource);
+        if (sourceLocation is not null)
+        {
+            var lineSpan = sourceLocation.GetLineSpan();
+            var span = sourceLocation.SourceSpan;
+            return string.Join(
+                '\u001f',
+                "source",
+                symbol.Kind.ToString(),
+                display,
+                NormalizeSourcePath(lineSpan.Path),
+                span.Start.ToString(CultureInfo.InvariantCulture),
+                span.Length.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return string.Join(
+            '\u001f',
+            "metadata",
+            symbol.Kind.ToString(),
+            display,
+            symbol.ContainingAssembly?.Identity.GetDisplayName() ?? string.Empty,
+            symbol.MetadataName);
+    }
+
+    private static string NormalizeSourcePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            path = Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // Keep Roslyn's original path if it is not a normal filesystem path.
+        }
+
+        return OperatingSystem.IsWindows()
+            ? path.Replace('/', '\\').ToUpperInvariant()
+            : path;
     }
 }
