@@ -1,0 +1,302 @@
+{
+  "generatedAtUtc": "2026-05-08T16:15:25Z",
+  "sourceAudit": "20260508T154415Z_roslyn-backed-mcp_mcp-server-audit.md",
+  "sourceRepo": "roslyn-backed-mcp",
+  "serverVersion": "1.34.2+e01c2f97dfc80e6c1a9888aed70c71191d8666c0",
+  "catalogVersion": "2026.04",
+  "summary": {
+    "promoteReady": 25,
+    "keepExperimental": 3,
+    "needsFixBeforePromotion": 3,
+    "blockedOrNotExercised": 10
+  },
+  "entries": [
+    {
+      "name": "workspace_warm",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Explicit warm completed with 4 cold compilations in 1628 ms and subsequent readers stayed responsive."
+    },
+    {
+      "name": "find_type_consumers",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Returned coherent file-level consumer rollups for WorkspaceManager and aligned with find_consumers."
+    },
+    {
+      "name": "trace_exception_flow",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Returned bounded catch-site data for InvalidOperationException with truncation metadata."
+    },
+    {
+      "name": "find_duplicate_helpers",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Returned bounded helper clusters quickly and without payload issues."
+    },
+    {
+      "name": "find_dead_locals",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Found a concrete dead local in FixAllService with stable location data."
+    },
+    {
+      "name": "find_dead_fields",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidence": "Returned a clean zero result in RoslynMcp.Roslyn; needs broader positive production evidence."
+    },
+    {
+      "name": "symbol_impact_sweep",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Returned reference counts and suggested tasks for WorkspaceManager.LoadAsync without overrun."
+    },
+    {
+      "name": "semantic_grep",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Identifier search, zero-match search, and invalid regex handling all returned bounded structured results."
+    },
+    {
+      "name": "validate_workspace",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Returned clean aggregate validation and handled unknown changed file paths without crashing."
+    },
+    {
+      "name": "validate_recent_git_changes",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "needs-fix-before-promotion",
+      "evidence": "Timed out after 120 seconds on a small dirty worktree while server heartbeat remained ready."
+    },
+    {
+      "name": "test_reference_map",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Returned bounded covered/uncovered symbol data with pagination and no mock drift warnings."
+    },
+    {
+      "name": "get_prompt_text",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Rendered all 20 prompts and returned structured errors for unknown prompt and malformed parametersJson."
+    },
+    {
+      "name": "server_catalog_tools_page",
+      "kind": "resource",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Paginated tool catalog returned totalCount 168 and bounded page metadata."
+    },
+    {
+      "name": "server_catalog_prompts_page",
+      "kind": "resource",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Prompt catalog returned all 20 prompt entries with parameter schemas."
+    },
+    {
+      "name": "source_file_lines",
+      "kind": "resource",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Valid line slice returned C# text and invalid 10-5 range returned structured InvalidArgument."
+    },
+    {
+      "name": "apply_multi_file_edit",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Applied two audit-only file edits with verification and left compile_check green."
+    },
+    {
+      "name": "preview_multi_file_edit",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Preview/apply path rejected stale tokens after workspace change and succeeded with a fresh token."
+    },
+    {
+      "name": "apply_with_verify",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Applied an organize-usings preview and verified clean status."
+    },
+    {
+      "name": "change_signature_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Added an optional parameter with call-site updates and returned a clear unsupported-op error for reorder."
+    },
+    {
+      "name": "replace_string_literals_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Replaced one initializer literal and intentionally left comparison literal unchanged."
+    },
+    {
+      "name": "restructure_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Previewed and applied a placeholder rewrite in an audit fixture with compile_check green afterward."
+    },
+    {
+      "name": "change_type_namespace_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Moved AuditScratch into a nested namespace and preserved compilation."
+    },
+    {
+      "name": "scaffold_type_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Created an internal audit type preview and apply compiled cleanly."
+    },
+    {
+      "name": "scaffold_type_apply",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Applied the scaffolded type and rejected a consumed token on second use."
+    },
+    {
+      "name": "scaffold_test_apply",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "needs-fix-before-promotion",
+      "evidence": "Applied generated test for an internal target but compile_check failed with CS0122."
+    },
+    {
+      "name": "scaffold_test_batch_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "needs-fix-before-promotion",
+      "evidence": "Preview produced bounded multi-target diffs but generated compile-fragile nullable constructor text: new WorkspaceManagerOptions?()."
+    },
+    {
+      "name": "scaffold_first_test_file_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidence": "Preview emitted a placeholder test and warning for a no-method audit type; not enough positive evidence."
+    },
+    {
+      "name": "apply_project_mutation",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Applied and reversed a central package version mutation successfully."
+    },
+    {
+      "name": "add_central_package_version_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Generated a minimal Directory.Packages.props diff and applied cleanly through apply_project_mutation."
+    },
+    {
+      "name": "format_check",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "promote-ready",
+      "evidence": "Detected one formatting violation in the audit interface and returned zero after format apply."
+    },
+    {
+      "name": "preview_record_field_addition",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped for repo shape; no suitable record satellite target selected."
+    },
+    {
+      "name": "record_field_add_with_satellites_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped for repo shape; no safe production satellite mutation target selected."
+    },
+    {
+      "name": "symbol_refactor_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped because simpler primitive previews covered the audit fixture without broad composite risk."
+    },
+    {
+      "name": "split_service_with_di_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped due high-risk production DI rewiring."
+    },
+    {
+      "name": "extract_type_apply",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped because no safe independent member cluster was chosen for audit-only apply."
+    },
+    {
+      "name": "bulk_replace_type_apply",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "keep-experimental",
+      "evidence": "Preview reported no replaceable references for the audit interface, so apply was not exercised."
+    },
+    {
+      "name": "move_type_to_project_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped to avoid broad project movement outside audit-only scope."
+    },
+    {
+      "name": "dependency_inversion_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped due DI rewiring risk in production services."
+    },
+    {
+      "name": "migrate_package_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped because package migration would be broad and unrelated to the audit fixture."
+    },
+    {
+      "name": "split_class_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped because no safe split-class target was selected."
+    },
+    {
+      "name": "extract_and_wire_interface_preview",
+      "kind": "tool",
+      "currentTier": "experimental",
+      "recommendation": "blocked-or-not-exercised",
+      "evidence": "Skipped due production DI update risk."
+    }
+  ]
+}
