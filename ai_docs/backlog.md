@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-08T22:50:00Z**
+**updated_at: 2026-05-09T00:00:00Z**
 
 ## Agent contract
 
@@ -42,7 +42,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `selfhosted-shadow-copy-analyzer-reference-test-fails` | High | none | The Windows-only test `SelfHostedWorkspace_AnalyzerReference_Loads_From_Shadow_Copy` (added in PR #563 to guard the analyzer-DLL file-lock fix) fails on the self-hosted Windows runner activated 2026-05-08 (PR #580). Failure is at the test's first precondition (`tests/RoslynMcp.Tests/ValidationIntegrationTests.cs:80`): `hostProject.AnalyzerReferences.OfType<AnalyzerFileReference>().FirstOrDefault(...)` returns null despite a successful build that produced `analyzers/ServerSurfaceCatalogAnalyzer/bin/Release/netstandard2.0/RoslynMcp.Analyzers.ServerSurfaceCatalog.dll`. The test has been silently skipping on every prior hosted-Linux CI run via `if (!OperatingSystem.IsWindows()) return;` at line 63 — so this latent issue has been hidden for the entire post-#563 history. **Higher than Medium because** every PR landing on the self-hosted runner now fails this single test, requiring admin-override merges until fixed; the override pattern needs to stop quickly. Two hypotheses: (a) MSBuildWorkspace.LoadAsync timing — analyzer reference may not refresh if load happens immediately after build; (b) LocalSystem service-account env differences (PATH, MSBuild property evaluation) cause the AnalyzerFileReference to not be populated. Next deliverable: investigate via `dotnet test --filter SelfHostedWorkspace_AnalyzerReference_Loads_From_Shadow_Copy` on the runner machine (manually invoke the same test outside CI to isolate runner-vs-CI vs LocalSystem-vs-user); if reproducible interactively under LocalSystem, add diagnostic logging to enumerate `hostProject.AnalyzerReferences` regardless of type filter; root-cause and patch. Anchors: `tests/RoslynMcp.Tests/ValidationIntegrationTests.cs:60-104` (the test), `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` LoadAsync, `analyzers/ServerSurfaceCatalogAnalyzer/ServerSurfaceCatalogAnalyzer.csproj`, `src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj` (`<ProjectReference OutputItemType="Analyzer">`). Regression test shape: existing test passes on self-hosted runner under LocalSystem service account. Evidence: `gh run view 25582580116 --log-failed | tail -50` from PR #580 first-self-hosted-run on 2026-05-08; failed in 2s at the IsNotNull on line 80 with message "Expected Host.Stdio to carry the server-surface catalog analyzer reference." Build had succeeded 1s prior with no errors. |
 
 ## Medium
 

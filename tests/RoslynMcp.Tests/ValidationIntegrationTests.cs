@@ -66,7 +66,27 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
         }
 
         var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");
-        var loaded = await WorkspaceManager.LoadAsync(repositorySolutionPath, CancellationToken.None);
+
+        // selfhosted-shadow-copy-analyzer-reference-test-fails: detect the host's actual
+        // build configuration from AppContext.BaseDirectory and pass it to MSBuildWorkspace
+        // as a Configuration global property. Without this, MSBuildWorkspace defaults to
+        // Configuration=Debug evaluation; on the self-hosted Windows runner CI builds only
+        // Release, so the analyzer ProjectReference resolves to a Debug TargetPath that
+        // does not exist on disk and Roslyn drops the AnalyzerFileReference. Passing
+        // global properties also opts the load out of session deduplication, guaranteeing
+        // a fresh evaluation even if another test has already cached a session for the
+        // same path under default globals.
+        var configuration = AppContext.BaseDirectory.Contains(
+            Path.DirectorySeparatorChar + "Release" + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase) ? "Release" : "Debug";
+        var globalProperties = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Configuration"] = configuration,
+        };
+        var loaded = await WorkspaceManager.LoadAsync(
+            repositorySolutionPath,
+            globalProperties,
+            CancellationToken.None);
 
         try
         {
