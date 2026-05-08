@@ -8,7 +8,7 @@
     {
       "id": "build-test-self-analyzer-file-lock",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["build-test-self-analyzer-file-lock"],
       "productionFilesTouched": 3,
       "testFilesAdded": 1,
@@ -20,9 +20,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "High priority self-hosting validator lock. Prefer fixing analyzer-reference lock root during workspace load, not only shell retry behavior."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/563",
+      "mergedAt": "2026-05-08T18:02:24Z",
+      "notes": "Shipped as PR #563 (squash 20b517e4ea76e131998521573b43dc4a0b544f6d). Fixed the self-hosted analyzer lock by retargeting AnalyzerFileReference loaders to shadow-copy on Windows."
     },
     {
       "id": "find-references-duplicate-metadata-candidates",
