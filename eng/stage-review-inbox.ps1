@@ -5,9 +5,15 @@
 
 .DESCRIPTION
     Discovers the three deep-review artifact shapes across this repo + sibling repos under the
-    parent directory and moves them into this repo's review-inbox/ folder. Source filenames
+    parent directory and copies them into this repo's review-inbox/ folder. Source filenames
     already carry a repo-id prefix (e.g. 20260424T030145Z_roslyn-backed-mcp_roslyn-mcp-retro.md)
     so no renaming is needed.
+
+    The default behavior is COPY (not move) so the canonical
+    <repo>/ai_docs/audit-reports/<ts>_<repo>_mcp-server-audit.md path stays
+    populated as the audit prompt promises. Pass -Move to revert to the older
+    move-to-inbox behavior (typically only useful when re-running on the same
+    artifacts and you want the source removed).
 
     Recognized shapes:
       *_mcp-server-audit.md         Server audit from the deep-review prompt
@@ -47,9 +53,10 @@
 .PARAMETER DryRun
     Show what would be staged without moving files.
 
-.PARAMETER Copy
-    Copy instead of move. Useful for re-runs or when the sibling repo tracks
-    the source files and you don't want to dirty it.
+.PARAMETER Move
+    Move instead of copy (the default). Removes the source file after staging.
+    Use only when you explicitly want the canonical
+    <repo>/ai_docs/audit-reports/ location cleared — typically a re-run scenario.
 
 .PARAMETER SkipSelf
     Do not scan this repo's own ai_docs/audit-reports or ai_docs/reports
@@ -59,17 +66,24 @@
     ./eng/stage-review-inbox.ps1
 
     Default: scan parent of this repo for siblings + this repo's own ai_docs,
-    move every audit/retro/promotion file into review-inbox/.
+    copy every audit/retro/promotion file into review-inbox/. The canonical
+    <repo>/ai_docs/audit-reports/ source files are preserved.
 
 .EXAMPLE
     ./eng/stage-review-inbox.ps1 -DryRun
 
-    Show what would be staged without moving anything.
+    Show what would be staged without copying anything.
 
 .EXAMPLE
-    ./eng/stage-review-inbox.ps1 -Copy -SiblingRepoParent C:\Customer-Repos
+    ./eng/stage-review-inbox.ps1 -Move
 
-    Copy (don't move) from a different sibling parent.
+    Move (don't copy) — clears the canonical source after staging. Useful for
+    re-runs where you want to start from an empty audit-reports/ folder.
+
+.EXAMPLE
+    ./eng/stage-review-inbox.ps1 -SiblingRepoParent C:\Customer-Repos
+
+    Copy from a different sibling parent.
 #>
 param(
     [string]$SiblingRepoParent = '',
@@ -80,7 +94,7 @@ param(
         'audit-reports'
     ),
     [switch]$DryRun,
-    [switch]$Copy,
+    [switch]$Move,
     [switch]$SkipSelf
 )
 
@@ -173,7 +187,7 @@ if ($staged.Count -gt 0 -and -not (Test-Path $inbox)) {
     }
 }
 
-$verb = if ($Copy) { 'Copy' } else { 'Move' }
+$verb = if ($Move) { 'Move' } else { 'Copy' }
 if ($staged.Count -gt 0) {
     Write-Host "Staging $($staged.Count) artifact(s) -> $inbox ($verb)" -ForegroundColor Cyan
 
@@ -182,10 +196,10 @@ if ($staged.Count -gt 0) {
             Write-Host "  [DryRun] $verb $($item.Source) -> $($item.Dest)"
             continue
         }
-        if ($Copy) {
-            Copy-Item -LiteralPath $item.Source -Destination $item.Dest
-        } else {
+        if ($Move) {
             Move-Item -LiteralPath $item.Source -Destination $item.Dest
+        } else {
+            Copy-Item -LiteralPath $item.Source -Destination $item.Dest
         }
         Write-Host "  $verb $(Split-Path -Leaf $item.Source)"
     }

@@ -50,9 +50,9 @@ This runs the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) s
 ## Staging only (no triage)
 
 ```powershell
-./eng/stage-review-inbox.ps1                 # move audit/retro/promotion files into review-inbox/
+./eng/stage-review-inbox.ps1                 # copy audit/retro/promotion files into review-inbox/ (default)
 ./eng/stage-review-inbox.ps1 -DryRun         # preview only
-./eng/stage-review-inbox.ps1 -Copy           # copy instead of move
+./eng/stage-review-inbox.ps1 -Move           # move instead of copy (clears canonical source)
 ./eng/stage-review-inbox.ps1 -SkipSelf       # don't scan this repo's own ai_docs/
 ```
 
