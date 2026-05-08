@@ -27,7 +27,7 @@
     {
       "id": "find-references-duplicate-metadata-candidates",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["find-references-duplicate-metadata-candidates"],
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
@@ -39,9 +39,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/565",
+      "mergedAt": "2026-05-08T18:26:58Z",
+      "notes": "Shipped as PR #565 (squash f017338d79a8927c248d32cd82d8d178b1de6517). Fixed false metadata-name ambiguity by deduping candidates with stable source-span keys."
     },
     {
       "id": "add-project-reference-self-reference-preview",
