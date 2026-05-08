@@ -542,3 +542,106 @@ Co-maintainers added later get fast-pathed automatically. That's the right behav
 These decisions, the dissent register (D1–D4), and the original draft sections are all the brainstorm's input. **The brainstorm's job is sanity check, not redesign** — frame the prompt explicitly as "pressure-test these decisions, look for gaps, propose alternatives if you see them, DO NOT just confirm what's there." The brainstorm pressure points listed under each question are the seed prompts.
 
 **Net cost estimate stands at 4 v1 rows + 1 stretch + 1 prep (the rename/relocate as separate row).** Roughly 5–6 rows total, depending on whether the rename rolls into the relocate or ships separately.
+
+---
+
+## Fourth-turn updates (2026-05-08, fresh-eyes critique pass)
+
+After the third turn drafted answers, ran a fresh-eyes critique pass against the doc. Surfaced load-bearing concerns about the crowdsourcing premise; user pushed back substantively. The dialog produced two materially-new decisions and one scope addition. **These supersede earlier sections where they conflict.**
+
+### F1 — Floor-case justification accepted (the pivot pays off without community use)
+
+**Critique:** *"The crowdsourcing premise is unvalidated. Consumers have no incentive to run a 45-min audit. If they don't run, the pivot's ROI disappears."*
+
+**User counter:** the pivot has standalone value at zero community use:
+- Issues > fragments mechanically for the maintainer (cross-reference, search, persistence, PR auto-close linking are native to issues, bolted-on for fragments).
+- Architectural simplicity: skill back on shipped surface eliminates "where does it live, what IDE, what session" friction. Real ergonomic win regardless of audience.
+- **Credibility signal.** Active labeled-issue tracker visible from the NuGet page signals *"this server is being actively stress-tested and quality matters."* Empty trackers signal abandonment; lively trackers signal investment. Even maintainer-filed issues telegraph care.
+- Optionality: if community ever shows up, infrastructure is ready. If not, we lose nothing relative to fragments.
+
+**Decision:** the pivot pays off on **maintainer workflow + credibility alone**. Community contributions are upside, not the load-bearing case. **The fragment pattern's retirement is justified by the maintainer-side improvements alone, not by speculative community throughput.**
+
+**Anti-overbuild guard:** hold the line on infrastructure deferral (D4). No proxy / GitHub App / per-IP rate limiter / abuse detection until concrete volume signal. *"If we built more, more would come"* is famously wrong. v1 ships the cheap parts that pay off for maintainer use; the expensive parts wait for evidence.
+
+### F2 — Tiered runs (`--quick` + `--full`, defer `--mid`)
+
+**Critique:** *"45-min full run is a deal-breaker for any community use. Even the credibility signal premise breaks if nobody runs it once."*
+
+**User counter:** rethink what a run looks like — default to full, but expose tiered subsets for shorter runs.
+
+**Important architectural distinction (must be explicit in the eventual CHANGELOG):** the historical `read-only`/`promotion-only` modes (collapsed in v1.35.0's `mcp-server-stress-single-mode` initiative) were **evidence-type variants** that produced malformed scorecards. The new tiers are **time-budget slices** — strict subsets of phases, each producing a strict subset of findings, with honest contracts about what each tier covers. Same architectural axis (which phases run), different motivation (time budget vs evidence-type), different downstream contract (clearly-scoped findings, not broken scorecards).
+
+**Decision: ship two tiers in v1, defer the third.**
+
+| Tier | Phases run | What's tested | Scorecard | Default for | ETA |
+|---|---|---|---|---|---|
+| `--quick` | 0, 1, 2, 3, 4, 5, 7 | Read-side surface — `find_references`, `symbol_search`, `compile_check`, etc. The consumer-facing 80%. | Not emitted (no apply evidence) | Community runs | ~5 min |
+| `--full` (default for maintainer) | All phases | Everything — apply pass, disposable worktree, full scorecard | Emitted with full evidence | Maintainer mode | ~45 min |
+
+**Deferred to v2 (or later, if asked):** `--mid` tier (~15 min, read-side + concurrency + resources). Three tiers is more cognitive load than two; if a "between quick and full" request shows up in practice, add it then. Ship two in v1.
+
+**Honest scope note:** apply-path bugs surface only through `--full` runs, which only the maintainer does. Tiers don't crowdsource the apply-path; that stays maintainer-only structurally. The community gets credit for **read-side findings**. The design doc, the issue template, and the consumer-facing README must all be honest about this — no implied promises about apply-path coverage from quick runs.
+
+**Composes with maintainer detection (Q3):** maintainer-mode → default `--full`; consumer-mode → default `--quick`. Explicit `--tier=quick|full` overrides. Required `tier` enum field added to the issue template (Q1) so triage knows the audit's coverage scope. New label `tier:quick`/`tier:full` added to the label scheme (Q2).
+
+**Cost-estimate impact:** add ~+0.5 row (tier infrastructure folds into the issues-output mode row, doesn't need its own row). Schema changes (Q1, Q2) are minor extensions, not new rows.
+
+### F3 — Consumer-facing documentation is in scope
+
+**User addition:** *"lets make sure that we are updating the consumer side documentation that is seen from nuget/github with full explanation of the mcp-server-surface-test (why its there, what each mode does, expected time to run, why they are each important etc.)"*
+
+**Critical scope item.** F1's credibility-signal value collapses to nothing if the public docs don't explain the skill. An issue tracker full of findings, with a README that doesn't mention why or invite contribution, signals confusion not investment.
+
+**Surfaces to update (each gets a dedicated row or sub-row):**
+
+| Surface | What it carries | Audience |
+|---|---|---|
+| `README.md` (repo root, also renders on NuGet package page) | Top-level "what is this server, how do I use it, how do I help make it better" — adds a *"Quality assurance: `/mcp-server-surface-test`"* section linking to the tier explanation, the issue template, and triage SLA. | Anyone who lands on NuGet or GitHub |
+| `docs/MCP_SERVER_SURFACE_TEST.md` (NEW) | The deep-dive: why this skill exists, server-quality framing, what each tier does, expected time per tier, why each tier is important, what gets exercised, what doesn't (apply-path coverage requires `--full`), privacy/safety guarantees (disposable worktree never mutates main, no telemetry, what gets shared in an issue). | Consumers thinking about running it |
+| `.github/ISSUE_TEMPLATE/mcp-server-surface-test-finding.yml` | The structured template enforcing the 8 required fields from Q1. Each field has placeholder + explanation. | Consumers filing |
+| `docs/MCP_SERVER_SURFACE_TEST_FINDINGS.md` (NEW, the triage doc from Q2) | Triage cadence, label meanings, what happens after you file, expected response time, how decisions are made. | Consumers who filed AND maintainer reference |
+| `<csproj>` package metadata — `Description`, `PackageReleaseNotes` | NuGet page summary — must mention the audit skill exists and that quality is actively tracked. One-line pointer to README's section. | NuGet browsers |
+| `CONTRIBUTING.md` (if exists, or NEW) | Top-level "how to contribute"; audit findings section is one path among others. | Any contributor |
+
+**Required content for the deep-dive (`docs/MCP_SERVER_SURFACE_TEST.md`):**
+
+1. **Why this skill exists** — server quality matters; we audit our own surface; we want findings from real-world workspaces.
+2. **What it does** — at a high level: exercises every tool, resource, and prompt against a loaded C# workspace; produces structured findings.
+3. **What it does NOT do** — does not mutate your code (disposable worktree only), does not exfiltrate any source, does not phone home, does not require any auth from you (`print` mode default).
+4. **The two tiers** — `--quick` (~5 min, read-side surface, consumer-default) and `--full` (~45 min, full coverage, maintainer-default). Explicit honesty: quick mode does NOT cover apply-path; that's `--full`-only.
+5. **Why each tier is important** — quick is the consumer-facing 80% (the tools you actually call when refactoring); full is the maintainer-grade everything-pass that surfaces apply-path and concurrency bugs.
+6. **Expected time + resource cost** — quick is 5 min, mostly idle (one-shot tool calls). Full is 45 min, requires a disposable worktree, requires a clean-enough audited repo state to allow `git worktree add`.
+7. **What happens after a run** — prose audit report at `<your-repo>/ai_docs/audit-reports/<ts>_<repo>_mcp-server-audit.md`; for `--full` runs, scorecard JSON sibling. Findings printed in the agent session for review.
+8. **How to share findings** — link to the issue template; one-paragraph "why your findings help" framing.
+9. **Privacy/safety** — disposable worktree branches from your repo's tree but never pushes; teardown via `dotnet build-server shutdown` + `git worktree remove --force`; nothing leaves your machine unless YOU file an issue. Print mode is the v1 default specifically so you control what gets shared.
+10. **Triage and response** — link to the triage doc; weekly review cadence; what `triaged:accepted`/`rejected`/`defer` mean.
+
+**This document is the load-bearing piece for the credibility signal.** Without it, the issue tracker is just noise. With it, the tracker becomes evidence of an actively-maintained quality regime.
+
+**Cost-estimate impact:** add a new dedicated row for the consumer-doc package — call it row 3.5 or row 5b in the eventual planning. **Probably +1 row to the cost estimate.** The README and CONTRIBUTING surfaces are small edits; the deep-dive doc is the main lift (~150–250 lines of carefully-written prose).
+
+### Revised net cost estimate after fourth turn
+
+Final shape:
+
+1. **Restore shipped skill location + rename to `mcp-server-surface-test`** (combined with relocate-reversal). ~4 prod files + 3 tests.
+2. **Tiered-run + GitHub Issues output** (`--quick`/`--full`, print mode default, `--auto-file` opt-in for `gh`-authenticated maintainers; tier-aware findings; required `tier` template field; `tier:*` labels). ~4-5 prod files + 1 test. **Combines the issues-output row + tier-infrastructure work.**
+3. **`/backlog-intake` reshape** (single-path: issue-list + maintainer-fast-path + standard triage; retires fragment-walk inline). ~3 prod files + 1 test.
+4. **Issue templates + label scheme + maintainer triage doc**. ~4 prod files (template YAML, label-creation script, triage doc, label registry). 0 tests.
+5. **Consumer-facing documentation** (README section, deep-dive doc, csproj metadata, CONTRIBUTING). ~4-5 prod files (README, deep-dive .md, csproj, CONTRIBUTING). 0 tests. **NEW after fourth-turn discussion.**
+6. **`/publish-preflight` + scorecard aggregator extension** (optional issue-comment input for community-quorum scorecards). Stretch — split as separate row, ship after #1-5 stabilize.
+
+**Total: 5 v1 rows + 1 stretch.** Up by 1 (the docs row) from the third-turn estimate. Worth it — the docs row IS the credibility signal infrastructure.
+
+### Brainstorm framing reminder
+
+When the brainstorm runs (against the now-revised doc), the prompt MUST include explicit anti-rubber-stamping framing:
+
+> *"Pressure-test these decisions. Look for unvalidated assumptions, alternative shapes we didn't consider, and gaps in reasoning. Do NOT just confirm what's there — if a decision looks fine, say why; if it looks wrong, propose a concrete alternative. Treat this as adversarial review, not endorsement."*
+
+Specific brainstorm focus areas at the time it runs:
+
+- **F2 — tier scope:** is `--quick` actually useful? What if even 5 min is too much for community? Is there a `--smoke` (~30 sec) that just verifies the server responds?
+- **F3 — docs surface coverage:** are there other surfaces (NuGet README rendering, package badges, marketplace listings) we should be hitting?
+- **The schema lock-in concern from third-turn (Q1):** evidence-first review — open a recent audit report from `ai_docs/audit-reports/` and walk through it. Do the 8 required fields actually exist there in some form? Or are we declaring contracts for data the producer doesn't yet emit?
+- **Triage SLA enforcement:** what's the actual mechanism? "Weekly review" needs a forcing function or it slips.
