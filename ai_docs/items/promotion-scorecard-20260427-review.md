@@ -18,7 +18,7 @@ The 2026-04-27 list was useful intake, but it is no longer a direct work queue.
 The current live surface check for this review was `server_info` on
 2026-05-08: `roslyn-mcp` version
 `1.34.2+e01c2f97dfc80e6c1a9888aed70c71191d8666c0`, catalog version
-`2026.04`, with 168 registered tools/resources/prompts and catalog parity OK.
+`2026.04`, with 168 tools, 13 resources, 20 prompts, and `parityOk=true`.
 The worktree `RoslynMcp.slnx` also loaded for read-side inspection as workspace
 `59bd4cc5796a4ed7baf4d3be4837ac8a`.
 
@@ -41,7 +41,7 @@ The worktree `RoslynMcp.slnx` also loaded for read-side inspection as workspace
 | `get_prompt_text` | experimental tool | Accepted only if quorum later confirms | Positive current local evidence, but it fronts experimental prompts; promote only after aggregate quorum or explicit maintainer override. |
 | `server_catalog_tools_page` | experimental resource | Accepted only if quorum later confirms | Paginated catalog resource is a good stable-surface candidate, but it still needs quorum-backed promotion. |
 | `server_catalog_prompts_page` | experimental resource | Accepted only if quorum later confirms | Same as `server_catalog_tools_page`; promote with the catalog pagination pair only after quorum. |
-| `probe_position` | experimental tool | Rejected for this pass | Narrow fixture-authoring helper and not present in the latest local scorecard entries reviewed here; keep experimental until fresh cross-repo evidence asks for it. |
+| `probe_position` | experimental tool | Rejected for this pass | Re-checked current source: the catalog entry exists in `ServerSurfaceCatalog.Symbols.cs` and the implementation exists in `SymbolTools.cs`. It is a narrow fixture-authoring helper and is not present in the latest local scorecard entries reviewed here, so keep it experimental until fresh cross-repo evidence asks for it. |
 
 ## Follow-on Row Recommendations
 
