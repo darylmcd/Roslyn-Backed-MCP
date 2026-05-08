@@ -32,7 +32,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #565, 2026-05-08) |
 | Priority | Medium |
 | Backlog rows closed | `find-references-duplicate-metadata-candidates` |
 | Diagnosis | `find_references` delegates metadata-name disambiguation through `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:190` and then calls `ReferenceService.FindReferencesAsync` at `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:202`. Candidate enumeration in `src/RoslynMcp.Roslyn/Helpers/SymbolHandleSerializer.cs:197` dedupes with `SymbolEqualityComparer.Default`, which can still treat equivalent source declarations from separate project compilations as distinct. |
