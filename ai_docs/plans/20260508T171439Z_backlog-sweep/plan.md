@@ -13,7 +13,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #563, 2026-05-08) |
 | Priority | High |
 | Backlog rows closed | `build-test-self-analyzer-file-lock` |
 | Diagnosis | Confirmed the validation entry points shell out through loaded workspace state: `src/RoslynMcp.Roslyn/Services/BuildService.cs:28` calls `dotnet build`, and `src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:44` calls `dotnet test` with existing MSB3027/MSB3021 fast-fail handling. The analyzer is wired into Host.Stdio via `src/RoslynMcp.Host.Stdio/RoslynMcp.Host.Stdio.csproj:59` with `OutputItemType="Analyzer"` and `ReferenceOutputAssembly="false"`, so a self-hosted workspace can hold the analyzer output DLL while a child build/test process tries to overwrite it. |
