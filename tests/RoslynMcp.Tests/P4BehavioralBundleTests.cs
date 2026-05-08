@@ -120,6 +120,11 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
             SymbolLocator.BySource(animalFile.FilePath!, 6, 13),
             CancellationToken.None);
 
+        Assert.IsTrue(
+            fromIface.Any(symbol =>
+                symbol.Name == "Speak" &&
+                symbol.FilePath?.EndsWith("Dog.cs", StringComparison.OrdinalIgnoreCase) == true),
+            "Interface-member FindOverrides must include the implicit Dog.Speak implementation.");
         Assert.AreEqual(fromIface.Count, fromImpl.Count,
             "Implicit interface implementation site should promote to the interface member and match the interface declaration query.");
         CollectionAssert.AreEquivalent(

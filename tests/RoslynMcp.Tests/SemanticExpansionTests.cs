@@ -67,9 +67,8 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
     }
 
     // find-base-members-vs-member-hierarchy-metadata-drift: regression — find_overrides and
-    // member_hierarchy.Overrides must agree for a metadata-boundary symbol. SymbolFinder
-    // cannot walk into corlib to find IEquatable<T> implementations, so both return 0 — the
-    // important invariant is that they AGREE (no silent drift between the two surfaces).
+    // member_hierarchy.Overrides must agree for a metadata-boundary symbol. The important
+    // invariant is that they AGREE (no silent drift between the two surfaces).
     [TestMethod]
     public async Task Metadata_Boundary_Find_Overrides_Matches_Member_Hierarchy_Overrides()
     {
@@ -83,6 +82,8 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
         var overrides = await ReferenceService.FindOverridesAsync(WorkspaceId, locator, CancellationToken.None);
         var hierarchy = await SymbolRelationshipService.GetMemberHierarchyAsync(WorkspaceId, locator, CancellationToken.None);
         Assert.IsNotNull(hierarchy);
+        Assert.IsTrue(overrides.Count > 0,
+            "find_overrides should now find source implementations for metadata-boundary interface members.");
         Assert.AreEqual(
             hierarchy.Overrides.Count,
             overrides.Count,
