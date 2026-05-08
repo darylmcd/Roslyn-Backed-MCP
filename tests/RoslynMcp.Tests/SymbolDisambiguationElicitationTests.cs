@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Host.Stdio.Tools;
@@ -122,6 +124,66 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
             "FindAllByMetadataNameAsync must return >= 2 candidates for at least one " +
             "of the standard overloaded shapes (System.String.Format, etc.); otherwise " +
             "the disambiguation gate has nothing to disambiguate.");
+    }
+
+    [TestMethod]
+    public async Task FindAllByMetadataNameAsync_DedupesSameSourceDeclarationAcrossProjectCompilations()
+    {
+        // A metadata-name lookup may see the same source declaration through more than one
+        // project compilation. That is not a real ambiguity for find_references; the
+        // disambiguation gate should collapse identical source spans before returning an
+        // ambiguous envelope.
+        const string source = """
+            namespace DuplicateCandidates;
+
+            public sealed class SharedSourceType
+            {
+                public void Touch() { }
+            }
+            """;
+
+        using var workspace = new AdhocWorkspace();
+        var sharedSourcePath = Path.Combine(
+            Path.GetTempPath(),
+            "RoslynMcpTests",
+            "DuplicateCandidates",
+            "SharedSourceType.cs");
+        var references = new[]
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+        };
+
+        var solution = workspace.CurrentSolution;
+        for (var i = 0; i < 2; i++)
+        {
+            var projectId = ProjectId.CreateNewId($"DuplicateCandidates{i}");
+            solution = solution.AddProject(ProjectInfo.Create(
+                projectId,
+                VersionStamp.Create(),
+                $"DuplicateCandidates{i}",
+                $"DuplicateCandidates{i}",
+                LanguageNames.CSharp,
+                metadataReferences: references));
+
+            var documentId = DocumentId.CreateNewId(projectId, "SharedSourceType.cs");
+            solution = solution.AddDocument(DocumentInfo.Create(
+                documentId,
+                "SharedSourceType.cs",
+                filePath: sharedSourcePath,
+                loader: TextLoader.From(TextAndVersion.Create(
+                    SourceText.From(source),
+                    VersionStamp.Create()))));
+        }
+
+        var candidates = await SymbolHandleSerializer.FindAllByMetadataNameAsync(
+            solution,
+            "DuplicateCandidates.SharedSourceType",
+            CancellationToken.None);
+
+        Assert.AreEqual(1, candidates.Count,
+            "Duplicate compilation candidates for the same source path and span should collapse to one metadata-name candidate.");
+        Assert.AreEqual(SymbolKind.NamedType, candidates[0].Kind);
+        Assert.AreEqual("SharedSourceType", candidates[0].Name);
     }
 
     // ── (b) fallback when client lacks elicitation capability ───────────────
