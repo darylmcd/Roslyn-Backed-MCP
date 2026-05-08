@@ -70,7 +70,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #569, 2026-05-08) |
 | Priority | Medium |
 | Backlog rows closed | `find-overrides-interface-root-empty` |
 | Diagnosis | `src/RoslynMcp.Roslyn/Services/ReferenceService.cs:141` promotes implementation-site symbols before `SymbolFinder.FindOverridesAsync`, and `src/RoslynMcp.Roslyn/Services/ReferenceService.cs:242` maps implicit implementation symbols back to their interface member. The interface-member root itself still passes directly to `SymbolFinder.FindOverridesAsync`, which can miss implicit implementations in the audit fixture even though `find_base_members` can see the reverse relation. |

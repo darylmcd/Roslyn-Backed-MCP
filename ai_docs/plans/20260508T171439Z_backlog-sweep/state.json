@@ -65,7 +65,7 @@
     {
       "id": "find-overrides-interface-root-empty",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["find-overrides-interface-root-empty"],
       "productionFilesTouched": 1,
       "testFilesAdded": 1,
@@ -77,9 +77,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/569",
+      "mergedAt": "2026-05-08T19:17:19Z",
+      "notes": "Shipped as PR #569 (squash abf99c939d9a7aa0ae0b8fd4f2508e1d8113b1ed). Included implicit interface implementations for interface-member find_overrides roots and aligned member_hierarchy overrides with that path."
     },
     {
       "id": "symbol-relationships-return-token-bucket-mix",
