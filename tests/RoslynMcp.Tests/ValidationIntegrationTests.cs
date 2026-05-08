@@ -1,3 +1,5 @@
+using System.Reflection;
+using Microsoft.CodeAnalysis.Diagnostics;
 using RoslynMcp.Core.Models;
 
 namespace RoslynMcp.Tests;
@@ -53,6 +55,59 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
         Assert.IsTrue(result.Execution.Succeeded, result.Execution.StdErr);
         Assert.AreEqual(0, result.Execution.ExitCode);
         Assert.AreEqual(0, result.ErrorCount, "Expected no build errors for the sample solution (warnings may appear in some SDK configurations).");
+    }
+
+    [TestMethod]
+    public async Task SelfHostedWorkspace_AnalyzerReference_Loads_From_Shadow_Copy()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");
+        var loaded = await WorkspaceManager.LoadAsync(repositorySolutionPath, CancellationToken.None);
+
+        try
+        {
+            var solution = WorkspaceManager.GetCurrentSolution(loaded.WorkspaceId);
+            var hostProject = solution.Projects.First(project => project.Name == "RoslynMcp.Host.Stdio");
+            var analyzerReference = hostProject.AnalyzerReferences
+                .OfType<AnalyzerFileReference>()
+                .FirstOrDefault(reference =>
+                    reference.FullPath?.Contains("ServerSurfaceCatalogAnalyzer", StringComparison.OrdinalIgnoreCase) == true);
+
+            Assert.IsNotNull(analyzerReference, "Expected Host.Stdio to carry the server-surface catalog analyzer reference.");
+
+            var loader = GetAnalyzerAssemblyLoader(analyzerReference);
+            Assert.IsNotNull(loader, "Expected the analyzer reference to have a loader.");
+            StringAssert.Contains(loader.GetType().FullName ?? loader.GetType().Name, "ShadowCopyAnalyzerAssemblyLoader");
+
+            var analyzers = analyzerReference.GetAnalyzers(hostProject.Language);
+            Assert.IsTrue(
+                analyzers.Any(analyzer => analyzer.GetType().Name == "ServerSurfaceCatalogAnalyzer"),
+                "Expected the shadow-copy loader to preserve analyzer discovery.");
+
+            var build = await BuildService.BuildProjectAsync(
+                loaded.WorkspaceId,
+                "RoslynMcp.Host.Stdio",
+                CancellationToken.None);
+            Assert.IsTrue(build.Execution.Succeeded, build.Execution.StdErr);
+            Assert.IsFalse(
+                (build.Execution.StdOut + build.Execution.StdErr).Contains("MSB3027", StringComparison.OrdinalIgnoreCase),
+                "The self-hosted build must not hit the analyzer DLL file-lock retry path.");
+
+            using var stream = new FileStream(
+                analyzerReference.FullPath!,
+                FileMode.Open,
+                FileAccess.ReadWrite,
+                FileShare.None);
+            Assert.IsTrue(stream.CanWrite, "The original analyzer DLL must remain writable after analyzer discovery.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(loaded.WorkspaceId);
+        }
     }
 
     [TestMethod]
@@ -121,4 +176,9 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
             DeleteDirectoryIfExists(copiedRoot);
         }
     }
+
+    private static object? GetAnalyzerAssemblyLoader(AnalyzerFileReference reference) =>
+        typeof(AnalyzerFileReference)
+            .GetField("_assemblyLoader", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.GetValue(reference);
 }

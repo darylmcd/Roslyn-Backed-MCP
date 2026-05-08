@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-08T16:41:47Z**
+**updated_at: 2026-05-08T17:35:44Z**
 
 ## Agent contract
 
@@ -42,7 +42,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `build-test-self-analyzer-file-lock` | High | none | `build_workspace` and `test_run` fail in a loaded workspace for this repo because the MCP host holds the repo's analyzer DLL open: MSBuild emits `MSB3027`/`MSB3021` because `roslynmcp.exe` locks `analyzers/ServerSurfaceCatalogAnalyzer/bin/Debug/netstandard2.0/RoslynMcp.Analyzers.ServerSurfaceCatalog.dll`. Self-hosting bug — blocks any audit run from completing Phase 8 against this repo, and breaks `build_workspace`/`test_run` for any consumer who has the analyzer loaded in their MCP server process. Next deliverable: isolate analyzer loading from build outputs (e.g. shadow-copy the analyzer DLL on load, or load via a separate AssemblyLoadContext that releases on shell-out) OR release analyzer assembly handles before shell validation commands; cover the repo-self-hosting path with a regression test that exercises `build_workspace` against `RoslynMcp.slnx`. Anchors: `src/RoslynMcp.Roslyn/Services/BuildService.cs:28`, `src/RoslynMcp.Roslyn/Services/TestRunnerService.cs:44`, plus the analyzer-loading site in `src/RoslynMcp.Host.Stdio/` (grep for `ServerSurfaceCatalogAnalyzer.dll`). Regression test shape: 1 integration test that loads `RoslynMcp.slnx` and calls `build_workspace(RoslynMcp.Tests)`, asserts no `MSB3027`/`MSB3021` envelope. Evidence: `review-inbox/archive/20260508T154415Z/20260508T154415Z_roslyn-backed-mcp_mcp-server-audit.md` Phase 8 + tracking fragment id `roslyn-backed-mcp-build-test-self-analyzer-file-lock`. |
 
 ## Medium
 

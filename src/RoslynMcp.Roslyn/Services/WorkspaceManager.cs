@@ -1166,6 +1166,18 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 throw new ArgumentException($"Path must end with .sln, .slnx, or .csproj: {path}");
             }
 
+            var isolatedAnalyzerReferences = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
+                newWorkspace.CurrentSolution,
+                session.WorkspaceId,
+                _logger);
+            if (isolatedAnalyzerReferences > 0)
+            {
+                _logger.LogInformation(
+                    "Workspace {WorkspaceId}: retargeted {Count} analyzer reference(s) to shadow-copy loaders.",
+                    session.WorkspaceId,
+                    isolatedAnalyzerReferences);
+            }
+
             // unresolved-analyzer-reference-crash: strip UnresolvedAnalyzerReference entries
             // from every project before any downstream caller can see them. SymbolFinder,
             // Compilation.GetDiagnostics, and Roslyn-internal switches over AnalyzerReference
