@@ -154,7 +154,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         return null;
     }
 
-    public async Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct)
+    public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct)
+        => LoadAsync(path, globalProperties: null, ct);
+
+    public async Task<WorkspaceStatusDto> LoadAsync(
+        string path,
+        IDictionary<string, string>? globalProperties,
+        CancellationToken ct)
     {
         var fullPath = ValidateWorkspacePath(path);
 
@@ -164,15 +170,23 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         // pattern from the 2026-04-08 roslyn-backed-mcp audit and keeps workspace_list aligned
         // with operator expectations. Matches the "idempotent for repeated loads" language
         // already in the workspace_load tool description.
-        var existing = FindSessionByLoadedPath(fullPath);
-        if (existing is not null)
+        //
+        // When the caller passes MSBuild global properties (e.g. Configuration=Release), skip
+        // dedup so the new evaluation actually runs — an existing session was loaded with
+        // different globals and would not satisfy the caller's request.
+        var skipDedup = globalProperties is { Count: > 0 };
+        if (!skipDedup)
         {
-            existing.TouchAccess();
-            _logger.LogInformation(
-                "workspace_load: returning existing workspace '{WorkspaceId}' for path '{Path}' (idempotent)",
-                existing.WorkspaceId,
-                fullPath);
-            return BuildStatus(existing);
+            var existing = FindSessionByLoadedPath(fullPath);
+            if (existing is not null)
+            {
+                existing.TouchAccess();
+                _logger.LogInformation(
+                    "workspace_load: returning existing workspace '{WorkspaceId}' for path '{Path}' (idempotent)",
+                    existing.WorkspaceId,
+                    fullPath);
+                return BuildStatus(existing);
+            }
         }
 
         if (!await _workspaceSlots.WaitAsync(0, ct).ConfigureAwait(false))
@@ -185,23 +199,27 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         var sessionAdded = false;
         try
         {
-            await LoadIntoSessionAsync(session, fullPath, ct).ConfigureAwait(false);
+            await LoadIntoSessionAsync(session, fullPath, globalProperties, ct).ConfigureAwait(false);
 
             // Second dedup check, this time for the race window between our scan above and
             // another concurrent LoadAsync call that won the semaphore with the same path.
             // Whichever caller lost the race returns the winner's session and releases its
-            // slot in the finally block so we do not leak a slot per racing caller.
-            var raceWinner = FindSessionByLoadedPath(fullPath);
-            if (raceWinner is not null)
+            // slot in the finally block so we do not leak a slot per racing caller. Skipped
+            // under global-property overrides for the same reason as the pre-load dedup above.
+            if (!skipDedup)
             {
-                _logger.LogInformation(
-                    "workspace_load: race lost; returning winner '{WorkspaceId}' for path '{Path}' instead of new '{NewId}'",
-                    raceWinner.WorkspaceId,
-                    fullPath,
-                    workspaceId);
-                session.Dispose();
-                raceWinner.TouchAccess();
-                return BuildStatus(raceWinner);
+                var raceWinner = FindSessionByLoadedPath(fullPath);
+                if (raceWinner is not null)
+                {
+                    _logger.LogInformation(
+                        "workspace_load: race lost; returning winner '{WorkspaceId}' for path '{Path}' instead of new '{NewId}'",
+                        raceWinner.WorkspaceId,
+                        fullPath,
+                        workspaceId);
+                    session.Dispose();
+                    raceWinner.TouchAccess();
+                    return BuildStatus(raceWinner);
+                }
             }
 
             if (!_sessions.TryAdd(workspaceId, session))
@@ -1063,7 +1081,14 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         WorkspaceCacheEntry? CachedEntry,
         bool MetadataReferencesStillStable);
 
-    private async Task LoadIntoSessionAsync(WorkspaceSession session, string path, CancellationToken ct)
+    private Task LoadIntoSessionAsync(WorkspaceSession session, string path, CancellationToken ct)
+        => LoadIntoSessionAsync(session, path, globalProperties: null, ct);
+
+    private async Task LoadIntoSessionAsync(
+        WorkspaceSession session,
+        string path,
+        IDictionary<string, string>? globalProperties,
+        CancellationToken ct)
     {
         await session.LoadLock.WaitAsync(ct).ConfigureAwait(false);
         // autoreload-cascade-stdio-host-crash: build the new workspace + diagnostics queue into
@@ -1081,7 +1106,23 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         try
         {
             MsBuildInitializer.EnsureInitialized();
-            newWorkspace = MSBuildWorkspace.Create();
+            // selfhosted-shadow-copy-analyzer-reference-test-fails: when caller passes MSBuild
+            // global properties (e.g. Configuration=Release), thread them into MSBuildWorkspace
+            // so ProjectReference OutputItemType="Analyzer" entries resolve against the right
+            // bin/<config>/ tree. Without this, the default Configuration=Debug evaluation
+            // drops analyzer references on Release-only checkouts (CI runners) because the
+            // Debug TargetPath does not exist on disk.
+            newWorkspace = (globalProperties is { Count: > 0 })
+                ? MSBuildWorkspace.Create(globalProperties)
+                : MSBuildWorkspace.Create();
+            if (globalProperties is { Count: > 0 })
+            {
+                _logger.LogInformation(
+                    "Workspace {WorkspaceId}: created MSBuildWorkspace with {Count} global property override(s): {Properties}",
+                    session.WorkspaceId,
+                    globalProperties.Count,
+                    string.Join(", ", globalProperties.Select(kv => $"{kv.Key}={kv.Value}")));
+            }
             newDiagnostics = new ConcurrentQueue<DiagnosticDto>();
             var fullPath = path;
             var diagnosticsRef = newDiagnostics; // capture for the handler closure below
@@ -1124,7 +1165,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // by (solution, sdk) here as a candidate-set probe. The probe is best-effort: any
             // failure leaves cachedCandidate null and the cold path runs unchanged.
             CachedSolutionProbe? cachedProbe = null;
-            if (_cacheStore is not null)
+            // Skip cache probe when caller passed global property overrides — different
+            // Configuration / RuntimeIdentifier / etc. produce different MSBuild graph hashes
+            // and the post-load comparison would invalidate any hit anyway. Probing under
+            // overrides also risks short-circuiting the restore-race wait against a graph that
+            // was captured under different globals.
+            if (_cacheStore is not null && globalProperties is not { Count: > 0 })
             {
                 cachedProbe = await TryProbeWorkspaceCacheAsync(fullPath, ct).ConfigureAwait(false);
             }
