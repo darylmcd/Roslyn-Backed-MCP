@@ -85,6 +85,30 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task Add_Project_Reference_Preview_Rejects_Self_Reference_And_Cycle()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var selfReference = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            ProjectMutationService.PreviewAddProjectReferenceAsync(
+                workspace.WorkspaceId,
+                new AddProjectReferenceDto("SampleLib", "SampleLib"),
+                CancellationToken.None));
+
+        StringAssert.Contains(selfReference.Message, "cannot reference itself");
+
+        // SampleApp already references SampleLib in the fixture. Adding the reverse edge
+        // SampleLib -> SampleApp would create a two-project cycle.
+        var cycle = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            ProjectMutationService.PreviewAddProjectReferenceAsync(
+                workspace.WorkspaceId,
+                new AddProjectReferenceDto("SampleLib", "SampleApp"),
+                CancellationToken.None));
+
+        StringAssert.Contains(cycle.Message, "cycle");
+    }
+
+    [TestMethod]
     public async Task Set_Project_Property_Preview_And_Apply_Updates_Isolated_Project_File()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);

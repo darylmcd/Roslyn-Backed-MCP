@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -111,15 +112,20 @@ public sealed class ProjectMutationService : IProjectMutationService
 
     public Task<RefactoringPreviewDto> PreviewAddProjectReferenceAsync(string workspaceId, AddProjectReferenceDto request, CancellationToken ct)
     {
-        return PreviewProjectMutationAsync(workspaceId, request.ProjectName, document =>
-        {
-            var project = ResolveProject(workspaceId, request.ProjectName);
-            var referencedProject = ResolveProject(workspaceId, request.ReferencedProjectName);
-            if (string.IsNullOrWhiteSpace(project.FilePath) || string.IsNullOrWhiteSpace(referencedProject.FilePath))
-            {
-                throw new InvalidOperationException("Both projects must have a file path on disk.");
-            }
+        var project = ResolveProject(workspaceId, request.ProjectName);
+        var referencedProject = ResolveProject(workspaceId, request.ReferencedProjectName);
+        var roslynProject = ResolveRoslynProject(workspaceId, request.ProjectName);
+        var referencedRoslynProject = ResolveRoslynProject(workspaceId, request.ReferencedProjectName);
 
+        ValidateProjectReferenceCanBeAdded(roslynProject, referencedRoslynProject);
+
+        if (string.IsNullOrWhiteSpace(project.FilePath) || string.IsNullOrWhiteSpace(referencedProject.FilePath))
+        {
+            throw new InvalidOperationException("Both projects must have a file path on disk.");
+        }
+
+        return PreviewProjectMutationAsync(workspaceId, project, document =>
+        {
             var relativePath = Path.GetRelativePath(
                 Path.GetDirectoryName(project.FilePath)!,
                 referencedProject.FilePath);
@@ -530,6 +536,59 @@ public sealed class ProjectMutationService : IProjectMutationService
                    string.Equals(project.Name, projectName, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(project.FilePath, projectName, StringComparison.OrdinalIgnoreCase))
                ?? throw new InvalidOperationException($"Project not found: {projectName}");
+    }
+
+    private Project ResolveRoslynProject(string workspaceId, string projectName)
+    {
+        return _workspace.GetProject(workspaceId, projectName)
+               ?? throw new InvalidOperationException($"Project not found: {projectName}");
+    }
+
+    private static void ValidateProjectReferenceCanBeAdded(Project project, Project referencedProject)
+    {
+        if (project.Id == referencedProject.Id)
+        {
+            throw new InvalidOperationException(
+                $"Project '{project.Name}' cannot reference itself.");
+        }
+
+        if (WouldCreateProjectReferenceCycle(project, referencedProject))
+        {
+            throw new InvalidOperationException(
+                $"Adding a project reference from '{project.Name}' to '{referencedProject.Name}' would create a project-reference cycle.");
+        }
+    }
+
+    private static bool WouldCreateProjectReferenceCycle(Project project, Project referencedProject)
+    {
+        var visited = new HashSet<ProjectId>();
+        var stack = new Stack<Project>();
+        stack.Push(referencedProject);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (!visited.Add(current.Id))
+            {
+                continue;
+            }
+
+            if (current.Id == project.Id)
+            {
+                return true;
+            }
+
+            foreach (var reference in current.ProjectReferences)
+            {
+                var next = current.Solution.GetProject(reference.ProjectId);
+                if (next is not null)
+                {
+                    stack.Push(next);
+                }
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeInclude(string? include)
