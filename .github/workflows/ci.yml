@@ -24,9 +24,17 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
-    # Current PR run is ~12 min (test suite dominates). 25 min gives headroom for
-    # runner variability without letting a hung test burn the 6-hour default.
+    # Hybrid runner model — see docs/self-hosted-runner.md.
+    # Non-fork pull_request events run on the maintainer's self-hosted Windows
+    # runner (faster wall-clock; ~2-3min vs ~10min on hosted Linux). Fork PRs,
+    # workflow_dispatch, and scheduled runs stay on GitHub-hosted Linux to
+    # preserve the security model (no fork-PR code on the maintainer's box) and
+    # to keep coverage-collection (dispatch/schedule) artifacts consistent across
+    # runs.
+    runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
+    # Current PR run is ~12 min on hosted Linux (~2-3min on self-hosted Windows).
+    # 25 min gives headroom for runner variability without letting a hung test
+    # burn the 6-hour default.
     timeout-minutes: 25
 
     steps:
@@ -46,26 +54,30 @@ jobs:
       - name: Detect docs-only pull request
         id: detect
         if: github.event_name == 'pull_request'
-        shell: bash
+        # Was shell: bash. Switched to pwsh because the self-hosted Windows
+        # runner under LocalSystem can't invoke C:\Windows\System32\bash.EXE
+        # (WSL refuses LocalSystem). pwsh is available on both hosted ubuntu
+        # and self-hosted Windows; same script body works on both.
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          pr="${{ github.event.pull_request.number }}"
-          changed=$(gh pr diff "$pr" --name-only)
-          echo "Changed files:"
-          echo "$changed"
-          if [ -z "$changed" ]; then
-            echo "Empty diff — treating as non-docs-only."
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          $pr = "${{ github.event.pull_request.number }}"
+          $changed = (gh pr diff $pr --name-only) -split "`n" | Where-Object { $_ -ne '' }
+          Write-Host "Changed files:"
+          $changed | ForEach-Object { Write-Host "  $_" }
+          if ($changed.Count -eq 0) {
+            Write-Host "Empty diff - treating as non-docs-only."
+            "docs_only=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             exit 0
-          fi
-          non_docs=$(echo "$changed" | grep -vE '^(.*\.md|ai_docs/.*\.json)$' || true)
-          if [ -z "$non_docs" ]; then
-            echo "docs_only=true" >> "$GITHUB_OUTPUT"
-            echo "::notice title=Docs-only PR::All changed files match **/*.md or ai_docs/**/*.json — skipping verify-release.ps1 and artifact uploads."
-          else
-            echo "docs_only=false" >> "$GITHUB_OUTPUT"
-          fi
+          }
+          $nonDocs = $changed | Where-Object { $_ -notmatch '^(.*\.md|ai_docs/.*\.json)$' }
+          if (-not $nonDocs) {
+            "docs_only=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host "::notice title=Docs-only PR::All changed files match **/*.md or ai_docs/**/*.json - skipping verify-release.ps1 and artifact uploads."
+          } else {
+            "docs_only=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
 
       - name: Set up .NET
         if: steps.detect.outputs.docs_only != 'true'

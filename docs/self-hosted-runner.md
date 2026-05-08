@@ -67,6 +67,16 @@ $svc = Get-Service | Where-Object { $_.Name -like 'actions.runner.darylmcd-Rosly
 Start-Service -Name $svc.Name
 ```
 
+**If the service refuses to start under the default `NETWORK SERVICE` account** (timeout, "cannot start in a timely fashion"), switch it to `LocalSystem` instead. The runner directory under a user profile path can have ACL quirks that block `NETWORK SERVICE` despite the auto-granted permissions:
+
+1. Open `services.msc` (Win+R → `services.msc`).
+2. Find **GitHub Actions Runner (darylmcd-Roslyn-Backed-MCP.darylmcd-windows-dev)**.
+3. Right-click → Properties → Log On tab.
+4. Switch from "This account" (`NT AUTHORITY\NETWORK SERVICE`) to **"Local System account"**.
+5. Apply, then start the service.
+
+`LocalSystem` has machine-wide privileges so it bypasses the user-profile-path ACL issue. The maintainer-only repo + fork-gated runs-on conditional means LocalSystem isn't a meaningful escalation here (LocalSystem already runs anything the maintainer asks of it; the security boundary is at the workflow YAML, not at the service account).
+
 To stop / uninstall later, manage the service via standard Windows tooling:
 
 ```powershell
@@ -102,13 +112,15 @@ When a job is running on it: `status: "online"`, `busy: true`.
 
 ## Activation
 
-The CI workflow (`.github/workflows/ci.yml`) currently uses `runs-on: ubuntu-latest` for all runs. To activate the hybrid model, change the validate job's `runs-on:` line to the conditional shape:
+**Active as of 2026-05-08.** The CI workflow (`.github/workflows/ci.yml`) uses this conditional:
 
 ```yaml
 jobs:
   validate:
-    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || fromJSON('["self-hosted", "roslynmcp-dev"]') }}
+    runs-on: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork && fromJSON('["self-hosted", "roslynmcp-dev"]') || 'ubuntu-latest' }}
 ```
+
+The conditional says: ONLY for non-fork pull_request events, route to self-hosted. Everything else (workflow_dispatch, schedule, fork PRs) stays on `ubuntu-latest`. This preserves coverage-collection consistency on dispatch/schedule runs (which the workflow only does on hosted Linux) and the security boundary on fork PRs.
 
 **Pre-activation checklist:**
 
