@@ -94,8 +94,8 @@
       "scheduleHint": null,
       "fanoutEstimate": 1,
       "fanoutOversize": false,
-      "branch": "remediation/symbol-relationships-return-token-bucket-mix",
-      "worktreePath": "C:\\Code-Repo\\Roslyn-Backed-MCP\\.worktrees\\symbol-relationships-return-token-bucket-mix",
+      "branch": null,
+      "worktreePath": null,
       "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/571",
       "mergedAt": "2026-05-08T19:40:48Z",
       "notes": "Shipped as PR #571 (squash 9f662a805699469ed42694fc0781dbc16df98539). Routed symbol_relationships relationship buckets through the promoted declaring-member locator and added return-type-token promotion regression coverage."
@@ -103,7 +103,7 @@
     {
       "id": "scaffold-test-batch-nullable-constructor-output",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["scaffold-test-batch-nullable-constructor-output"],
       "productionFilesTouched": 1,
       "testFilesAdded": 1,
@@ -115,9 +115,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/575",
+      "mergedAt": "2026-05-08T21:17:14Z",
+      "notes": "Shipped as PR #575 (squash fb74e9323d0a0f1ba3a0faf03facafaf83b086ce). Normalized nullable constructor-argument synthesis so scaffolded tests emit compile-safe expressions for nullable concrete and interface parameters."
     },
     {
       "id": "scaffold-test-internal-target-accessibility",
@@ -141,7 +141,7 @@
     {
       "id": "validate-recent-git-changes-timeout",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["validate-recent-git-changes-timeout"],
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
@@ -153,14 +153,14 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/576",
+      "mergedAt": "2026-05-08T21:21:04Z",
+      "notes": "Shipped as PR #576 (squash f8fc624b1cb69f611b217629143eeb652bab2bab). Added internal phase budgets and retryable timeout envelopes for validate_recent_git_changes while preserving caller cancellation."
     },
     {
       "id": "promotion-scorecard-20260427-review",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["promotion-scorecard-20260427-review"],
       "productionFilesTouched": 0,
       "testFilesAdded": 0,
@@ -172,14 +172,14 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Docs-only decision note. Do not flip catalog tiers in this initiative."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/573",
+      "mergedAt": "2026-05-08T21:10:48Z",
+      "notes": "Shipped as PR #573 (squash 09dfe2180ef9309da96148b982584699175101d5). Recorded the 2026-04-27 promotion-scorecard decision note without flipping catalog tiers."
     },
     {
       "id": "dry-run-preview-side-effect-audit",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["dry-run-preview-side-effect-audit"],
       "productionFilesTouched": 0,
       "testFilesAdded": 1,
@@ -191,9 +191,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Evidence-gathering initiative. Split targeted implementation rows only if the audit confirms real preview side effects."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/574",
+      "mergedAt": "2026-05-08T21:11:10Z",
+      "notes": "Shipped as PR #574 (squash d34643b7c2e7443a2f9345c4ba479dc982c377c4). Added preview side-effect audit evidence and focused tests; no workspace or disk mutations confirmed beyond preview-token storage."
     },
     {
       "id": "change-signature-reorder-preview",

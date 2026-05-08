@@ -108,7 +108,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #575, 2026-05-08) |
 | Priority | Medium |
 | Backlog rows closed | `scaffold-test-batch-nullable-constructor-output` |
 | Diagnosis | Batch scaffolding resolves target constructor args at `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs:92` and `:1078`. `BuildArgExpression` at `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs:1166` uses the display name of the nullable symbol directly, so nullable concrete classes can become invalid expressions like `new WorkspaceManagerOptions?()`. Existing tests cover normal concrete and interface args, not nullable concrete parameters. |
@@ -146,7 +146,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #576, 2026-05-08) |
 | Priority | Medium |
 | Backlog rows closed | `validate-recent-git-changes-timeout` |
 | Diagnosis | `src/RoslynMcp.Roslyn/Services/WorkspaceValidationService.cs:60` collects git changes and then runs compile, diagnostics, related-test discovery, and optional tests. `CollectGitChangedFilesAsync` starts `git status` at `src/RoslynMcp.Roslyn/Services/WorkspaceValidationService.cs:357` and waits with the caller token at `:383`, but there is no internal progress or phase timeout envelope for slow validation phases. The wrapper at `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs:64` catches most exceptions but lets `OperationCanceledException` propagate, matching the timeout symptom. |
@@ -165,7 +165,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #573, 2026-05-08) |
 | Priority | Low |
 | Backlog rows closed | `promotion-scorecard-20260427-review` |
 | Diagnosis | `docs/experimental-promotion-analysis.md:58` still says to repopulate Tier 1 candidates after the next audit rollup, while `.claude/skills/promote-tier/SKILL.md:16` documents the newer aggregated scorecard quorum workflow. Catalog samples show many formerly listed candidates are no longer pending in the same form, such as `get_operations` already stable in `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Analysis.cs:47`, while `server_catalog_tools_page` remains experimental in `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Resources.cs:9`. |
@@ -184,7 +184,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #574, 2026-05-08) |
 | Priority | Low |
 | Backlog rows closed | `dry-run-preview-side-effect-audit` |
 | Diagnosis | Preview wrappers such as `src/RoslynMcp.Host.Stdio/Tools/RefactoringTools.cs:23` are read-side entry points, while apply paths in `src/RoslynMcp.Roslyn/Services/RefactoringService.cs:292` and `src/RoslynMcp.Roslyn/Services/EditService.cs:36` clearly mutate workspace and disk state. The backlog evidence is explicitly weak, so the next deliverable should prove or reject side effects rather than change tool behavior blindly. |
