@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -10,6 +12,7 @@ namespace RoslynMcp.Tests;
 /// unavailable or the solution is outside a git repo.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public sealed class ValidateRecentGitChangesTests : TestBase
 {
     private static WorkspaceValidationService _validationService = null!;
@@ -92,6 +95,59 @@ public sealed class ValidateRecentGitChangesTests : TestBase
 
             // OverallStatus must surface — the bundle ran end-to-end.
             Assert.IsFalse(string.IsNullOrWhiteSpace(result.OverallStatus));
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    [TestMethod]
+    public async Task ValidateRecentGitChangesAsync_SlowValidationPhase_ReturnsRetryableTimeoutWithGitScope()
+    {
+        if (!IsGitAvailable())
+        {
+            Assert.Inconclusive("git not on PATH — cannot run the timeout-scope test.");
+            return;
+        }
+
+        var solutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(solutionPath)!;
+        InitializeGitRepo(solutionDir);
+        StageAndCommitAll(solutionDir);
+
+        var touchedFile = Path.Combine(solutionDir, "SampleLib", "AnimalService.cs");
+        await File.AppendAllTextAsync(touchedFile, $"{Environment.NewLine}// timeout scope {Guid.NewGuid():N}{Environment.NewLine}");
+
+        var status = await WorkspaceManager.LoadAsync(solutionPath, CancellationToken.None);
+        var workspaceId = status.WorkspaceId;
+        var timeoutService = new WorkspaceValidationService(
+            new SlowCompileCheckService(),
+            DiagnosticService,
+            TestDiscoveryService,
+            TestRunnerService,
+            WorkspaceManager,
+            ChangeTracker,
+            gitStatusTimeout: TimeSpan.FromSeconds(5),
+            validationPhaseTimeout: TimeSpan.FromMilliseconds(25));
+
+        try
+        {
+            var result = await timeoutService.ValidateRecentGitChangesAsync(
+                workspaceId, runTests: false, CancellationToken.None);
+
+            Assert.AreEqual("timeout", result.OverallStatus);
+            Assert.AreEqual(1, result.ChangedFilePaths.Count,
+                $"Timeout envelope should keep the git-derived changed-file set; got [{string.Join("; ", result.ChangedFilePaths)}].");
+            Assert.AreEqual(Path.GetFullPath(touchedFile), Path.GetFullPath(result.ChangedFilePaths[0]));
+            Assert.IsTrue(result.Warnings.Any(w => w.Contains("compile_check", StringComparison.Ordinal)
+                && w.Contains("retryable=true", StringComparison.Ordinal)),
+                $"Expected retryable compile_check timeout warning; got [{string.Join("; ", result.Warnings)}].");
+            Assert.IsNotNull(result.TestRunResult?.FailureEnvelope,
+                "Timeout result should include a structured retry envelope.");
+            Assert.AreEqual("Timeout", result.TestRunResult.FailureEnvelope.ErrorKind);
+            Assert.IsTrue(result.TestRunResult.FailureEnvelope.IsRetryable);
+            StringAssert.Contains(result.TestRunResult.FailureEnvelope.Summary, "compile_check");
         }
         finally
         {
@@ -283,6 +339,18 @@ public sealed class ValidateRecentGitChangesTests : TestBase
                 break;
             }
             current = current.Parent;
+        }
+    }
+
+    private sealed class SlowCompileCheckService : ICompileCheckService
+    {
+        public async Task<CompileCheckDto> CheckAsync(
+            string workspaceId,
+            CompileCheckOptions options,
+            CancellationToken ct)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            throw new InvalidOperationException("unreachable");
         }
     }
 }
