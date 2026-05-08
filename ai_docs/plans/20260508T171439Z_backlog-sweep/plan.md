@@ -89,7 +89,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #571, 2026-05-08) |
 | Priority | Medium |
 | Backlog rows closed | `symbol-relationships-return-token-bucket-mix` |
 | Diagnosis | `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs:144` promotes a return-type token to the declaring member for the response symbol, but `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs:154` through `:157` still calls reference, implementation, base, and override services with the original locator. The wrapper at `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:389` advertises the promoted-member behavior. |

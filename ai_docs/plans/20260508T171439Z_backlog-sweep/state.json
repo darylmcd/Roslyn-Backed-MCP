@@ -84,7 +84,7 @@
     {
       "id": "symbol-relationships-return-token-bucket-mix",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["symbol-relationships-return-token-bucket-mix"],
       "productionFilesTouched": 1,
       "testFilesAdded": 1,
@@ -94,11 +94,11 @@
       "scheduleHint": null,
       "fanoutEstimate": 1,
       "fanoutOversize": false,
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "branch": "remediation/symbol-relationships-return-token-bucket-mix",
+      "worktreePath": "C:\\Code-Repo\\Roslyn-Backed-MCP\\.worktrees\\symbol-relationships-return-token-bucket-mix",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/571",
+      "mergedAt": "2026-05-08T19:40:48Z",
+      "notes": "Shipped as PR #571 (squash 9f662a805699469ed42694fc0781dbc16df98539). Routed symbol_relationships relationship buckets through the promoted declaring-member locator and added return-type-token promotion regression coverage."
     },
     {
       "id": "scaffold-test-batch-nullable-constructor-output",
