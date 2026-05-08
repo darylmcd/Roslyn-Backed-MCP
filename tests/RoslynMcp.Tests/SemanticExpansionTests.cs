@@ -185,4 +185,35 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
         Assert.IsTrue(relationships.References.Count > 0);
         Assert.IsTrue(relationships.Implementations.Count > 0);
     }
+
+    [TestMethod]
+    public async Task Symbol_Relationships_ReturnTypeToken_UsesPromotedMemberForBuckets()
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var backlogFile = solution.Projects.SelectMany(project => project.Documents).First(document => document.Name == "BacklogSamples.cs");
+        var lines = await File.ReadAllLinesAsync(backlogFile.FilePath!, CancellationToken.None).ConfigureAwait(false);
+        var lineIndex = Array.FindIndex(lines, line => line.Contains("Task<bool> ReturnsBoolAsync", StringComparison.Ordinal));
+        Assert.IsTrue(lineIndex >= 0, "Expected BacklogAsyncSample.ReturnsBoolAsync fixture.");
+        var column = lines[lineIndex].IndexOf("Task<bool>", StringComparison.Ordinal) + 1;
+
+        var locator = SymbolLocator.BySource(backlogFile.FilePath!, lineIndex + 1, column);
+        var promoted = await SymbolRelationshipService.GetSymbolRelationshipsAsync(
+            WorkspaceId,
+            locator,
+            preferDeclaringMember: true,
+            CancellationToken.None);
+        var literalType = await SymbolRelationshipService.GetSymbolRelationshipsAsync(
+            WorkspaceId,
+            locator,
+            preferDeclaringMember: false,
+            CancellationToken.None);
+
+        Assert.IsNotNull(promoted);
+        Assert.IsNotNull(literalType);
+        Assert.AreEqual("ReturnsBoolAsync", promoted.Symbol.Name);
+        Assert.AreNotEqual("ReturnsBoolAsync", literalType.Symbol.Name,
+            "Control check: disabling promotion should inspect the return type token literally.");
+        Assert.IsTrue(literalType.References.Count > promoted.References.Count,
+            "Promoted symbol_relationships buckets must use the promoted member locator, not the original Task<T> token.");
+    }
 }
