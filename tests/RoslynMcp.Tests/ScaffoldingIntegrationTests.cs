@@ -631,6 +631,88 @@ public class PlaywrightFlowTests
     }
 
     [TestMethod]
+    public async Task Scaffold_Test_Batch_NullableCtorArgs_EmitCompileSafeExpressions()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var fixturePath = workspace.GetPath("SampleLib", "Dog.cs");
+        await File.AppendAllTextAsync(fixturePath, """
+
+public interface INullableSink
+{
+    void Record(string value);
+}
+
+public sealed class NullableOption
+{
+    public string Value { get; } = string.Empty;
+}
+
+public sealed class RequiredOption
+{
+    public RequiredOption(string value)
+    {
+        Value = value;
+    }
+
+    public string Value { get; }
+}
+
+public sealed class NullableConstructorTarget
+{
+    private readonly NullableOption? _option;
+    private readonly RequiredOption? _required;
+    private readonly INullableSink? _sink;
+
+    public NullableConstructorTarget(
+        NullableOption? option,
+        RequiredOption? required,
+        INullableSink? sink)
+    {
+        _option = option;
+        _required = required;
+        _sink = sink;
+    }
+
+    public string Describe()
+    {
+        _sink?.Record(_option?.Value ?? _required?.Value ?? string.Empty);
+        return _option?.Value ?? _required?.Value ?? string.Empty;
+    }
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestBatchAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestBatchDto(
+                "SampleLib.Tests",
+                [new ScaffoldTestBatchTargetDto("NullableConstructorTarget", "Describe")],
+                "auto"),
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+            preview.PreviewToken,
+            "scaffold_test_batch_apply",
+            CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var generatedPath = workspace.GetPath("SampleLib.Tests", "NullableConstructorTargetGeneratedTests.cs");
+        var contents = await File.ReadAllTextAsync(generatedPath, CancellationToken.None);
+
+        StringAssert.Contains(contents, "new NullableOption()",
+            "Nullable concrete ctor arg with an accessible parameterless ctor should unwrap the annotation before object creation.");
+        Assert.IsFalse(contents.Contains("new NullableOption?()"),
+            "Scaffold must not emit invalid nullable object creation syntax.");
+        StringAssert.Contains(contents, "default(RequiredOption?)!",
+            "Nullable concrete ctor arg without a parameterless ctor should stay compile-safe and keep the nullable annotation.");
+        StringAssert.Contains(contents, "default(INullableSink?)!",
+            "Nullable interface ctor arg should use the existing compile-safe TODO placeholder shape.");
+    }
+
+    [TestMethod]
     public async Task Scaffold_Test_DottedTargetTypeName_TopLevel_Yields_SingleIdentifier_ClassName()
     {
         // Regression for scaffold-test-preview-dotted-identifier: callers who hit the

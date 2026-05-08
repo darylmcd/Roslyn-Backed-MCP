@@ -1166,6 +1166,9 @@ public sealed class ScaffoldingService : IScaffoldingService
     internal static string BuildArgExpression(ITypeSymbol parameterType, bool nsubstituteAvailable = false)
     {
         var displayName = parameterType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+        var constructibleDisplayName = parameterType
+            .WithNullableAnnotation(NullableAnnotation.NotAnnotated)
+            .ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
 
         if (parameterType.SpecialType == SpecialType.System_String)
         {
@@ -1203,7 +1206,7 @@ public sealed class ScaffoldingService : IScaffoldingService
             (parameterType.TypeKind == TypeKind.Class && parameterType.IsAbstract))
         {
             return nsubstituteAvailable
-                ? $"NSubstitute.Substitute.For<{displayName}>()"
+                ? $"NSubstitute.Substitute.For<{constructibleDisplayName}>()"
                 : $"default({displayName})! /* TODO: provide a test double for {displayName} */";
         }
 
@@ -1214,7 +1217,7 @@ public sealed class ScaffoldingService : IScaffoldingService
             !concrete.IsAbstract &&
             HasAccessibleParameterlessCtor(concrete))
         {
-            return $"new {displayName}()";
+            return $"new {constructibleDisplayName}()";
         }
 
         // Concrete class without a parameterless ctor: can't safely construct. Emit a TODO so
@@ -1224,7 +1227,7 @@ public sealed class ScaffoldingService : IScaffoldingService
             !concreteNoCtor.IsAbstract)
         {
             return nsubstituteAvailable
-                ? $"NSubstitute.Substitute.For<{displayName}>()"
+                ? $"NSubstitute.Substitute.For<{constructibleDisplayName}>()"
                 : $"default({displayName})! /* TODO: provide a test double for {displayName} */";
         }
 
