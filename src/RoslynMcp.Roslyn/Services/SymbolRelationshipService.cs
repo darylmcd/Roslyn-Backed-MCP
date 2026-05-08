@@ -124,9 +124,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         }
 
         var baseMembers = SymbolServiceHelpers.GetBaseMembers(symbol).Select(baseMember => SymbolMapper.ToDto(baseMember, solution)).ToList();
-        var overrides = (await SymbolFinder.FindOverridesAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false))
-            .Select(overrideSymbol => SymbolMapper.ToDto(overrideSymbol, solution))
-            .ToList();
+        var overrides = await _referenceService.FindOverridesAsync(workspaceId, locator, ct).ConfigureAwait(false);
 
         return new MemberHierarchyDto(SymbolMapper.ToDto(symbol, solution), baseMembers, overrides);
     }

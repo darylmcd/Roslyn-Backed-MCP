@@ -2,6 +2,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using Microsoft.Extensions.Logging;
 
@@ -154,7 +155,9 @@ public sealed class ReferenceService : IReferenceService
         // yield the same (complete) result set.
         var promoted = PromoteToVirtualRoot(symbol);
 
-        var overrides = await SymbolFinder.FindOverridesAsync(promoted, solution, cancellationToken: ct).ConfigureAwait(false);
+        var overrides = (await SymbolFinder.FindOverridesAsync(promoted, solution, cancellationToken: ct).ConfigureAwait(false))
+            .ToList();
+        overrides.AddRange(await FindInterfaceMemberImplementationsAsync(promoted, solution, ct).ConfigureAwait(false));
 
         // find-base-members-vs-member-hierarchy-metadata-drift: return SymbolDto instead of
         // LocationDto so metadata-boundary members (e.g. IEquatable<T>.Equals implementations
@@ -168,6 +171,57 @@ public sealed class ReferenceService : IReferenceService
             .ThenBy(d => d.StartColumn ?? int.MaxValue)
             .ThenBy(d => d.FullyQualifiedName, StringComparer.Ordinal)
             .ToList();
+    }
+
+    private static async Task<IReadOnlyList<ISymbol>> FindInterfaceMemberImplementationsAsync(
+        ISymbol symbol,
+        Solution solution,
+        CancellationToken ct)
+    {
+        if (!IsInterfaceMember(symbol))
+        {
+            return [];
+        }
+
+        var results = new List<ISymbol>();
+        foreach (var project in solution.Projects)
+        {
+            ct.ThrowIfCancellationRequested();
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null)
+            {
+                continue;
+            }
+
+            foreach (var syntaxTree in compilation.SyntaxTrees)
+            {
+                ct.ThrowIfCancellationRequested();
+                var semanticModel = compilation.GetSemanticModel(syntaxTree);
+                var root = await syntaxTree.GetRootAsync(ct).ConfigureAwait(false);
+                foreach (var typeDeclaration in root.DescendantNodes().OfType<TypeDeclarationSyntax>())
+                {
+                    if (semanticModel.GetDeclaredSymbol(typeDeclaration, ct) is not INamedTypeSymbol type ||
+                        type.TypeKind == TypeKind.Interface)
+                    {
+                        continue;
+                    }
+
+                    var implementation = type.FindImplementationForInterfaceMember(symbol);
+                    if (implementation is not null)
+                    {
+                        results.Add(implementation);
+                    }
+                }
+            }
+        }
+
+        return results;
+    }
+
+    private static bool IsInterfaceMember(ISymbol symbol)
+    {
+        return symbol.ContainingType?.TypeKind == TypeKind.Interface
+            && symbol is IMethodSymbol or IPropertySymbol or IEventSymbol;
     }
 
     private static IReadOnlyList<LocationDto> OrderLocations(IReadOnlyList<LocationDto> dtos) =>
