@@ -645,3 +645,115 @@ Specific brainstorm focus areas at the time it runs:
 - **F3 — docs surface coverage:** are there other surfaces (NuGet README rendering, package badges, marketplace listings) we should be hitting?
 - **The schema lock-in concern from third-turn (Q1):** evidence-first review — open a recent audit report from `ai_docs/audit-reports/` and walk through it. Do the 8 required fields actually exist there in some form? Or are we declaring contracts for data the producer doesn't yet emit?
 - **Triage SLA enforcement:** what's the actual mechanism? "Weekly review" needs a forcing function or it slips.
+
+---
+
+## Fifth-turn: empirical findings from 2026-05-08 audit run
+
+After the fourth-turn updates landed, an adversarial-review subagent flagged two load-bearing concerns (LB-1: D2/F1 contradiction; LB-2: schema lock-in against zero empirical samples) plus five medium concerns. The user produced empirical evidence to test the concerns: a real `/mcp-server-stress` audit run against this repo (audit-id `20260508T154415Z`) producing a 15.5KB prose report, a 11KB scorecard JSON, and 9 fragment files in `backlog.d/` (7 from the audit, 2 added by the agent reviewing its own session logs). **These supersede speculative sections above where they conflict.**
+
+### E1 — Empirical schema validation (resolves LB-2)
+
+**Evidence on disk:** 9 well-formed fragments, all using the **existing 6-field schema** (`id`, `source_audit`, `source_repo`, `severity`, `area`, `anchors`) plus a tight body paragraph (finding + repro + proposed fix). All 9 are concrete, actionable, and ready for backlog inclusion without any field expansion. The intake skill consumed them cleanly via the documented Phase 0.5 fragment path.
+
+**Decision:** **Lock the existing 6-field schema as v1.** Q1's expansion to 8 required fields is over-spec. Specifically:
+
+| Q1 proposed field | Disposition | Rationale |
+|---|---|---|
+| `audit-run-id` | DROPPED — `source_audit` already serves this role | Empirical fragments use `source_audit: <ts>_<repo>_mcp-server-audit.md`; no separate run-id field needed. |
+| `finding-id-within-run` | DROPPED — `id` (the kebab-slug) is unique within the audit context | Empirical evidence: the 9 fragments have unique kebab IDs naturally; ordering inside one run isn't a triage need. |
+| **`server-version`** | **ADDED to fragment frontmatter** | Genuinely useful for triage; cheap to capture (`mcp__roslyn__server_info` already runs at audit start). One-line audit-prompt change to stamp it. |
+| `audited-workspace-shape` | DROPPED from per-fragment; ENRICHED in audit report §2 | Per-finding it's redundant (every finding from one run has identical shape). The audit report's §2 already captures workspace info ("5 projects, 583 documents, no diagnostics"); enrich with structured `workspace-shape:` block (projectCount, totalLOC, languages, hasGenerators, targetFrameworks). Fragments reference the audit by `source_audit`; readers join. |
+| `finding-summary` | DEFERRED to v2 | Empirical fragments' first body sentence already serves this role and is consistently short + concrete (e.g. *"`find_references` can report an ambiguous metadata-name result..."*). Marginal benefit, defer until intake actually wants explicit summary metadata. |
+| `repro-context` (structured: phase number, tool call sequence, last-N log lines) | DROPPED structured form; KEPT prose form | Empirical fragments embed repro in body prose (*"Repro: load X, call Y, response Z"*). That works. Forcing structure adds audit-prompt complexity for marginal triage benefit. |
+
+**Net schema for v1:** existing 6 fields + new `server-version` = **7 required fields.** All other Q1 expansions either dropped or deferred.
+
+**Cost-estimate impact:** schema work shrinks. The audit-prompt changes needed are small:
+1. Stamp `server-version` into every emitted fragment (one line at run start, propagate to all writes).
+2. Enrich §2 of the audit report with structured `workspace-shape:` block.
+
+These are minor edits to the audit prompt, not new infrastructure. **Probably folds into the existing pivot row #2 (issues output mode) rather than spawning a new row.**
+
+### E2 — Empirical reconciliation of D2/F1 contradiction (resolves LB-1)
+
+**Evidence on disk:** the 9 fragments produced excellent maintainer-side triage signal. They were:
+- Read in place by `eng/stage-review-inbox.ps1` (no network round-trip)
+- Consumed inline by `/backlog-intake` (no `gh` API calls)
+- Deleted at source after consumption (consume-and-track contract honored)
+- Rendered as 9 backlog rows in `ai_docs/backlog.md` in one local commit
+
+The maintainer flow is empirically excellent. **Issues would have added overhead** (one `gh issue create` per fragment, one `gh issue list` per intake call, label-state management, network dependency) **for marginal gain.** This validates the reviewer's M-5 (offline-capability is architectural, not preference) and reinforces user feedback (3) (*"its quicker to keep the fragments pattern local for us to consume"*).
+
+**Decision:** **the maintainer's local-fragment workflow is now empirically validated as the right shape for the maintainer use case.** It does NOT need to be replaced.
+
+What this means for the pivot:
+- **Reverses D1 (single path).** Two paths is correct: maintainer uses fragments locally; consumers (when/if they appear) file issues. The reviewer's M-5 was right and our D1 dismissal was wrong.
+- **Honestly reframes F1's credibility-signal premise.** With D2 (print mode) holding AND maintainer using fragments locally, the issue tracker will be populated only when a consumer manually files. That MIGHT happen; it might not. F1's credibility-signal value is conditional, not guaranteed. The pivot's load-bearing case shrinks to: *"if a consumer ever files, we want a clean reception path; everything else stays as-is."*
+- **F3's docs scope shrinks dramatically.** README mention of the skill: yes. Deep-dive 150-250-line doc explaining tiers, privacy, triage SLA: only valuable if community runs are expected. With reduced expectation, F3 collapses to a 20-30-line README section + an issue template. The "load-bearing for credibility signal" framing in F3 was never quite honest; this turn corrects it.
+
+**Cost-estimate impact (significant):** the pivot shrinks from 5 v1 rows + 1 stretch to **~3 rows + 1 stretch.**
+
+Refined row set:
+
+1. **Restore shipped skill location + rename to `mcp-server-surface-test`** — unchanged. Combines relocate-reversal with the rename. ~4 prod files + 3 tests.
+2. **Tiered runs (`--quick` + `--full`) + opportunistic GitHub Issues filing** — `print` mode default; `--auto-file` opt-in for `gh`-authenticated maintainers; **`server-version` added to fragment frontmatter**; **audit report §2 enriched with `workspace-shape:` block**; tier flag handling. The "issues output" piece is a thin layer over the existing fragment-emit, not a replacement. ~3-4 prod files + 1 test.
+3. **README + issue-template package** — small README section explaining the skill exists, what tiers do, what time they take; one issue template at `.github/ISSUE_TEMPLATE/mcp-server-surface-test-finding.yml`; no deep-dive doc, no triage doc, no csproj metadata changes (defer until volume signal). ~2 prod files + 0 tests.
+4. **`/publish-preflight` + scorecard aggregator extension (community-comment input)** — STRETCH, unchanged from prior. Defer.
+
+Dropped from prior estimate:
+- ~~`/backlog-intake` reshape (single-path)~~ — fragments stay; intake flow as-is. NO ROW.
+- ~~Maintainer triage workflow doc + label scheme~~ — issues come in irregularly; weekly batched-review-via-gh-cli is fine without infrastructure. NO ROW.
+- ~~Consumer-facing deep-dive doc~~ — collapsed into the slimmer README + issue template row.
+
+### E3 — Resolution of medium concerns from the adversarial review
+
+| Concern | Resolution |
+|---|---|
+| **M-1** Q3 maintainer detection forks problem | Defer until/unless we ship the auto-file path. Not load-bearing for v1 print-mode. |
+| **M-2** F3 invests in advertising friction-laden flow | Resolved by E2 — F3 scope collapsed; we're advertising "here's what this skill does" not "please file issues." |
+| **M-3** Cross-forge consumers need GitHub account | Acknowledged; print mode is the answer. Add a sentence to the README section. |
+| **M-4** Scorecard aggregator has zero community input under tier model | Resolved by E2 — community-quorum aggregation moves from "v1 with stretch" to "stretch row only, ship if ever needed." Aggregator stays single-path (maintainer scorecards). |
+| **M-5** D1 single-path assumes `gh` works for maintainer | Resolved by E2 — D1 reversed; fragments stay for maintainer. |
+
+### E4 — What did NOT survive contact with empirical evidence
+
+Being honest about prior decisions that should change:
+
+- **D1 (single path) is reversed.** Two paths: fragments for maintainer (offline-capable, fast, local), issues for consumers (when/if they file). Was the right architectural call all along; we over-rotated on tech-debt arguments in third turn.
+- **Q1 schema expansion is mostly dropped.** Schema-first design made us speculate; evidence-first review confirmed the existing 6 fields + `server-version` cover triage needs. The other 4 proposed fields were over-spec.
+- **F3 docs scope is reduced.** Big consumer-facing doc package was justified on a community-throughput premise that this run cannot validate (no community run yet, by definition). Smaller surface (README + template) covers the "we exist and we want findings if you have them" framing.
+- **Pivot cost is roughly halved.** From 5 v1 rows + 1 stretch to 3 v1 rows + 1 stretch. The work IS smaller because less of it is needed; not because we cut corners.
+
+### E5 — One new finding from this empirical pass
+
+The 2026-05-08 audit found 9 real bugs (1 P1, 8 P2) that need backlog rows independent of any design discussion. **They are concrete actionable work that's higher-priority than the pivot itself.** The P1 (`build-test-self-analyzer-file-lock`) is a self-hosting bug that breaks `build_workspace`/`test_run` for any consumer with the analyzer loaded — a production issue, not a stress-test artifact.
+
+Triage these 9 first via the next backlog sweep (or a focused mini-sweep on the P1). The pivot can wait until v1.36 or beyond. **The audit's existing pattern produced ship-ready evidence; that itself is a strong signal that the architecture is right and the pivot should be small.**
+
+### Brainstorm framing — UPDATED for fifth turn
+
+The brainstorm is no longer needed at the same scope. With LB-1 and LB-2 resolved by empirical evidence, the remaining open questions are narrower:
+
+1. **Tier scope sanity check** (F2): is `--quick` actually useful, or do we need `--smoke` (~30 sec)? Empirical run was a `--full` (~30+ min) — no quick-tier evidence yet. Worth a future test before tier infrastructure ships.
+2. **Auto-file path detail** (E2 row #2): when a `gh`-authenticated maintainer passes `--auto-file`, does it bypass the local fragment emit (issues only) or supplement it (both)? Default should probably be "supplement" — fragments AND issues — so maintainer's local intake flow is unchanged.
+3. **README section voice** (E2 row #3): "we exist; here's what we do" vs "please file findings; here's why it matters." The first is honest; the second is the credibility-signal pitch from F1 that didn't survive E2. Lean: voice #1.
+
+These can be answered without an adversarial-review session — they're scope-sanity-check questions, not architecture questions. **The brainstorm is downgraded from "required gate before sizing" to "optional sanity-check after the 9 audit findings ship."**
+
+### Net cost estimate — REVISED again after fifth turn
+
+Final shape after empirical validation:
+
+1. **Restore shipped skill location + rename to `mcp-server-surface-test`** (combined). ~4 prod files + 3 tests.
+2. **Tiered runs + opportunistic GitHub Issues filing + minor schema/§2 enrichment** (`server-version` field, structured `workspace-shape:` block). ~3-4 prod files + 1 test.
+3. **README + issue template** (slim consumer-facing surface). ~2 prod files + 0 tests.
+4. **`/publish-preflight` + scorecard aggregator community-comment input** (STRETCH). Defer until ever needed.
+
+**Total: 3 v1 rows + 1 stretch.** Down from 5 + 1 (fourth turn) and from 6 + 1 (third turn). Each shrink was honest — driven by reasoning or evidence, not by cutting corners.
+
+**Rows that fall OUT of the pivot:**
+- 9 bug-fix rows from the 2026-05-08 audit (these are NOT part of the pivot; they're concrete production work)
+- Future schema-add rows for `server-version` and §2 enrichment if they don't fold into row #2
+
+The pivot is now small enough that the brainstorm is genuinely optional. We could plan and ship it directly, or layer it after the 9 bug-fix rows ship in v1.35.x patches. Either is reasonable.
