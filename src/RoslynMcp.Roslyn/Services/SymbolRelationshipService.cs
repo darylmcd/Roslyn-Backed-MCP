@@ -139,7 +139,11 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             return null;
         }
 
+        var originalSymbol = symbol;
         symbol = await PromoteToDeclaringMemberIfRequestedAsync(solution, locator, symbol, preferDeclaringMember, ct).ConfigureAwait(false);
+        var relationshipLocator = SymbolEqualityComparer.Default.Equals(originalSymbol, symbol)
+            ? locator
+            : CreateLocatorForPromotedSymbol(symbol, locator);
 
         var definitions = new List<LocationDto>();
         foreach (var location in symbol.Locations.Where(location => location.IsInSource))
@@ -149,10 +153,10 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             definitions.Add(SymbolMapper.ToLocationDto(location, symbol, preview));
         }
 
-        var referencesTask = _referenceService.FindReferencesAsync(workspaceId, locator, ct);
-        var implementationsTask = _referenceService.FindImplementationsAsync(workspaceId, locator, ct);
-        var baseMembersTask = _referenceService.FindBaseMembersAsync(workspaceId, locator, ct);
-        var overridesTask = _referenceService.FindOverridesAsync(workspaceId, locator, ct);
+        var referencesTask = _referenceService.FindReferencesAsync(workspaceId, relationshipLocator, ct);
+        var implementationsTask = _referenceService.FindImplementationsAsync(workspaceId, relationshipLocator, ct);
+        var baseMembersTask = _referenceService.FindBaseMembersAsync(workspaceId, relationshipLocator, ct);
+        var overridesTask = _referenceService.FindOverridesAsync(workspaceId, relationshipLocator, ct);
         await Task.WhenAll(referencesTask, implementationsTask, baseMembersTask, overridesTask).ConfigureAwait(false);
 
         return new SymbolRelationshipsDto(
@@ -162,6 +166,26 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             Implementations: await implementationsTask.ConfigureAwait(false) ?? [],
             BaseMembers: await baseMembersTask.ConfigureAwait(false) ?? [],
             Overrides: await overridesTask.ConfigureAwait(false) ?? []);
+    }
+
+    private static SymbolLocator CreateLocatorForPromotedSymbol(ISymbol symbol, SymbolLocator fallback)
+    {
+        var location = symbol.Locations.FirstOrDefault(l => l.IsInSource);
+        if (location is null)
+        {
+            return fallback;
+        }
+
+        var lineSpan = location.GetLineSpan();
+        if (string.IsNullOrWhiteSpace(lineSpan.Path))
+        {
+            return fallback;
+        }
+
+        return SymbolLocator.BySource(
+            lineSpan.Path,
+            lineSpan.StartLinePosition.Line + 1,
+            lineSpan.StartLinePosition.Character + 1);
     }
 
     public async Task<SignatureHelpDto?> GetSignatureHelpAsync(string workspaceId, SymbolLocator locator, bool preferDeclaringMember, CancellationToken ct)
