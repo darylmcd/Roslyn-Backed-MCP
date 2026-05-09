@@ -68,6 +68,7 @@ internal sealed class TestServiceContainer
     public required ExceptionFlowService ExceptionFlowService { get; init; }
     public required WorkspaceWarmService WorkspaceWarmService { get; init; }
     public required WorkspaceDriftService WorkspaceDriftService { get; init; }
+    public required ParameterObjectService ParameterObjectService { get; init; }
 
     public static TestServiceContainer Create(ValidationServiceOptions validationOptions)
     {
@@ -281,7 +282,8 @@ internal sealed class TestServiceContainer
             WorkspaceWarmService = new WorkspaceWarmService(
                 workspaceManager,
                 NullLogger<WorkspaceWarmService>.Instance),
-            WorkspaceDriftService = new WorkspaceDriftService(workspaceManager)
+            WorkspaceDriftService = new WorkspaceDriftService(workspaceManager),
+            ParameterObjectService = new ParameterObjectService(workspaceManager, previewStore)
         };
     }
 }

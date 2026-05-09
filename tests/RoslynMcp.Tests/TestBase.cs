@@ -81,6 +81,7 @@ public abstract class TestBase
     protected static ExceptionFlowService ExceptionFlowService { get; private set; } = null!;
     protected static WorkspaceWarmService WorkspaceWarmService { get; private set; } = null!;
     protected static WorkspaceDriftService WorkspaceDriftService { get; private set; } = null!;
+    protected static ParameterObjectService ParameterObjectService { get; private set; } = null!;
 
     /// <summary>
     /// On-disk workspace cache store rooted under the test temp tree. Internal infrastructure
@@ -191,6 +192,7 @@ public abstract class TestBase
         ExceptionFlowService = services.ExceptionFlowService;
         WorkspaceWarmService = services.WorkspaceWarmService;
         WorkspaceDriftService = services.WorkspaceDriftService;
+        ParameterObjectService = services.ParameterObjectService;
 
         // workspace-cache-store-infrastructure: rooted in a per-assembly temp directory so
         // shared-fixture tests don't pollute the user's real ~/.roslyn-mcp/cache during runs.
