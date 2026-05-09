@@ -127,7 +127,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #584, 2026-05-09) |
 | Priority | Medium |
 | Backlog rows closed | `scaffold-test-internal-target-accessibility` |
 | Diagnosis | `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs:329` builds a scaffold for the requested target, and `ResolveTargetMethod` only warns for private methods at `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs:1121`. Internal target types and methods are treated as directly callable even when the test assembly lacks `InternalsVisibleTo`, leading to CS0122 after apply. |

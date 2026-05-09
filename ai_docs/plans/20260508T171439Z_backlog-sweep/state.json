@@ -122,7 +122,7 @@
     {
       "id": "scaffold-test-internal-target-accessibility",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["scaffold-test-internal-target-accessibility"],
       "productionFilesTouched": 1,
       "testFilesAdded": 1,
@@ -134,9 +134,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/584",
+      "mergedAt": "2026-05-09T14:25:00Z",
+      "notes": "Shipped as PR #584 (squash 57a34bb3e41e181f102e3ecab6ff40e7c8b80d92). Added IsAccessibleFromAssembly accessibility helper walking containing types + InternalsVisibleTo via IAssemblySymbol.GivesAccessTo; emits structured warning + Assert.Inconclusive placeholder when target type/method is internal-not-visible to the test assembly. Private-on-public-type continues through existing reflection-scaffold path. 1146/1146 tests pass."
     },
     {
       "id": "validate-recent-git-changes-timeout",
