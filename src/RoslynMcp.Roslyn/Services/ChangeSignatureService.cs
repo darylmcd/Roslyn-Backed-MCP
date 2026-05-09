@@ -9,10 +9,10 @@ using RoslynMcp.Roslyn.Helpers;
 namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
-/// Item 3 implementation. Supports <c>add</c>, <c>remove</c>, and <c>rename</c> ops by
-/// rewriting both the method declaration and every callsite in one atomic preview.
-/// Reordering parameters is not supported — callers that need it should stage a
-/// remove + add pair via <c>symbol_refactor_preview</c>.
+/// Item 3 implementation. Supports <c>add</c>, <c>remove</c>, <c>rename</c>, and
+/// <c>reorder</c> ops by rewriting both the method declaration and every callsite in one
+/// atomic preview. Reorder accepts a <c>NewOrder</c> permutation of parameter names or
+/// 0-based indices; mixed positional+named callsites raise an actionable error.
 /// </summary>
 public sealed class ChangeSignatureService : IChangeSignatureService
 {
@@ -91,10 +91,9 @@ public sealed class ChangeSignatureService : IChangeSignatureService
             "add" => await PreviewAddParameterAsync(workspaceId, solution, method, request, ct).ConfigureAwait(false),
             "remove" => await PreviewRemoveParameterAsync(workspaceId, solution, method, request, ct).ConfigureAwait(false),
             "rename" => await PreviewRenameParameterAsync(workspaceId, method, request, ct).ConfigureAwait(false),
+            "reorder" => await PreviewReorderParametersAsync(workspaceId, solution, method, request, ct).ConfigureAwait(false),
             _ => throw new ArgumentException(
-                $"Unsupported op '{request.Op}'. Valid values: add, remove, rename. " +
-                "Parameter reordering is not supported — stage a remove + add pair via symbol_refactor_preview " +
-                "or fall back to preview_multi_file_edit.",
+                $"Unsupported op '{request.Op}'. Valid values: add, remove, rename, reorder.",
                 nameof(request)),
         };
     }
@@ -259,6 +258,183 @@ public sealed class ChangeSignatureService : IChangeSignatureService
         var lineSpan = loc.GetLineSpan();
         var renameLocator = SymbolLocator.BySource(loc.SourceTree!.FilePath, lineSpan.StartLinePosition.Line + 1, lineSpan.StartLinePosition.Character + 1);
         return await _refactoringService.PreviewRenameAsync(workspaceId, renameLocator, request.NewName, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reorder method parameters according to <see cref="ChangeSignatureRequest.NewOrder"/>.
+    /// <para>
+    /// <c>NewOrder</c> is a comma-separated list that must be a permutation of the existing
+    /// parameters: each token is either a parameter name or a 0-based index. The declaration
+    /// is rewritten to match. Per-callsite handling:
+    /// </para>
+    /// <list type="bullet">
+    ///   <item><description>All-positional callsite — arguments are reordered to match the new permutation.</description></item>
+    ///   <item><description>All-named callsite — left untouched (named args carry the binding by name; reorder has no semantic effect).</description></item>
+    ///   <item><description>Mixed positional + named callsite — refused with an actionable error citing the callsite location, because remapping the positional prefix can silently change which parameter a positional argument binds to.</description></item>
+    /// </list>
+    /// <para>
+    /// <c>params</c> arrays MUST remain in the trailing position (otherwise the C# parser
+    /// rejects them); we refuse if the new order moves a <c>params</c> parameter off the
+    /// trailing slot.
+    /// </para>
+    /// </summary>
+    private async Task<RefactoringPreviewDto> PreviewReorderParametersAsync(
+        string workspaceId, Solution solution, IMethodSymbol method, ChangeSignatureRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewOrder))
+            throw new ArgumentException(
+                "op='reorder' requires NewOrder — a comma-separated permutation of the existing parameters " +
+                "(by name or 0-based index, e.g. 'b,a,c' or '1,0,2').",
+                nameof(request));
+
+        var permutation = ParseAndValidatePermutation(method, request.NewOrder!);
+
+        // Check params trailing-slot invariant. params must stay last.
+        for (var newIdx = 0; newIdx < permutation.Length; newIdx++)
+        {
+            var origIdx = permutation[newIdx];
+            if (method.Parameters[origIdx].IsParams && newIdx != permutation.Length - 1)
+            {
+                throw new ArgumentException(
+                    $"op='reorder' cannot move the params parameter '{method.Parameters[origIdx].Name}' off the " +
+                    $"trailing slot — C# requires params to be the last parameter. Keep '{method.Parameters[origIdx].Name}' " +
+                    $"at the end of NewOrder.",
+                    nameof(request));
+            }
+        }
+
+        // Identity permutation = no-op; refuse so we don't produce an empty preview.
+        var isIdentity = true;
+        for (var i = 0; i < permutation.Length; i++)
+        {
+            if (permutation[i] != i) { isIdentity = false; break; }
+        }
+        if (isIdentity)
+            throw new ArgumentException(
+                $"op='reorder' NewOrder='{request.NewOrder}' is the identity permutation — no change to apply.",
+                nameof(request));
+
+        var (accumulator, changes, callsiteUpdates) = await ApplyAddRemoveAsync(
+            solution, method,
+            updateDeclaration: existingList => BuildReorderedParameterList(existingList, permutation),
+            updateCallsite: (args, isPositional) =>
+            {
+                if (args.Count == 0) return args;
+
+                // All-named callsite: leave untouched (named args bind by name regardless of order).
+                var allNamed = args.All(a => a.NameColon is not null);
+                if (allNamed) return args;
+
+                // Mixed positional + named: refuse via sentinel exception so the caller sees an
+                // actionable error rather than a silently-wrong rewrite.
+                if (!isPositional)
+                {
+                    throw new InvalidOperationException(
+                        "op='reorder' refuses to rewrite a callsite that mixes positional and named arguments " +
+                        "because remapping the positional prefix can change which parameter each positional " +
+                        "argument binds to. Convert the callsite to all-positional or all-named, then retry.");
+                }
+
+                // All-positional: build new list by walking permutation.
+                // If callsite passes fewer args than the method declares (default-valued tail),
+                // only reorder the indices that exist; trailing missing slots stay omitted.
+                // For simplicity: if any permuted index is >= args.Count, those are dropped
+                // (they were already absent at the callsite). Reordering otherwise.
+                var newArgs = SyntaxFactory.SeparatedList<ArgumentSyntax>();
+                for (var i = 0; i < permutation.Length; i++)
+                {
+                    var srcIdx = permutation[i];
+                    if (srcIdx < args.Count)
+                    {
+                        var arg = args[srcIdx];
+                        // Strip leading trivia from the source arg, then add a single space
+                        // separator (except for the first).
+                        var clean = arg.WithLeadingTrivia(i == 0 ? default : SyntaxFactory.Space);
+                        newArgs = newArgs.Add(clean);
+                    }
+                }
+                return newArgs;
+            },
+            ct).ConfigureAwait(false);
+
+        var orderDescription = string.Join(", ",
+            permutation.Select(i => method.Parameters[i].Name));
+        return BuildPreviewDto(workspaceId, accumulator, changes, callsiteUpdates,
+            $"Reorder parameters of {method.ToDisplayString()} to ({orderDescription})");
+    }
+
+    /// <summary>
+    /// Parses <paramref name="newOrder"/> into a permutation array. Each entry maps a new
+    /// position to the original parameter index. Tokens may be parameter names or 0-based
+    /// indices; the result must be a strict permutation of <c>[0..method.Parameters.Length)</c>.
+    /// </summary>
+    private static int[] ParseAndValidatePermutation(IMethodSymbol method, string newOrder)
+    {
+        var tokens = newOrder.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (tokens.Length != method.Parameters.Length)
+            throw new ArgumentException(
+                $"op='reorder' NewOrder must list every parameter exactly once. " +
+                $"Method {method.ToDisplayString()} has {method.Parameters.Length} parameter(s) " +
+                $"({string.Join(", ", method.Parameters.Select(p => p.Name))}); NewOrder supplied " +
+                $"{tokens.Length} token(s).",
+                nameof(newOrder));
+
+        var permutation = new int[tokens.Length];
+        var seen = new HashSet<int>();
+        for (var i = 0; i < tokens.Length; i++)
+        {
+            var token = tokens[i];
+            int origIdx;
+            if (int.TryParse(token, out var asIndex))
+            {
+                if (asIndex < 0 || asIndex >= method.Parameters.Length)
+                    throw new ArgumentException(
+                        $"op='reorder' NewOrder index {asIndex} is out of range (valid 0..{method.Parameters.Length - 1}).",
+                        nameof(newOrder));
+                origIdx = asIndex;
+            }
+            else
+            {
+                origIdx = -1;
+                for (var p = 0; p < method.Parameters.Length; p++)
+                {
+                    if (string.Equals(method.Parameters[p].Name, token, StringComparison.Ordinal))
+                    {
+                        origIdx = p;
+                        break;
+                    }
+                }
+                if (origIdx < 0)
+                    throw new ArgumentException(
+                        $"op='reorder' NewOrder token '{token}' does not match any parameter on " +
+                        $"{method.ToDisplayString()} (parameters: {string.Join(", ", method.Parameters.Select(p => p.Name))}).",
+                        nameof(newOrder));
+            }
+            if (!seen.Add(origIdx))
+                throw new ArgumentException(
+                    $"op='reorder' NewOrder lists parameter '{method.Parameters[origIdx].Name}' more than once.",
+                    nameof(newOrder));
+            permutation[i] = origIdx;
+        }
+        return permutation;
+    }
+
+    /// <summary>
+    /// Build a new <see cref="ParameterListSyntax"/> by reordering the existing parameters
+    /// according to <paramref name="permutation"/>. Reuses the parse-from-text approach from
+    /// add/remove so the comma+space trivia and enclosing parens trivia are correct.
+    /// </summary>
+    private static ParameterListSyntax BuildReorderedParameterList(
+        ParameterListSyntax existingList, int[] permutation)
+    {
+        var paramTexts = new List<string>(permutation.Length);
+        for (var i = 0; i < permutation.Length; i++)
+        {
+            paramTexts.Add(existingList.Parameters[permutation[i]].ToString());
+        }
+        var newListText = "(" + string.Join(", ", paramTexts) + ")";
+        var newList = SyntaxFactory.ParseParameterList(newListText);
+        return newList.WithTriviaFrom(existingList);
     }
 
     private static int ResolveParameterIndex(IMethodSymbol method, ChangeSignatureRequest request)

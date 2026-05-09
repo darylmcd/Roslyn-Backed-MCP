@@ -22,9 +22,8 @@ public interface IChangeSignatureService
 ///   <item><description><c>add</c> — insert a new parameter at <see cref="Position"/> (or trailing if null). Requires <see cref="Name"/>, <see cref="ParameterType"/>; uses <see cref="DefaultValue"/> at every callsite.</description></item>
 ///   <item><description><c>remove</c> — drop the parameter at <see cref="Position"/>. Updates callsites by removing the matching positional or named argument.</description></item>
 ///   <item><description><c>rename</c> — change the parameter name (delegate to rename engine for callsites using named args). Requires <see cref="Name"/> (current) and <see cref="NewName"/>.</description></item>
+///   <item><description><c>reorder</c> — permute parameters via <see cref="NewOrder"/> (comma-separated list of parameter names OR 0-based indices that must be a permutation of the existing parameters). Declaration is reordered, positional callsites are reordered to match, named-only callsites are left as-is, and mixed positional+named callsites raise an actionable error.</description></item>
 /// </list>
-/// Parameter reordering is not supported — callers that need it should issue a sequence of
-/// remove + add ops via <c>symbol_refactor_preview</c>, or fall back to a multi-file edit.
 /// </summary>
 public sealed record ChangeSignatureRequest(
     string Op,
@@ -32,4 +31,5 @@ public sealed record ChangeSignatureRequest(
     string? NewName = null,
     string? ParameterType = null,
     string? DefaultValue = null,
-    int? Position = null);
+    int? Position = null,
+    string? NewOrder = null);

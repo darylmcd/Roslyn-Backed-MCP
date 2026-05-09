@@ -19,13 +19,13 @@ public static class ChangeSignatureTools
 {
     [McpServerTool(Name = "change_signature_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", true, false,
-        "Preview adding/removing/renaming a method parameter with all callsites updated atomically."),
-     Description("Preview a change to a method's signature: add, remove, or rename a parameter. The declaration AND every callsite are rewritten in one preview token. For 'add', supply Name + ParameterType + DefaultValue (default value is spliced into every existing callsite). For 'remove', supply Name OR Position. For 'rename', supply Name (current) + NewName. Reordering is not supported — stage a remove + add pair via symbol_refactor_preview if you need it.")]
+        "Preview adding/removing/renaming/reordering a method parameter with all callsites updated atomically."),
+     Description("Preview a change to a method's signature: add, remove, rename, or reorder parameters. The declaration AND every callsite are rewritten in one preview token. For 'add', supply Name + ParameterType + DefaultValue. For 'remove', supply Name OR Position. For 'rename', supply Name (current) + NewName. For 'reorder', supply NewOrder as a comma-separated permutation of parameter names or 0-based indices (e.g. 'b,a,c' or '1,0,2'); positional callsites are reordered, all-named callsites are left as-is, mixed callsites are refused.")]
     public static Task<string> PreviewChangeSignature(
         IWorkspaceExecutionGate gate,
         IChangeSignatureService changeSignatureService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Operation: 'add', 'remove', or 'rename'. Reordering parameters is not supported.")] string op,
+        [Description("Operation: 'add', 'remove', 'rename', or 'reorder'.")] string op,
         [Description("Optional: absolute path to the source file containing the method declaration")] string? filePath = null,
         [Description("Optional: 1-based line number of the method declaration")] int? line = null,
         [Description("Optional: 1-based column number of the method declaration")] int? column = null,
@@ -36,13 +36,14 @@ public static class ChangeSignatureTools
         [Description("op='add' only: the parameter type (e.g. 'string', 'IReadOnlyList<int>', 'CancellationToken').")] string? parameterType = null,
         [Description("op='add' only: the default value spliced into every existing callsite (e.g. 'null', 'default', '\"\"', '0').")] string? defaultValue = null,
         [Description("Optional position (0-based) of the parameter. For op='add': insertion index (defaults to trailing). For op='remove': index to drop.")] int? position = null,
+        [Description("op='reorder' only: comma-separated permutation of parameter names or 0-based indices (e.g. 'b,a,c' or '1,0,2'). Must list every parameter exactly once.")] string? newOrder = null,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = new SymbolLocator(filePath, line, column, symbolHandle, metadataName);
             locator.Validate();
-            var request = new ChangeSignatureRequest(op, name, newName, parameterType, defaultValue, position);
+            var request = new ChangeSignatureRequest(op, name, newName, parameterType, defaultValue, position, newOrder);
             var dto = await changeSignatureService.PreviewChangeSignatureAsync(workspaceId, locator, request, c).ConfigureAwait(false);
             return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
         }, ct);
