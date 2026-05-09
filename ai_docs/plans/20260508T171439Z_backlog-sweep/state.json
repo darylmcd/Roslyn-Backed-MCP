@@ -4,6 +4,8 @@
   "backlogSnapshot": "2026-05-08T16:41:47Z",
   "addendaLoaded": true,
   "reviewStatus": "passed-with-warnings",
+  "completed": true,
+  "completedAt": "2026-05-09T15:45:42Z",
   "initiatives": [
     {
       "id": "build-test-self-analyzer-file-lock",
@@ -198,9 +200,9 @@
     {
       "id": "change-signature-reorder-preview",
       "order": 11,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["change-signature-reorder-preview"],
-      "productionFilesTouched": 3,
+      "productionFilesTouched": 4,
       "testFilesAdded": 1,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 45000,
@@ -210,14 +212,14 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Cross-caller rewrite must be fixture-scoped; broaden only if review accepts the fanout."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/587",
+      "mergedAt": "2026-05-09T15:44:35Z",
+      "notes": "Shipped as PR #587 (squash b84e918e41731fdfee3bf794deeddd41ef7c6514). Implemented op=reorder via PreviewReorderParameterAsync with declaration + caller-rewrite walks; refuses ref/out/optional-mid-reorder shapes with structured envelopes. Scope expanded by 1 file (ServerSurfaceCatalog.Refactoring.cs) for catalog-summary alignment required by the McpToolMetadata drift test; rebased onto main after #586 to resolve a same-line catalog conflict."
     },
     {
       "id": "parameter-object-preview-tool",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["parameter-object-preview-tool"],
       "productionFilesTouched": 9,
       "testFilesAdded": 1,
@@ -229,9 +231,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Uses repo addenda Rule 3 structural-unit exemption: 4 new-tool structural units plus mandatory addenda; productionFilesTouched records the real file count."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/586",
+      "mergedAt": "2026-05-09T15:34:44Z",
+      "notes": "Shipped as PR #586 (squash 99e685c4acc3798284bbb5348134640d224ef66b). Implemented v1 parameter_object_preview tool per design note: Core contract + Roslyn service + Host.Stdio tool wrapper + catalog + DI + README surface count + test-fixture wiring. DI registration landed in RoslynMcp.Roslyn/ServiceCollectionExtensions.cs (where every other IXxxService→XxxService binding lives) instead of Host.Stdio/ServiceCollectionExtensions.cs; total prod-file count of 9 preserved by substitution."
     }
   ],
   "anchorVerification": "partial",
