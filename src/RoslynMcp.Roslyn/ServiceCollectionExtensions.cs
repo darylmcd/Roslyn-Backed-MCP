@@ -121,6 +121,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWorkspaceWarmService, WorkspaceWarmService>();
         services.AddSingleton<IWorkspaceDriftService, WorkspaceDriftService>();
         services.AddSingleton<IChangeSignatureService, ChangeSignatureService>();
+        services.AddSingleton<IParameterObjectService, ParameterObjectService>();
         services.AddSingleton<ISymbolRefactorService, SymbolRefactorService>();
         services.AddSingleton<IExceptionFlowService, ExceptionFlowService>();
         services.AddSingleton<IPostApplySymbolResolver, PostApplySymbolResolver>();
