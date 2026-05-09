@@ -203,7 +203,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #587, 2026-05-09) |
 | Priority | Low |
 | Backlog rows closed | `change-signature-reorder-preview` |
 | Diagnosis | `src/RoslynMcp.Roslyn/Services/ChangeSignatureService.cs:89` supports only `add`, `remove`, and `rename`, and `:95` explicitly refuses reorder. The wrapper at `src/RoslynMcp.Host.Stdio/Tools/ChangeSignatureTools.cs:23` documents the same limitation. The existing add/remove builder at `src/RoslynMcp.Roslyn/Services/ChangeSignatureAddRemovePreviewBuilder.cs:12` already rewrites declarations and call sites in one preview, so a bounded reorder implementation can reuse that pattern. |
@@ -222,7 +222,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #586, 2026-05-09) |
 | Priority | Low |
 | Backlog rows closed | `parameter-object-preview-tool` |
 | Diagnosis | The canonical design note `ai_docs/items/parameter-object-preview-design.md` defines v1 as a positional-record grouping tool and sizes it as 4 structural units plus mandatory addenda. Current catalog `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Refactoring.cs:18` has `change_signature_preview` but no `parameter_object_preview` entry, and `src/RoslynMcp.Host.Stdio/ServiceCollectionExtensions.cs:80` delegates Roslyn service registration without a parameter-object service today. |
