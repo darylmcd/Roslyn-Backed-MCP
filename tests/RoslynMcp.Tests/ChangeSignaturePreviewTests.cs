@@ -712,6 +712,265 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         }
     }
 
+    /// <summary>
+    /// change-signature-reorder-preview: op='reorder' with a positional callsite reorders
+    /// both the declaration parameters and the callsite arguments to match the new
+    /// permutation supplied via NewOrder (parameter names).
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_ReorderOp_PositionalCallsite_ReordersDeclarationAndArgs()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureReorderFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureReorderFixture",
+            "{",
+            "    public int Compute(int a, int b, int c)",
+            "    {",
+            "        return a + b + c;",
+            "    }",
+            "",
+            "    public int CallCompute()",
+            "    {",
+            "        return Compute(1, 2, 3);",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+            // Reorder (a, b, c) -> (c, a, b). Validates name-token parsing too.
+            var request = new ChangeSignatureRequest(
+                Op: "reorder",
+                NewOrder: "c, a, b");
+
+            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspaceId, locator, request, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+
+            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+
+            // Declaration reordered.
+            StringAssert.Contains(postApplyText, "public int Compute(int c, int a, int b)",
+                $"declaration must be reordered to (c, a, b); got:\n{postApplyText}");
+            // Body brace stays on its own line (uses the same parse-from-text trivia path).
+            StringAssert.Contains(postApplyText, "public int Compute(int c, int a, int b)\r\n    {",
+                $"body brace must stay on its own line; got:\n{postApplyText}");
+            // Positional callsite Compute(1, 2, 3) was reordered to Compute(3, 1, 2).
+            StringAssert.Contains(postApplyText, "Compute(3, 1, 2)",
+                $"positional callsite arguments must be reordered to (3, 1, 2); got:\n{postApplyText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// change-signature-reorder-preview: op='reorder' accepts a 0-based index permutation
+    /// and leaves all-named callsites untouched (named arguments bind by name regardless of
+    /// the declaration order).
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_ReorderOp_NamedCallsite_LeftUntouched_IndexPermutation()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureReorderNamedFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureReorderNamedFixture",
+            "{",
+            "    public int Compute(int a, int b)",
+            "    {",
+            "        return a + b;",
+            "    }",
+            "",
+            "    public int CallCompute()",
+            "    {",
+            "        return Compute(a: 1, b: 2);",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+            // Index-form permutation: (a, b) -> (b, a).
+            var request = new ChangeSignatureRequest(
+                Op: "reorder",
+                NewOrder: "1,0");
+
+            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspaceId, locator, request, CancellationToken.None);
+            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+
+            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+
+            StringAssert.Contains(postApplyText, "public int Compute(int b, int a)",
+                $"declaration must be reordered via index permutation; got:\n{postApplyText}");
+            // Named callsite must remain untouched — args bind by name.
+            StringAssert.Contains(postApplyText, "Compute(a: 1, b: 2)",
+                $"all-named callsite must remain unchanged after reorder; got:\n{postApplyText}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// change-signature-reorder-preview: invalid NewOrder inputs surface actionable errors
+    /// rather than internal exceptions. Covers wrong arity, unknown name token, duplicate
+    /// token, and identity-permutation no-op.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_ReorderOp_InvalidNewOrder_EmitsActionableError()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureReorderInvalidFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureReorderInvalidFixture",
+            "{",
+            "    public int Compute(int a, int b, int c)",
+            "    {",
+            "        return a + b + c;",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+
+            // Missing NewOrder.
+            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+                await _changeSignatureService.PreviewChangeSignatureAsync(
+                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder"), CancellationToken.None));
+            StringAssert.Contains(ex.Message, "NewOrder",
+                $"missing-NewOrder error must cite 'NewOrder'; got: {ex.Message}");
+
+            // Wrong arity (2 tokens for 3-param method).
+            ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+                await _changeSignatureService.PreviewChangeSignatureAsync(
+                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b"), CancellationToken.None));
+            StringAssert.Contains(ex.Message, "exactly once",
+                $"wrong-arity error must explain that every parameter must appear exactly once; got: {ex.Message}");
+
+            // Unknown name token.
+            ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+                await _changeSignatureService.PreviewChangeSignatureAsync(
+                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,zz"), CancellationToken.None));
+            StringAssert.Contains(ex.Message, "zz",
+                $"unknown-token error must cite the offending token; got: {ex.Message}");
+
+            // Duplicate token.
+            ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+                await _changeSignatureService.PreviewChangeSignatureAsync(
+                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,a,b"), CancellationToken.None));
+            StringAssert.Contains(ex.Message, "more than once",
+                $"duplicate-token error must explain the parameter is listed twice; got: {ex.Message}");
+
+            // Identity permutation (no-op).
+            ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+                await _changeSignatureService.PreviewChangeSignatureAsync(
+                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,c"), CancellationToken.None));
+            StringAssert.Contains(ex.Message, "identity",
+                $"identity-permutation error must call out the no-op; got: {ex.Message}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
+    /// <summary>
+    /// change-signature-reorder-preview: callsite that mixes positional and named arguments
+    /// is refused with an actionable message because reordering the positional prefix can
+    /// silently change which parameter each positional argument binds to.
+    /// </summary>
+    [TestMethod]
+    public async Task ChangeSignaturePreview_ReorderOp_MixedPositionalAndNamedCallsite_Refused()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+
+        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureReorderMixedFixture.cs");
+        var content = string.Join("\r\n", new[]
+        {
+            "namespace SampleLib;",
+            "",
+            "public class ChangeSignatureReorderMixedFixture",
+            "{",
+            "    public int Compute(int a, int b, int c)",
+            "    {",
+            "        return a + b + c;",
+            "    }",
+            "",
+            "    public int CallCompute()",
+            "    {",
+            "        return Compute(1, b: 2, c: 3);",
+            "    }",
+            "}",
+            "",
+        });
+        await File.WriteAllTextAsync(fixturePath, content);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+            var request = new ChangeSignatureRequest(Op: "reorder", NewOrder: "c,a,b");
+
+            var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+                await _changeSignatureService.PreviewChangeSignatureAsync(
+                    workspaceId, locator, request, CancellationToken.None));
+            StringAssert.Contains(ex.Message, "mixes positional and named",
+                $"mixed-callsite refusal must explain why; got: {ex.Message}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+        }
+    }
+
     [TestMethod]
     public async Task ChangeSignaturePreview_RemoveOp_CaretOnParameter_ExplicitPositionOverridesAutoResolve()
     {

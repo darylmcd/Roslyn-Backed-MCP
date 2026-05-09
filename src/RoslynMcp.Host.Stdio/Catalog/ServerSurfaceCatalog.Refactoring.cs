@@ -15,7 +15,7 @@ public static partial class ServerSurfaceCatalog
         Tool("code_fix_apply", "refactoring", "stable", false, true, "Apply a previously previewed curated code fix."),
         Tool("restructure_preview", "refactoring", "experimental", true, false, "Preview a syntax-tree pattern-based find-and-replace using __placeholder__ captures."),
         Tool("replace_string_literals_preview", "refactoring", "experimental", true, false, "Preview replacing string literals in argument/initializer position with a constant expression."),
-        Tool("change_signature_preview", "refactoring", "experimental", true, false, "Preview adding/removing/renaming a method parameter with all callsites updated atomically."),
+        Tool("change_signature_preview", "refactoring", "experimental", true, false, "Preview adding/removing/renaming/reordering a method parameter with all callsites updated atomically."),
         Tool("parameter_object_preview", "refactoring", "experimental", true, false, "Preview grouping N parameters of a method into a positional sealed record DTO with all callsites updated atomically."),
         Tool("symbol_refactor_preview", "refactoring", "experimental", true, false, "Composite preview chaining rename + edit + restructure operations into a single token."),
         Tool("split_service_with_di_preview", "refactoring", "experimental", true, false, "Composite preview splitting a service into partitions + forwarding facade + DI-registration deltas."),
