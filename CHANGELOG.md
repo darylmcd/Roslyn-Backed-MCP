@@ -16,6 +16,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.35.0] - 2026-05-09
+
+### Fixed
+
+- **Fixed:** `add_project_reference_preview` rejects self-references and project-reference cycles before generating a diff. Closes `add-project-reference-self-reference-preview`.
+- **Fixed:** Self-hosted workspace validation retargets project analyzer references through shadow-copy loaders so loading this repo no longer leaves the server-surface analyzer DLL locked for child build validation. Closes `build-test-self-analyzer-file-lock`.
+- **Fixed:** `find_overrides` interface-member roots now include implicit interface implementations instead of returning an empty result set. Closes `find-overrides-interface-root-empty`.
+- **Fixed:** Metadata-name disambiguation no longer produces a false ambiguous `find_references` response for duplicate compilation candidates of the same source declaration. Closes `find-references-duplicate-metadata-candidates`.
+- **Fixed:** `/release-cut` Step 6 invokes the maintainer-local `/update` override at `.claude/skills/update/` instead of the shipped `/roslyn-mcp:update`. The shipped skill's Layer 2 path falls back to chat-only instructions because `verify-skills-are-generic.ps1` blocks repo-specific `eng/` references; the override calls `eng/update-claude-plugin.ps1` directly to git-pull the marketplace clone, re-sync the plugin cache, prune the old version directory, and update `installed_plugins.json`. Caught after v1.34.2's release-cut bumped successfully but Step 6 produced unexecutable instructions instead of running the actual layer-2 update. Closes the implicit follow-up to `release-cut-atomic-skill-bump-ship-tag-reinstall`.
+- **Fixed:** Test scaffolding unwraps nullable annotations before constructor-argument synthesis so nullable concrete and interface parameters produce compile-safe generated tests. Closes `scaffold-test-batch-nullable-constructor-output`.
+- **Fixed:** `scaffold_test_preview` detects when the target type or method is internal-not-visible to the test assembly (no `InternalsVisibleTo`) and emits a warning + `Assert.Inconclusive` placeholder instead of a compile-fragile `new TargetType(...)` / `subject.Method()` call that would fail with `CS0122`. Public targets and `InternalsVisibleTo`-granted internal targets are unaffected; private methods continue to use the existing reflection-scaffold path. Closes `scaffold-test-internal-target-accessibility`.
+- **Fixed:** `WorkspaceManager.LoadAsync` accepts an optional `IDictionary<string,string> globalProperties` parameter that flows MSBuild global property overrides (e.g. `Configuration=Release`) into `MSBuildWorkspace.Create`. Without this, `MSBuildWorkspace` defaulted to `Configuration=Debug` evaluation, which dropped `ProjectReference OutputItemType="Analyzer"` entries on Release-only checkouts (such as the self-hosted Windows CI runner). When global properties are set, the load also opts out of session deduplication and the cache fast-path so the new evaluation always runs. Closes `selfhosted-shadow-copy-analyzer-reference-test-fails`.
+- **Fixed:** `symbol_relationships` return-type-token promotion applies consistently to every relationship bucket. Closes `symbol-relationships-return-token-bucket-mix`.
+- **Fixed:** `validate_recent_git_changes` returns a structured retryable timeout result with the git-derived changed-file set when an internal validation phase exceeds its budget. Closes `validate-recent-git-changes-timeout`.
+
+### Changed — BREAKING
+
+- **Changed — BREAKING:** Collapsed `/audit-deep` modes — `full`, `promotion-only`, `read-only` — into a single canonical run. Apply tools always exercised on a disposable worktree the skill creates and tears down post-run; promotion scorecard always emitted. The audited repo's working tree is never mutated. `--no-worktree` available for environments that can't create a worktree (degraded mode, recorded in report header). Closes `mcp-server-stress-single-mode`.
+
+### Changed
+
+- **Changed:** Moved plugin-skill audit (formerly Phase 16b of `/audit-deep`, then `/mcp-server-stress`) into `/surface-audit` where the static-catalog audit already lives. `/mcp-server-stress` now audits only the running server's surface; `/surface-audit` covers the static catalog plus shipped + maintainer-local skills layered on it (walks both `skills/*/SKILL.md` and `.claude/skills/*/SKILL.md`). Closes `extract-skills-audit-from-server-stress`.
+- **Changed:** Promotion scorecards are now per-audited-repo (`<repo>/ai_docs/audit-reports/_latest-promotion-scorecard.json`) instead of a single last-write-wins file at `<Roslyn-MCP-root>/...`. `/publish-preflight` Step 8 aggregates scorecards from configured sibling repos via the new `eng/aggregate-promotion-scorecards.ps1` and applies a quorum rule (≥2 workspaces with `promote`, no blockers) before recommending a tier flip. Single-workspace anomalies no longer drive tier decisions. `/promote-tier` accepts the aggregated input format. Closes `per-repo-promotion-scorecard`.
+
+### Added
+
+- **Added:** `change_signature_preview` supports `op="reorder"` for method parameters. Reorders the declaration and rewrites every invocation argument list semantically — positional callers are reordered to match the new declaration order, named arguments are preserved verbatim, and ambiguous shapes (default values mid-reorder, `ref`/`out` migrations) surface structured refusals. Closes `change-signature-reorder-preview`.
+- **Added:** Experimental `parameter_object_preview` MCP tool. Groups N parameters of a method into a positional sealed-record DTO and rewrites every call site atomically to wrap the grouped arguments in `new Dto(...)`. Refuses default-value sites, `ref`/`out`/`in`/`params`, the `this` parameter on extension methods, and local-function targets; warns on reflective callers. Cross-project rewrites only when every caller-project already references the DTO project (no auto-`<ProjectReference>` insertion). Closes `parameter-object-preview-tool`.
+- **Added:** `backlog.d/` fragment pattern for cross-repo audit findings, mirroring the existing `changelog.d/` pattern. `/mcp-server-stress` runs in audited repo X now write actionable findings as fragments at `<X>/backlog.d/<finding-id>.md`; `/backlog-intake` consolidates fragments from configured sibling repos into `ai_docs/backlog.md` and deletes consumed fragments. Replaces the prior cross-repo write-and-copy flow. Fragment schema documented at `ai_docs/items/backlog-d-fragment-schema.md`. Closes `backlog-d-fragment-pattern`.
+
+### Maintenance
+
+- **Maintenance:** Audited representative preview-only calls and confirmed no workspace or disk side effects beyond expected preview-token storage. Closes `dry-run-preview-side-effect-audit`.
+- **Maintenance:** Recorded the 2026-04-27 promotion-scorecard review against the current catalog and quorum-based promote-tier workflow without flipping catalog tiers. Closes `promotion-scorecard-20260427-review`.
+- **Maintenance:** Moved the maintainer-only audit skill out of the shipped plugin surface. Renamed from `audit-deep` to `mcp-server-stress` and relocated to `.claude/skills/mcp-server-stress/`. The consumer plugin no longer ships the skill — it audited this repo's own server surface, scorecard, and skills inventory and was never useful outside this repo. Updated `.claude/skills/publish-preflight/SKILL.md` Step 8 + `.claude/agents/audit-phase-runner.md` to reference the new name and path; deleted the orphaned `ai_docs/prompts/deep-review-and-refactor.md` pointer. Closes `audit-deep-relocate-and-rename`.
+
 ## [1.34.2] - 2026-05-07
 
 ### Changed
