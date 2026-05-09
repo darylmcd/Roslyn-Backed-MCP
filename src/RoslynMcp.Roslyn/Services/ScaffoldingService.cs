@@ -225,7 +225,8 @@ public sealed class ScaffoldingService : IScaffoldingService
             context.Framework,
             typeInfo.TargetMethod,
             typeInfo.MatchedType,
-            siblingPattern: null);
+            siblingPattern: null,
+            isTargetInaccessible: typeInfo.IsTargetInaccessible);
 
         var testProject = state.Accumulator.GetProject(context.TestProject.Id)
             ?? throw new InvalidOperationException("Test project disappeared from working solution snapshot.");
@@ -295,7 +296,8 @@ public sealed class ScaffoldingService : IScaffoldingService
         string ConstructorArgs,
         IMethodSymbol? TargetMethod,
         List<string>? Warnings,
-        INamedTypeSymbol? MatchedType)
+        INamedTypeSymbol? MatchedType,
+        bool IsTargetInaccessible = false)
     {
         public static ResolvedTargetTypeInfo NotFound { get; } = new(string.Empty, string.Empty, null, null, null);
     }
@@ -381,7 +383,8 @@ public sealed class ScaffoldingService : IScaffoldingService
 
         var content = BuildTestContent(
             testNamespace, request, simpleTypeName, typeInfo.TargetNamespace, typeInfo.ConstructorArgs, framework,
-            typeInfo.TargetMethod, typeInfo.MatchedType, siblingInference.Pattern, sampledTestName.MethodName);
+            typeInfo.TargetMethod, typeInfo.MatchedType, siblingInference.Pattern, sampledTestName.MethodName,
+            isTargetInaccessible: typeInfo.IsTargetInaccessible);
         var preview = await _fileOperationService.PreviewCreateFileAsync(workspaceId, new CreateFileDto(project.Name, testFilePath, content), ct).ConfigureAwait(false);
 
         var combinedWarnings = CombineWarnings(typeInfo.Warnings, siblingWarnings, sampledTestName.Warning);
@@ -1001,7 +1004,22 @@ public sealed class ScaffoldingService : IScaffoldingService
         var projectsToSearch = GetProjectsToSearch(solution, testProject);
         var matchedType = await FindTargetTypeAsync(projectsToSearch, targetTypeName, ct).ConfigureAwait(false);
         var nsubstituteAvailable = IsNSubstituteAvailable(testProject);
-        return CreateResolvedTargetTypeInfo(matchedType, targetMethodName, warnOnPrivateMethod: true, nsubstituteAvailable);
+
+        // scaffold-test-internal-target-accessibility: when the target type/method is internal
+        // and the test assembly lacks InternalsVisibleTo, the previous output produced
+        // direct `new TargetType()` / `subject.Method()` calls that fail compile with CS0122.
+        // Surface this as a warning + non-applicable scaffold so callers can decide between
+        // adding InternalsVisibleTo, moving the target to public surface, or scaffolding from
+        // a project that already has access.
+        var testCompilation = await testProject.GetCompilationAsync(ct).ConfigureAwait(false);
+        var testAssembly = testCompilation?.Assembly;
+        return CreateResolvedTargetTypeInfo(
+            matchedType,
+            targetMethodName,
+            warnOnPrivateMethod: true,
+            nsubstituteAvailable,
+            testAssembly,
+            testProject.Name);
     }
 
     private static List<Project> GetProjectsToSearch(Solution solution, Project testProject)
@@ -1065,7 +1083,9 @@ public sealed class ScaffoldingService : IScaffoldingService
         INamedTypeSymbol? matchedType,
         string? targetMethodName,
         bool warnOnPrivateMethod,
-        bool nsubstituteAvailable = false)
+        bool nsubstituteAvailable = false,
+        IAssemblySymbol? testAssembly = null,
+        string? testProjectName = null)
     {
         if (matchedType is null)
         {
@@ -1075,16 +1095,134 @@ public sealed class ScaffoldingService : IScaffoldingService
         var targetNamespace = matchedType.ContainingNamespace.IsGlobalNamespace
             ? string.Empty
             : matchedType.ContainingNamespace.ToDisplayString();
-        var constructorArgs = BuildConstructorArgs(matchedType, nsubstituteAvailable);
         var warnings = new List<string>();
+
+        // scaffold-test-internal-target-accessibility: gate constructor + method invocation
+        // synthesis when the matched target is not visible to the test assembly. We still
+        // resolve the matched type and method symbols so the warning can name them, but skip
+        // emitting `new T(...)` / `subject.M()` text that would compile-fail with CS0122.
+        var typeInaccessible = testAssembly is not null
+            && !IsAccessibleFromAssembly(matchedType, testAssembly);
+
+        var constructorArgs = typeInaccessible
+            ? string.Empty
+            : BuildConstructorArgs(matchedType, nsubstituteAvailable);
+
         var targetMethod = ResolveTargetMethod(matchedType, targetMethodName, warnOnPrivateMethod, warnings);
+
+        // Note: private methods on otherwise-accessible types have their own dedicated
+        // scaffold path via BuildPrivateReflectionInvocation — do NOT redirect them through
+        // the inaccessible-target placeholder. Only flag method-level inaccessibility for the
+        // internal-not-visible case where direct call AND reflection both fail.
+        var methodInaccessible = !typeInaccessible
+            && testAssembly is not null
+            && targetMethod is not null
+            && targetMethod.DeclaredAccessibility != Accessibility.Private
+            && !IsAccessibleFromAssembly(targetMethod, testAssembly);
+
+        if (typeInaccessible)
+        {
+            warnings.Add(BuildInaccessibleTypeWarning(matchedType, testProjectName));
+        }
+        else if (methodInaccessible)
+        {
+            warnings.Add(BuildInaccessibleMethodWarning(matchedType, targetMethod!, testProjectName));
+        }
 
         return new ResolvedTargetTypeInfo(
             targetNamespace,
             constructorArgs,
             targetMethod,
             warnings.Count == 0 ? null : warnings,
-            matchedType);
+            matchedType,
+            IsTargetInaccessible: typeInaccessible || methodInaccessible);
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="symbol"/>'s declared accessibility (and every
+    /// containing-type accessibility) permits a reference from <paramref name="callerAssembly"/>.
+    /// Internal symbols are accessible cross-assembly only when the defining assembly grants
+    /// <c>InternalsVisibleTo(<see cref="IAssemblySymbol.Name"/>)</c>. Private symbols are
+    /// never cross-assembly accessible — callers reach them via reflection (handled separately
+    /// in the private-method scaffold path).
+    /// </summary>
+    private static bool IsAccessibleFromAssembly(ISymbol symbol, IAssemblySymbol callerAssembly)
+    {
+        // Walk up containers: a public method on an internal-not-visible class is still
+        // unreachable from the caller's assembly.
+        for (ISymbol? current = symbol; current is not null; current = current.ContainingType)
+        {
+            switch (current.DeclaredAccessibility)
+            {
+                case Accessibility.Public:
+                    break;
+                case Accessibility.Internal:
+                case Accessibility.ProtectedAndInternal:
+                    if (!IsInternalAccessibleFromAssembly(current.ContainingAssembly, callerAssembly))
+                    {
+                        return false;
+                    }
+                    break;
+                case Accessibility.Protected:
+                case Accessibility.ProtectedOrInternal:
+                    // Protected requires an inheritance relationship the scaffold cannot
+                    // synthesize from the test assembly; treat as inaccessible for the
+                    // direct-call path (private-method reflection branch covers reflection).
+                    return false;
+                case Accessibility.Private:
+                    // Private symbols handled by the private-method reflection branch in
+                    // BuildMethodTargetInvocationBlock; any private *containing type* makes
+                    // the target unreachable.
+                    return false;
+                default:
+                    return false;
+            }
+
+            // Stop once we have walked past namespace-level types.
+            if (current.ContainingType is null)
+            {
+                break;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool IsInternalAccessibleFromAssembly(IAssemblySymbol? definingAssembly, IAssemblySymbol callerAssembly)
+    {
+        if (definingAssembly is null)
+        {
+            return false;
+        }
+
+        if (SymbolEqualityComparer.Default.Equals(definingAssembly, callerAssembly))
+        {
+            return true;
+        }
+
+        return definingAssembly.GivesAccessTo(callerAssembly);
+    }
+
+    private static string BuildInaccessibleTypeWarning(INamedTypeSymbol type, string? testProjectName)
+    {
+        var typeDisplay = type.ToDisplayString();
+        var assemblyName = type.ContainingAssembly?.Name ?? "the target assembly";
+        var testProjectFragment = string.IsNullOrWhiteSpace(testProjectName) ? "the test project" : $"'{testProjectName}'";
+        return
+            $"Target type '{typeDisplay}' is not accessible from {testProjectFragment} (declared accessibility: {type.DeclaredAccessibility}). " +
+            $"Generated scaffold uses placeholders rather than direct calls. Add `[assembly: InternalsVisibleTo(\"{testProjectName ?? "TestProject"}\")]` " +
+            $"to assembly '{assemblyName}', expose the type publicly, or scaffold from a project with access.";
+    }
+
+    private static string BuildInaccessibleMethodWarning(INamedTypeSymbol type, IMethodSymbol method, string? testProjectName)
+    {
+        var typeDisplay = type.ToDisplayString();
+        var assemblyName = type.ContainingAssembly?.Name ?? "the target assembly";
+        var testProjectFragment = string.IsNullOrWhiteSpace(testProjectName) ? "the test project" : $"'{testProjectName}'";
+        return
+            $"Target method '{typeDisplay}.{method.Name}' is not accessible from {testProjectFragment} (declared accessibility: {method.DeclaredAccessibility}). " +
+            $"Generated scaffold uses a placeholder rather than a direct call. Add `[assembly: InternalsVisibleTo(\"{testProjectName ?? "TestProject"}\")]` " +
+            $"to assembly '{assemblyName}', expose the method publicly, or scaffold from a project with access.";
     }
 
     private static ResolvedTargetTypeInfo CreateAmbiguousTargetTypeResult(string targetTypeName)
@@ -1958,7 +2096,8 @@ public sealed class ScaffoldingService : IScaffoldingService
         IMethodSymbol? targetMethod,
         INamedTypeSymbol? matchedType,
         SiblingTestPattern? siblingPattern,
-        string? suggestedMethodName = null)
+        string? suggestedMethodName = null,
+        bool isTargetInaccessible = false)
     {
         var methodName = string.IsNullOrWhiteSpace(request.TargetMethodName)
             ? "Generated_Test"
@@ -1969,21 +2108,68 @@ public sealed class ScaffoldingService : IScaffoldingService
             : $"using {targetNamespace};\n";
 
         var useStaticScaffold = ShouldUseStaticTestScaffold(matchedType);
-        var ctorCall = useStaticScaffold
+
+        // scaffold-test-internal-target-accessibility: when the target is internal-not-visible
+        // (or any containing type is private/internal-not-visible), skip the direct-call shape
+        // — we cannot synthesize compiling code without the caller setting up
+        // InternalsVisibleTo. Emit an Inconclusive/placeholder body and rely on the
+        // typeInfo.Warnings entry to explain the choice.
+        var ctorCall = (isTargetInaccessible || useStaticScaffold)
             ? string.Empty
             : string.IsNullOrWhiteSpace(constructorArgs)
                 ? $"new {simpleTypeName}()"
                 : $"new {simpleTypeName}({constructorArgs})";
 
-        var methodTargetBlock = BuildMethodTargetInvocationBlock(
-            framework, simpleTypeName, request.TargetMethodName, targetMethod, useStaticScaffold);
+        var methodTargetBlock = isTargetInaccessible
+            ? BuildInaccessibleTargetPlaceholderBlock(framework, simpleTypeName, request.TargetMethodName)
+            : BuildMethodTargetInvocationBlock(
+                framework, simpleTypeName, request.TargetMethodName, targetMethod, useStaticScaffold);
+
+        // When target is inaccessible, suppress the `var subject = new T(...);` setup line
+        // — there is no callable type. The framework-specific `isStaticType=true` branch
+        // already produces a body that doesn't reference `subject`, so we route through it.
+        var suppressInstanceSubject = useStaticScaffold || isTargetInaccessible;
 
         return framework switch
         {
-            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
-            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
-            _ => BuildMSTestTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, useStaticScaffold, siblingPattern),
+            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, suppressInstanceSubject, siblingPattern),
+            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, suppressInstanceSubject, siblingPattern),
+            _ => BuildMSTestTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, suppressInstanceSubject, siblingPattern),
         };
+    }
+
+    /// <summary>
+    /// scaffold-test-internal-target-accessibility: emits a placeholder body when the target
+    /// type/method is not visible to the test assembly. Replaces what would have been
+    /// <c>subject.M()</c> or <c>Type.M()</c> calls — those would compile-fail with CS0122.
+    /// The accompanying warning (see <see cref="BuildInaccessibleTypeWarning"/> /
+    /// <see cref="BuildInaccessibleMethodWarning"/>) explains the choice and points at
+    /// <c>InternalsVisibleTo</c>.
+    /// </summary>
+    private static string BuildInaccessibleTargetPlaceholderBlock(string framework, string targetTypeName, string? targetMethodName)
+    {
+        var inconclusiveCall = framework switch
+        {
+            "xunit" => "Assert.Fail(\"" + InaccessibleTargetAssertReason(targetTypeName, targetMethodName) + "\");",
+            "nunit" => "Assert.Inconclusive(\"" + InaccessibleTargetAssertReason(targetTypeName, targetMethodName) + "\");",
+            _ => "Assert.Inconclusive(\"" + InaccessibleTargetAssertReason(targetTypeName, targetMethodName) + "\");",
+        };
+        var methodFragment = string.IsNullOrWhiteSpace(targetMethodName)
+            ? string.Empty
+            : "." + targetMethodName;
+        return
+            $"        // Target '{targetTypeName}{methodFragment}' is not visible to this test assembly\n" +
+            "        // (declared accessibility forbids a direct call). Add InternalsVisibleTo, expose\n" +
+            "        // the target publicly, or scaffold from a project that already has access.\n" +
+            "        " + inconclusiveCall + "\n";
+    }
+
+    private static string InaccessibleTargetAssertReason(string targetTypeName, string? targetMethodName)
+    {
+        var methodFragment = string.IsNullOrWhiteSpace(targetMethodName)
+            ? string.Empty
+            : "." + targetMethodName;
+        return $"Scaffolded test for '{targetTypeName}{methodFragment}' is non-applicable: target is not accessible from this test assembly. See preview warnings for guidance.";
     }
 
     private static string? FormatMethodSignature(IMethodSymbol? method)

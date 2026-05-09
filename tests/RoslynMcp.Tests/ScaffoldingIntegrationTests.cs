@@ -413,6 +413,144 @@ public class HiddenBehavior
     }
 
     [TestMethod]
+    public async Task Scaffold_Test_Internal_Target_Without_InternalsVisibleTo_Emits_Warning_And_Placeholder()
+    {
+        // scaffold-test-internal-target-accessibility regression: internal target types in an
+        // assembly that does NOT grant InternalsVisibleTo to the test project would previously
+        // generate a `new TargetType()` call that compile-fails with CS0122. The fix detects
+        // the cross-assembly internal-not-visible case during target resolution and emits a
+        // warning + Inconclusive placeholder scaffold instead.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var targetTypePath = workspace.GetPath("SampleLib", "InternalGate.cs");
+        await File.WriteAllTextAsync(targetTypePath, """
+namespace SampleLib;
+
+internal sealed class InternalGate
+{
+    public void Open() { }
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto("SampleLib.Tests", "InternalGate", "Open", ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview.Warnings, "Inaccessible internal target should produce a warning.");
+        Assert.AreEqual(1, preview.Warnings.Count);
+        StringAssert.Contains(preview.Warnings[0], "Target type 'SampleLib.InternalGate' is not accessible from 'SampleLib.Tests'");
+        StringAssert.Contains(preview.Warnings[0], "InternalsVisibleTo");
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var contents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib.Tests", "InternalGateGeneratedTests.cs"),
+            CancellationToken.None);
+
+        Assert.IsFalse(
+            contents.Contains("new InternalGate("),
+            "Inaccessible internal target should NOT emit a direct `new TargetType(...)` call — that would fail CS0122.");
+        Assert.IsFalse(
+            contents.Contains("subject.Open"),
+            "Inaccessible internal target should NOT emit a direct `subject.Method()` call.");
+        StringAssert.Contains(contents, "Assert.Inconclusive(");
+        StringAssert.Contains(contents, "is not visible to this test assembly");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Internal_Target_With_InternalsVisibleTo_Generates_Direct_Call()
+    {
+        // scaffold-test-internal-target-accessibility companion case: when InternalsVisibleTo
+        // grants the test assembly access to the target's containing assembly, scaffolding
+        // should produce the ordinary direct-call shape (no warning, no placeholder).
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var ivtPath = workspace.GetPath("SampleLib", "AssemblyInfo.IVT.cs");
+        await File.WriteAllTextAsync(ivtPath, """
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("SampleLib.Tests")]
+""", CancellationToken.None);
+
+        var targetTypePath = workspace.GetPath("SampleLib", "InternalGateVisible.cs");
+        await File.WriteAllTextAsync(targetTypePath, """
+namespace SampleLib;
+
+internal sealed class InternalGateVisible
+{
+    public void Open() { }
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto("SampleLib.Tests", "InternalGateVisible", "Open", ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+
+        Assert.IsNull(
+            preview.Warnings,
+            "When InternalsVisibleTo grants access, no inaccessibility warning should be emitted.");
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var contents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib.Tests", "InternalGateVisibleGeneratedTests.cs"),
+            CancellationToken.None);
+
+        StringAssert.Contains(contents, "new InternalGateVisible(");
+        StringAssert.Contains(contents, "subject.Open");
+        Assert.IsFalse(
+            contents.Contains("Assert.Inconclusive(") && contents.Contains("is not visible to this test assembly"),
+            "When access is granted, scaffold should NOT contain the inaccessible-target placeholder body.");
+    }
+
+    [TestMethod]
+    public async Task Scaffold_Test_Internal_Method_On_Public_Type_Emits_Warning_And_Placeholder()
+    {
+        // scaffold-test-internal-target-accessibility (method-level): the containing type is
+        // public, but the target method is internal and the test assembly lacks
+        // InternalsVisibleTo. Direct call would fail CS0122. Private methods stay on the
+        // existing reflection-scaffold path; only the internal-not-visible case redirects.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var targetTypePath = workspace.GetPath("SampleLib", "PublicGate.cs");
+        await File.WriteAllTextAsync(targetTypePath, """
+namespace SampleLib;
+
+public class PublicGate
+{
+    internal void OpenInternal() { }
+}
+""", CancellationToken.None);
+
+        await workspace.ReloadAsync(CancellationToken.None);
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto("SampleLib.Tests", "PublicGate", "OpenInternal", ReferenceTestFile: string.Empty),
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview.Warnings, "Internal method with no InternalsVisibleTo should produce a warning.");
+        Assert.AreEqual(1, preview.Warnings.Count);
+        StringAssert.Contains(preview.Warnings[0], "Target method 'SampleLib.PublicGate.OpenInternal' is not accessible");
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var contents = await File.ReadAllTextAsync(
+            workspace.GetPath("SampleLib.Tests", "PublicGateGeneratedTests.cs"),
+            CancellationToken.None);
+
+        Assert.IsFalse(
+            contents.Contains("subject.OpenInternal"),
+            "Inaccessible internal method should NOT emit a direct `subject.Method()` call.");
+        StringAssert.Contains(contents, "Assert.Inconclusive(");
+    }
+
+    [TestMethod]
     public async Task Scaffold_Test_With_ReferenceTestFile_Replicates_FixturePattern_AndTrimsAttributesAndUsings()
     {
         // Regression for scaffold-test-sibling-pattern-inference + post-fix narrowing per
