@@ -37,9 +37,20 @@ GitHub Issues at https://github.com/darylmcd/Roslyn-Backed-MCP are the public fu
 
 1. Run `/mcp-server-surface-test --quick` (fast path) or `/mcp-server-surface-test --full` (comprehensive).
 2. Review the finding bodies the skill prints to stdout.
-3. Either copy/paste them into a new Issue manually, or pass `--auto-file` to file them via `gh`.
+3. Either copy/paste them into the [Surface-test finding](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/new?template=mcp-server-surface-test-finding.yml) issue template manually, or pass `--auto-file` and the skill calls `gh issue create` with the same body bytes.
 
 The default print-to-stdout flow is the recommended starting point — it lets you review what the skill found before anything goes public.
+
+The triage labels (`area:tools`, `area:perf`, `severity:P2`, etc.) are seeded via `scripts/seed-issue-labels.ps1` in this repo's checkout. Maintainers run that script once per repo bootstrap; consumers don't need to.
+
+### Pre-disclosure refusal contract (verbatim)
+
+Findings whose `severity == P0` OR `area == security` are **never** auto-filed, regardless of the `--auto-file` flag. They print to stdout with this banner:
+
+> **SECURITY / P0 finding — DO NOT FILE PUBLICLY.**
+> Escalate via GitHub security advisories: https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new
+
+This refusal is non-negotiable. The intent is to prevent a vulnerability from leaking to a public Issue before it is fixed. See [SECURITY.md](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/SECURITY.md) for the full pre-disclosure path.
 
 ## Hard rules
 

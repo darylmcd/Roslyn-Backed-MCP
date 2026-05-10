@@ -1,0 +1,11 @@
+### Added
+
+- **Added:** `.github/ISSUE_TEMPLATE/mcp-server-surface-test-finding.yml` — public form template for findings produced by `/mcp-server-surface-test`. Mirrors the shared finding envelope (`id`, `source-repo`, `severity` dropdown, `area` dropdown, `server-version`, `anchors`, `finding`, `repro`, `proposed-fix`). Drops `severity: P0` and `area: security` from the dropdowns — both are refused for public filing by the shared renderer and route through GitHub security advisories per `SECURITY.md`. Anchors are labeled "paths in your repo, not clickable here" so triage knows they are diagnostic context, not links into this repo. Closes Row 3 of the move-to-git-issues design.
+- **Added:** `scripts/seed-issue-labels.ps1` — idempotent one-shot script that seeds `area:*` and `severity:*` labels at `darylmcd/Roslyn-Backed-MCP` via `gh label create --force`. Mirrors the publicly-fileable enum subset (the renderer's refusal predicate's complement). Verifies `gh` is on PATH and authenticated before mutating; supports `-DryRun` for preview.
+- **Added:** `tests/RoslynMcp.Tests/Skills/IssueTemplateAndLabelSeedTests.cs` — 9 lockstep tests pinning the area + severity enums across three surfaces simultaneously: `ai_docs/items/backlog-d-fragment-schema.md` (canonical), `.github/ISSUE_TEMPLATE/mcp-server-surface-test-finding.yml` (public form), and `scripts/seed-issue-labels.ps1` (label seeder). Drift between any pair fails CI before it can ship.
+
+### Changed
+
+- **Changed:** Root `README.md` gains a "Filing Surface-Test Findings" section pointing consumers at the new issue template + the `--auto-file` flag, with the P0/security refusal explicitly cross-referenced to `SECURITY.md`.
+- **Changed:** `skills/mcp-server-surface-test/README.md` gains a public-issues funnel paragraph linking the issue template URL and a verbatim restatement of the pre-disclosure refusal contract (with the SECURITY/P0 banner reproduced).
+- **Changed:** `SECURITY.md` cross-references the renderer's automatic enforcement: any P0 / `area: security` finding is refused for public filing by both `--auto-file` and `/backlog-intake --publish`. The refusal banner directs the operator back to the security-advisory channel SECURITY.md documents.
