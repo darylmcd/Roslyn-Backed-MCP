@@ -53,6 +53,53 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
+# ---------- Constants (single source of truth) ----------
+#
+# `$script:UpstreamRepo` is the only place the upstream repo name is hardcoded inside the
+# executable surface of this skill. The maintainer login is derived from it. If the repo is
+# renamed or transferred, update this one literal — every probe, refusal banner, and
+# `gh issue create --repo` call sourced through this lib follows.
+#
+# Documentation files (SKILL.md, prompts/*.md, README.md) carry their own literal copies
+# of the string for readability; those need a separate doc-edit pass on rename, but the
+# load-bearing routing logic stays correct from this constant alone.
+
+$script:UpstreamRepo     = 'darylmcd/Roslyn-Backed-MCP'
+$script:MaintainerLogin  = ($script:UpstreamRepo -split '/', 2)[0]
+$script:SecurityAdvisoryUrl = "https://github.com/$($script:UpstreamRepo)/security/advisories/new"
+
+function Get-UpstreamRepo     { return $script:UpstreamRepo }
+function Get-MaintainerLogin  { return $script:MaintainerLogin }
+
+function Test-IsMaintainer {
+    <#
+    .SYNOPSIS
+        Probe the operator's GitHub identity and return $true when it matches the upstream
+        repo owner. Used by Phase 19 routing to decide whether to auto-file by default.
+    .DESCRIPTION
+        Runs `gh api user --jq .login`. Treats any of {gh missing, gh unauthenticated,
+        network failure, login mismatch} as **not maintainer** — the safe default. Never
+        throws; the worst outcome is `$false`.
+    #>
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param()
+
+    $gh = Get-Command -Name 'gh' -ErrorAction SilentlyContinue
+    if ($null -eq $gh) { return $false }
+
+    try {
+        $login = (& gh api user --jq .login 2>$null) | Select-Object -First 1
+    }
+    catch {
+        return $false
+    }
+    if ($LASTEXITCODE -ne 0) { return $false }
+    if ([string]::IsNullOrWhiteSpace($login)) { return $false }
+
+    return ($login.Trim() -eq $script:MaintainerLogin)
+}
+
 # ---------- Internal helpers ----------
 
 function Get-FindingFieldString {
@@ -251,7 +298,7 @@ function Render-FindingIssue {
         # the caller MUST also short-circuit before invoking `gh issue create`.
         $bodyHeader = @(
             '**SECURITY / P0 finding — DO NOT FILE PUBLICLY.**',
-            'Escalate via GitHub security advisories: https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new',
+            "Escalate via GitHub security advisories: $($script:SecurityAdvisoryUrl)",
             ''
         ) -join [Environment]::NewLine
     }

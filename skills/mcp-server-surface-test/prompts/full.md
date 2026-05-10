@@ -117,6 +117,49 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 
 ---
 
+### Phase 0.5: Subagent dispatch plan (MANDATORY for `--full`, skip when `--single-agent`)
+
+The full tier exercises 250+ MCP tool calls across 19 phases. A single agent that tries to run them all in one context will burn through its window long before Phase 19 and silently truncate to a "representative probe" — that is a contract violation of the `--full` tier, not a feature. The fix is structural: the **orchestrator owns coordination** (workspace lifecycle, worktree lifecycle, report writes, finding emission) and **dispatches phase groups to `audit-phase-runner` subagents** that each return a compact structured summary the orchestrator pastes into the report.
+
+**Orchestrator-owned phases (never dispatched):**
+
+- Phase -1, 0 — already complete by the time you reach this section.
+- Phase 6 **setup** (`git worktree add`, branch creation) and **teardown** (`dotnet build-server shutdown` → `git worktree remove --force`). The `try/finally` discipline must be owned by a single, surviving caller — a crashed subagent cannot leak the worktree.
+- Phase 18 — depends on synthesizing prior phase outputs.
+- Phase 19 — finding emission (routing decision via `Test-IsMaintainer`, `gh issue create` calls).
+- All writes to `audit-reports/<timestamp>_<repo-id>_mcp-server-surface-test.md` and `_latest-promotion-scorecard.json`. Subagents return structured summaries; the orchestrator alone touches the files (no concurrent-writer hazard).
+
+**Subagent dispatch groups (run via `audit-phase-runner`, parallel where independent):**
+
+Group all dispatches in a single message with multiple `Agent` tool-use blocks where the listed groups are independent. Phases inside a group are run by the same subagent in sequence so they can share intermediate analysis (e.g., the diagnostic IDs Phase 1 surfaces feed the metric thresholds in Phase 2).
+
+| Group | Phases | Parallel-safe with | Notes |
+|---|---|---|---|
+| **G1** | 1, 2 | G2, G3, G5 | diagnostics + metrics — read-only, workspace-scoped, no shared state with other groups |
+| **G2** | 3, 4 | G1, G3, G5 | symbol + flow analysis on selected types/methods |
+| **G3** | 5, 9 (Phase 9 if Phase 10 already complete) | G1, G2, G5 | snippet/script + undo verification |
+| **G4** | 6 sub-phases (after orchestrator creates worktree) | — | runs serially against the disposable worktree; orchestrator passes the worktree path; subagent must NOT call `git worktree remove` |
+| **G5** | 7, 8, 8b | G1, G2, G3 | configuration + build/test + concurrency stress; the heaviest group, give it the biggest context budget |
+| **G6** | 10, 11, 12 | G7 | file/cross-project ops + semantic search + scaffolding |
+| **G7** | 13, 14 | G6 | project mutation + navigation/completions |
+| **G8** | 15, 16, 17 | — | resources + prompts + negative testing; run after G6/G7 so the coverage ledger is mostly populated |
+
+**Dispatch contract per group:**
+
+Each subagent prompt must include: (a) the workspace `workspaceId` (already loaded — subagents reuse the orchestrator's MCP session, no `workspace_load` needed), (b) the audit report path (read-only — for context only, do not write), (c) the disposable worktree path when relevant (G4 only), (d) the explicit phase numbers + the relevant prompt section excerpt, (e) "return a compact structured summary in <RESULT> envelope" instruction. The orchestrator pastes each returned summary into the report under the matching phase heading.
+
+**Completion gate (load-bearing — replaces the soft `skipped-budget` fallback):**
+
+Any subagent that returns `skipped-budget`, `skipped-context`, `truncated`, or any equivalent self-imposed-limit marker for a phase is a **hard FAIL** of the `--full` contract. The orchestrator must either (a) re-dispatch that phase to a fresh subagent with a smaller scope, or (b) record `phase-failed-budget` in the coverage ledger and surface it in the report's *Coverage summary* as a P1 audit defect. Silent truncation labeled as "representative probe" is no longer an acceptable outcome — `--full` means full or it means honest failure with a named cause.
+
+**Escape hatch — `--single-agent`:**
+
+When the SKILL receives `--single-agent`, skip this dispatch plan and run all phases in the orchestrator's own context. The operator has accepted the truncation tradeoff explicitly. The completion gate above still applies — `skipped-budget` markers must surface as P1 audit defects in the coverage summary, not get buried in the ledger.
+
+**MCP audit checkpoint:** Has the orchestrator decided which groups it will dispatch (default) or recorded `--single-agent` in the report header? Are subagent prompts ready to send with the workspaceId, report path, and per-group phase scopes?
+
+---
+
 ### Phase 1: Broad diagnostics scan
 
 1. `project_diagnostics` (no filters) for the solution-wide picture.
@@ -597,9 +640,17 @@ Re-test 3–5 previously recorded issues from whichever prior source the audited
 1. Read the prior source; select 3–5 items reproducible with the current workspace.
 2. For each, reproduce the exact scenario. Record **still reproduces** / **partially fixed** (describe) / **no longer reproduces — candidate for closure**.
 
-### Phase 19: Finding emission (dual-path: stdout default, opt-in `gh issue create`)
+### Phase 19: Finding emission (dual-path: maintainer-aware default, explicit overrides)
 
-For each **actionable** finding in the audit report (anything that lands in section 13 *MCP server issues* or in section 14 *Improvement suggestions* with a concrete fix sketch), render one finding envelope and emit it to **one of two destinations** depending on the `--auto-file` flag passed to the skill:
+For each **actionable** finding in the audit report (anything that lands in section 13 *MCP server issues* or in section 14 *Improvement suggestions* with a concrete fix sketch), render one finding envelope and emit it to **one of two destinations**.
+
+**Routing decision (compute once, before iterating findings):**
+
+1. If the skill received `--no-auto-file`, route = **stdout-print**.
+2. Else if the skill received `--auto-file`, route = **auto-file** (subject to `gh` available + authenticated; otherwise fall back to stdout-print with one warning line).
+3. Else probe the operator's identity by dot-sourcing the renderer and calling `Test-IsMaintainer` (which wraps `gh api user --jq .login` and compares against the upstream repo owner derived from the single `$script:UpstreamRepo` constant in `lib/render-finding.ps1`). `$true` → route = **auto-file**. `$false` (gh missing, unauthenticated, network failure, login mismatch) → route = **stdout-print**.
+
+Record the routing decision and the maintainer-probe outcome in the audit report's *Finding emission* section before emitting.
 
 **Envelope (shared across both destinations):**
 
@@ -627,7 +678,7 @@ pwsh -NoProfile -Command ". '${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-tes
 
 Returns `{title, labels, body, refusedPublic}`. Use `body` for stdout-print and `gh issue create --body-file`; respect `refusedPublic` for the P0/security refusal contract below.
 
-**Default (no `--auto-file`):** print each finding envelope to stdout as a ready-to-paste GitHub Issue body. Format (rendered by `Render-FindingIssue`):
+**Stdout-print path** (non-maintainer default, or `--no-auto-file` explicit): print each finding envelope to stdout as a ready-to-paste GitHub Issue body. Format (rendered by `Render-FindingIssue`):
 
 ```
 ## TITLE: <id>
@@ -646,7 +697,7 @@ Body:
 - proposed-fix: <proposed-fix>
 ```
 
-**With `--auto-file`** (and only when `gh` is on `PATH` and `gh auth status` is authenticated): for each non-refused finding, write the body block to a temp file and call:
+**Auto-file path** (maintainer default — `gh api user --jq .login` == `darylmcd` — or `--auto-file` explicit; in both cases `gh` must be on `PATH` and `gh auth status` must be authenticated): for each non-refused finding, write the body block to a temp file and call:
 
 ```
 gh issue create --repo darylmcd/Roslyn-Backed-MCP \
@@ -659,14 +710,14 @@ Capture the returned Issue URL and append it to the audit report's *Finding emis
 
 **Refusal contract — load-bearing pre-disclosure safeguard:**
 
-The skill **must not** call `gh issue create` for any finding whose `severity == P0` OR `area == security`. Such findings always print to stdout, regardless of the `--auto-file` flag, prefixed with:
+The skill **must not** call `gh issue create` for any finding whose `severity == P0` OR `area == security`. Such findings always print to stdout, regardless of detected maintainer identity, `--auto-file`, or `--no-auto-file`, prefixed with:
 
 ```
 **SECURITY / P0 finding — DO NOT FILE PUBLICLY.**
 Escalate via GitHub security advisories: https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new
 ```
 
-The refusal is non-negotiable and applies even when `--auto-file` is explicitly passed.
+The refusal is non-negotiable and applies even when the maintainer is detected or `--auto-file` is explicitly passed.
 
 `**N/A — no actionable findings**` is a valid Phase 19 outcome when sections 13 + 14 are both empty.
 
@@ -716,7 +767,7 @@ This prompt writes **raw per-run evidence only**. The audit report belongs in th
 **Canonical path:** `<audited-repo-root>/audit-reports/<timestamp>_<repo-id>_mcp-server-surface-test.md`
 
 - `<timestamp>` = current UTC `yyyyMMddTHHmmssZ`.
-- The prose `.md` report stays in the audited repo's own `audit-reports/` directory. Cross-repo handoff to upstream happens via the Phase 19 finding emission (stdout-print or `gh issue create`), not by relocating the prose report.
+- The prose `.md` report stays in the audited repo's own `audit-reports/` directory. Cross-repo handoff to upstream happens via two channels: (a) Phase 19 finding emission (stdout-print or `gh issue create`) for actionable items, and (b) the maintainer's `eng/stage-review-inbox.ps1` + `eng/aggregate-promotion-scorecards.ps1` pipeline, which discovers reports under either `audit-reports/` or `ai_docs/audit-reports/` across sibling repos and consolidates findings into `review-inbox/` + a quorum-aware scorecard verdict. Consumers do not need to relocate the prose report manually.
 
 ### Promotion scorecard JSON (sibling artifact — MANDATORY)
 

@@ -202,9 +202,14 @@ Identical to the `--full` tier's Phase 19 contract — see `prompts/full.md` *Ph
 
 - **Use the shared renderer.** Dot-source `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-finding.ps1` and call `Render-FindingIssue -Finding $f`. Same renderer the maintainer's `/backlog-intake --publish` uses, so the body bytes are identical across both paths.
 - **Required envelope fields:** `id`, `source-repo`, `severity`, `area`, `server-version` (from `server_info.version` at Phase -1), `anchors`, `finding`, `repro`, `proposed-fix`. The `area` enum includes `security` — pick it for any pre-disclosure-relevant finding so the refusal contract triggers regardless of severity.
-- **Default:** print each actionable finding's envelope to stdout as a ready-to-paste GitHub Issue body.
-- **`--auto-file`:** call `gh issue create --repo darylmcd/Roslyn-Backed-MCP --title <id> --label "area:<area>" --label "severity:<severity>" --body-file <tempfile>` per non-refused finding. Fall back to stdout-print if `gh` is missing or unauthenticated.
-- **Refusal contract:** P0 or `area: security` findings are **never** auto-filed, regardless of the `--auto-file` flag. Use `Test-FindingShouldRefusePublicFile -Finding $f` to short-circuit before invoking `gh`. Print to stdout with the security-advisory escalation banner pointing at https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new (the renderer prepends it automatically when `refusedPublic` is `$true`).
+- **Routing:** compute once before iterating findings.
+  1. `--no-auto-file` → stdout-print.
+  2. Else `--auto-file` → auto-file (subject to gh available + authenticated).
+  3. Else dot-source the renderer and call `Test-IsMaintainer` (wraps `gh api user --jq .login` and compares against the `$script:UpstreamRepo` constant). `$true` → auto-file; `$false` → stdout-print.
+  Record the routing decision and probe outcome in the report's *Finding emission* section.
+- **Stdout-print path** (non-maintainer default, or `--no-auto-file`): print each actionable finding's envelope to stdout as a ready-to-paste GitHub Issue body.
+- **Auto-file path** (maintainer default, or `--auto-file`): call `gh issue create --repo darylmcd/Roslyn-Backed-MCP --title <id> --label "area:<area>" --label "severity:<severity>" --body-file <tempfile>` per non-refused finding. Fall back to stdout-print with one warning line if `gh` is missing or unauthenticated.
+- **Refusal contract:** P0 or `area: security` findings are **never** auto-filed, regardless of detected maintainer identity, `--auto-file`, or `--no-auto-file`. Use `Test-FindingShouldRefusePublicFile -Finding $f` to short-circuit before invoking `gh`. Print to stdout with the security-advisory escalation banner pointing at https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new (the renderer prepends it automatically when `refusedPublic` is `$true`).
 
 `**N/A — no actionable findings**` is a valid Phase 19 outcome.
 
