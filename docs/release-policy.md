@@ -30,7 +30,7 @@ A release is production-ready when all of the following are true:
 
 ## Where To Bump The Version String
 
-The repo has **five** files that hold a literal version string. All five must move together on every release. There is currently no automated drift check (`eng/verify-release.ps1` does not validate them), so every bump PR must touch all five or it will ship inconsistent metadata.
+The repo has **six** files that hold a literal version string. All six must move together on every release. The drift check is automated (see *Pre-merge verification command* below); every bump PR must touch all six or `verify-version-drift.ps1` will fail.
 
 | # | File | Field | Consumer | Notes |
 |---|------|-------|----------|-------|
@@ -38,7 +38,8 @@ The repo has **five** files that hold a literal version string. All five must mo
 | 2 | `.claude-plugin/plugin.json` | `"version"` | Claude Code plugin loader | Canonical for `/plugin update`. The Claude Code client uses this value to decide whether the cached install in `~/.claude/plugins/cache/.../<version>/` is stale. If you change code without bumping this, existing users will not see your changes (the install cache hash matches the recorded version). |
 | 3 | `.claude-plugin/marketplace.json` | `plugins[].version` | Marketplace catalog entry | Discovery/listing. Per the [Claude Code plugins reference](https://code.claude.com/docs/en/plugins-reference#metadata-fields), if both `plugin.json` and the marketplace entry set `version`, `plugin.json` wins. Keep them aligned anyway — drift here surfaces in the `/plugin` discover UI. |
 | 4 | `manifest.json` (repo root) | `"version"` | Legacy DXT-style manifest | Not read by Claude Code's plugin loader (which uses `.claude-plugin/plugin.json` per file #2). Kept for parity with other consumers / older tooling that still parses the DXT format. Bump it together with the others to avoid confusion. |
-| 5 | `CHANGELOG.md` | `## [X.Y.Z] - YYYY-MM-DD` header | Release notes anchor | The new section header for the release line. Must be added (not edited) — historical entries stay in place. |
+| 5 | `.claude-plugin/server.json` | Top-level `"version"` AND `packages[0].version` | MCP Registry manifest | The `io.github.darylmcd/roslyn-mcp` registry entry. Both fields must move together — the top-level `version` is the manifest version; `packages[0].version` is the published NuGet package version. The drift check enforces both. |
+| 6 | `CHANGELOG.md` | `## [X.Y.Z] - YYYY-MM-DD` header | Release notes anchor | The new section header for the release line. Must be added (not edited) — historical entries stay in place. |
 
 Locations that are **not** manual bumps (do not edit them):
 
@@ -56,16 +57,17 @@ grep -n -H -E '"version"|<Version>|^## \[[0-9]' \
     Directory.Build.props \
     .claude-plugin/plugin.json \
     .claude-plugin/marketplace.json \
+    .claude-plugin/server.json \
     manifest.json \
     CHANGELOG.md
 ```
 
 The grep is intentionally inclusive. When eyeballing the output:
 
-- **Must agree on the new version:** `Directory.Build.props:<line>`, `.claude-plugin/plugin.json:3`, `.claude-plugin/marketplace.json` plugin entry (the `plugins[].version` line, **not** line 9), `manifest.json:4`, and the **top** `CHANGELOG.md` `## [X.Y.Z]` header.
+- **Must agree on the new version:** `Directory.Build.props:<line>`, `.claude-plugin/plugin.json:3`, `.claude-plugin/marketplace.json` plugin entry (the `plugins[].version` line, **not** line 9), `.claude-plugin/server.json` (both the top-level `version` AND `packages[0].version`), `manifest.json:4`, and the **top** `CHANGELOG.md` `## [X.Y.Z]` header.
 - **Ignore:** `.claude-plugin/marketplace.json:9` is the marketplace catalog's own `metadata.version` schema version (`1.0.0`) — it does not track the plugin version. Older `## [X.Y.Z]` headers further down `CHANGELOG.md` are historical entries, not drift.
 
-This drift check is now automated: `eng/verify-version-drift.ps1` runs at the top of `eng/verify-release.ps1` and exits non-zero if any of the five files disagree. The manual grep is still useful for quick eyeballing but is no longer the only gate.
+This drift check is automated: `eng/verify-version-drift.ps1` runs at the top of `eng/verify-release.ps1` and exits non-zero if any of the six files disagree. The manual grep is still useful for quick eyeballing but is no longer the only gate.
 
 ## Release Checklist
 
@@ -74,7 +76,7 @@ This drift check is now automated: `eng/verify-version-drift.ps1` runs at the to
 3. Review dependency audit output from CI.
 4. Confirm `server_info` and `server_catalog` reflect the intended support tiers.
 5. For material surface, preview/apply-behavior, or tiering changes, review the latest deep-review rollup under `ai_docs/reports/` and its raw evidence under `ai_docs/audit-reports/`.
-6. **Run the version-string drift check** from [Where To Bump The Version String](#where-to-bump-the-version-string). All five files must agree.
+6. **Run the version-string drift check** from [Where To Bump The Version String](#where-to-bump-the-version-string). All six files must agree.
 7. Publish the host executable built from `src/RoslynMcp.Host.Stdio`.
 8. Confirm docs remain synchronized (`README.md`, `AGENTS.md`, and `docs/product-contract.md`) for any surface or tiering change.
 

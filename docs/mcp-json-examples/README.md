@@ -6,8 +6,9 @@ project-scope config.
 
 | File | When to use it |
 |------|----------------|
-| [`minimal.mcp.json`](minimal.mcp.json) | You want defaults. Most repos. |
+| [`minimal.mcp.json`](minimal.mcp.json) | You want defaults and have the global tool installed. Most repos. |
 | [`with-overrides.mcp.json`](with-overrides.mcp.json) | You need to tune `ROSLYNMCP_*` values for this repo (slow builds, resource limits, etc.). |
+| [`dnx.mcp.json`](dnx.mcp.json) | Zero-install path — resolves the package from NuGet on each cold start. Requires .NET 10 SDK Preview 6+ (`dnx` ships with the SDK). |
 
 ## Why there's no `${user_config.*}` example
 

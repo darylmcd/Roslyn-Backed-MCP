@@ -1,18 +1,19 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  Validates that all five version-string locations in the repo agree.
+  Validates that all six version-string locations in the repo agree.
 
 .DESCRIPTION
   Reads the canonical version from Directory.Build.props <Version> and asserts
   that manifest.json, .claude-plugin/plugin.json, .claude-plugin/marketplace.json
-  (plugins[].version), and the top CHANGELOG.md [X.Y.Z] header all carry the
-  same value.
+  (plugins[].version), the top CHANGELOG.md [X.Y.Z] header, and
+  .claude-plugin/server.json (both top-level `version` and `packages[0].version`)
+  all carry the same value.
 
   Called by verify-release.ps1 as a merge-gate check. Can also be run standalone.
 
   Exit codes:
-    0  All five files agree.
+    0  All six files agree.
     1  At least one file disagrees or is missing.
 #>
 [CmdletBinding()]
@@ -69,6 +70,20 @@ if ($topHeader -match '^\#\# \[(\d+\.\d+\.\d+)\]') {
     $errors += "CHANGELOG.md: no ## [X.Y.Z] header found"
 }
 
+# 6. .claude-plugin/server.json — top-level version AND packages[0].version
+#    (MCP Registry manifest; both fields must track Directory.Build.props)
+$serverJsonPath = Join-Path $repoRoot '.claude-plugin' 'server.json'
+$serverJson = Get-Content $serverJsonPath -Raw | ConvertFrom-Json
+if ($serverJson.version -ne $canonical) {
+    $errors += ".claude-plugin/server.json version: expected '$canonical', got '$($serverJson.version)'"
+}
+$pkgEntry = $serverJson.packages | Select-Object -First 1
+if (-not $pkgEntry) {
+    $errors += ".claude-plugin/server.json: packages[0] missing"
+} elseif ($pkgEntry.version -ne $canonical) {
+    $errors += ".claude-plugin/server.json packages[0].version: expected '$canonical', got '$($pkgEntry.version)'"
+}
+
 if ($errors.Count -gt 0) {
     Write-Host ''
     Write-Host 'VERSION DRIFT DETECTED:' -ForegroundColor Red
@@ -76,9 +91,9 @@ if ($errors.Count -gt 0) {
         Write-Host "  - $e" -ForegroundColor Red
     }
     Write-Host ''
-    Write-Host "All five files must carry version '$canonical'. See docs/release-policy.md § Where To Bump The Version String." -ForegroundColor Yellow
+    Write-Host "All six files must carry version '$canonical'. See docs/release-policy.md § Where To Bump The Version String." -ForegroundColor Yellow
     exit 1
 }
 
-Write-Host "All 5 version files agree on $canonical" -ForegroundColor Green
+Write-Host "All 6 version files agree on $canonical" -ForegroundColor Green
 exit 0
