@@ -16,6 +16,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.35.2] - 2026-05-10
+
+### Fixed
+
+- **Fixed:** `eng/stage-review-inbox.ps1` no longer crashes under PowerShell Strict Mode when the staged-artifact set has zero or one items per action. `Where-Object` returns scalar/`$null` in that case and the previous `.Count` access failed; both filters are now wrapped in `@(...)` to force array context.
+
+### Changed
+
+- **Changed:** `/mcp-server-surface-test` now defaults to auto-filing findings as GitHub Issues when the operator's `gh api user --jq .login` matches the upstream repo owner; non-maintainers continue to get stdout-print. New `--no-auto-file` flag opts out for maintainer dry-runs. New `Test-IsMaintainer` helper in `lib/render-finding.ps1` centralizes the probe; `$script:UpstreamRepo` constant single-sources the upstream repo + maintainer login + security-advisory URL. P0 / `area: security` refusal contract strengthened to cover the new identity path.
+- **Changed:** `--full` tier of `/mcp-server-surface-test` mandates orchestrator dispatch of phase groups (G1–G8) to `audit-phase-runner` subagents via the new Phase 0.5 dispatch plan, replacing silent "representative-probe" truncation with an explicit completion gate that turns `skipped-budget` into a P1 audit defect. New `--single-agent` escape hatch for hosts that cannot spawn subagents.
+- **Changed:** `eng/stage-review-inbox.ps1` recognizes `*_mcp-server-surface-test.md` and now defaults to MOVE-from-siblings + COPY-from-self (siblings shouldn't accumulate stale audit reports). New `-CopyFromSiblings` opt-out; legacy `-Move` still forces move-everywhere.
+- **Changed:** `eng/aggregate-promotion-scorecards.ps1` probes both `ai_docs/audit-reports/` (deep-review convention) and top-level `audit-reports/` (consumer-facing surface-test convention) for `_latest-promotion-scorecard.json`.
+
+### Added
+
+- **Added:** `eng/process-audit-reports.ps1` — single-command wrapper running stage → aggregate → next-step `/backlog-intake` pointer.
+
 ## [1.35.1] - 2026-05-09
 
 ### Changed
