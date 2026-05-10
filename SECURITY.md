@@ -18,6 +18,8 @@ Instead, please use one of the following channels:
 1. **GitHub Security Advisories** (preferred): Use the [Report a vulnerability](https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new) feature on this repository.
 2. **Email**: Contact the maintainer directly via the email associated with the GitHub account [@darylmcd](https://github.com/darylmcd).
 
+The shipped `/mcp-server-surface-test` skill enforces this policy automatically: any finding with `severity == P0` OR `area == security` is **refused for public filing** by both `--auto-file` (consumer) and `/backlog-intake --publish` (maintainer). Refused findings print to stdout with a banner pointing back here so the operator can route them through the channels above.
+
 ### What to include
 
 - A description of the vulnerability and its potential impact.

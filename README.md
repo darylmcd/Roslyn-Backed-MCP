@@ -123,6 +123,12 @@ Stable families include workspace/session management, semantic navigation, diagn
 - [AGENTS.md](AGENTS.md) — bootstrap entry point for AI agents working in this repo
 - [ai_docs/README.md](ai_docs/README.md) — canonical AI-doc routing index
 
+## Filing Surface-Test Findings
+
+If you find a bug or behaviour gap while running [`/mcp-server-surface-test`](skills/mcp-server-surface-test/README.md) against your own C# repo, share it back via the [Surface-test finding](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/new?template=mcp-server-surface-test-finding.yml) issue template. The shipped skill renders findings into a copy-paste body block by default; pass `--auto-file` and the skill calls `gh issue create` for you.
+
+P0 / `area: security` findings are refused for public filing — see [SECURITY.md](SECURITY.md) for the private-disclosure path.
+
 ## Support
 
 - Bugs and feature requests: [GitHub Issues](https://github.com/darylmcd/Roslyn-Backed-MCP/issues)

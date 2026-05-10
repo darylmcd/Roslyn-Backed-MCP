@@ -1,0 +1,100 @@
+name: "Surface-test finding"
+description: "File a finding produced by /mcp-server-surface-test (consumer audit of the Roslyn MCP server's live surface)."
+labels: ["surface-test-finding"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to file a finding produced by `/mcp-server-surface-test` running against your own C# repo. The shipped skill renders the body block below; you can paste it as-is when filing manually, or pass `--auto-file` to have the skill call `gh issue create` for you.
+
+        **Do not file P0 or `area: security` findings here.** Both `--auto-file` and `/backlog-intake --publish` refuse to file those publicly. Use the [GitHub security advisory](https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new) flow instead — see [SECURITY.md](https://github.com/darylmcd/Roslyn-Backed-MCP/blob/main/SECURITY.md) for the full pre-disclosure path.
+
+  - type: input
+    id: id
+    attributes:
+      label: id
+      description: "Kebab-case finding id, prefixed with your repo's slug. Example: `tradewise-find-references-stale-cache`. Must match what the shipped skill emitted."
+      placeholder: "your-repo-some-finding"
+    validations:
+      required: true
+
+  - type: input
+    id: source-repo
+    attributes:
+      label: source-repo
+      description: "Kebab-case slug of the repo you ran the audit against. The shipped skill derives this from `git remote get-url origin` (owner/repo) or falls back to the directory basename."
+      placeholder: "your-repo"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: severity
+      description: "Match the section-13 severity from the audit report. Note: `P0` findings are refused for public filing — use the security advisory path instead."
+      options:
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: area
+      description: "Coarse classification used for triage and labeling. Note: `security` is refused for public filing — use the security advisory path instead."
+      options:
+        - tools
+        - resources
+        - prompts
+        - skills
+        - concurrency
+        - perf
+        - docs
+    validations:
+      required: true
+
+  - type: input
+    id: server-version
+    attributes:
+      label: server-version
+      description: "The Roslyn MCP server version captured at Phase -1 of the audit (`server_info.version`)."
+      placeholder: "1.36.0"
+    validations:
+      required: true
+
+  - type: textarea
+    id: anchors
+    attributes:
+      label: anchors (paths in your repo, not clickable here)
+      description: "One `path/to/file.ext:LINE` per line. These are diagnostic context — they refer to your own repo's source, not this repo. Maintainers use them to understand which Roslyn-MCP code path your repo exercised."
+      placeholder: |
+        src/Foo.cs:142
+        src/Bar.cs:38
+    validations:
+      required: true
+
+  - type: textarea
+    id: finding
+    attributes:
+      label: finding
+      description: "One to two sentences describing the bug or gap."
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: repro
+      description: "One to two sentences describing the minimal reproduction (which tool / inputs / expected vs. actual)."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-fix
+    attributes:
+      label: proposed-fix
+      description: "One to two sentences pointing at the likely fix shape (which file / which method / what change). Optional but appreciated."
+    validations:
+      required: false
