@@ -608,13 +608,26 @@ For each **actionable** finding in the audit report (anything that lands in sect
 | `id` | kebab-case slug; prefix with the audited repo's id (derive from `git remote get-url origin` → `owner/repo` or fall back to repo dir basename). Example: `tradewise-find-references-stale-cache`. |
 | `source-repo` | audited repo's kebab-case id |
 | `severity` | `P0` / `P1` / `P2` / `P3` matching section 13 severity, or `P3`/`P2` for section-14 suggestions per their workflow blocking impact |
-| `area` | one of `tools` / `resources` / `prompts` / `skills` / `concurrency` / `perf` / `docs` |
+| `area` | one of `tools` / `resources` / `prompts` / `skills` / `concurrency` / `perf` / `docs` / `security`. Pick `security` for any finding that surfaces a CVE-class issue, an authentication/authorization gap, an information leak, or any pattern that warrants pre-disclosure handling — `area: security` triggers the public-filing refusal regardless of severity. |
+| `server-version` | `server_info.version` captured at Phase -1; stamp the same value on every finding in this run |
 | `anchors` | one or more `path/to/file.ext:LINE` strings (relative to the audited repo's root) |
 | `finding` | one to two sentences describing the bug or gap |
 | `repro` | one to two sentences describing the minimal reproduction (which tool / inputs / expected vs. actual) |
 | `proposed-fix` | one to two sentences pointing at the likely fix shape |
 
-**Default (no `--auto-file`):** print each finding envelope to stdout as a ready-to-paste GitHub Issue body. Format:
+**Renderer (shared with `/backlog-intake --publish`):** rather than hand-rolling the body, dot-source the shared renderer and call its functions. The renderer is the single source of truth for the body shape — both auto-file paths emit byte-identical output, which is the contract Row 2 ships:
+
+```
+pwsh -NoProfile -Command ". '${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-finding.ps1'; \
+  $f = @{ id='<id>'; source_repo='<repo>'; severity='<sev>'; area='<area>'; \
+          server_version='<ver>'; anchors=@('<a1>','<a2>'); \
+          finding='<finding>'; repro='<repro>'; proposed_fix='<fix>' }; \
+  Render-FindingIssue -Finding $f"
+```
+
+Returns `{title, labels, body, refusedPublic}`. Use `body` for stdout-print and `gh issue create --body-file`; respect `refusedPublic` for the P0/security refusal contract below.
+
+**Default (no `--auto-file`):** print each finding envelope to stdout as a ready-to-paste GitHub Issue body. Format (rendered by `Render-FindingIssue`):
 
 ```
 ## TITLE: <id>
@@ -624,6 +637,7 @@ Body:
 - source-repo: <source-repo>
 - severity: <severity>
 - area: <area>
+- server-version: <server-version>
 - anchors:
   - <anchor1>
   - <anchor2>

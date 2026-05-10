@@ -54,7 +54,8 @@ Each fragment is a markdown file with YAML frontmatter, then a single-paragraph 
 | `source_audit` | string (relative path) | Filename of the source `*_mcp-server-audit.md` report **within the audited repo's `ai_docs/audit-reports/`**, e.g. `20260507T203015Z_tradewise_mcp-server-audit.md`. Intake uses this to back-reference evidence when the fragment alone is ambiguous. |
 | `source_repo` | string (kebab-case) | Repo id, e.g. `roslyn-backed-mcp`, `tradewise`, `it-chat-bot`. Disambiguates `id` collisions when two repos independently produce the same slug. The `(source_repo, id)` pair is the dedup key. |
 | `severity` | enum | One of `P0` (critical, ship-blocker), `P1` (high), `P2` (medium), `P3` (low). Maps to the priority bands in `ai_docs/backlog.md` so intake can place the row without re-classifying. |
-| `area` | enum | One of `tools`, `resources`, `prompts`, `skills`, `concurrency`, `perf`, `docs`. Coarse classification used by intake for grouping and by the planner prompt for context-budget sizing. |
+| `area` | enum | One of `tools`, `resources`, `prompts`, `skills`, `concurrency`, `perf`, `docs`, `security`. Coarse classification used by intake for grouping and by the planner prompt for context-budget sizing. **Note:** `area: security` is a load-bearing pre-disclosure refusal token — both `/mcp-server-surface-test --auto-file` and `/backlog-intake --publish` refuse to file such fragments to public GitHub Issues, regardless of severity. |
+| `server_version` | string (semver) | Roslyn MCP server version captured during the audit run (`server_info.version` at Phase -1). Required as of Row 2 of the move-to-git-issues design. Lets the planner correlate findings to a specific server version when triaging a regression. |
 | `anchors` | list of `file:line` strings | One or more `path/to/file.cs:NNN` entries pointing at the live code or doc the finding cites. Relative to the audited repo's root. May be a single-element list. |
 
 ## Body
@@ -107,10 +108,11 @@ The required disambiguator key is `severity:` — fragments always have it; audi
 ```markdown
 ---
 id: tradewise-find-references-stale-cache
-source_audit: 20260507T203015Z_tradewise_mcp-server-audit.md
+source_audit: 20260507T203015Z_tradewise_mcp-server-surface-test.md
 source_repo: tradewise
 severity: P2
 area: tools
+server_version: 1.35.0
 anchors:
   - src/RoslynMcp.Roslyn/Services/FindReferencesService.cs:142
   - src/RoslynMcp.Host.Stdio/Tools/FindReferencesTool.cs:38
@@ -125,11 +127,12 @@ After `/backlog-intake` consumes this fragment, a new row appears in `ai_docs/ba
 
 Intake refuses a fragment (does not delete it; logs a warning) when any of:
 
-- Missing required frontmatter key.
+- Missing required frontmatter key (including `server_version` as of Row 2).
 - `severity` not in the documented enum.
-- `area` not in the documented enum.
+- `area` not in the documented enum (note: `security` is now a member of the enum and triggers the public-filing refusal, not validation rejection).
 - `anchors` empty.
 - Filename does not match `id`.
 - `source_repo` empty or contains characters outside `[a-z0-9-]`.
+- `server_version` empty.
 
 A malformed fragment is left in the source `backlog.d/` for the audit operator to fix and re-stage.

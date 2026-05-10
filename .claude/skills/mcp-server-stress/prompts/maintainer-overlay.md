@@ -607,17 +607,18 @@ For each **actionable** finding in the audit report (anything that lands in sect
 <audited-repo-root>/backlog.d/<finding-id>.md
 ```
 
-Schema is canonical at `<Roslyn-Backed-MCP-root>/ai_docs/items/backlog-d-fragment-schema.md` — read that file once if you have not seen it. The required frontmatter keys are: `id`, `source_audit`, `source_repo`, `severity`, `area`, `anchors`. The body is a single ≤6-sentence paragraph (finding + repro + proposed fix sketch).
+Schema is canonical at `<Roslyn-Backed-MCP-root>/ai_docs/items/backlog-d-fragment-schema.md` — read that file once if you have not seen it. The required frontmatter keys are: `id`, `source_audit`, `source_repo`, `severity`, `area`, `server_version`, `anchors`. The body is a single ≤6-sentence paragraph (finding + repro + proposed fix sketch). **Use the shared renderer** at `<Roslyn-Backed-MCP-root>/skills/mcp-server-surface-test/lib/render-finding.ps1` (`Render-FindingFragment` for fragment files; `Render-FindingIssue` if you also pass `--publish` from `/backlog-intake`) so fragment bytes match what the consumer auto-file path emits.
 
 Steps:
 
 1. Ensure `<audited-repo-root>/backlog.d/` exists (`mkdir -p`).
 2. For each actionable finding, derive a kebab-case `<finding-id>` that prefixes the audited repo's id (e.g. `roslyn-mcp-find-references-stale-cache`, `tradewise-symbol-search-empty-query-overflow`). The filename and the frontmatter `id` must match exactly.
-3. Set `source_audit` to the basename of the prose audit report this run is producing (e.g. `20260507T203015Z_tradewise_mcp-server-audit.md`).
-4. Set `source_repo` to the audited repo's kebab-case id.
+3. Set `source_audit` to the basename of the prose audit report this run is producing (e.g. `20260507T203015Z_tradewise_mcp-server-surface-test.md`).
+4. Set `source_repo` to the audited repo's kebab-case id (use `Get-FindingRepoId -RepoRoot <audited-repo-root>` from the shared renderer for deterministic derivation — parses `git remote get-url origin` and falls back to the resolved directory basename).
 5. Set `severity` to `P0` / `P1` / `P2` / `P3` matching the section 13 severity (or your own classification for section 14 entries: typically `P3` unless the suggestion blocks a concrete workflow, in which case `P2`).
-6. Set `area` to one of `tools` / `resources` / `prompts` / `skills` / `concurrency` / `perf` / `docs`.
-7. Set `anchors` to one or more `path/to/file.ext:LINE` strings (relative to the audited repo's root).
+6. Set `area` to one of `tools` / `resources` / `prompts` / `skills` / `concurrency` / `perf` / `docs` / `security`. Use `security` for any pre-disclosure-relevant finding so `/backlog-intake --publish` refuses to file it publicly.
+7. Set `server_version` to the `version` field captured from `server_info` at Phase -1 — the same value for every fragment in this run.
+8. Set `anchors` to one or more `path/to/file.ext:LINE` strings (relative to the audited repo's root).
 
 Idempotency: if a fragment with the same filename already exists in `backlog.d/`, **do not overwrite it** — leave the existing fragment in place and skip emission for that finding. Re-running the audit on the same repo without intake-in-between is allowed; the second run is a no-op for fragments that have not changed.
 
