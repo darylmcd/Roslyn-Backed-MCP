@@ -502,3 +502,12 @@ $RECYCLE.BIN/
 
 # Release-managed edit override sentinel (created by /bump, /release-cut, /ship; transient)
 .release-managed-edit-allowed
+
+# Per-run audit output from /mcp-server-surface-test (prose reports + scorecards).
+# Findings consolidate via eng/process-audit-reports.ps1 -> review-inbox/ -> /backlog-intake.
+audit-reports/
+
+# Flat staging directory for /backlog-intake. Prose reports stage here from sibling
+# repos and get archived into review-inbox/archive/<batch-id>/ after intake. The flat
+# files are transient; the archive (with citation paths from backlog rows) is tracked.
+review-inbox/*.md

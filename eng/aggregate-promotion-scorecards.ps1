@@ -26,7 +26,11 @@
     init 5 of the same backlog sweep established): walk every immediate
     subdirectory under `$SiblingRepoParent` (defaults to the parent of this
     repo), skip the running repo itself unless `-IncludeSelf`, and probe
-    each candidate's `ai_docs/audit-reports/_latest-promotion-scorecard.json`.
+    each candidate for `_latest-promotion-scorecard.json` under any of the
+    paths in `$ScorecardSearchPaths`. Defaults cover both the canonical
+    `ai_docs/audit-reports/` location (deep-review pipeline convention) and
+    the top-level `audit-reports/` location used by the consumer-facing
+    `/mcp-server-surface-test` skill. First match wins per repo.
 
     Missing scorecards are NOT errors. The aggregator simply notes
     `missingFromRepos`. Empty configured sibling sets emit a clean
@@ -76,9 +80,11 @@
     pattern means scorecards land under each *audited* repo, and this repo
     typically only audits siblings.
 
-.PARAMETER ScorecardRelativePath
-    Per-repo path to the scorecard. Defaults to
-    `ai_docs/audit-reports/_latest-promotion-scorecard.json`.
+.PARAMETER ScorecardSearchPaths
+    Per-repo relative paths to probe for `_latest-promotion-scorecard.json`.
+    First match wins per repo. Defaults cover both the canonical
+    `ai_docs/audit-reports/` (deep-review pipeline) and top-level
+    `audit-reports/` (consumer-facing /mcp-server-surface-test skill).
 
 .PARAMETER OutputFile
     Optional file path. When set, the JSON is written to this path in addition
@@ -101,7 +107,10 @@ param(
     [string]$SiblingRepoParent = '',
     [string[]]$ExcludeRepoFolders = @(),
     [switch]$IncludeSelf,
-    [string]$ScorecardRelativePath = 'ai_docs/audit-reports/_latest-promotion-scorecard.json',
+    [string[]]$ScorecardSearchPaths = @(
+        'ai_docs/audit-reports/_latest-promotion-scorecard.json',
+        'audit-reports/_latest-promotion-scorecard.json'
+    ),
     [string]$OutputFile = ''
 )
 
@@ -141,8 +150,17 @@ $entries = @{}
 
 foreach ($root in $roots) {
     $siblingReposScanned.Add($root.Name) | Out-Null
-    $scorecardPath = Join-Path $root.Path $ScorecardRelativePath
-    if (-not (Test-Path -LiteralPath $scorecardPath)) {
+
+    # Probe each candidate path; first existing scorecard wins. Mirrors
+    # stage-review-inbox's defensive multi-path discovery so consumer-facing
+    # repos that write to top-level `audit-reports/` are included alongside
+    # deep-review repos using `ai_docs/audit-reports/`.
+    $scorecardPath = $null
+    foreach ($candidate in $ScorecardSearchPaths) {
+        $probe = Join-Path $root.Path $candidate
+        if (Test-Path -LiteralPath $probe) { $scorecardPath = $probe; break }
+    }
+    if ($null -eq $scorecardPath) {
         $siblingReposMissingScorecard.Add($root.Name) | Out-Null
         continue
     }

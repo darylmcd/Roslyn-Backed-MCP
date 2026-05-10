@@ -1,8 +1,8 @@
 ---
 name: mcp-server-surface-test
-description: "Consumer-facing audit of the Roslyn MCP server's live surface against a loaded C# repo. Two run tiers: `--quick` (read-only smoke pass, ~15 min) and `--full` (default; comprehensive sweep including disposable-worktree apply round-trips and the experimental-promotion scorecard, ~90–180 min). Findings print to stdout by default; pass `--auto-file` to file each finding as a GitHub Issue at https://github.com/darylmcd/Roslyn-Backed-MCP. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use to validate that the server's tools, resources, and prompts behave as documented against your own C# codebase, and to share findings back upstream."
+description: "Consumer-facing audit of the Roslyn MCP server's live surface against a loaded C# repo. Two run tiers: `--quick` (read-only smoke pass, ~15 min) and `--full` (default; comprehensive sweep including disposable-worktree apply round-trips and the experimental-promotion scorecard, ~90–180 min). Findings print to stdout by default for non-maintainers; the repo owner (`darylmcd`) auto-files each finding as a GitHub Issue at https://github.com/darylmcd/Roslyn-Backed-MCP. Pass `--auto-file` to force-enable or `--no-auto-file` to force-disable. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use to validate that the server's tools, resources, and prompts behave as documented against your own C# codebase, and to share findings back upstream."
 user-invocable: true
-argument-hint: "[<target-repo-path>] [--quick | --full] [--auto-file] [--no-worktree]"
+argument-hint: "[<target-repo-path>] [--quick | --full] [--auto-file | --no-auto-file] [--no-worktree] [--single-agent]"
 ---
 
 # /mcp-server-surface-test $ARGUMENTS
@@ -45,22 +45,41 @@ Resolution rules:
 - `--full` — explicit form of the default; routes to `prompts/full.md`.
 - **Conflict:** `--quick` and `--full` together → stop and report; pick one.
 
+### `--single-agent` (full tier only)
+
+- *(no flag, default)* — the full tier dispatches phase groups to `audit-phase-runner` subagents per the prompt's *Phase 0.5: Subagent dispatch plan*. The orchestrator owns workspace lifecycle, the disposable worktree's `try/finally`, all report-file writes, and finding emission; subagents return compact structured summaries the orchestrator pastes in. This is the only way the `--full` tier achieves its 250+ tool-call coverage without burning through a single agent's context window.
+- `--single-agent` — opt out of the dispatch plan and run every phase in the orchestrator's own context. Use only when (a) the host environment cannot spawn subagents, or (b) the operator wants a one-shot run and accepts that long phases may surface as `phase-failed-budget` in the coverage summary. The completion gate (no silent `skipped-budget` truncation) still applies — partial runs surface as P1 audit defects, not as quiet ledger entries.
+- **Has no effect under `--quick`** (the quick tier is bounded enough to run in a single agent by design); reject the combination with a one-line message.
+
 ### `--no-worktree` (full tier only)
 
 - *(no flag, default)* — full canonical run with the disposable-worktree apply pass exercised.
 - `--no-worktree` — degraded mode for environments that genuinely cannot create a git worktree. Phase 6 sub-phases that require a worktree are marked `skipped-safety — --no-worktree`. The promotion scorecard still emits, but writer recommendations default to `needs-more-evidence` for any tool whose round-trip evidence depended on the disposable worktree. **Has no effect under `--quick`** (the quick tier already skips Phase 6); reject the combination with a one-line message.
 
-### `--auto-file` (both tiers)
+### `--auto-file` / `--no-auto-file` (both tiers)
 
-- *(no flag, default)* — actionable findings render to stdout as ready-to-paste GitHub Issue bodies. The skill prints the Issue title, labels, and body; the operator decides what to do with each.
-- `--auto-file` — opt-in. After the audit completes and findings are rendered, the skill calls `gh issue create` against `https://github.com/darylmcd/Roslyn-Backed-MCP` for each actionable finding. Requirements:
-  - `gh` is on `PATH`. If missing, fall back to stdout-print and emit one warning line.
-  - `gh auth status` reports an authenticated session. If not, fall back to stdout-print and emit one warning line.
-  - **Refusal contract:** the skill does **not** call `gh issue create` for any finding whose `severity == P0` or whose `area == security`. Such findings print to stdout with this header line: `**SECURITY / P0 finding — DO NOT FILE PUBLICLY.** Escalate via GitHub security advisories at https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new`. The refusal applies regardless of `--auto-file` and is the load-bearing pre-disclosure safeguard.
+The auto-file default is **maintainer-aware**: the skill probes the operator's GitHub identity and auto-files when the operator owns the upstream repo. Findings always go to `https://github.com/darylmcd/Roslyn-Backed-MCP` regardless of the audited repo, since findings are about the MCP server itself and the audited repo is just a fixture.
+
+**Maintainer detection (run once per invocation, before Phase 19):**
+
+Dot-source `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-finding.ps1` and call `Test-IsMaintainer`. It wraps `gh api user --jq .login` and compares against the maintainer login derived from the single `$script:UpstreamRepo` constant — that one literal in `lib/render-finding.ps1` is the source of truth for "who is the maintainer" and "where do auto-filed Issues land." Any failure mode (`gh` missing, unauthenticated, network failure, login mismatch) returns `$false` and is treated as **not the maintainer**.
+
+**Default (no flag):**
+
+- **Maintainer detected** (`gh api user --jq .login` == `darylmcd`): auto-file each non-refused finding via `gh issue create` (same call as the explicit `--auto-file` path).
+- **Otherwise**: print each finding to stdout as a ready-to-paste GitHub Issue body. The operator decides what to do with each.
+
+**Explicit overrides:**
+
+- `--auto-file` — force-enable auto-filing regardless of detected identity. Still subject to the `gh`-available + authenticated requirement (falls back to stdout-print with one warning line if either is missing); still subject to the P0/security refusal contract below.
+- `--no-auto-file` — force-disable auto-filing. Always emit to stdout, even when the maintainer is detected. Use this for a dry-run on the maintainer's own machine.
+- **Conflict:** `--auto-file` and `--no-auto-file` together → stop and report; pick one.
+
+**Refusal contract — load-bearing pre-disclosure safeguard:** the skill does **not** call `gh issue create` for any finding whose `severity == P0` or whose `area == security`. Such findings print to stdout with this header line: `**SECURITY / P0 finding — DO NOT FILE PUBLICLY.** Escalate via GitHub security advisories at https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new`. The refusal applies regardless of detected identity, `--auto-file`, or `--no-auto-file`.
 
 ### Reject
 
-Reject any token that is neither a valid target path, `--target=<path>`, `--quick`, `--full`, `--no-worktree`, nor `--auto-file`. One-line message; ask the user to fix or drop the offending token.
+Reject any token that is neither a valid target path, `--target=<path>`, `--quick`, `--full`, `--no-worktree`, `--single-agent`, `--auto-file`, nor `--no-auto-file`. One-line message; ask the user to fix or drop the offending token.
 
 ## Step 3 — Mutation safety: disposable worktree (full tier, default mode)
 
@@ -84,8 +103,8 @@ Persist the audit draft after each phase as the prompt instructs — the canonic
 
 After the audit phases complete, the prompt's final finding-emission phase walks every actionable finding (entries in *MCP server issues* or *Improvement suggestions* with a concrete fix sketch) and renders each through one shared envelope:
 
-- **Default (no `--auto-file`):** print each finding to stdout as a ready-to-paste GitHub Issue body. The render block is `## TITLE`, label list, and the structured body fields (`id`, `source-repo`, `severity`, `area`, `server-version`, `anchors`, `finding`, `repro`, `proposed-fix`).
-- **With `--auto-file`:** call `gh issue create --repo darylmcd/Roslyn-Backed-MCP --title <title> --label <area:X,severity:Y> --body-file <tempfile>` per finding, except those refused by the P0/security refusal contract (Step 2). Refused findings still print to stdout with the security-advisory escalation banner.
+- **Stdout-print path** (non-maintainer default, or when `--no-auto-file` is passed): print each finding to stdout as a ready-to-paste GitHub Issue body. The render block is `## TITLE`, label list, and the structured body fields (`id`, `source-repo`, `severity`, `area`, `server-version`, `anchors`, `finding`, `repro`, `proposed-fix`).
+- **Auto-file path** (maintainer default — `gh api user --jq .login` == `darylmcd` — or when `--auto-file` is passed): call `gh issue create --repo darylmcd/Roslyn-Backed-MCP --title <title> --label <area:X,severity:Y> --body-file <tempfile>` per finding, except those refused by the P0/security refusal contract (Step 2). Refused findings still print to stdout with the security-advisory escalation banner.
 
 ## Operational notes
 
@@ -119,4 +138,4 @@ The script is invoked manually (no automatic scheduler).
 - **No PR.** This skill produces an audit report, not a refactor PR. Phase 6 mutations are exercised as apply-tool fixtures inside the disposable worktree and torn down at run end.
 - **Cite, don't summarize.** Every finding must reference a concrete file:line and a tool call — no abstract claims.
 - **Disposable-worktree teardown is mandatory** (full tier, default mode). The Phase 6 apply chain runs inside `try/finally` so teardown executes even on apply failure. `dotnet build-server shutdown` always precedes `git worktree remove --force` on Windows.
-- **P0 / security findings are never auto-filed.** The refusal applies whether the operator passed `--auto-file` or not — those findings are stdout-only with the security-advisory escalation banner.
+- **P0 / security findings are never auto-filed.** The refusal applies whether the operator is the detected maintainer, passed `--auto-file`, or passed `--no-auto-file` — those findings are stdout-only with the security-advisory escalation banner.

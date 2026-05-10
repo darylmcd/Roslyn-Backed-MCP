@@ -9,14 +9,24 @@
     already carry a repo-id prefix (e.g. 20260424T030145Z_roslyn-backed-mcp_roslyn-mcp-retro.md)
     so no renaming is needed.
 
-    The default behavior is COPY (not move) so the canonical
-    <repo>/ai_docs/audit-reports/<ts>_<repo>_mcp-server-audit.md path stays
-    populated as the audit prompt promises. Pass -Move to revert to the older
-    move-to-inbox behavior (typically only useful when re-running on the same
-    artifacts and you want the source removed).
+    Default behavior is **per-source**:
+      - Sibling repos: MOVE (delete after staging). Sibling repos shouldn't
+        accumulate stale audit reports — once handed off to the upstream
+        review-inbox, the source is no longer the canonical copy.
+      - This repo (self): COPY (preserve in place). The canonical
+        <repo>/ai_docs/audit-reports/ path stays populated as the audit
+        prompt promises.
+
+    Overrides:
+      -Move                    Force MOVE for both self and siblings (legacy
+                               behavior). Useful for full-cleanup re-runs.
+      -CopyFromSiblings        Force COPY from siblings too. Useful when an
+                               audit pass is mid-flight and you want to stage
+                               without disturbing the source repos yet.
 
     Recognized shapes:
       *_mcp-server-audit.md         Server audit from the deep-review prompt
+      *_mcp-server-surface-test.md  Consumer-facing audit from /mcp-server-surface-test
       *_experimental-promotion.md   Experimental tool/prompt promotion audit
       *_roslyn-mcp-retro.md         Session retro on Roslyn-MCP tool quality
       backlog.d/<finding-id>.md     Per-finding fragments emitted by /mcp-server-stress
@@ -54,9 +64,13 @@
     Show what would be staged without moving files.
 
 .PARAMETER Move
-    Move instead of copy (the default). Removes the source file after staging.
-    Use only when you explicitly want the canonical
-    <repo>/ai_docs/audit-reports/ location cleared — typically a re-run scenario.
+    Force MOVE from both self AND siblings (legacy behavior). Without this
+    flag, the per-source default is move-from-siblings, copy-from-self.
+
+.PARAMETER CopyFromSiblings
+    Force COPY from siblings (override the move-from-siblings default).
+    Useful when sibling audits are mid-flight and you want to stage a
+    snapshot without disturbing the source repos.
 
 .PARAMETER SkipSelf
     Do not scan this repo's own ai_docs/audit-reports or ai_docs/reports
@@ -95,6 +109,7 @@ param(
     ),
     [switch]$DryRun,
     [switch]$Move,
+    [switch]$CopyFromSiblings,
     [switch]$SkipSelf
 )
 
@@ -109,7 +124,12 @@ if (-not $SiblingRepoParent) {
     $SiblingRepoParent = Split-Path -Parent $repoRoot
 }
 
-$filePatterns = @('*_mcp-server-audit.md', '*_experimental-promotion.md', '*_roslyn-mcp-retro.md')
+$filePatterns = @(
+    '*_mcp-server-audit.md',
+    '*_mcp-server-surface-test.md',
+    '*_experimental-promotion.md',
+    '*_roslyn-mcp-retro.md'
+)
 
 # Fragment-discovery contract: any .md under <repo-root>/backlog.d/ whose
 # YAML frontmatter contains a `severity:` key. Audit-report .md files NEVER
@@ -130,14 +150,16 @@ function Test-IsBacklogFragment {
     return $false
 }
 
-$roots = New-Object System.Collections.Generic.List[string]
-if (-not $SkipSelf) { $roots.Add($repoRoot) | Out-Null }
+$roots = New-Object System.Collections.Generic.List[pscustomobject]
+if (-not $SkipSelf) {
+    $roots.Add([pscustomobject]@{ Path = $repoRoot; IsSibling = $false }) | Out-Null
+}
 
 if (Test-Path $SiblingRepoParent) {
     $excludeSet = @{ $repoName = $true }
     foreach ($x in $ExcludeRepoFolders) { $excludeSet[$x] = $true }
     Get-ChildItem -Path $SiblingRepoParent -Directory | Where-Object { -not $excludeSet.ContainsKey($_.Name) } | ForEach-Object {
-        $roots.Add($_.FullName) | Out-Null
+        $roots.Add([pscustomobject]@{ Path = $_.FullName; IsSibling = $true }) | Out-Null
     }
 }
 
@@ -146,8 +168,19 @@ $skipped = New-Object System.Collections.Generic.List[pscustomobject]
 $fragments = New-Object System.Collections.Generic.List[pscustomobject]
 
 foreach ($root in $roots) {
+    # Per-source action: legacy -Move forces move everywhere; otherwise siblings move
+    # (unless -CopyFromSiblings opts out), self always copies. Self-move would clear the
+    # canonical audit-reports/ source — only -Move asks for that explicitly.
+    if ($Move) {
+        $action = 'Move'
+    } elseif ($root.IsSibling -and -not $CopyFromSiblings) {
+        $action = 'Move'
+    } else {
+        $action = 'Copy'
+    }
+
     foreach ($rel in $SearchPaths) {
-        $dir = Join-Path $root $rel
+        $dir = Join-Path $root.Path $rel
         if (-not (Test-Path $dir)) { continue }
         foreach ($pat in $filePatterns) {
             Get-ChildItem -Path $dir -Filter $pat -File -ErrorAction SilentlyContinue | ForEach-Object {
@@ -155,7 +188,7 @@ foreach ($root in $roots) {
                 if (Test-Path $dest) {
                     $skipped.Add([pscustomobject]@{ Source = $_.FullName; Reason = 'already in review-inbox' })
                 } else {
-                    $staged.Add([pscustomobject]@{ Source = $_.FullName; Dest = $dest })
+                    $staged.Add([pscustomobject]@{ Source = $_.FullName; Dest = $dest; Action = $action })
                 }
             }
         }
@@ -164,11 +197,11 @@ foreach ($root in $roots) {
     # Fragment discovery — backlog.d/*.md per <root>. Reported only; not moved.
     # /backlog-intake reads them in place from the source repo and deletes after
     # consumption. Disambiguation pins on `severity:` frontmatter key.
-    $fragmentDir = Join-Path $root 'backlog.d'
+    $fragmentDir = Join-Path $root.Path 'backlog.d'
     if (Test-Path $fragmentDir) {
         Get-ChildItem -Path $fragmentDir -Filter '*.md' -File -ErrorAction SilentlyContinue | ForEach-Object {
             if (Test-IsBacklogFragment -Path $_.FullName) {
-                $fragments.Add([pscustomobject]@{ Source = $_.FullName; Repo = (Split-Path -Leaf $root) })
+                $fragments.Add([pscustomobject]@{ Source = $_.FullName; Repo = (Split-Path -Leaf $root.Path) })
             }
         }
     }
@@ -187,21 +220,22 @@ if ($staged.Count -gt 0 -and -not (Test-Path $inbox)) {
     }
 }
 
-$verb = if ($Move) { 'Move' } else { 'Copy' }
 if ($staged.Count -gt 0) {
-    Write-Host "Staging $($staged.Count) artifact(s) -> $inbox ($verb)" -ForegroundColor Cyan
+    $copyCount = ($staged | Where-Object { $_.Action -eq 'Copy' }).Count
+    $moveCount = ($staged | Where-Object { $_.Action -eq 'Move' }).Count
+    Write-Host "Staging $($staged.Count) artifact(s) -> $inbox (Copy: $copyCount, Move: $moveCount)" -ForegroundColor Cyan
 
     foreach ($item in $staged) {
         if ($DryRun) {
-            Write-Host "  [DryRun] $verb $($item.Source) -> $($item.Dest)"
+            Write-Host "  [DryRun] $($item.Action) $($item.Source) -> $($item.Dest)"
             continue
         }
-        if ($Move) {
+        if ($item.Action -eq 'Move') {
             Move-Item -LiteralPath $item.Source -Destination $item.Dest
         } else {
             Copy-Item -LiteralPath $item.Source -Destination $item.Dest
         }
-        Write-Host "  $verb $(Split-Path -Leaf $item.Source)"
+        Write-Host "  $($item.Action) $(Split-Path -Leaf $item.Source)"
     }
 }
 
