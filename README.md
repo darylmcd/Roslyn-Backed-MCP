@@ -5,6 +5,8 @@
 
 Local-first MCP (Model Context Protocol) server for semantic C# analysis, navigation, validation, and refactoring on real `.sln` / `.slnx` / `.csproj` workspaces. It uses Roslyn and `MSBuildWorkspace`, runs over stdio, and does not require Visual Studio.
 
+> **Correct package ID:** `Darylmcd.RoslynMcp` &nbsp;·&nbsp; **CLI:** `roslynmcp` &nbsp;·&nbsp; **Plugin:** `roslyn-mcp@roslyn-mcp-marketplace`
+
 ## What It Does
 
 - Loads real C# solutions and projects with session-scoped `workspaceId`s.
@@ -12,13 +14,22 @@ Local-first MCP (Model Context Protocol) server for semantic C# analysis, naviga
 - Ships as a .NET global tool, a Claude Code plugin, and a source-buildable stdio host.
 - Publishes the authoritative live surface through `server_info` and `roslyn://server/catalog`.
 
+## Why Roslyn-Backed MCP
+
+- **No Visual Studio dependency** — runs anywhere the .NET SDK runs (Windows, macOS, Linux, containers, CI).
+- **Production ops discipline** — repeatable CI mirror (`just ci`), release verification scripts, and a documented two-layer update story for the global tool *and* the Claude Code plugin.
+- **Safe install defaults** — no `${user_config.*}` placeholder substitution that breaks prompt-skipping install flows; the server starts with compiled-in defaults and accepts literal overrides via project-scope `.mcp.json`.
+- **Authoritative live surface** — every release publishes `server_info` + `roslyn://server/catalog` so clients can discover the exact tool/resource/prompt set and support tier (stable vs experimental) without guessing.
+- **Preview → apply discipline** — refactoring tools issue preview tokens with TTLs and a verify step before mutating the workspace, so agents can dry-run multi-file edits.
+- **Three install paths** — pick one: global tool (`dotnet tool install`), zero-install via `dnx` (.NET 10), or the Claude Code plugin.
+
 ## Quick Start
 
 ### Prerequisites
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/download) — pinned to `10.0.100` in [`global.json`](global.json) (`rollForward: latestFeature`)
 
-### Install As A Global Tool
+### Option A — Install As A Global Tool
 
 ```bash
 dotnet tool install -g Darylmcd.RoslynMcp
@@ -26,6 +37,56 @@ dotnet tool install -g Darylmcd.RoslynMcp
 
 - Package ID: `Darylmcd.RoslynMcp`
 - CLI command: `roslynmcp`
+- Updates: `dotnet tool update -g Darylmcd.RoslynMcp`
+
+### Option B — Zero-Install Via `dnx` (.NET 10)
+
+`dnx` is the .NET SDK's `npx`-equivalent: it resolves a tool package from NuGet on demand, without installing a global shim. Requires **.NET 10 SDK Preview 6 or later** (`dnx` ships with the SDK).
+
+One-shot smoke test:
+
+```bash
+dnx Darylmcd.RoslynMcp --yes
+```
+
+The process should start and then appear to hang — that's expected; it's an MCP server waiting for protocol messages on stdin. The `--yes` flag is **mandatory** under MCP hosts because there is no TTY for the interactive install-consent prompt.
+
+`.mcp.json` snippet:
+
+```json
+{
+  "mcpServers": {
+    "roslyn": {
+      "type": "stdio",
+      "command": "dnx",
+      "args": [
+        "Darylmcd.RoslynMcp",
+        "--source",
+        "https://api.nuget.org/v3/index.json",
+        "--yes"
+      ]
+    }
+  }
+}
+```
+
+Trade-offs vs. the global tool:
+
+- ✅ No PATH pollution; no manual install step.
+- ✅ Each cold start resolves to the latest version unless pinned (no `dotnet tool update` step).
+- ⚠️ Cold-start cost on first invocation while the package downloads.
+- ⚠️ For reproducible setups, pin the version: add `"--version", "1.35.0"` to `args`.
+
+A copy-paste config also lives at [`docs/mcp-json-examples/dnx.mcp.json`](docs/mcp-json-examples/dnx.mcp.json).
+
+### Option C — Claude Code Plugin
+
+```text
+/plugin marketplace add darylmcd/Roslyn-Backed-MCP
+/plugin install roslyn-mcp@roslyn-mcp-marketplace
+```
+
+The plugin bundles the MCP server, 32 skills, and safety hooks. For packaging, reinstall, and local plugin-dev details, see [docs/setup.md](docs/setup.md) and [docs/reinstall.md](docs/reinstall.md).
 
 ### Build And Run From Source
 
@@ -35,18 +96,18 @@ dotnet test RoslynMcp.slnx --nologo
 dotnet run --project src/RoslynMcp.Host.Stdio
 ```
 
-### Claude Code Plugin
+### Per-Client Config
 
-```text
-/plugin marketplace add darylmcd/Roslyn-Backed-MCP
-/plugin install roslyn-mcp@roslyn-mcp-marketplace
-```
+The JSON shape is the same across MCP clients — only the file path differs. Drop one of the [`docs/mcp-json-examples/`](docs/mcp-json-examples/) snippets into the right location for your client:
 
-The plugin bundles the MCP server, 32 skills, and safety hooks. For packaging, reinstall, and local plugin-dev details, see [docs/setup.md](docs/setup.md) and [docs/reinstall.md](docs/reinstall.md).
+| Client | Config file | Notes |
+|--------|-------------|-------|
+| Claude Code | `.mcp.json` (repo root) | Project-scope; pairs naturally with the Claude Code Plugin path above. |
+| Cursor | `.cursor/mcp.json` (repo root) or `~/.cursor/mcp.json` (global) | Project-scope wins over global. |
+| VS Code (MCP-aware) | `.vscode/mcp.json` (repo root) | Workspace-scope; restart the MCP host after editing. |
+| Claude Desktop | `claude_desktop_config.json` (per-OS app-data dir) | Global only; no project-scope config. |
 
-### Any Stdio MCP Client
-
-Point the client at the installed tool:
+Minimal config (works with **Option A** — global tool):
 
 ```json
 {
@@ -59,7 +120,21 @@ Point the client at the installed tool:
 }
 ```
 
+For the **Option B** (`dnx`) form, use the snippet from the previous section or copy [`docs/mcp-json-examples/dnx.mcp.json`](docs/mcp-json-examples/dnx.mcp.json).
+
 For NDJSON framing, handshake order, and minimal Python/C# client examples, see [docs/stdio-client-integration.md](docs/stdio-client-integration.md).
+
+### Health Check
+
+After installing and wiring up `.mcp.json`, paste this single prompt into your MCP client to verify the server is reachable and report its surface:
+
+> Call `server_info` and read the `roslyn://server/catalog` resource. Report back:
+> 1. The server name and version.
+> 2. The total tool / resource / prompt counts and their stable-vs-experimental split.
+> 3. Whether any workspaces are currently loaded (and their IDs if so).
+> 4. Any warnings or degraded-state flags.
+
+If both calls succeed and the version matches what you installed, the install is healthy.
 
 ### MCP Registry (submission pending)
 
@@ -117,6 +192,7 @@ Stable families include workspace/session management, semantic navigation, diagn
 ## Docs
 
 - [docs/setup.md](docs/setup.md) — packaging, Docker, tool install, plugin install, CI artifacts
+- [docs/compatibility.md](docs/compatibility.md) — MCP client compatibility matrix (Claude Code, Cursor, VS Code, Claude Desktop)
 - [docs/stdio-client-integration.md](docs/stdio-client-integration.md) — custom MCP client integration
 - [docs/product-contract.md](docs/product-contract.md) — stable vs experimental surface contract
 - [docs/release-policy.md](docs/release-policy.md) — release gates and compatibility rules

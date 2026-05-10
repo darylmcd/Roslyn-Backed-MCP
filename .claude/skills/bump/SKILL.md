@@ -1,13 +1,13 @@
 ---
 name: bump
-description: "Version bump. Use when: bumping the version for a release, preparing a version increment (major/minor/patch), or when code changes require a new version. Takes bump type as input: 'major', 'minor', or 'patch'. Edits all 5 version files, consumes `changelog.d/*.md` fragments into a new `## [X.Y.Z]` section grouped by category, and `git rm`s the consumed fragments."
+description: "Version bump. Use when: bumping the version for a release, preparing a version increment (major/minor/patch), or when code changes require a new version. Takes bump type as input: 'major', 'minor', or 'patch'. Edits all 6 version files, consumes `changelog.d/*.md` fragments into a new `## [X.Y.Z]` section grouped by category, and `git rm`s the consumed fragments."
 user-invocable: true
 argument-hint: "patch | minor | major"
 ---
 
 # Version Bump
 
-You are a release engineer. Your job is to increment the project version across all 5 version files, consume accumulated `changelog.d/` fragments into the new `## [X.Y.Z]` section of `CHANGELOG.md`, and delete the consumed fragments in the same commit-ready change set.
+You are a release engineer. Your job is to increment the project version across all 6 version files, consume accumulated `changelog.d/` fragments into the new `## [X.Y.Z]` section of `CHANGELOG.md`, and delete the consumed fragments in the same commit-ready change set.
 
 ## Server discovery
 
@@ -22,7 +22,7 @@ This skill edits repository files. Roslyn MCP **`server_catalog`** is unrelated 
 
 ## Version Files
 
-All 5 files must carry the same version string. See `docs/release-policy.md` § *Where To Bump The Version String* for the canonical reference.
+All 6 files must carry the same version string. See `docs/release-policy.md` § *Where To Bump The Version String* for the canonical reference.
 
 | # | File | Field |
 |---|------|-------|
@@ -30,7 +30,8 @@ All 5 files must carry the same version string. See `docs/release-policy.md` § 
 | 2 | `.claude-plugin/plugin.json` | `"version": "X.Y.Z"` |
 | 3 | `.claude-plugin/marketplace.json` | `plugins[0].version` (NOT `metadata.version`) |
 | 4 | `manifest.json` | `"version": "X.Y.Z"` |
-| 5 | `CHANGELOG.md` | New `## [X.Y.Z] - YYYY-MM-DD` header populated from `changelog.d/*.md` fragments, grouped by category |
+| 5 | `.claude-plugin/server.json` | Top-level `"version": "X.Y.Z"` AND `packages[0].version` (MCP Registry manifest — both fields) |
+| 6 | `CHANGELOG.md` | New `## [X.Y.Z] - YYYY-MM-DD` header populated from `changelog.d/*.md` fragments, grouped by category |
 
 ## Fragment-file migration
 
@@ -51,7 +52,7 @@ Parse the current version as `major.minor.patch`. Apply the bump type:
 
 Display the new version and confirm with the user before proceeding.
 
-### Step 3: Edit Version Files 1-4
+### Step 3: Edit Version Files 1-5
 
 First, create the release-managed-edit override sentinel so the PreToolUse guard (`eng/guard-release-managed-files.ps1`) allows the version-file edits:
 
@@ -61,12 +62,13 @@ touch .release-managed-edit-allowed
 
 The sentinel is gitignored and has a 1800 s TTL. See `ai_docs/workflow.md` § Release-managed file guard.
 
-Then edit each of the first four version files using the Edit tool, replacing the old version with the new version:
+Then edit each of the first five version files using the Edit tool, replacing the old version with the new version:
 
 1. **`Directory.Build.props`**: Replace `<Version>OLD</Version>` with `<Version>NEW</Version>`
 2. **`.claude-plugin/plugin.json`**: Replace `"version": "OLD"` with `"version": "NEW"` (the first occurrence)
 3. **`.claude-plugin/marketplace.json`**: Replace `"version": "OLD"` in the `plugins[0]` entry (NOT the `metadata.version` on line 9)
 4. **`manifest.json`**: Replace `"version": "OLD"` with `"version": "NEW"`
+5. **`.claude-plugin/server.json`**: Replace BOTH occurrences of `"version": "OLD"` — the top-level `version` AND `packages[0].version`. Use `Edit` with `replace_all: true` since both occurrences are textually identical.
 
 ### Step 4: Consume `changelog.d/` fragments into `CHANGELOG.md`
 
