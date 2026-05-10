@@ -221,8 +221,8 @@ if ($staged.Count -gt 0 -and -not (Test-Path $inbox)) {
 }
 
 if ($staged.Count -gt 0) {
-    $copyCount = ($staged | Where-Object { $_.Action -eq 'Copy' }).Count
-    $moveCount = ($staged | Where-Object { $_.Action -eq 'Move' }).Count
+    $copyCount = @($staged | Where-Object { $_.Action -eq 'Copy' }).Count
+    $moveCount = @($staged | Where-Object { $_.Action -eq 'Move' }).Count
     Write-Host "Staging $($staged.Count) artifact(s) -> $inbox (Copy: $copyCount, Move: $moveCount)" -ForegroundColor Cyan
 
     foreach ($item in $staged) {
