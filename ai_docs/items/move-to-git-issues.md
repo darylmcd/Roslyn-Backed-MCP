@@ -2,7 +2,7 @@
 
 <!-- purpose: Current design note for moving the audit-finding sharing path toward GitHub Issues while keeping the maintainer-local fragment workflow. -->
 <!-- scope: in-repo -->
-<!-- status: design seed - current decisions captured; not yet a backlog row -->
+<!-- status: completed - rows 1-3 shipped (PRs #591, #592, #593) and released as v1.35.1 (PR #595); end-to-end verification passed 2026-05-10; row 4 deferred per design note -->
 
 **Created:** 2026-05-08  
 **Last reconciled:** 2026-05-09  
@@ -109,3 +109,19 @@ These are the only questions worth carrying into a future planning or sanity-che
 | `.github/ISSUE_TEMPLATE/` | Existing GitHub issue-template folder for the future `mcp-server-surface-test-finding.yml`. |
 | `AGENTS.md` | Shipped-skill genericity and bootstrap rules. |
 | `CI_POLICY.md` | Validation and merge-gating policy. |
+
+## Verification
+
+End-to-end verification per `ai_docs/items/move-to-git-issues-end-to-end-verification.md` completed on **2026-05-10**.
+
+| Step | Mode | Result |
+|---|---|---|
+| 0. Seed labels | real, idempotent | 7 area + 3 severity labels confirmed at `darylmcd/Roslyn-Backed-MCP` |
+| 1. `/mcp-server-surface-test --quick` against `C:/Code-Repo/DotNet-Firewall-Analyzer` | end-to-end | Audit report at `audit-reports/20260510T050225Z_firewallanalyzer_mcp-server-surface-test.md`; no `backlog.d/` writes; no `gh` invocations; Phase 19 = `**N/A — no actionable findings**`; wall-clock ≈2 min (budget ≤15 min). |
+| 2. Synthesized consumer Issue via shared renderer | synthesized + real `gh issue create` | Filed [#598](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/598) `verify-end-to-end-quick-auto-file-probe`; labels `area:docs` + `severity:P3`; closed in Step 6. |
+| 3. `/mcp-server-surface-test --full` | **skipped** | Per `feedback_self_hosted_runner_no_duplicate_local_run.md` — runner contention. |
+| 4. Synthesized maintainer publish path | synthesized + real `gh issue create` + real fragment delete | Filed [#599](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/599) `verify-end-to-end-publish-probe`; sibling-repo fragment at `dotnet-firewall-analyzer/backlog.d/verify-end-to-end-publish-probe.md` consumed and deleted (directory removed); backlog row was added then reverted within the verification session (no commit on `main`); closed in Step 6. |
+| 5. Refusal contract | renderer-only, no `gh` | `Test-FindingShouldRefusePublicFile` and `Render-FindingIssue.refusedPublic` both returned `True` for `severity=P0` and for `area=security`; `DO NOT FILE PUBLICLY` banner matched in both rendered bodies. |
+| 6. Cleanup | real | Both Issues closed with `not planned` reason; synthetic backlog row reverted; sibling-repo `backlog.d/` empty. |
+
+Renderer parity verified directly by diffing the bodies of [#598](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/598) (consumer auto-file path) and [#599](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/599) (maintainer publish path) — identical envelope shape and field ordering, which is the load-bearing contract Row 2 was designed to enforce.
