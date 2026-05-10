@@ -2,7 +2,7 @@
 name: backlog-intake
 description: "Consolidate deep-review artifacts (mcp-server-audit, experimental-promotion, roslyn-mcp-retro) into ai_docs/backlog.md with anchor verification, dedupe, priority classification, and Rule 1/3/4/5 sizing for the backlog-sweep-plan.md planner prompt. Use when: a deep-review / audit wave has produced `*_mcp-server-audit.md` / `*_roslyn-mcp-retro.md` / `*_experimental-promotion.md` files across sibling repos (or this one) and you want them reviewed, deduped, and merged into the backlog as properly-sized initiative rows."
 user-invocable: true
-argument-hint: "[--stage | --skip-verify | --no-commit] — defaults: stage files first, verify against CHANGELOG, commit on a fresh branch"
+argument-hint: "[--stage | --skip-verify | --no-commit | --publish] — defaults: stage files first, verify against CHANGELOG, commit on a fresh branch; pass --publish to file each accepted row as a public GitHub Issue via gh issue create"
 ---
 
 # Backlog intake
@@ -26,6 +26,7 @@ This skill edits repository files, shells out to `pwsh` / `gh` / `git`, and uses
 | `--skip-verify` | Skip the "already shipped?" cross-check against CHANGELOG + recent plans. Faster but riskier. |
 | `--no-commit` | Write the updated `ai_docs/backlog.md` but do not create a branch or commit. |
 | `--sibling-parent <path>` | Override the sibling-repo scan root (forwarded to the PS1). |
+| `--publish` | After the batch is finalized, file each accepted row as a public GitHub Issue at `darylmcd/Roslyn-Backed-MCP` via `gh issue create`. Uses the shared renderer `skills/mcp-server-surface-test/lib/render-finding.ps1` so the public Issue body is byte-identical to what `/mcp-server-surface-test --auto-file` emits. Refuses to file rows whose `severity == P0` or `area == security` — those print to stdout with the security-advisory escalation banner instead. Requires `gh` on `PATH` and `gh auth status` reporting authenticated; falls back to stdout-print with a warning otherwise. |
 
 Default (no flags): stage if `review-inbox/` is empty, verify against CHANGELOG, commit to a fresh branch off `main`.
 
@@ -68,7 +69,7 @@ Fragments take a different path from prose reports. They are **not** moved into 
 
 For each configured sibling repo (and this repo) with a `backlog.d/` directory:
 
-1. **Walk** `<repo>/backlog.d/*.md`. For each file, parse YAML frontmatter; require `id`, `source_audit`, `source_repo`, `severity`, `area`, `anchors` (per `ai_docs/items/backlog-d-fragment-schema.md`). If any required key is missing OR `severity` / `area` is outside the documented enum OR `anchors` is empty OR the filename does not match `id`, **skip** that fragment with a warning — leave it on disk for the audit operator to fix. Do NOT delete malformed fragments.
+1. **Walk** `<repo>/backlog.d/*.md`. For each file, parse YAML frontmatter; require `id`, `source_audit`, `source_repo`, `severity`, `area`, `server_version`, `anchors` (per `ai_docs/items/backlog-d-fragment-schema.md`). If any required key is missing OR `severity` / `area` is outside the documented enum OR `anchors` is empty OR the filename does not match `id`, **skip** that fragment with a warning — leave it on disk for the audit operator to fix. Do NOT delete malformed fragments.
 2. **Dedupe** each remaining fragment against existing `ai_docs/backlog.md` rows in this order:
    - **Exact `(source_repo, id)` match** — if a backlog row already cites the same `source_repo` and the same row id, the fragment is a duplicate. Drop it from the candidate list AND delete the source fragment (the row already represents this finding).
    - **Anchor-set similarity** — compare each fragment's `anchors` against existing rows. When ≥50 % of anchor paths overlap on the same shared code (typical for cross-repo audits hitting the same Roslyn-MCP server bug from two reporters), fold the fragment into the existing row's `do` cell — append the new `source_repo` and any unique anchors. Delete the source fragment after folding.
@@ -210,6 +211,34 @@ Before writing, verify the Refs table in `ai_docs/backlog.md` includes these ent
 - Anchor integrity: backlog rows cite `review-inbox/…` paths. A move + per-batch subdirectory keeps those paths resolvable (and `git log --follow` preserves history).
 - Next-batch cleanliness: Phase 0's staging-then-triage flow only reads the flat `review-inbox/`. By the time the next batch stages, the flat dir is empty and the extractor subagent reads only the NEW files — no need for the extractor to filter against a manifest or frontmatter stamp.
 - Context savings: the extractor subagent's directory scan ignores `archive/` by default (no recursion). Skipping thousands of already-processed lines per batch.
+
+### Phase 6.5 — Publish accepted rows to GitHub Issues (when `--publish` is set)
+
+Skip this phase if `--publish` is not set.
+
+For every row appended to `ai_docs/backlog.md` in this batch (Phase 4's deduped + split set, after Phase 6 wrote the file), file a public GitHub Issue against `darylmcd/Roslyn-Backed-MCP` using the shared renderer. This validates the schema + issue template by exercising it on every accepted finding — the user's load-bearing reason for hooking publish into intake rather than a separate skill.
+
+1. **Preconditions.** `gh` is on `PATH` AND `gh auth status` reports authenticated. If either fails, emit one warning line per row (`gh unavailable — printed body to stdout instead`) and fall back to print-only for the whole phase. Do not raise.
+2. **Dot-source the renderer.**
+   ```bash
+   pwsh -NoProfile -Command ". '${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-finding.ps1'; <render-and-file logic>"
+   ```
+   The renderer is the source of truth. Do NOT hand-roll a body — drift between the consumer auto-file path and the maintainer publish path is the failure mode this Row 2 design exists to prevent.
+3. **Per-row loop.** For each accepted row:
+   - Construct a finding hashtable from the row's fields (`id`, `source_repo`, `severity`, `area`, `server_version`, `anchors`, `finding`, `repro`, `proposed_fix`). The `source_audit` field is the basename of the prose audit report this row was extracted from (or the empty string when the row was created from a sweep retro instead of an audit).
+   - Call `Test-FindingShouldRefusePublicFile -Finding $f`. If `$true`, **do not call `gh`**. Print the rendered Issue body to stdout with the SECURITY/P0 escalation banner already prepended by `Render-FindingIssue`. Add `(refused — pre-disclosure safeguard)` to the row's audit-trail entry in the final summary.
+   - Otherwise call `Render-FindingIssue -Finding $f` to get `{title, labels, body, refusedPublic}`. Write `body` to a tempfile, then:
+     ```bash
+     gh issue create --repo darylmcd/Roslyn-Backed-MCP \
+       --title "<title>" \
+       --label "area:<area>" --label "severity:<severity>" \
+       --body-file <tempfile>
+     ```
+   - Capture the returned Issue URL and append it to the row's body inside `ai_docs/backlog.md` so the planner can cite the public Issue (`Closes #N`) when the row is sized into an initiative. Use `Edit` with exact-string replace; do NOT regenerate the whole file.
+4. **Recommit when rows changed.** If any row gained an Issue URL, the working tree now diverges from Phase 6's commit. Amend the Phase 6 commit OR add a follow-up commit on the same branch — your call which is cleaner. Do NOT push without explicit user confirmation.
+5. **Report counts in Phase 7.** Add a `Published` line: `Published: {filed} GitHub Issues + {refused} P0/security refused (printed only)`.
+
+The two auto-file destinations (this skill and `/mcp-server-surface-test --auto-file`) MUST emit byte-identical bodies. The shared renderer is the contract; the renderer's tests at `tests/RoslynMcp.Tests/Skills/RenderFindingScriptTests.cs` enforce determinism.
 
 ### Phase 7 — Report
 

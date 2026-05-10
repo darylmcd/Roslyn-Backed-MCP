@@ -200,9 +200,11 @@ Quick tier does **not** emit `_latest-promotion-scorecard.json`. Promotion-tier 
 
 Identical to the `--full` tier's Phase 19 contract — see `prompts/full.md` *Phase 19: Finding emission (dual-path)*. Quick summary:
 
-- **Default:** print each actionable finding's envelope to stdout as a ready-to-paste GitHub Issue body. Required envelope fields: `id`, `source-repo`, `severity`, `area`, `anchors`, `finding`, `repro`, `proposed-fix`.
+- **Use the shared renderer.** Dot-source `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-finding.ps1` and call `Render-FindingIssue -Finding $f`. Same renderer the maintainer's `/backlog-intake --publish` uses, so the body bytes are identical across both paths.
+- **Required envelope fields:** `id`, `source-repo`, `severity`, `area`, `server-version` (from `server_info.version` at Phase -1), `anchors`, `finding`, `repro`, `proposed-fix`. The `area` enum includes `security` — pick it for any pre-disclosure-relevant finding so the refusal contract triggers regardless of severity.
+- **Default:** print each actionable finding's envelope to stdout as a ready-to-paste GitHub Issue body.
 - **`--auto-file`:** call `gh issue create --repo darylmcd/Roslyn-Backed-MCP --title <id> --label "area:<area>" --label "severity:<severity>" --body-file <tempfile>` per non-refused finding. Fall back to stdout-print if `gh` is missing or unauthenticated.
-- **Refusal contract:** P0 or `area: security` findings are **never** auto-filed, regardless of the `--auto-file` flag. Print to stdout with the security-advisory escalation banner pointing at https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new.
+- **Refusal contract:** P0 or `area: security` findings are **never** auto-filed, regardless of the `--auto-file` flag. Use `Test-FindingShouldRefusePublicFile -Finding $f` to short-circuit before invoking `gh`. Print to stdout with the security-advisory escalation banner pointing at https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new (the renderer prepends it automatically when `refusedPublic` is `$true`).
 
 `**N/A — no actionable findings**` is a valid Phase 19 outcome.
 
