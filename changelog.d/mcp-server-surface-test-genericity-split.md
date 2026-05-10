@@ -1,8 +1,0 @@
-### Added
-
-- **Added:** `/mcp-server-surface-test` shipped skill at `skills/mcp-server-surface-test/` — consumer-facing audit of the Roslyn MCP server's live surface against any loaded C# repo. Two tiers: `--quick` (read-only smoke pass, ≤15 min) and `--full` (default; comprehensive sweep including disposable-worktree apply round-trips and the experimental-promotion scorecard, 90–180 min). Findings render through one envelope and emit either to stdout (default) or as GitHub Issues at `https://github.com/darylmcd/Roslyn-Backed-MCP` via `gh issue create` when `--auto-file` is passed. P0 / `area: security` findings are never auto-filed regardless of flag — they print to stdout with a banner directing the operator to private GitHub security advisories. Closes Row 1 of the move-to-git-issues design.
-
-### Maintenance
-
-- **Maintenance:** `.claude/skills/mcp-server-stress/prompts/prompt.md` renamed to `prompts/maintainer-overlay.md`. The maintainer skill is now the maintainer-only superset of the shipped `/mcp-server-surface-test` — it retains repo-coupled phases (host-shell `dotnet restore` precheck, `ai_docs/backlog.md` regression cross-check, `<audited-repo-root>/backlog.d/` fragment emission for `/backlog-intake`, `eng/aggregate-promotion-scorecards.ps1` cross-repo aggregation) that the shipped consumer prompt does not have. SKILL.md Step 2 now routes to the renamed file. Tests updated.
-- **Maintenance:** `ai_docs/items/move-to-git-issues.md` banned-pattern list aligned to `eng/verify-skills-are-generic.ps1` (drops the false `backlog.d` entry, adds the missing `state.json` and `just verify-` entries). Row 1 wording reframed from "restore" to "ship as new generic skill" — `./skills/mcp-server-surface-test/` has never existed before.
