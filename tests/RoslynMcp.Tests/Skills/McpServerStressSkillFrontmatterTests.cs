@@ -72,10 +72,13 @@ public sealed class McpServerStressSkillFrontmatterTests
         var skillPath = ResolveSkillPath();
         var contents = File.ReadAllText(skillPath);
 
-        // SKILL.md must route to the single-prompt path.
+        // SKILL.md must route to the single-prompt path. The prompt was renamed from `prompts/prompt.md`
+        // to `prompts/maintainer-overlay.md` when /mcp-server-stress became the maintainer-only superset
+        // of the shipped /mcp-server-surface-test skill — the file's role is now an overlay over the
+        // shipped consumer prompt rather than a standalone document.
         Assert.IsTrue(
-            contents.Contains("prompts/prompt.md", StringComparison.Ordinal),
-            "mcp-server-stress SKILL.md must reference `prompts/prompt.md` — that is the single canonical prompt file. " +
+            contents.Contains("prompts/maintainer-overlay.md", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must reference `prompts/maintainer-overlay.md` — that is the single canonical maintainer prompt file. " +
             "If you renamed the prompt, update the route in Step 2.");
 
         // Negative assertions — the historical mode tokens must not survive the collapse.
@@ -109,7 +112,7 @@ public sealed class McpServerStressSkillFrontmatterTests
         var skillContents = File.ReadAllText(skillPath);
 
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "prompt.md");
+        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "maintainer-overlay.md");
         var promptContents = File.ReadAllText(promptPath);
 
         Assert.IsFalse(
@@ -117,25 +120,43 @@ public sealed class McpServerStressSkillFrontmatterTests
             "mcp-server-stress SKILL.md must not contain `Phase 16b` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
         Assert.IsFalse(
             promptContents.Contains("Phase 16b", StringComparison.Ordinal),
-            "mcp-server-stress prompts/prompt.md must not contain `Phase 16b` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
+            "mcp-server-stress prompts/maintainer-overlay.md must not contain `Phase 16b` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
 
         Assert.IsFalse(
             skillContents.Contains("plugin-skill", StringComparison.Ordinal),
             "mcp-server-stress SKILL.md must not contain `plugin-skill` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
         Assert.IsFalse(
             promptContents.Contains("plugin-skill", StringComparison.Ordinal),
-            "mcp-server-stress prompts/prompt.md must not contain `plugin-skill` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
+            "mcp-server-stress prompts/maintainer-overlay.md must not contain `plugin-skill` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
     }
 
     [TestMethod]
     public void Skill_PromptFile_ExistsAtDocumentedPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "prompt.md");
+        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "maintainer-overlay.md");
 
         Assert.IsTrue(File.Exists(promptPath),
             $"mcp-server-stress canonical prompt not found at {promptPath}. SKILL.md Step 2 routes to this single file; " +
             "missing it breaks every invocation of /mcp-server-stress.");
+    }
+
+    [TestMethod]
+    public void Skill_OverlayPrompt_ReferencesShippedConsumerPrompt()
+    {
+        // The maintainer overlay must point at the shipped consumer prompt to make the layering relationship
+        // explicit. If a future edit drops the reference, the maintainer would lose the breadcrumb pointing
+        // at the canonical generic-safe half — and a follow-up Row 2 consolidation would have nothing to
+        // reduce against.
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "maintainer-overlay.md");
+        var promptContents = File.ReadAllText(promptPath);
+
+        Assert.IsTrue(
+            promptContents.Contains("skills/mcp-server-surface-test/prompts/full.md", StringComparison.Ordinal),
+            "mcp-server-stress prompts/maintainer-overlay.md must reference the shipped consumer prompt at " +
+            "`skills/mcp-server-surface-test/prompts/full.md`. The overlay is the maintainer superset; " +
+            "without the breadcrumb, future readers cannot tell which content is consumer-generic and which is overlay-only.");
     }
 
     [TestMethod]
