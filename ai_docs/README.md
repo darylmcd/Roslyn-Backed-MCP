@@ -78,5 +78,5 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | Coverage baseline / CI artifacts | `../docs/coverage-baseline.md` -> `references/testing.md` |
 | Experimental -> stable promotion review | `../docs/experimental-promotion-analysis.md` |
 | Large-solution profiling method | `../docs/large-solution-profiling-baseline.md` |
-| MCP deep-review audit session | `../.claude/skills/mcp-server-stress/prompts/prompt.md` -> `audit-reports/README.md` |
-| Multi-repo MCP deep-review batch | `procedures/deep-review-program.md` -> `procedures/deep-review-command-reference.md` -> `../.claude/skills/mcp-server-stress/prompts/prompt.md` -> `audit-reports/README.md` -> `reports/README.md` |
+| MCP deep-review audit session | `../.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md` -> `audit-reports/README.md` |
+| Multi-repo MCP deep-review batch | `procedures/deep-review-program.md` -> `procedures/deep-review-command-reference.md` -> `../.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md` -> `audit-reports/README.md` -> `reports/README.md` |

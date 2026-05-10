@@ -1,759 +1,111 @@
-# move-to-git-issues — design seed for the audit-finding pivot
+# move-to-git-issues - current design for external audit findings
 
-<!-- purpose: Captures the architectural rethink that surfaced at the end of the 20260507T182128Z backlog sweep — pivoting audit findings away from the local `backlog.d/` fragment pattern toward GitHub Issues so the skill can ship to consumers. Pre-brainstorm seed; not yet a backlog row. -->
+<!-- purpose: Current design note for moving the audit-finding sharing path toward GitHub Issues while keeping the maintainer-local fragment workflow. -->
 <!-- scope: in-repo -->
-<!-- status: pre-brainstorm — design discussion captured, no rows planned yet -->
+<!-- status: design seed - current decisions captured; not yet a backlog row -->
 
-**Created:** 2026-05-08
-**Trigger:** Final design conversation in the 20260507T182128Z backlog sweep session, after all 6 initiatives merged.
-**Next step:** A `/brainstorming` session that uses this doc as input to produce a sized backlog row set.
-
----
-
-## TL;DR
-
-The 20260507T182128Z sweep moved `/mcp-server-stress` (formerly `/audit-deep`) from the shipped plugin surface (`skills/audit-deep/`) to maintainer-only (`.claude/skills/mcp-server-stress/`) and built a `<audited-repo>/backlog.d/` fragment pattern for cross-repo audit findings. That pivot rationally followed from the assumption *"only the maintainer audits the server."* That assumption is wrong: the entire point of the audit is to find server bugs, and consumers running it against the C# codebases they have access to would dramatically widen the test surface. The right architectural fix is to **send actionable findings to GitHub Issues on the server's repo (`Roslyn-Backed-MCP`)**, which lets the skill go back to the shipped surface and lets consumers contribute findings. Most of the recently-shipped sweep survives; the relocate (inits 2+3) and the `backlog.d/` fragment pattern (init 5) are the parts that become partially obsolete.
+**Created:** 2026-05-08  
+**Last reconciled:** 2026-05-09  
+**Trigger:** Final design conversation after the 20260507T182128Z backlog sweep, then revised after empirical evidence from the 2026-05-08 audit run.
 
 ---
 
-## What just shipped (the 20260507T182128Z sweep)
+## Current decision snapshot
 
-Plan: `ai_docs/plans/20260507T182128Z_backlog-sweep/plan.md`. Six PRs landed, five backlog rows closed:
+The current design is **not** "replace `backlog.d/` with GitHub Issues." That earlier direction was superseded.
 
-| PR | Initiative | Closes row |
+The accepted shape is:
+
+1. **Maintainer intake stays local.** `/mcp-server-stress` continues to emit one `backlog.d/<finding-id>.md` fragment per actionable finding for maintainer-run audits. `/backlog-intake` continues to consume those fragments locally. This path is fast, offline-capable, and already validated by the 2026-05-08 audit run.
+2. **Maintainer-found accepted issues may also go public.** After local triage, valid maintainer-found findings can be filed as GitHub Issues for visibility, project-health signaling, and contributor onboarding. Do not dump every raw fragment into GitHub; curate findings first, then file issues that are real, understandable, and worth tracking publicly.
+3. **Consumer sharing becomes additive.** Consumers get a clean GitHub Issue path for findings they choose to share with `darylmcd/Roslyn-Backed-MCP`. In v1, the low-risk version is print-ready issue bodies plus an opt-in `--auto-file` path when `gh` is already authenticated. No proxy, GitHub App, telemetry endpoint, or silent filing in v1.
+4. **The shipped skill target name is `mcp-server-surface-test`.** Forward-looking surfaces use that name: skill folder, issue template, labels, docs, and commands. Historical `audit-deep` and `mcp-server-stress` references stay only where they describe already-shipped history.
+5. **The shipped skill must be generic.** Moving `.claude/skills/mcp-server-stress/` into `skills/mcp-server-surface-test/` is not a mechanical move. Shipped `./skills/**/SKILL.md` files cannot reference repo-only markers — the canonical banned-pattern set checked by `eng/verify-skills-are-generic.ps1` is `state.json`, `backlog-sweep`, `schemaVersion`, `ai_docs/`, `backlog.md`, `eng/`, `just verify-`, `Directory.Build.props`, and `BannedSymbols.txt`. Note that `backlog.d` is **not** banned: consumer-side fragments may legitimately land at `<consumer-repo>/backlog.d/`. Split consumer-generic behavior from maintainer-only repo workflow as needed.
+6. **Two run tiers are enough for v1.** `--quick` is the consumer-facing read-side tier; `--full` is the maintainer/default comprehensive tier. Defer a middle tier until there is demand.
+7. **Use one finding envelope.** The existing fragment schema is the base contract: `id`, `source_audit`, `source_repo`, `severity`, `area`, `anchors`, plus a new `server-version` field. Enrich the audit report with a structured `workspace-shape:` block instead of duplicating workspace metadata on every finding.
+8. **Public docs should be slim but explicit.** Add enough README and issue-template content that a consumer understands what `/mcp-server-surface-test` does, what each tier covers, expected runtime, privacy/safety, and how to share a finding. Include that maintainer-found issues are filed publicly to expose project quality work and create contributor entry points.
+9. **Community scorecard aggregation is stretch work.** Do not extend `publish-preflight` or `eng/aggregate-promotion-scorecards.ps1` for issue-comment input until real community scorecard data exists.
+
+## Recommended row set
+
+These are design candidates for a future planning pass, not open backlog rows yet.
+
+| Row | Scope | Notes |
 |---|---|---|
-| #547 | `audit-deep-collapse-modes` | `mcp-server-stress-single-mode` |
-| #548 | `mcp-server-stress-relocate` | (paired with #549) |
-| #549 | `mcp-server-stress-update-external-refs` | `audit-deep-relocate-and-rename` |
-| #550 | `extract-skills-audit-from-server-stress` | `extract-skills-audit-from-server-stress` |
-| #551 | `backlog-d-fragment-pattern` | `backlog-d-fragment-pattern` |
-| #552 | `per-repo-promotion-scorecard` | `per-repo-promotion-scorecard` |
+| 1. Ship as new generic skill at `skills/mcp-server-surface-test/` | Split the maintainer prompt into a generic-safe consumer half (under `skills/`) and a maintainer-only overlay (kept under `.claude/skills/`); update references and tests. | The shipped skill has never lived under `./skills/`, so this is a first-time ship, not a relocate. The genericity split is the bulk of the work — the current maintainer prompt has multiple banned-pattern hits, so this is not just `git mv`. |
+| 2. Tiered runs + shared finding envelope | Add `--quick` / `--full`, stamp `server-version`, enrich the audit report with `workspace-shape:`, and render findings through one fragment/issue envelope. | Keep `print` as the consumer default. `--auto-file` may use `gh issue create` only when explicitly requested and authenticated. Maintainer `--auto-file` should supplement local fragment emission, not replace it. |
+| 3. Slim consumer documentation + issue template | Add README guidance and `.github/ISSUE_TEMPLATE/mcp-server-surface-test-finding.yml`. | Keep the tone factual: what the skill does, what it does not do, tier cost, privacy, where a finding goes, and how public issues can become contribution entry points. |
+| 4. Community scorecard input | Optional issue-comment or issue-body scorecard aggregation. | Stretch only. Ship after there is actual community scorecard evidence. |
 
-Plus #553 (plan-completion chore), #554 (changelog fragment for #545), and #545 (release-cut Step 6 fix) since v1.34.2.
+No v1 row should replace `/backlog-intake`'s fragment flow. Add issue intake automation only after public issue volume proves it is useful.
 
-Theme of the sweep: **maintainer-only audit-skill redesign.** Every initiative was sized around that frame.
+## Public contributor funnel
 
-## The architectural insight
+GitHub Issues should become the public-facing tracker for accepted, contributor-relevant work. This is separate from the local agent execution backlog.
 
-We rationalized the move-to-maintainer-only by claiming *"a normal `roslyn-mcp@roslyn-mcp-marketplace` consumer has no use for a skill that audits this repo's own surface, scorecard JSON, and `skills/*/SKILL.md` inventory."* That's true *if findings have to land back in this repo's local `backlog.md`* — which forces the skill to assume the auditor has commit access to `Roslyn-Backed-MCP`. The producer→consumer model we built around `<audited-repo>/backlog.d/` and `/backlog-intake` is internally consistent for the maintainer use case but doesn't generalize.
+Recommended flow:
 
-**The shape that does generalize is GitHub Issues.** Issues already have:
-- Severity (labels)
-- Dedup (search before file)
-- Comments (clarification, follow-up, repro updates)
-- Assignees (triage)
-- Repro metadata (markdown body + attached files)
-- Closed-via-PR linking
-- Cross-repo references
+1. A maintainer audit emits local fragments.
+2. The maintainer triages fragments through `/backlog-intake`.
+3. Valid findings that are worth tracking publicly get GitHub Issues.
+4. `ai_docs/backlog.md` keeps or gains the planner-ready row with a link to the GitHub Issue.
+5. Implementation PRs use `Closes #<issue>` so the public issue history shows discovery, fix, and closure.
 
-We were re-implementing a partial version of this in YAML frontmatter. The Issues-based version of the same flow is:
+Issue quality matters. A maintainer-filed issue should include:
 
-| | Old (just-shipped) | New (proposed) |
-|---|---|---|
-| Producer | `/mcp-server-stress` (maintainer-only) | `/mcp-server-stress` (shipped, runs anywhere) |
-| Per-finding scratch | `<audited-repo>/backlog.d/<id>.md` | GitHub Issue on `Roslyn-Backed-MCP` (labeled `audit-deep`) |
-| Consumer | `/backlog-intake` walks sibling repos, dedupes, deletes consumed fragments | `/backlog-intake` lists `audit-deep`-labeled issues, triages, accepts/rejects, converts accepted → backlog rows |
-| Master record | `Roslyn-Backed-MCP/ai_docs/backlog.md` | Same — populated only by triaged-and-accepted issues |
+- short title with the affected tool, prompt, or workflow;
+- concise repro or audit evidence;
+- expected vs. actual behavior;
+- likely fix area or anchor paths when known;
+- acceptance criteria that an outside contributor can verify;
+- labels for area and severity.
 
-## What survives from the recent sweep
+Use `help wanted` only when an outside PR would be welcome. Use `good first issue` only for genuinely bounded work that does not require deep Roslyn MCP internals, release-managed files, or broad workflow knowledge.
 
-Substantively right and stays:
+`ai_docs/backlog.md` remains the agent-ready execution queue. GitHub Issues are the public contribution and visibility surface, not the replacement for the structured backlog contract.
 
-- **Mode collapse (init 1)** — single canonical run with always-disposable-worktree + always-scorecard. Independent of where output goes.
-- **Disposable-worktree Phase 6 (init 1)** — applies-as-test-fixtures discipline. Audited repo's `main` is never mutated. Independent of output target.
-- **Plugin-skill audit moved to /surface-audit (init 4)** — that was a separate concern (static catalog vs runtime execution). Stays where it is.
-- **Per-repo scorecard at `<audited-repo>/ai_docs/audit-reports/_latest-promotion-scorecard.json` (init 6)** — local evidence file. What changes is whether the audit *also* posts a summary as an issue comment for community-quorum aggregation.
-- **`eng/aggregate-promotion-scorecards.ps1` (init 6)** — survives. Its input may grow to include issue-comment scorecards for community runs in addition to local file scrapes for maintainer runs.
+## Superseded decisions
 
-Roughly **~50% of inits 2+3** also survives even if we reverse the relocate: the cleanup of Phase 16b coupling, name conflicts, external references in `publish-preflight/SKILL.md` and `audit-phase-runner.md` is real cleanup that doesn't unwind.
-
-## What becomes partially obsolete
-
-- **Relocate to `.claude/skills/mcp-server-stress/` (inits 2, 3)** — needs to reverse. Skill goes back to shipped `skills/mcp-server-stress/`. The shipped surface we'd put back is *cleaner* than the original because of the cleanup work in init 3 (which still survives semantically).
-- **`backlog.d/` fragment pattern (init 5)** — the cross-repo emit-then-consolidate flow becomes redundant once findings go to issues. Specifically:
-  - **Survives:** the fragment schema at `ai_docs/items/backlog-d-fragment-schema.md` — repurposes naturally as the **issue-body template** (frontmatter fields map onto issue metadata: `severity:` → label, `area:` → label, `anchors:` → markdown bullets, body stays as-is).
-  - **Sunsets:** the discovery + delete logic in `eng/stage-review-inbox.ps1` and `/backlog-intake`'s fragment walk. Replaced by `gh issue list --label audit-deep` + maintainer triage flow.
-  - **Stays as fallback:** local fragment emit may still be useful as `--target-output=fragments` for the maintainer's own multi-repo audit if `gh` isn't authenticated. See *Fallback story* below.
-
-## The new shape (proposed)
-
-```
-/mcp-server-stress  (shipped at skills/mcp-server-stress/, invocable by any plugin consumer)
-   │
-   ├─ Loads C# workspace via Roslyn MCP (audited repo X — anywhere)
-   ├─ Runs full audit including disposable-worktree Phase 6
-   ├─ Writes prose evidence file:    <X>/ai_docs/audit-reports/<ts>_<repo>_mcp-server-audit.md
-   ├─ Writes scorecard:              <X>/ai_docs/audit-reports/_latest-promotion-scorecard.json
-   ├─ For each actionable finding:   gh issue create --repo darylmcd/Roslyn-Backed-MCP \
-   │                                   --label audit-deep,severity:P0..P3,area:tools|... \
-   │                                   --title "<title>" --body "<schema-formatted body>"
-   └─ Exits with summary + list of created issue URLs
-                  │
-                  ▼
-   GitHub Issues on Roslyn-Backed-MCP   ← producer-agnostic findings queue
-                  │
-                  ▼
-/backlog-intake   (run from Roslyn-Backed-MCP by maintainer)
-   │
-   ├─ Lists `audit-deep`-labeled open issues (`gh issue list`)
-   ├─ Triages: accept (→ backlog row), reject (→ close with comment), defer (→ keep open)
-   ├─ For accepted: drafts row in ai_docs/backlog.md, adds "Closes #<issue>" reference
-   └─ Issue stays open until the corresponding backlog row ships;
-       PR closing the row uses "Closes #<issue>" trailer, GitHub auto-closes issue.
-```
-
-The audited repo X is never mutated except for its local `ai_docs/audit-reports/` (prose evidence + scorecard). No `backlog.d/`. No commit access required to anyone else's repo. The auditor only needs `gh` authenticated against `Roslyn-Backed-MCP` (or a fallback path; see below).
-
-## Real costs / open design questions for the brainstorm
-
-### 1. Auth + fallback story
-
-**Problem:** filing issues needs `gh auth status` clean against `Roslyn-Backed-MCP` or a PAT with `repo:write` scope. Most plugin consumers won't have either.
-
-**Proposed mitigation: `--issue-mode` flag with three values.**
-
-| Mode | Behavior |
+| Superseded idea | Current replacement |
 |---|---|
-| `print` (default for community runs?) | Audit finishes, prints ready-to-paste issue body for each finding. User files manually if/when they want. No auth required. |
-| `create` | Calls `gh issue create` directly. If `gh` is unavailable or auth fails, log a clear warning and fall back to `print` mode for that finding. |
-| `preview` | Dry-run. Prints what `create` *would* do, doesn't file. Useful for the maintainer's first run on a new audited repo. |
-
-**Open question:** which is the right default? `print` is safer for first-time consumers (no auth surprises), `create` is more useful for maintainer runs. Possibly `auto` — defaults to `create` if `gh` works, falls back to `print` silently. Brainstorm should land this.
-
-### 2. Spam risk
-
-**Problem:** random consumer audits could noise the tracker.
-
-**Proposed mitigations (need to pick):**
-- **Severity gating.** Only file P0/P1 by default; require `--include-p2-p3` for the noisier classes.
-- **Confidence threshold.** Audit emits a `confidence:high|medium|low` field per finding; `--min-confidence=high` is the consumer-default. Maintainer runs with `--min-confidence=low` to see everything.
-- **Rate limit.** No more than N issues per audit run; if there are more findings, summarize the rest in a single rollup issue.
-- **Issue template.** Required fields: `server-version`, `platform`, `audited-workspace-stats` (project count, LOC). Forces enough metadata that triage is fast.
-- **`audit-deep` label as a triage filter.** Maintainer's tracker dashboard filters on this label.
-
-Brainstorm should pick the combo. My instinct: confidence threshold + required template + rate limit, no severity gating (P2/P3 are often the most actionable patterns and we shouldn't hide them).
-
-### 3. Sunset window for the existing flow
-
-**Problem:** the maintainer (you) currently audits sibling repos using the just-shipped `backlog.d/` pattern. Switching cold to issues means more friction (auth, label hygiene) for a workflow that was working.
-
-**Proposed:** keep the local-fragment path as a fallback (`--target-output=issues|fragments|both`, default `both` during the transition window, eventually `issues`). The maintainer's own multi-repo audit doesn't regress. Sunset the fragment path after — say — 3 months of community use.
-
-### 4. Issue triage discipline
-
-**Problem:** issues filed by audits accumulate. Without explicit triage workflow, the tracker fills with stale `audit-deep`-labeled issues forever.
-
-**Proposed contract:**
-- Every audit-filed issue has the `audit-deep` label and a `from-audit:<audit-id>` reference.
-- Triage SLA: maintainer reviews `audit-deep` issues weekly, decides accept/reject/defer.
-- Accepted: backlog row created, issue stays open with `triaged:accepted` label; closed when the row ships via "Closes #N" PR trailer.
-- Rejected: closed with maintainer comment explaining why. Optionally adds `triaged:not-actionable` label.
-- Deferred: stays open with `triaged:defer` + a comment explaining what evidence/condition would unblock acceptance.
-
-This needs to be written down somewhere — probably `docs/AUDIT_FINDINGS.md` or appended to `CONTRIBUTING.md`. Brainstorm should land where.
-
-### 5. Cross-forge consumers
-
-**Problem:** what about consumers using GitLab, Azure DevOps, etc.? They can still run the audit against their workspaces, but `gh issue create` against `Roslyn-Backed-MCP` only works on GitHub.
-
-**Proposed:** the audit's issue target is **always the server's repo** (`darylmcd/Roslyn-Backed-MCP`), not the audited repo. Findings are about the server, not about the audited code, so they belong in the server's tracker regardless of where the audited code lives. Consumers on non-GitHub forges still need to file against `Roslyn-Backed-MCP`'s GitHub tracker — which they likely have read access to even without contributing. Worst case: they use `print` mode and paste manually.
-
-### 6. Per-repo scorecard quorum with community evidence
-
-**Problem:** init 6's `eng/aggregate-promotion-scorecards.ps1` aggregates scorecards across configured sibling repos owned by the maintainer. Community runs would produce scorecards in random workspaces the maintainer doesn't have access to.
-
-**Proposed:** community runs optionally post their scorecard as an **issue comment** (or a structured comment on a dedicated `promotion-scorecard` rolling issue) so the maintainer can aggregate without needing access to the auditing workspaces. The aggregator script grows a mode that pulls from `gh issue` body/comments in addition to filesystem-local scorecards.
-
-This is a stretch goal; not blocking the main pivot.
-
-### 7. Issue-creation rate / GitHub API limits
-
-**Problem:** a thorough audit can produce 20+ findings. Filing 20 issues at once via `gh` is fine for personal-PAT rate limits but worth noting. 100+ findings across a community run set is more concerning.
-
-**Proposed:** rate-limit gate per run (see #2). Don't pre-engineer for the 100+ case until it's observed.
-
-## Net cost estimate (rough — for brainstorm sizing)
-
-Probably 4–6 backlog rows for the pivot. Sketch:
-
-1. **Restore shipped skill location** — reverse the maintainer-local relocate. Mostly mechanical (git mv `.claude/skills/mcp-server-stress/` → `skills/mcp-server-stress/`), update test paths back, update external refs back to shipped names. The cleanup-content from init 3 stays. ≤4 prod files + 3 tests.
-2. **GitHub Issues output mode** — add `--issue-mode=create|preview|print`, issue-body template (probably reuses `ai_docs/items/backlog-d-fragment-schema.md`'s schema, repurposed), label scheme, rate limit. Touches the audit prompt and adds a small helper script. 3-4 prod files + 1 test.
-3. **`/backlog-intake` reshape** — replace fragment-walk with `gh issue list --label audit-deep` + triage flow. The fragment-walk path stays as a degraded-mode fallback (or is moved to a separate `--input=fragments|issues` flag) until sunset. 2-3 prod files + 1 test.
-4. **Issue templates + label scheme + maintainer triage doc** — `.github/ISSUE_TEMPLATE/audit-finding.yml`, label definitions in repo settings (manual or via `gh label create`), triage doc at `docs/AUDIT_FINDINGS.md`. ≤4 prod files, 0 tests.
-5. **`/publish-preflight` Step 8 + scorecard aggregator extension** — optional issue-comment input for community-quorum scorecards. Stretch — split out as a separate row.
-6. **Sunset and cleanup** — after community use validates the pattern, remove the `backlog.d/` walk in `/backlog-intake`, remove `eng/stage-review-inbox.ps1`'s fragment-discovery branch, deprecate the `--target-output=fragments` flag. Final cleanup row, schedule for v1.36 or later.
-
-Roughly the same scope as the sweep we just shipped. Some of it is reversal of recent work, which is going to feel weird in the CHANGELOG — the entries should be honest about it.
-
-## What probably triggers the brainstorm
-
-A `/brainstorming` session should produce:
-
-1. **Decisions on the open questions in section "Real costs / open design questions"** — particularly auth fallback default (`auto` vs `print`), spam-mitigation combo, sunset window.
-2. **Sized backlog rows** for the 4–6 initiatives above, ready for `/backlog-sweep:plan`.
-3. **A short rationale doc** (`ai_docs/items/move-to-git-issues.md` updated in place, or a sibling design note) capturing the final design choices so future sessions don't re-litigate.
-
-The brainstorm should NOT:
-- Write code.
-- Touch `ai_docs/backlog.md`.
-- Start a backlog-sweep.
-
-That's all subsequent steps.
-
-## References (every artifact this discussion touched)
-
-### Recently shipped (state at 2026-05-08)
-
-- `ai_docs/plans/20260507T182128Z_backlog-sweep/plan.md` — the sweep that motivated the rethink.
-- `ai_docs/plans/20260507T182128Z_backlog-sweep/state.json` — final state, `completed: true`.
-- `ai_docs/plans/20260507T182128Z_backlog-sweep/review.md` — review-pass artifact.
-- `.claude/skills/mcp-server-stress/SKILL.md` — current home of the skill (proposed to move back to shipped).
-- `.claude/skills/mcp-server-stress/prompts/prompt.md` — the ~82KB audit body. The Phase 19 fragment-emit step is the section that gets rewritten to file issues instead.
-- `.claude/skills/mcp-server-stress/scripts/archive-old-reports.ps1` — survives, no change needed.
-- `.claude/skills/backlog-intake/SKILL.md` — has the fragment-walk logic from init 5; gets reshaped.
-- `.claude/skills/publish-preflight/SKILL.md` Step 8 — uses the scorecard aggregator; may grow issue-comment input.
-- `.claude/skills/promote-tier/SKILL.md` — accepts aggregated input format from init 6.
-- `.claude/skills/surface-audit/SKILL.md` — owns the static SKILL.md audit absorbed from init 4. Independent of this pivot.
-- `eng/aggregate-promotion-scorecards.ps1` — survives, may grow input modes.
-- `eng/stage-review-inbox.ps1` — has the fragment-discovery branch from init 5; gets sunset.
-- `ai_docs/items/backlog-d-fragment-schema.md` — the fragment schema; repurposes as issue-body template.
-- `tests/RoslynMcp.Tests/Skills/McpServerStressSkillFrontmatterTests.cs` — tests the skill's frontmatter and tool references; needs path update when skill moves back to shipped.
-- `tests/RoslynMcp.Tests/Skills/AggregatePromotionScorecardsScriptTests.cs` — tests the aggregator; may grow cases for issue-comment input.
-
-### Repo-wide context
-
-- `ai_docs/backlog.md` — master backlog (post-pivot, populated only by triaged-and-accepted issues).
-- `ai_docs/workflow.md` — workflow conventions; the triage discipline doc may be added here or sibling.
-- `ai_docs/prompts/backlog-sweep-addenda.md` — `changelog_convention: fragment` etc. The same fragment-then-consolidate pattern this pivot leaves behind for `backlog.d/`.
-- `changelog.d/` — the changelog convention that inspired the (now-being-replaced) `backlog.d/` pattern. Stays.
-- `CHANGELOG.md` — needs honest entries about the reversal when the pivot lands ("undoes part of v1.34.x's `mcp-server-stress-relocate`").
-
-### Discussion threads / sessions
-
-- The 2026-05-07 sweep planning + review + execute conversation (this session). Key turns:
-  - Initial design conversation that produced the 5-row sweep (mode collapse, relocate, fragment pattern, scorecard).
-  - Post-ship reflection on `/mcp-server-stress` invocation: "would this work as a global skill so consumers can run it from their own repo?" → led directly to the issues pivot.
-  - Architectural question: "if this is repo-specific, why are we writing fragments to the remote repo and not the local?" → exposed the hidden assumption "only the maintainer audits."
-- This very file. Future brainstorm sessions should read it first.
-
-### External / reference patterns
-
-- The `changelog.d/` + `/bump` pattern (this repo) — the *good* part of the fragment-then-consolidate model. Producer scope = single PR, consumer = release-cut. Stays.
-- GitHub Issues + `Closes #N` PR trailer pattern — standard OSS contribution flow.
-- `gh issue list --label <name>` and `gh issue create` — primitives the issues-mode skill uses.
-
----
-
-## User feedback (2026-05-08, end of capturing session)
-
-After reading the initial draft above, the user added course-corrections. These are decisions/leans, not just observations — incorporate them into the brainstorm starting position rather than re-litigating from scratch.
-
-### (1) Operator friction on consumer issue filing — `print` mode is not viable
-
-Quote: *"I dont think printing them is viable, i think a lot of issues would get lost in that process just due to the friction required. there is no real human thought around the mcp server automatically filing the issue and no real driving concern for most consumers to go through the effort of the copy and past to help us make this server better (even though they do benefit in the end). All that being said I would like to think about and find a SECURE way to allow the creation of the issues to be as seemless and pain free as possible so we get the most actionable issues as possible."*
-
-**Implication:** the `--issue-mode=print` fallback is not the answer for consumers. If consumers have to copy-paste from terminal to GitHub web UI, the data never arrives in the tracker — friction wins, the use case dies. The whole pivot's value (community findings) hinges on file-issues-without-friction. So **seamless secure filing IS the design problem to solve**, not a nice-to-have.
-
-**Design directions worth exploring in the brainstorm:**
-
-| Approach | How it works | Trade-offs |
-|---|---|---|
-| **GitHub App (canonical)** | Maintainer publishes a GitHub App; consumer installs it on `Roslyn-Backed-MCP` (one-click "Install on this repo"); audit uses the installation token from the consumer's local config to file. | Cleanest; per-consumer scoped tokens; revocable per consumer. Higher setup cost (App registration, hosting the App's OAuth dance). Best long-term shape. |
-| **Server-side proxy with maintainer PAT** | Small Cloudflare Worker / Azure Function at e.g. `audit.roslynmcp.dev/file-issue`; accepts POST with finding payload; validates schema/signature/rate; files issue using maintainer-held PAT (never leaves the proxy); returns issue URL. | Zero consumer auth; maintainer pays hosting (negligible at low volume); spam target = the endpoint, not the repo directly; rate-limit + per-IP throttling at the proxy; PAT lives in one place. Needs proxy uptime. |
-| **`gh` if present, proxy fallback** | Skill detects `gh auth status`; if authenticated, uses `gh issue create` directly (consumer's own auth); if not, falls back to proxy. | Best of both worlds for consumers who already have `gh`. Two code paths to maintain. |
-| **Anthropic-style telemetry endpoint** | The skill POSTs findings to an endpoint owned by the maintainer; endpoint can throttle, dedupe, even pre-triage before filing. | Maximum control; overkill for early-stage; possibly the right end-state if community runs become high-volume. |
-
-**Lean from this conversation:** server-side proxy is probably the right starting answer. It gives consumers zero-friction filing, keeps the auth secret in one maintainer-controlled location, and the proxy itself is a natural place to add rate-limiting + spam mitigation later (item 2). GitHub App is the more architecturally pure answer but the setup tax doesn't pay off until volume is high.
-
-**Hard requirement regardless of mechanism:** **explicit one-time consent.** First time a consumer's audit would file an issue, the skill MUST prompt: *"This audit found N actionable findings. File them as issues on `darylmcd/Roslyn-Backed-MCP`? Issues will include your finding details and audited workspace metadata (project count, server version). [Y/n/dry-run] (cached for future runs)."* Cached preference goes in plugin-local config (e.g. `~/.claude/.mcp-server-stress.json`). No silent "first run files 20 issues against a stranger's repo" surprise.
-
-### (2) Spam risk — kick the can down the road
-
-Quote: *"spam risk - this is a legitimate concern but really only affects us and our ability to 'filter the noise' and its honestly a) somewhat mitigatable and b) a can that can be kicked down the road a bit until it becomes an issue."*
-
-**Implication:** don't pre-engineer mitigations for spam volume that doesn't exist yet. The brainstorm should land minimal-viable mitigation (issue template with required fields, `mcp-server-stress` label, rate limit per audit run) and explicitly defer the rest:
-
-- **Land in v1:** required template, label, per-run rate limit (cap N issues per audit; rollup beyond that), required `audit-id` reference.
-- **Defer until observed need:** confidence-threshold filtering, severity gating, deduplication-before-file, automated triage labels, abuse-detection at the proxy.
-
-The proxy approach in (1) makes deferred mitigations easy to add server-side without re-shipping the skill.
-
-### (3) Backward compatibility — keep fragments for maintainer use
-
-Quote: *"backward compatibility - i like your lean on this. the github issue pattern is great for crowdsourcing issues but honestly overkill for us (its quicker to keep the fragments pattern local for us to consume)"*
-
-**Implication: the fragment pattern stays for maintainer use indefinitely**, not just as a transition fallback. The maintainer's own multi-repo audit gets findings into `<sibling-repo>/backlog.d/` and `/backlog-intake` consolidates locally — fast, no auth, no proxy round-trip, no GitHub API hop. The issue-filing path is the consumer flow, not a replacement for the maintainer flow.
-
-This changes the cost estimate (#3 from above is no longer "reshape `/backlog-intake`"; it's "extend `/backlog-intake` with an issues-input mode alongside the existing fragments-input mode") and changes the sunset story (no sunset for fragments; both flows coexist by design).
-
-Concrete impact on backlog row sizing:
-- `--target-output` flag now selects per-run: `fragments` (maintainer default), `issues` (consumer default), `both` (rare maintainer case).
-- `/backlog-intake` grows an `--input=fragments|issues|both` flag, defaulting to `both`. Walks both sources.
-- `eng/stage-review-inbox.ps1` keeps the fragment-discovery branch permanently. No deprecation.
-
-This is materially less work than full sunset.
-
-### (4) Issue triage discipline — agreed
-
-User confirmed the proposed triage contract (every audit-filed issue labeled, weekly maintainer review SLA, accept/reject/defer states, "Closes #N" PR trailer to auto-close). Land as proposed.
-
----
-
-## Naming convention (cross-cutting decision)
-
-Quote: *"I dont like the 'audit-deep' naming. I think we should keep the naming as consistent as posisble around mcp-server-stress or mcp-server-stress-test as possible. i think that naming CLEARLY identifies the purpose of the skill where 'audit-deep' does not. to me audit-deep is valuable but it infers actual writes to a worktree/branch that will be actioned on (not disposable)"*
-
-**Decision:** `mcp-server-stress` is the canonical name across all forward-looking surfaces. `audit-deep` only survives as historical references in:
-
-- Closed backlog row ids (`audit-deep-collapse-modes`, `audit-deep-relocate-and-rename`) — history, don't rewrite.
-- `changelog.d/audit-deep-relocate-and-rename.md` — fragment file already on disk, name preserved for fidelity.
-- CHANGELOG entries from the 20260507 sweep — written in past tense, references stay.
-
-**Forward-looking surfaces use `mcp-server-stress` consistently:**
-
-- The skill location itself (already at `skills/mcp-server-stress/` once we reverse the relocate, currently at `.claude/skills/mcp-server-stress/`).
-- Issue labels (`mcp-server-stress-finding`, NOT `audit-deep`). The label-rename in item (4)'s contract above and in the proposed issue-template scheme (#2 in *Open questions*) already used `audit-deep` — **mentally substitute `mcp-server-stress-finding` everywhere `audit-deep` appears as a label name in this doc**. The brainstorm should reflect that consistently in the row drafts.
-- Issue templates (`.github/ISSUE_TEMPLATE/mcp-server-stress-finding.yml`).
-- Proxy endpoint (if used): `mcp-server-stress.roslynmcp.dev/file-finding` or similar.
-- Triage doc filename (`docs/MCP_SERVER_STRESS_FINDINGS.md`, NOT `AUDIT_FINDINGS.md`).
-
-**Why this matters past aesthetics:** "audit-deep" semantically implies a deep audit that produces actionable persistent changes — which is exactly what we deliberately moved AWAY from with the disposable-worktree Phase 6 (audit run = no persistent change to audited repo). The new name signals "we exercise the surface and produce findings, but we don't *do* anything to your code." That's the user-facing promise we want consumers to internalize before granting auth or installing the App.
-
-`mcp-server-stress` vs `mcp-server-stress-test`: pick one and stick with it. Current shipped path is `mcp-server-stress`. Stay with that — adding `-test` is more accurate but also more verbose, and consumers typing the slash-command will appreciate the shorter form. Defer the `-test` rename unless it becomes a clarity issue in practice.
-
----
-
-## When this gets picked up
-
-Next backlog sweep planning pass, or whenever you want to schedule the brainstorm. The pivot doesn't need to happen this week — the just-shipped sweep is functionally complete and the maintainer-only audit works. The pivot is about *widening* the producer set, not about fixing a broken thing. So: after a release cycle or two, when v1.35.0 has been out long enough to gauge whether community audits would actually happen.
-
-If you decide *not* to pivot — that's fine, the just-shipped pattern is internally consistent. The cost would be that `/mcp-server-stress` stays a maintainer tool forever and the long-tail bugs that real-world consumer workspaces would surface stay invisible. Acceptable trade-off if community engagement is low.
-
----
-
-## Dissent register and final decisions (2026-05-08, second turn)
-
-After the user feedback section above was written, the user explicitly invited dissent on the resolutions. Three pushbacks landed and changed the design. **These supersede the earlier-section leans where they conflict.** Recording both the dissent and the final decision so the brainstorm starts from the resolved position, not the pre-pushback state.
-
-### D1 — Single path, not two paths (supersedes "User feedback (3)")
-
-**Original lean (above):** keep `backlog.d/` fragment pattern indefinitely for maintainer use; issues path runs alongside for consumers.
-
-**Dissent:** two parallel paths is tech debt. Costs include schema drift across 4 surfaces (2 producers, 2 consumers), duplicate test coverage, and the implicit signal that maintainer findings are architecturally different — which they aren't, they're just consumed differently. The "fragments are quicker locally" argument is workflow preference, not architectural reason. A single-path design with a *label* encoding the trust difference is cleaner.
-
-**Final decision:** **single path through GitHub Issues, with a `triaged-by-maintainer` label fast-path.**
-
-- Maintainer-filed issues land with `triaged-by-maintainer` set at creation time (the skill detects "this is the maintainer's run" via repo-local config or a `--maintainer` flag and applies the label automatically).
-- `/backlog-intake` honors the label: `triaged-by-maintainer`-labeled issues skip the human-triage step and convert directly to backlog rows.
-- All other issues go through the normal triage workflow.
-- `backlog.d/` fragment pattern + `eng/stage-review-inbox.ps1`'s fragment-discovery branch + `/backlog-intake`'s fragment walk **all retire** at v1 of this pivot. No "stays as fallback indefinitely" branch.
-
-Cost-estimate update — **drop item #6** ("sunset and cleanup" of fragments) since fragments retire as part of the v1 pivot rather than later. **Update item #3** ("`/backlog-intake` reshape") from "extend with dual input" back to "replace fragment-walk with issue-list + maintainer-label fast-path" — same scope as the original sketch above.
-
-### D2 — `print` mode IS v1, validate demand before infrastructure (supersedes "User feedback (1)")
-
-**Original lean (above):** server-side proxy is the right starting answer; consumer zero-friction filing.
-
-**Dissent:** friction also filters for engagement. The consumer willing to copy-paste a pre-formatted issue is the consumer who'll respond to triage questions and provide repro follow-up. Zero-friction automated filing produces low-context findings from people who don't even remember filing. Hosting infrastructure (Cloudflare Worker / Azure Function + secret rotation + abuse handling) is 1-2 weeks of work. Doing that *before* validating that consumers want to file findings at all is exactly the kind of premature infrastructure investment that bites later.
-
-**Final decision:** **`print` mode IS v1.** Skill outputs ready-to-paste issue body for each finding; user files manually if they care. After 3 months of v1 usage, count filed issues. If volume warrants infrastructure, build the proxy or GitHub App then with concrete signal, not speculation. If volume is low, the lower-friction path was never the bottleneck — engagement was.
-
-Cost-estimate update — **simplify item #2** ("GitHub Issues output mode") to ship `print` only. The `--issue-mode=create|preview|print` three-mode contract collapses to "skill prints issue bodies; if `gh` is authenticated AND user passes `--auto-file`, file via `gh issue create`." That's an opt-in fast path for the maintainer who already has `gh`, not a default for community runs.
-
-### D3 — `mcp-server-surface-test` is the right name target (supersedes "Naming convention")
-
-**Original lean (above):** `mcp-server-stress` is canonical; defer any further rename.
-
-**Dissent:** "stress" semantically implies *load* testing — pummel with high concurrent traffic. That's not what the skill does. It does comprehensive surface exercise + apply-tool integration check + scorecard generation. "Stress" misleads consumers about what the skill will actually do (e.g. "this will pin my CPU" or "this will bombard my MCP with concurrent requests"). User confirmed the dissent and chose `mcp-server-surface-test` as the better target.
-
-**Final decision:** **`mcp-server-surface-test` is the canonical name target.**
-
-- The pivot's first row (or a separate prep row scheduled before it) renames `.claude/skills/mcp-server-stress/` → `skills/mcp-server-surface-test/` (also reverses the maintainer-only relocate from inits 2-3 of the recent sweep).
-- All forward-looking surfaces use `mcp-server-surface-test`: the skill location, issue label (`mcp-server-surface-test-finding`), issue template (`.github/ISSUE_TEMPLATE/mcp-server-surface-test-finding.yml`), maintainer triage doc filename (`docs/MCP_SERVER_SURFACE_TEST_FINDINGS.md`), and any helper script names (`eng/aggregate-promotion-scorecards.ps1` is fine as-is — name doesn't reference the skill).
-- Historical references stay: backlog row ids (`audit-deep-collapse-modes`, etc.), already-shipped CHANGELOG entries, the `audit-deep-relocate-and-rename.md` fragment file. Don't rewrite history.
-- `audit-deep` is **not** a fallback or alias — gone forward. User explicitly stated: *"we arent using 'audit-deep'... i stand firm on that for now."*
-
-**Cost note:** this is the third rename for this skill in its lifetime (`audit-deep` → `mcp-server-stress` → `mcp-server-surface-test`). Worth being honest in the eventual CHANGELOG entry: *"Renamed `mcp-server-stress` to `mcp-server-surface-test` (cumulative second public rename) — 'stress' implied load testing, which the skill does not do; 'surface-test' accurately describes the comprehensive-surface-exercise + apply-tool integration shape."* Pre-empt the "why does this keep changing names" friction with a clear rationale.
-
-### D4 — Spam mitigation: minimum-viable-mitigation, not zero (clarification, not dissent — restating user's intent)
-
-User clarified: *"i never meant zero mitigation just that minimal in v1 was sufficient until we were actually noticing the spam."* The doc's existing "spam risk" section already aligns with this — landing minimum-viable-mitigation in v1 (template required fields, label scheme, audit-id reference) and deferring enforcement (rate limits, abuse detection, dedup-before-file). No design change needed; this entry exists only to make the alignment explicit.
-
-The schema lock-in piece is the part that's NOT optional in v1 — the issue-body template's required fields need to be designed once and held. Adding fields later when consumers are running old skill versions causes broken issues. Lock the schema day one even though enforcement is deferred.
-
----
-
-## Net cost estimate — REVISED after dissent register
-
-Replaces the earlier "Net cost estimate (rough — for brainstorm sizing)" section above. Same structure, applied resolutions:
-
-1. **Restore shipped skill location + rename to `mcp-server-surface-test`** — combines the relocate-reversal with the second rename. `git mv .claude/skills/mcp-server-stress/ skills/mcp-server-surface-test/`, update test paths, update external references in `publish-preflight/SKILL.md`, `audit-phase-runner.md`, and any doc references. ≤4 prod files + 3 tests. **Combined naming-and-relocation row** so we don't churn surfaces twice.
-2. **GitHub Issues output mode (print-only v1)** — Phase 19 of the prompt rewrites to print issue bodies (not file them). Optional `--auto-file` for `gh`-authenticated maintainer use. Issue-body template repurposed from `ai_docs/items/backlog-d-fragment-schema.md`. 2-3 prod files + 1 test (smaller than original estimate since we dropped the proxy + create-mode + preview-mode scope).
-3. **`/backlog-intake` reshape (single-path)** — replace fragment-walk with `gh issue list --label mcp-server-surface-test-finding` + `triaged-by-maintainer` fast-path + standard triage flow. Retire the fragment-walk branch in this same row. 2-3 prod files + 1 test.
-4. **Issue templates + label scheme + maintainer triage doc** — `.github/ISSUE_TEMPLATE/mcp-server-surface-test-finding.yml`, label definitions (`gh label create` script), triage doc at `docs/MCP_SERVER_SURFACE_TEST_FINDINGS.md`. ≤4 prod files, 0 tests.
-5. **`/publish-preflight` Step 8 + scorecard aggregator extension** — optional issue-comment input for community-quorum scorecards. Stretch — split as a separate row, ship after #1-4 stabilize.
-
-**Total: 4 v1 rows + 1 stretch.** Down from the original 6-row estimate, primarily because the fragment-pattern sunset row goes away (single-path means it retires inline with #3) and the issue-output mode is simpler (print-only).
-
-The fragment-pattern retirement happens *as part of* row #3, not as a separate sunset row. Be honest in row #3's CHANGELOG entry: *"Retires the `<audited-repo>/backlog.d/` fragment pattern shipped in v1.34.x's `backlog-d-fragment-pattern` initiative. Single-path issue model replaces it; maintainer fast-path uses `triaged-by-maintainer` label instead of local-fragment shortcut."*
-
----
-
-## Decisions still open for the brainstorm
-
-After the dissent register, what remains genuinely undecided:
-
-1. **Issue template required-field set.** Schema lock-in is critical (D4). What fields does the template require? Probably: `audit-run-id`, `server-version`, `audited-workspace-stats` (project count, LOC), `severity`, `area`, `anchors`, `repro-steps`, `proposed-fix`. Brainstorm should land the minimal set and the rationale.
-2. **Triage SLA cadence and labels.** "Weekly maintainer review" was proposed but not confirmed. Labels: `mcp-server-surface-test-finding` (filed by audit), `triaged-by-maintainer` (auto-fast-path), `triaged:accepted` / `triaged:rejected` / `triaged:defer` (post-triage state). Confirm.
-3. **Maintainer detection.** How does the skill know "this is the maintainer's run" to apply `triaged-by-maintainer`? Options: a `--maintainer` flag (explicit), reading a config file at `~/.config/roslyn-mcp/maintainer-mode` (configured once), checking if the audited repo IS Roslyn-Backed-MCP itself (heuristic), or just trusting `gh auth status` + repo-write permission as the gate. Brainstorm should pick.
-4. **Pivot timing.** Ship after which release? v1.35.0 (the imminent release after the recent sweep) is too early — let it stabilize. Probably v1.36.x or v1.37.x. Confirm in the brainstorm.
-
-The earlier "Open design questions" section above (numbered 1-7) is partially resolved by the dissent register. What survives unresolved: items 4 (triage discipline — confirmed but specifics open), 5 (cross-forge consumers), 6 (community-quorum scorecards — stretch), 7 (rate-limits — defer per D4).
-
----
-
-## Drafted answers to open questions (2026-05-08, third turn)
-
-The four questions above were drafted with explicit recommendations and brainstorm pressure points; the user reviewed and confirmed all four with no pushbacks. Recording here as **decisions, not drafts** — the brainstorm's job is to sanity-check, not re-design. Pressure points are kept as input to that sanity check.
-
-### Q1 — Issue template required-field set
-
-**Tradeoff frame:** every required field is friction at file-time and information at triage-time. Too few → "please add X" comment for every issue. Too many → consumers abandon the file step.
-
-**Required fields (8):**
-
-| Field | Why required | Format |
-|---|---|---|
-| `audit-run-id` | Ties N findings from one audit run together; lets the maintainer see the full audit context (prose report) for any issue without searching. Mandatory because issues filed in isolation lose all context within a week. | Kebab-slug `<repo-slug>-<utc-ts>`, generated by the audit at run start, included in every issue from that run. |
-| `finding-id-within-run` | Granularity inside an audit run for cross-referencing related findings ("see also #1234, same audit run"). Trivial to generate; pays off at triage. | Integer 1..N within an `audit-run-id`. |
-| `server-version` | Half of "is this still a bug?" questions are answered by "what version were you on?" Answering at file-time eliminates a triage round-trip. | Plain string from `mcp__roslyn__server_info`. Example: `1.34.2`. |
-| `severity` | Drives triage priority. P0/P1 trigger fast-path; P2/P3 batch. Consumer-side gating depends on this. | Enum `P0`/`P1`/`P2`/`P3`. Audit assigns based on the prompt's existing severity rubric — not consumer judgment. |
-| `area` | Triage routing. Even with one maintainer, area enables search-by-area. | Enum `tools`/`resources`/`prompts`/`skills`/`concurrency`/`perf`/`docs`/`other`. |
-| `audited-workspace-shape` | Reproduces the half of bugs that are scale-dependent. "Worked on 5-project sample, broke on 200-project monorepo" is invisible without this. | Structured: `{ projectCount, totalLOC, languages, hasGenerators, targetFrameworks }`. Audit captures from `workspace_load`. |
-| `finding-summary` | Fast-skim title for the triage queue. Issue title templated from this. | One-line, ≤120 chars, sentence-case. |
-| `repro-context` | Trace of what the audit was doing when this surfaced. Without it, half of audit findings are unreproducible. | Structured: phase number, tool call sequence, last-N relevant log lines. |
-
-**Optional fields (3):**
-
-- `proposed-fix` — the audit prompt may or may not have hypotheses; don't make consumers fabricate one.
-- `anchors` — `file:line` list. Useful for tools-area findings, less for concurrency/perf. Required-by-area would be cleaner but adds template complexity; defer to v2 if triage starts asking.
-- `reproducer` — minimal repro repo or snippet. Hard to require because audits usually find things in the audited workspace, which the consumer may not be able to share.
-
-**Anti-patterns explicitly forbidden:**
-
-- Free-text "describe the bug" without structured fields. Defeats schema discipline. Template MUST surface required-field validation.
-- "Attach screenshots" — meaningless for stdio + text output.
-- "Operating system" without "MCP server platform" qualifier — consumer's OS doesn't matter; the server's runtime matters (already captured via `server-version`).
-
-**Schema-lock-in considerations (per D4):** these 8 required + 3 optional are the v1 contract. Adding a field later breaks consumers running old skill versions — so the v1 set must be high-confidence. Deferred-to-v2: client identifier (Cursor vs VS Code vs Claude Code), client-side LLM (sonnet vs gpt-4) — consumers may not even know.
-
-**Brainstorm pressure points (input to sanity-check pass):**
-
-- Is `audited-workspace-shape` really required, or "encouraged"? Lean: required. Reproducibility lives or dies on this. "You may want to fill this in" templates don't get filled in.
-- Should `anchors` be required-by-area (mandatory for `tools`/`prompts`, optional for `concurrency`/`perf`)? Cleaner contract, harder template. Lean: keep optional uniformly in v1; promote in v2 if triage demand grows.
-
-### Q2 — Triage SLA cadence and labels
-
-**Cadence:** weekly review, batched. Daily is overkill at expected volume; monthly creates a daunting backlog. Weekly batches enough volume per session for efficient processing while keeping issues responsive.
-
-Specifically: maintainer triages all `mcp-server-surface-test-finding`-labeled issues filed in the prior 7 days, on a weekly cadence (day flexible). The SLA is "no untriaged issue older than 7 days," not "must triage Monday." P0 issues escalate out-of-band via the `urgent` label.
-
-**Label scheme (12 labels):**
-
-| Label | Applied by | Meaning |
-|---|---|---|
-| `mcp-server-surface-test-finding` | Audit at file-time | Filed by an audit run. Filter for triage queue. |
-| `triaged-by-maintainer` | Audit at file-time, conditional on maintainer-mode (Q3) | Skip human triage; auto-fast-path through `/backlog-intake`. |
-| `severity:P0`/`severity:P1`/`severity:P2`/`severity:P3` | Audit at file-time | From the required `severity` field. |
-| `area:tools`/`area:resources`/`area:prompts`/`area:skills`/`area:concurrency`/`area:perf`/`area:docs`/`area:other` | Audit at file-time | From the required `area` field. |
-| `urgent` | Maintainer or consumer | Out-of-band P0 escalation; bypasses weekly cadence. |
-| `triaged:accepted` | Maintainer at triage | Will become a backlog row. Issue stays open until row ships. |
-| `triaged:rejected` | Maintainer at triage | Not a real bug or out-of-scope. Issue closes with rationale. |
-| `triaged:defer` | Maintainer at triage | Plausible but lacks evidence/repro/priority. Stays open with `defer-reason:<short>` comment. Quarterly re-evaluation. |
-| `closes-row:<row-id>` | Maintainer at backlog-row creation | Cross-references the backlog row. Lets `/backlog-intake` re-find the issue when the PR ships. |
-
-**Triage workflow:**
-
-1. Maintainer runs `/backlog-intake` weekly.
-2. Skill lists `mcp-server-surface-test-finding` issues opened in the prior 7 days, grouped by `area`, sorted by `severity`.
-3. For each issue, maintainer presses `accept`/`reject`/`defer`. Skill applies labels.
-4. For `accept`: skill drafts the backlog row, asks confirmation, applies `triaged:accepted` + `closes-row:<row-id>`, appends row to `ai_docs/backlog.md`. Issue stays open.
-5. When the row ships, the closing PR uses `Closes #<issue>` trailer. GitHub auto-closes.
-6. Quarterly: `/backlog-intake --review-deferred` walks `triaged:defer`-labeled issues. Most re-rejected (no new evidence); some promoted.
-
-**Brainstorm pressure points:**
-
-- Are 12 labels too many? Probably fine — GitHub label fatigue starts ~30+. We're at 11–13.
-- Hard expiration on `triaged:defer` (auto-close at quarter X)? Lean: no. Hard expiration produces auto-close-then-reopen churn. Quarterly review is enough.
-
-### Q3 — Maintainer detection
-
-**Decision: `gh auth status` + repo-admin-permission heuristic, with config-file override.**
-
-**Mechanism:**
-
-1. At audit start, if `--auto-file` is in play, the skill calls `gh api repos/darylmcd/Roslyn-Backed-MCP --jq .permissions.admin`. If `true`, this is a maintainer run; issues file with `triaged-by-maintainer`.
-2. Result is cached in `~/.config/roslyn-mcp/maintainer-mode-cache.json` for 24h to avoid hammering the API across multiple audit runs.
-3. Override paths:
-   - `--no-maintainer-fast-path` — explicit user override (e.g. maintainer wants to test the normal triage flow). Suppresses the label even if `gh` would grant it.
-   - `~/.config/roslyn-mcp/maintainer-mode.json` with `{ forceMaintainer: true }` — explicit opt-in for users who don't have admin permissions but ARE pre-trusted (deputy maintainers, frequent contributors). Auto-applies the label.
-
-**Edge cases:**
-
-- `gh` not installed / not authenticated → no fast-path. Issues file normally with full triage queue. This is what we want for cold-onboard consumers.
-- Maintainer's `gh` token expires → audit silently downgrades to normal triage. Maintainer notices at the next weekly review when their issue isn't pre-labeled.
-- `gh` API call fails (rate-limited, network) → use 24h cache; if cache empty, default to normal triage. Don't block the audit on `gh` flakiness.
-
-**Why this over the other options:**
-
-- **`--maintainer` flag (explicit):** zero false-positives but annoying to type 50 times/year.
-- **Config file only:** set-and-forget but copies across machines, leading to false-positives on un-authenticated machines.
-- **Heuristic "audited repo IS Roslyn-Backed-MCP":** wrong — maintainer audits siblings frequently, those wouldn't be flagged.
-- **`gh-permission` (chosen):** zero config; correct by default; degrades gracefully; one negligible API call per audit (compared to the 30+ minute audit duration).
-
-Co-maintainers added later get fast-pathed automatically. That's the right behavior.
-
-**Brainstorm pressure points:**
-
-- Does this leak signal? `triaged-by-maintainer` on a public issue tells observers the audit was filed by a maintainer. Probably not sensitive — all the audit's evidence is already public on the issue. Worth confirming.
-
-### Q4 — Pivot timing
-
-**Decision: pivot scheduled for v1.36.x or later. v1.35.0 stabilizes first.**
-
-- **v1.35.0** (imminent) — consumes the 7 fragments accumulated since v1.34.2. BREAKING due to the mode-collapse fragment, so minor bump under semver. Ships the 20260507 sweep + release-cut Step 6 fix + `--target=` contract. **No pivot work.**
-- **Pivot row #1 (rename `mcp-server-stress` → `mcp-server-surface-test` + relocate back to shipped surface)** ships separately, possibly as v1.35.x patch or held for v1.36 — decoupled from the issues-pivot rows for cleaner review. Lean: separate row, separate release.
-- **Pivot rows #2-#5 (issues-output mode, /backlog-intake reshape, templates+labels+triage doc, scorecard aggregator extension)** ship in v1.36.x or later. **Earliest 4–6 weeks after v1.35.0** to give:
-  - Time for v1.35.0 to surface its own bugs (the audit-deep redesign was big).
-  - Time for community to *try* v1.35.0 — nobody files audit findings against a version that just dropped.
-  - Calendar margin so the pivot work isn't compressed.
-
-**Why v1.36 minor and not v2.0:** semver minor with BREAKING fragments is fine; v2.0 implies a larger break than this is.
-
-**Brainstorm pressure points:**
-
-- Should rename ship decoupled from issues pivot? Lean: yes, separate row in v1.35.x or v1.36.0. Smaller PR, easier review, isolates the third-rename-fatigue concern.
-- Brainstorm itself doesn't have a deadline. Park until v1.35.0 has been out 2–3 weeks, then run the brainstorm against this doc.
-
----
-
-## Status after this turn
-
-These decisions, the dissent register (D1–D4), and the original draft sections are all the brainstorm's input. **The brainstorm's job is sanity check, not redesign** — frame the prompt explicitly as "pressure-test these decisions, look for gaps, propose alternatives if you see them, DO NOT just confirm what's there." The brainstorm pressure points listed under each question are the seed prompts.
-
-**Net cost estimate stands at 4 v1 rows + 1 stretch + 1 prep (the rename/relocate as separate row).** Roughly 5–6 rows total, depending on whether the rename rolls into the relocate or ships separately.
-
----
-
-## Fourth-turn updates (2026-05-08, fresh-eyes critique pass)
-
-After the third turn drafted answers, ran a fresh-eyes critique pass against the doc. Surfaced load-bearing concerns about the crowdsourcing premise; user pushed back substantively. The dialog produced two materially-new decisions and one scope addition. **These supersede earlier sections where they conflict.**
-
-### F1 — Floor-case justification accepted (the pivot pays off without community use)
-
-**Critique:** *"The crowdsourcing premise is unvalidated. Consumers have no incentive to run a 45-min audit. If they don't run, the pivot's ROI disappears."*
-
-**User counter:** the pivot has standalone value at zero community use:
-- Issues > fragments mechanically for the maintainer (cross-reference, search, persistence, PR auto-close linking are native to issues, bolted-on for fragments).
-- Architectural simplicity: skill back on shipped surface eliminates "where does it live, what IDE, what session" friction. Real ergonomic win regardless of audience.
-- **Credibility signal.** Active labeled-issue tracker visible from the NuGet page signals *"this server is being actively stress-tested and quality matters."* Empty trackers signal abandonment; lively trackers signal investment. Even maintainer-filed issues telegraph care.
-- Optionality: if community ever shows up, infrastructure is ready. If not, we lose nothing relative to fragments.
-
-**Decision:** the pivot pays off on **maintainer workflow + credibility alone**. Community contributions are upside, not the load-bearing case. **The fragment pattern's retirement is justified by the maintainer-side improvements alone, not by speculative community throughput.**
-
-**Anti-overbuild guard:** hold the line on infrastructure deferral (D4). No proxy / GitHub App / per-IP rate limiter / abuse detection until concrete volume signal. *"If we built more, more would come"* is famously wrong. v1 ships the cheap parts that pay off for maintainer use; the expensive parts wait for evidence.
-
-### F2 — Tiered runs (`--quick` + `--full`, defer `--mid`)
-
-**Critique:** *"45-min full run is a deal-breaker for any community use. Even the credibility signal premise breaks if nobody runs it once."*
-
-**User counter:** rethink what a run looks like — default to full, but expose tiered subsets for shorter runs.
-
-**Important architectural distinction (must be explicit in the eventual CHANGELOG):** the historical `read-only`/`promotion-only` modes (collapsed in v1.35.0's `mcp-server-stress-single-mode` initiative) were **evidence-type variants** that produced malformed scorecards. The new tiers are **time-budget slices** — strict subsets of phases, each producing a strict subset of findings, with honest contracts about what each tier covers. Same architectural axis (which phases run), different motivation (time budget vs evidence-type), different downstream contract (clearly-scoped findings, not broken scorecards).
-
-**Decision: ship two tiers in v1, defer the third.**
-
-| Tier | Phases run | What's tested | Scorecard | Default for | ETA |
-|---|---|---|---|---|---|
-| `--quick` | 0, 1, 2, 3, 4, 5, 7 | Read-side surface — `find_references`, `symbol_search`, `compile_check`, etc. The consumer-facing 80%. | Not emitted (no apply evidence) | Community runs | ~5 min |
-| `--full` (default for maintainer) | All phases | Everything — apply pass, disposable worktree, full scorecard | Emitted with full evidence | Maintainer mode | ~45 min |
-
-**Deferred to v2 (or later, if asked):** `--mid` tier (~15 min, read-side + concurrency + resources). Three tiers is more cognitive load than two; if a "between quick and full" request shows up in practice, add it then. Ship two in v1.
-
-**Honest scope note:** apply-path bugs surface only through `--full` runs, which only the maintainer does. Tiers don't crowdsource the apply-path; that stays maintainer-only structurally. The community gets credit for **read-side findings**. The design doc, the issue template, and the consumer-facing README must all be honest about this — no implied promises about apply-path coverage from quick runs.
-
-**Composes with maintainer detection (Q3):** maintainer-mode → default `--full`; consumer-mode → default `--quick`. Explicit `--tier=quick|full` overrides. Required `tier` enum field added to the issue template (Q1) so triage knows the audit's coverage scope. New label `tier:quick`/`tier:full` added to the label scheme (Q2).
-
-**Cost-estimate impact:** add ~+0.5 row (tier infrastructure folds into the issues-output mode row, doesn't need its own row). Schema changes (Q1, Q2) are minor extensions, not new rows.
-
-### F3 — Consumer-facing documentation is in scope
-
-**User addition:** *"lets make sure that we are updating the consumer side documentation that is seen from nuget/github with full explanation of the mcp-server-surface-test (why its there, what each mode does, expected time to run, why they are each important etc.)"*
-
-**Critical scope item.** F1's credibility-signal value collapses to nothing if the public docs don't explain the skill. An issue tracker full of findings, with a README that doesn't mention why or invite contribution, signals confusion not investment.
-
-**Surfaces to update (each gets a dedicated row or sub-row):**
-
-| Surface | What it carries | Audience |
-|---|---|---|
-| `README.md` (repo root, also renders on NuGet package page) | Top-level "what is this server, how do I use it, how do I help make it better" — adds a *"Quality assurance: `/mcp-server-surface-test`"* section linking to the tier explanation, the issue template, and triage SLA. | Anyone who lands on NuGet or GitHub |
-| `docs/MCP_SERVER_SURFACE_TEST.md` (NEW) | The deep-dive: why this skill exists, server-quality framing, what each tier does, expected time per tier, why each tier is important, what gets exercised, what doesn't (apply-path coverage requires `--full`), privacy/safety guarantees (disposable worktree never mutates main, no telemetry, what gets shared in an issue). | Consumers thinking about running it |
-| `.github/ISSUE_TEMPLATE/mcp-server-surface-test-finding.yml` | The structured template enforcing the 8 required fields from Q1. Each field has placeholder + explanation. | Consumers filing |
-| `docs/MCP_SERVER_SURFACE_TEST_FINDINGS.md` (NEW, the triage doc from Q2) | Triage cadence, label meanings, what happens after you file, expected response time, how decisions are made. | Consumers who filed AND maintainer reference |
-| `<csproj>` package metadata — `Description`, `PackageReleaseNotes` | NuGet page summary — must mention the audit skill exists and that quality is actively tracked. One-line pointer to README's section. | NuGet browsers |
-| `CONTRIBUTING.md` (if exists, or NEW) | Top-level "how to contribute"; audit findings section is one path among others. | Any contributor |
-
-**Required content for the deep-dive (`docs/MCP_SERVER_SURFACE_TEST.md`):**
-
-1. **Why this skill exists** — server quality matters; we audit our own surface; we want findings from real-world workspaces.
-2. **What it does** — at a high level: exercises every tool, resource, and prompt against a loaded C# workspace; produces structured findings.
-3. **What it does NOT do** — does not mutate your code (disposable worktree only), does not exfiltrate any source, does not phone home, does not require any auth from you (`print` mode default).
-4. **The two tiers** — `--quick` (~5 min, read-side surface, consumer-default) and `--full` (~45 min, full coverage, maintainer-default). Explicit honesty: quick mode does NOT cover apply-path; that's `--full`-only.
-5. **Why each tier is important** — quick is the consumer-facing 80% (the tools you actually call when refactoring); full is the maintainer-grade everything-pass that surfaces apply-path and concurrency bugs.
-6. **Expected time + resource cost** — quick is 5 min, mostly idle (one-shot tool calls). Full is 45 min, requires a disposable worktree, requires a clean-enough audited repo state to allow `git worktree add`.
-7. **What happens after a run** — prose audit report at `<your-repo>/ai_docs/audit-reports/<ts>_<repo>_mcp-server-audit.md`; for `--full` runs, scorecard JSON sibling. Findings printed in the agent session for review.
-8. **How to share findings** — link to the issue template; one-paragraph "why your findings help" framing.
-9. **Privacy/safety** — disposable worktree branches from your repo's tree but never pushes; teardown via `dotnet build-server shutdown` + `git worktree remove --force`; nothing leaves your machine unless YOU file an issue. Print mode is the v1 default specifically so you control what gets shared.
-10. **Triage and response** — link to the triage doc; weekly review cadence; what `triaged:accepted`/`rejected`/`defer` mean.
-
-**This document is the load-bearing piece for the credibility signal.** Without it, the issue tracker is just noise. With it, the tracker becomes evidence of an actively-maintained quality regime.
-
-**Cost-estimate impact:** add a new dedicated row for the consumer-doc package — call it row 3.5 or row 5b in the eventual planning. **Probably +1 row to the cost estimate.** The README and CONTRIBUTING surfaces are small edits; the deep-dive doc is the main lift (~150–250 lines of carefully-written prose).
-
-### Revised net cost estimate after fourth turn
-
-Final shape:
-
-1. **Restore shipped skill location + rename to `mcp-server-surface-test`** (combined with relocate-reversal). ~4 prod files + 3 tests.
-2. **Tiered-run + GitHub Issues output** (`--quick`/`--full`, print mode default, `--auto-file` opt-in for `gh`-authenticated maintainers; tier-aware findings; required `tier` template field; `tier:*` labels). ~4-5 prod files + 1 test. **Combines the issues-output row + tier-infrastructure work.**
-3. **`/backlog-intake` reshape** (single-path: issue-list + maintainer-fast-path + standard triage; retires fragment-walk inline). ~3 prod files + 1 test.
-4. **Issue templates + label scheme + maintainer triage doc**. ~4 prod files (template YAML, label-creation script, triage doc, label registry). 0 tests.
-5. **Consumer-facing documentation** (README section, deep-dive doc, csproj metadata, CONTRIBUTING). ~4-5 prod files (README, deep-dive .md, csproj, CONTRIBUTING). 0 tests. **NEW after fourth-turn discussion.**
-6. **`/publish-preflight` + scorecard aggregator extension** (optional issue-comment input for community-quorum scorecards). Stretch — split as separate row, ship after #1-5 stabilize.
-
-**Total: 5 v1 rows + 1 stretch.** Up by 1 (the docs row) from the third-turn estimate. Worth it — the docs row IS the credibility signal infrastructure.
-
-### Brainstorm framing reminder
-
-When the brainstorm runs (against the now-revised doc), the prompt MUST include explicit anti-rubber-stamping framing:
-
-> *"Pressure-test these decisions. Look for unvalidated assumptions, alternative shapes we didn't consider, and gaps in reasoning. Do NOT just confirm what's there — if a decision looks fine, say why; if it looks wrong, propose a concrete alternative. Treat this as adversarial review, not endorsement."*
-
-Specific brainstorm focus areas at the time it runs:
-
-- **F2 — tier scope:** is `--quick` actually useful? What if even 5 min is too much for community? Is there a `--smoke` (~30 sec) that just verifies the server responds?
-- **F3 — docs surface coverage:** are there other surfaces (NuGet README rendering, package badges, marketplace listings) we should be hitting?
-- **The schema lock-in concern from third-turn (Q1):** evidence-first review — open a recent audit report from `ai_docs/audit-reports/` and walk through it. Do the 8 required fields actually exist there in some form? Or are we declaring contracts for data the producer doesn't yet emit?
-- **Triage SLA enforcement:** what's the actual mechanism? "Weekly review" needs a forcing function or it slips.
-
----
-
-## Fifth-turn: empirical findings from 2026-05-08 audit run
-
-After the fourth-turn updates landed, an adversarial-review subagent flagged two load-bearing concerns (LB-1: D2/F1 contradiction; LB-2: schema lock-in against zero empirical samples) plus five medium concerns. The user produced empirical evidence to test the concerns: a real `/mcp-server-stress` audit run against this repo (audit-id `20260508T154415Z`) producing a 15.5KB prose report, a 11KB scorecard JSON, and 9 fragment files in `backlog.d/` (7 from the audit, 2 added by the agent reviewing its own session logs). **These supersede speculative sections above where they conflict.**
-
-### E1 — Empirical schema validation (resolves LB-2)
-
-**Evidence on disk:** 9 well-formed fragments, all using the **existing 6-field schema** (`id`, `source_audit`, `source_repo`, `severity`, `area`, `anchors`) plus a tight body paragraph (finding + repro + proposed fix). All 9 are concrete, actionable, and ready for backlog inclusion without any field expansion. The intake skill consumed them cleanly via the documented Phase 0.5 fragment path.
-
-**Decision:** **Lock the existing 6-field schema as v1.** Q1's expansion to 8 required fields is over-spec. Specifically:
-
-| Q1 proposed field | Disposition | Rationale |
-|---|---|---|
-| `audit-run-id` | DROPPED — `source_audit` already serves this role | Empirical fragments use `source_audit: <ts>_<repo>_mcp-server-audit.md`; no separate run-id field needed. |
-| `finding-id-within-run` | DROPPED — `id` (the kebab-slug) is unique within the audit context | Empirical evidence: the 9 fragments have unique kebab IDs naturally; ordering inside one run isn't a triage need. |
-| **`server-version`** | **ADDED to fragment frontmatter** | Genuinely useful for triage; cheap to capture (`mcp__roslyn__server_info` already runs at audit start). One-line audit-prompt change to stamp it. |
-| `audited-workspace-shape` | DROPPED from per-fragment; ENRICHED in audit report §2 | Per-finding it's redundant (every finding from one run has identical shape). The audit report's §2 already captures workspace info ("5 projects, 583 documents, no diagnostics"); enrich with structured `workspace-shape:` block (projectCount, totalLOC, languages, hasGenerators, targetFrameworks). Fragments reference the audit by `source_audit`; readers join. |
-| `finding-summary` | DEFERRED to v2 | Empirical fragments' first body sentence already serves this role and is consistently short + concrete (e.g. *"`find_references` can report an ambiguous metadata-name result..."*). Marginal benefit, defer until intake actually wants explicit summary metadata. |
-| `repro-context` (structured: phase number, tool call sequence, last-N log lines) | DROPPED structured form; KEPT prose form | Empirical fragments embed repro in body prose (*"Repro: load X, call Y, response Z"*). That works. Forcing structure adds audit-prompt complexity for marginal triage benefit. |
-
-**Net schema for v1:** existing 6 fields + new `server-version` = **7 required fields.** All other Q1 expansions either dropped or deferred.
-
-**Cost-estimate impact:** schema work shrinks. The audit-prompt changes needed are small:
-1. Stamp `server-version` into every emitted fragment (one line at run start, propagate to all writes).
-2. Enrich §2 of the audit report with structured `workspace-shape:` block.
-
-These are minor edits to the audit prompt, not new infrastructure. **Probably folds into the existing pivot row #2 (issues output mode) rather than spawning a new row.**
-
-### E2 — Empirical reconciliation of D2/F1 contradiction (resolves LB-1)
-
-**Evidence on disk:** the 9 fragments produced excellent maintainer-side triage signal. They were:
-- Read in place by `eng/stage-review-inbox.ps1` (no network round-trip)
-- Consumed inline by `/backlog-intake` (no `gh` API calls)
-- Deleted at source after consumption (consume-and-track contract honored)
-- Rendered as 9 backlog rows in `ai_docs/backlog.md` in one local commit
-
-The maintainer flow is empirically excellent. **Issues would have added overhead** (one `gh issue create` per fragment, one `gh issue list` per intake call, label-state management, network dependency) **for marginal gain.** This validates the reviewer's M-5 (offline-capability is architectural, not preference) and reinforces user feedback (3) (*"its quicker to keep the fragments pattern local for us to consume"*).
-
-**Decision:** **the maintainer's local-fragment workflow is now empirically validated as the right shape for the maintainer use case.** It does NOT need to be replaced.
-
-What this means for the pivot:
-- **Reverses D1 (single path).** Two paths is correct: maintainer uses fragments locally; consumers (when/if they appear) file issues. The reviewer's M-5 was right and our D1 dismissal was wrong.
-- **Honestly reframes F1's credibility-signal premise.** With D2 (print mode) holding AND maintainer using fragments locally, the issue tracker will be populated only when a consumer manually files. That MIGHT happen; it might not. F1's credibility-signal value is conditional, not guaranteed. The pivot's load-bearing case shrinks to: *"if a consumer ever files, we want a clean reception path; everything else stays as-is."*
-- **F3's docs scope shrinks dramatically.** README mention of the skill: yes. Deep-dive 150-250-line doc explaining tiers, privacy, triage SLA: only valuable if community runs are expected. With reduced expectation, F3 collapses to a 20-30-line README section + an issue template. The "load-bearing for credibility signal" framing in F3 was never quite honest; this turn corrects it.
-
-**Cost-estimate impact (significant):** the pivot shrinks from 5 v1 rows + 1 stretch to **~3 rows + 1 stretch.**
-
-Refined row set:
-
-1. **Restore shipped skill location + rename to `mcp-server-surface-test`** — unchanged. Combines relocate-reversal with the rename. ~4 prod files + 3 tests.
-2. **Tiered runs (`--quick` + `--full`) + opportunistic GitHub Issues filing** — `print` mode default; `--auto-file` opt-in for `gh`-authenticated maintainers; **`server-version` added to fragment frontmatter**; **audit report §2 enriched with `workspace-shape:` block**; tier flag handling. The "issues output" piece is a thin layer over the existing fragment-emit, not a replacement. ~3-4 prod files + 1 test.
-3. **README + issue-template package** — small README section explaining the skill exists, what tiers do, what time they take; one issue template at `.github/ISSUE_TEMPLATE/mcp-server-surface-test-finding.yml`; no deep-dive doc, no triage doc, no csproj metadata changes (defer until volume signal). ~2 prod files + 0 tests.
-4. **`/publish-preflight` + scorecard aggregator extension (community-comment input)** — STRETCH, unchanged from prior. Defer.
-
-Dropped from prior estimate:
-- ~~`/backlog-intake` reshape (single-path)~~ — fragments stay; intake flow as-is. NO ROW.
-- ~~Maintainer triage workflow doc + label scheme~~ — issues come in irregularly; weekly batched-review-via-gh-cli is fine without infrastructure. NO ROW.
-- ~~Consumer-facing deep-dive doc~~ — collapsed into the slimmer README + issue template row.
-
-### E3 — Resolution of medium concerns from the adversarial review
-
-| Concern | Resolution |
+| Pivot all actionable findings away from `backlog.d/` and into GitHub Issues. | Keep `backlog.d/` for maintainer audits; add Issues as a consumer-sharing path. |
+| Single path through GitHub Issues with `triaged-by-maintainer` as the maintainer shortcut. | Two paths are intentional: local fragments for maintainer intake, issues for outside contributors. |
+| Sunset `eng/stage-review-inbox.ps1` fragment discovery and `/backlog-intake` fragment walking. | Keep both. They are the validated maintainer path. |
+| Require an 8-field issue schema (`audit-run-id`, `finding-id-within-run`, `audited-workspace-shape`, structured `repro-context`, etc.). | Use the existing 6-field fragment schema plus `server-version`; put workspace shape in the audit report. Defer extra fields until triage asks for them. |
+| Build a proxy, GitHub App, or telemetry endpoint for seamless filing in v1. | Defer hosted infrastructure until there is volume signal. Use print-ready bodies and optional `gh` filing first. |
+| Full consumer-facing docs package with deep-dive doc, triage SLA doc, csproj metadata, and CONTRIBUTING edits. | Start with README plus issue template. Add more surfaces only when issue volume or user confusion justifies them. |
+| Block the pivot behind the 9 findings from the 2026-05-08 audit run. | That audit batch has already been mostly shipped/reconciled. Route new work from the current `ai_docs/backlog.md`, not this historical note. |
+| Keep `audit-deep` or `mcp-server-stress` as forward-looking names. | Use `mcp-server-surface-test` for all new public surfaces. Preserve older names only in historical references. |
+| Keep maintainer-found issues only in local fragments for speed. | Keep local fragments for intake speed, but file curated accepted findings publicly when visibility or contribution value is worth it. |
+
+## Implementation constraints
+
+- Follow `AGENTS.md` shipped-skill packaging rules before moving anything under `./skills/`.
+- Run `./eng/verify-ai-docs.ps1` for doc-only changes.
+- If shipped skills change, `verify-ai-docs.ps1` also invokes `eng/verify-skills-are-generic.ps1`; treat that as a required gate, not a cleanup task.
+- If code or packaged skill behavior changes, run the release validation path from `CI_POLICY.md`.
+- Do not add pivot rows directly to `ai_docs/backlog.md` until they are sized into bounded initiatives.
+
+## Remaining questions
+
+These are the only questions worth carrying into a future planning or sanity-check pass:
+
+1. Is `--quick` enough for consumers, or should there also be a very small `--smoke` tier?
+2. Exactly how should the issue template render the shared finding envelope without requiring fields the producer does not already emit?
+3. Which labels define the initial contributor funnel (`help wanted`, `good first issue`, area, severity), and which labels should wait for real issue volume?
+4. Should the rename/relocate ship as its own row before the tier and issue-rendering work? Current lean: yes, to reduce review churn.
+
+## References
+
+| Path | Role |
 |---|---|
-| **M-1** Q3 maintainer detection forks problem | Defer until/unless we ship the auto-file path. Not load-bearing for v1 print-mode. |
-| **M-2** F3 invests in advertising friction-laden flow | Resolved by E2 — F3 scope collapsed; we're advertising "here's what this skill does" not "please file issues." |
-| **M-3** Cross-forge consumers need GitHub account | Acknowledged; print mode is the answer. Add a sentence to the README section. |
-| **M-4** Scorecard aggregator has zero community input under tier model | Resolved by E2 — community-quorum aggregation moves from "v1 with stretch" to "stretch row only, ship if ever needed." Aggregator stays single-path (maintainer scorecards). |
-| **M-5** D1 single-path assumes `gh` works for maintainer | Resolved by E2 — D1 reversed; fragments stay for maintainer. |
-
-### E4 — What did NOT survive contact with empirical evidence
-
-Being honest about prior decisions that should change:
-
-- **D1 (single path) is reversed.** Two paths: fragments for maintainer (offline-capable, fast, local), issues for consumers (when/if they file). Was the right architectural call all along; we over-rotated on tech-debt arguments in third turn.
-- **Q1 schema expansion is mostly dropped.** Schema-first design made us speculate; evidence-first review confirmed the existing 6 fields + `server-version` cover triage needs. The other 4 proposed fields were over-spec.
-- **F3 docs scope is reduced.** Big consumer-facing doc package was justified on a community-throughput premise that this run cannot validate (no community run yet, by definition). Smaller surface (README + template) covers the "we exist and we want findings if you have them" framing.
-- **Pivot cost is roughly halved.** From 5 v1 rows + 1 stretch to 3 v1 rows + 1 stretch. The work IS smaller because less of it is needed; not because we cut corners.
-
-### E5 — One new finding from this empirical pass
-
-The 2026-05-08 audit found 9 real bugs (1 P1, 8 P2) that need backlog rows independent of any design discussion. **They are concrete actionable work that's higher-priority than the pivot itself.** The P1 (`build-test-self-analyzer-file-lock`) is a self-hosting bug that breaks `build_workspace`/`test_run` for any consumer with the analyzer loaded — a production issue, not a stress-test artifact.
-
-Triage these 9 first via the next backlog sweep (or a focused mini-sweep on the P1). The pivot can wait until v1.36 or beyond. **The audit's existing pattern produced ship-ready evidence; that itself is a strong signal that the architecture is right and the pivot should be small.**
-
-### Brainstorm framing — UPDATED for fifth turn
-
-The brainstorm is no longer needed at the same scope. With LB-1 and LB-2 resolved by empirical evidence, the remaining open questions are narrower:
-
-1. **Tier scope sanity check** (F2): is `--quick` actually useful, or do we need `--smoke` (~30 sec)? Empirical run was a `--full` (~30+ min) — no quick-tier evidence yet. Worth a future test before tier infrastructure ships.
-2. **Auto-file path detail** (E2 row #2): when a `gh`-authenticated maintainer passes `--auto-file`, does it bypass the local fragment emit (issues only) or supplement it (both)? Default should probably be "supplement" — fragments AND issues — so maintainer's local intake flow is unchanged.
-3. **README section voice** (E2 row #3): "we exist; here's what we do" vs "please file findings; here's why it matters." The first is honest; the second is the credibility-signal pitch from F1 that didn't survive E2. Lean: voice #1.
-
-These can be answered without an adversarial-review session — they're scope-sanity-check questions, not architecture questions. **The brainstorm is downgraded from "required gate before sizing" to "optional sanity-check after the 9 audit findings ship."**
-
-### Net cost estimate — REVISED again after fifth turn
-
-Final shape after empirical validation:
-
-1. **Restore shipped skill location + rename to `mcp-server-surface-test`** (combined). ~4 prod files + 3 tests.
-2. **Tiered runs + opportunistic GitHub Issues filing + minor schema/§2 enrichment** (`server-version` field, structured `workspace-shape:` block). ~3-4 prod files + 1 test.
-3. **README + issue template** (slim consumer-facing surface). ~2 prod files + 0 tests.
-4. **`/publish-preflight` + scorecard aggregator community-comment input** (STRETCH). Defer until ever needed.
-
-**Total: 3 v1 rows + 1 stretch.** Down from 5 + 1 (fourth turn) and from 6 + 1 (third turn). Each shrink was honest — driven by reasoning or evidence, not by cutting corners.
-
-**Rows that fall OUT of the pivot:**
-- 9 bug-fix rows from the 2026-05-08 audit (these are NOT part of the pivot; they're concrete production work)
-- Future schema-add rows for `server-version` and §2 enrichment if they don't fold into row #2
-
-The pivot is now small enough that the brainstorm is genuinely optional. We could plan and ship it directly, or layer it after the 9 bug-fix rows ship in v1.35.x patches. Either is reasonable.
+| `ai_docs/plans/20260507T182128Z_backlog-sweep/plan.md` | Sweep that introduced the maintainer-only audit redesign and fragment pattern. |
+| `ai_docs/plans/20260508T171439Z_backlog-sweep/plan.md` | Follow-up sweep that shipped the 2026-05-08 audit findings and changed priority context. |
+| `.claude/skills/mcp-server-stress/SKILL.md` | Current maintainer-only skill entry point. |
+| `.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md` | Maintainer-only superset prompt (renamed from `prompts/prompt.md` when Row 1 shipped); retains repo-coupled phases the shipped consumer prompt does not have. |
+| `.claude/skills/backlog-intake/SKILL.md` | Maintainer intake flow that consumes `backlog.d/` fragments. |
+| `ai_docs/items/backlog-d-fragment-schema.md` | Canonical fragment schema; base for the shared finding envelope. |
+| `ai_docs/backlog.md` | Current open-work source of truth. |
+| `.github/ISSUE_TEMPLATE/` | Existing GitHub issue-template folder for the future `mcp-server-surface-test-finding.yml`. |
+| `AGENTS.md` | Shipped-skill genericity and bootstrap rules. |
+| `CI_POLICY.md` | Validation and merge-gating policy. |

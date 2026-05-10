@@ -2,7 +2,7 @@
 
 <!-- purpose: Index for raw deep-review audit outputs and templates; points to baseline, static snapshots, and rollup handoff. -->
 
-Use the bundled prompt [`.claude/skills/mcp-server-stress/prompts/prompt.md`](../../.claude/skills/mcp-server-stress/prompts/prompt.md) with an MCP client connected to **roslyn-mcp** to exercise the full tool surface against a real solution. The maintainer-only `/mcp-server-stress` skill in this repo orchestrates the run end-to-end.
+Use the bundled prompt [`.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md`](../../.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md) with an MCP client connected to **roslyn-mcp** to exercise the full tool surface against a real solution. The maintainer-only `/mcp-server-stress` skill in this repo orchestrates the run end-to-end.
 
 ## What belongs here
 

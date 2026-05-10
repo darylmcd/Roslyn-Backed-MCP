@@ -28,7 +28,7 @@ This prompt describes one canonical run. Phase 6 applies are always exercised ag
 
 A single optional flag exists: `--no-worktree`, a degraded mode for environments that genuinely cannot create a git worktree (tight CI sandbox, missing `git` binary, read-only checkout). When set, Phase 6 is skipped, the *Isolation* row records `degraded — --no-worktree flag, Phase 6 applies skipped`, and writer rows whose round-trip evidence depended on the disposable worktree default to `needs-more-evidence` in the scorecard. Record `--no-worktree` in the report header so consumers know which evidence is missing.
 
-**Known issues / prior findings.** When auditing Roslyn-Backed-MCP (or any repo that has access to it), cross-check `ai_docs/backlog.md` at the audited-repo root and cite matching ids. Otherwise use the closest prior source (previous audit report, issue tracker, repro list). If none exists, the regression section is **N/A**.
+**Known issues / prior findings.** When the audited repo has a tracked backlog or issue history, cross-check it and cite matching ids — common locations include `<audited-repo-root>/backlog.md`, a project's GitHub Issues, or a prior audit report. If no prior source exists, the regression section is **N/A**.
 
 **Phase order.** Run in this order: **-1 → 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 8b → 10 → 9 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18**. Phase 8b runs immediately after Phase 8 so it sees post-refactor state. Phase 9 runs after Phase 10 so `revert_last_apply` doesn't undo Phase 6 work.
 
@@ -96,7 +96,7 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 ### Phase 0: Setup, live surface baseline, and repo shape
 
 1. Pick the entrypoint: `.sln` / `.slnx` / `.csproj`.
-2. **Create the disposable worktree** (mandatory, default mode). Run `git worktree add ../<repo-name>-audit-deep-<ts> -b audit-deep/<ts>` from the audited repo root, where `<ts>` is the same UTC `yyyyMMddTHHmmssZ` used for the report filename. Record the absolute worktree path + branch name in the *Isolation* header row before any write-capable call. Phase 6's preview→apply chains run against this checkout; the audited repo's primary working tree is never touched. **`--no-worktree` flag:** record `degraded — --no-worktree flag, Phase 6 applies skipped` in the *Isolation* row and skip worktree creation entirely.
+2. **Create the disposable worktree** (mandatory, default mode). Run `git worktree add ../<repo-name>-surface-test-<ts> -b mcp-server-surface-test/<ts>` from the audited repo root, where `<ts>` is the same UTC `yyyyMMddTHHmmssZ` used for the report filename. Record the absolute worktree path + branch name in the *Isolation* header row before any write-capable call. Phase 6's preview→apply chains run against this checkout; the audited repo's primary working tree is never touched. **`--no-worktree` flag:** record `degraded — --no-worktree flag, Phase 6 applies skipped` in the *Isolation* row and skip worktree creation entirely.
 3. **Debug-log channel check.** Is the client surfacing `notifications/message`? Record `yes` / `partial` / `no` in the header.
 4. Read `roslyn://server/resource-templates` to capture all resource URI templates.
 5. Call `workspace_load` (lean summary default; pass `verbose=true` only if you need the full project tree).
@@ -310,10 +310,10 @@ This sub-phase runs at the **end of Phase 6** as the `finally`-clause counterpar
 1. **Release Windows file locks first.** Run `dotnet build-server shutdown` from the audited repo root (or the disposable worktree, equivalent). This releases `testhost.exe` / `VBCSCompiler.exe` locks on `bin/{Debug,Release}/net*/` directories. The command prints one informational line on stdout — that is normal, not an error.
 2. **Remove the worktree.** Run `git worktree remove --force <disposable-worktree-path>` from the audited repo root. The `--force` flag is required because Phase 6 leaves uncommitted apply-mode mutations in the worktree (intentionally — the point was to exercise the apply tools, not to commit their output).
 3. **Verify cleanup.** Run `git worktree list` from the audited repo root and confirm the disposable worktree is gone. Run `git status` from the audited repo's primary checkout and confirm it is clean (Phase 6 must not have leaked changes outside the worktree).
-4. **Branch cleanup.** Run `git branch -D audit-deep/<ts>` from the audited repo root to delete the disposable branch. The branch only existed to host worktree state; it has no upstream and no history worth preserving.
+4. **Branch cleanup.** Run `git branch -D mcp-server-surface-test/<ts>` from the audited repo root to delete the disposable branch. The branch only existed to host worktree state; it has no upstream and no history worth preserving.
 5. **Record teardown outcome in the report header.** A new *Teardown* row: `clean` (worktree removed, branch deleted, primary checkout clean) / `partial — <what survived>` (e.g. `partial — branch survived; manual git branch -D required`) / `failed — <error>`.
 
-If teardown fails for an unexpected reason, surface the failure in the report's *MCP server issues* section as a P1 finding tagged `audit-deep teardown`. Do not retry blindly — the operator can clean up by hand.
+If teardown fails for an unexpected reason, surface the failure in the report's *MCP server issues* section as a P1 finding tagged `surface-test teardown`. Do not retry blindly — the operator can clean up by hand.
 
 **`--no-worktree` mode:** sub-phase 6z is `skipped — no worktree was created`.
 
@@ -592,36 +592,69 @@ Deliberately probe edge cases. Verify inputs validated, error messages helpful, 
 
 ### Phase 18: Regression verification
 
-Re-test 3–5 previously recorded issues. Prefer `ai_docs/backlog.md` at the audited-repo root when auditing Roslyn-Backed-MCP. Otherwise a prior audit report / issue tracker / saved repro list. If no prior source, `**N/A — no prior source**`.
+Re-test 3–5 previously recorded issues from whichever prior source the audited repo maintains — a tracked backlog file at the repo root, a project's GitHub Issues, a prior audit report, or a saved repro list. If no prior source, `**N/A — no prior source**`.
 
 1. Read the prior source; select 3–5 items reproducible with the current workspace.
 2. For each, reproduce the exact scenario. Record **still reproduces** / **partially fixed** (describe) / **no longer reproduces — candidate for closure**.
 
-### Phase 19: Fragment emission (cross-repo backlog handoff)
+### Phase 19: Finding emission (dual-path: stdout default, opt-in `gh issue create`)
 
-For each **actionable** finding in the audit report (anything that lands in section 13 *MCP server issues* or in section 14 *Improvement suggestions* with a concrete fix sketch), emit one **`backlog.d/` fragment** at:
+For each **actionable** finding in the audit report (anything that lands in section 13 *MCP server issues* or in section 14 *Improvement suggestions* with a concrete fix sketch), render one finding envelope and emit it to **one of two destinations** depending on the `--auto-file` flag passed to the skill:
+
+**Envelope (shared across both destinations):**
+
+| Field | Source |
+|---|---|
+| `id` | kebab-case slug; prefix with the audited repo's id (derive from `git remote get-url origin` → `owner/repo` or fall back to repo dir basename). Example: `tradewise-find-references-stale-cache`. |
+| `source-repo` | audited repo's kebab-case id |
+| `severity` | `P0` / `P1` / `P2` / `P3` matching section 13 severity, or `P3`/`P2` for section-14 suggestions per their workflow blocking impact |
+| `area` | one of `tools` / `resources` / `prompts` / `skills` / `concurrency` / `perf` / `docs` |
+| `anchors` | one or more `path/to/file.ext:LINE` strings (relative to the audited repo's root) |
+| `finding` | one to two sentences describing the bug or gap |
+| `repro` | one to two sentences describing the minimal reproduction (which tool / inputs / expected vs. actual) |
+| `proposed-fix` | one to two sentences pointing at the likely fix shape |
+
+**Default (no `--auto-file`):** print each finding envelope to stdout as a ready-to-paste GitHub Issue body. Format:
 
 ```
-<audited-repo-root>/backlog.d/<finding-id>.md
+## TITLE: <id>
+Labels: area:<area>, severity:<severity>
+Body:
+- id: <id>
+- source-repo: <source-repo>
+- severity: <severity>
+- area: <area>
+- anchors:
+  - <anchor1>
+  - <anchor2>
+- finding: <finding>
+- repro: <repro>
+- proposed-fix: <proposed-fix>
 ```
 
-Schema is canonical at `<Roslyn-Backed-MCP-root>/ai_docs/items/backlog-d-fragment-schema.md` — read that file once if you have not seen it. The required frontmatter keys are: `id`, `source_audit`, `source_repo`, `severity`, `area`, `anchors`. The body is a single ≤6-sentence paragraph (finding + repro + proposed fix sketch).
+**With `--auto-file`** (and only when `gh` is on `PATH` and `gh auth status` is authenticated): for each non-refused finding, write the body block to a temp file and call:
 
-Steps:
+```
+gh issue create --repo darylmcd/Roslyn-Backed-MCP \
+  --title "<id>" \
+  --label "area:<area>" --label "severity:<severity>" \
+  --body-file <tempfile>
+```
 
-1. Ensure `<audited-repo-root>/backlog.d/` exists (`mkdir -p`).
-2. For each actionable finding, derive a kebab-case `<finding-id>` that prefixes the audited repo's id (e.g. `roslyn-mcp-find-references-stale-cache`, `tradewise-symbol-search-empty-query-overflow`). The filename and the frontmatter `id` must match exactly.
-3. Set `source_audit` to the basename of the prose audit report this run is producing (e.g. `20260507T203015Z_tradewise_mcp-server-audit.md`).
-4. Set `source_repo` to the audited repo's kebab-case id.
-5. Set `severity` to `P0` / `P1` / `P2` / `P3` matching the section 13 severity (or your own classification for section 14 entries: typically `P3` unless the suggestion blocks a concrete workflow, in which case `P2`).
-6. Set `area` to one of `tools` / `resources` / `prompts` / `skills` / `concurrency` / `perf` / `docs`.
-7. Set `anchors` to one or more `path/to/file.ext:LINE` strings (relative to the audited repo's root).
+Capture the returned Issue URL and append it to the audit report's *Finding emission* section. If `gh` is missing or unauthenticated, fall back to stdout-print and emit one warning line — do not silently drop findings.
 
-Idempotency: if a fragment with the same filename already exists in `backlog.d/`, **do not overwrite it** — leave the existing fragment in place and skip emission for that finding. Re-running the audit on the same repo without intake-in-between is allowed; the second run is a no-op for fragments that have not changed.
+**Refusal contract — load-bearing pre-disclosure safeguard:**
+
+The skill **must not** call `gh issue create` for any finding whose `severity == P0` OR `area == security`. Such findings always print to stdout, regardless of the `--auto-file` flag, prefixed with:
+
+```
+**SECURITY / P0 finding — DO NOT FILE PUBLICLY.**
+Escalate via GitHub security advisories: https://github.com/darylmcd/Roslyn-Backed-MCP/security/advisories/new
+```
+
+The refusal is non-negotiable and applies even when `--auto-file` is explicitly passed.
 
 `**N/A — no actionable findings**` is a valid Phase 19 outcome when sections 13 + 14 are both empty.
-
-This phase replaces the prior cross-write of audit reports into `<Roslyn-MCP-root>/ai_docs/audit-reports/`. Fragments are now the only `/backlog-intake`-consumable artifact. The prose `*_mcp-server-audit.md` and the scorecard JSON stay where this run wrote them under `<audited-repo-root>/ai_docs/audit-reports/`; intake reads them only as back-references via the fragment's `source_audit` field.
 
 ---
 
@@ -662,33 +695,22 @@ The audit is **not finished** until both of:
 
 A one-shot flush from working memory is the most common cause of broken runs — the model accumulates ~1–2 MB of tool results in active context, then runs out of room when serializing the report. Persisting after each phase keeps each turn within budget and lets the next turn drop the prior phase's tool-result bulk.
 
-This prompt writes **raw per-run evidence only**. Multi-repo campaigns synthesize cross-repo findings later under `ai_docs/reports/`; do not write the raw audit file there.
+This prompt writes **raw per-run evidence only**. The audit report belongs in the audited repo, not in any other location.
 
 ### Where to save the report
 
-**Canonical path:** `<audited-repo-root>/ai_docs/audit-reports/<timestamp>_<repo-id>_mcp-server-audit.md`
+**Canonical path:** `<audited-repo-root>/audit-reports/<timestamp>_<repo-id>_mcp-server-surface-test.md`
 
 - `<timestamp>` = current UTC `yyyyMMddTHHmmssZ`.
-- The prose `.md` report ALWAYS stays in the audited repo's own `ai_docs/audit-reports/`. Do **not** cross-write it into `<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/` — that legacy cross-write path is removed in favor of the fragment pattern (see Phase 19).
-- Cross-repo handoff to `/backlog-intake` happens via the per-finding fragments emitted in Phase 19 (`<audited-repo-root>/backlog.d/<finding-id>.md`), NOT by relocating the prose report. Intake reads the fragment's `source_audit` field to back-reference the prose report when it needs additional context.
-- Do **not** place raw audit files under `ai_docs/reports/` — that directory is for synthesized rollups.
+- The prose `.md` report stays in the audited repo's own `audit-reports/` directory. Cross-repo handoff to upstream happens via the Phase 19 finding emission (stdout-print or `gh issue create`), not by relocating the prose report.
 
 ### Promotion scorecard JSON (sibling artifact — MANDATORY)
 
 In addition to the human-readable `.md` report, write a machine-readable scorecard at:
 
-**`<audited-repo-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json`**
+**`<audited-repo-root>/audit-reports/_latest-promotion-scorecard.json`**
 
-The scorecard now lives **next to its source evidence** in the audited repo's
-own `ai_docs/audit-reports/` folder, alongside the prose audit report. The
-older single-file location at `<Roslyn-Backed-MCP-root>/ai_docs/audit-reports/`
-is **deprecated** — it was a last-write-wins file across all audited
-workspaces, which let a single workspace's anomaly drive promotion
-decisions. Cross-repo aggregation (quorum across sibling repos) is now
-the consumer's job: `/publish-preflight` Step 8 gathers per-repo
-scorecards via `eng/aggregate-promotion-scorecards.ps1`.
-
-This file is **overwritten** each run. Schema:
+The scorecard lives **next to its source evidence** in the audited repo's own `audit-reports/` folder, alongside the prose audit report. This file is **overwritten** each run. Schema:
 
 ```json
 {
@@ -696,7 +718,7 @@ This file is **overwritten** each run. Schema:
   "generatedAt": "2026-05-05T18:36:19Z",
   "noWorktree": false,
   "auditedRepo": "roslyn-backed-mcp",
-  "auditReportPath": "ai_docs/audit-reports/20260505T183619Z_roslyn-backed-mcp_mcp-server-audit.md",
+  "auditReportPath": "audit-reports/20260505T183619Z_roslyn-backed-mcp_mcp-server-surface-test.md",
   "serverVersion": "1.33.2",
   "catalogVersion": "2026.04",
   "experimentalSurface": {
@@ -758,16 +780,16 @@ This file is **overwritten** each run. Schema:
 - `blockers` is empty when `recommendation == "promote"`; populated with concrete missing evidence otherwise.
 - Skip rows for entries marked `blocked` in the coverage ledger — they cannot be scored. Track them in `summary.blocked` only.
 
-**Why this exists.** `/release-cut` (via `/publish-preflight`) aggregates per-repo scorecards from configured sibling repos and applies a **quorum rule** (≥2 workspaces with `recommendation: "promote"`, no `keep-experimental` or `deprecate` blockers) before prompting the maintainer to flip a tier. Without the JSON, promotion stays implicit and the audit's promotion lane has no operational consequence. With per-repo scorecards plus quorum, single-workspace anomalies no longer drive tier decisions.
+**Why this exists.** Upstream maintainers use the per-repo scorecard plus a quorum rule (≥2 workspaces with `recommendation: "promote"`, no `keep-experimental` or `deprecate` blockers) before flipping a tool's experimental → stable tier. Without the JSON the audit's promotion lane has no operational signal. With per-repo scorecards plus quorum, single-workspace anomalies no longer drive tier decisions.
 
-**Staleness contract.** The JSON is a snapshot, not a journal. `/publish-preflight` warns when `generatedAt` is older than 30 days; older than 90 days, the file should be ignored entirely (recommend a fresh `/audit-deep` run).
+**Staleness contract.** The JSON is a snapshot, not a journal. Treat it as warn-after-30-days, ignore-after-90-days; on staleness, run `/mcp-server-surface-test` again to refresh the artifact.
 
 **`--no-worktree` runs still emit the scorecard.** Apply round-trips that depended on the disposable worktree are recorded as `skipped-safety — --no-worktree` in the coverage ledger and the affected writer tools' `recommendation` will typically default to `needs-more-evidence`, with `blockers` citing the missing worktree. The scorecard JSON is still written so consumers see a fresh artifact and can decide for themselves whether the missing-worktree evidence matters for their gate.
 
 ### Naming scheme (`<timestamp>_<repo-id>`)
 
 - `<timestamp>`: current UTC `yyyyMMddTHHmmssZ`.
-- `<repo-id>`: audited solution/repo name — strip `.sln` / `.slnx` / `.csproj`; lowercase; replace spaces and dots with hyphens. Examples: `20260422T154500Z_itchatbot_mcp-server-audit.md`.
+- `<repo-id>`: audited solution/repo name — strip `.sln` / `.slnx` / `.csproj`; lowercase; replace spaces and dots with hyphens. Examples: `20260422T154500Z_itchatbot_mcp-server-surface-test.md`.
 
 ### Report contents (required sections)
 
@@ -828,7 +850,7 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 - **Repo shape:**
 - **Prior issue source:**
 - **Debug log channel:** `yes` / `partial` / `no`
-- **Report path note:** (path under the audited repo's `ai_docs/audit-reports/`; cross-repo handoff is via Phase 19 fragments, not via copying the prose report)
+- **Report path note:** (path under the audited repo's `audit-reports/`; cross-repo handoff is via Phase 19 fragments, not via copying the prose report)
 
 ## 2. Coverage summary
 | Kind | Category | Stable | Experimental | Exercised | Exercised-apply | Preview-only | Skipped-repo-shape | Skipped-safety | Blocked | Notes |
@@ -843,7 +865,7 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 
 ## 5. Phase 6 apply-tool exercise summary
 - **Disposable worktree path:** absolute path (or `N/A — --no-worktree`)
-- **Disposable branch:** `audit-deep/<ts>` (or `N/A — --no-worktree`)
+- **Disposable branch:** `mcp-server-surface-test/<ts>` (or `N/A — --no-worktree`)
 - **Scope:** (which 6a–6m sub-phases ran; `**N/A — skipped per --no-worktree**` when degraded mode)
 - **Apply-tool calls:** bullets — preview→apply pairs exercised, with tool name + outcome
 - **Verification:** `compile_check` / `test_run` / `build_workspace` outcomes after applies
@@ -937,7 +959,7 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 
 ### Completion gate
 
-The prose `.md` report must exist at the canonical path above (under the audited repo's `ai_docs/audit-reports/`). Create the directory if missing. Phase 19 must have emitted at least one fragment under `<audited-repo-root>/backlog.d/` OR explicitly recorded `**N/A — no actionable findings**`. The task is **incomplete** without both gates passing.
+The prose `.md` report must exist at the canonical path above (under the audited repo's `audit-reports/`). Create the directory if missing. Phase 19 must have emitted at least one fragment under `<audited-repo-root>/backlog.d/` OR explicitly recorded `**N/A — no actionable findings**`. The task is **incomplete** without both gates passing.
 
 ---
 

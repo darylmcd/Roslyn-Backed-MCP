@@ -1,6 +1,6 @@
 ---
 name: mcp-server-stress
-description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard, run against a loaded C# repo. Single canonical run — always exercises apply tools against a disposable worktree the skill creates and tears down post-run, and always emits the promotion scorecard. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Maintainer-only skill (lives under `.claude/skills/`, not shipped to plugin consumers). The static SKILL.md audit (frontmatter parity + tool-reference resolution against the live catalog) is owned by `/surface-audit`, not this skill. Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
+description: "Comprehensive Roslyn MCP server audit + experimental-promotion scorecard, run against a loaded C# repo. Maintainer-only superset of the shipped /mcp-server-surface-test skill (also lives under skills/mcp-server-surface-test/). Single canonical run — always exercises apply tools against a disposable worktree the skill creates and tears down post-run, and always emits the promotion scorecard. Adds repo-coupled phases the shipped consumer prompt does not have: host-shell `dotnet restore` precheck, ai_docs/backlog.md regression cross-check, <audited-repo-root>/backlog.d/ fragment emission for /backlog-intake, and eng/aggregate-promotion-scorecards.ps1 cross-repo aggregation. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Maintainer-only skill (lives under `.claude/skills/`, not shipped to plugin consumers). The static SKILL.md audit (frontmatter parity + tool-reference resolution against the live catalog) is owned by `/surface-audit`, not this skill. Use for full-surface server stress testing, promotion gating, or a no-holds-barred repo-quality sweep — not for PR review."
 user-invocable: true
 argument-hint: "[<target-repo-path>] [--target=<path>] [--no-worktree]"
 ---
@@ -22,7 +22,7 @@ This skill is a **null-op without the Roslyn MCP server**. The audit's entire pu
 
 ## Step 2 — Read and run the canonical audit prompt
 
-Read `${CLAUDE_PLUGIN_ROOT}/.claude/skills/mcp-server-stress/prompts/prompt.md` and run it verbatim. Always-on flags:
+Read `${CLAUDE_PLUGIN_ROOT}/.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md` and run it verbatim. The overlay is the maintainer-only superset of the consumer-shipped prompt at `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/prompts/full.md` — it retains repo-coupled phases the shipped prompt does not have. Always-on flags:
 
 - **Promotion scorecard always emitted.** The `_latest-promotion-scorecard.json` sibling artifact is mandatory output.
 - **Phase 6 apply pass always exercised** against a disposable worktree the skill creates at run start and tears down at run end. The audited repo's working tree and `main` branch are never mutated by Phase 6.
@@ -97,7 +97,7 @@ The runner must return the `## Audit Phase Runner Summary` markdown table define
 
 ## Step 5 — Execute the chosen prompt
 
-Read `prompts/prompt.md` in full and follow it phase by phase. Persist the audit draft after each phase as the prompt instructs — the canonical report path lives in the prompt's *Output Format* section.
+Read `prompts/maintainer-overlay.md` in full and follow it phase by phase. Persist the audit draft after each phase as the prompt instructs — the canonical report path lives in the prompt's *Output Format* section.
 
 ### Phase 0 hand-off: prefer `/surface-audit` for live-surface drift detection
 
