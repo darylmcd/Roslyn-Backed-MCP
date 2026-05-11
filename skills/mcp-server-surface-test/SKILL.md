@@ -104,7 +104,29 @@ Persist the audit draft after each phase as the prompt instructs — the canonic
 After the audit phases complete, the prompt's final finding-emission phase walks every actionable finding (entries in *MCP server issues* or *Improvement suggestions* with a concrete fix sketch) and renders each through one shared envelope:
 
 - **Stdout-print path** (non-maintainer default, or when `--no-auto-file` is passed): print each finding to stdout as a ready-to-paste GitHub Issue body. The render block is `## TITLE`, label list, and the structured body fields (`id`, `source-repo`, `severity`, `area`, `server-version`, `anchors`, `finding`, `repro`, `proposed-fix`).
-- **Auto-file path** (maintainer default — `gh api user --jq .login` == `darylmcd` — or when `--auto-file` is passed): call `gh issue create --repo darylmcd/Roslyn-Backed-MCP --title <title> --label <area:X,severity:Y> --body-file <tempfile>` per finding, except those refused by the P0/security refusal contract (Step 2). Refused findings still print to stdout with the security-advisory escalation banner.
+- **Auto-file path** (maintainer default — `gh api user --jq .login` == `darylmcd` — or when `--auto-file` is passed): call `gh issue create --repo darylmcd/Roslyn-Backed-MCP --title <title> --label <area:X,severity:Y> --body-file <tempfile>` per finding, except those refused by the P0/security refusal contract (Step 2) and those filtered by the dedup pre-check (Step 5a). Refused findings still print to stdout with the security-advisory escalation banner.
+
+## Step 5a — Dedup pre-check against existing GitHub Issues (auto-file path)
+
+Before each `gh issue create` invocation, the auto-file path **must** query the issue tracker for a near-match and skip filing when one exists. This prevents the auto-filer from re-filing the same bug across audit runs, or from filing a finding that has already been promoted to `good first issue` via the maintainer-curated path. Without this gate, the auto-filer is the primary source of duplicate-issue noise (the gap was first observed on 2026-05-11 when the IT-Chat-Bot audit auto-filed a duplicate of an existing maintainer-promoted `goto_type_definition` issue).
+
+For each finding about to be filed:
+
+1. **Compute a search key** from the finding's title. The tool name is the most stable identifier — e.g., for the title `[audit] goto_type_definition throws for BCL/metadata-only types instead of returning structured no-source result`, the key is `goto_type_definition`. For findings that span multiple tools or skills, use the first tool name plus one or two distinguishing symptom keywords.
+2. **Query existing issues:**
+   ```bash
+   gh issue list --repo darylmcd/Roslyn-Backed-MCP \
+     --state all \
+     --search "<search-key> in:title" \
+     --json number,state,title,labels --limit 10
+   ```
+3. **Apply the dedup rules:**
+   - **Title near-match on an OPEN issue** (search key matches AND at least 2 additional symptom keywords from the finding's title overlap with the existing issue's title): SKIP filing. Emit one line: `→ skipped: duplicate of #<N> (open) — <existing-title>`. Add the finding to the run's "deduped" audit-trail list.
+   - **Title near-match on a CLOSED issue**: SKIP filing. Emit `→ skipped: previously resolved as #<N> (closed) — <existing-title>`. Do not refile; if the operator believes the finding represents a regression of a prior fix, they will re-open the existing issue manually.
+   - **No match**: proceed with `gh issue create` as before.
+4. **Refusal contract still applies first.** P0/security findings (per Step 2) are stdout-only regardless of dedup result — do not run the dedup query against the issue tracker for these findings.
+
+The match threshold is intentionally conservative: better to skip a borderline case and emit a warning than to file a true duplicate. Operators reviewing the skipped-duplicate list can re-file manually if the dedup was wrong. The audit-trail entry for each skipped finding includes the candidate existing issue number so the operator can verify quickly.
 
 ## Operational notes
 

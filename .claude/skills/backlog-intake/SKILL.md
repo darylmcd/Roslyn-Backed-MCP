@@ -227,6 +227,17 @@ For every row appended to `ai_docs/backlog.md` in this batch (Phase 4's deduped 
 3. **Per-row loop.** For each accepted row:
    - Construct a finding hashtable from the row's fields (`id`, `source_repo`, `severity`, `area`, `server_version`, `anchors`, `finding`, `repro`, `proposed_fix`). The `source_audit` field is the basename of the prose audit report this row was extracted from (or the empty string when the row was created from a sweep retro instead of an audit).
    - Call `Test-FindingShouldRefusePublicFile -Finding $f`. If `$true`, **do not call `gh`**. Print the rendered Issue body to stdout with the SECURITY/P0 escalation banner already prepended by `Render-FindingIssue`. Add `(refused — pre-disclosure safeguard)` to the row's audit-trail entry in the final summary.
+   - **Dedup pre-check (load-bearing).** Before filing, query the issue tracker for a prior filing of the same row. The shared renderer's bodies always include a `Closes <row-id> in ai_docs/backlog.md` line, so the row id is the canonical fingerprint:
+     ```bash
+     gh issue list --repo darylmcd/Roslyn-Backed-MCP \
+       --state all \
+       --search "Closes ${rowId} in ai_docs/backlog.md in:body" \
+       --json number,state,title --limit 5
+     ```
+     Apply these rules in order:
+     - **Open hit**: skip filing. Capture the existing Issue URL and use it (instead of a freshly-filed one) when annotating the backlog row's `do` cell. Emit `→ skipped: already tracked as #<N> (open)` in the audit trail.
+     - **Closed hit**: skip filing. Emit `→ skipped: previously resolved as #<N> (closed)`. Do not refile or reuse the URL — closed issues with the same row id imply a prior fix that's now regressing, and the operator should re-open manually if appropriate.
+     - **No hit**: proceed to `Render-FindingIssue` + `gh issue create`. As a belt-and-braces secondary check, also do a title-keyword search (`<primary tool name> in:title`) and skip with a warning if a strong title near-match is found on an open issue (covers the rare case where a sibling skill auto-filed before backlog-intake ran). The row-id check is the primary gate; this is the fallback for cross-skill collisions.
    - Otherwise call `Render-FindingIssue -Finding $f` to get `{title, labels, body, refusedPublic}`. Write `body` to a tempfile, then:
      ```bash
      gh issue create --repo darylmcd/Roslyn-Backed-MCP \
@@ -234,7 +245,7 @@ For every row appended to `ai_docs/backlog.md` in this batch (Phase 4's deduped 
        --label "area:<area>" --label "severity:<severity>" \
        --body-file <tempfile>
      ```
-   - Capture the returned Issue URL and append it to the row's body inside `ai_docs/backlog.md` so the planner can cite the public Issue (`Closes #N`) when the row is sized into an initiative. Use `Edit` with exact-string replace; do NOT regenerate the whole file.
+   - Capture the returned Issue URL (or the deduped existing URL from the pre-check) and append it to the row's body inside `ai_docs/backlog.md` so the planner can cite the public Issue (`Closes #N`) when the row is sized into an initiative. Use `Edit` with exact-string replace; do NOT regenerate the whole file.
 4. **Recommit when rows changed.** If any row gained an Issue URL, the working tree now diverges from Phase 6's commit. Amend the Phase 6 commit OR add a follow-up commit on the same branch — your call which is cleaner. Do NOT push without explicit user confirmation.
 5. **Report counts in Phase 7.** Add a `Published` line: `Published: {filed} GitHub Issues + {refused} P0/security refused (printed only)`.
 
