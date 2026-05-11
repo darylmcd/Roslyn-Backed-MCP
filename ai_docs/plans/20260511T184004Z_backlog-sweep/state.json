@@ -279,7 +279,7 @@
     {
       "id": "fix-all-preview-provider-crash-ide0305",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "fix-all-preview-provider-crash-ide0305"
       ],
@@ -293,9 +293,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/642",
+      "mergedAt": "2026-05-11T20:10:00Z",
+      "notes": "Shipped as PR #642 (squash 93f8dc470b)."
     },
     {
       "id": "find-consumers-static-class-classification",
@@ -342,7 +342,7 @@
     {
       "id": "reconcile-backlog-vs-github-issues",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "reconcile-backlog-vs-github-issues"
       ],
@@ -356,9 +356,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "NEW skill \u2014 single new file in .claude/skills/."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/643",
+      "mergedAt": "2026-05-11T20:13:00Z",
+      "notes": "NEW skill \u2014 single new file in .claude/skills/. Shipped as PR #643 (squash 70af06a51f)."
     },
     {
       "id": "sweep-executor-pr-collision-check",
