@@ -469,4 +469,44 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(ex.Message, "already present");
         StringAssert.Contains(ex.Message, "Microsoft.CodeAnalysis.NetAnalyzers");
     }
+
+    [TestMethod]
+    public async Task Apply_Project_Mutation_Registers_On_Revert_Stack_And_Restores_Pre_Apply_Bytes()
+    {
+        // apply-project-mutation-not-registered-revert: apply_project_mutation must register
+        // the pre-apply .csproj bytes on the IUndoService revert stack so revert_last_apply
+        // restores the file byte-exact. Previously the apply path skipped CaptureBeforeApply
+        // and revert silently returned reverted:false — silent data-loss for scripted pipelines.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+
+        ChangeTracker.Clear(workspaceId);
+        UndoService.Clear(workspaceId);
+
+        var preApplyBytes = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewAddPackageReferenceAsync(
+            workspaceId,
+            new AddPackageReferenceDto("SampleLib", "Humanizer.Core", "2.14.1"),
+            CancellationToken.None);
+
+        var applyResult = await ProjectMutationService.ApplyProjectMutationAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        // Sanity: post-apply content differs from pre-apply.
+        var postApplyBytes = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
+        Assert.AreNotEqual(preApplyBytes, postApplyBytes, "Apply must have mutated the .csproj on disk.");
+
+        // The apply must have registered an undo entry.
+        var lastOp = UndoService.GetLastOperation(workspaceId);
+        Assert.IsNotNull(lastOp, "apply_project_mutation must register an undo entry — revert stack was empty.");
+        StringAssert.Contains(lastOp!.Description, "Project mutation");
+
+        var reverted = await UndoService.RevertAsync(workspaceId, CancellationToken.None);
+        Assert.IsTrue(reverted, "revert_last_apply must succeed when apply_project_mutation registered correctly.");
+
+        var revertedBytes = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
+        Assert.AreEqual(preApplyBytes, revertedBytes, "Revert must restore the .csproj byte-exact.");
+    }
 }
