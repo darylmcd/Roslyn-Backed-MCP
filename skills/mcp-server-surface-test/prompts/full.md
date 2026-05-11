@@ -792,23 +792,16 @@ This prompt writes **raw per-run evidence only**. The audit report belongs in th
 
 ### Where to save the report
 
-**Reports-path auto-detection:** before writing the report, probe the audited repo's directory layout once and resolve `<reports-path>` accordingly:
-
-- If `<audited-repo-root>/ai_docs/audit-reports/` already exists OR `<audited-repo-root>/ai_docs/` exists (doc-audit schema repos like Roslyn-Backed-MCP) → use `ai_docs/audit-reports/` as the reports root.
-- Else → use `audit-reports/` at the top level (consumer default).
-
-Record the resolved `<reports-path>` in the report header so consumers of `eng/stage-review-inbox.ps1` know which directory was written.
-
-**Canonical path:** `<audited-repo-root>/<reports-path>/<timestamp>_<repo-id>_mcp-server-surface-test.md`
+**Canonical path:** `<audited-repo-root>/audit-reports/<timestamp>_<repo-id>_mcp-server-surface-test.md`
 
 - `<timestamp>` = current UTC `yyyyMMddTHHmmssZ`.
-- The prose `.md` report stays in the audited repo. Cross-repo handoff to upstream happens via two channels: (a) Phase 19 finding emission (stdout-print, `gh issue create`, or `backlog.d/` fragments depending on `--output-mode`), and (b) the maintainer's `eng/stage-review-inbox.ps1` + `eng/aggregate-promotion-scorecards.ps1` pipeline, which discovers reports under either `audit-reports/` or `ai_docs/audit-reports/` across sibling repos and consolidates findings into `review-inbox/` + a quorum-aware scorecard verdict. Consumers do not need to relocate the prose report manually.
+- The prose `.md` report stays in the audited repo's own `audit-reports/` directory. Cross-repo handoff to upstream happens via two channels: (a) Phase 19 finding emission (stdout-print, `gh issue create`, or `backlog.d/` fragments depending on `--output-mode`), and (b) the operator's host-side staging pipeline (e.g. `eng/stage-review-inbox.ps1` in maintainer setups), which consolidates findings into `review-inbox/` + a quorum-aware scorecard verdict. Consumers do not need to relocate the prose report manually.
 
 ### Promotion scorecard JSON (sibling artifact — MANDATORY)
 
 In addition to the human-readable `.md` report, write a machine-readable scorecard at:
 
-**`<audited-repo-root>/<reports-path>/_latest-promotion-scorecard.json`** (same `<reports-path>` resolved above)
+**`<audited-repo-root>/audit-reports/_latest-promotion-scorecard.json`**
 
 The scorecard lives **next to its source evidence** in the audited repo's own `audit-reports/` folder, alongside the prose audit report. This file is **overwritten** each run. Schema:
 
