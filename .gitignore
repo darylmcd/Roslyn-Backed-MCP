@@ -4,7 +4,14 @@
 ## Get latest from `dotnet new gitignore`
 
 # dotenv files
+# Match any .env variant (.env, .env.local, .env.production, etc.) and allow
+# only the well-known template/sample shapes so contributors can commit example
+# config without risk of leaking a real secret.
 .env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
 
 # User-specific files
 *.rsuser
@@ -403,8 +410,10 @@ FodyWeavers.xsd
 *.msm
 *.msp
 
-# JetBrains Rider
+# JetBrains Rider / IntelliJ
 *.sln.iml
+*.iml
+*.iws
 .idea/
 
 ##
@@ -482,6 +491,21 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 
+# content below from: https://github.com/github/gitignore/blob/main/Global/Linux.gitignore
+*~
+
+# temporary files which can be created if a process still has a handle open of a deleted file
+.fuse_hidden*
+
+# KDE directory preferences
+.directory
+
+# Linux trash folder which might appear on any partition or disk
+.Trash-*
+
+# .nfs files are created when an open file is removed but is still being accessed
+.nfs*
+
 # Local AI/MCP client configuration (developer machine specific).
 # .claude/skills/ and .claude/agents/ are exceptions — they hold repo-only
 # maintainer skills and subagent definitions that Claude Code auto-discovers
@@ -494,6 +518,16 @@ $RECYCLE.BIN/
 !.claude/agents/
 !.claude/agents/**
 .worktrees/
+
+# Cursor IDE configuration (developer machine specific).
+# .cursor/mcp.json and .cursor/rules/ are tracked — they hold shared MCP-client
+# config and operational guidance that collaborators using Cursor consume.
+# Any other .cursor/ artifact (settings, state caches, local logs) is
+# developer-local and should not be committed.
+.cursor/*
+!.cursor/mcp.json
+!.cursor/rules/
+!.cursor/rules/**
 .mcp.json
 # ...except the plugin's own .mcp.json at the repo root, which is the
 # Claude Code plugin loader's canonical MCP-server descriptor and must
