@@ -26,7 +26,7 @@
 - **Replace stale umbrella rows with concrete follow-ons** before planning against them.
 - **Long-form audit evidence belongs in referenced reports**, not in this file. The `do` cell carries a one-line evidence summary plus the report path.
 - **Weak-evidence flag.** When a row's signal is thin (single retro session, self-audit only, etc.) say so explicitly in the `do` cell ("Weaker evidence — N until external session reproduces").
-- **Contributor-reservation flag.** When a row has been promoted to a GitHub Issue with the `good first issue` or `help wanted` label, prefix the `do` cell with `**Reserved — [gh #NNN](url) (good first issue|help wanted); skip in sweeps until contributor pickup.**` so the row stays in the backlog for tracking but `/backlog-sweep:plan` skips it. Remove the marker (or close the row) when a contributor PR lands or when you decide to take the work back yourself.
+- **Contributor-reservation flag.** When a row has been promoted to a GitHub Issue with the `good first issue` or `help wanted` label, prefix the `do` cell with a literal `**Reserved — [gh #NNN](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/NNN) (good first issue|help wanted); skip in sweeps until contributor pickup.**` (substituting the real issue number for `NNN`) so the row stays in the backlog for tracking but `/backlog-sweep:plan` skips it. Remove the marker (or close the row) when a contributor PR lands or when you decide to take the work back yourself.
 - **Priority tiers:** Critical > High > Medium > Low > Defer.
 - See `workflow.md` → **Backlog closure** for close-in-PR expectations.
 
