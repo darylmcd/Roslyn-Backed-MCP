@@ -124,6 +124,33 @@ public sealed class FixAllServiceTests
     }
 
     [TestMethod]
+    public void BuildProviderCrashEnvelope_IDE0305_Emits_Structured_Envelope()
+    {
+        // fix-all-preview-provider-crash-ide0305: the IDE0305 (use-collection-expression-for-fluent)
+        // FixAll provider exhibits the same "Sequence contains no elements" crash class as IDE0300.
+        // The catch in PreviewFixAllAsync is identity-shape (any InvalidOperationException routes
+        // through BuildProviderCrashEnvelope), so this assertion pins the envelope shape for the
+        // IDE0305-specific call and guards against any future per-id branching of the crash path.
+        var ex = new InvalidOperationException("Sequence contains no elements");
+
+        var envelope = FixAllService.BuildProviderCrashEnvelope(
+            diagnosticId: "IDE0305", scope: "solution", ex: ex);
+
+        Assert.IsTrue(envelope.Error, "Provider crash must set Error=true.");
+        Assert.AreEqual("FixAllProviderCrash", envelope.Category);
+        Assert.AreEqual(true, envelope.PerOccurrenceFallbackAvailable);
+        Assert.AreEqual("IDE0305", envelope.DiagnosticId);
+        Assert.AreEqual("solution", envelope.Scope);
+        Assert.AreEqual(0, envelope.FixedCount);
+        Assert.AreEqual(string.Empty, envelope.PreviewToken);
+        Assert.AreEqual(0, envelope.Changes.Count);
+        Assert.IsNotNull(envelope.GuidanceMessage);
+        StringAssert.Contains(envelope.GuidanceMessage!, "IDE0305");
+        StringAssert.Contains(envelope.GuidanceMessage!, "Sequence contains no elements");
+        StringAssert.Contains(envelope.GuidanceMessage!, "code_fix_preview");
+    }
+
+    [TestMethod]
     public void BuildProviderCrashEnvelope_Preserves_Exception_Type_Name()
     {
         // The envelope's GuidanceMessage should surface the exception type so agents can tell
