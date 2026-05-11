@@ -106,6 +106,30 @@ public sealed class HighValueCoverageIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task DependencyAnalysis_GetNamespaceDependencies_MultiProject_Reports_AnalyzedProjectCount()
+    {
+        // gh #615 regression guard: on a multi-project solution the response MUST surface
+        // how many projects were actually analyzed so callers can distinguish
+        // "no cycles found" from "analysis did not run" when CircularDependencies is empty.
+        var graph = await NamespaceDependencyService.GetNamespaceDependenciesAsync(
+            SampleWorkspaceId, projectFilter: null, CancellationToken.None);
+
+        var sampleSolution = WorkspaceManager.GetCurrentSolution(SampleWorkspaceId);
+        var expectedProjectCount = sampleSolution.Projects.Count();
+
+        Assert.IsTrue(
+            expectedProjectCount > 1,
+            $"Test fixture precondition: SampleSolution should be multi-project (was {expectedProjectCount}).");
+        Assert.AreEqual(
+            expectedProjectCount,
+            graph.AnalyzedProjectCount,
+            "AnalyzedProjectCount should match the number of projects whose compilations were walked.");
+        Assert.IsTrue(
+            graph.TotalNamespacesScanned > 0,
+            "TotalNamespacesScanned should be non-zero on a multi-project solution that declares namespaces.");
+    }
+
+    [TestMethod]
     public async Task DependencyAnalysis_GetNuGetDependencies_Returns_Packages_For_SampleSolution()
     {
         var result = await NuGetDependencyService.GetNuGetDependenciesAsync(

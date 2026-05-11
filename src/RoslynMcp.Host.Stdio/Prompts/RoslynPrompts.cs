@@ -255,10 +255,11 @@ public static partial class RoslynPrompts
             var graphJson = PromptMessageBuilder.SerializeTruncatedList(graph.Projects, 50, JsonDefaults.Indented);
 
             var namespaceDeps = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
-            var truncatedNamespaceDeps = new Core.Models.NamespaceDependencyGraphDto(
-                namespaceDeps.Nodes.Take(100).ToList(),
-                namespaceDeps.Edges.Take(100).ToList(),
-                namespaceDeps.CircularDependencies);
+            var truncatedNamespaceDeps = namespaceDeps with
+            {
+                Nodes = namespaceDeps.Nodes.Take(100).ToList(),
+                Edges = namespaceDeps.Edges.Take(100).ToList(),
+            };
             var namespaceDepsJson = JsonSerializer.Serialize(truncatedNamespaceDeps, JsonDefaults.Indented);
             if (namespaceDeps.Edges.Count > 100)
                 namespaceDepsJson += $"\n[Showing 100 of {namespaceDeps.Edges.Count} edges]";

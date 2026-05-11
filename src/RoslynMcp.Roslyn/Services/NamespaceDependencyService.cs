@@ -34,6 +34,7 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
 
         var namespaceCounts = new Dictionary<string, (int Count, string? Project)>();
         var edges = new Dictionary<(string From, string To), int>();
+        var analyzedProjectCount = 0;
 
         foreach (var project in projects)
         {
@@ -41,6 +42,7 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
 
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
+            analyzedProjectCount++;
 
             foreach (var tree in compilation.SyntaxTrees)
             {
@@ -100,7 +102,20 @@ public sealed class NamespaceDependencyService : INamespaceDependencyService
         // Detect circular dependencies using DFS
         var cycles = DetectCycles(edgeList);
 
-        return new NamespaceDependencyGraphDto(nodes, edgeList, cycles);
+        // TotalNamespacesScanned counts only namespaces that were actually declared in the walk
+        // (where namespaceCounts[ns].Count > 0 OR the namespace key existed before the edge-fill
+        // step). Edge-only nodes (Count == 0 with null project) are referenced-but-not-declared
+        // and should not inflate the scanned figure. Using the post-edge-fill keys minus the
+        // edge-only additions is equivalent to "namespaces that produced at least one type
+        // declaration during the walk", which is the metric callers want.
+        var declaredNamespaceCount = namespaceCounts.Count(kvp => kvp.Value.Project is not null);
+
+        return new NamespaceDependencyGraphDto(
+            nodes,
+            edgeList,
+            cycles,
+            AnalyzedProjectCount: analyzedProjectCount,
+            TotalNamespacesScanned: declaredNamespaceCount);
     }
 
     private static IReadOnlyList<CircularDependencyDto> DetectCycles(IReadOnlyList<NamespaceEdgeDto> edges)
