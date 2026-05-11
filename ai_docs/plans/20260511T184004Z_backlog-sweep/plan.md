@@ -162,7 +162,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #642, 2026-05-11) |
 | Backlog rows closed | `fix-all-preview-provider-crash-ide0305` |
 | Diagnosis | `fix_all_preview(diagnosticId=IDE0305)` crashes with `Sequence contains no elements` — same crash class previously documented for IDE0300. The vulnerable-provider class is wider than one ID. |
 | Approach | In `src/RoslynMcp.Roslyn/Services/FixAllService.cs`, wrap the provider invocation in try/catch that catches `InvalidOperationException` with `"Sequence contains no elements"` and promotes to `perOccurrenceFallback`. Audit the file for other diagnostic IDs that route through the same code path. |
@@ -216,7 +216,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #643, 2026-05-11) |
 | Backlog rows closed | `reconcile-backlog-vs-github-issues` |
 | Diagnosis | No automation reconciles backlog rows against GitHub Issue state. PR closes Issue → backlog row remains; manual issue close → row remains; Reserved + closed issue = zombie row; etc. Surfaced 2026-05-11 adversarial audit. **New skill** — single-file initiative. |
 | Approach | Create `.claude/skills/reconcile-backlog-vs-issues/SKILL.md` that: (1) scans backlog.md for `[gh #NNN]` references (both `**Reserved**` and tracked-only flavors); (2) queries `gh issue view N --json state,closed,closedAt,updatedAt,labels` per reference; (3) classifies each into 5 states (issue-closed-row-open, issue-closed-row-reserved, reserved-stale, label-drift, issue-reopened-row-missing); (4) emits a triage report. Read-only — does not auto-edit backlog. |
