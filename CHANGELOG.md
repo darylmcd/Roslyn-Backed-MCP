@@ -16,6 +16,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.35.3] - 2026-05-11
+
+### Fixed
+
+- **Fixed:** `/mcp-server-surface-test --auto-file` now dedup-checks against existing GitHub Issues before each `gh issue create`. Open near-matches (by tool name + symptom keywords in title) are skipped with an audit-trail entry; closed near-matches are also skipped and do NOT refile prior fixes. Closes a real workflow gap where the 2026-05-11 IT-Chat-Bot audit auto-filed a duplicate of a pre-existing maintainer-promoted issue. P0/security refusal contract still applies first.
+- **Fixed:** `/backlog-intake --publish` adds a dedup pre-check at Phase 6.5 before each `gh issue create`. Primary fingerprint is a body grep for `Closes <row-id> in ai_docs/backlog.md`; falls back to a title-keyword match for cross-skill collisions. Prevents the maintainer-publish path from re-filing findings already filed by `/mcp-server-surface-test --auto-file` in a sibling session.
+
+### Changed
+
+- **Changed:** Plugin contributor-readiness package — added `.github/PULL_REQUEST_TEMPLATE.md` (summary, linked-issue, test plan, optional backlog-row closure); expanded `.gitignore` with `.env.*` variants (allowlist `.env.example`/`.sample`/`.template`), Linux OS junk (`*~`/`.directory`/`.Trash-*`/`.fuse_hidden*`/`.nfs*`), JetBrains user files (`*.iml`/`*.iws`), and an explicit `.cursor/*` allowlist mirroring the existing `.claude/*` pattern.
+
+### Maintenance
+
+- **Maintenance:** `/mcp-server-stress` audit completion gate — no-silent-truncation contract on the `audit-phase-runner` subagent. Partial runs surface as P1 audit defects rather than quiet ledger entries; orchestrator re-dispatches with smaller scope or records `phase-failed-budget` in the coverage summary. Runner agent definition documents the `skipped-budget` / `skipped-context` / `truncated` marker contract.
+- **Maintenance:** Backlog ↔ GitHub Issue cross-link convention added with two flavors — reserved-for-contributor-pickup (`good first issue` / `help wanted`) rows get a `**Reserved — gh #NNN ...**` marker that `/backlog-sweep:plan` Step 1 hard-skips; tracked-only rows get a plain `gh #NNN — ` prefix and remain sweep-eligible. `/backlog-sweep:execute` Step 2 has defense-in-depth re-check at initiative-claim time so a row reserved between plan emission and execution is marked `obsolete` rather than raced.
+
 ## [1.35.2] - 2026-05-10
 
 ### Fixed
