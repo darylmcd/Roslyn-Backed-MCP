@@ -86,4 +86,108 @@ public class ClientRootPathValidatorTests
             null!, "C:\\any\\path", CancellationToken.None);
         // No exception = pass
     }
+
+    // ───────── IsPathUnderAnyRoot tests (sanctioned-root + expandSanctionedRoots widening) ─────────
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Path_Inside_Root_Allowed()
+    {
+        var roots = new[] { @"C:\repo\main" };
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\repo\main\src\file.cs", roots, expandSanctionedRoots: false));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Path_Equal_To_Root_Allowed()
+    {
+        var roots = new[] { @"C:\repo\main" };
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\repo\main", roots, expandSanctionedRoots: false));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Sibling_Worktree_Rejected_Without_Flag()
+    {
+        // The whole reason this initiative exists: a sibling worktree at parent/.worktrees/foo
+        // is structurally OUTSIDE parent/main — without the opt-in flag it must be rejected.
+        var roots = new[] { @"C:\repo\main" };
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\repo\sibling\src\file.cs", roots, expandSanctionedRoots: false));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Sibling_Worktree_Allowed_With_Flag()
+    {
+        // With expandSanctionedRoots=true, the parent directory (C:\repo) is also accepted,
+        // so a sibling at C:\repo\sibling falls under the widened allowlist.
+        var roots = new[] { @"C:\repo\main" };
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\repo\sibling\src\file.cs", roots, expandSanctionedRoots: true));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Worktree_Subdir_Allowed_With_Flag()
+    {
+        // The mcp-server-surface-test skill's disposable worktree at ../<sibling> —
+        // verifies the canonical Phase 6/9/10/12/13 disposable-worktree audit path.
+        var roots = new[] { @"C:\Code-Repo\TradeWise" };
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\Code-Repo\TradeWise-surface-audit-20260511\src\App.csproj",
+            roots,
+            expandSanctionedRoots: true));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Grandparent_Path_Rejected_Even_With_Flag()
+    {
+        // Widening is exactly ONE level — a grandparent path must still be rejected.
+        // Root: C:\Code-Repo\TradeWise -> parent C:\Code-Repo is widened, but C:\Other is NOT.
+        var roots = new[] { @"C:\Code-Repo\TradeWise" };
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\Other\anything.cs", roots, expandSanctionedRoots: true));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Drive_Root_Never_Widens()
+    {
+        // Defensive: if a client sanctions C:\repo, widening to C:\ is dangerous (entire drive).
+        // The implementation skips drive-root parents, so any path on C: not under \repo is rejected.
+        var roots = new[] { @"C:\repo" };
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\Windows\System32\cmd.exe", roots, expandSanctionedRoots: true));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_TrailingSlash_Root_Normalized()
+    {
+        var roots = new[] { @"C:\repo\main\" };
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\repo\main\src\file.cs", roots, expandSanctionedRoots: false));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Prefix_Trap_Rejected()
+    {
+        // Naive prefix match would allow C:\repo\main2 against root C:\repo\main —
+        // normalized comparison must reject this.
+        var roots = new[] { @"C:\repo\main" };
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\repo\main2\file.cs", roots, expandSanctionedRoots: false));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Empty_Roots_Rejects()
+    {
+        Assert.IsFalse(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\any\path", Array.Empty<string>(), expandSanctionedRoots: true));
+    }
+
+    [TestMethod]
+    public void IsPathUnderAnyRoot_Case_Insensitive_On_Windows()
+    {
+        // Windows filesystem semantics — root casing should not matter.
+        var roots = new[] { @"C:\Repo\Main" };
+        Assert.IsTrue(ClientRootPathValidator.IsPathUnderAnyRoot(
+            @"C:\repo\main\src\file.cs", roots, expandSanctionedRoots: false));
+    }
 }

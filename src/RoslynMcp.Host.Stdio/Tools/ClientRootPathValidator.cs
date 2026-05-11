@@ -29,9 +29,23 @@ internal static class ClientRootPathValidator
     /// <param name="ct">Cancellation token.</param>
     /// <param name="logger">Optional logger for diagnostics.</param>
     /// <param name="securityOptions">Security options controlling fail-open/fail-closed behavior.</param>
+    /// <param name="expandSanctionedRoots">
+    /// Operator-opt-in flag (default <c>false</c>). When <c>true</c>, the validator additionally
+    /// accepts paths under the immediate parent directory of any client-sanctioned root. This
+    /// widens the allowlist by exactly one level — enough to permit a disposable sibling worktree
+    /// at <c>../&lt;sibling&gt;</c> (e.g. mcp-server-surface-test's audit worktree) without
+    /// exposing arbitrary filesystem locations. Higher ancestors (grandparent etc.) remain
+    /// disallowed. This flag must only be plumbed through tools whose own parameter is operator-
+    /// supplied — never auto-enable on every request.
+    /// </param>
     /// <exception cref="System.ArgumentException">Thrown when the path falls outside all client-sanctioned roots.</exception>
     public static async Task ValidatePathAgainstRootsAsync(
-        McpServer server, string path, CancellationToken ct, ILogger? logger = null, SecurityOptions? securityOptions = null)
+        McpServer server,
+        string path,
+        CancellationToken ct,
+        ILogger? logger = null,
+        SecurityOptions? securityOptions = null,
+        bool expandSanctionedRoots = false)
     {
         var failOpen = securityOptions?.PathValidationFailOpen ?? true;
 
@@ -49,29 +63,22 @@ internal static class ClientRootPathValidator
             }
 
             var fullPath = ResolvePath(path);
-            foreach (var root in rootsResult.Roots)
-            {
-                if (root.Uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
-                {
-                    var rootPath = new Uri(root.Uri).LocalPath;
-                    if (string.Equals(fullPath, rootPath, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return;
-                    }
+            var rootPaths = rootsResult.Roots
+                .Where(r => r.Uri.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+                .Select(r => new Uri(r.Uri).LocalPath)
+                .ToList();
 
-                    var normalizedRoot = rootPath.EndsWith(Path.DirectorySeparatorChar)
-                        ? rootPath
-                        : rootPath + Path.DirectorySeparatorChar;
-                    if (fullPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return;
-                    }
-                }
+            if (IsPathUnderAnyRoot(fullPath, rootPaths, expandSanctionedRoots))
+            {
+                return;
             }
 
+            var widenedNote = expandSanctionedRoots
+                ? " (expandSanctionedRoots=true was applied — parent directories of each root were also checked)"
+                : string.Empty;
             throw new ArgumentException(
                 $"Path '{path}' is not under any client-sanctioned root. " +
-                $"Allowed roots: {string.Join(", ", rootsResult.Roots.Select(r => r.Uri))}");
+                $"Allowed roots: {string.Join(", ", rootsResult.Roots.Select(r => r.Uri))}{widenedNote}");
         }
         catch (ArgumentException)
         {
@@ -93,6 +100,65 @@ internal static class ClientRootPathValidator
                     $"Set ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true to allow access when roots lookup fails.");
             }
         }
+    }
+
+    /// <summary>
+    /// Pure path-match helper extracted for unit-testability of the sanctioned-root
+    /// allowlist + <c>expandSanctionedRoots</c> widening logic. <paramref name="fullPath"/>
+    /// must already be canonicalized via <see cref="ResolvePath"/>; <paramref name="rootPaths"/>
+    /// must be the <c>file://</c>-decoded LocalPath strings reported by the client.
+    /// </summary>
+    /// <param name="fullPath">Canonicalized candidate path.</param>
+    /// <param name="rootPaths">Decoded client-sanctioned roots (local paths, not URIs).</param>
+    /// <param name="expandSanctionedRoots">When <c>true</c>, also accept paths under the
+    /// immediate parent directory of each root (one level of widening only). Drive-root
+    /// parents are excluded so a root at <c>C:\Foo</c> does NOT widen to the entire drive.</param>
+    /// <returns><c>true</c> when <paramref name="fullPath"/> falls under any root (or, with
+    /// widening, any root's parent directory).</returns>
+    internal static bool IsPathUnderAnyRoot(string fullPath, IReadOnlyList<string> rootPaths, bool expandSanctionedRoots)
+    {
+        if (rootPaths.Count == 0)
+        {
+            return false;
+        }
+
+        var allowedRoots = new List<string>(rootPaths.Count * (expandSanctionedRoots ? 2 : 1));
+        foreach (var rootPath in rootPaths)
+        {
+            allowedRoots.Add(rootPath);
+
+            if (expandSanctionedRoots)
+            {
+                // Widen by exactly one level — the parent directory of each sanctioned
+                // root. This permits sibling worktrees (e.g. parent/main is sanctioned and
+                // the worktree is at parent/.worktrees/foo) without exposing arbitrary
+                // grandparent or unrelated filesystem locations. Drive-root parents are
+                // skipped to avoid widening to the entire drive.
+                var parent = Path.GetDirectoryName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                if (!string.IsNullOrEmpty(parent) && Path.GetPathRoot(parent) != parent)
+                {
+                    allowedRoots.Add(parent);
+                }
+            }
+        }
+
+        foreach (var rootPath in allowedRoots)
+        {
+            if (string.Equals(fullPath, rootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var normalizedRoot = rootPath.EndsWith(Path.DirectorySeparatorChar)
+                ? rootPath
+                : rootPath + Path.DirectorySeparatorChar;
+            if (fullPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>

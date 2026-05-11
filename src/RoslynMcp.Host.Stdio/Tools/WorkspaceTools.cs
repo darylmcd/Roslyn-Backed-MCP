@@ -28,6 +28,7 @@ public static class WorkspaceTools
         [Description("When true, return the full per-project tree and workspace diagnostics. Default false returns only counts and load state.")] bool verbose = false,
         [Description("When true and the loaded status reports restoreRequired=true, run `dotnet restore` on the target and reload once before returning.")] bool autoRestore = false,
         [Description("When true, run `workspace_warm` immediately after the load (and any auto-restore reload) succeeds, then include the warm result in the response. When omitted, large solutions with more than 50 projects are prewarmed automatically. Pass false to opt out and preserve the cold-load profile.")] bool? prewarm = null,
+        [Description("Operator-opt-in security flag (default false). When true, the client-sanctioned-root path validator additionally accepts paths under the immediate PARENT directory of each sanctioned root — enough to permit a sibling worktree at `../<name>` (e.g. mcp-server-surface-test's disposable audit worktree). Higher ancestors (grandparent etc.) are NOT widened. Pass true only from operator-controlled call sites; do not auto-enable on every request.")] bool expandSanctionedRoots = false,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
@@ -46,7 +47,8 @@ public static class WorkspaceTools
             // audit-coverage initiative. See ProgressHelper remarks for the label-naming contract.
             var totalStages = prewarm == true ? 5 : 4;
             ProgressHelper.ReportStage(progress, 0, totalStages, "validating-path");
-            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, path, c).ConfigureAwait(false);
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
+                server, path, c, expandSanctionedRoots: expandSanctionedRoots).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
             var status = await workspace.LoadAsync(path, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
