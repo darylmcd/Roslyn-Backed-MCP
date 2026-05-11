@@ -153,6 +153,15 @@ From `state.json.initiatives`, filter to `status == "pending"`, sort by `order`
 ascending. If no pending initiative exists, report "all initiatives complete" and
 exit.
 
+**Defense-in-depth — contributor-reserved rows.** Before claiming an initiative,
+re-read its source backlog row (`backlogRowId`) from `ai_docs/backlog.md`. If the
+row's `do` cell now contains `**Reserved — [gh #` (the contributor-reservation
+marker added since the plan was generated), mark the initiative `obsolete` in
+state.json with reason `"row reserved for contributor pickup after plan emitted"`,
+skip it, and pick the next pending one. The planner skips these at plan time,
+but this catches the race where a maintainer reserves a row between plan
+generation and execution.
+
 If the first-in-queue has `scheduleHint == "heroic-last"`: verify all other
 non-heroic initiatives are `merged` or `obsolete` before proceeding. If not,
 skip this one and pick the next pending non-heroic.
