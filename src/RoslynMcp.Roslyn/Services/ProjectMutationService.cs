@@ -27,19 +27,22 @@ public sealed class ProjectMutationService : IProjectMutationService
     private readonly IMsBuildEvaluationService _msbuildEvaluation;
     private readonly ILogger<ProjectMutationService> _logger;
     private readonly IChangeTracker? _changeTracker;
+    private readonly IUndoService? _undoService;
 
     public ProjectMutationService(
         IWorkspaceManager workspace,
         IProjectMutationPreviewStore previewStore,
         IMsBuildEvaluationService msbuildEvaluation,
         ILogger<ProjectMutationService> logger,
-        IChangeTracker? changeTracker = null)
+        IChangeTracker? changeTracker = null,
+        IUndoService? undoService = null)
     {
         _workspace = workspace;
         _previewStore = previewStore;
         _msbuildEvaluation = msbuildEvaluation;
         _logger = logger;
         _changeTracker = changeTracker;
+        _undoService = undoService;
     }
 
     public async Task<RefactoringPreviewDto> PreviewAddPackageReferenceAsync(string workspaceId, AddPackageReferenceDto request, CancellationToken ct)
@@ -463,6 +466,22 @@ public sealed class ProjectMutationService : IProjectMutationService
 
         try
         {
+            // apply-project-mutation-not-registered-revert: capture the on-disk pre-apply
+            // bytes BEFORE the write so revert_last_apply can restore byte-exact .csproj
+            // content. The race window must be small — read snapshot, then write — and we
+            // must not use the preview-store's `originalContent` because the file on disk
+            // may have changed since the preview was generated (last-apply-wins semantics).
+            // `null` OriginalText is impossible here because Retrieve above succeeded and
+            // the preview-store entry was created from File.ReadAllTextAsync.
+            var preApplyContent = File.Exists(projectFilePath)
+                ? await File.ReadAllTextAsync(projectFilePath, ct).ConfigureAwait(false)
+                : null;
+            _undoService?.CaptureBeforeApply(
+                workspaceId,
+                $"Project mutation: {Path.GetFileName(projectFilePath)}",
+                preApplySolution: null,
+                fileSnapshots: new[] { new FileSnapshotDto(Path.GetFullPath(projectFilePath), preApplyContent) });
+
             await File.WriteAllTextAsync(projectFilePath, updatedContent, ct).ConfigureAwait(false);
             await _workspace.ReloadAsync(workspaceId, ct).ConfigureAwait(false);
             _previewStore.Invalidate(previewToken);
