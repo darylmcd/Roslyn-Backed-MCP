@@ -202,15 +202,21 @@ public static class AdvancedAnalysisTools
                     result.CircularDependencies.SelectMany(cd => cd.Cycle),
                     StringComparer.Ordinal);
 
-                result = new RoslynMcp.Core.Models.NamespaceDependencyGraphDto(
-                    result.Nodes.Where(n => cyclicNamespaces.Contains(n.Namespace)).ToList(),
-                    result.Edges.Where(e => cyclicNamespaces.Contains(e.FromNamespace) &&
-                                            cyclicNamespaces.Contains(e.ToNamespace)).ToList(),
-                    result.CircularDependencies);
+                // `with` preserves AnalyzedProjectCount + TotalNamespacesScanned so callers can
+                // still see "we analyzed N projects" even when the filtered Nodes/Edges shrink
+                // to the cycle subset.
+                result = result with
+                {
+                    Nodes = result.Nodes.Where(n => cyclicNamespaces.Contains(n.Namespace)).ToList(),
+                    Edges = result.Edges.Where(e => cyclicNamespaces.Contains(e.FromNamespace) &&
+                                                    cyclicNamespaces.Contains(e.ToNamespace)).ToList(),
+                };
             }
             else if (circularOnly)
             {
-                result = new RoslynMcp.Core.Models.NamespaceDependencyGraphDto([], [], []);
+                // No cycles found — drop Nodes/Edges but retain the analysis-coverage counts so
+                // the caller can distinguish "no cycles across N projects" from "not analyzed".
+                result = result with { Nodes = [], Edges = [] };
             }
 
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
