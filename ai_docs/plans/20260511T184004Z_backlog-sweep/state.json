@@ -237,7 +237,7 @@
     {
       "id": "prompts-full-md-phase0-worktree-path-sandbox",
       "order": 7,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "prompts-full-md-phase0-worktree-path-sandbox"
       ],
@@ -249,8 +249,8 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/prompts-full-md-phase0-worktree-path-sandbox",
+      "worktreePath": ".worktrees/prompts-full-md-phase0-worktree-path-sandbox",
       "prUrl": null,
       "mergedAt": null,
       "notes": "Doc-only \u2014 prompt-side fix for sanctioned-root issue."

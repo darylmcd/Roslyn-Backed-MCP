@@ -126,7 +126,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | in-progress (branch: remediation/prompts-full-md-phase0-worktree-path-sandbox, worktree: .worktrees/prompts-full-md-phase0-worktree-path-sandbox) |
 | Backlog rows closed | `prompts-full-md-phase0-worktree-path-sandbox` |
 | Diagnosis | Prompt-side patch for `workspace-load-sibling-worktree-sanctioned-root`. The `prompts/full.md` Phase 0 step 2 instructs `git worktree add ../<repo>-surface-test-<ts>` (sibling path, outside sanctioned root). Doc-only fix. |
 | Approach | Update `skills/mcp-server-surface-test/prompts/full.md` Phase 0 step 2 to use an inside-repo worktree path (`git worktree add .worktrees/surface-test-<ts>`). No corresponding maintainer-overlay update needed — it's deleted. |
