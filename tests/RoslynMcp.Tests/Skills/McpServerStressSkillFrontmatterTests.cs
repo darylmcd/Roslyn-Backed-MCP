@@ -5,26 +5,31 @@ using RoslynMcp.Host.Stdio.Catalog;
 namespace RoslynMcp.Tests.Skills;
 
 /// <summary>
-/// mcp-server-stress-relocate: structural + tool-reference parity for the maintainer-only
-/// `mcp-server-stress` skill (relocated from `skills/audit-deep/` to `.claude/skills/mcp-server-stress/`).
+/// Structural tests for the maintainer-only `mcp-server-stress` skill (lives under
+/// `.claude/skills/mcp-server-stress/`).
+///
+/// After the unify-audit-prompt-single-source refactor (PR #633), this skill is a THIN ALIAS
+/// for `/mcp-server-surface-test --output-mode=fragments`. The historical `prompts/maintainer-overlay.md`
+/// was deleted; the canonical audit prompt now lives in the shipped surface-test skill at
+/// `skills/mcp-server-surface-test/prompts/full.md`, driven by the new `--output-mode` flag.
 ///
 /// Contract enforced here:
-///   1. SKILL.md frontmatter has the expected fields (`name`, `description`, `user-invocable`, `argument-hint`)
-///      and the `name` field matches the directory name. This is the same contract the deep-review prompt's
-///      Phase 16b applies dynamically via `glob .claude/skills/*/SKILL.md` — pinning it as a unit test means the build
-///      fails before a malformed skill ships.
-///   2. The single canonical prompt file exists at the documented relative path under `prompts/prompt.md`.
-///      The historical `prompts/full.md` / `prompts/promotion-only.md` / `prompts/read-only.md` mode wrappers
-///      were collapsed into one canonical run by `mcp-server-stress-single-mode` — SKILL.md must route to the
-///      single-prompt path and must not re-introduce mode tokens.
-///   3. Every `mcp__roslyn__&lt;tool&gt;` reference in the SKILL.md body resolves to a name in the live
-///      `ServerSurfaceCatalog.Tools` list. A reference to a renamed/removed tool is the highest-impact
-///      shipped-skill defect (Phase 16b's "P2 FAIL" classification) — catch it at test time.
+///   1. SKILL.md frontmatter has the expected fields (`name`, `description`, `user-invocable`, `argument-hint`).
+///   2. Description identifies the alias relationship (mentions the surface-test invocation or the
+///      `--output-mode=fragments` flag) so the slash-command picker conveys what the skill does.
+///   3. SKILL.md body references the canonical invocation `/mcp-server-surface-test --output-mode=fragments`
+///      so the alias is grep-able and auditable.
+///   4. The hard precondition `mcp__roslyn__server_info` is documented (inherited from surface-test).
+///   5. No residue from the OLD architecture survives: no `Phase 16b`, no `plugin-skill`, no historical
+///      mode tokens (`mode=full`, `mode=promotion-only`, `mode=read-only`), no reference to the deleted
+///      `prompts/maintainer-overlay.md` file.
+///   6. Tool references resolve to the live `ServerSurfaceCatalog`.
 ///
-/// The canonical prompt body itself is intentionally NOT scanned for tool names here. The prompt is the 950+-line
-/// living audit prompt; its tool references are validated by Phase 16b's runtime `glob` + catalog cross-check,
-/// not by a static unit test. Pinning them statically would conflict with the prompt's "live catalog wins"
-/// contract.
+/// What is NOT tested here:
+///   - The audit prompt itself (`prompts/maintainer-overlay.md` was deleted). The canonical prompt is
+///     now `skills/mcp-server-surface-test/prompts/full.md` and is covered by `McpServerSurfaceTestSkillTests`
+///     and `AuditPhaseRunnerHandoffTests`.
+///   - The `--output-mode=fragments` semantics (covered by surface-test SKILL.md tests).
 /// </summary>
 [TestClass]
 public sealed class McpServerStressSkillFrontmatterTests
@@ -37,7 +42,7 @@ public sealed class McpServerStressSkillFrontmatterTests
         var skillPath = ResolveSkillPath();
         Assert.IsTrue(
             File.Exists(skillPath),
-            $"mcp-server-stress SKILL.md not found at {skillPath}. The shipped skill is the consumer-facing entry point — its absence makes /mcp-server-stress moot.");
+            $"mcp-server-stress SKILL.md not found at {skillPath}. The maintainer-only alias is the muscle-memory entry point — its absence makes /mcp-server-stress moot.");
     }
 
     [TestMethod]
@@ -52,111 +57,77 @@ public sealed class McpServerStressSkillFrontmatterTests
         AssertFrontmatterField(frontmatter, "user-invocable", expectedValue: "true", skillPath);
         AssertFrontmatterField(frontmatter, "argument-hint", expectedValue: null, skillPath);
 
-        // Description must reflect the single-mode shape — no `mode=` token, and at least one of the
-        // canonical-run descriptors ("disposable worktree" or "scorecard") must be present so the description
-        // accurately conveys what the skill does.
+        // Description must accurately describe the post-refactor thin-alias shape — mention either
+        // the surface-test invocation it aliases or the --output-mode=fragments flag (its distinctive
+        // characteristic vs the consumer-default findings mode).
         var description = frontmatter["description"];
-        Assert.IsFalse(
-            description.Contains("mode=", StringComparison.Ordinal),
-            $"mcp-server-stress description must not mention `mode=` — the modes were collapsed into one canonical run. Actual: {description}");
-        var mentionsDisposableWorktree = description.Contains("disposable worktree", StringComparison.Ordinal);
-        var mentionsScorecard = description.Contains("scorecard", StringComparison.Ordinal);
+        var mentionsSurfaceTest = description.Contains("/mcp-server-surface-test", StringComparison.Ordinal);
+        var mentionsFragments = description.Contains("--output-mode=fragments", StringComparison.Ordinal);
         Assert.IsTrue(
-            mentionsDisposableWorktree || mentionsScorecard,
-            $"mcp-server-stress description must mention either `disposable worktree` or `scorecard` — those are the canonical-run distinguishing features. Actual: {description}");
+            mentionsSurfaceTest || mentionsFragments,
+            $"mcp-server-stress description must mention either `/mcp-server-surface-test` or `--output-mode=fragments` — those are the alias's canonical descriptors after the unify-audit-prompt-single-source refactor. Actual: {description}");
     }
 
     [TestMethod]
-    public void Skill_Body_DocumentsSingleModeAndPrecondition()
+    public void Skill_Body_IdentifiesAsAliasToSurfaceTest()
     {
         var skillPath = ResolveSkillPath();
         var contents = File.ReadAllText(skillPath);
 
-        // SKILL.md must route to the single-prompt path. The prompt was renamed from `prompts/prompt.md`
-        // to `prompts/maintainer-overlay.md` when /mcp-server-stress became the maintainer-only superset
-        // of the shipped /mcp-server-surface-test skill — the file's role is now an overlay over the
-        // shipped consumer prompt rather than a standalone document.
+        // SKILL.md must reference the canonical surface-test invocation with --output-mode=fragments.
+        // This is the grep-able assertion that the alias is wired correctly; if a future edit removes
+        // the reference, the alias becomes a dangling shell and /mcp-server-stress invocations would
+        // have no clear target.
         Assert.IsTrue(
-            contents.Contains("prompts/maintainer-overlay.md", StringComparison.Ordinal),
-            "mcp-server-stress SKILL.md must reference `prompts/maintainer-overlay.md` — that is the single canonical maintainer prompt file. " +
-            "If you renamed the prompt, update the route in Step 2.");
+            contents.Contains("/mcp-server-surface-test --output-mode=fragments", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must reference `/mcp-server-surface-test --output-mode=fragments` — the canonical invocation it aliases. " +
+            "If you renamed the flag or restructured the alias, update this assertion to match.");
 
-        // Negative assertions — the historical mode tokens must not survive the collapse.
-        Assert.IsFalse(
-            contents.Contains("mode=full", StringComparison.Ordinal),
-            "mcp-server-stress SKILL.md must not contain `mode=full` — the modes were collapsed into one canonical run by `mcp-server-stress-single-mode`.");
-        Assert.IsFalse(
-            contents.Contains("mode=promotion-only", StringComparison.Ordinal),
-            "mcp-server-stress SKILL.md must not contain `mode=promotion-only` — the modes were collapsed into one canonical run by `mcp-server-stress-single-mode`.");
-        Assert.IsFalse(
-            contents.Contains("mode=read-only", StringComparison.Ordinal),
-            "mcp-server-stress SKILL.md must not contain `mode=read-only` — the modes were collapsed into one canonical run by `mcp-server-stress-single-mode`.");
-
-        // The B4/B5 hard precondition — server-or-halt — must be unambiguous.
+        // The hard precondition — server-or-halt — must still be inherited or documented (since the alias
+        // delegates to surface-test, which enforces this gate; the SKILL.md should at minimum mention the
+        // tool name so the contract is auditable from inside this file).
         Assert.IsTrue(
             contents.Contains("mcp__roslyn__server_info", StringComparison.Ordinal),
-            "mcp-server-stress SKILL.md must require `mcp__roslyn__server_info` as the hard precondition (B4/B5). " +
-            "Without this gate, the skill could fall back to a non-MCP audit and produce no audit-grade evidence.");
+            "mcp-server-stress SKILL.md must mention `mcp__roslyn__server_info` so the inherited hard-precondition contract is auditable from this file alone. " +
+            "Without that, a cold reader cannot verify that the alias preserves the server-required gate.");
     }
 
     [TestMethod]
-    public void Skill_Body_HasNoPhase16bResidue()
+    public void Skill_Body_HasNoLegacyResidue()
     {
-        // The plugin-skill audit (formerly Phase 16b) was extracted from /mcp-server-stress into /surface-audit
-        // by the `extract-skills-audit-from-server-stress` initiative. The relocate is the source of truth: once
-        // the workflow lives in /surface-audit, no token from the old phase is allowed to survive in either
-        // SKILL.md or the canonical prompt. A surviving token is a regression — agents would re-attempt the
-        // workflow inside /mcp-server-stress and either duplicate /surface-audit's output or stale-reference
-        // a phase that no longer exists.
+        // After the unify-audit-prompt-single-source refactor (PR #633) collapsed the maintainer-overlay.md
+        // prompt into the shipped surface-test prompt, no residue from the prior architecture should remain.
+        // This test catches accidental reintroduction of obsolete content during future refactors.
         var skillPath = ResolveSkillPath();
-        var skillContents = File.ReadAllText(skillPath);
+        var contents = File.ReadAllText(skillPath);
 
-        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "maintainer-overlay.md");
-        var promptContents = File.ReadAllText(promptPath);
-
+        // The plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.
         Assert.IsFalse(
-            skillContents.Contains("Phase 16b", StringComparison.Ordinal),
-            "mcp-server-stress SKILL.md must not contain `Phase 16b` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
+            contents.Contains("Phase 16b", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must not contain `Phase 16b` — the plugin-skill audit was extracted into /surface-audit.");
         Assert.IsFalse(
-            promptContents.Contains("Phase 16b", StringComparison.Ordinal),
-            "mcp-server-stress prompts/maintainer-overlay.md must not contain `Phase 16b` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
+            contents.Contains("plugin-skill", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must not contain `plugin-skill` — extracted into /surface-audit.");
 
+        // The historical mode tokens from the pre-collapse multi-mode prompt set.
         Assert.IsFalse(
-            skillContents.Contains("plugin-skill", StringComparison.Ordinal),
-            "mcp-server-stress SKILL.md must not contain `plugin-skill` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
+            contents.Contains("mode=full", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must not contain `mode=full` — the multi-mode prompt set was collapsed into one canonical run.");
         Assert.IsFalse(
-            promptContents.Contains("plugin-skill", StringComparison.Ordinal),
-            "mcp-server-stress prompts/maintainer-overlay.md must not contain `plugin-skill` — the plugin-skill audit was extracted into /surface-audit by `extract-skills-audit-from-server-stress`.");
-    }
+            contents.Contains("mode=promotion-only", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must not contain `mode=promotion-only`.");
+        Assert.IsFalse(
+            contents.Contains("mode=read-only", StringComparison.Ordinal),
+            "mcp-server-stress SKILL.md must not contain `mode=read-only`.");
 
-    [TestMethod]
-    public void Skill_PromptFile_ExistsAtDocumentedPath()
-    {
-        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "maintainer-overlay.md");
-
-        Assert.IsTrue(File.Exists(promptPath),
-            $"mcp-server-stress canonical prompt not found at {promptPath}. SKILL.md Step 2 routes to this single file; " +
-            "missing it breaks every invocation of /mcp-server-stress.");
-    }
-
-    [TestMethod]
-    public void Skill_OverlayPrompt_ReferencesShippedConsumerPrompt()
-    {
-        // The maintainer overlay must point at the shipped consumer prompt to make the layering relationship
-        // explicit. If a future edit drops the reference, the maintainer would lose the breadcrumb pointing
-        // at the canonical generic-safe half — and a follow-up Row 2 consolidation would have nothing to
-        // reduce against.
-        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        var promptPath = Path.Combine(repoRoot, ".claude", "skills", SkillName, "prompts", "maintainer-overlay.md");
-        var promptContents = File.ReadAllText(promptPath);
-
-        Assert.IsTrue(
-            promptContents.Contains("skills/mcp-server-surface-test/prompts/full.md", StringComparison.Ordinal),
-            "mcp-server-stress prompts/maintainer-overlay.md must reference the shipped consumer prompt at " +
-            "`skills/mcp-server-surface-test/prompts/full.md`. The overlay is the maintainer superset; " +
-            "without the breadcrumb, future readers cannot tell which content is consumer-generic and which is overlay-only.");
+        // The legacy prompt file is gone. References to it (other than historical-context prose explaining
+        // the deletion) should not appear; a stale link would break navigation from this file.
+        // Note: the SKILL.md body can mention the deleted file in prose if it explains the deletion
+        // context — we only ban markdown link syntax `(...maintainer-overlay.md)` that would 404.
+        Assert.IsFalse(
+            Regex.IsMatch(contents, @"\]\([^)]*maintainer-overlay\.md\)"),
+            "mcp-server-stress SKILL.md must not link to the deleted `prompts/maintainer-overlay.md` file. " +
+            "Prose mentions of the deletion are fine; markdown links to the deleted path are not.");
     }
 
     [TestMethod]
@@ -171,8 +142,8 @@ public sealed class McpServerStressSkillFrontmatterTests
         var matches = Regex.Matches(contents, @"mcp__roslyn__([a-zA-Z_][a-zA-Z0-9_]*)");
         if (matches.Count == 0)
         {
-            // No tool references in the body — that is fine; SKILL.md may delegate all tool naming to the
-            // canonical prompt. The frontmatter test already validates the structural contract.
+            // No tool references in the body — that is fine for a thin alias. The frontmatter test
+            // already validates the structural contract.
             return;
         }
 
@@ -194,7 +165,7 @@ public sealed class McpServerStressSkillFrontmatterTests
             0, unknown.Count,
             $"mcp-server-stress SKILL.md references {unknown.Count} tool name(s) that do not exist in the live ServerSurfaceCatalog: " +
             string.Join(", ", unknown.Distinct()) + ". " +
-            "Per Phase 16b, this is a P2 FAIL — shipped skills must not reference renamed/removed tools.");
+            "Shipped/aliased skills must not reference renamed/removed tools.");
     }
 
     private static string ResolveSkillPath()
