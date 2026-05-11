@@ -177,7 +177,7 @@ foreach ($root in $roots) {
 
     $siblingReposWithScorecard.Add($root.Name) | Out-Null
 
-    if (-not $parsed.PSObject.Properties.Name -contains 'scorecard') { continue }
+    if (-not ($parsed.PSObject.Properties.Name -contains 'scorecard')) { continue }
     if ($null -eq $parsed.scorecard) { continue }
 
     foreach ($entry in $parsed.scorecard) {
