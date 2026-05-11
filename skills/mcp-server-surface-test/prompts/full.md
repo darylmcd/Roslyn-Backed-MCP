@@ -97,6 +97,7 @@ This prompt is a contract with the Roslyn MCP server. Without it, nothing below 
 
 1. Pick the entrypoint: `.sln` / `.slnx` / `.csproj`.
 2. **Create the disposable worktree** (mandatory, default mode). Run `git worktree add ../<repo-name>-surface-test-<ts> -b mcp-server-surface-test/<ts>` from the audited repo root, where `<ts>` is the same UTC `yyyyMMddTHHmmssZ` used for the report filename. Record the absolute worktree path + branch name in the *Isolation* header row before any write-capable call. Phase 6's preview→apply chains run against this checkout; the audited repo's primary working tree is never touched. **`--no-worktree` flag:** record `degraded — --no-worktree flag, Phase 6 applies skipped` in the *Isolation* row and skip worktree creation entirely.
+2a. **Capture the Isolation baseline.** Run `git -C <audited-repo-root> status --porcelain` against the audited repo's **primary checkout** and record the exact output verbatim in the *Isolation baseline* sub-row of the header. Empty output is the common case (clean tree); non-empty output is allowed but records pre-existing operator state out of scope for this audit. The Final surface closure's run-end git-status diff (step 3a) compares against this baseline — any new `M` / `A` / `D` / `??` entry that appears at run end is an audit-prompt leak. This baseline is the catch-all that makes the *Mutation isolation contract* (Phase 7 / 8b / 13 — all writes target the disposable worktree, never the primary checkout) audit-verifiable instead of trust-based.
 3. **Debug-log channel check.** Is the client surfacing `notifications/message`? Record `yes` / `partial` / `no` in the header.
 4. Read `roslyn://server/resource-templates` to capture all resource URI templates.
 5. Call `workspace_load` (lean summary default; pass `verbose=true` only if you need the full project tree).
@@ -370,9 +371,12 @@ If teardown fails for an unexpected reason, surface the failure in the report's 
 
 ### Phase 7: EditorConfig & MSBuild configuration
 
-1. `get_editorconfig_options` on a source file. Do the returned options match `.editorconfig`?
-2. `set_editorconfig_option` to set a benign key (e.g. `dotnet_sort_system_directives_first = true`). Verify the file was created/updated.
-3. `get_editorconfig_options` again — change reflected?
+**Mutation isolation contract.** Step 2 writes to disk and MUST target the disposable worktree (or be marked `skipped-safety` under `--no-worktree`). It must NOT mutate the primary checkout — that would leak `.editorconfig` drift into the audited repo's working tree (see `audit-prompt-editorconfig-leak` for the failure mode this contract prevents). Step 4 reverts the worktree write so Phase 8b W2 and Phase 13 row 4/5 can re-exercise the create/update path cleanly.
+
+1. **Read + baseline.** `get_editorconfig_options` on a source file. Do the returned options match `.editorconfig`? Capture the pre-mutation `.editorconfig` content (or the absence of the file) — needed for the revert in step 4.
+2. **Write — disposable worktree only.** On the disposable worktree (default mode), call `set_editorconfig_option` to set a benign key (e.g. `dotnet_sort_system_directives_first = true`). Verify the file was created/updated. Under `--no-worktree`, mark step 2 and step 3 as `skipped-safety — --no-worktree` and proceed to 7b; do NOT call `set_editorconfig_option` against the primary checkout in any mode.
+3. **Verify read-after-write.** `get_editorconfig_options` again — change reflected?
+4. **Revert (mandatory).** Restore the pre-step-2 `.editorconfig` via `git -C <disposable-worktree-path> checkout -- .editorconfig` (or `git -C <disposable-worktree-path> clean -f -- .editorconfig` if step 2 created the file from scratch). Verify with `git -C <worktree-path> status --porcelain .editorconfig` returning empty. The Final surface closure's run-end git-status diff (step 3a) will catch any leak this revert misses.
 
 #### 7b. MSBuild evaluation
 1. `get_msbuild_properties` — verify key properties (`TargetFramework`, `RootNamespace`, `OutputType`).
@@ -427,7 +431,7 @@ If `test_discover` returns zero, record it and distinguish: `test_run` returns a
 | R4 | `find_unused_symbols(includePublic=false)` | reader |
 | R5 | `get_complexity_metrics` (no filters) | reader |
 | W1 | `format_document_preview` → `format_document_apply` on a Phase-6-touched file | writer |
-| W2 | `set_editorconfig_option` with a benign key (then revert) | writer |
+| W2 | `set_editorconfig_option` with a benign key **on the disposable worktree** (skipped-safety under `--no-worktree`); revert via `git -C <worktree> checkout -- .editorconfig` after the write (same isolation contract as Phase 7 step 2) | writer |
 
 #### 8b.1 Sequential baseline
 Call each R1–R5 once sequentially; record `_meta.elapsedMs`. Record any structured MCP log entries (correlation ids, gate warnings, rate-limit hits, timeouts).
@@ -727,7 +731,8 @@ The refusal is non-negotiable and applies even when the maintainer is detected o
 
 1. Compare the coverage ledger against the live catalog from Phase -1 / 0.
 2. Every unaccounted tool/resource/prompt: call it now or assign a final explicit status with a one-line reason.
-3. Confirm all audit-only mutations from Phases 8b / 9–13 were reverted or cleaned up. Only intentional Phase 6 product improvements remain. (8b writer-reclassification probes + W2 `set_editorconfig_option` reverted; W1 `format_document_apply` is the audit-only apply Phase 9 reverts.)
+3. Confirm all audit-only mutations from Phases **7**, 8b, 9–13 were reverted or cleaned up. Only intentional Phase 6 product improvements remain on the disposable worktree (and Phase 6 itself tears the worktree down — nothing reaches the primary checkout). Explicit reverts to verify: Phase 7 step 4 `.editorconfig` checkout-revert; 8b W2 `set_editorconfig_option` checkout-revert; 8b writer-reclassification probes; W1 `format_document_apply` is the audit-only apply Phase 9 reverts.
+3a. **Run-end primary-checkout clean check (HARD GATE).** Run `git -C <audited-repo-root> status --porcelain` against the audited repo's **primary checkout** (not the disposable worktree). Compare against the *Isolation baseline* captured at Phase 0 run start. Any new `M` / `A` / `D` / `??` entry that wasn't in the baseline is an **audit-prompt leak** — file as a P1 finding in *MCP server issues* with category `audit-prompt-leak`, citing the offending phase (most leaks come from a mutation phase that forgot to target the disposable worktree). The Phase 6 teardown's local check covers Phase 6; this run-end gate is the catch-all for every other phase. **Do not** auto-revert leaked files — the leak is the evidence; report it and let the operator clean up manually after reviewing.
 4. Ledger totals match live catalog; catalog summary matches `server_info`.
 5. *Concurrency matrix* fully populated (or the whole Phase 8b is `blocked` with a single reason).
 6. *Debug log capture* has at least one entry or explicitly states `client did not surface MCP log notifications`.
