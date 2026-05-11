@@ -18,7 +18,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #640, 2026-05-11) |
 | Backlog rows closed | `apply-project-mutation-not-registered-revert` |
 | Diagnosis | `apply_project_mutation` (in `src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs`) writes `.csproj` to disk and reports `success:true` but never registers the operation on the `IUndoService` revert stack. `revert_last_apply` therefore returns `reverted:false` — silent data-loss risk in scripted pipelines that rely on the revert-stack invariant. Fanout probe: `IUndoService` is referenced in 17 files; the fix is local (register at the apply site), not cross-cutting. |
 | Approach | At the end of the apply branch in `ProjectMutationTools.apply_project_mutation`, call `IUndoService.RecordOperation(...)` with the pre-apply `.csproj` bytes captured before the write. Mirror the pattern in `EditTools.cs` / `MultiFileEditTools.cs` which already do this correctly. |
@@ -36,7 +36,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | deferred (diagnosis-premise mismatch — needs re-plan) |
 | Backlog rows closed | `test-related-column-required-schema-mismatch` |
 | Diagnosis | `test_related` tool schema marks `column` as optional but the server requires it. Callers following the schema get a runtime error. Per the addenda's **tool-surface-only exemption**: this is a schema/wrapper edit on an already-registered tool — Rule 3 exemption applies, ≤2 files. |
 | Approach | Option A (preferred): mark `column` as **required** in the catalog entry for `test_related` in `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.Testing.cs` (or wherever the schema lives). Update the wrapper in `src/RoslynMcp.Host.Stdio/Tools/TestCoverageTools.cs` for consistency. |
@@ -54,7 +54,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #639, 2026-05-11) |
 | Backlog rows closed | `callers-callees-rejects-fully-qualified-names` |
 | Diagnosis | `callers_callees` returns `NotFound` when `metadataName` includes a full method signature with parameter types; sibling tools (`find_references`, `find_type_mutations`) accept the same fully-qualified form. Vocabulary inconsistency. |
 | Approach | In `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs` (or `src/RoslynMcp.Roslyn/Services/CallerCalleeService.cs`), parse `metadataName` with the same metadata-name parser `find_references` uses. If the find-references parser is in a shared helper, reuse it; otherwise extract a parser helper. |
@@ -72,7 +72,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #638, 2026-05-11) |
 | Backlog rows closed | `get-namespace-dependencies-empty-multiproject` |
 | Diagnosis | `get_namespace_dependencies(circularOnly=true)` returns empty arrays on a 36-project solution — callers can't distinguish "no cycles" from "not analyzed". |
 | Approach | Add `analyzedProjectCount` (and optionally `totalNamespacesScanned`) to the response DTO; populate from the analysis loop. Update tool wrapper to emit the new field. |
@@ -108,7 +108,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #637, 2026-05-11) |
 | Backlog rows closed | `workspace-load-sibling-worktree-sanctioned-root` |
 | Diagnosis | `workspace_load` refuses paths outside the client-sanctioned root. The mcp-server-surface-test skill's disposable worktree at `../<sibling>` is structurally outside the root, forcing Phases 6/9/10/12/13 to `skipped-safety` on every consumer-repo audit. The companion row `prompts-full-md-phase0-worktree-path-sandbox` (#7) is the prompt-side fix; this row is the tool-side fix. |
 | Approach | Per row: option (b) — server exposes an `expandSanctionedRoots` flag (operator-opt-in) on `workspace_load` so the skill can widen the allowlist for a specific worktree path. Add to `src/RoslynMcp.Host.Stdio/Tools/ClientRootPathValidator.cs` + wrapper in `WorkspaceTools.cs`. |
