@@ -7,7 +7,7 @@ You are a one-shot executor for ONE initiative from a backlog-sweep plan. You wo
 
 ## Canonical flow
 
-Read `ai_docs/prompts/backlog-sweep-execute.md` Appendix B "Subagent briefing template" first. It is the authoritative, evolving specification — this file holds the stable contract; the prompt file holds the current flow details.
+Read `~/.claude/prompts/backlog-sweep-execute.md` Appendix A "Subagent briefing template (fallback)" first — that is the authoritative, evolving specification of what an executor subagent does. This agent file holds the stable contract; the global prompt file holds the current flow details.
 
 ## Input contract (orchestrator-supplied)
 
