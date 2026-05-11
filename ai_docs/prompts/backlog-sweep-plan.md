@@ -226,9 +226,19 @@ Read `ai_docs/backlog.md` (open/unfinished work only). Shortlist rows by:
 3. **Feasibility** — can be completed in a single focused PR within Rules 3-5. Skip
    rows whose `deps` field references unfinished work.
 
+**HARD SKIP — contributor-reserved rows.** Any row whose `do` cell begins with
+`**Reserved — [gh #NNN]...** ` is reserved for external contributor pickup and
+MUST be excluded from the candidate list. These rows are tracked in the backlog
+for cross-referencing only — the work is owned by the open GitHub issue. Filing
+an initiative against one would race a contributor mid-work. Reservation markers
+are removed manually when (a) a contributor PR lands, or (b) the maintainer
+decides to take the work back (and closes the GitHub issue with a brief note).
+Detect by grep: rows containing `**Reserved — [gh #` anywhere in the `do` cell.
+
 Do NOT cap at an item count. Go deep enough to cover every P2 + all P3 rows + the
-highest-impact P4 rows. The output is the initiative count, which after Rules 1-5
-will likely be **close to 1:1 with row count**.
+highest-impact P4 rows (excluding reserved rows per above). The output is the
+initiative count, which after Rules 1-5 will likely be **close to 1:1 with the
+non-reserved row count**.
 
 ## Step 2 — Source-verified consolidation (rare)
 
