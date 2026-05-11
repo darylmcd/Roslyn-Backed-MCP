@@ -258,7 +258,7 @@
     {
       "id": "file-lock-aware-prompt-validation-guidance",
       "order": 8,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "file-lock-aware-prompt-validation-guidance"
       ],
@@ -270,8 +270,8 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/file-lock-aware-prompt-validation-guidance",
+      "worktreePath": ".worktrees/file-lock-aware-prompt-validation-guidance",
       "prUrl": null,
       "mergedAt": null,
       "notes": "Backlog row anchors stale post-PR-#633 (cites deleted maintainer-overlay.md); executor must rewrite to canonical full.md path."

@@ -144,7 +144,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | in-progress (branch: remediation/file-lock-aware-prompt-validation-guidance, worktree: .worktrees/file-lock-aware-prompt-validation-guidance) |
 | Backlog rows closed | `file-lock-aware-prompt-validation-guidance` |
 | Diagnosis | Phase 8 `build_workspace`/`test_run` and the `debug_test_failure` prompt path repeatedly retry full build/test validation against the self-hosted workspace, hitting `MSB3027`/`MSB3021` file-lock errors. Per the row's anchors, the prompt rendering paths in `PromptMessageBuilder.cs` and `RoslynPrompts.RefactoringWorkflows.cs` need file-lock awareness. |
 | Approach | Update prompt templates and the dispatcher to recognize `failureEnvelope.errorKind=FileLock` (or `MSB3027`/`MSB3021` text in the failure message) as infrastructure rather than test failure. Add a bypass-guidance section that tells operators to close/reload the workspace or run validation from an isolated process after `dotnet build-server shutdown`. |
