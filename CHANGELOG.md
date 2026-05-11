@@ -30,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 ### Maintenance
 
 - **Maintenance:** `/mcp-server-stress` audit completion gate — no-silent-truncation contract on the `audit-phase-runner` subagent. Partial runs surface as P1 audit defects rather than quiet ledger entries; orchestrator re-dispatches with smaller scope or records `phase-failed-budget` in the coverage summary. Runner agent definition documents the `skipped-budget` / `skipped-context` / `truncated` marker contract.
-- **Maintenance:** Backlog ↔ GitHub Issue cross-link convention added with two flavors — reserved-for-contributor-pickup (`good first issue` / `help wanted`) rows get a `**Reserved — [gh #NNN](url)...**` marker that `/backlog-sweep:plan` Step 1 hard-skips; tracked-only rows get a plain `[gh #NNN](url) — ` prefix and remain sweep-eligible. `/backlog-sweep:execute` Step 2 has defense-in-depth re-check at initiative-claim time so a row reserved between plan emission and execution is marked `obsolete` rather than raced.
+- **Maintenance:** Backlog ↔ GitHub Issue cross-link convention added with two flavors — reserved-for-contributor-pickup (`good first issue` / `help wanted`) rows get a `**Reserved — gh #NNN ...**` marker that `/backlog-sweep:plan` Step 1 hard-skips; tracked-only rows get a plain `gh #NNN — ` prefix and remain sweep-eligible. `/backlog-sweep:execute` Step 2 has defense-in-depth re-check at initiative-claim time so a row reserved between plan emission and execution is marked `obsolete` rather than raced.
 
 ## [1.35.2] - 2026-05-10
 
