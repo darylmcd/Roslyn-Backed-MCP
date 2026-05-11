@@ -1,36 +1,58 @@
-# Plan review — 2026-05-09T18:18:00Z
+# Plan review — 20260509T181343Z (cycle 0)
 
-**Plan reviewed:** `ai_docs/plans/20260509T181343Z_backlog-sweep/`
-**Reviewer mode:** /backlog-sweep:review
+**Plan reviewed:** ai_docs/plans/20260509T181343Z_backlog-sweep/
+**Reviewer mode:** /backlog-sweep:prepare (Phase D)
+**Cycle:** 0
 **Outcome:** passed
-**Initiative count:** 2
-**Findings:** block: 0, warn: 0, info: 0
+**Initiative count:** 2 pending
+**Findings:** block: 0, warn: 0, info: 1
 **Anchor verification:** performed
 
 ## Summary
 
-The plan is executable under the Rules 1–5 gate. Schema is current; both planned closed rows still exist in `ai_docs/backlog.md`; neither initiative bundles multiple rows (Rule 1 N/A); both stay well under the file/test/context budgets; both have explicit `toolPolicy: edit-only` matched to their shape (doc edit + 2-file prompt-render edit). The conflict graph has no edges — production file sets are disjoint and neither initiative touches an addenda-listed hotspot file. Anchor spot-check confirms all four cited source files exist; the planner already noted that `errorKind: FileLock` / `MSB3027` strings are aspirational anchors the executor will introduce, which is honest pre-disclosure rather than a stale citation. Both initiatives can ship in a single parallel wave or back-to-back serial.
+The plan ships two well-sized, edit-only, single-row initiatives with no Rule 1/3/4/5/5b violations, no hotspot adjacency, and an empty conflict graph that matches the orchestrator's computation exactly. One advisory finding: initiative 2 (`file-lock-aware-prompt-validation-guidance`) lists `.claude/skills/mcp-server-stress/prompts/prompt.md:345,348,484` as an edit target in Approach step (3), but that prompt file no longer exists in this repo — the addenda-loaded SKILL.md confirms the legacy `maintainer-overlay.md` / `prompt.md` were deleted in v1.X.Y when their content was folded into `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/prompts/full.md`. Initiative 2's Scope already classifies this skill content as 0 production files, and the Diagnosis admits the aspirational `FileLock` anchors are not in source yet, but the executor will still hit the missing-file when it tries to apply step (3) and will need to either retarget to the canonical `full.md` (out of this repo, plugin-shipped) or drop step (3). Plan can proceed; executor must be aware. No blocking findings.
 
 ## Findings
 
 | Initiative | Severity | Rule | Evidence |
 |---|---|---|---|
-| — | — | — | No findings. |
+| file-lock-aware-prompt-validation-guidance | info | anchor-stale | Approach step (3) edits `.claude/skills/mcp-server-stress/prompts/prompt.md:345,348,484` but that file no longer exists in this repo — SKILL.md confirms the legacy maintainer-overlay/prompt.md were deleted in v1.X.Y and their content lives at `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/prompts/full.md`. Executor should retarget or drop step (3). |
 
-## Per-rule walk
+## Conflict graph
 
-| Rule | Result |
+(Reviewer-computed; agreement with orchestrator: yes)
+
+```json
+{
+  "edges": [],
+  "degrees": {
+    "host-middleware-tools-namespace-cycle": 0,
+    "file-lock-aware-prompt-validation-guidance": 0
+  },
+  "zeroDegreeInitiatives": ["host-middleware-tools-namespace-cycle", "file-lock-aware-prompt-validation-guidance"]
+}
+```
+
+Initiative 1 touches only `ai_docs/architecture.md` (doc-only). Initiative 2 touches two production C# files under `src/RoslynMcp.Host.Stdio/Prompts/` plus one test file plus the (missing) skill prompt. Zero file intersection.
+
+## Hotspot scheduling
+
+| Hotspot | Initiatives | Adjacent? |
+|---|---|---|
+| `ServerSurfaceCatalog.*` partials | (none) | n/a |
+| `ServiceCollectionExtensions.cs` | (none) | n/a |
+| `WorkspaceManager.cs` | (none) | n/a |
+
+Neither initiative touches an addenda-listed hotspot file. No parallel-mode wave forcing.
+
+## Stale-row spot check
+
+| Row id | Present? |
 |---|---|
-| 1 (bundling) | pass — no initiative bundles >1 row |
-| 3 (file count) | pass — 0 and 2 files (≤4) |
-| 3b (tool policy) | pass — both `edit-only`, matched to shape (no solution-wide refactor work) |
-| 4 (test budget) | pass — 0 and 1 (≤3) |
-| 5 (context budget) | pass — 18K and 35K (≤80K); both estimates realistic for shape |
-| 5b (fanout) | pass — both `fanoutEstimate` set; neither flagged `fanoutOversize` |
-| Conflict graph | pass — no edges |
-| Hotspot scheduling | pass — neither touches `ServerSurfaceCatalog.*`, `ServiceCollectionExtensions.cs`, or `WorkspaceManager.cs` |
-| Anchor freshness | pass — all 4 cited files exist; aspirational-anchor disclosure noted |
+| `host-middleware-tools-namespace-cycle` | yes (backlog.md § Low) |
+| `file-lock-aware-prompt-validation-guidance` | yes (backlog.md § Medium) |
 
 ## Recommended next step
 
-`reviewStatus: passed` — run `/backlog-sweep:execute`. The two initiatives are independent and either can ship first; doc-only `host-middleware-tools-namespace-cycle` first matches the planner's cheapest-first ordering.
+- Outcome is `passed` — proceed to Phase F (handoff-readiness) then `/backlog-sweep:execute`.
+- Surface the anchor-stale advisory in the run summary so the executor session knows step (3) of initiative 2 will need to be retargeted or dropped (the canonical content now lives at `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/prompts/full.md`, which is plugin-shipped and outside this repo's edit surface).
