@@ -476,7 +476,7 @@
 - Fanout estimates: only #1 (`apply-project-mutation-not-registered-revert`) was probed (fanout = 2, well under cap). Other initiatives don't mention rename/cross-cutting/attribute-change patterns.
 - Hotspot distribution: initiatives #5 (`parallel-fanout-auto-reload-timeout-floor`) and #15 (`workspace-reloaded-during-call-conflates-notfound`) both touch `WorkspaceManager.cs` — distribute across waves (executor parallel-mode rule: ≤1 hotspot per wave).
 - Initiatives #11 and #22 both touch `SyntaxService.cs` — distribute across waves OR serialize.
-- Markdown link hrefs: all source citations use plain inline-code style, no `[label](href)` syntax for `src/` paths.
+- Markdown link hrefs: all source citations use plain inline-code style. No bracket-paren markdown link syntax pointing at `src/` paths (would resolve relative to this plan dir and fail `verify-ai-docs.ps1`).
 
 ## Notes for `/backlog-sweep:review`
 
