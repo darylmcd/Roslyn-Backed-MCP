@@ -2,7 +2,7 @@
 name: mcp-server-surface-test
 description: "Consumer-facing audit of the Roslyn MCP server's live surface against a loaded C# repo. Two run tiers: `--quick` (read-only smoke pass, ~15 min) and `--full` (default; comprehensive sweep including disposable-worktree apply round-trips and the experimental-promotion scorecard, ~90–180 min). Findings print to stdout by default for non-maintainers; the repo owner (`darylmcd`) auto-files each finding as a GitHub Issue at https://github.com/darylmcd/Roslyn-Backed-MCP. Pass `--auto-file` to force-enable or `--no-auto-file` to force-disable. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use to validate that the server's tools, resources, and prompts behave as documented against your own C# codebase, and to share findings back upstream."
 user-invocable: true
-argument-hint: "[<target-repo-path>] [--quick | --full] [--auto-file | --no-auto-file] [--no-worktree] [--single-agent]"
+argument-hint: "[<target-repo-path>] [--quick | --full] [--output-mode=findings | fragments] [--auto-file | --no-auto-file] [--no-worktree] [--single-agent]"
 ---
 
 # /mcp-server-surface-test $ARGUMENTS
@@ -56,9 +56,16 @@ Resolution rules:
 - *(no flag, default)* — full canonical run with the disposable-worktree apply pass exercised.
 - `--no-worktree` — degraded mode for environments that genuinely cannot create a git worktree. Phase 6 sub-phases that require a worktree are marked `skipped-safety — --no-worktree`. The promotion scorecard still emits, but writer recommendations default to `needs-more-evidence` for any tool whose round-trip evidence depended on the disposable worktree. **Has no effect under `--quick`** (the quick tier already skips Phase 6); reject the combination with a one-line message.
 
-### `--auto-file` / `--no-auto-file` (both tiers)
+### `--output-mode=findings|fragments` (both tiers)
 
-The auto-file default is **maintainer-aware**: the skill probes the operator's GitHub identity and auto-files when the operator owns the upstream repo. Findings always go to `https://github.com/darylmcd/Roslyn-Backed-MCP` regardless of the audited repo, since findings are about the MCP server itself and the audited repo is just a fixture.
+Default: `findings` — Phase 19 emits stdout / GitHub Issues per the maintainer-aware routing below.
+
+- `--output-mode=fragments` — Phase 19 instead emits one `<audited-repo-root>/backlog.d/<finding-id>.md` per actionable finding, for `/backlog-intake` to consume. Intended for maintainer-managed repos that participate in a `backlog.d/` ingestion pipeline. Bypasses `--auto-file` / `--no-auto-file` entirely — those flags have no effect under fragments mode (the file-system handoff IS the destination). The prose `.md` report still writes to the audited repo's `audit-reports/` directory; `/backlog-intake` reads the fragment's `source_audit` field to back-reference the prose report. See `prompts/full.md` Phase 19 *Fragments path* for the full contract.
+- The `/mcp-server-stress` skill (maintainer-only repo-local alias) is a thin invocation of `/mcp-server-surface-test --output-mode=fragments` against the current Claude Code session's repo — it exists for muscle-memory continuity and to advertise the fragments-mode default for maintainer audits.
+
+### `--auto-file` / `--no-auto-file` (findings mode only)
+
+The auto-file default is **maintainer-aware**: the skill probes the operator's GitHub identity and auto-files when the operator owns the upstream repo. Findings always go to `https://github.com/darylmcd/Roslyn-Backed-MCP` regardless of the audited repo, since findings are about the MCP server itself and the audited repo is just a fixture. These flags have no effect under `--output-mode=fragments` — fragments mode skips the GitHub-Issues handoff entirely.
 
 **Maintainer detection (run once per invocation, before Phase 19):**
 
@@ -79,7 +86,7 @@ Dot-source `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-find
 
 ### Reject
 
-Reject any token that is neither a valid target path, `--target=<path>`, `--quick`, `--full`, `--no-worktree`, `--single-agent`, `--auto-file`, nor `--no-auto-file`. One-line message; ask the user to fix or drop the offending token.
+Reject any token that is neither a valid target path, `--target=<path>`, `--quick`, `--full`, `--output-mode=findings`, `--output-mode=fragments`, `--no-worktree`, `--single-agent`, `--auto-file`, nor `--no-auto-file`. One-line message; ask the user to fix or drop the offending token. **Conflict:** `--auto-file` or `--no-auto-file` combined with `--output-mode=fragments` → emit a one-line warning explaining that the auto-file flag is ignored under fragments mode, then proceed with fragments mode.
 
 ## Step 3 — Mutation safety: disposable worktree (full tier, default mode)
 

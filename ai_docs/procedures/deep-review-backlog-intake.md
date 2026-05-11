@@ -53,5 +53,5 @@ If you just want files copied into `review-inbox/` without triage:
 
 - [`deep-review-program.md`](deep-review-program.md) — program context (coverage matrix, client lanes, cadence).
 - [`deep-review-command-reference.md`](deep-review-command-reference.md) — concrete commands.
-- [`../../.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md`](../../.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md) — bundled audit prompt run by `/mcp-server-stress`; produces the artifacts this skill consumes.
+- [`../../skills/mcp-server-surface-test/prompts/full.md`](../../skills/mcp-server-surface-test/prompts/full.md) — canonical audit prompt run by both `/mcp-server-surface-test` (consumer) and `/mcp-server-stress` (maintainer alias for `--output-mode=fragments`); produces the artifacts this skill consumes.
 - [`../prompts/backlog-sweep-plan.md`](../prompts/backlog-sweep-plan.md) — planner prompt that consumes the backlog this skill produces.

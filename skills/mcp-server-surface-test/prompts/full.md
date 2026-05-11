@@ -644,15 +644,17 @@ Re-test 3–5 previously recorded issues from whichever prior source the audited
 1. Read the prior source; select 3–5 items reproducible with the current workspace.
 2. For each, reproduce the exact scenario. Record **still reproduces** / **partially fixed** (describe) / **no longer reproduces — candidate for closure**.
 
-### Phase 19: Finding emission (dual-path: maintainer-aware default, explicit overrides)
+### Phase 19: Finding emission (tri-path: fragments, auto-file, stdout-print)
 
-For each **actionable** finding in the audit report (anything that lands in section 13 *MCP server issues* or in section 14 *Improvement suggestions* with a concrete fix sketch), render one finding envelope and emit it to **one of two destinations**.
+For each **actionable** finding in the audit report (anything that lands in section 13 *MCP server issues* or in section 14 *Improvement suggestions* with a concrete fix sketch), render one finding envelope and emit it to **one of three destinations** depending on the `--output-mode` flag and the operator's identity.
 
 **Routing decision (compute once, before iterating findings):**
 
-1. If the skill received `--no-auto-file`, route = **stdout-print**.
-2. Else if the skill received `--auto-file`, route = **auto-file** (subject to `gh` available + authenticated; otherwise fall back to stdout-print with one warning line).
-3. Else probe the operator's identity by dot-sourcing the renderer and calling `Test-IsMaintainer` (which wraps `gh api user --jq .login` and compares against the upstream repo owner derived from the single `$script:UpstreamRepo` constant in `lib/render-finding.ps1`). `$true` → route = **auto-file**. `$false` (gh missing, unauthenticated, network failure, login mismatch) → route = **stdout-print**.
+0. **`--output-mode=fragments`** → route = **fragments**. Emit one `<audited-repo-root>/backlog.d/<finding-id>.md` per finding for `/backlog-intake` to consume. This mode is intended for maintainer-managed repos that participate in a `backlog.d/` ingestion pipeline (Roslyn-Backed-MCP and similar) and supersedes the auto-file / stdout-print branches — the operator has explicitly chosen the file-system handoff over the GitHub-Issues handoff. See *Fragments path* below for the contract.
+1. **`--output-mode=findings`** (default) — fall through to the findings routing below.
+2. If the skill received `--no-auto-file`, route = **stdout-print**.
+3. Else if the skill received `--auto-file`, route = **auto-file** (subject to `gh` available + authenticated; otherwise fall back to stdout-print with one warning line).
+4. Else probe the operator's identity by dot-sourcing the renderer and calling `Test-IsMaintainer` (which wraps `gh api user --jq .login` and compares against the upstream repo owner derived from the single `$script:UpstreamRepo` constant in `lib/render-finding.ps1`). `$true` → route = **auto-file**. `$false` (gh missing, unauthenticated, network failure, login mismatch) → route = **stdout-print**.
 
 Record the routing decision and the maintainer-probe outcome in the audit report's *Finding emission* section before emitting.
 
@@ -680,9 +682,30 @@ pwsh -NoProfile -Command ". '${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-tes
   Render-FindingIssue -Finding $f"
 ```
 
-Returns `{title, labels, body, refusedPublic}`. Use `body` for stdout-print and `gh issue create --body-file`; respect `refusedPublic` for the P0/security refusal contract below.
+Returns `{title, labels, body, refusedPublic}`. Use `body` for stdout-print and `gh issue create --body-file`; respect `refusedPublic` for the P0/security refusal contract below. For fragments mode, use the sibling `Render-FindingFragment` function (same renderer file, different output template).
 
-**Stdout-print path** (non-maintainer default, or `--no-auto-file` explicit): print each finding envelope to stdout as a ready-to-paste GitHub Issue body. Format (rendered by `Render-FindingIssue`):
+**Fragments path** (`--output-mode=fragments`): emit one `<audited-repo-root>/backlog.d/<finding-id>.md` fragment file per finding for `/backlog-intake` to consume. Auto-file / stdout-print routing is bypassed entirely under this mode.
+
+Schema is canonical at `<Roslyn-Backed-MCP-root>/ai_docs/items/backlog-d-fragment-schema.md`. Required frontmatter keys: `id`, `source_audit`, `source_repo`, `severity`, `area`, `server_version`, `anchors`. Body is a single ≤6-sentence paragraph (finding + repro + proposed-fix). Use `Render-FindingFragment -Finding $f` from the shared renderer so fragment bytes match the auto-file path's GitHub-Issue body bytes (single source of truth, byte-identical contract).
+
+Steps:
+
+1. Ensure `<audited-repo-root>/backlog.d/` exists (`mkdir -p`).
+2. For each actionable finding, derive a kebab-case `<finding-id>` that prefixes the audited repo's id (e.g. `tradewise-symbol-search-empty-query-overflow`). Filename and frontmatter `id` must match exactly.
+3. `source_audit` = basename of this run's prose audit report (e.g. `20260507T203015Z_tradewise_mcp-server-surface-test.md`).
+4. `source_repo` = audited repo's kebab-case id (use `Get-FindingRepoId -RepoRoot <audited-repo-root>` from the shared renderer for deterministic derivation — parses `git remote get-url origin`, falls back to the directory basename).
+5. `severity` = `P0` / `P1` / `P2` / `P3` matching section 13 (or `P2` / `P3` for section-14 suggestions per their workflow blocking impact).
+6. `area` = one of `tools` / `resources` / `prompts` / `skills` / `concurrency` / `perf` / `docs` / `security`. Pick `security` for any finding warranting pre-disclosure — `area: security` triggers `/backlog-intake --publish`'s public-filing refusal regardless of severity.
+7. `server_version` = `server_info.version` captured at Phase -1; stamp the same value on every fragment in this run.
+8. `anchors` = one or more `path/to/file.ext:LINE` strings (relative to the audited repo's root).
+
+**Idempotency:** if a fragment with the same filename already exists in `backlog.d/`, **do not overwrite it** — leave the existing fragment in place and skip emission for that finding. Re-running the audit on the same repo without an intake-in-between is allowed; the second run is a no-op for unchanged fragments.
+
+**N/A path:** `**N/A — no actionable findings**` is a valid Phase 19 outcome under fragments mode when sections 13 + 14 are both empty.
+
+**Cross-repo handoff:** the prose `*_mcp-server-surface-test.md` report stays in the audited repo (per *Where to save the report* below); intake reads the fragment's `source_audit` field to back-reference the prose report when it needs additional context. No prose-report relocation happens under fragments mode.
+
+**Stdout-print path** (non-maintainer default under `--output-mode=findings`, or `--no-auto-file` explicit): print each finding envelope to stdout as a ready-to-paste GitHub Issue body. Format (rendered by `Render-FindingIssue`):
 
 ```
 ## TITLE: <id>
@@ -772,7 +795,7 @@ This prompt writes **raw per-run evidence only**. The audit report belongs in th
 **Canonical path:** `<audited-repo-root>/audit-reports/<timestamp>_<repo-id>_mcp-server-surface-test.md`
 
 - `<timestamp>` = current UTC `yyyyMMddTHHmmssZ`.
-- The prose `.md` report stays in the audited repo's own `audit-reports/` directory. Cross-repo handoff to upstream happens via two channels: (a) Phase 19 finding emission (stdout-print or `gh issue create`) for actionable items, and (b) the maintainer's `eng/stage-review-inbox.ps1` + `eng/aggregate-promotion-scorecards.ps1` pipeline, which discovers reports under either `audit-reports/` or `ai_docs/audit-reports/` across sibling repos and consolidates findings into `review-inbox/` + a quorum-aware scorecard verdict. Consumers do not need to relocate the prose report manually.
+- The prose `.md` report stays in the audited repo's own `audit-reports/` directory. Cross-repo handoff to upstream happens via two channels: (a) Phase 19 finding emission (stdout-print, `gh issue create`, or `backlog.d/` fragments depending on `--output-mode`), and (b) the operator's host-side staging pipeline (e.g. `eng/stage-review-inbox.ps1` in maintainer setups), which consolidates findings into `review-inbox/` + a quorum-aware scorecard verdict. Consumers do not need to relocate the prose report manually.
 
 ### Promotion scorecard JSON (sibling artifact — MANDATORY)
 
