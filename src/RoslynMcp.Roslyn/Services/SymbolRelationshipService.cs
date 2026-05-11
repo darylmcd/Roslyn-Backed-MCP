@@ -219,6 +219,21 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         _logger.LogDebug("SymbolRelationshipService.GetCallersCalleesAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
+
+        // `callers-callees-rejects-fully-qualified-names` (gh #616): if the caller supplied a fully
+        // qualified method signature like `Ns.Type.Method(Ns.ParamType, System.Threading.CancellationToken)`,
+        // `SymbolResolver.ResolveByMetadataNameAsync` returns null because it splits on the LAST dot —
+        // which lands inside the parenthesized parameter list (`System.Threading.CancellationToken`),
+        // producing a bogus containing-type name. Strip the parameter list, retry the resolve, and if
+        // multiple overloads exist, prefer the one whose parameter types match the supplied signature.
+        // Sibling tools (`find_references`, `find_type_mutations`) reach the disambiguation path on the
+        // last-dot-split path for typical inputs; this branch only fires when the supplied input has
+        // unbalanced/inside-parens dots that defeat that path entirely.
+        if (symbol is null && locator.HasMetadataName)
+        {
+            symbol = await TryResolveByQualifiedSignatureAsync(solution, locator.MetadataName!, ct).ConfigureAwait(false);
+        }
+
         if (symbol is null) return null;
 
         // If the resolved symbol is a type (e.g. Task<T> from an async method's return type),
@@ -315,6 +330,141 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             solution, locator.FilePath!, locator.Line!.Value, locator.Column!.Value, ct).ConfigureAwait(false);
         return enclosing ?? resolved;
     }
+
+    /// <summary>
+    /// gh #616 / `callers-callees-rejects-fully-qualified-names`: resolves a fully qualified method
+    /// signature of the shape <c>Namespace.Type.Method(Param1Type, Param2Type, ...)</c>. Strips the
+    /// parameter-list suffix, resolves the containing type and member-name overload set via the
+    /// standard metadata-name path, then narrows to the overload whose parameter types match the
+    /// supplied signature (by display string, ignoring whitespace and an optional containing-namespace
+    /// prefix on each parameter). Returns null if the input does not contain a parenthesized parameter
+    /// list, the containing type does not exist, or no overload matches.
+    /// </summary>
+    /// <remarks>
+    /// The matcher is best-effort: it tolerates the user pasting `System.Threading.CancellationToken`
+    /// when the parameter is declared as `CancellationToken` (and vice versa) by comparing both the
+    /// fully-qualified and short-name forms of each parameter's declared type. When the supplied
+    /// signature is ambiguous (e.g. only a partial parameter list) and multiple overloads match, the
+    /// first match in declaration order is returned — the caller is expected to use a more specific
+    /// locator (symbolHandle or source position) if that picks the wrong overload.
+    /// </remarks>
+    internal static async Task<ISymbol?> TryResolveByQualifiedSignatureAsync(
+        Solution solution, string metadataName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(metadataName)) return null;
+
+        var openParen = metadataName.IndexOf('(');
+        if (openParen <= 0) return null;
+        var closeParen = metadataName.LastIndexOf(')');
+        if (closeParen <= openParen) return null;
+
+        var qualifiedMember = metadataName[..openParen].Trim();
+        var paramList = metadataName.Substring(openParen + 1, closeParen - openParen - 1);
+
+        var lastDot = qualifiedMember.LastIndexOf('.');
+        if (lastDot <= 0 || lastDot == qualifiedMember.Length - 1) return null;
+
+        var containingTypeName = qualifiedMember[..lastDot];
+        var memberName = qualifiedMember[(lastDot + 1)..];
+
+        var expectedParams = SplitTopLevel(paramList);
+
+        IMethodSymbol? firstOverload = null;
+        foreach (var project in solution.Projects)
+        {
+            ct.ThrowIfCancellationRequested();
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            var containingType = compilation.GetTypeByMetadataName(containingTypeName);
+            if (containingType is null) continue;
+
+            foreach (var member in containingType.GetMembers(memberName).OfType<IMethodSymbol>())
+            {
+                firstOverload ??= member;
+                if (MatchesParameterSignature(member, expectedParams))
+                {
+                    return member;
+                }
+            }
+        }
+
+        // No signature match found. If the caller provided an empty parameter list `()`, fall through
+        // to the first zero-arity overload; otherwise return null so the tool surfaces a NotFound rather
+        // than silently returning the wrong overload.
+        if (expectedParams.Count == 0 && firstOverload is not null && firstOverload.Parameters.Length == 0)
+        {
+            return firstOverload;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Splits a top-level comma-separated parameter list while respecting nested angle/parens —
+    /// e.g. `List&lt;int, string&gt;, Func&lt;T, U&gt;` returns two entries, not five. Whitespace-trimmed
+    /// entries; empty input returns an empty list.
+    /// </summary>
+    private static List<string> SplitTopLevel(string paramList)
+    {
+        var result = new List<string>();
+        if (string.IsNullOrWhiteSpace(paramList)) return result;
+
+        var depth = 0;
+        var start = 0;
+        for (var i = 0; i < paramList.Length; i++)
+        {
+            var ch = paramList[i];
+            if (ch == '<' || ch == '(' || ch == '[') depth++;
+            else if (ch == '>' || ch == ')' || ch == ']') depth--;
+            else if (ch == ',' && depth == 0)
+            {
+                result.Add(paramList.Substring(start, i - start).Trim());
+                start = i + 1;
+            }
+        }
+        var last = paramList[start..].Trim();
+        if (last.Length > 0) result.Add(last);
+        return result;
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="method"/>'s parameter type display strings match
+    /// <paramref name="expected"/> entry-for-entry. Each expected entry is compared against both the
+    /// fully-qualified and the minimally-qualified form of the actual parameter type, so callers can
+    /// paste either `System.Threading.CancellationToken` or `CancellationToken`.
+    /// </summary>
+    private static bool MatchesParameterSignature(IMethodSymbol method, List<string> expected)
+    {
+        if (method.Parameters.Length != expected.Count) return false;
+
+        for (var i = 0; i < expected.Count; i++)
+        {
+            var paramType = method.Parameters[i].Type;
+            // FullyQualifiedFormat emits `global::` qualifiers on every named type (including inside
+            // generic argument lists). Pasted user signatures never include `global::`, so strip every
+            // occurrence — not just a leading one — before comparing.
+            var fullyQualified = paramType
+                .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+                .Replace("global::", string.Empty, StringComparison.Ordinal);
+            var minimallyQualified = paramType.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat);
+            var shortName = paramType.Name;
+
+            // Normalize whitespace inside generic argument lists — the user may paste
+            // `List<int,string>` or `List< int, string >`; the compiler form has no spaces.
+            var expectedEntry = NormalizeTypeForCompare(expected[i]);
+            if (string.Equals(expectedEntry, NormalizeTypeForCompare(fullyQualified), StringComparison.Ordinal)) continue;
+            if (string.Equals(expectedEntry, NormalizeTypeForCompare(minimallyQualified), StringComparison.Ordinal)) continue;
+            if (string.Equals(expectedEntry, NormalizeTypeForCompare(shortName), StringComparison.Ordinal)) continue;
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string NormalizeTypeForCompare(string value) =>
+        value.Replace(" ", string.Empty, StringComparison.Ordinal);
 
     private static async Task<IMethodSymbol?> TryResolveEnclosingMethodAsync(
         Solution solution, SymbolLocator locator, CancellationToken ct)

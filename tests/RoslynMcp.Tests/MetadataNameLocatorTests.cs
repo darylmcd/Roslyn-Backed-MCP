@@ -127,6 +127,38 @@ public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task CallersCallees_Accepts_Fully_Qualified_Method_Signature_With_Parameter_Types()
+    {
+        // gh #616 / `callers-callees-rejects-fully-qualified-names`: the canonical agent flow holds
+        // a fully-qualified method signature from a sibling tool (e.g. an XML doc reference, an audit
+        // report) and pastes it into `metadataName`. Before the fix the dot inside the parameter list
+        // defeated the last-dot split in `ResolveByMetadataNameAsync`, producing NotFound. The
+        // signature-aware resolver path now strips the parameter list and picks the matching overload.
+        var json = await AnalysisTools.GetCallersCallees(
+            WorkspaceExecutionGate,
+            SymbolRelationshipService,
+            WorkspaceId,
+            metadataName: "SampleLib.AnimalService.CountAnimals(System.Collections.Generic.List<SampleLib.IAnimal>)",
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsFalse(
+            doc.RootElement.TryGetProperty("error", out _),
+            $"callers_callees should accept a fully-qualified signature. Got: {json}");
+
+        // Resolved symbol should be the `(List<IAnimal>)` overload, not the `(IEnumerable<IAnimal>)`
+        // one — proves signature matching picked the right overload rather than just the first match.
+        Assert.IsTrue(doc.RootElement.TryGetProperty("symbol", out var symbol),
+            "Expected `symbol` field in callers_callees response.");
+        Assert.AreEqual("CountAnimals", symbol.GetProperty("name").GetString());
+        var parameters = symbol.GetProperty("parameters");
+        Assert.AreEqual(1, parameters.GetArrayLength(), "Expected exactly one parameter on the resolved overload.");
+        var firstParam = parameters[0].GetString() ?? string.Empty;
+        Assert.IsTrue(firstParam.Contains("List", StringComparison.Ordinal),
+            $"Expected resolved overload's parameter to be a List<IAnimal>. Got: '{firstParam}'.");
+    }
+
+    [TestMethod]
     public async Task FindReferences_Error_When_No_Locator_Provided()
     {
         // Preserve the legacy "no locator at all" error path. The factory's message now
