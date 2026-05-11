@@ -237,7 +237,7 @@
     {
       "id": "prompts-full-md-phase0-worktree-path-sandbox",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "prompts-full-md-phase0-worktree-path-sandbox"
       ],
@@ -251,9 +251,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Doc-only \u2014 prompt-side fix for sanctioned-root issue."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/647",
+      "mergedAt": "2026-05-11T21:59:46Z",
+      "notes": "Doc-only \u2014 prompt-side fix for sanctioned-root issue. Shipped as PR #647 (squash ddbc1ad2a7). Single-initiative smoke test of /backlog-sweep:execute under the new global flow (post-A1+A2+B1+B2+B3+D1+D4+P1.4 remediation)."
     },
     {
       "id": "file-lock-aware-prompt-validation-guidance",
