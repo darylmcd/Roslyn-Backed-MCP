@@ -49,6 +49,20 @@ A single optional flag exists: `--no-worktree`, a degraded mode for environments
 2. Helpers return structured summaries (tool, scope, pass/fail counts, failing test names, duration, coverage headline, anomalies) — never raw logs.
 3. Do not delegate preview/apply chains or workspace-version-sensitive mutations unless the helper shares the same disposable checkout and workspace state.
 
+### Subagent dispatch completion gate (load-bearing)
+
+The SKILL.md wrapper offloads four phases to the `audit-phase-runner` subagent when the host supports subagents: **Phase 1 (broad diagnostics scan), Phase 2 (code quality metrics), Phase 8 (build and test validation), Phase 8b (concurrency audit)**. All other phases — and in particular Phase 6 and every preview/apply chain — run inline in the orchestrator's context. The runner does not share the orchestrator's preview evidence or disposable-worktree mutation ledger, so workspace-version-sensitive mutations cannot be delegated.
+
+**Completion gate (load-bearing — replaces any soft `skipped-budget` fallback):**
+
+Any subagent that returns `skipped-budget`, `skipped-context`, `truncated`, or any equivalent self-imposed-limit marker for a delegated phase is a **hard FAIL** of the canonical-run contract. The orchestrator must either (a) re-dispatch that phase to a fresh subagent with a smaller scope (narrower file/project selector, severity filter, or paginated subrange), or (b) record `phase-failed-budget` in the coverage ledger and surface it in the report's *Coverage summary* as a **P1 audit defect**. Silent truncation labeled as a "representative probe" is not an acceptable outcome — the canonical run means full coverage or it means honest failure with a named cause.
+
+When the host environment cannot spawn subagents at all, the SKILL.md wrapper falls back to running these phases inline and records `phase-runner: inline fallback` in the report header. The completion gate above still applies — inline phases that cannot complete within the orchestrator's own context must surface as P1 defects, not get buried in the ledger.
+
+**Re-dispatch contract.** When re-dispatching to a fresh subagent with smaller scope, pass: the original phase number, the workspaceId, the report draft path (read-only), the disposable worktree path if relevant, the specific narrower scope (e.g., `project=<name>`, `severity=Error`, `offset=N limit=M`), and the explicit reason for the re-dispatch. The runner must return the same `## Audit Phase Runner Summary` table format defined in `.claude/agents/audit-phase-runner.md`. If two consecutive re-dispatches at progressively smaller scopes both return `skipped-budget`, stop re-dispatching and record `phase-failed-budget` with both attempts cited.
+
+**MCP audit checkpoint:** Has the orchestrator decided which phases it will dispatch (default: 1, 2, 8, 8b) or recorded `phase-runner: inline fallback` in the report header? Are subagent briefs ready to send with the workspaceId, report draft path, disposable worktree path (G4-equivalent only), and explicit phase scope?
+
 ### Cross-cutting audit principles (apply to every call)
 
 Fixed output slots in the report; capture in real time.

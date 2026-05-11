@@ -40,6 +40,20 @@ All other phases stay inline with the orchestrator. Phase 6 refactoring and any 
 - Do not call any `*_apply`, `apply_*`, file-write, git-mutation, PR, or merge command.
 - Return one final structured summary and stop.
 
+## Budget and truncation contract (load-bearing)
+
+The orchestrator enforces a **no-silent-truncation gate**: any phase that you cannot complete within your context must be reported honestly, not papered over as a "representative probe."
+
+- **Never silently truncate.** If the phase scope is too large for your context (response payloads paging out, cumulative tool-result size approaching ~250 KB, evidence ledger growing unbounded), stop calling tools and return immediately.
+- **Use `Status = partial`** for any incomplete run, and include exactly one of the following markers as the first line of the `Notes` section so the orchestrator's completion gate can parse it:
+  - `skipped-budget` — you stopped because cumulative tool-result size or expected next-call output would breach the per-turn budget.
+  - `skipped-context` — you stopped because remaining context window is insufficient to capture the next batch faithfully.
+  - `truncated` — you completed some calls but elided portions of the result set (e.g., diagnostics pagination cut off mid-stream).
+- **Cite what you did capture.** When you return `partial` with one of these markers, the `Result counts`, `Tool calls`, and `Findings` fields must reflect *only what you actually exercised*. Do not extrapolate "would have found N more" estimates into the counts.
+- **Suggest a narrower re-dispatch scope** in the Notes when possible (e.g., "re-dispatch with `project=X`", "re-dispatch with `severity=Error` only", "re-dispatch with `offset=N limit=M`"). The orchestrator uses this to issue the next subagent brief.
+
+The orchestrator treats any of these markers as a hard FAIL of the canonical run and will either re-dispatch with the narrower scope you suggested or record `phase-failed-budget` as a P1 audit defect. Silent truncation — `Status = passed` with quietly elided work — is itself a P1 audit defect, since it corrupts the coverage ledger.
+
 ## Structured Summary Contract
 
 Return exactly this shape:
@@ -50,7 +64,7 @@ Return exactly this shape:
 | Field | Value |
 |---|---|
 | Phase | Phase <n> - <name> |
-| Status | passed / failed / blocked / partial |
+| Status | passed / failed / blocked / partial (use `partial` for budget/context truncation; first Notes bullet must be `skipped-budget`, `skipped-context`, or `truncated`) |
 | Duration | <elapsed wall time or unknown> |
 | Tool calls | <count and compact names> |
 | Result counts | <diagnostics/tests/metrics/concurrency counts as applicable> |
@@ -63,4 +77,4 @@ Return exactly this shape:
 <0-5 bullets, each under 25 words. No raw logs.>
 ```
 
-The orchestrator pastes this summary into the audit report and uses the `Status` field to decide whether to continue, retry inline, or halt.
+The orchestrator pastes this summary into the audit report and uses the `Status` field to decide next action: `passed` → continue to the next phase; `failed` / `blocked` → record the failure and continue with downstream phases that don't depend on this one; `partial` with a budget marker → re-dispatch with the narrower scope suggested in Notes, or after two failed re-dispatches record `phase-failed-budget` as a P1 audit defect in the coverage summary.
