@@ -2,7 +2,7 @@
 
 <!-- purpose: Index for raw deep-review audit outputs and templates; points to baseline, static snapshots, and rollup handoff. -->
 
-Use the bundled prompt [`.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md`](../../.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md) with an MCP client connected to **roslyn-mcp** to exercise the full tool surface against a real solution. The maintainer-only `/mcp-server-stress` skill in this repo orchestrates the run end-to-end.
+Use the canonical audit prompt at [`skills/mcp-server-surface-test/prompts/full.md`](../../skills/mcp-server-surface-test/prompts/full.md) with an MCP client connected to **roslyn-mcp** to exercise the full tool surface against a real solution. Invoke via `/mcp-server-stress` (the maintainer-only repo-local alias for `/mcp-server-surface-test --output-mode=fragments`) when emitting findings as `backlog.d/` fragments for `/backlog-intake`; invoke `/mcp-server-surface-test` directly for the consumer dual-path (stdout / GitHub Issues) emission.
 
 ## What belongs here
 
