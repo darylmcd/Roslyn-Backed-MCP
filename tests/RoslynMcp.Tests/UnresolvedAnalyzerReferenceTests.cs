@@ -80,7 +80,7 @@ public sealed class UnresolvedAnalyzerReferenceTests : IsolatedWorkspaceTestBase
         var workspaceId = await workspace.LoadAsync();
 
         var animalSearch = await SymbolSearchService.SearchSymbolsAsync(
-            workspaceId, "IAnimal", projectFilter: null, kindFilter: "Interface", namespaceFilter: null, limit: 5, CancellationToken.None);
+            workspaceId, "IAnimal", projectFilter: null, kindFilter: "Interface", namespaceFilter: null, maxResults: 5, CancellationToken.None);
         var iAnimal = animalSearch.FirstOrDefault();
         Assert.IsNotNull(iAnimal, "Sample fixture must contain IAnimal symbol.");
 

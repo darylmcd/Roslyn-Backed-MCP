@@ -35,9 +35,9 @@ public sealed class SymbolSearchService : ISymbolSearchService
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.None);
 
     public async Task<IReadOnlyList<SymbolDto>> SearchSymbolsAsync(
-        string workspaceId, string query, string? projectFilter, string? kindFilter, string? namespaceFilter, int limit, CancellationToken ct)
+        string workspaceId, string query, string? projectFilter, string? kindFilter, string? namespaceFilter, int maxResults, CancellationToken ct)
     {
-        _logger.LogDebug("SymbolSearchService.SearchSymbolsAsync: workspaceId={WorkspaceId} query={Query} projectFilter={ProjectFilter} kindFilter={KindFilter} namespaceFilter={NamespaceFilter} limit={Limit}", workspaceId, query, projectFilter, kindFilter, namespaceFilter, limit);
+        _logger.LogDebug("SymbolSearchService.SearchSymbolsAsync: workspaceId={WorkspaceId} query={Query} projectFilter={ProjectFilter} kindFilter={KindFilter} namespaceFilter={NamespaceFilter} maxResults={MaxResults}", workspaceId, query, projectFilter, kindFilter, namespaceFilter, maxResults);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var results = new List<SymbolDto>();
         var seenKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -47,15 +47,15 @@ public sealed class SymbolSearchService : ISymbolSearchService
             return [];
 
         await RunPrimaryPatternSearchAsync(
-            solution, query, limit, kindFilter, namespaceFilter, allowedProjectPaths, results, seenKeys, ct).ConfigureAwait(false);
+            solution, query, maxResults, kindFilter, namespaceFilter, allowedProjectPaths, results, seenKeys, ct).ConfigureAwait(false);
 
         // symbol-search-partial-match-gap: FQN-substring pass. Only runs when we still have
-        // budget under `limit` — most queries are single-word simple-name lookups and the
+        // budget under `maxResults` — most queries are single-word simple-name lookups and the
         // primary pattern search already nails those.
-        if (results.Count < limit && !ct.IsCancellationRequested)
+        if (results.Count < maxResults && !ct.IsCancellationRequested)
         {
             await RunFqnSubstringFallbackAsync(
-                solution, query, limit, kindFilter, namespaceFilter, allowedProjectPaths, results, seenKeys, ct).ConfigureAwait(false);
+                solution, query, maxResults, kindFilter, namespaceFilter, allowedProjectPaths, results, seenKeys, ct).ConfigureAwait(false);
         }
 
         return results;

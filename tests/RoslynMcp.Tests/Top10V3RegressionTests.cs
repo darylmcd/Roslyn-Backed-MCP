@@ -33,8 +33,8 @@ public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
             () => SymbolTools.SearchSymbols(
                 server: null!, WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
                 query: "AnimalService",
-                projectName: null, kind: null, @namespace: null, limit: 10,
-                CancellationToken.None));
+                projectName: null, kind: null, @namespace: null, limit: 10, offset: 0,
+                ct: CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("count", out var count),
@@ -60,8 +60,8 @@ public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
             () => SymbolTools.SearchSymbols(
                 server: null!, WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
                 query: query,
-                projectName: null, kind: null, @namespace: null, limit: 50,
-                CancellationToken.None));
+                projectName: null, kind: null, @namespace: null, limit: 50, offset: 0,
+                ct: CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.TryGetProperty("count", out var count),
@@ -88,8 +88,8 @@ public sealed class Top10V3RegressionTests : IsolatedWorkspaceTestBase
             () => SymbolTools.SearchSymbols(
                 server: null!, WorkspaceExecutionGate, SymbolSearchService, _workspaceId,
                 query: "AnimalService",
-                projectName: null, kind: null, @namespace: null, limit: 10,
-                CancellationToken.None));
+                projectName: null, kind: null, @namespace: null, limit: 10, offset: 0,
+                ct: CancellationToken.None));
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsFalse(doc.RootElement.TryGetProperty("note", out _),
