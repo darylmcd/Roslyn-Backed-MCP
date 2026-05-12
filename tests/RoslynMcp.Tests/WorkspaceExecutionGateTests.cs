@@ -686,6 +686,89 @@ public class WorkspaceExecutionGateTests
         Assert.AreEqual(1, attempts, "Cancellation between attempts must skip the retry — the second attempt would just hit the same cancelled token.");
     }
 
+    // ---------- parallel-fanout-auto-reload-timeout-floor ----------
+
+    /// <summary>
+    /// parallel-fanout-auto-reload-timeout-floor: the per-request timeout budget is reset after
+    /// a successful auto-reload so the tool action receives the full budget. Without the fix,
+    /// the reload's wall-clock time erodes the budget — parallel readers hit the timeout floor
+    /// even though the actual tool work completes well within _requestTimeout.
+    /// </summary>
+    [TestMethod]
+    public async Task AutoReload_ResetsTimeoutBudget_ToolActionGetsFullBudget()
+    {
+        // Budget is tight enough that the reload itself would exhaust it, but generous enough
+        // for the action to run if the budget is correctly reset post-reload.
+        var reloadDelay = TimeSpan.FromMilliseconds(200);
+        var toolTimeout = TimeSpan.FromMilliseconds(250);
+
+        var manager = new FakeGateWorkspaceManager(reloadDelayMs: (int)reloadDelay.TotalMilliseconds);
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions
+            {
+                RequestTimeout = toolTimeout,
+                OnStale = StalenessPolicy.AutoReload,
+            },
+            manager);
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+
+        // The action itself is fast — only the reload is slow. Without the budget reset,
+        // the timeout would fire inside the tool action because ~200ms of the 250ms budget
+        // was consumed by the reload. With the fix the budget resets and the action succeeds.
+        var result = await gate.RunReadAsync(WorkspaceA, async ct =>
+        {
+            await Task.Delay(50, ct); // fast tool work well within the fresh budget
+            return 99;
+        }, CancellationToken.None);
+
+        Assert.AreEqual(99, result, "Tool action must succeed — timeout budget must be reset after auto-reload.");
+        Assert.AreEqual(1, manager.ReloadCount, "Auto-reload should fire exactly once.");
+        var metrics = AmbientGateMetrics.Current;
+        Assert.IsNotNull(metrics);
+        Assert.AreEqual("auto-reloaded", metrics!.StaleAction);
+    }
+
+    /// <summary>
+    /// parallel-fanout-auto-reload-timeout-floor: three concurrent reads against the same
+    /// stale workspace all succeed — none time out at the 5s floor while the reload is in
+    /// flight. This is the parallel fan-out scenario from the backlog row.
+    /// </summary>
+    [TestMethod]
+    public async Task AutoReload_ParallelFanout_AllReadersSucceedAfterReload()
+    {
+        var reloadDelay = TimeSpan.FromMilliseconds(200);
+        var toolTimeout = TimeSpan.FromMilliseconds(500);
+
+        var manager = new FakeGateWorkspaceManager(reloadDelayMs: (int)reloadDelay.TotalMilliseconds);
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions
+            {
+                RequestTimeout = toolTimeout,
+                OnStale = StalenessPolicy.AutoReload,
+            },
+            manager);
+
+        // Launch three concurrent reads. All three hit ApplyStalenessPolicyAsync; the first
+        // triggers the reload (and resets its budget), the others observe a fresh workspace
+        // (IsStale returns false after the first reload) so they never consume budget on a
+        // reload. All three should complete without timeout.
+        var tasks = Enumerable.Range(0, 3).Select(i =>
+            gate.RunReadAsync(WorkspaceA, async ct =>
+            {
+                await Task.Delay(30, ct);
+                return i;
+            }, CancellationToken.None)).ToArray();
+
+        var results = await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(5));
+        CollectionAssert.AreEquivalent(new[] { 0, 1, 2 }, results,
+            "All three parallel readers must return their expected values without timing out.");
+    }
+
     private sealed class ConcurrencyTracker
     {
         private int _current;
@@ -706,6 +789,7 @@ public class WorkspaceExecutionGateTests
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _removed = new();
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _stale = new();
         private readonly bool _containsAny;
+        private readonly int _reloadDelayMs;
 
         public int ReloadCount;
 
@@ -724,9 +808,16 @@ public class WorkspaceExecutionGateTests
         /// </summary>
         public bool ReloadThrowsFileNotFound { get; set; }
 
-        public FakeGateWorkspaceManager(bool containsAny = true)
+        /// <param name="containsAny">When false, <see cref="ContainsWorkspace"/> always returns false.</param>
+        /// <param name="reloadDelayMs">
+        /// Artificial delay injected into <see cref="ReloadAsync"/> to simulate a slow workspace
+        /// reload. Used by <c>parallel-fanout-auto-reload-timeout-floor</c> tests to verify that
+        /// the held-time budget is reset after the reload so tool actions are not unfairly starved.
+        /// </param>
+        public FakeGateWorkspaceManager(bool containsAny = true, int reloadDelayMs = 0)
         {
             _containsAny = containsAny;
+            _reloadDelayMs = reloadDelayMs;
         }
 
         public void RemoveWorkspace(string workspaceId) => _removed.TryAdd(workspaceId, 0);
@@ -740,7 +831,7 @@ public class WorkspaceExecutionGateTests
 
         public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
 
-        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
+        public async Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct)
         {
             Interlocked.Increment(ref ReloadCount);
             if (ReloadThrowsKeyNotFound)
@@ -755,8 +846,13 @@ public class WorkspaceExecutionGateTests
                     workspaceId);
             }
 
+            if (_reloadDelayMs > 0)
+            {
+                await Task.Delay(_reloadDelayMs, ct).ConfigureAwait(false);
+            }
+
             ClearStaleFlag(workspaceId);
-            return Task.FromResult(new WorkspaceStatusDto(
+            return new WorkspaceStatusDto(
                 WorkspaceId: workspaceId,
                 LoadedPath: null,
                 WorkspaceVersion: 1,
@@ -767,7 +863,7 @@ public class WorkspaceExecutionGateTests
                 Projects: [],
                 IsLoaded: true,
                 IsStale: false,
-                WorkspaceDiagnostics: []));
+                WorkspaceDiagnostics: []);
         }
 
         public bool ContainsWorkspace(string workspaceId)

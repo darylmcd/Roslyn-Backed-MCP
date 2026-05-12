@@ -170,6 +170,24 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         if (applyStalenessPolicy)
         {
             await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
+
+            // parallel-fanout-auto-reload-timeout-floor: when an auto-reload just completed,
+            // the timeout CTS has consumed some (possibly all) of the _requestTimeout budget
+            // for infrastructure work the caller cannot control. Reset the deadline to give the
+            // actual tool action a fresh _requestTimeout budget. This prevents parallel fan-out
+            // reads from hitting the 5-second floor when the reload finishes in <2s but the
+            // remaining budget is already exhausted.
+            //
+            // The extension fires only when StaleAction == "auto-reloaded" (i.e. the reload
+            // succeeded). A reload that threw KeyNotFoundException leaves StaleAction unset
+            // and the original deadline stands. The token must not already be cancelled
+            // (e.g. the caller cancelled, or the reload itself used all budget) — in that case
+            // we let the existing OperationCanceledException propagate unchanged.
+            if (AmbientGateMetrics.Current?.StaleAction == "auto-reloaded" &&
+                !linked.IsCancellationRequested)
+            {
+                timeoutCts.CancelAfter(_requestTimeout);
+            }
         }
 
         return await WithGlobalThrottle(async () =>
