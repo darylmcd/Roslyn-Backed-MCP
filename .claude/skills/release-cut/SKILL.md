@@ -100,6 +100,8 @@ Also run `pwsh -NoProfile -File eng/verify-ai-docs.ps1` (fast; covers shipped-sk
 - Squash-merges with `--delete-branch`.
 - Cleans up the local branch + any worktree created by ship itself.
 
+**Worktree teardown discipline (Windows).** If this release cut runs from a worktree, and the release workspace was loaded into the Roslyn MCP server during the cut, call `workspace_close(workspaceId: <id>, drainProcesses: true)` BEFORE any `git worktree remove` call. The `drainProcesses: true` flag runs `dotnet build-server shutdown` after session disposal, releasing `VBCSCompiler.exe` / `MSBuild.exe` file-system locks that would otherwise cause `Permission denied` on `git worktree remove`. Omit this step only if you are certain no MCP workspace was loaded from the worktree path.
+
 If `/ship` is unavailable or its contract has drifted, fall back to the manual sequence (run from the primary repo root, not a worktree):
 
 ```

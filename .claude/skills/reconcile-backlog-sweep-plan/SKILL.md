@@ -196,6 +196,8 @@ Reconciliation complete.
 
 If all initiatives are now terminal (`merged` / `obsolete` / `deferred`), additionally note: `"Plan fully shipped — run backlog-sweep-execute.md Step 1b completion branch (marks completed: true + adds Refs entry) or prompt the user."` — do NOT do that completion step yourself; that is the executor's job.
 
+**Worktree teardown discipline (Windows).** After this skill completes, the orchestrator typically removes worktrees for merged initiatives via `git worktree remove --force .worktrees/<id>`. On Windows, `VBCSCompiler.exe` and `MSBuild.exe` build-server processes hold file-system locks on the worktree's bin/obj directories — `git worktree remove` will fail with `Permission denied` until those locks are released. The fix: call `workspace_close(workspaceId: <id>, drainProcesses: true)` for each loaded workspace BEFORE calling `git worktree remove`. The `drainProcesses: true` flag runs `dotnet build-server shutdown` after session disposal, which releases all out-of-process build-server locks. This step is a no-op when no build-server is running, so it is always safe to prepend.
+
 ## Refusal cases (explicit)
 
 - **Plan directory missing / wrong shape** → refuse per Preconditions 1-2.

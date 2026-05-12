@@ -95,26 +95,40 @@ public static class WorkspaceTools
             }, outerCt), ct);
     }
 
-    [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources")]
+    [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources. Set drainProcesses=true to run `dotnet build-server shutdown` after session removal — this releases MSBuild build-server file-system locks on Windows, which is required before `git worktree remove` in sweep teardown sequences.")]
     [McpToolMetadata("workspace", "stable", false, true,
         "Close a loaded workspace session and release resources.")]
     public static Task<string> CloseWorkspace(
         McpServer server,
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
+        IDotnetCommandRunner commandRunner,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("When true, run `dotnet build-server shutdown` after session removal to release MSBuild out-of-process build-server locks. Default false. Set true before `git worktree remove` in sweep teardown.")] bool drainProcesses = false,
         CancellationToken ct = default)
     {
         // Close acquires both the global load gate AND the per-workspace write lock so that
         // no reader is in flight when the workspace's lock entry is dropped from the registry.
         // RemoveGate must run after RunWriteAsync completes so the per-workspace lock entry is
         // released before being removed from the registry.
+        //
+        // CAPTURE-BEFORE-CLOSE: workspace.Close(workspaceId) removes the session from the
+        // internal registry. Resolve LoadedPath BEFORE calling Close so the working directory
+        // for the drain step is available even after the session is gone.
         return gate.RunLoadGateAsync(async outerCt =>
         {
+            string? loadedPath = null;
             var json = await gate.RunWriteAsync(
                 workspaceId,
                 async innerCt =>
                 {
+                    // Capture the loaded path before close removes the session from the registry.
+                    if (drainProcesses)
+                    {
+                        try { loadedPath = workspace.GetStatus(workspaceId).LoadedPath; }
+                        catch { /* session may already be gone — drain will be skipped */ }
+                    }
+
                     var closed = workspace.Close(workspaceId);
                     _ = NotifyResourcesChangedAsync(server);
                     return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
@@ -122,6 +136,28 @@ public static class WorkspaceTools
                 outerCt,
                 applyStalenessPolicy: false).ConfigureAwait(false);
             gate.RemoveGate(workspaceId);
+
+            if (drainProcesses && !string.IsNullOrWhiteSpace(loadedPath))
+            {
+                var workingDirectory = Path.GetDirectoryName(loadedPath);
+                if (!string.IsNullOrWhiteSpace(workingDirectory))
+                {
+                    try
+                    {
+                        await commandRunner.RunAsync(
+                            workingDirectory,
+                            string.Empty,
+                            ["build-server", "shutdown"],
+                            outerCt).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // Non-zero exit or exception from drain is a warning, not an error.
+                        // The close itself has already succeeded; callers receive the original payload.
+                    }
+                }
+            }
+
             return json;
         }, ct);
     }
