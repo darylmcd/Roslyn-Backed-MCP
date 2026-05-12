@@ -270,7 +270,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #662 (2026-05-12T02:52:08Z) |
 | Backlog rows closed | `workspace-reloaded-during-call-conflates-notfound` |
 | Diagnosis | `get_source_text(bad-path)` concurrent with idempotent `workspace_load` reload returns `category=WorkspaceReloadedDuringCall` instead of `NotFound`. The implementation detail leaks into the caller's routing. **Touches `WorkspaceManager.cs` — hotspot; schedule one hotspot initiative per wave.** |
 | Approach | In `src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs`, after the reload completes, re-evaluate the original request before returning the held error. If the file still doesn't exist, return `NotFound` instead of `WorkspaceReloadedDuringCall`. |

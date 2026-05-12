@@ -403,7 +403,7 @@
     {
       "id": "workspace-reloaded-during-call-conflates-notfound",
       "order": 15,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-reloaded-during-call-conflates-notfound"
       ],
@@ -415,11 +415,11 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/workspace-reloaded-during-call-conflates-notfound",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Touches WorkspaceManager.cs hotspot; do not parallel-wave with initiative 5."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/662",
+      "mergedAt": "2026-05-12T02:52:08Z",
+      "notes": "Touches WorkspaceManager.cs hotspot; solo wave-2 (after initiative 5 PR #658 landed). Shipped as PR #662 (squash 1a23edf331)."
     },
     {
       "id": "symbol-search-pagination",
