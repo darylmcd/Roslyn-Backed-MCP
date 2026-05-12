@@ -26,7 +26,7 @@ public static class ValidationBundleTools
         IWorkspaceExecutionGate gate,
         IWorkspaceValidationService validationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: explicit list of changed file paths. When omitted, the change tracker's session-wide change set is used. Empty list means no test discovery.")] string[]? changedFilePaths = null,
+        [Description("Optional: explicit list of changed file paths. Pass as a native JSON array of absolute file paths, not a JSON-encoded string. Example: [\"/abs/path/a.cs\", \"/abs/path/b.cs\"]. When omitted, the change tracker's session-wide change set is used. Empty list means no test discovery.")] string[]? changedFilePaths = null,
         [Description("When true, runs the discovered related tests via dotnet test --filter. Default: false (discovery only).")] bool runTests = false,
         [Description("When true, drops the per-diagnostic ErrorDiagnostics list and per-test DiscoveredTests list to keep the response under the MCP cap on large solutions. OverallStatus + counts still surface the verdict. Default false preserves the v1.18 shape.")] bool summary = false,
         [Description("Response shape: \"json\" (default) returns the indented JSON envelope; \"markdown\" returns a compact summary table built from the same DTO so the verdict is identical across shapes. Case-insensitive.")] string? responseFormat = null,
