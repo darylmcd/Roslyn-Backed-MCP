@@ -27,4 +27,11 @@ public interface ISymbolSearchService
     /// </param>
     Task<SymbolDto?> GetSymbolInfoAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool allowAdjacent = false);
     Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(string workspaceId, string filePath, CancellationToken ct);
+    /// <summary>
+    /// document-symbols-accepts-symbol-handle: overload that resolves a <see cref="SymbolLocator"/>
+    /// (handle, metadata name, or file+position) to its source file path, then delegates to the
+    /// <c>filePath</c>-based overload. Throws <see cref="KeyNotFoundException"/> when the locator
+    /// cannot be resolved or the resolved symbol has no source location.
+    /// </summary>
+    Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct);
 }

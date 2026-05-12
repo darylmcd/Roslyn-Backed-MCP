@@ -265,7 +265,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get all symbol declarations (types, methods, properties, fields) in a document as a hierarchical tree. Response shape: { count, symbols, deprecation } — deprecation is null on the canonical tool and populated on aliases (e.g. get_symbol_outline).")]
+    [McpServerTool(Name = "document_symbols", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get all symbol declarations (types, methods, properties, fields) in a document as a hierarchical tree. Accepts either filePath OR a symbol locator (symbolHandle / metadataName) — mirroring the flexibility of symbol_info. Response shape: { count, symbols, deprecation } — deprecation is null on the canonical tool and populated on aliases (e.g. get_symbol_outline).")]
     [McpToolMetadata("symbols", "stable", true, false,
         "List declared symbols in a document.")]
     public static Task<string> GetDocumentSymbols(
@@ -273,29 +273,51 @@ public static class SymbolTools
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file")] string filePath,
+        [Description("Optional: absolute path to the source file")] string? filePath = null,
+        [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
-        return GetDocumentSymbolsCore(server, gate, symbolSearchService, workspaceId, filePath, deprecation: null, ct);
+        return GetDocumentSymbolsCore(server, gate, symbolSearchService, workspaceId, filePath, symbolHandle, metadataName, deprecation: null, ct);
     }
 
     // roslyn-mcp-sister-tool-name-aliases: shared core invoked by both the canonical
     // `document_symbols` tool and the `get_symbol_outline` alias. The alias passes a populated
     // `deprecation` envelope so callers can see the canonical name inline; the canonical method
     // passes `null` so the response schema always carries the field.
+    // document-symbols-accepts-symbol-handle: when symbolHandle or metadataName is provided,
+    // delegates to the locator-based service overload which resolves the handle to a source path.
+    // When only filePath is provided, delegates to the original filePath-based overload.
     internal static Task<string> GetDocumentSymbolsCore(
         McpServer server,
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
         string workspaceId,
-        string filePath,
+        string? filePath,
+        string? symbolHandle,
+        string? metadataName,
         ToolAliasDeprecation? deprecation,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-            var results = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, c);
+            IReadOnlyList<Core.Models.DocumentSymbolDto> results;
+
+            if (!string.IsNullOrWhiteSpace(symbolHandle) || !string.IsNullOrWhiteSpace(metadataName))
+            {
+                // Locator-driven path: resolve handle/metadataName to a source file, then collect.
+                var locator = SymbolLocatorFactory.Create(filePath, null, null, symbolHandle, metadataName);
+                results = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, locator, c).ConfigureAwait(false);
+            }
+            else
+            {
+                // Classic filePath path — validate against workspace roots before the service call.
+                if (string.IsNullOrWhiteSpace(filePath))
+                    throw new ArgumentException("Provide either a filePath, a symbolHandle, or a metadataName.");
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+                results = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, c).ConfigureAwait(false);
+            }
+
             return JsonSerializer.Serialize(new { count = results.Count, symbols = results, deprecation }, JsonDefaults.Indented);
         }, ct);
     }
@@ -311,7 +333,9 @@ public static class SymbolTools
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Absolute path to the source file")] string filePath,
+        [Description("Optional: absolute path to the source file")] string? filePath = null,
+        [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
+        [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
         return GetDocumentSymbolsCore(
@@ -320,6 +344,8 @@ public static class SymbolTools
             symbolSearchService,
             workspaceId,
             filePath,
+            symbolHandle,
+            metadataName,
             ToolAliasDeprecation.ForSisterAlias("document_symbols"),
             ct);
     }
