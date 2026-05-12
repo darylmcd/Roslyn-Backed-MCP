@@ -76,7 +76,7 @@
     {
       "id": "routine-flows-wrap-csharp-work-with-roslyn-bookends",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["routine-flows-wrap-csharp-work-with-roslyn-bookends"],
       "productionFilesTouched": 4,
       "testFilesAdded": 1,
@@ -94,16 +94,16 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/routine-flows-wrap-csharp-work-with-roslyn-bookends",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/678",
+      "mergedAt": "2026-05-12T15:06:19Z",
       "notes": "judgmentHeavy=true. (1) workspace-health CWD probe pattern cited as model doesn't exist yet — initiative 4 adds it; executor must invent independently if 4 hasn't landed. (2) skills/refactor/SKILL.md and skills/refactor-loop/SKILL.md shared with initiative 13 — Phase C conflict-graph edge expected."
     },
     {
       "id": "workspace-close-with-drain-processes-for-teardown",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["workspace-close-with-drain-processes-for-teardown"],
       "productionFilesTouched": 1,
       "testFilesAdded": 1,
@@ -121,16 +121,16 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/workspace-close-with-drain-processes-for-teardown",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/679",
+      "mergedAt": "2026-05-12T15:10:49Z",
       "notes": "judgmentHeavy=true — two reasonable approach paths existed (drain inside IWorkspaceManager.Close vs drain at tool layer). Tool-layer approach selected as architecturally cleaner; avoids the WorkspaceManager.cs hotspot entirely."
     },
     {
       "id": "workspace-health-csharp-applicability-classifier",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["workspace-health-csharp-applicability-classifier"],
       "productionFilesTouched": 1,
       "testFilesAdded": 0,
@@ -148,16 +148,16 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/workspace-health-csharp-applicability-classifier",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/676",
+      "mergedAt": "2026-05-12T15:04:52Z",
       "notes": "Risk note from deepener: recommend restricting CWD signal to *.csproj/*.sln/*.slnx only (not Directory.Build.props alone) to avoid false-positive on non-C# monorepos that carry a top-level Directory.Build.props."
     },
     {
       "id": "parameter-naming-canonicalization-experimental-surface",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["parameter-naming-canonicalization-experimental-surface"],
       "productionFilesTouched": 0,
       "testFilesAdded": 0,
@@ -175,10 +175,10 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/parameter-naming-canonicalization-experimental-surface",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/677",
+      "mergedAt": "2026-05-12T15:05:49Z",
       "notes": "judgmentHeavy=true; anchorStale=true. (1) IssueTemplateAndLabelSeedTests.cs cited in backlog row was not located by deepener but per v1.35.1 CHANGELOG it ships at tests/RoslynMcp.Tests/Skills/; executor verifies at run-time. (2) productionFilesTouched=0 is deliberate (design note is not a src/ file)."
     },
     {
