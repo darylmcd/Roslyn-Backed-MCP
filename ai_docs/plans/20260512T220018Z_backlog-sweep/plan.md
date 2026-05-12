@@ -58,14 +58,11 @@ All Critical, High, and Medium sections are empty. 7 of 13 Low rows are Reserved
 <details>
 <summary>Sonnet handoff notes</summary>
 
-**judgmentHeavy flag set — two plausible fix locations.** The executor must investigate before committing to an approach:
-
-- **Transport path ambiguity:** path (a) = exception reaches `ToolErrorHandler` → fix is adding a `Disconnected` handler; path (b) = exception occurs in SDK protocol-write layer after filter returns → fix is a `Program.cs` transport-error wrapper. The raw-string shape (no envelope) strongly favors path (b).
-- **Pattern coordinate:** `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs:34–50` — the `WorkspaceEvictedException` handler is the pattern to mirror for the recovery hint shape.
-- **Investigation entry point:** `src/RoslynMcp.Host.Stdio/Program.cs` — check whether `host.RunAsync()` swallows or propagates `InvalidOperationException("Not connected")` from the SDK's `PipeStream` write path.
-- **Test target:** `tests/RoslynMcp.Tests/StructuredCallToolFilterTests.cs` (existing class) — add one method `BuildErrorResult_NotConnectedInvalidOperationException_EmitsDisconnectedEnvelope`.
-- **Negative space:** do NOT modify `CompileCheckTools.cs` — the shim is correct; the gap is in the error classification or transport layer.
-- **If path (b) is confirmed:** the initiative may need to be re-scoped; the Rule 3 tool-surface-only exemption claim is valid for path (a) only. Executor should note in the PR if path (b) and the fix is structural.
+**Sonnet handoff:**
+- **Pattern coordinates:** register in `ErrorHandlers` dictionary at `ToolErrorHandler.cs:20-69`. Mirror `WorkspaceEvictedException` shape at `ToolErrorHandler.cs:34-50`. Insert BEFORE generic `InvalidOperationException` at line 63.
+- **Test target:** add `BuildErrorResult_NotConnectedInvalidOperationException_EmitsDisconnectedEnvelope` to existing `StructuredCallToolFilterTests.cs` after line 129. Mirror `BuildErrorResult_UnrecognizedException_ClassifiesAsInternalError` at lines 117-129. Do NOT create a new test file.
+- **Edge cases:** (1) exact-message match; (2) no collision with `Rate limit` branch at 63-68; (3) no collision with `ShouldSuggestReloadAfterInvalidOperation` at 351-361.
+- **Negative space:** do NOT modify `TryClassifyBindingLike` at `ToolErrorHandler.cs:275-315`; do NOT touch `IsInvocationWrapper` at 337-346; if path (b), wrap only `host.RunAsync()` at `Program.cs:163`.
 
 </details>
 
@@ -132,14 +129,12 @@ All Critical, High, and Medium sections are empty. 7 of 13 Low rows are Reserved
 <details>
 <summary>Sonnet handoff notes</summary>
 
-**judgmentHeavy flag set — namespace choice and wave decomposition require executor judgment.**
-
-- **Pattern coordinates:** `eng/list-skills.ps1` output — confirm `installed_as:` column shows `[missing]` for all 46 before edits; `[present: <value>]` after each wave.
-- **Test target:** `tests/RoslynMcp.Tests/Skills/SkillFrontmatterInstalledAsTests.cs:39` — the `[Ignore]` attribute stays until wave 12. Do not remove it in wave 1.
-- **Wave 1 scope (4 files):** `.claude/skills/backlog-intake/SKILL.md`, `.claude/skills/backlog-split/SKILL.md`, `.claude/skills/bump/SKILL.md`, `.claude/skills/close-backlog-rows/SKILL.md`.
-- **Namespace decision for waves 5–12 (`skills/` directory):** confirm whether the plugin's skill-discovery routing uses bare names or `roslyn-mcp:` prefix before committing to those waves. The `.claude/skills/` batch (waves 1–4) is definitively bare-name.
-- **Spin-off rows to add at Step 7 sync:** 11 follow-on backlog rows, each covering 4 SKILL.md files, ending with the test un-ignore on wave 12.
-- **Negative space:** do NOT modify `tests/RoslynMcp.Tests/Skills/SkillFrontmatterInstalledAsTests.cs` in waves 1–11.
+**Sonnet handoff:**
+- **Exact edit shape:** insert `installed_as: <bare-name>` immediately after `name:` line (between lines 2 and 3 of frontmatter).
+- **Frontmatter parser contract:** `eng/list-skills.ps1:69-85` and `SkillFrontmatterInstalledAsTests.cs:117-142`.
+- **Validation regex:** `^[a-z][a-z0-9-]+$`.
+- **Verification command:** `pwsh -NoProfile -File eng/list-skills.ps1` — "46 missing" drops to "42 missing".
+- **Negative space:** do NOT remove `[Ignore]` from `SkillFrontmatterInstalledAsTests.cs:39`; do NOT touch other 42 SKILL.md files.
 
 </details>
 
@@ -166,14 +161,10 @@ All Critical, High, and Medium sections are empty. 7 of 13 Low rows are Reserved
 <details>
 <summary>Sonnet handoff notes</summary>
 
-**judgmentHeavy flag set — nested-type ownership and grouping decision require executor verification.**
-
-- **Pattern coordinate:** `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs` — entry points at lines 38 (`PreviewScaffoldTypeAsync`), 92 (`PreviewScaffoldTestBatchAsync`), 331 (`PreviewScaffoldTestAsync`), 458 (`PreviewScaffoldFirstTestFileAsync`).
-- **Nested-type ownership check (REQUIRED before moving any type):** verify each of the 6 private nested types (`BatchScaffoldContext:268`, `BatchScaffoldState:277`, `ResolvedTargetTypeInfo:294`, `InterfaceResolutionResult:1472`, `SiblingTestPattern:1869`, `SiblingInferenceResult:1880`) is referenced by exactly one method group — if cross-referenced, it stays in the base partial. Do not guess; use `Grep` or `mcp__roslyn__semantic_grep` on each type name before moving it.
-- **Grouping judgment:** `PreviewScaffoldTestBatchAsync` (line 92) and `PreviewScaffoldFirstTestFileAsync` (line 458) are grouped together in `TestBatchAndFirstTestPreview.cs` because both use the per-framework builders (`BuildFirstTestFileMSTest`/`Xunit`/`NUnit`) and sibling-inference methods. This is a judgment call to satisfy the Rule 3 4-file cap.
-- **Hotspot seam:** the `using` block at the top of `ScaffoldingService.cs` covers all four method groups and must be duplicated into each partial file verbatim.
-- **Edge case:** `IScaffoldingService` (6 callers) does not change — callers in `ScaffoldingTools.cs` and `ServiceCollectionExtensions.cs` remain untouched.
-- **Negative space:** do NOT modify `ScaffoldingTools.cs`, `ServiceCollectionExtensions.cs`, `IScaffoldingService.cs`, or any test file. Phase 2 (TestFrameworkScaffolder extraction) is out of scope.
-- **Schedule:** heroic-last. If any correctness initiative is still in-flight when this initiative is reached, pause this one.
+**Sonnet handoff:**
+- **Pattern coordinates:** No in-repo exemplar for sealed instance class split; use `ServerSurfaceCatalog.*.cs` family (e.g. `ServerSurfaceCatalog.Editing.cs:3`) for naming/header template. `IScaffoldingService` interface list goes ONLY on primary file.
+- **Hotspot seam — base file retains:** constructor (:28-36), 3 DI fields (:24-26), `MinimalSymbolDisplayExtensions` (:12-20), ALL 6 nested types (BatchScaffoldContext:268, BatchScaffoldState:277, ResolvedTargetTypeInfo:294, InterfaceResolutionResult:1472, SiblingTestPattern:1869, SiblingInferenceResult:1880), shared helpers called cross-method-group.
+- **Edge cases:** (1) `MinimalSymbolDisplayExtensions` is top-level static class — do NOT move it; (2) preserve `PreviewScaffoldTestAsync` optional parameter; (3) switch dispatch at :763-767 — keep all `Build*FirstTestFile*` together; (4) run `find_references` on helpers before moving.
+- **Negative space:** don't add `: IScaffoldingService` to sibling partials; don't move `MinimalSymbolDisplayExtensions`; don't touch `IScaffoldingService.cs`, `ScaffoldingIntegrationTests.cs`, or `ServiceCollectionExtensions.cs`; no `#region` markers.
 
 </details>
