@@ -57,6 +57,10 @@ public sealed class EditorConfigService : IEditorConfigService
         // dr-get-editorconfig-options-incomplete-after-set: Supplement Roslyn-enumerated
         // keys with any keys present on disk that Roslyn's cached snapshot hasn't picked
         // up yet (e.g., after set_editorconfig_option writes a new key).
+        // editorconfig-write-no-auto-invalidation: Also override Roslyn-cached values for
+        // known keys with the disk-parsed value — the disk is authoritative because
+        // SetOptionAsync writes directly to it, and the Roslyn workspace snapshot may be
+        // stale until the next workspace_reload.
         if (editorconfigPath is not null && File.Exists(editorconfigPath))
         {
             var existingKeys = new HashSet<string>(options.Select(o => o.Key), StringComparer.OrdinalIgnoreCase);
@@ -66,6 +70,18 @@ public sealed class EditorConfigService : IEditorConfigService
                 {
                     options.Add(new EditorConfigEntryDto(key, value, "disk"));
                     existingKeys.Add(key);
+                }
+            }
+
+            // Second pass: override cached values for keys that the disk file has also
+            // enumerated. Roslyn's snapshot may lag behind a recent set_editorconfig_option
+            // write, so the on-disk value wins whenever the file exists.
+            foreach (var (key, diskValue) in ParseEditorconfigCsKeys(editorconfigPath))
+            {
+                var idx = options.FindIndex(o => string.Equals(o.Key, key, StringComparison.OrdinalIgnoreCase));
+                if (idx >= 0 && options[idx].Source != "disk")
+                {
+                    options[idx] = new EditorConfigEntryDto(key, diskValue, "disk");
                 }
             }
         }
