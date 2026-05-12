@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-12T21:05:00Z**
+**updated_at: 2026-05-12T21:20:00Z**
 
 ## Agent contract
 
@@ -97,7 +97,3 @@
 | `review-inbox/` | Staging folder for the NEXT audit batch (flat directory; `/backlog-intake` reads here). |
 | `review-inbox/archive/<batch-ts>/` | Processed audit/retro/promotion batches — one subdirectory per successful intake. Delete a batch after every actionable item is either shipped, explicitly rejected as stale, or summarized in current backlog rows. |
 | `ai_docs/reports/20260505_mcp-best-practices-restored-rows.md` | Provenance + recovery context for the 14 backlog rows added 2026-05-05 from the MCP-best-practices comparison (rec A–J + Tier 1 follow-on). Maps each row id → recommendation letter; lists cross-cutting evidence sources. Read this first when picking up any of the rec-A through rec-J rows. |
-| `ai_docs/plans/20260507T145540Z_backlog-sweep/plan.md` | Backlog sweep (2026-05-07T14:55:40Z). Shipped 1 initiative across 1 PR; closed 1 backlog row (`workspace-id-recovery-hints` via PR #542). |
-| `ai_docs/plans/20260507T182128Z_backlog-sweep/plan.md` | Backlog sweep (2026-05-07T18:21:28Z). Shipped 6 initiatives across 6 PRs (#547, #548, #549, #550, #551, #552); closed 5 backlog rows (`mcp-server-stress-single-mode`, `audit-deep-relocate-and-rename`, `extract-skills-audit-from-server-stress`, `backlog-d-fragment-pattern`, `per-repo-promotion-scorecard`). Theme: maintainer-audit-skill redesign — collapse modes, relocate to `.claude/skills/mcp-server-stress/`, extract skills audit into surface-audit, add `backlog.d/` fragment pattern, per-repo promotion scorecards with quorum aggregation. |
-| `ai_docs/plans/20260508T171439Z_backlog-sweep/plan.md` | Backlog sweep (2026-05-08T17:14:39Z). Shipped 12 initiatives across 12 PRs (#563, #565, #567, #569, #571, #573, #574, #575, #576, #584, #586, #587); closed 12 backlog rows. Theme: medium-priority MCP-server stability + new refactoring tools — analyzer file-lock fix, find_references metadata dedupe, project-reference cycle preview, find_overrides interface coverage, symbol_relationships token bucket fix, scaffolding nullable+internal accessibility, validate_recent_git_changes timeouts, promotion-scorecard 2026-04-27 review, dry-run preview audit, `change_signature_preview(op=reorder)`, and the new `parameter_object_preview` tool. |
-| `ai_docs/plans/20260512T194649Z_backlog-sweep/plan.md` | Backlog sweep (2026-05-12T19:46:49Z). Shipped 3 initiatives across 3 PRs (#702, #703, #704); closed 3 backlog rows + closed 1 as obsolete (PR #701). Theme: native JSON array guard phrase (`filepaths-batch-2*`) — added `[Description]` guard phrase to 5 array-typed tool parameters (`get_complexity_metrics.filePaths`, `get_msbuild_properties.includedNames`, `extract_interface_preview.memberNames`, `scaffold_type_preview.interfaces`, `parameter_object_preview.dtoFolders`); lockstep test inScopePairs extended from 4 to 9. |
