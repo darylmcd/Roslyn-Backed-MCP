@@ -80,3 +80,18 @@ This prompt is the orchestrator. The phase-level instructions live in three sub-
 3. **Read `prompts/phases/output-and-close.md` now** to get the instructions for phases 11–19, Final surface closure, Output Format, Promotion scorecard schema, and the Appendix. These phases cover semantic search, scaffolding, project mutation, navigation, resources, prompts, boundary testing, regression verification, finding emission, and the mandatory report output.
 
 Execute phases in the order stated in the *Phase order* line above: **-1 → 0 → 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 8b → 10 → 9 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18**.
+
+---
+
+### Phase 0.5: Subagent dispatch plan
+
+This orchestrator delegates log-heavy read-side phases to the `audit-phase-runner` agent via the **Subagent dispatch groups** defined in `prompts/phases/setup-and-analysis.md`. The dispatch groups are:
+
+- **Group A** (read-side diagnostics and metrics): phases 1, 2
+- **Group B** (build, test, concurrency): phases 7, 8, 8b
+
+**Orchestrator-owned phases** (never delegated): Phase 6 **setup** and teardown of the disposable worktree remain in this orchestrator. The try/finally discipline for the worktree must live in this single surviving caller — a crashed runner subagent must not leak an open worktree. All preview/apply chains in Phase 6 stay inline.
+
+See `prompts/phases/setup-and-analysis.md` for the full Phase 0.5 dispatch plan with group tables, timeout budgets, and runner handoff protocol.
+
+### Phase 1: (full instructions in prompts/phases/setup-and-analysis.md)
