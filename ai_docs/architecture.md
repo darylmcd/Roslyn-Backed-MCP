@@ -81,6 +81,10 @@ The plugin layer is a pure orchestration concern — it does not add code to the
 ## Known Gaps
 
 - IDE and CA analyzers not loaded in MSBuildWorkspace — only SDK-implicit diagnostics active at runtime (AUDIT-21).
+- **`Host.Stdio.Middleware` ↔ `Host.Stdio.Tools` namespace cycle (accepted).** The two namespaces have a bidirectional reference: `Host.Stdio.Middleware` types (e.g. `StructuredCallToolFilter`) inspect tool metadata declared in `Host.Stdio.Tools`, and `Host.Stdio.Tools` types declare middleware-relevant attributes that the middleware then dispatches against. Surfaced by `get_namespace_dependencies(circularOnly=true)`.
+  - **Why we live with it.** The cycle does not block feature work in practice — both sides ship in the same `Host.Stdio` assembly, and the coupling is metadata-only (middleware reads attributes; tools declare them; no behavioral dependency).
+  - **Cost of fix.** Introduce a tool-dispatch envelope abstraction (a layered shim between Middleware and Tools), at the cost of one indirection on every tool call and ~3 net new files.
+  - **Trigger for action.** A middleware-side feature that requires a new tool *category* (not merely a new tool of an existing category) would force the envelope refactor. Until then the cycle is documented but accepted.
 
 ## Deep Material
 
