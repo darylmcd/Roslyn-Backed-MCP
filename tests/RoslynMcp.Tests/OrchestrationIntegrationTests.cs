@@ -364,6 +364,52 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(registrationsContents.Contains("AddSingleton<IAnimalService, AnimalService>()", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public async Task Extract_And_Wire_Interface_Preview_Declines_When_Type_Already_Implements_Same_Named_Interface()
+    {
+        // extract-and-wire-interface-duplicate-cross-project regression:
+        // When the target type already implements an interface with the same simple name — even
+        // from a different project — extract_and_wire_interface_preview must decline immediately
+        // with a structured message pointing the caller at extract_interface_cross_project_preview.
+        // Pre-fix, the orchestrator delegated to CrossProjectRefactoringService which either
+        // produced a duplicate base-type declaration or hit an unrelated file-exists conflict.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        // Create a Contracts project that already declares IAnimalService.
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var contractsProjectFile = workspace.GetPath("Contracts", "Contracts.csproj");
+        var existingInterfaceFile = workspace.GetPath("Contracts", "IAnimalService.cs");
+        File.WriteAllText(
+            existingInterfaceFile,
+            "namespace Contracts;\n\npublic interface IAnimalService\n{\n    System.Collections.Generic.List<SampleLib.IAnimal> GetAllAnimals();\n}\n");
+
+        // Wire SampleLib to already implement IAnimalService from Contracts.
+        var sampleLibProjectFile = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        InjectProjectReference(sampleLibProjectFile, "..\\Contracts\\Contracts.csproj");
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        File.WriteAllText(
+            sourceFilePath,
+            "using System.Collections.Generic;\nusing Contracts;\n\nnamespace SampleLib;\n\npublic class AnimalService : IAnimalService\n{\n    public List<IAnimal> GetAllAnimals()\n    {\n        return [new Dog(), new Cat()];\n    }\n    public void MakeThemSpeak(System.Collections.Generic.IEnumerable<IAnimal> animals) { }\n    public int CountAnimals(List<IAnimal> animals) => animals.Count;\n    public int CountAnimals(System.Collections.Generic.IEnumerable<IAnimal> animals) => 0;\n}\n");
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        // Attempting to extract IAnimalService again must produce a structured rejection.
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            ExtractAndWireOrchestrator.PreviewExtractAndWireInterfaceAsync(
+                workspace.WorkspaceId,
+                sourceFilePath,
+                "AnimalService",
+                "IAnimalService",
+                "Contracts",
+                updateDiRegistrations: false,
+                CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "already implements interface 'IAnimalService'",
+            $"extract_and_wire_interface_preview must report the duplicate interface. Actual message: {ex.Message}");
+        StringAssert.Contains(ex.Message, "extract_interface_cross_project_preview",
+            $"rejection message must point at extract_interface_cross_project_preview. Actual message: {ex.Message}");
+    }
+
     private static void InjectPackageReference(string projectFilePath, string packageId)
     {
         var projectXml = XDocument.Load(projectFilePath, LoadOptions.PreserveWhitespace);
