@@ -3,10 +3,11 @@
   "generatedAt": "2026-05-12T13:51:06Z",
   "backlogSnapshot": "2026-05-12T13:51:06Z",
   "addendaLoaded": true,
-  "phase": "conflict-graph-done",
+  "phase": "review-cycle-0-done",
   "cycleCount": 0,
   "maxCycles": 2,
-  "reviewStatus": "pending",
+  "reviewStatus": "failed",
+  "reviewFindings": { "block": 3, "warn": 4, "info": 5 },
   "readyForExecute": false,
   "anchorVerification": "partial",
   "conflictGraph": {
