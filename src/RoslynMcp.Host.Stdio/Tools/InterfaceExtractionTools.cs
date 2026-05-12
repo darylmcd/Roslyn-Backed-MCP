@@ -27,7 +27,7 @@ public static class InterfaceExtractionTools
         [Description("Absolute path to the source file containing the type")] string filePath,
         [Description("Name of the concrete type to extract from")] string typeName,
         [Description("Name for the new interface (e.g., IMyService)")] string interfaceName,
-        [Description("Optional: specific member names to include. If omitted, all public instance members are included.")] string[]? memberNames = null,
+        [Description("Optional: specific member names to include. Pass as a native JSON array, not a JSON-encoded string. Example: [\"GetValue\", \"SetValue\"]. If omitted, all public instance members are included.")] string[]? memberNames = null,
         [Description("If true, replace parameter and field references to the concrete type with the interface (default: false)")] bool replaceUsages = false,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(

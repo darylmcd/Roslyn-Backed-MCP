@@ -32,7 +32,7 @@ public static class ScaffoldingTools
         [Description("Type kind: class, interface, record, or enum")] string typeKind = "class",
         [Description("Optional: namespace override")] string? @namespace = null,
         [Description("Optional: base type name")] string? baseType = null,
-        [Description("Optional: additional interface names to declare on the scaffolded type")] string[]? interfaces = null,
+        [Description("Optional: additional interface names to declare on the scaffolded type. Pass as a native JSON array, not a JSON-encoded string. Example: [\"IDisposable\", \"IMyService\"].")] string[]? interfaces = null,
         [Description("When true (default), auto-implement interface members of baseType/interfaces as NotImplementedException stubs; set false to emit an empty class body")] bool implementInterface = true,
         CancellationToken ct = default)
     {
