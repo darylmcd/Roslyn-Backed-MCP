@@ -70,9 +70,18 @@ if (-not (Test-Path $installedPluginsPath)) {
 Write-Step "Pulling marketplace clone in $marketplaceDir"
 Push-Location $marketplaceDir
 try {
-    git fetch origin | Out-Null
-    git checkout main | Out-Null
-    git pull --ff-only origin main | Out-Null
+    git fetch origin 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "git fetch failed (exit $LASTEXITCODE) — network or auth issue. Aborting to avoid syncing a stale cache."
+    }
+    git checkout main 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "git checkout main failed (exit $LASTEXITCODE)."
+    }
+    git pull --ff-only origin main 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "git pull --ff-only failed (exit $LASTEXITCODE) — network issue or diverged branch. Aborting to avoid syncing a stale cache."
+    }
     $headSha = (git rev-parse HEAD).Trim()
     Write-Host "    HEAD is now $headSha"
 }
