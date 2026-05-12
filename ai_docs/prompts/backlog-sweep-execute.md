@@ -231,6 +231,28 @@ Skip `heroic-last` initiatives until all non-heroic are `merged` or `obsolete`.
 
 ## Step 3 — Set up worktree (or branch)
 
+### Workspace prelude (C# repos only)
+
+Before creating the worktree, probe whether the session is operating in a C# repo:
+
+1. **Glob CWD (depth=1)** for `*.slnx`, `*.sln`, and `*.csproj`. If zero hits, set
+   `applicable: false` and skip this block entirely.
+2. On a positive hit, check whether a workspace is **already loaded** (call
+   `workspace_list` or inspect the session's prior context). If already loaded,
+   do NOT reload — proceed directly to worktree creation.
+3. If not yet loaded, call `workspace_load` on the found solution/project path.
+   Prefer `.slnx` > `.sln` > bare `.csproj` when multiple exist.
+4. Inject the following **recommended-tool block** as a session context note for
+   the executor — top 5 Roslyn semantic primitives, always preferred over Grep/Bash:
+   - `find_references` — find all callers of a symbol
+   - `find_consumers` — find all callers of a type/member across projects
+   - `find_implementations` — find concrete implementations of an interface/abstract member
+   - `compile_check` — verify the solution compiles after each meaningful edit
+   - `validate_workspace` — post-mutation gate: compile + diagnostics + related tests
+
+**Post-mutation exit gate:** before opening the PR, call `validate_workspace` to
+confirm the worktree's solution is clean (compile + diagnostics + related tests pass).
+
 ### Serial mode
 
 Create a git worktree at `.worktrees/{initiative.id}/` on branch
