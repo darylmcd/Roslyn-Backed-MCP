@@ -1064,6 +1064,40 @@ public class SnapshotContentHasher
             "Static-members-only class scaffold must NOT emit a `subject` instance.");
     }
 
+    [TestMethod]
+    public async Task Scaffold_Test_EmitsUsings_ForCtorParamNamespaces()
+    {
+        // scaffold-test-preview-missing-usings: scaffold_test_preview previously only emitted
+        // a using directive for the target type's own namespace. Constructor parameter types
+        // from other namespaces were silently omitted, producing CS0246 errors in the generated
+        // file. This test verifies all three ctor-parameter namespaces of
+        // SampleLib.MultiNamespaceService appear as using directives.
+        //
+        // MultiNamespaceService(TextWriter, StringBuilder, IList<string>)
+        //   → using System.IO;               (TextWriter)
+        //   → using System.Text;             (StringBuilder)
+        //   → using System.Collections.Generic; (IList<T>)
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var preview = await ScaffoldingService.PreviewScaffoldTestAsync(
+            workspace.WorkspaceId,
+            new ScaffoldTestDto("SampleLib.Tests", "MultiNamespaceService", "Flush"),
+            CancellationToken.None);
+        await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        var generatedPath = workspace.GetPath("SampleLib.Tests", "MultiNamespaceServiceGeneratedTests.cs");
+        var contents = await File.ReadAllTextAsync(generatedPath, CancellationToken.None);
+
+        // Each constructor-parameter namespace must appear as a using directive so the
+        // generated file compiles without CS0246 errors.
+        StringAssert.Contains(contents, "using System.IO;",
+            "System.IO must be emitted for the TextWriter ctor parameter.");
+        StringAssert.Contains(contents, "using System.Text;",
+            "System.Text must be emitted for the StringBuilder ctor parameter.");
+        StringAssert.Contains(contents, "using System.Collections.Generic;",
+            "System.Collections.Generic must be emitted for the IList<string> ctor parameter.");
+    }
+
     private sealed class RecordingTestNameSuggestionProvider(string methodName) : ITestNameSuggestionProvider
     {
         public int CallCount { get; private set; }

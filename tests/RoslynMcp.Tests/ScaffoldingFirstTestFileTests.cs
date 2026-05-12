@@ -149,4 +149,42 @@ public sealed class ScaffoldingFirstTestFileTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(ex.Message, "fully-qualified",
             "Error should remind callers that the input is a metadata name (FQN).");
     }
+
+    [TestMethod]
+    public async Task FirstTestFile_EmitsUsings_ForCtorParamNamespaces()
+    {
+        // scaffold-test-preview-missing-usings: scaffold_first_test_file_preview previously
+        // only emitted a using directive for the service's own namespace. Constructor
+        // parameter types from other namespaces were silently omitted, producing 7+ CS0246
+        // errors in the generated file. This test verifies that all three constructor-
+        // parameter namespaces of SampleLib.MultiNamespaceService are emitted.
+        //
+        // MultiNamespaceService(TextWriter writer, StringBuilder buffer, IList<string> items)
+        //   → using System.IO;               (TextWriter)
+        //   → using System.Text;             (StringBuilder)
+        //   → using System.Collections.Generic; (IList<T>)
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var destinationPath = workspace.GetPath("SampleLib.Tests", "MultiNamespaceServiceTests.cs");
+        Assert.IsFalse(File.Exists(destinationPath),
+            $"Test precondition violated: '{destinationPath}' must NOT exist before scaffolding.");
+
+        var preview = await ScaffoldingService.PreviewScaffoldFirstTestFileAsync(
+            workspace.WorkspaceId,
+            new ScaffoldFirstTestFileDto("SampleLib.MultiNamespaceService", "SampleLib.Tests"),
+            CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(
+            preview.PreviewToken, "test_apply", CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        var contents = await File.ReadAllTextAsync(destinationPath, CancellationToken.None);
+
+        // Each constructor-parameter namespace must appear as a using directive so the
+        // generated file compiles without CS0246 errors.
+        StringAssert.Contains(contents, "using System.IO;",
+            "System.IO must be emitted for the TextWriter ctor parameter.");
+        StringAssert.Contains(contents, "using System.Text;",
+            "System.Text must be emitted for the StringBuilder ctor parameter.");
+        StringAssert.Contains(contents, "using System.Collections.Generic;",
+            "System.Collections.Generic must be emitted for the IList<string> ctor parameter.");
+    }
 }
