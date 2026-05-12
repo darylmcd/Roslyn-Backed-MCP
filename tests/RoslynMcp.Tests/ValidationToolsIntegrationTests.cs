@@ -149,6 +149,51 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         Assert.AreEqual(string.Empty, result.DotnetTestFilter);
     }
 
+    // test-related-column-required-schema-mismatch: a caller who supplies filePath+line but
+    // omits column is using a partial source-location (mode-3 incomplete). The runtime MUST
+    // throw ArgumentException with a message that names the missing field — not a generic
+    // "provide one of…" fallthrough. This regression test pins that diagnostic path.
+    [TestMethod]
+    public async Task TestRelated_PartialSourceLocation_MissingColumn_ThrowsArgumentExceptionWithDiagnostic()
+    {
+        var programPath = FindDocumentPath("Program.cs");
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await ValidationTools.FindRelatedTests(
+                WorkspaceExecutionGate,
+                TestDiscoveryService,
+                WorkspaceId,
+                filePath: programPath,
+                line: 1,
+                column: null,
+                symbolHandle: null,
+                metadataName: null,
+                maxResults: 100,
+                ct: CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "column",
+            $"Expected exception message to mention 'column' as the missing field. Actual: {ex.Message}");
+        StringAssert.Contains(ex.Message, "incomplete",
+            $"Expected exception message to contain 'incomplete'. Actual: {ex.Message}");
+    }
+
+    // test-related-column-required-schema-mismatch: a caller using metadataName mode (mode-2)
+    // must succeed without providing any source-location parameters. This is the normal happy
+    // path for callers who read the corrected schema and understand the three locator modes.
+    [TestMethod]
+    public async Task TestRelated_MetadataNameMode_Succeeds_WithoutSourceLocation()
+    {
+        var result = await TestDiscoveryService.FindRelatedTestsAsync(
+            WorkspaceId,
+            RoslynMcp.Core.Models.SymbolLocator.ByMetadataName("SampleLib.AnimalService"),
+            maxResults: 100,
+            CancellationToken.None);
+
+        // The call must succeed (not throw) and return a valid result envelope.
+        Assert.IsNotNull(result);
+        Assert.IsNotNull(result.Tests);
+        Assert.IsNotNull(result.Pagination);
+    }
+
     // test-related-response-envelope-parity: test_related and test_related_files MUST emit
     // identically-shaped envelopes — Tests / DotnetTestFilter / Pagination — so callers can
     // route either response through the same downstream test_run --filter pipeline. This
