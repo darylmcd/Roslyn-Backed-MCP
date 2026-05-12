@@ -21,7 +21,7 @@ public static class TypeMoveTools
     [McpServerTool(Name = "move_type_to_file_preview", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("refactoring", "stable", true, false,
         "Preview moving a type declaration into its own file."),
-     Description("Preview moving a type declaration from a multi-type file into its own dedicated file within the same project")]
+     Description("Preview moving a type declaration from a multi-type file into its own dedicated file within the same project. Requires the source file to contain at least two top-level types; for single-type rename/move operations use move_file_preview instead.")]
     public static Task<string> PreviewMoveTypeToFile(
         IWorkspaceExecutionGate gate,
         ITypeMoveService typeMoveService,

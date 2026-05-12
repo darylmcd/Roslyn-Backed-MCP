@@ -76,8 +76,9 @@ public sealed class TypeMoveService : ITypeMoveService
         if (typeCount < 2)
         {
             throw new InvalidOperationException(
-                "Source file only contains one top-level type. " +
-                "Nested types cannot be extracted with this tool — only top-level type declarations are considered.");
+                "Source file contains only one top-level type. " +
+                "To move or rename the file, use move_file_preview instead. " +
+                "move_type_to_file_preview is for extracting one type out of a file that contains multiple top-level types.");
         }
 
         // Determine target file path
