@@ -7,9 +7,9 @@ public sealed record WorkspaceManagerOptions
 {
     /// <summary>
     /// Gets the maximum number of workspace sessions that may be open concurrently.
-    /// Defaults to 8.
+    /// Defaults to 16.
     /// </summary>
-    public int MaxConcurrentWorkspaces { get; init; } = 8;
+    public int MaxConcurrentWorkspaces { get; init; } = 16;
 
     /// <summary>
     /// Gets the maximum number of source-generated documents to return per workspace query.

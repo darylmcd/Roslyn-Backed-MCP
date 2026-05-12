@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -15,7 +16,7 @@ public static class WorkspaceTools
 {
     private const int AutoPrewarmProjectThreshold = 50;
 
-    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. Set autoRestore=true to run dotnet restore and one follow-up reload when the loaded status reports restoreRequired=true. Set prewarm=true to immediately run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, workspace_load automatically prewarms solutions with more than 50 projects. The response includes a prewarm result block only when warming ran. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 8) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error.")]
+    [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. Set autoRestore=true to run dotnet restore and one follow-up reload when the loaded status reports restoreRequired=true. Set prewarm=true to immediately run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, workspace_load automatically prewarms solutions with more than 50 projects. The response includes a prewarm result block only when warming ran. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 16) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error. Pass evictPolicy=lru to silently evict the least-recently-used idle workspace when the cap is reached instead of receiving a hard error.")]
     [McpToolMetadata("workspace", "stable", false, false,
         "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session.")]
     public static Task<string> LoadWorkspace(
@@ -29,6 +30,7 @@ public static class WorkspaceTools
         [Description("When true and the loaded status reports restoreRequired=true, run `dotnet restore` on the target and reload once before returning.")] bool autoRestore = false,
         [Description("When true, run `workspace_warm` immediately after the load (and any auto-restore reload) succeeds, then include the warm result in the response. When omitted, large solutions with more than 50 projects are prewarmed automatically. Pass false to opt out and preserve the cold-load profile.")] bool? prewarm = null,
         [Description("Operator-opt-in security flag (default false). When true, the client-sanctioned-root path validator additionally accepts paths under the immediate PARENT directory of each sanctioned root — enough to permit a sibling worktree at `../<name>` (e.g. mcp-server-surface-test's disposable audit worktree). Higher ancestors (grandparent etc.) are NOT widened. Pass true only from operator-controlled call sites; do not auto-enable on every request.")] bool expandSanctionedRoots = false,
+        [Description("Controls cap-reached behaviour. 'Strict' (default) throws with activeWorkspaces and lruCandidate context for one-round-trip self-recovery. 'Lru' silently evicts the least-recently-used idle workspace to make room for the new load.")] EvictPolicy evictPolicy = EvictPolicy.Strict,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {
@@ -50,7 +52,7 @@ public static class WorkspaceTools
             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
                 server, path, c, expandSanctionedRoots: expandSanctionedRoots).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 1, totalStages, "opening-workspace");
-            var status = await workspace.LoadAsync(path, c).ConfigureAwait(false);
+            var status = await workspace.LoadAsync(path, evictPolicy, c).ConfigureAwait(false);
             ProgressHelper.ReportStage(progress, 2, totalStages, "checking-restore");
             status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, c).ConfigureAwait(false);
             var shouldPrewarm = ShouldPrewarmAfterLoad(prewarm, status);

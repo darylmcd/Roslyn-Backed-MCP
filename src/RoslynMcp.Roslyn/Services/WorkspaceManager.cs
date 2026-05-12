@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
@@ -155,10 +156,20 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     }
 
     public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct)
-        => LoadAsync(path, globalProperties: null, ct);
+        => LoadAsync(path, EvictPolicy.Strict, globalProperties: null, ct);
+
+    public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct)
+        => LoadAsync(path, evictPolicy, globalProperties: null, ct);
+
+    public Task<WorkspaceStatusDto> LoadAsync(
+        string path,
+        IDictionary<string, string>? globalProperties,
+        CancellationToken ct)
+        => LoadAsync(path, EvictPolicy.Strict, globalProperties, ct);
 
     public async Task<WorkspaceStatusDto> LoadAsync(
         string path,
+        EvictPolicy evictPolicy,
         IDictionary<string, string>? globalProperties,
         CancellationToken ct)
     {
@@ -191,9 +202,57 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
 
         if (!await _workspaceSlots.WaitAsync(0, ct).ConfigureAwait(false))
         {
+            if (evictPolicy == EvictPolicy.Lru)
+            {
+                // parallel-mode-workspace-cap-lru-or-raise: LRU eviction path.
+                // Pick the session with the smallest LastAccessedUtc, skipping any that
+                // currently hold their LoadLock (i.e. are actively being loaded or read).
+                // If all sessions are locked, fall through to the Strict error path.
+                var lruCandidate = _sessions.Values
+                    .Where(s => s.LoadLock.CurrentCount > 0)
+                    .OrderBy(s => s.LastAccessedUtc)
+                    .FirstOrDefault();
+
+                if (lruCandidate is not null)
+                {
+                    _logger.LogInformation(
+                        "workspace_load: LRU eviction of workspace '{WorkspaceId}' (lastAccessed={LastAccessedUtc:O}) to make room for '{Path}'",
+                        lruCandidate.WorkspaceId,
+                        lruCandidate.LastAccessedUtc,
+                        fullPath);
+                    Close(lruCandidate.WorkspaceId);
+
+                    // After Close() the semaphore slot has been released — retry immediately.
+                    if (!await _workspaceSlots.WaitAsync(0, ct).ConfigureAwait(false))
+                    {
+                        // The slot was consumed by a concurrent caller between the Close() and
+                        // our retry. Fall through to the Strict error path.
+                        goto strictError;
+                    }
+                    goto slotAcquired;
+                }
+            }
+
+            strictError:
+            var activeWorkspaces = _sessions.Values
+                .Select(s => new
+                {
+                    id = s.WorkspaceId,
+                    loadedAtUtc = s.LoadedAtUtc,
+                    lastAccessedUtc = s.LastAccessedUtc,
+                    path = s.LoadedPath ?? string.Empty,
+                })
+                .OrderBy(s => s.lastAccessedUtc)
+                .ToList();
+            var lruCandidateId = activeWorkspaces.FirstOrDefault()?.id;
             throw new InvalidOperationException(
-                $"The server is already tracking {_options.MaxConcurrentWorkspaces} workspaces. Close an existing workspace before loading another.");
+                $"The server is already tracking {_options.MaxConcurrentWorkspaces} workspaces. " +
+                $"Close an existing workspace before loading another (or pass evictPolicy=lru to auto-evict the idle workspace). " +
+                $"activeWorkspaces={JsonSerializer.Serialize(activeWorkspaces)}" +
+                (lruCandidateId is not null ? $" lruCandidate={lruCandidateId}" : string.Empty));
         }
+
+        slotAcquired:
         var workspaceId = Guid.NewGuid().ToString("N");
         var session = new WorkspaceSession(workspaceId);
         var sessionAdded = false;

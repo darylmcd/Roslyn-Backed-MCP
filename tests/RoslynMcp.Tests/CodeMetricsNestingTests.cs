@@ -331,7 +331,7 @@ public sealed class CodeMetricsNestingTests
         public bool IsStale(string workspaceId) => false;
         public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
 
-        public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
         public bool Close(string workspaceId) => throw new NotSupportedException();
         public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => throw new NotSupportedException();

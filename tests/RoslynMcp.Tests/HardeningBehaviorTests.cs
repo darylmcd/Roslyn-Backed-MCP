@@ -107,7 +107,7 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         public event Action<string>? WorkspaceClosed { add { } remove { } }
         public event Action<string>? WorkspaceReloaded { add { } remove { } }
 
-        public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
         public bool ContainsWorkspace(string workspaceId) => !string.IsNullOrWhiteSpace(workspaceId);
         public bool IsStale(string workspaceId) => false;

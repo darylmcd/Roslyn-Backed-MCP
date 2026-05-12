@@ -22,7 +22,7 @@ internal sealed class WorkspaceIdCache
                 return cachedId;
             }
 
-            var status = await workspaceManager.LoadAsync(solutionPath, ct).ConfigureAwait(false);
+            var status = await workspaceManager.LoadAsync(solutionPath, EvictPolicy.Strict, ct).ConfigureAwait(false);
             _workspaceIds[solutionPath] = status.WorkspaceId;
             return status.WorkspaceId;
         }
