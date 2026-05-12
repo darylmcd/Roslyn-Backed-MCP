@@ -52,6 +52,25 @@ Parse the current version as `major.minor.patch`. Apply the bump type:
 
 Display the new version and confirm with the user before proceeding.
 
+### Step 2.5 — Preflight: occurrence count
+
+Before making any edits, grep each target file for the OLD version string and emit a preflight table:
+
+| File | Occurrences | Edit Strategy |
+|------|-------------|---------------|
+| `Directory.Build.props` | N | single / replace_all / ABORT |
+| `.claude-plugin/plugin.json` | N | single / replace_all / ABORT |
+| `.claude-plugin/marketplace.json` | N | single / replace_all / ABORT |
+| `manifest.json` | N | single / replace_all / ABORT |
+| `.claude-plugin/server.json` | N | replace_all (expected: 2) |
+
+**Rules:**
+- **0 occurrences** → ABORT with: "Preflight failed: OLD version `X.Y.Z` not found in `FILE` — file may have already been bumped or is tracking a different version. Verify before proceeding."
+- **1 occurrence** → standard single-replacement Edit.
+- **2+ occurrences** → use `replace_all: true` in the Edit call.
+
+Note: `server.json` is expected to have 2 occurrences (top-level `"version"` and `packages[0].version`); Step 3 already documents `replace_all: true` for it. The zero-occurrence guard is the critical new protection against partial-application re-runs.
+
 ### Step 3: Edit Version Files 1-5
 
 First, create the release-managed-edit override sentinel so the PreToolUse guard (`eng/guard-release-managed-files.ps1`) allows the version-file edits:
