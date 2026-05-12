@@ -69,7 +69,7 @@ public sealed class SyntaxService(IWorkspaceManager workspace) : ISyntaxService
 
             var enclosingNode = root.FindNode(span, findInsideTrivia: false, getInnermostNodeForTie: false);
             var nodesInRange = enclosingNode.ChildNodes()
-                .Where(n => span.Contains(n.Span))
+                .Where(n => span.OverlapsWith(n.Span))
                 .ToList();
 
             if (nodesInRange.Count > 0)
