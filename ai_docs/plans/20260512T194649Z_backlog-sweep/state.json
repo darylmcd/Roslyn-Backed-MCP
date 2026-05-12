@@ -45,7 +45,7 @@
     {
       "id": "skill-prompts-deprecated-workspace-load-param-name-cleanup",
       "order": 1,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": ["skill-prompts-deprecated-workspace-load-param-name-cleanup"],
       "productionFilesTouched": 0,
       "testFilesAdded": 0,
