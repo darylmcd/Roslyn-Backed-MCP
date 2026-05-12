@@ -138,8 +138,14 @@ public static class AnalysisTools
     [McpServerTool(Name = "diagnostic_details", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
         "Get detailed information and available code fix options for a specific diagnostic occurrence. " +
         "supportedFixes is populated from CodeFixProvider instances loaded via the CodeFixProviderRegistry " +
-        "(static IDE Features providers + per-project analyzer references). It will be empty when no provider is loaded for " +
-        "the diagnostic id; in that case guidanceMessage points to get_code_actions + preview_code_action as the fallback. " +
+        "(static IDE Features providers + per-project analyzer references). " +
+        "IMPORTANT LIMITATION: CA-series rules (e.g. CA1826, CA1848) from Microsoft.CodeAnalysis.NetAnalyzers " +
+        "ship with code-fix providers but those providers require Roslyn workspace services injected via constructor " +
+        "and cannot be instantiated by static reflection alone — supportedFixes will therefore always be empty for " +
+        "CA-series diagnostics. Use get_code_actions + preview_code_action to apply fixes for CA rules at a specific " +
+        "document location; those tools go through the live Roslyn workspace and surface the full fix menu. " +
+        "supportedFixes is reliable for CS* compiler diagnostics and IDE* Roslyn-IDE rules. " +
+        "When supportedFixes is empty for any diagnostic, guidanceMessage points to the get_code_actions fallback. " +
         "Position parameters accept either `line`/`column` or the `startLine`/`startColumn` naming used by other positional tools " +
         "(find_references, goto_definition, get_code_actions, …); supply exactly one pair.")]
     [McpToolMetadata("analysis", "stable", true, false,

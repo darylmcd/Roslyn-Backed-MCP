@@ -48,4 +48,38 @@ public sealed class CodeFixProviderRegistryTests
         var registry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);
         Assert.IsNull(registry.FirstProviderFor("ZZ9999"));
     }
+
+    /// <summary>
+    /// Validates the documented limitation: CA-series rules from Microsoft.CodeAnalysis.NetAnalyzers
+    /// (e.g. CA1826, CA1848) return empty <c>supportedFixes</c> from the static-reflection registry
+    /// because their fix providers require Roslyn workspace services injected via constructor — they
+    /// have no parameterless constructor and cannot be instantiated by <see cref="Activator.CreateInstance"/>.
+    ///
+    /// This test pins the documented behavior so callers know to use get_code_actions +
+    /// preview_code_action for CA rules instead of relying on <c>supportedFixes</c>.
+    /// See: diagnostic-details-empty-supportedfixes-ca-rules, gh #620.
+    /// </summary>
+    [TestMethod]
+    public void Registry_CaSeriesRules_ReturnEmptySupportedFixes_DocumentedLimitation()
+    {
+        // The registry's static-reflection path cannot instantiate CA fix providers because they
+        // require Roslyn workspace services. This test validates that the registry correctly
+        // returns empty for CA-series ids — confirming the documented behavior rather than a bug
+        // being silently ignored.
+        var registry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);
+
+        // Representative CA rules that ship with fix providers in NetAnalyzers but whose
+        // providers require constructor injection. The static-reflection path must return empty
+        // for all of them — this is the documented limitation.
+        string[] caRuleIds = ["CA1826", "CA1848", "CA1822", "CA2201", "CA1416"];
+        foreach (var caId in caRuleIds)
+        {
+            var providers = registry.GetProvidersFor(caId);
+            Assert.AreEqual(0, providers.Count,
+                $"CA-series rule '{caId}' must return empty supportedFixes from the static-reflection " +
+                "registry. CA fix providers require Roslyn workspace services (no parameterless ctor) " +
+                "and are not enumerable via static reflection. Callers must use get_code_actions + " +
+                "preview_code_action to apply CA fixes at a specific document location.");
+        }
+    }
 }

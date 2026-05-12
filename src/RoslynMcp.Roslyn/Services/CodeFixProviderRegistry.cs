@@ -112,10 +112,21 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
         {
             var assembly = Assembly.LoadFrom(analyzerPath);
             var providers = new List<CodeFixProvider>();
+            var skippedNoParamlessCtor = 0;
             foreach (var type in assembly.GetTypes())
             {
                 if (type.IsAbstract || !typeof(CodeFixProvider).IsAssignableFrom(type)) continue;
-                if (type.GetConstructor(Type.EmptyTypes) is null) continue;
+                if (type.GetConstructor(Type.EmptyTypes) is null)
+                {
+                    // Providers that require constructor arguments (e.g. Roslyn workspace services)
+                    // cannot be instantiated here via static reflection. This is why CA-series fix
+                    // providers from Microsoft.CodeAnalysis.NetAnalyzers are not enumerated — their
+                    // fix providers require IWorkspace services injected at construction time.
+                    // Callers should use get_code_actions + preview_code_action for CA rules, which
+                    // go through the live Roslyn workspace and surface the full fix menu.
+                    skippedNoParamlessCtor++;
+                    continue;
+                }
                 try
                 {
                     if (Activator.CreateInstance(type) is CodeFixProvider provider)
@@ -127,6 +138,14 @@ public sealed class CodeFixProviderRegistry : ICodeFixProviderRegistry
                         "CodeFixProviderRegistry: could not instantiate {Type} from {Path}",
                         type.FullName, analyzerPath);
                 }
+            }
+            if (skippedNoParamlessCtor > 0)
+            {
+                _logger.LogDebug(
+                    "CodeFixProviderRegistry: skipped {Skipped} provider type(s) from {Path} — no parameterless constructor " +
+                    "(these providers require Roslyn workspace services and are not enumerable via static reflection; " +
+                    "CA-series NetAnalyzer fix providers fall into this category)",
+                    skippedNoParamlessCtor, analyzerPath);
             }
             return [..providers];
         }
