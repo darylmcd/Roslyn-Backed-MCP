@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Prompts;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
@@ -202,6 +204,70 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
         StringAssert.Contains(doc.RootElement.GetProperty("message").GetString() ?? string.Empty,
             "could not be deserialized");
+    }
+
+    // file-lock-aware-prompt-validation-guidance: when test_run surfaces a FileLock envelope
+    // (MSB3027/MSB3021), debug_test_failure must render an infrastructure-class bypass
+    // instead of the standard "diagnose the root cause" framing — otherwise the operator
+    // re-runs validation in the same loaded workspace and re-acquires the lock.
+    [TestMethod]
+    public async Task DebugTestFailure_FileLockEnvelope_RendersBypassGuidance()
+    {
+        var envelope = new TestRunFailureEnvelopeDto(
+            ErrorKind: "FileLock",
+            IsRetryable: true,
+            Summary: "dotnet test exited with code 1 due to an MSBuild file lock (MSB3027/MSB3021).",
+            StdOutTail: "MSB3027: Could not copy ... testhost.exe is still locking the file.",
+            StdErrTail: "MSB3021: Unable to copy file ... it is being used by another process.");
+
+        var stub = new StubTestRunnerService(new TestRunResultDto(
+            Execution: new CommandExecutionDto(
+                Command: "dotnet",
+                Arguments: ["test"],
+                WorkingDirectory: "C:\\fake",
+                TargetPath: "C:\\fake\\Solution.sln",
+                ExitCode: 1,
+                Succeeded: false,
+                DurationMs: 1234,
+                StdOut: "",
+                StdErr: ""),
+            Total: 0,
+            Passed: 0,
+            Failed: 0,
+            Skipped: 0,
+            Failures: [],
+            FailureEnvelope: envelope));
+
+        var messages = (await RoslynPrompts.DebugTestFailure(
+            stub,
+            workspaceId: "any-workspace",
+            projectName: null,
+            filter: null,
+            CancellationToken.None)).ToList();
+
+        Assert.AreEqual(1, messages.Count);
+        var text = GetText(messages[0]);
+
+        StringAssert.Contains(text, "infrastructure failure",
+            "Bypass guidance must declare the failure infrastructure-class.");
+        StringAssert.Contains(text, "errorKind: FileLock",
+            "Bypass guidance must name the FileLock envelope so the operator can correlate.");
+        StringAssert.Contains(text, "compile_check",
+            "Bypass guidance must point to a read-side alternative.");
+        StringAssert.Contains(text, "workspace_reload",
+            "Bypass guidance must instruct the operator to release in-process analyzer-DLL handles.");
+        StringAssert.Contains(text, "dotnet build-server shutdown",
+            "Bypass guidance must instruct shutting down the build daemon when the holder is unclear.");
+
+        Assert.IsFalse(text.Contains("Identify the root cause of each failing test"),
+            "Standard diagnose-failure framing must be suppressed for FileLock envelopes — "
+            + "otherwise the operator re-runs validation and re-acquires the lock.");
+    }
+
+    private sealed class StubTestRunnerService(TestRunResultDto result) : ITestRunnerService
+    {
+        public Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct) =>
+            Task.FromResult(result);
     }
 
     private static string GetText(PromptMessage message) =>

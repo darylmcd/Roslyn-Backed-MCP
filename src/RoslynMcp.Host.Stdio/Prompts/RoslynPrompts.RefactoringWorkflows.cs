@@ -22,6 +22,16 @@ public static partial class RoslynPrompts
         try
         {
             var testResult = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, ct).ConfigureAwait(false);
+
+            // file-lock-aware-prompt-validation-guidance: FileLock envelopes are infrastructure
+            // failures, not test-authoring failures. Short-circuit the diagnose-and-retry loop
+            // before rendering the standard failure framing — re-running validation in the same
+            // loaded workspace re-acquires the lock.
+            if (string.Equals(testResult.FailureEnvelope?.ErrorKind, "FileLock", StringComparison.Ordinal))
+            {
+                return [PromptMessageBuilder.CreateFileLockBypassGuidance("debug_test_failure", testResult.FailureEnvelope!)];
+            }
+
             var testResultJson = JsonSerializer.Serialize(testResult, JsonDefaults.Indented);
 
             var failureSummary = testResult.Failures.Count > 0
