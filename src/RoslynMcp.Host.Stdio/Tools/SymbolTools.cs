@@ -16,7 +16,7 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class SymbolTools
 {
 
-    [McpServerTool(Name = "symbol_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search for symbols (types, methods, properties, fields) by name pattern across the loaded workspace. Matching is substring (case-insensitive) — pass a bare fragment like 'Animal' to find 'AnimalService', 'IAnimal', 'CatAnimal', etc. Wildcards (*, ?) and regex metacharacters are NOT interpreted; they are matched literally.")]
+    [McpServerTool(Name = "symbol_search", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Search for symbols (types, methods, properties, fields) by name pattern across the loaded workspace. Matching is substring (case-insensitive) — pass a bare fragment like 'Animal' to find 'AnimalService', 'IAnimal', 'CatAnimal', etc. Wildcards (*, ?) and regex metacharacters are NOT interpreted; they are matched literally. Response shape: { count, totalCount, hasMore, offset, limit, symbols }.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Search symbols by name across the workspace.")]
     public static Task<string> SearchSymbols(
@@ -28,11 +28,16 @@ public static class SymbolTools
         [Description("Optional: filter by project name")] string? projectName = null,
         [Description("Optional: filter by symbol kind (Class, Method, Property, Field, Interface, etc.)")] string? kind = null,
         [Description("Optional: filter by namespace")] string? @namespace = null,
-        [Description("Maximum number of results to return (default: 50)")] int limit = 50,
+        [Description("Maximum number of results to return (default: 50, max: 200)")] int limit = 50,
+        [Description("Number of results to skip before returning (default: 0)")] int offset = 0,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
+            ParameterValidation.ValidatePagination(offset, limit);
+            if (limit > 200)
+                throw new ArgumentException($"Invalid limit '{limit}'. Limit must be 200 or less.");
+
             // Guard: empty/whitespace queries would otherwise dump the full workspace symbol index
             // (observed 70-80 KB payloads on mid-sized solutions). Return a structured empty-query
             // envelope so the caller gets an actionable note instead of a giant unfiltered dump.
@@ -41,22 +46,32 @@ public static class SymbolTools
                 return JsonSerializer.Serialize(new
                 {
                     count = 0,
+                    totalCount = 0,
+                    hasMore = false,
+                    offset,
+                    limit,
                     symbols = Array.Empty<object>(),
                     note = "query must be non-empty — pass a bare substring like 'Animal' to find 'AnimalService', 'IAnimal', etc."
                 }, JsonDefaults.Indented);
             }
-            var results = await symbolSearchService.SearchSymbolsAsync(workspaceId, query, projectName, kind, @namespace, limit, c);
+
+            // symbol-search-pagination: collect up to max(1000, offset+limit) results so that
+            // totalCount accurately reflects the available pool within the internal cap.
+            var maxResults = Math.Max(1000, offset + limit);
+            var allResults = await symbolSearchService.SearchSymbolsAsync(workspaceId, query, projectName, kind, @namespace, maxResults, c);
+            var paged = allResults.Skip(offset).Take(limit).ToList();
+            var hasMore = offset + paged.Count < allResults.Count;
 
             // elicit-disambiguation-on-multi-symbol-resolve: when the search returns >1 candidate
             // and the client supports MCP elicitation, ask the agent which candidate to focus on
             // and return ONLY that one with a chosenViaElicitation marker. Purely additive: if the
             // client lacks elicitation OR the user declines, fall through to the existing list shape.
-            if (results.Count > 1 && StructuredCallToolFilter.HasElicitation(server?.ClientCapabilities))
+            if (paged.Count > 1 && StructuredCallToolFilter.HasElicitation(server?.ClientCapabilities))
             {
-                var options = new List<(string Key, string Label)>(results.Count);
-                for (var i = 0; i < results.Count; i++)
+                var options = new List<(string Key, string Label)>(paged.Count);
+                for (var i = 0; i < paged.Count; i++)
                 {
-                    var r = results[i];
+                    var r = paged[i];
                     var label = string.IsNullOrEmpty(r.FilePath)
                         ? $"{r.Kind} {r.FullyQualifiedName}"
                         : $"{r.Kind} {r.FullyQualifiedName} — {Path.GetFileName(r.FilePath)}:{r.StartLine}";
@@ -67,24 +82,36 @@ public static class SymbolTools
                     server,
                     paramName: "choice",
                     title: "Pick a symbol",
-                    description: $"symbol_search returned {results.Count} candidates for '{query}'. Pick one to focus on.",
+                    description: $"symbol_search returned {allResults.Count} candidates for '{query}'. Pick one to focus on.",
                     options,
                     c).ConfigureAwait(false);
 
                 if (chosenKey is not null
                     && int.TryParse(chosenKey, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var idx)
-                    && idx >= 0 && idx < results.Count)
+                    && idx >= 0 && idx < paged.Count)
                 {
                     return JsonSerializer.Serialize(new
                     {
                         count = 1,
-                        symbols = new[] { results[idx] },
+                        totalCount = allResults.Count,
+                        hasMore,
+                        offset,
+                        limit,
+                        symbols = new[] { paged[idx] },
                         chosenViaElicitation = true,
                     }, JsonDefaults.Indented);
                 }
             }
 
-            return JsonSerializer.Serialize(new { count = results.Count, symbols = results }, JsonDefaults.Indented);
+            return JsonSerializer.Serialize(new
+            {
+                count = paged.Count,
+                totalCount = allResults.Count,
+                hasMore,
+                offset,
+                limit,
+                symbols = paged,
+            }, JsonDefaults.Indented);
         }, ct);
     }
 

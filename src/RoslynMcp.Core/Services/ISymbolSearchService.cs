@@ -8,8 +8,15 @@ namespace RoslynMcp.Core.Services;
 /// </summary>
 public interface ISymbolSearchService
 {
+    /// <param name="maxResults">
+    /// symbol-search-pagination: hard internal cap on the number of matching symbols collected
+    /// before offset/limit slicing is applied by the caller. Defaults to 1000. Callers that
+    /// need accurate <c>totalCount</c> must pass a value large enough to accommodate all
+    /// matching symbols; the tool layer uses <c>offset + limit</c> floored at 1000 to avoid
+    /// over-fetching on targeted queries.
+    /// </param>
     Task<IReadOnlyList<SymbolDto>> SearchSymbolsAsync(
-        string workspaceId, string query, string? projectFilter, string? kindFilter, string? namespaceFilter, int limit, CancellationToken ct);
+        string workspaceId, string query, string? projectFilter, string? kindFilter, string? namespaceFilter, int maxResults, CancellationToken ct);
     /// <param name="allowAdjacent">
     /// symbol-info-lenient-whitespace-resolution: when <see langword="false"/> (the default),
     /// a caret that falls on whitespace adjacent to an identifier does NOT resolve to that
