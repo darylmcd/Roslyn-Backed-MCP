@@ -1,5 +1,6 @@
 ---
 name: backlog-split
+installed_as: backlog-split
 description: Split ai_docs/backlog.md into priority-scoped sibling files (ai_docs/backlog-p3.md, ai_docs/backlog-p4.md) when it breaches the doc-audit 4000-token hard cap. Use when /doc-audit reports "ai_docs/backlog.md over" in the Size Compliance table, or when the main backlog file grows past ~30 rows and hit-counts on the file start showing up as friction in transcripts. Keeps P2 inline; extracts P3 and P4 to their own files; updates the Refs table and Agent contract so routing still lands on the correct file. Preserves every row id verbatim so open-initiative references don't break.
 disable-model-invocation: true
 ---

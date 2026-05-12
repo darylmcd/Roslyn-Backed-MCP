@@ -1,5 +1,6 @@
 ---
 name: backlog-intake
+installed_as: backlog-intake
 description: "Consolidate deep-review artifacts (mcp-server-audit, experimental-promotion, roslyn-mcp-retro) into ai_docs/backlog.md with anchor verification, dedupe, priority classification, and Rule 1/3/4/5 sizing for the backlog-sweep-plan.md planner prompt. Use when: a deep-review / audit wave has produced `*_mcp-server-audit.md` / `*_roslyn-mcp-retro.md` / `*_experimental-promotion.md` files across sibling repos (or this one) and you want them reviewed, deduped, and merged into the backlog as properly-sized initiative rows."
 user-invocable: true
 argument-hint: "[--stage | --skip-verify | --no-commit | --publish] — defaults: stage files first, verify against CHANGELOG, commit on a fresh branch; pass --publish to file each accepted row as a public GitHub Issue via gh issue create"
