@@ -60,12 +60,29 @@ internal static class ToolErrorHandler
         [typeof(TimeoutException)] = (ex, _) => new("Timeout",
             $"Timed out: {ex.Message}. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or " +
             "ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS."),
-        [typeof(InvalidOperationException)] = (ex, _) => ex.Message.Contains("Rate limit")
-            ? new("RateLimited", ex.Message)
-            : new("InvalidOperation",
-                ShouldSuggestReloadAfterInvalidOperation(ex.Message)
-                    ? $"Invalid operation: {ex.Message}. The workspace may need to be reloaded (workspace_reload) if the state is stale."
-                    : $"Invalid operation: {ex.Message}."),
+        // compile-check-not-connected-raw-transport-error-envelope: a disconnected stdio
+        // pipe surfaces as InvalidOperationException("Not connected") from PipeStream when
+        // the SDK attempts a write on an already-closed transport. Registered BEFORE the
+        // generic InvalidOperationException entry so the Disconnected category wins over
+        // the fallback InvalidOperation envelope. Recovery hint mirrors WorkspaceEvicted:
+        // the workspace itself is intact — the client needs to reconnect and reload.
+        [typeof(InvalidOperationException)] = (ex, _) =>
+        {
+            if (ex.Message.Contains("Not connected", StringComparison.OrdinalIgnoreCase))
+            {
+                return new("Disconnected",
+                    $"Transport disconnected: {ex.Message}. " +
+                    "The stdio pipe to the MCP client has been closed. " +
+                    "Reconnect and call workspace_reload to restore the session.");
+            }
+
+            return ex.Message.Contains("Rate limit")
+                ? new("RateLimited", ex.Message)
+                : new("InvalidOperation",
+                    ShouldSuggestReloadAfterInvalidOperation(ex.Message)
+                        ? $"Invalid operation: {ex.Message}. The workspace may need to be reloaded (workspace_reload) if the state is stale."
+                        : $"Invalid operation: {ex.Message}.");
+        },
     };
 
     /// <summary>

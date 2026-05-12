@@ -128,6 +128,34 @@ public sealed class StructuredCallToolFilterTests
             "InternalError envelopes should include an abbreviated stack trace for server-side diagnosis.");
     }
 
+    [TestMethod]
+    public void BuildErrorResult_NotConnectedInvalidOperationException_EmitsDisconnectedEnvelope()
+    {
+        // compile-check-not-connected-raw-transport-error-envelope: verifies that an
+        // InvalidOperationException("Not connected") from a disconnected PipeStream is
+        // classified as category "Disconnected" (not the generic "InvalidOperation") and
+        // carries a workspace_reload recovery hint so the LLM can self-correct.
+        var transportEx = new InvalidOperationException("Not connected");
+
+        using var scope = AmbientGateMetrics.BeginRequest();
+        var result = StructuredCallToolFilter.BuildErrorResult("compile_check", transportEx);
+
+        Assert.IsTrue(result.IsError,
+            "Transport-disconnect errors must surface as IsError=true per SEP-1303.");
+        Assert.AreEqual(1, result.Content!.Count);
+
+        var text = ((TextContentBlock)result.Content[0]).Text;
+        var payload = JsonDocument.Parse(text).RootElement;
+
+        Assert.AreEqual("Disconnected", payload.GetProperty("category").GetString(),
+            "InvalidOperationException('Not connected') must classify as Disconnected, " +
+            "not as the generic InvalidOperation category.");
+        Assert.AreEqual("compile_check", payload.GetProperty("tool").GetString());
+        StringAssert.Contains(payload.GetProperty("message").GetString(), "workspace_reload",
+            "Disconnected envelope must include a workspace_reload recovery hint so the LLM " +
+            "knows how to restore the session after reconnect.");
+    }
+
     // ── _meta injection on success ────────────────────────────────────────────
 
     [TestMethod]
