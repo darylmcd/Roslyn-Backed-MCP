@@ -49,7 +49,7 @@
     {
       "id": "parallel-mode-workspace-cap-lru-or-raise",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["parallel-mode-workspace-cap-lru-or-raise"],
       "productionFilesTouched": 3,
       "testFilesAdded": 1,
@@ -67,11 +67,11 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/parallel-mode-workspace-cap-lru-or-raise",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "judgmentHeavy=true; IWorkspaceManager interface file count unconfirmed and may push production files to 4 at re-vet time. Executor must confirm the interface situation before proceeding."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/681",
+      "mergedAt": "2026-05-12T15:40:30Z",
+      "notes": "judgmentHeavy=true; IWorkspaceManager interface file count unconfirmed and may push production files to 4 at re-vet time. Executor must confirm the interface situation before proceeding. Confirmed at execution: productionFilesTouched=4 (added IWorkspaceManager.cs + EvictPolicy.cs new file in Contracts layer)."
     },
     {
       "id": "routine-flows-wrap-csharp-work-with-roslyn-bookends",

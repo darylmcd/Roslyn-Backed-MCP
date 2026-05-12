@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-12T15:12:55Z**
+**updated_at: 2026-05-12T15:45:32Z**
 
 ## Agent contract
 
@@ -45,7 +45,7 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `parallel-mode-workspace-cap-lru-or-raise` | High | none | Parallel-mode subagent sweeps saturate the 8-workspace tracking cap (`WorkspaceManager._options.MaxConcurrentWorkspaces`, default 8). Session 758e3c35 (2026-05-12) hit *"Invalid operation: The server is already tracking 8 workspaces. Close an existing workspace before loading another."* three times in a single parallel-mode wave (subagents a2065e36 at L64, a3431796 at L30, a8db57a5 at L57 — each on a different worktree path). No LRU eviction, no proactive `workspace_close` from the orchestrator; idle workspaces from prior waves stay pinned. Across 16 deeply-analyzed Roslyn-Backed-MCP sessions, `workspace_load` was called 38 times — `workspace_close` is invoked sporadically by comparison. Cap is unconditional. Next deliverable: add `evictPolicy: "lru"` parameter to `workspace_load` (default `"strict"` preserves current behavior; opt-in for parallel-mode skills). When the cap is hit AND `evictPolicy == "lru"`, silently close the least-recently-used non-mutating workspace and proceed. Update the strict-mode error envelope to include `activeWorkspaces: [{id, loadedAtUtc, path}, ...]` + `lruCandidate: <id>` so strict callers can self-recover with one extra round-trip. Alternative cheaper path: raise `MaxConcurrentWorkspaces` default from 8 to 16. Anchors: `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:96,195`, `src/RoslynMcp.Roslyn/Services/WorkspaceManagerOptions.cs:12`, `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs` (workspace_load registration), `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:98` (workspace_close shape unchanged). Regression test shape: 1 fixture loading 8 workspaces then calling `workspace_load(evictPolicy="lru", path=#9)` and asserting (a) the load succeeds, (b) the LRU workspace is now closed; 1 fixture for the strict-mode envelope shape with `activeWorkspaces` + `lruCandidate` populated. Evidence: `review-inbox/archive/20260512T134225Z/20260512T130723Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §2a R1 + §3 P3 + §4 F3 — 3 cap-saturation events in session 758e3c35; no prior `workspace_close` calls in the same sweep. |
+
 
 ## Medium
 
