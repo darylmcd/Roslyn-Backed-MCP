@@ -34,6 +34,21 @@ Note: this skill's purpose is to report server/workspace status, so a failing pr
 
 Execute these steps in order. Use the Roslyn MCP tools — do not shell out.
 
+### Step 0: CWD Applicability Probe
+
+Before enumerating workspaces, determine whether the current working directory contains a C# project.
+
+1. Use the `Glob` tool to search the CWD for any file matching `*.csproj`, `*.sln`, or `*.slnx` (search non-recursively at CWD root first; a single hit is sufficient).
+2. If **at least one** such file is found:
+   - Set `applicable: true`
+   - Set `detectedStack: "csharp"`
+3. If **none** are found:
+   - Set `applicable: false`
+   - Set `detectedStack: "unknown"`
+   - Note: the presence of MSBuild property files alone (without any `.csproj`, `.sln`, or `.slnx`) is **not** a sufficient signal — at least one of those three must be present.
+
+Emit `applicable` and `detectedStack` as the **first two lines** of the output report (before the Server section). These values are used in Step 3 to decide whether to emit the workspace-load hint.
+
 ### Step 1: Server Identity
 
 1. Use the `server_info` response from the precheck.
@@ -48,7 +63,9 @@ Execute these steps in order. Use the Roslyn MCP tools — do not shell out.
 
 1. Call `workspace_list` to get every loaded workspace and its metadata (id, solution path, load time, warnings).
 2. If `$ARGUMENTS` names a workspace ID, filter to just that entry but keep the count of the others for the summary.
-3. If zero workspaces are loaded, skip Steps 4-5 and record "no workspaces loaded" in the report.
+3. If zero workspaces are loaded, skip Steps 4-5 and apply the following conditional based on `applicable` from Step 0:
+   - If `applicable: false`: suppress the "consider calling `workspace_load`" hint and instead emit: "CWD does not appear to be a C# repo (`detectedStack: unknown`). The workspace-health skill is most useful when a `.sln` or `.csproj` is present."
+   - If `applicable: true`: retain the existing hint — emit "no workspaces loaded — consider calling `workspace_load` on a `.sln` / `.slnx` / `.csproj`".
 
 ### Step 4: Per-Workspace Status
 
@@ -91,6 +108,9 @@ Present a structured report:
 
 ```
 ## Workspace Health Report
+
+applicable: {true|false}
+detectedStack: {csharp|unknown}
 
 ### Server
 - Version: {semver}
