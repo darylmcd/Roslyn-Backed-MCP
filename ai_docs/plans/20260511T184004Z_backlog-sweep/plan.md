@@ -90,7 +90,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #658 (2026-05-12T02:22:53Z) |
 | Backlog rows closed | `parallel-fanout-auto-reload-timeout-floor` |
 | Diagnosis | Per-call held-time timeouts fire at 5s floor when an auto-reload is in flight, even though completed in <2s held-time post-reload. Two fix paths surfaced in row: (a) extend held-time budget when `staleAction=auto-reloaded`; (b) surface a distinct `WorkspaceStaleReloading` error category. **Touches the `WorkspaceManager.cs` hotspot — schedule at most one hotspot-touching initiative per parallel wave.** |
 | Approach | Path (a): in `src/RoslynMcp.Roslyn/Services/WorkspaceExecutionGate.cs`, detect `staleAction=auto-reloaded` state on a held request and extend the deadline by the reload's remaining time. Path (b) is the fallback if (a) introduces too much complexity — surface a new error category in `src/RoslynMcp.Core/Models/`. |
@@ -180,7 +180,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #660 (2026-05-12T02:33:03Z) |
 | Backlog rows closed | `find-consumers-static-class-classification` |
 | Diagnosis | `find_consumers` classifies consumers of a `public static class` as `dependencyKinds=["Other"]` (uninformative); `find_type_consumers` classifies them as `kinds=["local"]` (incorrect — no `var x = StaticClass...`). Static-method invocation is a very common pattern; the uninformative bucket makes both tools weak for static-class targets. |
 | Approach | In `src/RoslynMcp.Roslyn/Services/ConsumerAnalysisService.cs`, add `Invocation` (or `StaticReference`) kind detection — when the consumer's syntax is `<StaticClass>.<Member>(...)` or a using statement, classify as `Invocation` rather than `Other`. Align the vocabularies between the two tools. |
@@ -234,7 +234,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #657 (2026-05-12T02:16:02Z) |
 | Backlog rows closed | `sweep-executor-pr-collision-check` |
 | Diagnosis | `/backlog-sweep:execute` Step 2 currently checks only for the `**Reserved**` marker. It does NOT query `gh pr list` to detect open contributor PRs targeting an initiative's anchor files. Race: sweep claims a row a contributor has started. Doc-only change to the sweep executor prompt. |
 | Approach | In `ai_docs/prompts/backlog-sweep-execute.md` Step 2, after the reservation re-check, add a query: `gh pr list --state open --json number,headRefName,files --jq '.[] | select(.files[].path | IN(<initiative anchors>))'`. If any open PR's diff touches an anchor file, mark the initiative `obsolete` with reason. |
@@ -288,7 +288,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #659 (2026-05-12T02:28:33Z) |
 | Backlog rows closed | `symbol-search-pagination` |
 | Diagnosis | `symbol_search` has no pagination — broad queries overflow MCP transport cap (69K+ responses) on large solutions. Sibling tools (`list_analyzers`, `test_discover`) have pagination. |
 | Approach | Add `offset` (default 0) and `limit` (default 50, max 200) parameters to `symbol_search`; include `totalCount` and `hasMore` in response. Mirror `list_analyzers` pagination contract. |

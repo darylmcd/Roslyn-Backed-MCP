@@ -195,7 +195,7 @@
     {
       "id": "parallel-fanout-auto-reload-timeout-floor",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "parallel-fanout-auto-reload-timeout-floor"
       ],
@@ -207,11 +207,11 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/parallel-fanout-auto-reload-timeout-floor",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Touches WorkspaceManager.cs hotspot; do not parallel-wave with initiative 15."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/658",
+      "mergedAt": "2026-05-12T02:22:53Z",
+      "notes": "Touches WorkspaceManager.cs hotspot; do not parallel-wave with initiative 15. Shipped as PR #658 (squash e321fa2721)."
     },
     {
       "id": "workspace-load-sibling-worktree-sanctioned-root",
@@ -300,7 +300,7 @@
     {
       "id": "find-consumers-static-class-classification",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "find-consumers-static-class-classification"
       ],
@@ -312,11 +312,11 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/find-consumers-static-class-classification",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/660",
+      "mergedAt": "2026-05-12T02:33:03Z",
+      "notes": "3 production files (ISymbolSearchService.cs interface update mechanically required). Shipped as PR #660 (squash 6562ef2a88)."
     },
     {
       "id": "get-syntax-tree-maxtotalbytes-not-enforced",
@@ -363,7 +363,7 @@
     {
       "id": "sweep-executor-pr-collision-check",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "sweep-executor-pr-collision-check"
       ],
@@ -375,11 +375,11 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/sweep-executor-pr-collision-check",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Doc-only \u2014 backlog-sweep-execute.md prompt edit."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/657",
+      "mergedAt": "2026-05-12T02:16:02Z",
+      "notes": "Doc-only \u2014 backlog-sweep-execute.md prompt edit. Shipped as PR #657 (squash 5912ccd341)."
     },
     {
       "id": "promote-tier-supports-prompts-and-resources",
@@ -424,7 +424,7 @@
     {
       "id": "symbol-search-pagination",
       "order": 16,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "symbol-search-pagination"
       ],
@@ -436,11 +436,11 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/symbol-search-pagination",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Rule 3 exemption: tool-surface-only, 2 files."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/659",
+      "mergedAt": "2026-05-12T02:28:33Z",
+      "notes": "Rule 3 exemption: tool-surface-only, 2 files. Shipped as PR #659 (squash 61fabcda5d)."
     },
     {
       "id": "scaffold-test-preview-missing-usings",
