@@ -32,7 +32,7 @@ The backlog is small after the 2026-05-08 sweep landed. Open tables: 1 Medium + 
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #653, 2026-05-12) |
 | Priority | Medium |
 | Backlog rows closed | `file-lock-aware-prompt-validation-guidance` |
 | Diagnosis | Dependency `build-test-self-analyzer-file-lock` shipped 2026-05-08 in PR #563 (workspace-load shadow-copy + BuildService/TestRunnerService file-lock envelope). The shipped envelope surfaces `errorKind: FileLock` plus `MSB3027`/`MSB3021` markers for self-hosted analyzer-DLL contention, but downstream consumers (operator-facing prompts in `src/RoslynMcp.Host.Stdio/Prompts/PromptMessageBuilder.cs:117,137` and `src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.RefactoringWorkflows.cs:13`, plus the maintainer audit prompt at `.claude/skills/mcp-server-stress/prompts/prompt.md:345,348,484`) still treat any failed `build_workspace`/`test_run` as a test-authoring problem and re-trigger validation in the same loaded workspace, re-acquiring the lock. The 2026-05-08 stress run reproduced this loop. Anchor verification: all four files exist; the `FileLock`/`MSB3027`/`MSB3021` strings are NOT yet present in `PromptMessageBuilder.cs` (executor will introduce them as part of this initiative — they are aspirational anchors from the row author, not stale references to existing code). |
