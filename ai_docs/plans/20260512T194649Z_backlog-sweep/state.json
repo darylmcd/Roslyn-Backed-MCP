@@ -10,7 +10,8 @@
   "reviewFindings": { "block": 0, "warn": 0, "info": 3 },
   "handoffReadiness": { "policy": "auto", "annotated": [], "skipped": [1, 2, 3, 4], "notAnnotatedReasons": { "no-judgment-flag-no-warn-low-context": [1, 2, 3, 4] } },
   "readyForExecute": true,
-  "completedAt": "2026-05-12T19:58:00Z",
+  "completed": true,
+  "completedAt": "2026-05-12T21:03:31Z",
   "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [
@@ -68,7 +69,7 @@
     {
       "id": "filepaths-batch-2a-advanced-msbuild",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["filepaths-batch-2a-advanced-msbuild"],
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
@@ -82,16 +83,16 @@
         "status": "ok",
         "flags": { "judgmentHeavy": false, "anchorStale": false, "ruleOneBundleResolved": "n/a" }
       },
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "branch": "remediation/filepaths-batch-2a-advanced-msbuild",
+      "worktreePath": ".worktrees/filepaths-batch-2a-advanced-msbuild",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/702",
+      "mergedAt": "2026-05-12T20:34:29Z",
       "notes": "First in the batch-2 sequence. Anchors live at draft time (AdvancedAnalysisTools.cs:150, MSBuildTools.cs:60). Tool names get_complexity_metrics + get_msbuild_properties confirmed."
     },
     {
       "id": "filepaths-batch-2b-interface-scaffolding",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["filepaths-batch-2b-interface-scaffolding"],
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
@@ -109,12 +110,16 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
+      "branch": "remediation/filepaths-batch-2b-interface-scaffolding",
+      "worktreePath": ".worktrees/filepaths-batch-2b-interface-scaffolding",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/703",
+      "mergedAt": "2026-05-12T20:44:25Z",
       "notes": "Tool names extract_interface_preview + scaffold_type_preview confirmed. Anchors live."
     },
     {
       "id": "filepaths-batch-2c-parameter-object",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["filepaths-batch-2c-parameter-object"],
       "productionFilesTouched": 1,
       "testFilesAdded": 1,
@@ -132,7 +137,11 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Last in batch-2 sequence. Anchor live (ParameterObjectTools.cs:37). Tool name parameter_object_preview confirmed."
+      "branch": "remediation/filepaths-batch-2c-parameter-object",
+      "worktreePath": ".worktrees/filepaths-batch-2c-parameter-object",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/704",
+      "mergedAt": "2026-05-12T21:03:31Z",
+      "notes": "Last in batch-2 sequence. Anchor live (ParameterObjectTools.cs:37). Tool name parameter_object_preview confirmed. CI flake on EvaluateAsync_InfiniteLoop_TightGraceCompletesQuickly (unrelated to changes; re-run passed)."
     }
   ]
 }
