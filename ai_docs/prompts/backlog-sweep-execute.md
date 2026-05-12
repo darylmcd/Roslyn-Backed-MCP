@@ -162,6 +162,25 @@ skip it, and pick the next pending one. The planner skips these at plan time,
 but this catches the race where a maintainer reserves a row between plan
 generation and execution.
 
+**Defense-in-depth — open contributor PRs touching anchor files.** After the
+Reserved-marker re-check, query GitHub for open PRs whose diffs overlap the
+initiative's anchor files (the production files listed in its Scope field):
+
+```
+gh pr list --state open --json number,headRefName,title,updatedAt,files \
+  --jq '.[] | select(.files[].path | IN(<anchor-file-1>, <anchor-file-2>, ...))'
+```
+
+For each matching PR, check its `updatedAt` timestamp. If any open PR was updated
+within the past 14 days AND its diff touches at least one of the initiative's anchor
+files, treat this as a live contributor collision: mark the initiative `obsolete` in
+state.json with reason `"open PR #<n> (<headRefName>) touches anchor file(s) and was
+updated within 14 days — contributor work in flight"`, skip it, and pick the next
+pending one. PRs updated more than 14 days ago are considered abandoned and do not
+block the claim. This check catches the race where a contributor opens a PR for the
+same file set between plan generation and execution without using the Reserved-row
+marker.
+
 If the first-in-queue has `scheduleHint == "heroic-last"`: verify all other
 non-heroic initiatives are `merged` or `obsolete` before proceeding. If not,
 skip this one and pick the next pending non-heroic.
