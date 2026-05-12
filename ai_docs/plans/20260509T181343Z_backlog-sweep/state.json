@@ -15,7 +15,7 @@
     {
       "id": "host-middleware-tools-namespace-cycle",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["host-middleware-tools-namespace-cycle"],
       "productionFilesTouched": 0,
       "testFilesAdded": 0,
@@ -27,9 +27,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Doc-only edit to ai_docs/architecture.md § Known Gaps; closes the row by accepting the cycle with documented rationale (path a). Path b (envelope refactor) is intentionally NOT planned here."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/651",
+      "mergedAt": "2026-05-12T01:10:01Z",
+      "notes": "Doc-only edit to ai_docs/architecture.md § Known Gaps; closes the row by accepting the cycle with documented rationale (path a). Path b (envelope refactor) is intentionally NOT planned here. Shipped as PR #651 (squash 5861dc6cbf)."
     },
     {
       "id": "file-lock-aware-prompt-validation-guidance",

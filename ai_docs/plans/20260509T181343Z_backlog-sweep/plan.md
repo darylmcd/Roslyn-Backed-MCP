@@ -13,7 +13,7 @@ The backlog is small after the 2026-05-08 sweep landed. Open tables: 1 Medium + 
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #651, 2026-05-12) |
 | Priority | Low |
 | Backlog rows closed | `host-middleware-tools-namespace-cycle` |
 | Diagnosis | The 2026-05-08 stress-audit confirmed a `Host.Stdio.Middleware` ↔ `Host.Stdio.Tools` namespace cycle via `get_namespace_dependencies(circularOnly=true)`. Anchors: `src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs` and the broader `src/RoslynMcp.Host.Stdio/Middleware/` ↔ `src/RoslynMcp.Host.Stdio/Tools/` boundary. The row offers two paths: (a) document the cycle in `ai_docs/architecture.md` § Known Gaps with rationale, OR (b) introduce a tool-dispatch envelope abstraction. Path (a) is the cheap, shippable, no-behavior-change deliverable; path (b) is a real refactor that should become a separate row only if the cycle starts blocking work. Plan path (a). |
