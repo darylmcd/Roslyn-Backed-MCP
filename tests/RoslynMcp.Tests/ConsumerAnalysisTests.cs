@@ -59,4 +59,27 @@ public sealed class ConsumerAnalysisTests : SharedWorkspaceTestBase
         Assert.IsNotNull(rectangle, "Rectangle should consume Shape");
         CollectionAssert.Contains(rectangle.DependencyKinds.ToList(), "BaseType");
     }
+
+    [TestMethod]
+    public async Task FindConsumers_StaticClass_ClassifiesAsStaticMemberAccess()
+    {
+        // find-consumers-static-class-classification: consumers that call static methods on a
+        // public static class must be classified as "StaticMemberAccess", not "Other".
+        // SampleApp/Program.cs calls AnimalFormatter.Format(...) and AnimalFormatter.FormatAll(...)
+        // using explicit static-class syntax — this is the canonical static-consumer pattern.
+        var locator = SymbolLocator.ByMetadataName("SampleLib.AnimalFormatter");
+        var result = await ConsumerAnalysisService.FindConsumersAsync(WorkspaceId, locator, CancellationToken.None);
+
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Consumers.Count >= 1,
+            $"Expected at least 1 consumer of AnimalFormatter, got {result.Consumers.Count}");
+
+        // All dependency kinds reported for AnimalFormatter consumers must NOT include "Other".
+        // The presence of "StaticMemberAccess" is the positive assertion.
+        var allKinds = result.Consumers.SelectMany(c => c.DependencyKinds).Distinct().ToList();
+        CollectionAssert.Contains(allKinds, "StaticMemberAccess",
+            $"Expected 'StaticMemberAccess' kind for static-class consumers. Actual kinds: [{string.Join(", ", allKinds)}]");
+        CollectionAssert.DoesNotContain(allKinds, "Other",
+            $"'Other' kind must not appear for static-class consumers. Actual kinds: [{string.Join(", ", allKinds)}]");
+    }
 }

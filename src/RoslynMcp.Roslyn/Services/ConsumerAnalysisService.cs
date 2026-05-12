@@ -130,6 +130,12 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
                 or "AddKeyedSingleton" or "AddKeyedScoped" or "AddKeyedTransient")
             return nameof(TypeUsageClassification.DIRegistration);
 
+        // StaticClass.Method(...) — the type name appears as the left-hand side of a member access.
+        // This is the primary pattern for static-class consumers (e.g. MathHelper.Compute(...),
+        // AnimalExtensions.Describe(...)) and produces "StaticMemberAccess" instead of "Other".
+        if (parent is MemberAccessExpressionSyntax)
+            return nameof(TypeUsageClassification.StaticMemberAccess);
+
         // Constructor parameter
         if (parent is ParameterSyntax param)
         {
