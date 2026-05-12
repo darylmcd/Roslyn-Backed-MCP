@@ -106,7 +106,7 @@ public static class ProjectMutationTools
     [McpServerTool(Name = "set_project_property_preview", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Preview setting an allowlisted property in a project file."),
-     Description("Preview setting an allowlisted property in a project file in the loaded workspace.")]
+     Description("Preview setting an allowlisted property in a project file in the loaded workspace. When the property value is already inherited from Directory.Build.props, the response includes a warning annotation.")]
     public static Task<string> PreviewSetProjectProperty(
         IWorkspaceExecutionGate gate,
         IProjectMutationService projectMutationService,
