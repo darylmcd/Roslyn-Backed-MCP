@@ -629,7 +629,8 @@ public sealed class ProjectMutationService : IProjectMutationService
         if (!SupportedConditionPattern.IsMatch(condition))
         {
             throw new InvalidOperationException(
-                "Conditional property updates only support equality conditions on $(Configuration), $(TargetFramework), or $(Platform).");
+                "Conditional property updates only support equality conditions on $(Configuration), $(TargetFramework), or $(Platform). " +
+                "Use MSBuild-style single-quoting: '$(Configuration)' == 'Release'");
         }
     }
 

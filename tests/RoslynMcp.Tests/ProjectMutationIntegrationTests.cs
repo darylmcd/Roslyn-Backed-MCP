@@ -509,4 +509,22 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         var revertedBytes = await File.ReadAllTextAsync(projectFilePath, CancellationToken.None);
         Assert.AreEqual(preApplyBytes, revertedBytes, "Revert must restore the .csproj byte-exact.");
     }
+
+    [TestMethod]
+    public async Task Set_Conditional_Property_Preview_Invalid_Condition_Error_Message_Includes_MSBuild_Quoting_Example()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        // Pass a condition that omits MSBuild-style single-quoting (the common first-time caller mistake).
+        const string invalidCondition = "$(Configuration) == Release";
+
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            ProjectMutationService.PreviewSetConditionalPropertyAsync(
+                workspace.WorkspaceId,
+                new SetConditionalPropertyDto("SampleLib", "LangVersion", "preview", invalidCondition),
+                CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "'$(Configuration)' == 'Release'",
+            "Error message must include the MSBuild-quoting example so first-time callers see the expected syntax.");
+    }
 }
