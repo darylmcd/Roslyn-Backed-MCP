@@ -47,6 +47,46 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
         Assert.AreEqual(value, entry!.Value);
     }
 
+    /// <summary>
+    /// Regression test for <c>editorconfig-write-no-auto-invalidation</c>:
+    /// <see cref="IEditorConfigService.GetOptionsAsync"/> must return the value that
+    /// <see cref="IEditorConfigService.SetOptionAsync"/> just wrote for a <em>known</em>
+    /// key (one that Roslyn's <c>AnalyzerConfigOptionsProvider</c> already has in its
+    /// cached workspace snapshot) — without requiring a <c>workspace_reload</c> call
+    /// in between.
+    /// </summary>
+    [TestMethod]
+    public async Task SetThenGet_KnownKey_ReturnsNewValueWithoutReload()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        // indent_size is a well-known key that Roslyn's AnalyzerConfigOptionsProvider
+        // enumerates. Writing a new value via SetOptionAsync must be visible on the
+        // immediately-following GetOptionsAsync call without an intervening workspace_reload.
+        const string knownKey = "indent_size";
+        const string newValue = "4";
+
+        var setResult = await EditorConfigService.SetOptionAsync(
+            workspaceId, dogFilePath, knownKey, newValue, "set_editorconfig_option", CancellationToken.None);
+        Assert.IsTrue(File.Exists(setResult.EditorConfigPath));
+
+        // Intentionally NOT calling workspace_reload — that is the bug surface.
+        var options = await EditorConfigService.GetOptionsAsync(
+            workspaceId, dogFilePath, CancellationToken.None);
+
+        var entry = options.Options.FirstOrDefault(o =>
+            string.Equals(o.Key, knownKey, StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(entry,
+            $"Get must surface '{knownKey}' after Set writes it. " +
+            $"Returned keys: {string.Join(", ", options.Options.Select(o => o.Key))}");
+        Assert.AreEqual(newValue, entry!.Value,
+            $"Get must return the newly-written value '{newValue}' without a workspace_reload. " +
+            $"Actual value returned: '{entry.Value}'. This indicates the Roslyn-cached snapshot " +
+            $"was returned instead of the on-disk value.");
+    }
+
     [TestMethod]
     public void SectionMatchesCSharp_RecognizesCommonGlobs()
     {
