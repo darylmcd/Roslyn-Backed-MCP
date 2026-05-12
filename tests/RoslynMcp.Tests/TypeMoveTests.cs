@@ -47,6 +47,29 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task MoveType_SingleTypeFile_ErrorMessagePointsAtMoveFilePreview()
+    {
+        // Regression guard: when a caller tries to "rename" a single-type file via
+        // move_type_to_file_preview, the error must point them at move_file_preview
+        // instead of surfacing the misleading "nested types cannot be extracted" wording.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var wsId = workspace.WorkspaceId;
+
+        var doc = WorkspaceManager.GetCurrentSolution(wsId)
+            .Projects.SelectMany(p => p.Documents)
+            .First(d => d.FilePath?.EndsWith("Dog.cs") == true);
+
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            TypeMoveService.PreviewMoveTypeToFileAsync(
+                wsId, doc.FilePath!, "Dog", null, CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "move_file_preview",
+            $"Error message must point callers at move_file_preview; got: {ex.Message}");
+        Assert.IsFalse(ex.Message.Contains("Nested types cannot be extracted", StringComparison.Ordinal),
+            $"Misleading 'Nested types cannot be extracted' wording must not appear; got: {ex.Message}");
+    }
+
+    [TestMethod]
     public async Task MoveType_NonExistentType_ThrowsInvalidOperation()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
