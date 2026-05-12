@@ -34,7 +34,7 @@ public static class ParameterObjectTools
         [Description("Optional: bare fully-qualified method name without parentheses (e.g. 'Foo.Bar.Baz').")] string? metadataName = null,
         [Description("Optional override project for the new record. Defaults to the method's project. When different, every caller project must already reference it (no auto-add of <ProjectReference> in v1).")] string? dtoProjectName = null,
         [Description("Optional namespace for the new record. Defaults to the method's containing namespace.")] string? dtoNamespace = null,
-        [Description("Optional folder segments under the project root for the new record file. Defaults to folders derived from the namespace.")] string[]? dtoFolders = null,
+        [Description("Optional folder segments under the project root for the new record file. Pass as a native JSON array, not a JSON-encoded string. Example: [\"Models\", \"Requests\"]. Defaults to folders derived from the namespace.")] string[]? dtoFolders = null,
         [Description("Optional name for the new single record-typed parameter on the rewritten method. Defaults to the camelCased newTypeName.")] string? parameterName = null,
         CancellationToken ct = default)
     {
