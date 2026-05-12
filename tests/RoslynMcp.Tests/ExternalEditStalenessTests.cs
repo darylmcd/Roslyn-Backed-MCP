@@ -232,6 +232,49 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
+    /// Writes to a <c>.cs</c> file inside a simulated worktree subdirectory
+    /// (<c>.worktrees/agent-xxx/</c>) must NOT flip the primary workspace's
+    /// <c>IsStale</c> flag. This guards the cross-workspace contamination scenario where
+    /// workspace A monitors <c>C:\Repo\</c> recursively and worktree workspace B lives under
+    /// <c>C:\Repo\.worktrees\agent-xxx\</c> — every <c>apply_*</c> write to B previously
+    /// triggered a spurious stale-reload on A.
+    /// </summary>
+    [TestMethod]
+    public async Task WorktreeSubdirectoryWrite_DoesNotFlipIsStale_OnPrimaryWorkspace()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var initialStatus = WorkspaceManager.GetStatus(workspace.WorkspaceId);
+        Assert.IsFalse(initialStatus.IsStale, "Precondition: a freshly loaded workspace is not stale.");
+
+        // Create a simulated worktree subdirectory under the workspace root — this mirrors
+        // the layout where a parallel worktree workspace lives at
+        // <solutionRoot>/.worktrees/agent-xxx/Solution.slnx
+        var worktreePath = workspace.GetPath(".worktrees", "agent-xxx");
+        Directory.CreateDirectory(worktreePath);
+
+        try
+        {
+            // Write a .cs file inside .worktrees/agent-xxx/ — must NOT flip isStale on workspace A.
+            var worktreeFile = Path.Combine(worktreePath, $"WorktreeProbe{Guid.NewGuid():N}.cs");
+            await File.WriteAllTextAsync(worktreeFile, "// worktree workspace probe\nnamespace Probe;\n", CancellationToken.None);
+
+            // Wait up to WatcherFlushTimeoutMs for any spurious watcher event that would flip the flag.
+            await Task.Delay(WatcherFlushTimeoutMs, CancellationToken.None).ConfigureAwait(false);
+
+            var status = WorkspaceManager.GetStatus(workspace.WorkspaceId);
+            Assert.IsFalse(status.IsStale,
+                "Writes under .worktrees/ must not contaminate the primary workspace's isStale flag. " +
+                "Ensure ShouldIgnorePath excludes paths containing a .worktrees directory segment.");
+        }
+        finally
+        {
+            if (Directory.Exists(worktreePath))
+                Directory.Delete(worktreePath, recursive: true);
+        }
+    }
+
+    /// <summary>
     /// Polls <see cref="RoslynMcp.Roslyn.Services.WorkspaceManager.IsStale"/> until it flips
     /// or the timeout fires. Required because <see cref="System.IO.FileSystemWatcher"/>
     /// delivers events asynchronously; a naive assert immediately after the write races the
