@@ -319,7 +319,7 @@
     {
       "id": "set-project-property-preview-directory-build-props-blindness",
       "order": 11,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["set-project-property-preview-directory-build-props-blindness"],
       "productionFilesTouched": 2,
       "testFilesAdded": 0,
@@ -337,16 +337,16 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/set-project-property-preview-directory-build-props-blindness",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Mirrors existing CPM duplicate-detection pattern in PreviewAddPackageReferenceAsync. Test extension only (no new file). Follow-on: PreviewSetConditionalPropertyAsync has same blindness."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/689",
+      "mergedAt": "2026-05-12T17:59:12Z",
+      "notes": "Mirrors existing CPM duplicate-detection pattern in PreviewAddPackageReferenceAsync. Test extension only (no new file). Follow-on: PreviewSetConditionalPropertyAsync has same blindness. Used record mutation pattern `preview with { Warnings = warnings }` to attach post-lambda warnings."
     },
     {
       "id": "eternal-experimental-age-audit",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["eternal-experimental-age-audit"],
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
@@ -364,16 +364,16 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/eternal-experimental-age-audit",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "SKILL.md hook is optional per backlog; if executor judges the SKILL.md edit too minor, may omit and reduce productionFilesTouched to 1."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/690",
+      "mergedAt": "2026-05-12T18:00:42Z",
+      "notes": "Script detected 82 experimental entries at -ThresholdDays 0; default 180-day threshold emits no entries (all younger). 5 new tests pass."
     },
     {
       "id": "audit-and-refactor-skills-roslyn-self-check",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["audit-and-refactor-skills-roslyn-self-check"],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
@@ -391,16 +391,16 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/audit-and-refactor-skills-roslyn-self-check",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "judgmentHeavy=true. (1) mcp-server-stress alias-level treatment is judgment call (exit annotation only vs full self-check vs skip); executor re-vets. (2) Semantic call count is LLM-behavioral heuristic, not instrumented — best-effort warning. Confirmed conflict-graph edge with initiative 2 (shared skills/refactor/SKILL.md + skills/refactor-loop/SKILL.md)."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/692",
+      "mergedAt": "2026-05-12T18:07:57Z",
+      "notes": "judgmentHeavy=true. All edits strictly EOF-append; entry-time prelude regions confirmed unchanged. verify-ai-docs.ps1 passed."
     },
     {
       "id": "bump-skill-double-version-string-detect",
       "order": 14,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["bump-skill-double-version-string-detect"],
       "productionFilesTouched": 1,
       "testFilesAdded": 0,
@@ -418,11 +418,11 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/bump-skill-double-version-string-detect",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "PR #597 fixed acute server.json regression with per-file replace_all:true note. This initiative ships the general preflight that was never added — NOT obsolete."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/691",
+      "mergedAt": "2026-05-12T18:07:32Z",
+      "notes": "Step 2.5 preflight inserted between Step 2 and Step 3. verify-ai-docs.ps1 passed."
     },
     {
       "id": "roslyn-skill-prompts-exceed-read-token-cap",
