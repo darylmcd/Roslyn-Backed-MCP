@@ -1,5 +1,6 @@
 ---
 name: close-backlog-rows
+installed_as: close-backlog-rows
 description: "Close one or more rows in `ai_docs/backlog.md` by id — resolves each id to its single line, deletes atomically, bumps `updated_at`, and reports which P-band decremented. Use when: a batch reconcile or ship step needs to remove N already-shipped backlog rows in one pass, to avoid the per-row Grep + Read + Edit dance that hits the `[Omitted long matching line]` friction on backlog.md's 1500+ char rows."
 user-invocable: true
 argument-hint: "comma-separated row ids (e.g. `position-probe-for-test-fixture-authoring,pragma-directive-scope-manipulation`)"
