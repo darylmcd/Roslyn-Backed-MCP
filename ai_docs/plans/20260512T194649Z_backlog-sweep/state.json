@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 3,
+  "generatedAt": "2026-05-12T19:46:49Z",
+  "backlogSnapshot": "2026-05-12T19:30:00Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "anchorVerification": "pending",
+  "conflictGraph": { "edges": [], "degrees": {}, "zeroDegreeInitiatives": [] },
+  "selectionNotes": {
+    "selected": 4,
+    "skippedReserved": 7,
+    "skippedWeakerEvidence": 4,
+    "skippedDeferSection": 4,
+    "skippedByMaintainerChoice": ["skill-namespace-installed-as-bulk-frontmatter-migration"],
+    "preSplitRows": {
+      "filepaths-array-vs-stringified-tool-description-clarification-batch-2": [
+        "filepaths-batch-2a-advanced-msbuild",
+        "filepaths-batch-2b-interface-scaffolding",
+        "filepaths-batch-2c-parameter-object"
+      ]
+    },
+    "knownSequentialEdges": [
+      { "before": 2, "after": 3, "sharedFiles": ["tests/RoslynMcp.Tests/SurfaceCatalogTests.cs"] },
+      { "before": 3, "after": 4, "sharedFiles": ["tests/RoslynMcp.Tests/SurfaceCatalogTests.cs"] }
+    ]
+  },
+  "initiatives": [
+    {
+      "id": "skill-prompts-deprecated-workspace-load-param-name-cleanup",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": ["skill-prompts-deprecated-workspace-load-param-name-cleanup"],
+      "productionFilesTouched": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "filepaths-batch-2a-advanced-msbuild",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": ["filepaths-batch-2a-advanced-msbuild"],
+      "productionFilesTouched": 2,
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Sequential before #3 and #4 — shared SurfaceCatalogTests.cs lockstep test."
+    },
+    {
+      "id": "filepaths-batch-2b-interface-scaffolding",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": ["filepaths-batch-2b-interface-scaffolding"],
+      "productionFilesTouched": 2,
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Sequential after #2, before #4 — shared SurfaceCatalogTests.cs."
+    },
+    {
+      "id": "filepaths-batch-2c-parameter-object",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": ["filepaths-batch-2c-parameter-object"],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Sequential after #3 — shared SurfaceCatalogTests.cs."
+    }
+  ]
+}
