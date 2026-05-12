@@ -47,3 +47,7 @@ Functionally equivalent to typing `/mcp-server-surface-test --output-mode=fragme
 - **Mutation isolation contract.** Phase 7 / 8b / 13 writes target the disposable worktree only. Run-end primary-checkout `git status` MUST be empty (Phase 0 baseline + Final surface closure step 3a hard gate).
 - **No silent truncation.** Subagent phases that return `skipped-budget` / `skipped-context` / `truncated` markers are hard FAILs; orchestrator re-dispatches or records `phase-failed-budget` as P1.
 - **P0 / security findings never go to GitHub Issues** under findings mode. Under fragments mode, `area: security` triggers `/backlog-intake --publish`'s refusal contract when the fragment is later published.
+
+## Exit annotation
+
+This skill is a thin alias and does not track its own semantic-call count. To verify that the underlying surface-test run made meaningful Roslyn tool calls, check the audit report's **tool-invocation section** (Phase 17 in `full.md`): it records the complete list of MCP tools called and their call counts for the session. If the tool-invocation section is absent or shows zero semantic calls (only infrastructure calls such as `workspace_load` / `server_info`), treat the run as potentially incomplete and re-invoke with an explicit `--single-agent` flag to reduce context-budget pressure.
