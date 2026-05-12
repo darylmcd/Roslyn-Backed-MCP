@@ -1,1 +1,0 @@
-**Fixed:** `move_type_to_file_preview` error message on single-type source files now points callers at `move_file_preview` (the correct tool for rename-style operations) instead of the misleading "nested types cannot be extracted" message. Closes gh #626.

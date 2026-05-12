@@ -1,1 +1,0 @@
-**Fixed:** `extract_and_wire_interface_preview` now detects when the target type already implements an interface with the same name (cross-project or in-project) and declines with a pointer at `extract_interface_cross_project_preview`. Closes gh #625.
