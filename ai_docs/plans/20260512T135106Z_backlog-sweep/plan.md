@@ -37,6 +37,18 @@
 | CHANGELOG entry (draft) | Fixed parallel-mode workspace saturation: raised the default `MaxConcurrentWorkspaces` from 8 to 16 and added `evictPolicy="lru"` to `workspace_load` so callers can opt into silent LRU eviction of idle workspaces instead of receiving a hard error. Strict-mode errors now include `activeWorkspaces` and `lruCandidate` fields for one-round-trip self-recovery. |
 | Backlog sync | Close rows: [`parallel-mode-workspace-cap-lru-or-raise`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **IWorkspaceManager location:** the interface is at `src/RoslynMcp.Roslyn/Contracts/IWorkspaceManager.cs:43` (`LoadAsync(string path, CancellationToken ct)`), NOT `src/RoslynMcp.Core/Services/...` as the planner hypothesized. Production file count IS 4 (still within Rule 3). The implementation has a no-globals shim at `WorkspaceManager.cs:157` that forwards to the 3-arg overload at `WorkspaceManager.cs:160` — preserve that shim shape when adding `evictPolicy`.
+- **EvictPolicy placement:** commit to `src/RoslynMcp.Roslyn/Contracts/EvictPolicy.cs` (new file, NOT counted as a 5th production file because it's a one-line enum addendum to the interface contract layer; cite as part of the interface unit). Defining it in `WorkspaceManager.cs` creates a Roslyn→Contracts back-reference for the interface.
+- **Test target:** add `WorkspaceCapLruEvictionTests.cs` as a new file in `tests/RoslynMcp.Tests/`; mirror `WorkspaceManagerEvictionTests.cs:339-346` (`CreateManager()` factory) for the manager construction pattern and `:51-52` (`[DoNotParallelize] [TestClass]`) for the parallelism attributes. Sample-solution fixture pattern is at `:58-67`.
+- **Hotspot seam:** the LoadAsync edit goes in the 3-arg overload at `WorkspaceManager.cs:160-266`, specifically the slot-wait block at `:192-196` and the `finally` at `:259-265`. Do NOT modify `LoadIntoSessionAsync` (`:202`) or the dedup paths at `:178-189` / `:209-223` — those operate on already-acquired slots.
+- **Edge cases:** (1) eviction of a session whose write-lock is held by a concurrent `RunWriteAsync` / `RunLoadGateAsync` caller — either skip locked sessions during LRU candidate scan or document that the manager-layer eviction bypasses the gate intentionally; (2) idempotent-load (dedup hit at `:180`) must NOT count as cap consumption — the `TouchAccess()` at `:183` already covers it; (3) `Close(lruId)` releases the semaphore at `WorkspaceManager.cs:301` — do NOT also release in the retry path or the slot count will drift.
+- **Negative space:** do NOT touch `ReloadAsync` (`:268`) or the race-winner dedup at `:209-223` — those are existing-session paths. Do NOT change `WorkspaceManager.cs:192` to anything other than `WaitAsync(0, ct)` on the strict path — a non-zero timeout would change semantics for non-LRU callers. Also: the `Description(...)` on `LoadWorkspace` at `WorkspaceTools.cs:18` mentions "default 8" — update to "default 16" when raising the cap.
+
+</details>
+
 <!-- deepener-notes: judgmentHeavy=true; IWorkspaceManager interface file count unconfirmed and may push production files to 4 at re-vet time. Executor must confirm the interface situation before proceeding. -->
 
 
@@ -58,6 +70,19 @@
 | CHANGELOG entry (draft) | **Improve C# session coverage: add Roslyn workspace-bookend prelude to routine-flow prompts and refactor skills** (`routine-flows-wrap-csharp-work-with-roslyn-bookends`). The backlog-sweep plan/execute prompts and the `refactor`/`refactor-loop` skills now probe CWD for `*.csproj`/`*.sln`/`*.slnx` on entry; positive detection triggers `workspace_load` and surfaces the top 5 Roslyn semantic primitives (`find_references`, `find_consumers`, `find_implementations`, `compile_check`, `validate_workspace`) as a recommended-tool block for every dispatched subagent. Non-C# repos skip cleanly. `validate_workspace` call added as post-mutation exit gate. Addresses a 9-of-16-session missed-opportunity rate observed in multi-session retro. |
 | Backlog sync | Close rows: [`routine-flows-wrap-csharp-work-with-roslyn-bookends`]. Update related: [`workspace-health-csharp-applicability-classifier` — review CWD probe consistency when both land; `audit-and-refactor-skills-roslyn-self-check` — must not parallel-execute with this initiative due to shared files]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Anchor line corrections (verify before editing):** Diagnosis cites `skills/refactor/SKILL.md:18` and `skills/refactor-loop/SKILL.md:17` for the conditional-ask line — actual locations are `skills/refactor/SKILL.md:20` ("If a workspace is not already loaded, ask the user for the solution path and load it first.") and `skills/refactor-loop/SKILL.md:16` ("If no workspace is loaded, ask for the solution path and call `workspace_load` first."). Replace the whole line with the auto-probe block, do not augment alongside.
+- **Pattern coordinates:** exit-gate anchor is `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs:21-24` (`validate_workspace` tool — `ReadOnly = true`, takes `workspaceId` + optional `runTests`). Reference this exact tool name in the prelude exit-gate language.
+- **`backlog-sweep-plan.md` insertion point:** there is NO existing "Step 0" in this file — earliest section header is `## Step 1 — Candidate selection (row-level)` at line 219. Insert the new "Step 0b — Workspace bookend" as a new `## Step 0` section immediately before line 219.
+- **`backlog-sweep-execute.md` insertion point:** Step 3 begins at line 232 (`## Step 3 — Set up worktree (or branch)`). Insert the "Workspace prelude" at the top of Step 3.
+- **Test target:** add `tests/RoslynMcp.Tests/Skills/RoslynBookendPromptTests.cs`. Mirror structure of `tests/RoslynMcp.Tests/Skills/AuditPhaseRunnerHandoffTests.cs` — `[TestClass] sealed`, `File.ReadAllText` + `StringAssert.Contains` shape, repo-root via `TestFixtureFileSystem.FindRepositoryRoot()`.
+- **Edge cases to cover:** (1) CWD has multiple loaders — prefer `.slnx` > `.sln` > bare `.csproj`; (2) CWD has only `Directory.Build.props` and no `.csproj`/`.sln`/`.slnx` — skip (not sufficient signal per initiative 4 risk note); (3) glob depth: limit to CWD top-level (depth=1); (4) workspace already loaded from a prior turn — prelude must check loaded state first, not re-load blindly.
+- **Negative space:** do NOT edit `~/.claude/prompts/backlog-sweep-{plan,execute}.md` (global copies); do NOT add a CWD probe to `skills/workspace-health/SKILL.md` — that file is initiative 4's exclusive target; do NOT touch the exit-block / self-check sections of `skills/refactor/SKILL.md` and `skills/refactor-loop/SKILL.md` — those are initiative 13's territory. Confine edits to the conditional-ask line replacement only.
+
+</details>
+
 <!-- deepener-notes: judgmentHeavy=true — (1) workspace-health CWD probe pattern doesn't exist yet (initiative 4 adds it); executor must invent; (2) skills/refactor/SKILL.md and skills/refactor-loop/SKILL.md shared with initiative 13. Hard conflict-graph edge with #13. -->
 
 
@@ -78,6 +103,17 @@
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `workspace_close` not releasing MSBuild build-server process locks on Windows after session disposal. Add a `drainProcesses` parameter (default `false`) that, when `true`, runs `dotnet build-server shutdown` after the workspace session is removed — eliminating the `Permission denied` error during `git worktree remove` in parallel-sweep teardown. Wire the flag into the `release-cut` and `reconcile-backlog-sweep-plan` skill teardown sequences. |
 | Backlog sync | Close rows: [`workspace-close-with-drain-processes-for-teardown`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Pattern coordinates:** mirror `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:77-96` (`ReloadWorkspace`) for `IDotnetCommandRunner` injection signature; mirror `WorkspaceTools.cs:284-315` (`RestoreAndReloadIfRequiredAsync`) for `commandRunner.RunAsync(workingDirectory, status.LoadedPath, [...], ct)` pattern — note `workingDirectory = Path.GetDirectoryName(status.LoadedPath)`.
+- **Capture-before-close ordering:** `workspace.Close(workspaceId)` at line 118 REMOVES the session from `_sessions` (see `WorkspaceManager.cs:285-305`). Resolve `LoadedPath` via `workspace.GetStatus(workspaceId).LoadedPath` BEFORE entering the `RunWriteAsync` close block, or capture it inside the block before calling `workspace.Close`. Do NOT call `GetStatus` after close — the session is gone and the lookup will surface `WorkspaceEvictedException`.
+- **Test target:** create new `tests/RoslynMcp.Tests/WorkspaceCloseDrainTests.cs` (sibling to `WorkspaceToolsIntegrationTests.cs`); reuse the `IDotnetCommandRunner` fake pattern at `tests/RoslynMcp.Tests/Workspace/WorkspaceCachePrewarmTests.cs:266-274` (`ThrowingDotnetCommandRunner`) or `tests/RoslynMcp.Tests/HardeningBehaviorTests.cs:92-103` (`HangingDotnetCommandRunner`) — build a recording variant that captures `arguments` for assertion.
+- **Drain-failure swallow:** Risk #2 requires treating non-zero exit from `dotnet build-server shutdown` as a warning, not a throw — do NOT mirror `RestoreAndReloadIfRequiredAsync`'s `throw new InvalidOperationException` on `!execution.Succeeded` (line 311). Catch/log/continue; preserve the original `{success, workspaceId}` close payload.
+- **Negative space:** do NOT touch `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs` (declared hotspot; tool-layer placement is the architectural decision); do NOT touch `IWorkspaceManager` contract; do NOT modify `ServerSurfaceCatalog.Workspace.cs:11` entry — adding a parameter to the existing tool does not change the catalog row.
+
+</details>
 
 <!-- deepener-notes: judgmentHeavy=true — two reasonable approach paths (drain inside IWorkspaceManager.Close vs drain at tool layer). Tool-layer selected as architecturally cleaner; avoids WorkspaceManager.cs hotspot. -->
 
@@ -121,6 +157,17 @@
 | CHANGELOG entry (draft) | `Maintenance: add design note for parameter-naming canonicalization across the experimental MCP surface — enumerates affected tools and prompts, establishes canonical camelCase convention (no LSP aliases), and specifies migration contract for the follow-on breaking-rename initiative.` |
 | Backlog sync | Close rows: [`parameter-naming-canonicalization-experimental-surface`]. Update related: [`skill-prompts-deprecated-workspace-load-param-name-cleanup` — its `do` cell references "ai_docs/items/parameter-naming-canonicalization-design.md once that design note row's design lands"; after this initiative ships, remove that qualifier in that row]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Anchor confirmed:** `tests/RoslynMcp.Tests/Skills/IssueTemplateAndLabelSeedTests.cs` exists (295 LOC). Mirror its three-surface lockstep shape — `AllAreaValues`/`PubliclyFileableAreaValues` arrays at lines 33-50 + per-surface assertion methods. Specify the migration regression as: assert every `[McpServerTool]` parameter name in `src/RoslynMcp.Host.Stdio/Tools/*.cs` matches canonical camelCase. Fallback to `ReadmeSurfaceCountTests.cs` is unneeded — anchor was located.
+- **Precedent coordinates:** model the new note on `ai_docs/items/parameter-object-preview-design.md` (153 LOC) — section structure: `# Title`, `## (a) Use case`, `## (b)..(g)` body, `## Verdict` (line 130), `### Next deliverable` (line 134), `## Refs` table (line 140). Match this exact heading hierarchy.
+- **Experimental surface enumeration:** the tier classifier lives in `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs` (5 `Experimental` references). Re-enumerate live experimental tools/prompts from the `ServerSurfaceCatalog.*.cs` partials rather than trusting the audit's count of "13 tools + 8 prompts" — catalog has grown since 2026-05-02.
+- **Verdict commitment:** the note must end with a binding `go` / `no-go` / `defer` (precedent: line 132 `**Go for v1.**`) and name the follow-on backlog row `parameter-naming-canonicalization-migration` with `Changed — BREAKING` CHANGELOG category.
+- **Negative space:** do NOT edit any `src/` file, any `[McpServerTool]` signature, or `ServerSurfaceCatalog.*.cs`. Do NOT file the follow-on backlog row in this PR — that is the next initiative. Do NOT add a regression test file in this initiative; the test shape is *specified in prose* inside the design note for the migration row to implement.
+
+</details>
+
 <!-- deepener-notes: judgmentHeavy=true, anchorStale (partial — IssueTemplateAndLabelSeedTests.cs cited but deepener's search was incomplete; v1.35.1 CHANGELOG confirms it ships; executor verifies at run-time). productionFilesTouched=0 is deliberate (design note is not a src/ file). -->
 
 
@@ -160,6 +207,16 @@
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `test_related` schema to document the conditional-required-as-a-group relationship between `filePath`, `line`, and `column`. Callers using source-location mode must supply all three together; callers using `symbolHandle` or `metadataName` mode omit all three. Fixes gh #618. |
 | Backlog sync | Close rows: [`test-related-column-required-schema-mismatch`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Edit target (exact lines):** rewrite the `[Description]` text on `filePath`, `line`, `column` at `src/RoslynMcp.Host.Stdio/Tools/ValidationTools.cs:181-183` inside `FindRelatedTests` (signature at `:177`). Tool-level `[Description]` to optionally augment is at `:174`. Do NOT alter the parameter list, default values, types, or the `SymbolLocatorFactory.Create` call at `:191`.
+- **Pattern coordinates caveat:** the planner's instruction to "mirror `symbol_info`'s locator parameter style" is misleading — `SymbolTools.cs:125-127` (`GetSymbolInfo`) currently has the SAME generic "Optional: …" text this initiative is fixing. There is no improved sibling to mirror; you are *establishing* the new style. Use `SymbolLocatorFactory.cs:54-78` (the runtime error message text and BUG-001 comment) as the semantic source-of-truth for what the descriptions must convey: three modes (symbolHandle / metadataName / filePath+line+column-together), partial mode-3 throws.
+- **Test target:** add 2 methods to the existing `ValidationToolsIntegrationTests` class in `tests/RoslynMcp.Tests/ValidationToolsIntegrationTests.cs` — mirror `TestRelated_UnknownSymbol_ReturnsEmptyList` at `:136-149` for the metadataName-success case and `TestRelated_Returns_Json_For_File` at `:98-113` for the partial-call structure (but assert `ArgumentException` is thrown via `Assert.ThrowsExceptionAsync`). Do NOT create a new test file.
+- **Negative space:** other tools sharing this 3-param-locator shape — `SymbolTools.cs`, `AnalysisTools.cs`, `ConsumerAnalysisTools.cs`, `RefactoringTools.cs`, `CohesionAnalysisTools.cs` — also have the bug. Risks #1 in the stanza calls this out: leave them alone, this row covers only `test_related` (gh #618). Follow-on rows pick up the rest.
+
+</details>
 
 <!-- deepener-notes: judgmentHeavy=true — prior plan deferred on diagnosis mismatch; deepener re-framed problem (schema annotation gap, not unconditional-required bug). Description rewrite is the clear correct fix. -->
 
@@ -220,6 +277,16 @@
 | CHANGELOG entry (draft) | Fixed `get_editorconfig_options` returning stale cached values for known keys (e.g. `indent_size`, `csharp_style_var_for_built_in_types`) immediately after `set_editorconfig_option` writes a new value. The disk-parsed value is now authoritative when the `.editorconfig` file is present, overriding the Roslyn workspace snapshot for any key the snapshot had cached before the write. |
 | Backlog sync | Close rows: [`editorconfig-write-no-auto-invalidation`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Pattern coordinates:** mirror the existing disk-supplement loop at `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:57-71` (inside `GetOptionsAsync`). The override pass goes immediately after line 70 (still inside the `if (editorconfigPath is not null && File.Exists(editorconfigPath))` block at line 60) — re-iterate `ParseEditorconfigCsKeys(editorconfigPath)` and for keys whose `existingKeys.Contains(key)` is true, replace the matching `EditorConfigEntryDto` in `options` with `new EditorConfigEntryDto(key, value, "disk")`. `EditorConfigEntryDto` is declared at `src/RoslynMcp.Core/Models/EditorConfigDto.cs:14` (record — construct fresh, don't mutate).
+- **Test target:** add `SetThenGet_KnownKey_ReturnsNewValueWithoutReload` to the existing class `EditorConfigServiceTests` in `tests/RoslynMcp.Tests/EditorConfigServiceTests.cs` (class at line 14); mirror the sibling fixture `SetThenGet_UnloadedAnalyzerId_IsReturned` at lines 22-48. Use a known key from `GetKnownOptionKeys()` at line 173 — `indent_size = "4"` is the canonical pick. Do NOT create a new test file.
+- **Edge cases to cover:** the new test must NOT call `workspace_reload` between `SetOptionAsync` and `GetOptionsAsync` — that is the bug surface. The existing `SetThenGet_UnloadedAnalyzerId_IsReturned` must still pass unchanged.
+- **Negative space:** do NOT touch `SetOptionAsync` (line 299), `UpsertKeyInSection` (line 357), or `SectionMatchesCSharp` (line 128) — those are the write path and the section matcher; this is a read-path fix only. No new fields on `EditorConfigEntryDto`. No changes to `EditorConfigTools.cs`.
+
+</details>
+
 <!-- deepener-notes: judgmentHeavy=true — two fix approaches evaluated (auto-invalidate disk values win vs add response note); auto-invalidate selected as architecturally correct per project's correct-over-cheap memory. -->
 
 
@@ -279,6 +346,20 @@
 | CHANGELOG entry (draft) | **Add session-end Roslyn self-check to audit and refactor skill prompts** (`audit-and-refactor-skills-roslyn-self-check`). The `refactor`, `refactor-loop`, and `architecture-review` skills now append a self-check block on exit: when the CWD is classified as a C# repo but zero Roslyn semantic tool calls were made during the session, the skill emits `summary: { semanticCalls: 0, classificationApplied: "csharp" }` and a warning recommending a Roslyn-first rerun. Companion to `routine-flows-wrap-csharp-work-with-roslyn-bookends`. |
 | Backlog sync | Close rows: [`audit-and-refactor-skills-roslyn-self-check`]. Update related: [`routine-flows-wrap-csharp-work-with-roslyn-bookends` — must not parallel-execute]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Insertion coordinates (append at EOF, after the cited terminal section):**
+  - `skills/refactor/SKILL.md` — append "Step 7: Session Self-Check" AFTER "Error Recovery" (file ends line 116; current "Error Recovery" runs lines 110-116).
+  - `skills/refactor-loop/SKILL.md` — append "Stage 6: Session Self-Check" AFTER "Output" (file ends line 105; "Output" runs lines 97-105).
+  - `skills/architecture-review/SKILL.md` — append "Step 8: Session Self-Check" AFTER "Refusal conditions" (file ends line 143; "Refusal conditions" runs lines 138-143).
+  - `.claude/skills/mcp-server-stress/SKILL.md` — append a single "Exit annotation" paragraph AFTER "Hard rules" (file ends line 49). Do NOT add a full self-check block; this alias delegates to `/mcp-server-surface-test`.
+- **Architecture-review warning specificity:** the stanza requires citing which Steps were expected to use Roslyn but didn't. Concrete Roslyn tools by name in `skills/architecture-review/SKILL.md`: Step 2 (`project_graph`), Step 3 (`get_namespace_dependencies`), Step 4 (`symbol_relationships`, `find_references`), Step 5 (`get_di_registrations`, `type_hierarchy`), Step 6 (`find_reflection_usages`). Enumerate these in the zero-call warning.
+- **Negative space — initiative 2 seam:** initiative 2 edits `skills/refactor/SKILL.md:20` and `skills/refactor-loop/SKILL.md:16` (the conditional-ask "If a workspace is not already loaded..."). Your edits land at EOF — do NOT touch the entry-time prelude region, do NOT modify Step/Stage bodies, do NOT alter the "Connectivity precheck" block in `architecture-review/SKILL.md` (lines 23-31). This initiative is strictly EOF-append-only on all four files.
+- **Self-check schema contract:** emit literal `summary: { semanticCalls: N, classificationApplied: <repo-stack> }`. Trigger warning only when `classificationApplied == "csharp"` AND `N == 0`. Non-C# CWDs (`classificationApplied: "unknown"`) emit summary but NO warning.
+
+</details>
+
 <!-- deepener-notes: judgmentHeavy=true. CONFLICT-GRAPH EDGE with initiative 2 confirmed (shared skills/refactor/SKILL.md + skills/refactor-loop/SKILL.md). schedule order: 13 strictly after 2. -->
 
 
@@ -321,6 +402,17 @@
 | CHANGELOG entry (draft) | Split `skills/mcp-server-surface-test/prompts/full.md` into a slim orchestrator and three phase-group sub-files to bring each file under the Read tool's 25K-token cap; adds a lockstep test asserting all skill prompt files remain within the byte-size limit. |
 | Backlog sync | Close rows: [`roslyn-skill-prompts-exceed-read-token-cap`]. Update related: [`surface-test-skill-self-correction-observability`] — executor for that row targets the new `prompts/phases/output-and-close.md` sub-file rather than the monolith. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Phase-group line boundaries** (verified in `skills/mcp-server-surface-test/prompts/full.md`, 1076 lines): orchestrator carries lines 1-68 verbatim (preamble + phase-order directive at line 33 + cross-cutting principles ending at line 68). `setup-and-analysis.md` carries phases -1 (line 71) through 5 (ending line 258). `apply-and-test.md` carries phases 6 (line 259) through 9 (ending line 507) — **note the audit-prescribed run order is 6 → 7 → 8 → 8b → 10 → 9** (Phase 10 at line 474 precedes Phase 9 at line 493 in source order; preserve this when carving). `output-and-close.md` carries phases 11 (line 508) through 19, plus Final surface closure (line 753), Output Format, Promotion scorecard JSON, Markdown template, Concurrency probe set, Historical notes (ending line 1076).
+- **Test target:** add `Skill_PromptFiles_BelowReadTokenCap` to the existing class `McpServerSurfaceTestSkillTests` in `tests/RoslynMcp.Tests/Skills/McpServerSurfaceTestSkillTests.cs` (sole class in file, ends ~line 227). Mirror the directory-walk style of `Skill_PromptFiles_ExistAtDocumentedPaths` at lines 94-105. Do NOT create a new test file. Glob both `skills/*/prompts/**/*.md` AND `.claude/skills/*/prompts/**/*.md` for completeness.
+- **Hotspot seam — DO NOT change the orchestrator's filename or path.** The existing test `Skill_PromptFiles_ExistAtDocumentedPaths` at lines 94-105 asserts `prompts/full.md` and `prompts/quick.md` exist; SKILL.md lines 78-79 and 104-105 reference `prompts/full.md`. The orchestrator MUST retain the `full.md` filename and stay at the same path.
+- **Orchestrator instruction style:** sub-file references must be agent-readable imperatives (e.g., `"Read \`prompts/phases/setup-and-analysis.md\` now before proceeding to Phase -1"`), NOT passive Markdown links. Risk (1) of the stanza is load-bearing on this.
+- **Negative space:** do NOT touch `prompts/quick.md` (15,195 bytes, well under cap). Do NOT modify `SKILL.md` (Steps 4/5 reference `prompts/full.md` at lines 104-105 and the test at lines 94-105 locks that contract). Do NOT modify the deleted `.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md` anchor — it does not exist (stale anchor).
+
+</details>
+
 <!-- deepener-notes: judgmentHeavy=true, anchorStale=true. maintainer-overlay.md anchor is dead (file deleted in prior refactor). 3-sub-file grouping is judgment call. CONFLICT-GRAPH EDGE with #16 (shared full.md). -->
 
 
@@ -342,6 +434,16 @@
 | CHANGELOG entry (draft) | Fixed false `exercised` status in mcp-server-surface-test coverage ledger: added `scoped-but-skipped` as a valid terminal status for tools assigned to a phase but never actually invoked, and added a self-check step in Final surface closure requiring agents to downgrade any unsubstantiated `exercised` claim before computing the experimental promotion scorecard. |
 | Backlog sync | Close rows: [`surface-test-skill-self-correction-observability`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Pre-flight layout check (anchorStale):** before editing, `ls skills/mcp-server-surface-test/prompts/` to determine post-#15 state. If `phases/output-and-close.md` exists, the enum edit goes in the slim `full.md` orchestrator and the self-check step goes in `phases/output-and-close.md`. If it does NOT exist (#15 unmerged), both edits land in `full.md` at the current coordinates below.
+- **Pattern coordinates (current `full.md`, pre-#15):** coverage-ledger enum at `full.md:40` (Portability contract item 4 — single-line list of six statuses); Final surface closure header at `full.md:753`, with existing steps 1-2 at `753-756`, then a numbered `3.` followed by `3a.` HARD GATE at `758`. Insert the new self-check step as **step 3** (renumbering the existing `3.` to `4.` and so on); the `3a.` sub-step stays attached to its parent. Do NOT insert before step 1 (Compare ledger) or after step 2 (Call/assign unaccounted) — the self-check must precede the run-end git clean-check and scorecard computation.
+- **Negative space:** do NOT add a `server_heartbeat` invocation-counter mechanism (the backlog row mentions it; risk #2 explicitly rejects it — self-check is draft-evidence-scanning only). Do NOT touch `quick.md` (sibling prompt, out of scope). Do NOT touch `skills/mcp-server-stress/` (the `maintainer-overlay.md` anchor is dead).
+- **Validation simulation:** the manual simulation in Validation step 4 (Phase 0 seeds `format_range_preview` as `exercised`, context exhaustion hits before Phase 6e — `full.md:294`) is the canonical regression case from session 4868dff2; ensure the self-check rubric you write would in fact catch it.
+
+</details>
+
 <!-- deepener-notes: anchorStale=true (maintainer-overlay.md doesn't exist; phases/ doesn't exist yet). judgmentHeavy=true. CONFLICT-GRAPH edge with #15. Must execute AFTER #15. -->
 
 
@@ -362,6 +464,25 @@
 | CHANGELOG category | Added |
 | CHANGELOG entry (draft) | Added `eng/list-skills.ps1` skill enumerator and `SkillFrontmatterInstalledAsTests` lockstep test establishing the `installed_as:` frontmatter contract for SKILL.md files (bare vs `roslyn-mcp:` namespaced). Bulk frontmatter migration to follow in a separate row. |
 | Backlog sync | Close rows: [`skill-namespace-and-semantic-search-discoverability`] (partial close — infrastructure portion). **Spin off new row** `skill-namespace-installed-as-bulk-frontmatter-migration` covering the 46-file SKILL.md frontmatter edit. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Pattern coordinates:**
+  - PowerShell directory-walk pattern: `eng/verify-skills-are-generic.ps1:24-48` (Get-ChildItem `-Recurse -File -Filter 'SKILL.md'` + per-file line walk). Note that script only scans `skills/`; your new `list-skills.ps1` must walk BOTH roots: `skills/` (32 files) AND `.claude/skills/` (14 files) for 46 total.
+  - Frontmatter parser: `tests/RoslynMcp.Tests/Skills/McpServerStressSkillFrontmatterTests.cs:177-202` (`ExtractFrontmatter` — `^---\s*\r?\n(?<body>.*?)\r?\n---\s*\r?\n` regex, splits on `\n`, strips surrounding double quotes). Lift verbatim.
+  - Repo-root resolution in tests: `TestFixtureFileSystem.FindRepositoryRoot()` at `tests/RoslynMcp.Tests/TestInfrastructure/TestFixtureFileSystem.cs` — canonical helper used by every existing Skill test.
+- **Test target:** add NEW file `tests/RoslynMcp.Tests/Skills/SkillFrontmatterInstalledAsTests.cs` (NEW class, do not extend `McpServerStressSkillFrontmatterTests`). Mirror class structure of `McpServerStressSkillFrontmatterTests` (lines 34-46 for class declaration + first test). Namespace: `RoslynMcp.Tests.Skills`. Test framework: MSTest (`[TestClass]` / `[TestMethod]`).
+- **Edge cases to cover:**
+  1. Walk both `skills/<name>/SKILL.md` AND `.claude/skills/<name>/SKILL.md` — pass both roots through the helper.
+  2. Validate `installed_as:` regex: `^[a-z][a-z0-9-]+$` (bare) OR `^roslyn-mcp:[a-z][a-z0-9-]+$` (namespaced).
+  3. Assert discovered file count > 0 BEFORE asserting per-file presence — a zero-file walk must fail loud, not vacuously pass.
+  4. Stanza Risk #3 claims `mcp-server-surface-test` has subdir-shape SKILL.md — VERIFIED FALSE on disk. All 46 SKILL.md files live at depth-2 (`<root>/<skill>/SKILL.md`); `Get-ChildItem -Recurse` handles uniformly. No special-case branch needed.
+- **Ship-state decision:** prefer `[Ignore("Pending bulk frontmatter migration — see backlog row <new-id>")]` over a known-failing test. The repo's CI gate (`eng/verify-release.ps1`) treats red tests as release-blockers; a shipped-failing test would block every PR until the follow-on row lands. `[Ignore]` keeps the contract encoded without breaking green.
+- **Negative space:** do NOT edit any of the 46 SKILL.md files; do NOT extend `eng/verify-skills-are-generic.ps1` (that's a banned-string scanner; the new enumerator is a distinct utility); do NOT touch `McpServerStressSkillFrontmatterTests.cs` (it covers a different contract).
+- **Mandatory Step 7 follow-on:** spin off backlog row `skill-namespace-installed-as-bulk-frontmatter-migration` covering the 46-file edit. Without this, the deferred work is lost — call out in Step 7 sync output explicitly with the exact row id.
+
+</details>
 
 <!-- cycle-1-remediation: scope-narrowed from 47-file fanoutOversize to 2-file infrastructure shape per Rule 3. Bulk migration deferred to follow-on row. Conflict-graph edges 2-17, 3-17, 4-17, 12-17, 13-17, 14-17 dropped — remediated #17 no longer touches any SKILL.md. -->
 
@@ -402,6 +523,17 @@
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed: `[Description]` text on `string[]`-typed tool parameters (`usings`, `imports`, `projects`, `changedFilePaths`) now explicitly states "Pass as a native JSON array, not a JSON-encoded string" with a concrete example, preventing LLM clients from mis-encoding array values as stringified JSON. |
 | Backlog sync | Close rows: [`filepaths-array-vs-stringified-tool-description-clarification`]. **Spin off new row** `filepaths-array-vs-stringified-tool-description-clarification-batch-2` for the remaining 5 array-typed parameters (`AdvancedAnalysisTools.cs:filePaths`, `MSBuildTools.cs:includedNames`, `InterfaceExtractionTools.cs:memberNames`, `ScaffoldingTools.cs:interfaces`, `ParameterObjectTools.cs:dtoFolders`). |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Edit coordinates (4 production files):** `SnippetAnalysisTools.cs:19` (`usings`), `ScriptingTools.cs:21` (`imports`), `WorkspaceWarmTools.cs:34` (`projects`), `ValidationBundleTools.cs:29` (`changedFilePaths`). Each is a single `[Description("...")]` line on the parameter declaration — replace the string literal in place; do not touch the parameter signature, default value, or surrounding `[Description]` attributes on adjacent parameters.
+- **Test target:** add `AllArrayTypedToolParameters_DescriptionContainsNativeJsonArrayPhrase` to `tests/RoslynMcp.Tests/SurfaceCatalogTests.cs` (existing class, line 15). Mirror `McpToolMetadata_RequiredOnEveryTool_MatchesCatalogEntry` at line 83 — same assembly walk via `typeof(ServerTools).Assembly` + `GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)` + `GetCustomAttribute<McpServerToolAttribute>()`. Do NOT create a new test file.
+- **Test reflection predicate gotcha:** scope assert to a `HashSet<(string tool, string param)>` containing exactly the 4 in-scope pairs (`analyze_snippet:usings`, `evaluate_csharp:imports`, `workspace_warm:projects`, `validate_workspace:changedFilePaths`). The deferred `AdvancedAnalysisTools.cs:150` parameter is typed `IReadOnlyList<string>?` (not `string[]?`) — a naive "array-assignable" predicate would catch it; the explicit allowlist avoids that confusion. Assert allowlist count > 0 to prevent vacuous pass when assembly fails to load.
+- **Canonical phrase:** every updated `[Description]` must contain the exact substring `native JSON array` (case-sensitive — the test asserts this literal). The two pre-existing inline examples (`[\"System.IO\", ...]`) must be preserved or rewritten to keep the outer `[...]` unambiguous as a JSON array.
+- **Negative space:** do NOT edit `AdvancedAnalysisTools.cs:150`, `MSBuildTools.cs:60`, `InterfaceExtractionTools.cs:30`, `ScaffoldingTools.cs:35`, or `ParameterObjectTools.cs:37` — those 5 are the `-batch-2` spin-off row (Backlog sync field is mandatory at Step 7).
+
+</details>
 
 <!-- cycle-1-remediation: fanoutEstimate reset from 9 (full problem space) to 4 (per-initiative blast radius, matching productionFilesTouched) per Rule 5b. Spin-off row id `filepaths-array-vs-stringified-tool-description-clarification-batch-2` made explicit in Backlog sync. -->
 
