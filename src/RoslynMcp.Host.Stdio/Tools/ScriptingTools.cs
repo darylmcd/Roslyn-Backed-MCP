@@ -18,7 +18,7 @@ public static class ScriptingTools
     public static async Task<string> EvaluateCSharp(
         IScriptingService scriptingService,
         [Description("The C# code to evaluate (expression, statement, or multi-line script)")] string code,
-        [Description("Optional: additional namespace imports, e.g. [\"System.IO\", \"System.Net.Http\"]")] string[]? imports = null,
+        [Description("Optional: additional namespace imports. Pass as a native JSON array, not a JSON-encoded string. Example: [\"System.IO\", \"System.Net.Http\"].")] string[]? imports = null,
         [Description("Optional: per-call timeout in seconds (UX-002). Overrides ROSLYNMCP_SCRIPT_TIMEOUT_SECONDS for this single invocation. Must be > 0; null falls back to the configured default.")] int? timeoutSeconds = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)

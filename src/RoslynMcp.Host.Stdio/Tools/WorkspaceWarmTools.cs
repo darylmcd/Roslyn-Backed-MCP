@@ -31,7 +31,7 @@ public static class WorkspaceWarmTools
         IWorkspaceExecutionGate gate,
         IWorkspaceWarmService warmService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: project names to warm. Case-insensitive; unknown names are silently skipped. Omit or pass an empty array to warm every project in the solution.")] string[]? projects = null,
+        [Description("Optional: project names to warm. Pass as a native JSON array, not a JSON-encoded string. Example: [\"MyProject.Core\", \"MyProject.Tests\"]. Case-insensitive; unknown names are silently skipped. Omit or pass an empty array to warm every project in the solution.")] string[]? projects = null,
         IProgress<ProgressNotificationValue>? progress = null,
         CancellationToken ct = default)
     {

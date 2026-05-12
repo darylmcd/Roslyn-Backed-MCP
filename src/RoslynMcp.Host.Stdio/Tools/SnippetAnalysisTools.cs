@@ -16,7 +16,7 @@ public static class SnippetAnalysisTools
     public static async Task<string> AnalyzeSnippet(
         ISnippetAnalysisService snippetAnalysisService,
         [Description("The C# code to analyze")] string code,
-        [Description("Optional: additional using directives as an array, e.g. [\"System.IO\", \"System.Net.Http\"]")] string[]? usings = null,
+        [Description("Optional: additional using directives. Pass as a native JSON array, not a JSON-encoded string. Example: [\"System.IO\", \"System.Net.Http\"].")] string[]? usings = null,
         [Description("The snippet kind: 'expression', 'statements', 'returnExpression', 'members', or 'program' (default)")] string kind = "program",
         CancellationToken ct = default)
     {

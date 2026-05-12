@@ -260,6 +260,49 @@ public sealed class SurfaceCatalogTests
         Assert.IsNull(endLine.DefaultValue);
     }
 
+    [TestMethod]
+    public void AllArrayTypedToolParameters_DescriptionContainsNativeJsonArrayPhrase()
+    {
+        // filepaths-array-vs-stringified-tool-description-clarification: the 4 in-scope
+        // string[]-typed parameters must each carry "native JSON array" in their [Description]
+        // so LLM clients do not mis-encode array values as stringified JSON.
+        var assembly = typeof(ServerTools).Assembly;
+
+        var inScopePairs = new HashSet<(string toolName, string paramName)>(
+        [
+            ("analyze_snippet", "usings"),
+            ("evaluate_csharp", "imports"),
+            ("workspace_warm", "projects"),
+            ("validate_workspace", "changedFilePaths"),
+        ]);
+
+        var failures = new List<string>();
+        var foundCount = 0;
+
+        foreach (var method in assembly.GetTypes()
+            .SelectMany(type => type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)))
+        {
+            var serverTool = method.GetCustomAttribute<McpServerToolAttribute>();
+            if (serverTool is null) continue;
+
+            var toolName = serverTool.Name ?? string.Empty;
+            foreach (var param in method.GetParameters())
+            {
+                if (!inScopePairs.Contains((toolName, param.Name ?? string.Empty))) continue;
+
+                foundCount++;
+                var description = param.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description ?? string.Empty;
+                if (!description.Contains("native JSON array", StringComparison.Ordinal))
+                    failures.Add($"({toolName}, {param.Name}): [Description] does not contain 'native JSON array'. Got: \"{description}\"");
+            }
+        }
+
+        Assert.IsTrue(foundCount > 0,
+            "No in-scope (toolName, paramName) pairs found — assembly may have failed to load or tool names changed.");
+        Assert.AreEqual(0, failures.Count,
+            "Array-typed parameters missing 'native JSON array' in [Description]:\n  " + string.Join("\n  ", failures));
+    }
+
     private static string[] GetRegisteredNames<TAttribute>(Assembly assembly)
         where TAttribute : Attribute
     {
