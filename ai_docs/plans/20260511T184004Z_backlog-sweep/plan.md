@@ -396,7 +396,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #671 (2026-05-12T04:07:14Z) |
 | Backlog rows closed | `get-syntax-tree-range-truncates-at-statement` |
 | Diagnosis | `get_syntax_tree(startLine, endLine)` returns only the first statement at `startLine` — sibling statements within the range are excluded. Range walker roots at the syntactic containing statement without collecting siblings at the same depth. Same tool as #11 (`get-syntax-tree-maxtotalbytes-not-enforced`) but different bug; do NOT bundle. |
 | Approach | In `src/RoslynMcp.Roslyn/Services/SyntaxService.cs`, change the range-walker root selection: instead of "first statement at startLine", collect all top-level statements whose span overlaps `[startLine, endLine]`. |
@@ -414,7 +414,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #670 (2026-05-12T04:03:16Z) |
 | Backlog rows closed | `semantic-search-grep-pattern-broken` |
 | Diagnosis | Two related bugs: (1) `semantic_search` falls back to token matching for all queries — no embedding match observed; (2) `semantic_grep` returns 0 matches for valid patterns. Pattern syntax undocumented. **This row has 2 distinct failure modes per Rule 1 anti-pattern — flag for refinement at intake; this batch ships the doc-and-fallback-truth fix only.** |
 | Approach | Phase 1: document the fallback explicitly in the tool description (semantic_search → token-match if no embedding index); document `semantic_grep` pattern syntax (ripgrep regex). Phase 2 (separate row at intake): if embedding is intended to be active, fix the index path. |
@@ -432,7 +432,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | obsolete — pre-shipped by PR #387 (validate-recent-git-changes-bare-error-envelope) |
 | Backlog rows closed | `validate-recent-git-changes-timeout` |
 | Diagnosis | Two symptoms: (1) 120s full-MCP timeout returns bare transport error (no `FailureEnvelope`); (2) Windows `git status` 10s sub-timeout silently falls back to full-workspace scope. **Row contains 2 distinct failure modes per Rule 1 anti-pattern; this batch ships symptom (1) — the correctness issue. Symptom (2) flagged for split at intake.** |
 | Approach | In `src/RoslynMcp.Host.Stdio/Tools/ValidationBundleTools.cs` (or `ValidationTools.cs`), wrap the 120s path in a try/catch that returns `FailureEnvelope(ErrorKind=Timeout, IsRetryable=true)` on timeout instead of bare transport error. Pattern already established for other tools. |
@@ -450,7 +450,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | obsolete — pre-shipped by PR #569 (fix(references): include interface root implementations) |
 | Backlog rows closed | `find-overrides-interface-root-empty` |
 | Diagnosis | `find_overrides` on an interface member returns zero results despite `find_base_members` finding the base. Asymmetric navigation contract. |
 | Approach | In `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs` (`find_overrides` implementation), when the target symbol is an interface member, descend through implementing types and collect their override of that member. Mirror the symmetric pattern from `find_base_members`. |

@@ -5,7 +5,7 @@
   "addendaLoaded": true,
   "reviewStatus": "passed-with-warnings",
   "vettingOverride": false,
-  "completed": false,
+  "completed": true,
   "anchorVerification": "partial",
   "snapshotDriftPolicy": {
     "maxDays": 3,
@@ -550,7 +550,7 @@
     {
       "id": "get-syntax-tree-range-truncates-at-statement",
       "order": 22,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "get-syntax-tree-range-truncates-at-statement"
       ],
@@ -562,37 +562,37 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/get-syntax-tree-range-truncates-at-statement",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Touches SyntaxService.cs; do not parallel-wave with initiative 11."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/671",
+      "mergedAt": "2026-05-12T04:07:14Z",
+      "notes": "span.Contains \u2192 span.OverlapsWith fix in SyntaxService.cs + new GetSyntaxTreeRangeOverlapTests. Shipped as PR #671 (squash efb0d15e2e)."
     },
     {
       "id": "semantic-search-grep-pattern-broken",
       "order": 23,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "semantic-search-grep-pattern-broken"
       ],
       "productionFilesTouched": 2,
-      "testFilesAdded": 1,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 30000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/semantic-search-grep-pattern-broken",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Heroic-bundle row \u2014 2 distinct symptoms; this batch ships the description-and-doc fix only. Embedding-mode fix split to follow-up row at next intake."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/670",
+      "mergedAt": "2026-05-12T04:03:16Z",
+      "notes": "Description-only: added explicit embedding-disclaimer to semantic_search and .NET regex timeout/dialect detail to semantic_grep. Stale anchor SemanticSearchTools.cs \u2192 AnalysisTools.cs + AdvancedAnalysisTools.cs. Shipped as PR #670 (squash 2ad81506cf)."
     },
     {
       "id": "validate-recent-git-changes-timeout",
       "order": 24,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "validate-recent-git-changes-timeout"
       ],
@@ -608,12 +608,12 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Heroic-bundle row \u2014 2 distinct symptoms; this batch ships symptom (1) \u2014 the FailureEnvelope-on-timeout fix. Windows git status sub-timeout split to follow-up row at next intake."
+      "notes": "Obsolete (Step 5a re-vet 2026-05-12): symptom (1) pre-shipped by PR #387 (validate-recent-git-changes-bare-error-envelope). ValidationBundleTools.cs:64-80 already has the try/catch returning ToolErrorHandler.ClassifyAndFormat + InjectMetaIfPossible as the structured FailureEnvelope. Backlog row closed with this obsolescence."
     },
     {
       "id": "find-overrides-interface-root-empty",
       "order": 25,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "find-overrides-interface-root-empty"
       ],
@@ -629,7 +629,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "Obsolete (Step 5a re-vet 2026-05-12): pre-shipped by PR #569 (fix(references): include interface root implementations). ReferenceService.FindOverridesAsync now calls FindInterfaceMemberImplementationsAsync (line 160) which walks all types to collect implementations of the interface member. PromoteToVirtualRoot already handles explicit and implicit interface implementations. Backlog row closed with this obsolescence."
     }
   ]
 }
