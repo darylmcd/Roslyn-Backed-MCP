@@ -16,6 +16,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.37.0] - 2026-05-12
+
+### Fixed
+
+- **Fixed:** `document_symbols` and its alias `get_symbol_outline` now accept either `filePath` OR `symbolHandle` (or `metadataName`), mirroring the locator flexibility of `symbol_info`. Callers can now pivot directly from a `symbol_info` handle to a document outline without an intermediate file-path roundtrip.
+- **Fixed:** `get_editorconfig_options` returning stale cached values for known keys (e.g. `indent_size`, `csharp_style_var_for_built_in_types`) immediately after `set_editorconfig_option` writes a new value. The disk-parsed value is now authoritative when the `.editorconfig` file is present, overriding the Roslyn workspace snapshot for any key the snapshot had cached before the write.
+- **Fixed:** `[Description]` text on `string[]`-typed tool parameters (`usings`, `imports`, `projects`, `changedFilePaths`) now explicitly states "Pass as a native JSON array, not a JSON-encoded string" with a concrete example, preventing LLM clients from mis-encoding array values as stringified JSON.
+- **Fixed:** `get_complexity_metrics` (`filePaths`) and `get_msbuild_properties` (`includedNames`) parameter descriptions now include the "native JSON array" guard phrase, preventing LLM clients from mis-encoding array arguments as stringified JSON (`filepaths-batch-2a-advanced-msbuild`).
+- **Fixed:** `extract_interface_preview` (`memberNames`) and `scaffold_type_preview` (`interfaces`) parameter descriptions now include the "native JSON array" guard phrase and example, matching the clarification pattern from PR #697 (`filepaths-batch-2b-interface-scaffolding`).
+- **Fixed:** `parameter_object_preview` (`dtoFolders`) parameter description now includes the "native JSON array" guard phrase and example, matching the clarification pattern applied to other array-typed parameters in PR #697 (`filepaths-batch-2c-parameter-object`).
+- **Fixed:** `move_type_to_project_preview` (and the related `extract_interface_cross_project_preview` / `dependency_inversion_preview`) emitting raw Roslyn `ProjectId` tuple strings in circular-dependency error messages. The error message now reads "Adding project reference from 'ProjectA' to 'ProjectB' would create a circular dependency." using the human-readable project names the caller supplied.
+- **Fixed:** Fixed parallel-mode workspace saturation: raised the default `MaxConcurrentWorkspaces` from 8 to 16 and added `evictPolicy="lru"` to `workspace_load` so callers can opt into silent LRU eviction of idle workspaces instead of receiving a hard error. Strict-mode errors now include `activeWorkspaces` and `lruCandidate` fields for one-round-trip self-recovery.
+- **Fixed:** Split `skills/mcp-server-surface-test/prompts/full.md` (96 KB, exceeds Read tool token cap) into a slim orchestrator + three phase-group sub-files under `prompts/phases/`. Each sub-file is well under the 25K-token cap. The orchestrator retains the `full.md` filename for backward compatibility. Added `Skill_PromptFiles_BelowReadTokenCap` test asserting all prompt files stay ≤ 100 KB.
+- **Fixed:** `set_project_property_preview` silently generating redundant property entries when the target property is already inherited from `Directory.Build.props`. The tool now inspects the evaluated MSBuild property graph and includes a `warnings` annotation when the requested value is already globally effective.
+- **Fixed:** false `exercised` status in mcp-server-surface-test coverage ledger: added `scoped-but-skipped` as a valid terminal status for tools assigned to a phase but never actually invoked, and added a self-check step in Final surface closure requiring agents to downgrade any unsubstantiated `exercised` claim before computing the experimental promotion scorecard.
+- **Fixed:** `test_related` schema now documents the conditional-required-as-a-group relationship between `filePath`, `line`, and `column`. Callers using source-location mode must supply all three together; callers using `symbolHandle` or `metadataName` mode omit all three. Fixes gh #618.
+- **Fixed:** `workspace_close` not releasing MSBuild build-server process locks on Windows after session disposal. Add `drainProcesses` parameter (default `false`) that runs `dotnet build-server shutdown` after session removal — eliminating the `Permission denied` error during `git worktree remove` in parallel-sweep teardown. Wire the flag into the `release-cut` and `reconcile-backlog-sweep-plan` skill teardown sequences.
+- **Fixed:** Fixed `workspace-health` skill misclassifying non-C# repos: the skill now probes CWD for `.csproj`/`.sln`/`.slnx` at startup and emits `applicable: bool` + `detectedStack` in the report header. When `applicable: false`, the "consider loading a workspace" hint is suppressed, preventing the misleading stack-guess that occurred when globally-registered MCP servers for other languages were visible in the tool catalog.
+
+### Added
+
+- **Added:** `eng/audit-experimental-age.ps1` — advisory script that walks `ServerSurfaceCatalog.*` for experimental-tier entries, runs `git blame` on each catalog line, computes age, emits a table of entries older than 180 days. Does not auto-promote or auto-deprecate. Optional advisory hook added to `/publish-preflight` Step 8.5.
+- **Added:** Added `eng/list-skills.ps1` skill enumerator and `SkillFrontmatterInstalledAsTests` lockstep test establishing the `installed_as:` frontmatter contract for SKILL.md files. Test ships `[Ignore]`-marked; bulk frontmatter migration (46 files) tracked in follow-on row `skill-namespace-installed-as-bulk-frontmatter-migration`.
+
+### Maintenance
+
+- **Maintenance:** The `refactor`, `refactor-loop`, and `architecture-review` skills now append a session-end self-check block on exit: when the CWD is classified as a C# repo but zero Roslyn semantic tool calls were made, the skill emits `summary: { semanticCalls: 0, classificationApplied: "csharp" }` and a warning recommending a Roslyn-first rerun. Companion to `routine-flows-wrap-csharp-work-with-roslyn-bookends`.
+- **Maintenance:** `/bump` skill now runs a per-file occurrence preflight before editing version files; files with >1 occurrence of the old version string use `replace_all: true` automatically, and files where the version string is absent abort with an explicit error rather than silently failing. Prevents the "Found 2 matches of the string to replace" Edit error against `.claude-plugin/server.json`.
+- **Maintenance:** Add design note for parameter-naming canonicalization across the experimental MCP surface — enumerates affected tools and prompts, establishes canonical camelCase convention (no LSP aliases), and specifies migration contract for the follow-on breaking-rename initiative.
+- **Maintenance:** Add design note for `promote-tier` prompt and resource promotion paths (`ai_docs/items/promote-tier-prompts-and-resources-design.md`) — settles the attribute-or-no-attribute decision that gates the follow-on implementation.
+- **Maintenance:** Improve C# session coverage: add Roslyn workspace-bookend prelude to routine-flow prompts and refactor skills. The backlog-sweep plan/execute prompts and the `refactor`/`refactor-loop` skills now probe CWD for `*.csproj`/`*.sln`/`*.slnx` on entry; positive detection triggers `workspace_load` and surfaces the top 5 Roslyn semantic primitives as a recommended-tool block. Non-C# repos skip cleanly. `validate_workspace` call added as post-mutation exit gate.
+- **Maintenance:** Confirmed `workspace_load` parameter canonicalization already complete across all skill prompts and `ai_docs/prompts/` files; backlog row closed as obsolete (0 occurrences of deprecated `solutionOrProjectPath` in all three target scopes — `.claude/skills/`, `skills/`, `ai_docs/prompts/`) (`skill-prompts-deprecated-workspace-load-param-name-cleanup`).
+
 ## [1.36.0] - 2026-05-12
 
 ### Fixed
