@@ -177,6 +177,45 @@ public sealed class McpServerSurfaceTestSkillTests
             "Shipped skills must not reference renamed/removed tools.");
     }
 
+    [TestMethod]
+    public void Skill_PromptFiles_BelowReadTokenCap()
+    {
+        // Every file under skills/*/prompts/ (including sub-directories such as prompts/phases/) must
+        // stay at or below 100,000 bytes (~25K-token proxy with margin). This prevents any agent that
+        // needs whole-prompt comprehension from hitting the Read tool's token cap on a single call.
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var skillsRoot = Path.Combine(repoRoot, "skills");
+
+        var promptFiles = Directory.EnumerateFiles(skillsRoot, "*.md", SearchOption.AllDirectories)
+            .Where(f =>
+            {
+                // Match any file under a "prompts" directory segment anywhere in the skills tree.
+                var relative = Path.GetRelativePath(skillsRoot, f);
+                var segments = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                return Array.Exists(segments, s => string.Equals(s, "prompts", StringComparison.OrdinalIgnoreCase));
+            })
+            .ToList();
+
+        Assert.IsTrue(promptFiles.Count > 0,
+            $"No prompt files found under {skillsRoot}. Expected at least one prompts/ directory.");
+
+        const long MaxBytes = 100_000;
+        var violations = new List<string>();
+        foreach (var file in promptFiles)
+        {
+            var length = new FileInfo(file).Length;
+            if (length > MaxBytes)
+            {
+                violations.Add($"{Path.GetRelativePath(repoRoot, file)} ({length:N0} bytes > {MaxBytes:N0})");
+            }
+        }
+
+        Assert.AreEqual(
+            0, violations.Count,
+            $"The following prompt file(s) exceed the {MaxBytes:N0}-byte Read-tool cap ({violations.Count} violation(s)):\n" +
+            string.Join("\n", violations) + "\n\nSplit the file into smaller sub-files under a prompts/phases/ subdirectory.");
+    }
+
     private static string ResolveSkillPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
