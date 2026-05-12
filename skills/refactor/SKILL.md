@@ -128,3 +128,20 @@ Summarize:
   2. Fix the errors manually
   3. Try a different approach
 - If a preview token is rejected (stale workspace), reload and re-preview.
+
+## Step 7: Session Self-Check
+
+After completing all refactoring work, emit a final summary:
+
+```
+summary: { semanticCalls: N, classificationApplied: <repo-stack> }
+```
+
+Determine `classificationApplied`:
+- Glob CWD (depth=1) for `*.slnx`, `*.sln`, `*.csproj` → if any found: `"csharp"`
+- Otherwise: `"unknown"`
+
+Determine `semanticCalls`: count of Roslyn semantic tool calls made during this session (e.g. `find_references`, `symbol_search`, `document_symbols`, `rename_preview`, `extract_method_preview`, `compile_check`, etc.). Do NOT count `workspace_load`, `workspace_list`, `workspace_status`, or `server_info` — those are infrastructure calls, not semantic calls.
+
+If `classificationApplied == "csharp"` AND `semanticCalls == 0`:
+> **Warning:** This session operated on a C# repository but made zero Roslyn semantic tool calls. The refactoring may have relied on text-based editing rather than semantic analysis. Consider re-running with `mcp__roslyn__workspace_load` + semantic tools for correctness guarantees.

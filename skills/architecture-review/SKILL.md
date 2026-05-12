@@ -141,3 +141,27 @@ Stop the skill and tell the user which condition tripped if any of the following
 
 1. **Workspace load failed** — `workspace_load` returned an error, or `workspace_status` reports an unrecoverable load failure. Ask the user to fix the solution path or underlying build error and re-run.
 2. **Zero projects in the solution** — `project_graph` returned an empty project list (nothing to audit). Confirm the path points at a real `.sln` / `.slnx` / `.csproj` that contains at least one project.
+
+## Step 8: Session Self-Check
+
+After producing the final report, emit a summary:
+
+```
+summary: { semanticCalls: N, classificationApplied: <repo-stack> }
+```
+
+Determine `classificationApplied`:
+- Glob CWD (depth=1) for `*.slnx`, `*.sln`, `*.csproj` → if any found: `"csharp"`
+- Otherwise: `"unknown"`
+
+Determine `semanticCalls`: count of Roslyn semantic tool calls made during this session (e.g. `project_graph`, `get_namespace_dependencies`, `symbol_relationships`, `find_references`, `get_di_registrations`, `type_hierarchy`, `find_reflection_usages`, etc.). Do NOT count `workspace_load`, `workspace_list`, `workspace_status`, or `server_info` — those are infrastructure calls, not semantic calls.
+
+If `classificationApplied == "csharp"` AND `semanticCalls == 0`:
+> **Warning:** This session operated on a C# repository but made zero Roslyn semantic tool calls. The architecture review may be incomplete. The following Steps were each expected to use specific Roslyn tools that were not called:
+> - **Step 2** (`project_graph`) — project dependency topology and cycle detection
+> - **Step 3** (`get_namespace_dependencies`) — namespace-level cycle detection per project
+> - **Step 4** (`symbol_relationships`, `find_references`) — improper downward references and DIP violations
+> - **Step 5** (`get_di_registrations`, `type_hierarchy`) — DI composition-root audit
+> - **Step 6** (`find_reflection_usages`) — reflection escape points
+>
+> Consider re-running with `mcp__roslyn__workspace_load` to enable semantic analysis for all steps.
