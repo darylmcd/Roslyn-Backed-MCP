@@ -260,13 +260,14 @@ The refusal is non-negotiable and applies even when the maintainer is detected o
 4. Ledger totals match live catalog; catalog summary matches `server_info`.
 5. *Concurrency matrix* fully populated (or the whole Phase 8b is `blocked` with a single reason).
 6. *Debug log capture* has at least one entry or explicitly states `client did not surface MCP log notifications`.
-7. **Compute the experimental promotion scorecard.** For each experimental entry, use this rubric:
+7. **Self-check.** For each entry currently marked `exercised`, `exercised-apply`, or `exercised-preview-only` in the ledger, confirm the draft contains at least one tool-call result (or inline evidence line) for that tool name. Any entry lacking call evidence MUST be downgraded to `scoped-but-skipped` with a note citing the missed phase and reason. Entries marked `scoped-but-skipped` score `needs-more-evidence` in the experimental promotion scorecard — identical to `blocked`. This step runs before scorecard computation.
+8. **Compute the experimental promotion scorecard.** For each experimental entry, use this rubric:
    - **`promote`** — ALL of: exercised end-to-end with ≥1 non-default parameter path; schema matched behaviour on every probe; zero FAIL findings in this run or prior backlog; p50 `elapsedMs` within budget (single-symbol reads ≤5 s, solution scans ≤15 s, writers ≤30 s); preview/apply round-tripped cleanly where applicable; error path actionable on ≥1 negative probe; catalog description matched actual behaviour.
    - **`keep-experimental`** — exercised with pass signal but missing ≥1 promote criterion (typically: writer round-trip not performed, or `--no-worktree` gated the apply, or a non-default path was not probed).
-   - **`needs-more-evidence`** — not exercised (`skipped-repo-shape` / `skipped-safety` / `blocked`) OR one exercise too shallow to judge. Default for `blocked` entries.
+   - **`needs-more-evidence`** — not exercised (`skipped-repo-shape` / `skipped-safety` / `blocked` / `scoped-but-skipped`) OR one exercise too shallow to judge. Default for `blocked` and `scoped-but-skipped` entries.
    - **`deprecate`** — exercised, produced FAIL findings warranting removal. Pair with an *MCP server issues* entry.
-8. *Schema vs behaviour drift*, *Error message quality*, *Parameter-path coverage*, *Performance baseline* tables populated. Every exercised tool contributes ≥1 row to *Performance baseline*; the other three can be empty-with-reason.
-9. *Prompt verification* has one row per exercised prompt.
+9. *Schema vs behaviour drift*, *Error message quality*, *Parameter-path coverage*, *Performance baseline* tables populated. Every exercised tool contributes ≥1 row to *Performance baseline*; the other three can be empty-with-reason.
+10. *Prompt verification* has one row per exercised prompt.
 
 When all phases are done, `workspace_close` to release the session (if not already closed in Phase 17e).
 
@@ -447,8 +448,8 @@ Mandatory sections always render in full; conditional sections collapse to a sin
 - **Report path note:** (path under the audited repo's `audit-reports/`; cross-repo handoff is via Phase 19 fragments, not via copying the prose report)
 
 ## 2. Coverage summary
-| Kind | Category | Stable | Experimental | Exercised | Exercised-apply | Preview-only | Skipped-repo-shape | Skipped-safety | Blocked | Notes |
-|------|----------|--------|--------------|-----------|------------------|--------------|--------------------|----------------|---------|-------|
+| Kind | Category | Stable | Experimental | Exercised | Exercised-apply | Preview-only | Skipped-repo-shape | Skipped-safety | Blocked | Scoped-but-skipped | Notes |
+|------|----------|--------|--------------|-----------|------------------|--------------|--------------------|----------------|---------|-------------------|-------|
 
 ## 3. Coverage ledger
 | Kind | Name | Tier | Category | Status | Phase | lastElapsedMs | Notes |
