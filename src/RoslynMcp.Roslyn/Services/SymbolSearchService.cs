@@ -247,6 +247,30 @@ public sealed class SymbolSearchService : ISymbolSearchService
         return CollectSymbols(root, ct);
     }
 
+    // document-symbols-accepts-symbol-handle: locator-based overload — resolves the locator to
+    // an ISymbol, extracts its first source location path, then delegates to the filePath overload.
+    // Throws KeyNotFoundException when the locator cannot be resolved or has no source location
+    // (e.g. BCL types defined only in metadata).
+    public async Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    {
+        _logger.LogDebug("SymbolSearchService.GetDocumentSymbolsAsync(locator): workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
+        locator.Validate();
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
+        if (symbol is null)
+            throw new KeyNotFoundException($"No symbol could be resolved for the given locator.");
+
+        var sourcePath = symbol.Locations
+            .FirstOrDefault(l => l.IsInSource)
+            ?.GetLineSpan().Path;
+
+        if (sourcePath is null)
+            throw new KeyNotFoundException(
+                $"Symbol '{symbol.ToDisplayString()}' has no source location. Symbols defined only in metadata (e.g. BCL types) cannot be used with document_symbols.");
+
+        return await GetDocumentSymbolsAsync(workspaceId, sourcePath, ct).ConfigureAwait(false);
+    }
+
     private static bool MatchesKind(ISymbol symbol, string kindFilter)
     {
         var kinds = new[]
