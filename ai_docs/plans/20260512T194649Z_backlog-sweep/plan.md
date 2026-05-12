@@ -38,7 +38,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #702, 2026-05-12) |
 | Backlog rows closed | filepaths-batch-2a-advanced-msbuild |
 | Diagnosis | Both parameters are confirmed missing the "native JSON array" guard phrase. `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs:150` — parameter `filePaths` (`IReadOnlyList<string>?`) on tool `get_complexity_metrics` carries `[Description("Optional: list of source file paths to include (union with filePath)...")]` with no "native JSON array" mention. `src/RoslynMcp.Host.Stdio/Tools/MSBuildTools.cs:60` — parameter `includedNames` (`string[]?`) on tool `get_msbuild_properties` carries `[Description("Optional: explicit allowlist of property names to return. Takes precedence over propertyNameFilter when supplied.")]` with no "native JSON array" mention. The lockstep test at `tests/RoslynMcp.Tests/SurfaceCatalogTests.cs:264` (`AllArrayTypedToolParameters_DescriptionContainsNativeJsonArrayPhrase`) currently enumerates 4 pairs (added by PR #697); these 2 pairs are absent from the `inScopePairs` HashSet, so the test would not catch regressions on them today. |
 | Approach | 1. In `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs:150`, extend the `filePaths` `[Description]` to include the "native JSON array" guard phrase + concrete example, mirroring the pattern from PR #697. 2. In `src/RoslynMcp.Host.Stdio/Tools/MSBuildTools.cs:60`, extend the `includedNames` `[Description]` similarly. 3. In `tests/RoslynMcp.Tests/SurfaceCatalogTests.cs`, extend the `inScopePairs` HashSet inside `AllArrayTypedToolParameters_DescriptionContainsNativeJsonArrayPhrase` (currently ~line 272) with `("get_complexity_metrics", "filePaths")` and `("get_msbuild_properties", "includedNames")`. Update the comment to reflect the expanded count. No new test methods required. |
@@ -56,7 +56,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #703, 2026-05-12) |
 | Backlog rows closed | filepaths-batch-2b-interface-scaffolding |
 | Diagnosis | Both anchors confirmed in current tree. `InterfaceExtractionTools.cs:30` declares `[Description("Optional: specific member names to include. If omitted, all public instance members are included.")] string[]? memberNames = null` — no "native JSON array" guard phrase. `ScaffoldingTools.cs:35` declares `[Description("Optional: additional interface names to declare on the scaffolded type")] string[]? interfaces = null` — same omission. The existing lockstep test holds 4 pairs from batch-2 wave 1; extending with 2 new pairs enforces the guard on these parameters. |
 | Approach | 1. `src/RoslynMcp.Host.Stdio/Tools/InterfaceExtractionTools.cs:30` — rewrite `[Description]` on `memberNames` to include the "native JSON array" guard phrase + example (mirror `changedFilePaths`/`projects` pattern from batch-2 wave 1). 2. `src/RoslynMcp.Host.Stdio/Tools/ScaffoldingTools.cs:35` — apply same treatment to `interfaces`. 3. `tests/RoslynMcp.Tests/SurfaceCatalogTests.cs` — add `("extract_interface_preview", "memberNames")` and `("scaffold_type_preview", "interfaces")` to `inScopePairs`. |
@@ -74,7 +74,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #704, 2026-05-12) |
 | Backlog rows closed | `filepaths-batch-2c-parameter-object` |
 | Diagnosis | `src/RoslynMcp.Host.Stdio/Tools/ParameterObjectTools.cs:37` confirms the anchor is live: `string[]? dtoFolders = null` with `[Description("Optional folder segments under the project root for the new record file. Defaults to folders derived from the namespace.")]` — no "native JSON array" guard. The lockstep test at `tests/RoslynMcp.Tests/SurfaceCatalogTests.cs:271-277` holds 4 pairs; `parameter_object_preview/dtoFolders` is absent, so no current coverage for this parameter. |
 | Approach | **1 production edit** — `src/RoslynMcp.Host.Stdio/Tools/ParameterObjectTools.cs:37`: rewrite `[Description]` on `dtoFolders` to include the "native JSON array" guard phrase + example. **1 test extension** — `tests/RoslynMcp.Tests/SurfaceCatalogTests.cs`: add `("parameter_object_preview", "dtoFolders")` to `inScopePairs`, update the comment to reference 5 pairs (was 4). |
