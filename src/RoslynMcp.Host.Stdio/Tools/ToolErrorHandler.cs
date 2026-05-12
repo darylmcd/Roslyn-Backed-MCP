@@ -228,8 +228,15 @@ internal static class ToolErrorHandler
         // as WorkspaceReloadedDuringCall whenever the in-call gate reported a stale auto-
         // reload. Exclude the more-specific eviction type here so the dictionary handler
         // below (registered with explicit `typeof(WorkspaceEvictedException)`) wins.
+        //
+        // workspace-reloaded-during-call-conflates-notfound: when the gate retried after
+        // the auto-reload and the second attempt also failed with "Document not found", the
+        // gate stamps ReloadConfirmedNotFound=true. That confirms the file path is genuinely
+        // absent — not a stale-snapshot race — so fall through to the generic NotFound handler
+        // rather than emitting the misleading WorkspaceReloadedDuringCall category.
         if (ex is KeyNotFoundException && ex is not WorkspaceEvictedException &&
-            AmbientGateMetrics.Current?.StaleAction == "auto-reloaded")
+            AmbientGateMetrics.Current?.StaleAction == "auto-reloaded" &&
+            AmbientGateMetrics.Current?.ReloadConfirmedNotFound != true)
         {
             return new("WorkspaceReloadedDuringCall",
                 $"Workspace was auto-reloaded during this call; {ex.Message} The symbol handle " +

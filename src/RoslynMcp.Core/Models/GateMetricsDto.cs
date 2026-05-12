@@ -46,6 +46,14 @@ namespace RoslynMcp.Core.Models;
 /// Lets future profiling isolate the warm-cache path from the cold path without external
 /// instrumentation.
 /// </param>
+/// <param name="ReloadConfirmedNotFound">
+/// workspace-reloaded-during-call-conflates-notfound: <see langword="true"/> when the gate
+/// retried after an auto-reload and the second attempt also returned a "Document not found"
+/// error, confirming the failure is a genuine bad path rather than a transient stale-snapshot
+/// race. When this is set, <c>ToolErrorHandler</c> emits <c>category=NotFound</c> instead of
+/// <c>WorkspaceReloadedDuringCall</c> so callers routing on category see the correct signal.
+/// <see langword="null"/> in all other cases (common path: no retry, or retry succeeded).
+/// </param>
 public sealed record GateMetricsDto(
     string? GateMode,
     long QueuedMs,
@@ -55,4 +63,5 @@ public sealed record GateMetricsDto(
     string? StaleAction = null,
     long? StaleReloadMs = null,
     bool? RetriedAfterReload = null,
-    bool? CacheHit = null);
+    bool? CacheHit = null,
+    bool? ReloadConfirmedNotFound = null);

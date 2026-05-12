@@ -83,6 +83,17 @@ public sealed class GateMetricsBuilder
     public bool? RetriedAfterReload { get; set; }
 
     /// <summary>
+    /// workspace-reloaded-during-call-conflates-notfound: set to <see langword="true"/> when
+    /// the gate retried after an auto-reload and the second attempt also failed with a
+    /// "Document not found" error. This confirms the failure is a genuine bad path, not a
+    /// transient stale-snapshot race. <see cref="RoslynMcp.Host.Stdio.Tools.ToolErrorHandler"/>
+    /// checks this flag before emitting <c>WorkspaceReloadedDuringCall</c> so that a bad-path
+    /// error concurrent with an auto-reload returns <c>category=NotFound</c> (the true cause)
+    /// instead of the misleading implementation-detail category.
+    /// </summary>
+    public bool? ReloadConfirmedNotFound { get; set; }
+
+    /// <summary>
     /// workspace-load-uses-cache-fast-path: set by <c>WorkspaceManager</c> during
     /// <c>workspace_load</c>/<c>workspace_reload</c>. <see langword="true"/> when the on-disk
     /// <see cref="IWorkspaceCacheStore"/> returned a usable entry whose persisted project graph
@@ -96,5 +107,5 @@ public sealed class GateMetricsBuilder
     /// </summary>
     public bool? CacheHit { get; set; }
 
-    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit);
+    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit, ReloadConfirmedNotFound);
 }
