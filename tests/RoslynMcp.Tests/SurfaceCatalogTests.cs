@@ -263,7 +263,7 @@ public sealed class SurfaceCatalogTests
     [TestMethod]
     public void AllArrayTypedToolParameters_DescriptionContainsNativeJsonArrayPhrase()
     {
-        // filepaths-array-vs-stringified-tool-description-clarification: the 6 in-scope
+        // filepaths-array-vs-stringified-tool-description-clarification: the 8 in-scope
         // string[]-typed parameters must each carry "native JSON array" in their [Description]
         // so LLM clients do not mis-encode array values as stringified JSON.
         var assembly = typeof(ServerTools).Assembly;
@@ -276,6 +276,8 @@ public sealed class SurfaceCatalogTests
             ("validate_workspace", "changedFilePaths"),
             ("get_complexity_metrics", "filePaths"),
             ("get_msbuild_properties", "includedNames"),
+            ("extract_interface_preview", "memberNames"),
+            ("scaffold_type_preview", "interfaces"),
         ]);
 
         var failures = new List<string>();
