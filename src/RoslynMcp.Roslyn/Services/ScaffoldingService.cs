@@ -511,7 +511,8 @@ public sealed class ScaffoldingService : IScaffoldingService
             constructorArgs,
             publicMethods,
             framework,
-            siblingInference.Pattern);
+            siblingInference.Pattern,
+            serviceSymbol);
 
         var warnings = new List<string>();
         warnings.AddRange(siblingInference.Warnings);
@@ -742,11 +743,17 @@ public sealed class ScaffoldingService : IScaffoldingService
         string constructorArgs,
         IReadOnlyList<IMethodSymbol> publicMethods,
         string framework,
-        SiblingTestPattern? siblingPattern)
+        SiblingTestPattern? siblingPattern,
+        INamedTypeSymbol? serviceSymbol = null)
     {
         var usingDirective = string.IsNullOrWhiteSpace(serviceNamespace)
             ? string.Empty
             : $"using {serviceNamespace};\n";
+
+        // Collect namespaces from constructor parameter types that differ from the service's own
+        // namespace — these are not captured by the single usingDirective above and would cause
+        // CS0246 when the generated file is compiled as-is (scaffold-test-preview-missing-usings).
+        var ctorParamUsings = BuildCtorParamUsings(serviceSymbol, serviceNamespace, testNamespace);
 
         var ctorCall = string.IsNullOrWhiteSpace(constructorArgs)
             ? $"new {serviceTypeName}()"
@@ -754,15 +761,16 @@ public sealed class ScaffoldingService : IScaffoldingService
 
         return framework switch
         {
-            "xunit" => BuildFirstTestFileXunit(testNamespace, usingDirective, serviceTypeName, ctorCall, publicMethods, siblingPattern),
-            "nunit" => BuildFirstTestFileNUnit(testNamespace, usingDirective, serviceTypeName, ctorCall, publicMethods, siblingPattern),
-            _ => BuildFirstTestFileMSTest(testNamespace, usingDirective, serviceTypeName, ctorCall, publicMethods, siblingPattern),
+            "xunit" => BuildFirstTestFileXunit(testNamespace, usingDirective, ctorParamUsings, serviceTypeName, ctorCall, publicMethods, siblingPattern),
+            "nunit" => BuildFirstTestFileNUnit(testNamespace, usingDirective, ctorParamUsings, serviceTypeName, ctorCall, publicMethods, siblingPattern),
+            _ => BuildFirstTestFileMSTest(testNamespace, usingDirective, ctorParamUsings, serviceTypeName, ctorCall, publicMethods, siblingPattern),
         };
     }
 
     private static string BuildFirstTestFileMSTest(
         string testNamespace,
         string usingDirective,
+        string ctorParamUsings,
         string serviceTypeName,
         string ctorCall,
         IReadOnlyList<IMethodSymbol> publicMethods,
@@ -779,6 +787,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         var sb = new System.Text.StringBuilder();
         sb.Append("using Microsoft.VisualStudio.TestTools.UnitTesting;\n");
         sb.Append(usingDirective);
+        sb.Append(ctorParamUsings);
         sb.Append(extraUsings);
         sb.Append('\n');
         sb.Append("namespace ").Append(testNamespace).Append(";\n\n");
@@ -823,6 +832,7 @@ public sealed class ScaffoldingService : IScaffoldingService
     private static string BuildFirstTestFileXunit(
         string testNamespace,
         string usingDirective,
+        string ctorParamUsings,
         string serviceTypeName,
         string ctorCall,
         IReadOnlyList<IMethodSymbol> publicMethods,
@@ -835,6 +845,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         var sb = new System.Text.StringBuilder();
         sb.Append("using Xunit;\n");
         sb.Append(usingDirective);
+        sb.Append(ctorParamUsings);
         sb.Append(extraUsings);
         sb.Append('\n');
         sb.Append("namespace ").Append(testNamespace).Append(";\n\n");
@@ -877,6 +888,7 @@ public sealed class ScaffoldingService : IScaffoldingService
     private static string BuildFirstTestFileNUnit(
         string testNamespace,
         string usingDirective,
+        string ctorParamUsings,
         string serviceTypeName,
         string ctorCall,
         IReadOnlyList<IMethodSymbol> publicMethods,
@@ -889,6 +901,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         var sb = new System.Text.StringBuilder();
         sb.Append("using NUnit.Framework;\n");
         sb.Append(usingDirective);
+        sb.Append(ctorParamUsings);
         sb.Append(extraUsings);
         sb.Append('\n');
         sb.Append("namespace ").Append(testNamespace).Append(";\n\n");
@@ -1751,6 +1764,51 @@ public sealed class ScaffoldingService : IScaffoldingService
             CollectNamespaces(array.ElementType, requiredUsings);
     }
 
+    /// <summary>
+    /// Builds a block of <c>using</c> directives for namespaces introduced by constructor
+    /// parameter types of <paramref name="typeSymbol"/> — namespaces that are NOT already
+    /// covered by <paramref name="typeNamespace"/> or <paramref name="testNamespace"/>.
+    /// Returns an empty string when no additional namespaces are needed.
+    /// This fixes scaffold-test-preview-missing-usings: previously only the service type's own
+    /// namespace was emitted, leaving any ctor-parameter namespaces as unresolved CS0246 errors.
+    /// </summary>
+    private static string BuildCtorParamUsings(
+        INamedTypeSymbol? typeSymbol,
+        string? typeNamespace,
+        string? testNamespace)
+    {
+        if (typeSymbol is null)
+            return string.Empty;
+
+        var bestCtor = typeSymbol.Constructors
+            .Where(c => !c.IsImplicitlyDeclared || c.Parameters.Length == 0)
+            .Where(c => c.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal)
+            .OrderByDescending(c => c.Parameters.Length)
+            .FirstOrDefault();
+
+        if (bestCtor is null || bestCtor.Parameters.Length == 0)
+            return string.Empty;
+
+        var excluded = new HashSet<string>(StringComparer.Ordinal);
+        if (!string.IsNullOrWhiteSpace(typeNamespace)) excluded.Add(typeNamespace);
+        if (!string.IsNullOrWhiteSpace(testNamespace)) excluded.Add(testNamespace);
+        // Always exclude well-known root namespaces that don't need using directives.
+        excluded.Add("System");
+
+        var paramNamespaces = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var p in bestCtor.Parameters)
+            CollectNamespaces(p.Type, paramNamespaces);
+
+        var sb = new System.Text.StringBuilder();
+        foreach (var ns in paramNamespaces
+            .Where(n => !excluded.Contains(n))
+            .OrderBy(n => n, StringComparer.Ordinal))
+        {
+            sb.Append("using ").Append(ns).Append(";\n");
+        }
+        return sb.ToString();
+    }
+
     private static string BuildTypeContent(string typeNamespace, ScaffoldTypeDto request, InterfaceResolutionResult interfaceResolution)
     {
         var inheritance = new List<string>();
@@ -2107,6 +2165,11 @@ public sealed class ScaffoldingService : IScaffoldingService
             ? string.Empty
             : $"using {targetNamespace};\n";
 
+        // Collect namespaces from constructor parameter types that differ from the target's own
+        // namespace — these are not captured by the single usingDirective above and would cause
+        // CS0246 when the generated file is compiled as-is (scaffold-test-preview-missing-usings).
+        var ctorParamUsings = BuildCtorParamUsings(matchedType, targetNamespace, testNamespace);
+
         var useStaticScaffold = ShouldUseStaticTestScaffold(matchedType);
 
         // scaffold-test-internal-target-accessibility: when the target is internal-not-visible
@@ -2132,9 +2195,9 @@ public sealed class ScaffoldingService : IScaffoldingService
 
         return framework switch
         {
-            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, suppressInstanceSubject, siblingPattern),
-            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, suppressInstanceSubject, siblingPattern),
-            _ => BuildMSTestTestContent(testNamespace, usingDirective, simpleTypeName, methodName, ctorCall, methodTargetBlock, suppressInstanceSubject, siblingPattern),
+            "xunit" => BuildXUnitTestContent(testNamespace, usingDirective, ctorParamUsings, simpleTypeName, methodName, ctorCall, methodTargetBlock, suppressInstanceSubject, siblingPattern),
+            "nunit" => BuildNUnitTestContent(testNamespace, usingDirective, ctorParamUsings, simpleTypeName, methodName, ctorCall, methodTargetBlock, suppressInstanceSubject, siblingPattern),
+            _ => BuildMSTestTestContent(testNamespace, usingDirective, ctorParamUsings, simpleTypeName, methodName, ctorCall, methodTargetBlock, suppressInstanceSubject, siblingPattern),
         };
     }
 
@@ -2595,6 +2658,7 @@ public sealed class ScaffoldingService : IScaffoldingService
     private static string BuildMSTestTestContent(
         string testNamespace,
         string usingDirective,
+        string ctorParamUsings,
         string targetTypeName,
         string methodName,
         string ctorCall,
@@ -2613,6 +2677,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         return
             "using Microsoft.VisualStudio.TestTools.UnitTesting;\n" +
             usingDirective +
+            ctorParamUsings +
             extraUsings +
             "\nnamespace " + testNamespace + ";\n\n" +
             extraAttributes +
@@ -2633,6 +2698,7 @@ public sealed class ScaffoldingService : IScaffoldingService
     private static string BuildXUnitTestContent(
         string testNamespace,
         string usingDirective,
+        string ctorParamUsings,
         string targetTypeName,
         string methodName,
         string ctorCall,
@@ -2651,6 +2717,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         return
             "using Xunit;\n" +
             usingDirective +
+            ctorParamUsings +
             extraUsings +
             "\nnamespace " + testNamespace + ";\n\n" +
             extraAttributes +
@@ -2670,6 +2737,7 @@ public sealed class ScaffoldingService : IScaffoldingService
     private static string BuildNUnitTestContent(
         string testNamespace,
         string usingDirective,
+        string ctorParamUsings,
         string targetTypeName,
         string methodName,
         string ctorCall,
@@ -2688,6 +2756,7 @@ public sealed class ScaffoldingService : IScaffoldingService
         return
             "using NUnit.Framework;\n" +
             usingDirective +
+            ctorParamUsings +
             extraUsings +
             "\nnamespace " + testNamespace + ";\n\n" +
             extraAttributes +
