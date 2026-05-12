@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -40,6 +41,8 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
         var workspaceVersion = _workspace.GetCurrentVersion(workspaceId);
         var resolvedInterfaceName = string.IsNullOrWhiteSpace(interfaceName) ? $"I{typeName}" : interfaceName;
         var currentSolution = _workspace.GetCurrentSolution(workspaceId);
+
+        await DetectDuplicateInterfaceAsync(currentSolution, filePath, typeName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
         var extractionPreview = await _crossProjectRefactoringService.PreviewExtractInterfaceAsync(
             workspaceId,
@@ -106,6 +109,68 @@ public sealed class ExtractAndWireOrchestrator : IExtractAndWireOrchestrator
         var description = $"Extract interface '{resolvedInterfaceName}' from '{typeName}' and wire consumers";
         var token = _compositePreviewStore.Store(workspaceId, workspaceVersion, description, mutations);
         return new RefactoringPreviewDto(token, description, changes, warnings.Count == 0 ? null : warnings);
+    }
+
+    /// <summary>
+    /// Detects whether the target type already implements an interface with the same simple name
+    /// as <paramref name="resolvedInterfaceName"/> (across any project). When found, throws with
+    /// a structured message that directs the caller to use
+    /// <c>extract_interface_cross_project_preview</c> instead.
+    /// </summary>
+    private static async Task DetectDuplicateInterfaceAsync(
+        Solution solution,
+        string filePath,
+        string typeName,
+        string resolvedInterfaceName,
+        CancellationToken ct)
+    {
+        var sourceDocument = SymbolResolver.FindDocument(solution, filePath);
+        if (sourceDocument is null)
+        {
+            return;
+        }
+
+        var sourceRoot = await sourceDocument.GetSyntaxRootAsync(ct).ConfigureAwait(false) as CompilationUnitSyntax;
+        if (sourceRoot is null)
+        {
+            return;
+        }
+
+        var typeDeclaration = sourceRoot.DescendantNodes().OfType<TypeDeclarationSyntax>()
+            .FirstOrDefault(candidate => string.Equals(candidate.Identifier.ValueText, typeName, StringComparison.Ordinal));
+        if (typeDeclaration is null)
+        {
+            return;
+        }
+
+        var semanticModel = await sourceDocument.GetSemanticModelAsync(ct).ConfigureAwait(false);
+        if (semanticModel is null)
+        {
+            return;
+        }
+
+        var typeSymbol = semanticModel.GetDeclaredSymbol(typeDeclaration, ct) as INamedTypeSymbol;
+        if (typeSymbol is null)
+        {
+            return;
+        }
+
+        var existingInterface = typeSymbol.Interfaces.FirstOrDefault(iface =>
+            string.Equals(iface.Name, resolvedInterfaceName, StringComparison.Ordinal));
+
+        if (existingInterface is not null)
+        {
+            var existingProject = solution.Projects.FirstOrDefault(project =>
+                project.Id == existingInterface.ContainingAssembly?.Locations
+                    .Select(loc => solution.GetDocument(loc.SourceTree)?.Project.Id)
+                    .FirstOrDefault(id => id is not null));
+
+            var projectHint = existingProject is not null ? $" (project '{existingProject.Name}')" : string.Empty;
+            throw new InvalidOperationException(
+                $"Type '{typeName}' already implements interface '{resolvedInterfaceName}'{projectHint}. " +
+                $"extract_and_wire_interface_preview cannot create a duplicate. " +
+                $"If you intended to extract a cross-project interface contract, use extract_interface_cross_project_preview instead.");
+        }
     }
 
     private static void UpsertMutation(List<CompositeFileMutation> mutations, string filePath, string updatedContent)
