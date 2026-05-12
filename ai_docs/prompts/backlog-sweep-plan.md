@@ -216,6 +216,30 @@ Initiatives over 80K must split. Record the estimate in `estimatedContextTokens`
 The executor vets this number — if your estimate is over budget, the executor will
 refuse to start.
 
+## Step 0 — Workspace bookend (C# repos only)
+
+Before any analysis, probe whether the current session is operating in a C# repo:
+
+1. **Glob CWD (depth=1)** for `*.slnx`, `*.sln`, and `*.csproj`. If zero hits, set
+   `applicable: false`, skip this step entirely, and proceed to Step 1.
+2. On a positive hit, check whether a workspace is **already loaded** (call
+   `workspace_list` or inspect the session's prior context). If already loaded,
+   skip the `workspace_load` call — do not reload unnecessarily.
+3. If not yet loaded, call `workspace_load` on the found solution/project path.
+   Prefer `.slnx` > `.sln` > bare `.csproj` when multiple exist.
+4. After loading, surface the following **recommended-tool block** as a session
+   context note — these are the top 5 Roslyn semantic primitives available and
+   preferred over Grep/Bash:
+   - `find_references` — find all callers of a symbol
+   - `find_consumers` — find all callers of a type/member across projects
+   - `find_implementations` — find concrete implementations of an interface/abstract member
+   - `compile_check` — verify the solution compiles after each meaningful edit
+   - `validate_workspace` — post-mutation gate: compile + diagnostics + related tests
+
+**Post-mutation exit gate:** once all plan edits are complete, call `validate_workspace`
+before exiting the planning session to confirm no `.cs` sources were accidentally
+corrupted.
+
 ## Step 1 — Candidate selection (row-level)
 
 Read `ai_docs/backlog.md` (open/unfinished work only). Shortlist rows by:

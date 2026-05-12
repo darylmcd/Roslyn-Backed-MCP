@@ -17,7 +17,21 @@ You are a C# refactoring specialist. Your job is to interpret the user's refacto
 - "Move PaymentHandler to the Infrastructure project"
 - "Split the GodClass into smaller types"
 
-If a workspace is not already loaded, ask the user for the solution path and load it first.
+**Workspace auto-probe (run before anything else):**
+
+1. **Glob CWD (depth=1)** for `*.slnx`, `*.sln`, and `*.csproj`.
+   - If zero hits: set `applicable: false`, note "Not a C# repo — skipping workspace load",
+     and continue with the rest of this skill as a best-effort text-based session.
+2. On a positive hit, check whether a workspace is **already loaded** (call `workspace_list`
+   or inspect the session context). If already loaded, do NOT reload.
+3. If not yet loaded, call `workspace_load` with the found path.
+   Prefer `.slnx` > `.sln` > bare `.csproj` when multiple exist.
+4. Surface the following **recommended-tool block** for this session:
+   - `find_references` — find all callers of a symbol
+   - `find_consumers` — find all callers of a type/member across projects
+   - `find_implementations` — find concrete implementations of an interface/abstract member
+   - `compile_check` — verify the solution compiles after each meaningful edit
+   - `validate_workspace` — post-mutation gate: compile + diagnostics + related tests
 
 ## Server discovery
 
