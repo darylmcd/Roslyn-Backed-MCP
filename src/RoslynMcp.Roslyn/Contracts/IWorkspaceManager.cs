@@ -39,8 +39,13 @@ public interface IWorkspaceManager
     /// Loads a solution or project file from disk into a new named workspace session.
     /// </summary>
     /// <param name="path">The absolute path to the <c>.sln</c>, <c>.slnx</c>, or <c>.csproj</c> file to load.</param>
+    /// <param name="evictPolicy">
+    /// Controls cap-reached behaviour. <see cref="EvictPolicy.Strict"/> (default) throws with
+    /// diagnostic context; <see cref="EvictPolicy.Lru"/> silently evicts the idle workspace with
+    /// the smallest <c>LastAccessedUtc</c> before retrying.
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
-    Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct);
+    Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct);
 
     /// <summary>
     /// Reloads an existing workspace session from disk, discarding any pending previews.

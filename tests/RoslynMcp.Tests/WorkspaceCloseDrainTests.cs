@@ -211,7 +211,7 @@ public sealed class WorkspaceCloseDrainTests
         public event Action<string>? WorkspaceClosed { add { } remove { } }
         public event Action<string>? WorkspaceReloaded { add { } remove { } }
 
-        public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) =>
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) =>
             Task.FromResult(status ?? throw new KeyNotFoundException("No status configured."));
 
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>

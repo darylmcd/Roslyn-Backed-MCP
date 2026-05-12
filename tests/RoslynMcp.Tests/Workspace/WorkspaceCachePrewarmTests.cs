@@ -278,7 +278,7 @@ public sealed class WorkspaceCachePrewarmTests : IsolatedWorkspaceTestBase
         public event Action<string>? WorkspaceClosed { add { } remove { } }
         public event Action<string>? WorkspaceReloaded { add { } remove { } }
 
-        public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => Task.FromResult(status);
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => Task.FromResult(status);
 
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>
             throw new NotSupportedException("These tests disable autoRestore; reload should not be invoked.");

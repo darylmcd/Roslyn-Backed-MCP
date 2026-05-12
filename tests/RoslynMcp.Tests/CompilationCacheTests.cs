@@ -131,7 +131,7 @@ public sealed class CompilationCacheTests
         public void RestoreVersion(string workspaceId, int version) => Version = version;
 
         // ----- Unused by CompilationCache; throw to surface unexpected coupling -----
-        public Task<WorkspaceStatusDto> LoadAsync(string path, CancellationToken ct) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
         public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
         public bool ContainsWorkspace(string workspaceId) => workspaceId == WorkspaceId;
         public bool IsStale(string workspaceId) => false;
