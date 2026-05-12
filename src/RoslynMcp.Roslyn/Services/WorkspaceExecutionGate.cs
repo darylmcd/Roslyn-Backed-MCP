@@ -261,8 +261,41 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             }
 
             ct.ThrowIfCancellationRequested();
-            return await action(ct).ConfigureAwait(false);
+            try
+            {
+                return await action(ct).ConfigureAwait(false);
+            }
+            catch (Exception retryEx) when (IsNotFoundError(retryEx))
+            {
+                // workspace-reloaded-during-call-conflates-notfound: the retry also failed
+                // with a "Document not found" error. This confirms the file path is genuinely
+                // absent — it is NOT a transient stale-snapshot race. Stamp ReloadConfirmedNotFound
+                // so ToolErrorHandler skips the WorkspaceReloadedDuringCall branch and returns
+                // category=NotFound (the true cause) instead. The exception is re-thrown so the
+                // caller's normal error-classification path runs.
+                if (AmbientGateMetrics.Current is { } m)
+                {
+                    m.ReloadConfirmedNotFound = true;
+                }
+                throw;
+            }
         }
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when <paramref name="ex"/> carries a "Document not found"
+    /// or "not found in workspace" message in one of the three known exception shapes used
+    /// throughout the service layer for missing-document errors. Shared by
+    /// <see cref="ShouldRetryAfterAutoReload"/> (to gate the initial retry decision) and
+    /// <see cref="RunActionWithPostReloadRetryAsync"/> (to stamp
+    /// <see cref="GateMetricsBuilder.ReloadConfirmedNotFound"/> when the retry also fails).
+    /// </summary>
+    private static bool IsNotFoundError(Exception ex)
+    {
+        var message = ex.Message ?? string.Empty;
+        return ex is (InvalidOperationException or FileNotFoundException or KeyNotFoundException) &&
+               (message.Contains("Document not found", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("not found in workspace", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -298,10 +331,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         //     WorkspaceResources
         // Match by message substring so any service that follows the same naming convention
         // is covered without a hard-coded type list.
-        var message = ex.Message ?? string.Empty;
-        return ex is (InvalidOperationException or FileNotFoundException or KeyNotFoundException) &&
-               (message.Contains("Document not found", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("not found in workspace", StringComparison.OrdinalIgnoreCase));
+        return IsNotFoundError(ex);
     }
 
     /// <summary>
