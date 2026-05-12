@@ -31,10 +31,12 @@ public sealed class TypeConsumersServiceTests : SharedWorkspaceTestBase
             Assert.IsTrue(entry.Count >= 1, $"Rollup for '{entry.FilePath}' has zero sites.");
             Assert.IsTrue(entry.Kinds.Count >= 1, $"Rollup for '{entry.FilePath}' has empty kinds.");
             // Every kind string must be one of the documented values.
+            // "invocation" was added by find-consumers-static-class-classification to cover
+            // static-class consumers (StaticClass.Method(...) syntax).
             foreach (var kind in entry.Kinds)
             {
                 CollectionAssert.Contains(
-                    new[] { "using", "ctor", "inherit", "field", "local", "other" },
+                    new[] { "using", "ctor", "inherit", "field", "local", "invocation", "other" },
                     kind,
                     $"Unexpected kind '{kind}' in rollup for '{entry.FilePath}'.");
             }
@@ -100,5 +102,24 @@ public sealed class TypeConsumersServiceTests : SharedWorkspaceTestBase
         Assert.IsNotNull(rectangle, "Rectangle.cs should appear in the Shape rollup.");
         CollectionAssert.Contains(rectangle.Kinds.ToList(), "inherit",
             $"Rectangle.cs should classify its Shape usage as 'inherit'; got [{string.Join(", ", rectangle.Kinds)}].");
+    }
+
+    [TestMethod]
+    public async Task FindTypeConsumers_StaticClass_ClassifiesAsInvocation()
+    {
+        // find-consumers-static-class-classification: SampleApp/Program.cs calls
+        // AnimalFormatter.Format(...) and AnimalFormatter.FormatAll(...) using explicit
+        // static-class syntax. The rollup for Program.cs must include "invocation", not "other".
+        var results = await TypeConsumersService.FindTypeConsumersAsync(
+            WorkspaceId, "SampleLib.AnimalFormatter", limit: 100, CancellationToken.None);
+
+        Assert.IsTrue(results.Count >= 1,
+            $"Expected at least 1 file consuming AnimalFormatter, got {results.Count}.");
+
+        var allKinds = results.SelectMany(r => r.Kinds).Distinct().ToList();
+        CollectionAssert.Contains(allKinds, "invocation",
+            $"Expected 'invocation' kind for static-class consumers. Actual kinds: [{string.Join(", ", allKinds)}]");
+        CollectionAssert.DoesNotContain(allKinds, "other",
+            $"'other' kind must not appear for static-class consumers. Actual kinds: [{string.Join(", ", allKinds)}]");
     }
 }

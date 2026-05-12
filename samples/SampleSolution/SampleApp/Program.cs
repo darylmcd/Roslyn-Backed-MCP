@@ -27,3 +27,9 @@ foreach (var shape in shapes)
 {
     Console.WriteLine(shape.Describe());
 }
+
+// Explicit static-class invocation — tests assert this produces StaticMemberAccess, not Other.
+var formatted = AnimalFormatter.Format(animals.First());
+Console.WriteLine(formatted);
+var allFormatted = AnimalFormatter.FormatAll(animals);
+Console.WriteLine(allFormatted);

@@ -199,6 +199,11 @@ public sealed class TypeConsumersService : ITypeConsumersService
                     return "field";
                 case LocalDeclarationStatementSyntax:
                     return "local";
+                // StaticClass.Method(...) — type name appears as the receiver of a member access
+                // (e.g. AnimalExtensions.Describe(...)). Classify as "invocation" so static-class
+                // consumers are no longer bucketed into the uninformative "other" bucket.
+                case MemberAccessExpressionSyntax:
+                    return "invocation";
                 // Stop walking once we leave a member declaration boundary so a nested type
                 // reference inside a method body does not bubble up to its containing field
                 // initializer or class declaration accidentally.

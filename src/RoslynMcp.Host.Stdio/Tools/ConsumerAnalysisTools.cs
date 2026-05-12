@@ -13,7 +13,7 @@ public static class ConsumerAnalysisTools
     [McpServerTool(Name = "find_consumers", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("analysis", "stable", true, false,
         "Find all types that depend on a given type or interface, classified by dependency kind. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated)."),
-     Description("Find all types that depend on a given type or interface, classified by dependency kind (Constructor, Field, Parameter, BaseType, LocalVariable, Property, ReturnType, GenericArgument). Optional `projectFilter` (case-sensitive Project.Name; comma-separated for multi) restricts the consumer walk to the listed project(s) — matches semantic_grep's filter semantics.")]
+     Description("Find all types that depend on a given type or interface, classified by dependency kind (Constructor, Field, Parameter, BaseType, LocalVariable, Property, ReturnType, GenericArgument, StaticMemberAccess). Optional `projectFilter` (case-sensitive Project.Name; comma-separated for multi) restricts the consumer walk to the listed project(s) — matches semantic_grep's filter semantics.")]
     public static Task<string> FindConsumers(
         IWorkspaceExecutionGate gate,
         IConsumerAnalysisService consumerAnalysisService,
