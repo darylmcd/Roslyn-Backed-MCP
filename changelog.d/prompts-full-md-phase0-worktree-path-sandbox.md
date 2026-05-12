@@ -1,3 +1,0 @@
-### Fixed
-
-- `/mcp-server-surface-test` Phase 0 worktree path is now under the audited repo root (`.worktrees/surface-test-<ts>`), no longer rejected by `workspace_load`'s sanctioned-root check. The sibling-path pattern (`../<repo>-surface-test-<ts>`) failed with `InvalidArgument: Path is not under any client-sanctioned root`; the new inside-repo path falls under the audited repo's sanctioned root and inherits its `.gitignore` exclusion of `.worktrees/`. Closes gh #614 (companion prompt-side fix to `workspace-load-sibling-worktree-sanctioned-root`, PR #637, which fixed the server tool-side handling).
