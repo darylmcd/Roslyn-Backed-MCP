@@ -39,10 +39,16 @@ public sealed class AnalyzerInfoService : IAnalyzerInfoService
             {
                 var assemblyName = analyzerRef.Display ?? analyzerRef.FullPath ?? "Unknown";
 
-                if (analyzersByAssembly.ContainsKey(assemblyName))
-                    continue; // Already processed this assembly
-
-                var rules = new List<AnalyzerRuleDto>();
+                // Merge rules from all projects into the same list rather than skipping on
+                // the first occurrence. GetAnalyzers is language-specific, so a project that
+                // encounters this assembly in a different language context may expose rules
+                // that were invisible from the first project's language. The DistinctBy at
+                // the end deduplicates by rule ID after all projects have contributed.
+                if (!analyzersByAssembly.TryGetValue(assemblyName, out var rules))
+                {
+                    rules = new List<AnalyzerRuleDto>();
+                    analyzersByAssembly[assemblyName] = rules;
+                }
 
                 try
                 {
@@ -72,8 +78,6 @@ public sealed class AnalyzerInfoService : IAnalyzerInfoService
                         IsEnabledByDefault: false,
                         HelpLinkUri: null));
                 }
-
-                analyzersByAssembly[assemblyName] = rules;
             }
         }
 
