@@ -688,7 +688,48 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             return solution;
         }
 
+        var targetProject = solution.GetProject(targetProjectId)
+            ?? throw new InvalidOperationException("Target project was not found in the updated solution.");
+
+        if (WouldCreateCrossProjectCycle(sourceProject, targetProject))
+        {
+            throw new InvalidOperationException(
+                $"Adding project reference from '{sourceProject.Name}' to '{targetProject.Name}' would create a circular dependency.");
+        }
+
         return solution.AddProjectReference(sourceProjectId, new ProjectReference(targetProjectId));
+    }
+
+    private static bool WouldCreateCrossProjectCycle(Project source, Project target)
+    {
+        var visited = new HashSet<ProjectId>();
+        var stack = new Stack<Project>();
+        stack.Push(target);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (!visited.Add(current.Id))
+            {
+                continue;
+            }
+
+            if (current.Id == source.Id)
+            {
+                return true;
+            }
+
+            foreach (var reference in current.ProjectReferences)
+            {
+                var next = current.Solution.GetProject(reference.ProjectId);
+                if (next is not null)
+                {
+                    stack.Push(next);
+                }
+            }
+        }
+
+        return false;
     }
 
     private static async Task<Solution> CreateInterfaceExtractionSolutionAsync(

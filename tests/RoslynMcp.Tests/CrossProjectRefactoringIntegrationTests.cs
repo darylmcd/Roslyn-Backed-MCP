@@ -310,6 +310,49 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
             $"Consumer parameter has glued-together type and name (FORMAT-BUG-002 regression).\nFile contents:\n{consumerContents}");
     }
 
+    [TestMethod]
+    public async Task Move_Type_To_Project_Preview_Rejects_Circular_Dependency_With_Human_Readable_Names()
+    {
+        // Regression for move-type-to-project-preview-leaks-projectid-tokens.
+        // Before the fix: EnsureProjectReference called solution.AddProjectReference with no
+        // cycle pre-check, causing Roslyn internals to throw an InvalidOperationException whose
+        // message contained raw "(ProjectId, #<guid> - <abs-path>)" tuple strings.
+        // After the fix: the error message uses human-readable project names.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        // Set up CircularTarget with a pre-existing reference back to SampleLib.
+        // CircularTarget -> SampleLib already exists, so adding SampleLib -> CircularTarget
+        // would create a cycle.
+        AddProjectToCopiedSolution(workspace.RootPath, "CircularTarget", "net10.0");
+        var circularTargetCsproj = workspace.GetPath("CircularTarget", "CircularTarget.csproj");
+        var sampleLibRelativePath = Path.Combine("..", "SampleLib", "SampleLib.csproj");
+        File.WriteAllText(
+            circularTargetCsproj,
+            $"<Project Sdk=\"Microsoft.NET.Sdk\">\n  <PropertyGroup>\n    <TargetFramework>net10.0</TargetFramework>\n    <Nullable>enable</Nullable>\n    <ImplicitUsings>enable</ImplicitUsings>\n  </PropertyGroup>\n  <ItemGroup>\n    <ProjectReference Include=\"{sampleLibRelativePath}\" />\n  </ItemGroup>\n</Project>\n");
+
+        var sourceFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var exception = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+            await CrossProjectRefactoringService.PreviewMoveTypeToProjectAsync(
+                workspace.WorkspaceId,
+                sourceFilePath,
+                "Dog",
+                "CircularTarget",
+                null,
+                CancellationToken.None,
+                preserveNamespace: false));
+
+        // Message must contain the human-readable project names.
+        StringAssert.Contains(exception.Message, "SampleLib");
+        StringAssert.Contains(exception.Message, "CircularTarget");
+
+        // Message must NOT contain raw ProjectId tuple tokens leaked from Roslyn internals.
+        Assert.IsFalse(
+            exception.Message.Contains("ProjectId", StringComparison.Ordinal),
+            $"Error message leaks raw ProjectId token (regression).\nActual message: {exception.Message}");
+    }
+
     private static void AddProjectToCopiedSolution(string copiedRoot, string projectName, string targetFramework)
     {
         var projectDirectory = Path.Combine(copiedRoot, projectName);
