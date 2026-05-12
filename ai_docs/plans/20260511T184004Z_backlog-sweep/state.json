@@ -258,7 +258,7 @@
     {
       "id": "file-lock-aware-prompt-validation-guidance",
       "order": 8,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "file-lock-aware-prompt-validation-guidance"
       ],
@@ -274,7 +274,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Backlog row anchors stale post-PR-#633 (cites deleted maintainer-overlay.md); executor must rewrite to canonical full.md path."
+      "notes": "Obsolete (Step 5a re-vet 2026-05-12): pre-shipped by PR #653 (a0bf843) from plan 20260509T181343Z. PromptMessageBuilder.CreateFileLockBypassGuidance + RoslynPrompts.RefactoringWorkflows.cs integration + PromptSmokeTests regression all present. Backlog row was closed by PR #653."
     },
     {
       "id": "fix-all-preview-provider-crash-ide0305",
@@ -321,7 +321,7 @@
     {
       "id": "get-syntax-tree-maxtotalbytes-not-enforced",
       "order": 11,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": [
         "get-syntax-tree-maxtotalbytes-not-enforced"
       ],
@@ -337,7 +337,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Touches SyntaxService.cs; do not parallel-wave with initiative 22."
+      "notes": "Obsolete (Step 5a re-vet 2026-05-12): SyntaxBudget.RemainingBytes was added by PR #171 (2ba6e85) as part of get-syntax-tree-max-output-chars-incomplete-cap — maxTotalBytes IS enforced via the walker. Backlog row closed with this obsolescence."
     },
     {
       "id": "reconcile-backlog-vs-github-issues",
