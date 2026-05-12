@@ -527,4 +527,61 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         StringAssert.Contains(ex.Message, "'$(Configuration)' == 'Release'",
             "Error message must include the MSBuild-quoting example so first-time callers see the expected syntax.");
     }
+
+    [TestMethod]
+    public async Task Set_Project_Property_Preview_Warns_When_Property_Already_Inherited_From_Directory_Build_Props()
+    {
+        // set-project-property-preview-directory-build-props-blindness: when a property value is
+        // already set via the inherited MSBuild property graph (e.g. Directory.Build.props) but NOT
+        // declared in the .csproj itself, the tool must warn — not throw — and still emit a diff
+        // so the caller can inspect the redundancy and decide whether to proceed.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        // Write a Directory.Build.props that sets Nullable=enable globally.
+        await File.WriteAllTextAsync(
+            Path.Combine(workspace.RootPath, "Directory.Build.props"),
+            """
+            <Project>
+              <PropertyGroup>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+            </Project>
+            """,
+            CancellationToken.None).ConfigureAwait(false);
+
+        // Rewrite SampleLib.csproj to not declare Nullable, so the value comes exclusively from
+        // Directory.Build.props.
+        var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        await File.WriteAllTextAsync(
+            projectFilePath,
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+              </PropertyGroup>
+            </Project>
+            """,
+            CancellationToken.None).ConfigureAwait(false);
+
+        await workspace.LoadAsync(CancellationToken.None).ConfigureAwait(false);
+
+        // Requesting Nullable=enable should NOT throw because the value matches — but should warn.
+        var preview = await ProjectMutationService.PreviewSetProjectPropertyAsync(
+            workspace.WorkspaceId,
+            new SetProjectPropertyDto("SampleLib", "Nullable", "enable"),
+            CancellationToken.None).ConfigureAwait(false);
+
+        // Warn-not-reject: the preview must include a warning.
+        Assert.IsNotNull(preview.Warnings, "Warnings must be non-null when the property is inherited.");
+        Assert.IsTrue(preview.Warnings.Count > 0, "Warnings collection must be non-empty.");
+        StringAssert.Contains(preview.Warnings[0], "already",
+            $"Warning message must contain 'already'. Actual: {preview.Warnings[0]}");
+
+        // Warn-not-reject: a diff must still be present so the caller can see what would be added.
+        Assert.IsTrue(preview.Changes.Any(), "Preview must still emit a file diff (warn-not-reject).");
+        var diff = preview.Changes.First().UnifiedDiff;
+        Assert.IsTrue(diff.Contains("Nullable", StringComparison.OrdinalIgnoreCase),
+            "Diff must reference the Nullable property.");
+    }
 }

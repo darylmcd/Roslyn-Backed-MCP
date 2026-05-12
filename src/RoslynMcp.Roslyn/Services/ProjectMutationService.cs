@@ -169,12 +169,20 @@ public sealed class ProjectMutationService : IProjectMutationService
         }, $"Remove project reference '{request.ReferencedProjectName}'", ct);
     }
 
-    public Task<RefactoringPreviewDto> PreviewSetProjectPropertyAsync(string workspaceId, SetProjectPropertyDto request, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewSetProjectPropertyAsync(string workspaceId, SetProjectPropertyDto request, CancellationToken ct)
     {
-        return PreviewProjectMutationAsync(workspaceId, request.ProjectName, document =>
-        {
-            ValidateAllowedProperty(request.PropertyName);
+        ValidateAllowedProperty(request.PropertyName);
 
+        // Inspect the evaluated MSBuild property graph to detect values inherited from Directory.Build.props
+        // or other imported targets — the XDocument-only check below cannot see those.
+        var evaluated = await _msbuildEvaluation.EvaluatePropertyAsync(workspaceId, request.ProjectName, request.PropertyName, ct).ConfigureAwait(false);
+
+        // Use a captured list so the mutator lambda can populate warnings; the list is passed to
+        // PreviewProjectMutationAsync after the lambda executes (the overload reads it post-mutation).
+        var warnings = new List<string>();
+
+        var preview = await PreviewProjectMutationAsync(workspaceId, request.ProjectName, document =>
+        {
             var propertyGroup = document.Root?.Elements("PropertyGroup").FirstOrDefault();
             if (propertyGroup is null)
             {
@@ -184,12 +192,23 @@ public sealed class ProjectMutationService : IProjectMutationService
                 OrchestrationMsBuildXml.InsertFirstElementChildWithFormatting(document, propertyGroup);
             }
 
-            // Detect no-op: check if property already has the target value
+            // Detect no-op: check if property already has the target value in the .csproj itself
             var existingElement = propertyGroup.Element(request.PropertyName);
             if (string.Equals(existingElement?.Value, request.Value, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
                     $"No changes needed — property '{request.PropertyName}' is already set to '{request.Value}'.");
+            }
+
+            // Warn (but do not block) when the evaluated effective value already matches the requested
+            // value and the property is NOT declared in this .csproj — i.e. it is inherited from
+            // Directory.Build.props or another imported file. Applying the preview would create a
+            // redundant entry, so surface a warning annotation for the caller to inspect.
+            if (existingElement is null
+                && !string.IsNullOrEmpty(evaluated.EvaluatedValue)
+                && string.Equals(evaluated.EvaluatedValue, request.Value, StringComparison.OrdinalIgnoreCase))
+            {
+                warnings.Add($"Property '{request.PropertyName}' is already set to '{request.Value}' via the inherited MSBuild property graph (e.g. Directory.Build.props). Applying this preview will create a redundant entry in the .csproj.");
             }
 
             // project-mutation-preview-xml-formatting: SetElementValue inserts a new XElement with
@@ -207,7 +226,10 @@ public sealed class ProjectMutationService : IProjectMutationService
                     propertyGroup,
                     new XElement(request.PropertyName, request.Value));
             }
-        }, $"Set project property '{request.PropertyName}'", ct);
+        }, $"Set project property '{request.PropertyName}'", ct).ConfigureAwait(false);
+
+        // Attach warnings collected by the mutator lambda (warnings.Count == 0 means no annotation).
+        return warnings.Count > 0 ? preview with { Warnings = warnings } : preview;
     }
 
     public async Task<RefactoringPreviewDto> PreviewAddTargetFrameworkAsync(string workspaceId, AddTargetFrameworkDto request, CancellationToken ct)
