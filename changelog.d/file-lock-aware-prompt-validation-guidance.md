@@ -1,0 +1,3 @@
+### Changed
+
+- `debug_test_failure` now recognizes a self-hosted analyzer-DLL file-lock failure (`errorKind: FileLock`, MSB3027/MSB3021) as an infrastructure failure rather than a test-authoring failure. Instead of the standard "diagnose the root cause" loop, the prompt now renders bypass guidance: prefer `compile_check` for read-side evidence, close the holder and call `workspace_reload`, or run validation from an isolated process after `dotnet build-server shutdown`. Re-running validation in the same loaded workspace re-acquires the lock, so this prevents the operator from wasting a diagnose-fix cycle on a failure that has no code-level fix. (`file-lock-aware-prompt-validation-guidance`)
