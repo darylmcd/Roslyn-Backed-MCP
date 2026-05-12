@@ -171,16 +171,16 @@ public static class ValidationTools
         }, ct);
     }
 
-    [McpServerTool(Name = "test_related", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find likely related tests for a symbol by source location or symbol handle. Two-pass match: (1) heuristic name overlap (substring of the symbol name in test methods/classes — fast, catches the common case), plus (2) reference sweep via SymbolFinder.FindReferencesAsync over the symbol + its overrides/implementations (covers interface-dispatch tests that don't mention the interface name). An empty result set usually means: (a) the symbol's simple name doesn't appear in any test method/class name AND no test file references the symbol (or any implementation) by position, (b) the target symbol is a local/anonymous construct that isn't reachable by name. For file-based impact, use `test_related_files` instead.")]
+    [McpServerTool(Name = "test_related", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find likely related tests for a symbol by source location or symbol handle. Three mutually-exclusive locator modes: (1) symbolHandle alone — pass the stable handle returned by other semantic tools; (2) metadataName alone — pass a fully-qualified metadata name such as Namespace.TypeName; (3) source-location — pass filePath, line, AND column all together (all three are required when using this mode). Two-pass match: (1) heuristic name overlap (substring of the symbol name in test methods/classes — fast, catches the common case), plus (2) reference sweep via SymbolFinder.FindReferencesAsync over the symbol + its overrides/implementations (covers interface-dispatch tests that don't mention the interface name). An empty result set usually means: (a) the symbol's simple name doesn't appear in any test method/class name AND no test file references the symbol (or any implementation) by position, (b) the target symbol is a local/anonymous construct that isn't reachable by name. For file-based impact, use `test_related_files` instead.")]
     [McpToolMetadata("validation", "stable", true, false,
         "Find tests related to a symbol.")]
     public static Task<string> FindRelatedTests(
         IWorkspaceExecutionGate gate,
         ITestDiscoveryService testDiscoveryService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: absolute path to the source file")] string? filePath = null,
-        [Description("Optional: 1-based line number")] int? line = null,
-        [Description("Optional: 1-based column number")] int? column = null,
+        [Description("Source-location mode: absolute path to the source file. Must be provided together with line and column (all three are required as a group). Omit all three source-location parameters when using symbolHandle or metadataName instead.")] string? filePath = null,
+        [Description("Source-location mode: 1-based line number. Must be provided together with filePath and column (all three are required as a group). Omit all three source-location parameters when using symbolHandle or metadataName instead.")] int? line = null,
+        [Description("Source-location mode: 1-based column number pointing at the symbol identifier token (not the start of the line). Must be provided together with filePath and line (all three are required as a group). Note: this server uses 'column' (1-based), not the LSP-style 'character'. Omit all three source-location parameters when using symbolHandle or metadataName instead.")] int? column = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         [Description("Maximum number of test cases to return (default: 100)")] int maxResults = 100,
