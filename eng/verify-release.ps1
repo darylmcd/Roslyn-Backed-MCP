@@ -38,6 +38,10 @@ if (-not $NoCoverage) {
 # references in ./skills/ (repo-only skills belong in .claude/skills/).
 & (Join-Path $PSScriptRoot 'verify-skills-are-generic.ps1')
 
+# Changelog fragment format check — catches malformed changelog.d/*.md files
+# at PR time rather than at release-cut time (where they block /bump).
+& (Join-Path $PSScriptRoot 'verify-changelog-fragments.ps1')
+
 dotnet restore $solutionPath --nologo
 Invoke-DotnetStep "dotnet restore (main solution)"
 

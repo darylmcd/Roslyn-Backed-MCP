@@ -39,8 +39,23 @@ If any field is missing, emit a failure `<<<RESULT>>>` immediately — do not gu
    - Before PR (CI-parity): `./eng/verify-release.ps1 -Configuration Release` AND `./eng/verify-ai-docs.ps1`. Both must pass.
 
 4. **Commit + push + open PR** with explicit staged paths (never `git add -A`):
+
+   Before staging, write `changelog.d/{initiative.id}.md` using the CHANGELOG draft from the inlined plan section. The file **must** use YAML frontmatter — the `/bump` skill's fragment consumer hard-refuses any fragment without it:
+
    ```
-   git add -- src/... tests/...
+   ---
+   category: <Fixed|Changed|Added|Maintenance|Changed — BREAKING>
+   ---
+
+   - **<Category>:** <one-sentence description from the CHANGELOG draft in the plan>
+   ```
+
+   Valid categories (case-sensitive, em-dash `—` for `Changed — BREAKING`): `Fixed`, `Changed`, `Changed — BREAKING`, `Added`, `Maintenance`.
+
+   Include the fragment in the explicit staged paths:
+
+   ```
+   git add -- src/... tests/... changelog.d/{initiative.id}.md
    git commit -m "{type}({scope}): {description} ({initiative.id})"
    git push -u origin remediation/{initiative.id}
    gh pr create --title "..." --body "..."
