@@ -147,6 +147,23 @@ The script emits a single JSON object on stdout. Parse it and branch on the resu
 
 **Pass** when the aggregator ran cleanly (regardless of whether any entries were `promote: ready`). **Fail** is reserved for: aggregator exit code non-zero, or output that prevents parsing. Stale-but-readable scorecards are WARN, not FAIL.
 
+### Step 8.5: Experimental Age Audit (advisory, non-blocking)
+
+This step surfaces experimental-tier surface entries that have been experimental for more than 180 days without promotion or deprecation. It does not auto-promote or auto-deprecate any entry; it is informational only.
+
+Run the auditor via Bash:
+```
+pwsh -NoProfile -File eng/audit-experimental-age.ps1
+```
+
+(Optional: pass `-ThresholdDays <N>` to lower or raise the age threshold; see `pwsh -NoProfile -File eng/audit-experimental-age.ps1 -?` for all parameters.)
+
+The script emits a Markdown table of experimental entries whose `git blame` age exceeds `$ThresholdDays` days (default 180). If no entries exceed the threshold, the script prints a one-line "no entries found" message and exits 0.
+
+**Action:** Review the table. For each entry that has aged significantly with no promotion path in sight, consider opening a backlog row to either promote it (if real-world usage supports stable tier) or deprecate it (if it has not seen adoption). No action is required before publishing; the gate's purpose is visibility, not enforcement.
+
+**Pass** always — the script always exits 0. Include the output (or a "no stale entries" note) in the summary report as an informational line.
+
 ## Summary Report
 
 After all steps, display a table:
