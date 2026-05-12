@@ -34,7 +34,7 @@
     {
       "id": "file-lock-aware-prompt-validation-guidance",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["file-lock-aware-prompt-validation-guidance"],
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
@@ -46,9 +46,9 @@
       "fanoutOversize": false,
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Dependency build-test-self-analyzer-file-lock shipped via PR #563 (2026-05-08). Skill content under .claude/skills/mcp-server-stress/prompts/prompt.md is also touched but counted as 0 production files (operator skill content). Executor must verify the actual errorKind constant introduced by PR #563 before binding."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/653",
+      "mergedAt": "2026-05-12T01:26:10Z",
+      "notes": "Scope reconciled at execution: the maintainer-audit-prompt edit at .claude/skills/mcp-server-stress/prompts/prompt.md:345,348,484 was dropped — that file no longer exists (skill restructured to a single SKILL.md with no file-lock framing). The two production-file anchors at PromptMessageBuilder.cs:117,137 were workflow-text content (not failure-render paths); the actual integration point is DebugTestFailure in RoslynPrompts.RefactoringWorkflows.cs, with the shared bypass-guidance renderer added to PromptMessageBuilder. Shipped as PR #653 (squash a0bf843)."
     }
   ],
   "anchorVerification": "performed",
