@@ -3,16 +3,42 @@
   "generatedAt": "2026-05-12T13:51:06Z",
   "backlogSnapshot": "2026-05-12T13:51:06Z",
   "addendaLoaded": true,
-  "phase": "skeleton",
+  "phase": "conflict-graph-done",
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "pending",
   "readyForExecute": false,
-  "anchorVerification": "pending",
+  "anchorVerification": "partial",
   "conflictGraph": {
-    "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "edges": [
+      { "a": 1, "b": 3, "sharedFiles": ["src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"] },
+      { "a": 2, "b": 13, "sharedFiles": ["skills/refactor/SKILL.md", "skills/refactor-loop/SKILL.md"] },
+      { "a": 2, "b": 17, "sharedFiles": ["skills/refactor/SKILL.md", "skills/refactor-loop/SKILL.md"], "note": "via #17 fanoutOversize 46-SKILL.md edit" },
+      { "a": 3, "b": 17, "sharedFiles": [".claude/skills/release-cut/SKILL.md", ".claude/skills/reconcile-backlog-sweep-plan/SKILL.md"], "note": "via #17 fanoutOversize 46-SKILL.md edit" },
+      { "a": 4, "b": 17, "sharedFiles": ["skills/workspace-health/SKILL.md"], "note": "via #17 fanoutOversize 46-SKILL.md edit" },
+      { "a": 12, "b": 17, "sharedFiles": [".claude/skills/publish-preflight/SKILL.md"], "note": "via #17 fanoutOversize 46-SKILL.md edit" },
+      { "a": 13, "b": 17, "sharedFiles": ["skills/refactor/SKILL.md", "skills/refactor-loop/SKILL.md", "skills/architecture-review/SKILL.md", ".claude/skills/mcp-server-stress/SKILL.md"], "note": "via #17 fanoutOversize 46-SKILL.md edit" },
+      { "a": 14, "b": 17, "sharedFiles": [".claude/skills/bump/SKILL.md"], "note": "via #17 fanoutOversize 46-SKILL.md edit" },
+      { "a": 15, "b": 16, "sharedFiles": ["skills/mcp-server-surface-test/prompts/full.md"], "note": "#16 must execute strictly AFTER #15; #15 also splits this file" }
+    ],
+    "degrees": {
+      "1": 1, "2": 2, "3": 2, "4": 1, "5": 0, "6": 0, "7": 0, "8": 0, "9": 0, "10": 0, "11": 0,
+      "12": 1, "13": 2, "14": 1, "15": 1, "16": 1, "17": 6, "18": 0, "19": 0, "20": 0, "21": 0, "22": 0
+    },
+    "zeroDegreeInitiatives": [5, 6, 7, 8, 9, 10, 11, 18, 19, 20, 21, 22],
+    "hotspotTouchingInitiatives": [
+      { "order": 1, "hotspot": "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs" }
+    ],
+    "deferredInitiatives": [20, 21, 22],
+    "obsoleteInitiatives": [18],
+    "schedulingNotes": [
+      "#17 has fanoutOversize=true and 6 conflict-graph edges — must split before execution per its own deepener note. The 46-SKILL.md bulk edit creates virtual conflicts with #2, #3, #4, #12, #13, #14.",
+      "#16 strictly AFTER #15 (sequential, not parallel) — #15 restructures the file #16 edits.",
+      "#13 strictly AFTER #2 (sequential, not parallel) — both edit skills/refactor/SKILL.md + skills/refactor-loop/SKILL.md at different sections.",
+      "#1 is the only hotspot-touching initiative (WorkspaceManager.cs) per addenda — gated at ≤1 hotspot-touching per parallel wave.",
+      "12 zero-degree initiatives (5, 6, 7, 8, 9, 10, 11, 19) are safely parallel-batchable; 18 is obsolete; 20/21/22 are deferred (no execution).",
+      "Effective claim-eligible initiative count: 22 - 1 (obsolete) - 3 (deferred) = 18 actionable initiatives for execution sweeps."
+    ]
   },
   "initiatives": [
     {
@@ -20,440 +46,594 @@
       "order": 1,
       "status": "pending",
       "backlogRowsClosed": ["parallel-mode-workspace-cap-lru-or-raise"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 3,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "judgmentHeavy=true; IWorkspaceManager interface file count unconfirmed and may push production files to 4 at re-vet time. Executor must confirm the interface situation before proceeding."
     },
     {
       "id": "routine-flows-wrap-csharp-work-with-roslyn-bookends",
       "order": 2,
       "status": "pending",
       "backlogRowsClosed": ["routine-flows-wrap-csharp-work-with-roslyn-bookends"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 4,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "must-not-parallel-with: audit-and-refactor-skills-roslyn-self-check",
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "judgmentHeavy=true. (1) workspace-health CWD probe pattern cited as model doesn't exist yet — initiative 4 adds it; executor must invent independently if 4 hasn't landed. (2) skills/refactor/SKILL.md and skills/refactor-loop/SKILL.md shared with initiative 13 — Phase C conflict-graph edge expected."
     },
     {
       "id": "workspace-close-with-drain-processes-for-teardown",
       "order": 3,
       "status": "pending",
       "backlogRowsClosed": ["workspace-close-with-drain-processes-for-teardown"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "judgmentHeavy=true — two reasonable approach paths existed (drain inside IWorkspaceManager.Close vs drain at tool layer). Tool-layer approach selected as architecturally cleaner; avoids the WorkspaceManager.cs hotspot entirely."
     },
     {
       "id": "workspace-health-csharp-applicability-classifier",
       "order": 4,
       "status": "pending",
       "backlogRowsClosed": ["workspace-health-csharp-applicability-classifier"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 20000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "Risk note from deepener: recommend restricting CWD signal to *.csproj/*.sln/*.slnx only (not Directory.Build.props alone) to avoid false-positive on non-C# monorepos that carry a top-level Directory.Build.props."
     },
     {
       "id": "parameter-naming-canonicalization-experimental-surface",
       "order": 5,
       "status": "pending",
       "backlogRowsClosed": ["parameter-naming-canonicalization-experimental-surface"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 0,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 25000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": true,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Design-note-first per row body."
+      "notes": "judgmentHeavy=true; anchorStale=true. (1) IssueTemplateAndLabelSeedTests.cs cited in backlog row was not located by deepener but per v1.35.1 CHANGELOG it ships at tests/RoslynMcp.Tests/Skills/; executor verifies at run-time. (2) productionFilesTouched=0 is deliberate (design note is not a src/ file)."
     },
     {
       "id": "promote-tier-supports-prompts-and-resources",
       "order": 6,
       "status": "pending",
       "backlogRowsClosed": ["promote-tier-supports-prompts-and-resources"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 20000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Design-note-first per row body."
+      "notes": "Design-note-only initiative; design note file does not yet exist. /promote-tier resolver paths for resources/prompts already in place (catalog-only). Estimated context cost at low end (20K) because surface is small."
     },
     {
       "id": "test-related-column-required-schema-mismatch",
       "order": 7,
       "status": "pending",
       "backlogRowsClosed": ["test-related-column-required-schema-mismatch"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 22000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Prior 20260511T184004Z plan deferred this with note: 'schema attribute is correct as-is; actionable bug is the schema lacks required-together expression for MCP clients. Needs re-plan with corrected diagnosis before reclaim.' Deepener: re-read SymbolLocatorFactory.cs:55-77 + the schema before drafting diagnosis."
+      "notes": "Diagnosis re-framed by deepener — prior plan was wrong. Actual fix: description rewrite on 3 source-location params in ValidationTools.cs to communicate conditional-required-as-a-group. Test extension (2 methods) on existing ValidationToolsIntegrationTests.cs. Other tools sharing SymbolLocatorFactory have same pattern; follow-on rows for those out of scope here."
     },
     {
       "id": "move-type-to-project-preview-leaks-projectid-tokens",
       "order": 8,
       "status": "pending",
       "backlogRowsClosed": ["move-type-to-project-preview-leaks-projectid-tokens"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "Fanout probe skipped — surgical guard addition. Cycle-detection pattern exists in ProjectMutationService.cs:566-611 and is mirrored directly. Also benefits sibling preview tools (extract_interface_cross_project_preview, dependency_inversion_preview) that share the same EnsureProjectReference helper."
     },
     {
       "id": "document-symbols-accepts-symbol-handle",
       "order": 9,
       "status": "pending",
       "backlogRowsClosed": ["document-symbols-accepts-symbol-handle"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 3,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "Fanout probe skipped — additive parameter additions; existing GetDocumentSymbolsAsync(workspaceId, filePath, ct) overload retained. Executor must guard against metadata-only symbols returning null source path."
     },
     {
       "id": "editorconfig-write-no-auto-invalidation",
       "order": 10,
       "status": "pending",
       "backlogRowsClosed": ["editorconfig-write-no-auto-invalidation"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "judgmentHeavy=true — two fix approaches evaluated (auto-invalidate disk values vs response note); auto-invalidate selected as architecturally correct. Residual staleness for KNOWN keys is distinct from prior PR #126 fix (only covered unknown keys)."
     },
     {
       "id": "set-project-property-preview-directory-build-props-blindness",
       "order": 11,
       "status": "pending",
       "backlogRowsClosed": ["set-project-property-preview-directory-build-props-blindness"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 2,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "Mirrors existing CPM duplicate-detection pattern in PreviewAddPackageReferenceAsync. Test extension only (no new file). Follow-on: PreviewSetConditionalPropertyAsync has same blindness."
     },
     {
       "id": "eternal-experimental-age-audit",
       "order": 12,
       "status": "pending",
       "backlogRowsClosed": ["eternal-experimental-age-audit"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 2,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "SKILL.md hook is optional per backlog; if executor judges the SKILL.md edit too minor, may omit and reduce productionFilesTouched to 1."
     },
     {
       "id": "audit-and-refactor-skills-roslyn-self-check",
       "order": 13,
       "status": "pending",
       "backlogRowsClosed": ["audit-and-refactor-skills-roslyn-self-check"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 4,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "must-not-parallel-with: routine-flows-wrap-csharp-work-with-roslyn-bookends; execute AFTER order=2",
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Companion to order=2 (routine-flows-wrap-csharp-work-with-roslyn-bookends); ensure no overlap with that initiative's scope."
+      "notes": "judgmentHeavy=true. (1) mcp-server-stress alias-level treatment is judgment call (exit annotation only vs full self-check vs skip); executor re-vets. (2) Semantic call count is LLM-behavioral heuristic, not instrumented — best-effort warning. Confirmed conflict-graph edge with initiative 2 (shared skills/refactor/SKILL.md + skills/refactor-loop/SKILL.md)."
     },
     {
       "id": "bump-skill-double-version-string-detect",
       "order": 14,
       "status": "pending",
       "backlogRowsClosed": ["bump-skill-double-version-string-detect"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 18000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "PR #597 fixed acute server.json regression with per-file replace_all:true note. This initiative ships the general preflight that was never added — NOT obsolete."
     },
     {
       "id": "roslyn-skill-prompts-exceed-read-token-cap",
       "order": 15,
       "status": "pending",
       "backlogRowsClosed": ["roslyn-skill-prompts-exceed-read-token-cap"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 4,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "must-not-parallel-with: surface-test-skill-self-correction-observability",
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": true,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Likely fanout-oversize candidate (prompt split into N sub-files). Deepener: verify split target count."
+      "notes": "anchorStale=true: maintainer-overlay.md was deleted in prior refactor — only full.md is live. judgmentHeavy: 3-sub-file grouping is design choice; 4 sub-files would violate Rule 3. CONFLICT-GRAPH edge with #16 (shared full.md / output-and-close.md)."
     },
     {
       "id": "surface-test-skill-self-correction-observability",
       "order": 16,
       "status": "pending",
       "backlogRowsClosed": ["surface-test-skill-self-correction-observability"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
+      "estimatedContextTokens": 22000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "execute AFTER order=15 (roslyn-skill-prompts-exceed-read-token-cap); must-not-parallel-with: roslyn-skill-prompts-exceed-read-token-cap",
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": true,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "anchorStale=true: maintainer-overlay.md doesn't exist; phases/output-and-close.md doesn't exist yet (#15 not landed). productionFilesTouched=1 pre-#15 or 2 post-#15. CONFLICT-GRAPH edge with #15. Self-check uses draft-evidence scanning rather than server_heartbeat counter."
     },
     {
       "id": "skill-namespace-and-semantic-search-discoverability",
       "order": 17,
       "status": "pending",
       "backlogRowsClosed": ["skill-namespace-and-semantic-search-discoverability"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 47,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "estimatedContextTokens": 50000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "heroic-last",
+      "fanoutEstimate": 46,
+      "fanoutOversize": true,
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Likely fanout-oversize candidate (every SKILL.md frontmatter edit)."
+      "notes": "fanoutOversize=true: 46 SKILL.md files (32 shipped + 14 maintainer-only) — well above Rule 3's 4-file cap with no applicable exemption. Recommended split at re-vet: (a) infrastructure row (eng/list-skills.ps1 + lockstep test, 2 prod files — fits Rule 3); (b) bulk-edit by directory (still oversize). Executor MUST re-vet and split before claiming."
     },
     {
       "id": "skill-prompts-deprecated-workspace-load-param-name-cleanup",
       "order": 18,
-      "status": "pending",
+      "status": "obsolete",
       "backlogRowsClosed": ["skill-prompts-deprecated-workspace-load-param-name-cleanup"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 0,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 5000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Likely small (grep+rewrite); should be fast."
+      "notes": "Obsolete — target files already clean (0 occurrences of solutionOrProjectPath in skill prompts and ai_docs/prompts). NuGetDependencyService.cs:268 has a private method param of the same name but is unrelated. Backlog row's own directive ('If 0 occurrences exist, flag obsolete') applies."
     },
     {
       "id": "filepaths-array-vs-stringified-tool-description-clarification",
       "order": 19,
       "status": "pending",
       "backlogRowsClosed": ["filepaths-array-vs-stringified-tool-description-clarification"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 4,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 9,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": true,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Weaker evidence per row body — docs-side fix, low correctness risk."
+      "notes": "Scoped 4-of-9 files by frequency priority. Per-initiative fanout=4 (within Rule 3); full problem space fanoutEstimate=9. Executor MUST spin off follow-on row for the remaining 5: AdvancedAnalysisTools.cs, MSBuildTools.cs, InterfaceExtractionTools.cs, ScaffoldingTools.cs, ParameterObjectTools.cs. Test extension on existing SurfaceCatalogTests.cs."
     },
     {
       "id": "list-analyzers-totalrules-variance",
       "order": 20,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": ["list-analyzers-totalrules-variance"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 0,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
+      "estimatedContextTokens": 15000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "deferred",
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Weaker evidence per row body — defer if deepener cannot reproduce."
+      "notes": "Deferred. totalRules is already full-walk (not paged); 87-rule variance was almost certainly cross-workspace-ID, not same-ID determinism. No actionable change. Reopen only if reproduced same-workspaceId."
     },
     {
       "id": "compile-check-not-connected-raw-transport-error-envelope",
       "order": 21,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": ["compile-check-not-connected-raw-transport-error-envelope"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 0,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
+      "estimatedContextTokens": 15000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "deferred",
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Weaker evidence per row body — defer-candidate if deepener cannot reproduce the transport-level disconnect path."
+      "notes": "Deferred — raw 'Not connected' string is below the server's catch boundary (emitted by MCP SDK stdio transport, not by any RoslynMcp code). WorkspaceEvictedException path (1.34.2) covers the structurally distinct post-recycle case. No server-side interception surface. Reopen only when 2nd independent occurrence confirms reproducible gap."
     },
     {
       "id": "scaffolding-service-split-by-scaffold-type",
       "order": 22,
-      "status": "pending",
+      "status": "deferred",
       "backlogRowsClosed": ["scaffolding-service-split-by-scaffold-type"],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 0,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
+      "estimatedContextTokens": 55000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "deferred",
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": {
+        "status": "ok",
+        "flags": {
+          "judgmentHeavy": false,
+          "anchorStale": false,
+          "ruleOneBundleResolved": "n/a"
+        }
+      },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Weaker evidence per row body — pure organizational refactor; defer if no concrete bug motivates."
+      "notes": "Deferred per explicit instruction in both backlog row and deepener prompt. File grew to 2,776 LOC since row was written but recent bug history shows no organization-caused regressions. Rule 3 would also require a 2-initiative split if planned. Reopen if a merge conflict or regression is directly attributable to monolithic structure."
     }
   ]
 }
