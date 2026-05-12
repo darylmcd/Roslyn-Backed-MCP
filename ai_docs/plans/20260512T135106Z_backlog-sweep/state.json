@@ -9,6 +9,8 @@
   "reviewStatus": "passed-with-warnings",
   "reviewFindings": { "block": 0, "warn": 4, "info": 6 },
   "readyForExecute": true,
+  "completed": true,
+  "completedAt": "2026-05-12T19:10:00Z",
   "anchorVerification": "partial",
   "handoffReadiness": {
     "policy": "auto",
@@ -427,7 +429,7 @@
     {
       "id": "roslyn-skill-prompts-exceed-read-token-cap",
       "order": 15,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["roslyn-skill-prompts-exceed-read-token-cap"],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
@@ -445,18 +447,18 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/roslyn-skill-prompts-exceed-read-token-cap",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "anchorStale=true: maintainer-overlay.md was deleted in prior refactor — only full.md is live. judgmentHeavy: 3-sub-file grouping is design choice; 4 sub-files would violate Rule 3. CONFLICT-GRAPH edge with #16 (shared full.md / output-and-close.md)."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/695",
+      "mergedAt": "2026-05-12T18:51:10Z",
+      "notes": "anchorStale=true: maintainer-overlay.md was deleted in prior refactor — only full.md is live. judgmentHeavy: 3-sub-file grouping is design choice; 4 sub-files would violate Rule 3. CONFLICT-GRAPH edge with #16 (shared full.md / output-and-close.md). CI fix required: added Phase 0.5 dispatch plan summary to slim full.md to satisfy AuditPhaseRunnerHandoffTests."
     },
     {
       "id": "surface-test-skill-self-correction-observability",
       "order": 16,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["surface-test-skill-self-correction-observability"],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 2,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 22000,
@@ -472,16 +474,16 @@
           "ruleOneBundleResolved": "n/a"
         }
       },
-      "branch": null,
+      "branch": "remediation/surface-test-skill-self-correction-observability",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "anchorStale=true: maintainer-overlay.md doesn't exist; phases/output-and-close.md doesn't exist yet (#15 not landed). productionFilesTouched=1 pre-#15 or 2 post-#15. CONFLICT-GRAPH edge with #15. Self-check uses draft-evidence scanning rather than server_heartbeat counter."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/696",
+      "mergedAt": "2026-05-12T19:03:47Z",
+      "notes": "Executed post-#15; productionFilesTouched=2 (full.md enum + phases/output-and-close.md self-check step). Self-check uses draft-evidence scanning rather than server_heartbeat counter."
     },
     {
       "id": "skill-namespace-and-semantic-search-discoverability",
       "order": 17,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["skill-namespace-and-semantic-search-discoverability"],
       "productionFilesTouched": 2,
       "testFilesAdded": 1,
@@ -503,11 +505,11 @@
         { "cycle": 1, "rule": "5b", "outcome": "scope-narrowed from 47-file fanoutOversize to 2-file infrastructure shape; bulk migration deferred to follow-on backlog row to be spun off at executor Step 7" },
         { "cycle": 1, "rule": "3", "outcome": "same — 2 files within Rule 3 cap" }
       ],
-      "branch": null,
+      "branch": "remediation/skill-namespace-and-semantic-search-discoverability",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Remediated cycle 1 (cleared blocks 5b + 3): scope narrowed to infrastructure-only (eng/list-skills.ps1 + lockstep test). The 46-file SKILL.md bulk frontmatter edit is deferred to a new follow-on backlog row `skill-namespace-installed-as-bulk-frontmatter-migration` that executor MUST spin off at Step 7 sync. Lockstep test ships failing (or [Skip]-marked) — encodes the contract. CONFLICT-GRAPH IMPLICATION: 6 edges previously attributed to #17 (with #2/#3/#4/#12/#13/#14) are now stale and have been dropped from conflictGraph below; degrees[\"17\"] drops from 6 to 0."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/694",
+      "mergedAt": "2026-05-12T18:31:01Z",
+      "notes": "Spin-off row `skill-namespace-installed-as-bulk-frontmatter-migration` added to backlog. SkillFrontmatterInstalledAsTests ships [Ignore]-marked per preference to avoid CI red."
     },
     {
       "id": "skill-prompts-deprecated-workspace-load-param-name-cleanup",
@@ -539,7 +541,7 @@
     {
       "id": "filepaths-array-vs-stringified-tool-description-clarification",
       "order": 19,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": ["filepaths-array-vs-stringified-tool-description-clarification"],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
@@ -560,11 +562,11 @@
       "remediationApplied": [
         { "cycle": 1, "rule": "5b", "outcome": "fanoutEstimate reset from 9 (full problem space) to 4 (per-initiative blast radius, matching productionFilesTouched) per Rule 5b semantics. 9-file context preserved in Diagnosis; spin-off row id `filepaths-array-vs-stringified-tool-description-clarification-batch-2` made explicit in Backlog sync." }
       ],
-      "branch": null,
+      "branch": "remediation/filepaths-array-vs-stringified-tool-description-clarification",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Remediated cycle 1 (cleared block 5b): fanoutEstimate now reflects per-initiative blast radius (4), not full problem space (9). The 5 deferred files become explicit follow-on row `filepaths-array-vs-stringified-tool-description-clarification-batch-2` that executor spins off at Step 7 sync."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/697",
+      "mergedAt": "2026-05-12T19:04:06Z",
+      "notes": "Spin-off row `filepaths-array-vs-stringified-tool-description-clarification-batch-2` added to backlog covering AdvancedAnalysisTools.cs:filePaths, MSBuildTools.cs:includedNames, InterfaceExtractionTools.cs:memberNames, ScaffoldingTools.cs:interfaces, ParameterObjectTools.cs:dtoFolders."
     },
     {
       "id": "list-analyzers-totalrules-variance",
