@@ -445,7 +445,7 @@
     {
       "id": "scaffold-test-preview-missing-usings",
       "order": 17,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "scaffold-test-preview-missing-usings"
       ],
@@ -457,16 +457,16 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/scaffold-test-preview-missing-usings",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Touches ScaffoldingService.cs hotspot (2521 LOC); focused edit only."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/668",
+      "mergedAt": "2026-05-12T03:35:19Z",
+      "notes": "Touches ScaffoldingService.cs hotspot (2521 LOC); focused edit only. Shipped as PR #668 (squash 3b103d8a3f)."
     },
     {
       "id": "set-conditional-property-error-msg-quoting",
       "order": 18,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "set-conditional-property-error-msg-quoting"
       ],
@@ -478,16 +478,16 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/set-conditional-property-error-msg-quoting",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Rule 3 exemption: tool-surface-only, 1 file (error message text)."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/665",
+      "mergedAt": "2026-05-12T03:14:46Z",
+      "notes": "Rule 3 exemption: tool-surface-only, 1 file (error message text). Shipped as PR #665 (squash 4ba54806ad)."
     },
     {
       "id": "extract-and-wire-interface-duplicate-cross-project",
       "order": 19,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "extract-and-wire-interface-duplicate-cross-project"
       ],
@@ -499,16 +499,16 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/extract-and-wire-interface-duplicate-cross-project",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/667",
+      "mergedAt": "2026-05-12T03:23:30Z",
+      "notes": "Anchor stale in plan (ExtractInterfaceService.cs → ExtractAndWireOrchestrator.cs). Shipped as PR #667 (squash f4898b79a6)."
     },
     {
       "id": "move-type-to-file-rejects-single-type",
       "order": 20,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "move-type-to-file-rejects-single-type"
       ],
@@ -520,16 +520,16 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/move-type-to-file-rejects-single-type",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Rule 3 exemption: tool-surface-only, 2 files."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/664",
+      "mergedAt": "2026-05-12T03:30:20Z",
+      "notes": "Rule 3 exemption: tool-surface-only, 2 files. Shipped as PR #664 (squash 79a844261a)."
     },
     {
       "id": "diagnostic-details-empty-supportedfixes-ca-rules",
       "order": 21,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "diagnostic-details-empty-supportedfixes-ca-rules"
       ],
@@ -541,11 +541,11 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "branch": null,
+      "branch": "remediation/diagnostic-details-empty-supportedfixes-ca-rules",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/666",
+      "mergedAt": "2026-05-12T03:19:25Z",
+      "notes": "Documentation path taken (tool description + debug log). Shipped as PR #666 (squash 27f8a422d8)."
     },
     {
       "id": "get-syntax-tree-range-truncates-at-statement",

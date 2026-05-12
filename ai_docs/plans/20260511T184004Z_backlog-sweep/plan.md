@@ -306,7 +306,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #668 (2026-05-12T03:35:19Z) |
 | Backlog rows closed | `scaffold-test-preview-missing-usings` |
 | Diagnosis | `scaffold_test_preview` generates test stubs without `using` directives for constructor-param types from multiple namespaces. Result: 7 CS0246 errors when the constructor takes args from non-default namespaces. **Touches `ScaffoldingService.cs` hotspot (2521 LOC, also tracked by `scaffolding-service-split-by-scaffold-type`).** |
 | Approach | In `src/RoslynMcp.Roslyn/Services/ScaffoldingService.cs` (test-preview path; framework builders at lines 760/820/874), collect namespaces from constructor parameter types and emit `using` directives at the top of the generated file. |
@@ -324,7 +324,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #665 (2026-05-12T03:14:46Z) |
 | Backlog rows closed | `set-conditional-property-error-msg-quoting` |
 | Diagnosis | `set_conditional_property_preview` requires MSBuild-style single-quoting (`'$(Configuration)' == 'Release'`) but its error message doesn't mention the required syntax. First-time callers fail with a cryptic message. |
 | Approach | In `src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs`, update the error-message string in the conditional-property validator to include the expected format: *"Use MSBuild-style quoting: `'$(Configuration)' == 'Release'`"*. |
@@ -342,7 +342,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #667 (2026-05-12T03:23:30Z) |
 | Backlog rows closed | `extract-and-wire-interface-duplicate-cross-project` |
 | Diagnosis | `extract_and_wire_interface_preview` generates a duplicate interface when the target type already implements a cross-project interface with the same name. No check of the implementing type's existing interface list. |
 | Approach | In `src/RoslynMcp.Roslyn/Services/ExtractInterfaceService.cs`, before generating, inspect the target type's `Interfaces` collection. If an interface with the same name exists (even in another project), decline with a structured message pointing the caller at `extract_interface_cross_project_preview`. |
@@ -360,7 +360,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #664 (2026-05-12T03:30:20Z) |
 | Backlog rows closed | `move-type-to-file-rejects-single-type` |
 | Diagnosis | `move_type_to_file_preview` rejects single-type source files with a wrong-fact error message about nested types. Eliminates the common "rename misnamed file" use case. |
 | Approach | Per row option B (cheaper, lower risk): in `src/RoslynMcp.Roslyn/Services/TypeMoveService.cs`, improve the error message to point callers at `move_file_preview` for rename-style operations. (Option A — allow the move for rename-style — is a larger behavior change; pick A only if the maintainer prefers.) |
@@ -378,7 +378,7 @@
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged — PR #666 (2026-05-12T03:19:25Z) |
 | Backlog rows closed | `diagnostic-details-empty-supportedfixes-ca-rules` |
 | Diagnosis | `diagnostic_details` returns `supportedFixes:[]` for CA-series rules (tested CA1826, CA1848) from `Microsoft.CodeAnalysis.NetAnalyzers`. Rules ship with code-fix providers but `CodeFixProviderRegistry` doesn't index them at workspace load. |
 | Approach | In `src/RoslynMcp.Roslyn/Services/CodeFixProviderRegistry.cs` (or equivalent), include `Microsoft.CodeAnalysis.CSharp.CodeStyle.dll` / `Microsoft.CodeAnalysis.CSharp.Features.dll` in the assembly scan when `NetAnalyzers` is referenced. Alternatively, document the gap in the tool description. |
