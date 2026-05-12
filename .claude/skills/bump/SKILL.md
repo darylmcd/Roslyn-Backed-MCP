@@ -1,5 +1,6 @@
 ---
 name: bump
+installed_as: bump
 description: "Version bump. Use when: bumping the version for a release, preparing a version increment (major/minor/patch), or when code changes require a new version. Takes bump type as input: 'major', 'minor', or 'patch'. Edits all 6 version files, consumes `changelog.d/*.md` fragments into a new `## [X.Y.Z]` section grouped by category, and `git rm`s the consumed fragments."
 user-invocable: true
 argument-hint: "patch | minor | major"

@@ -160,7 +160,28 @@ lifetime.ApplicationStopping.Register(() =>
     Console.Out.Flush();
 });
 
-await host.RunAsync();
+// compile-check-not-connected-raw-transport-error-envelope (path b): if the SDK's
+// stdio transport write layer throws InvalidOperationException("Not connected") or
+// IOException AFTER the filter has already returned a CallToolResult, the exception
+// escapes RunAsync entirely. Catch it here so the process exits with a clean log
+// rather than an unhandled-exception crash that loses the exit-metadata write and
+// the stdout flush. This is a graceful-disconnect signal — not a fatal fault — so
+// we log at Warning and allow the normal ApplicationStopping shutdown path to run.
+try
+{
+    await host.RunAsync();
+}
+catch (Exception ex) when (
+    ex is IOException ||
+    (ex is InvalidOperationException && ex.Message.Contains("Not connected", StringComparison.OrdinalIgnoreCase)))
+{
+    // Transport-layer disconnect: the MCP client closed the pipe. Log to stderr
+    // (stdout is likely closed) and let the process exit gracefully. The
+    // ApplicationStopping handler already ran or will run via the ProcessExit hook.
+    Console.Error.WriteLine(
+        $"[roslyn-mcp] Transport disconnected during RunAsync ({ex.GetType().Name}: {ex.Message}). " +
+        "This is normal on client-side session close.");
+}
 
 // Belt-and-suspenders: flush stdout after the host stops in case the
 // ApplicationStopping handler didn't run (e.g., on abrupt shutdown).
@@ -168,8 +189,8 @@ await host.RunAsync();
 // any subsequent disposal/IO; async re-flushes any encoder writes that batched
 // behind the sync call. The ProcessExit handler at the top of this file is the
 // final fallback for stdin-EOF cases where RunAsync may not return cleanly.
-Console.Out.Flush();
-await Console.Out.FlushAsync();
+try { Console.Out.Flush(); } catch { /* transport already gone — ignore */ }
+try { await Console.Out.FlushAsync(); } catch { /* transport already gone — ignore */ }
 
 static WorkspaceManagerOptions BindWorkspaceManagerOptions()
 {
