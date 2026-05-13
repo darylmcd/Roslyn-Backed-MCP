@@ -1,5 +1,6 @@
 ---
 name: promote-tier
+installed_as: promote-tier
 description: "Flip a tool, resource, or prompt's support tier between `stable` and `experimental` atomically across both source-of-truth sites (`[McpToolMetadata]` annotation and `ServerSurfaceCatalog` partial entry). Use when: `/publish-preflight` Step 8 surfaces a `recommendation: \"promote\"` row in the promotion scorecard, a release-cut needs to flip a tier on a single tool/resource/prompt, or a tier flip needs to be reverted. Maintainer-side skill — not shipped to plugin consumers. Replaces the manual `Edit:` checklist `/publish-preflight` Step 8 surfaces today (pieces A and B shipped in PR #496; this is piece C)."
 user-invocable: true
 argument-hint: "<tool-or-resource-or-prompt-name> <stable|experimental>"

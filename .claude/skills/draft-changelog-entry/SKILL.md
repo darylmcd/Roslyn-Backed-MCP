@@ -1,5 +1,6 @@
 ---
 name: draft-changelog-entry
+installed_as: draft-changelog-entry
 description: "Drafts one changelog fragment file under `changelog.d/<row-id>.md` from PR/commit metadata. Use when: preparing a PR for ship, writing a CHANGELOG entry for a merged or about-to-merge change, or filling `changelog.d/` from an initiative in a backlog-sweep `state.json`. Takes initiative id + commit SHA (or branch name) + backlog row id(s) closed. Non-destructive — emits the fragment file contents for review, never auto-commits, never touches `CHANGELOG.md` directly."
 user-invocable: true
 argument-hint: "<initiative-id> <commit-sha-or-branch> <row-id-1>[,<row-id-2>,...]"

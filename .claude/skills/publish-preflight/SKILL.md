@@ -1,5 +1,6 @@
 ---
 name: publish-preflight
+installed_as: publish-preflight
 description: "Pre-publish validation checklist. Use when: preparing to publish to NuGet, validating release readiness, or running the full pre-publish pipeline. Checks version drift, AI docs, build/test/publish, changelog, security versions, and doc-audit freshness."
 user-invocable: true
 argument-hint: ""
