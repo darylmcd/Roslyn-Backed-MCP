@@ -1,5 +1,6 @@
 ---
 name: security
+installed_as: roslyn-mcp:security
 description: "Security audit for C# solutions. Use when: auditing for vulnerabilities, checking NuGet packages for CVEs, reviewing security diagnostics, finding reflection usage, auditing DI registrations, or doing an OWASP-style security review. Optionally takes a project name."
 user-invocable: true
 argument-hint: "[optional project name]"

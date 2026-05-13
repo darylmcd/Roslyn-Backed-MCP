@@ -1,5 +1,6 @@
 ---
 name: semantic-find
+installed_as: roslyn-mcp:semantic-find
 description: "Natural-language code search across a C# codebase. Use when: looking for a class, method, or pattern described in plain English (e.g. 'the class that handles payment refunds', 'methods that retry on failure'), locating code by behavior rather than exact name, or orienting in an unfamiliar solution. Takes a natural-language description as input."
 user-invocable: true
 argument-hint: "natural-language description of the code you want to find"

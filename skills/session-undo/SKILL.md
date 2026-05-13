@@ -1,5 +1,6 @@
 ---
 name: session-undo
+installed_as: roslyn-mcp:session-undo
 description: "Session history and undo. Use when: the user wants to see what Roslyn MCP changed, undo the last apply, reload the workspace from disk, or recover from a bad refactoring."
 user-invocable: true
 argument-hint: "[workspaceId if multiple sessions]"
