@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Roslyn;
@@ -75,7 +76,8 @@ public static class ServiceCollectionExtensions
         // of MSBuild evaluation (project graph + per-project metadata-reference list). Internal
         // service; not exposed as an MCP tool. Will be consumed by WorkspaceManager in a
         // follow-on PR (workspace-load-uses-cache-fast-path). Defaults to ~/.roslyn-mcp/cache/.
-        services.AddSingleton<IWorkspaceCacheStore>(_ => new WorkspaceCacheStore());
+        services.AddSingleton<IWorkspaceCacheStore>(
+            sp => new WorkspaceCacheStore(sp.GetService<ILogger<WorkspaceCacheStore>>()));
 
         services.AddRoslynServices();
         return services;
