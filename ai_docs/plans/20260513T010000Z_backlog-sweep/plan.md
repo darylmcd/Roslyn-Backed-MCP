@@ -117,7 +117,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #722, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-7` |
 | Diagnosis | All four target `skills/*/SKILL.md` files exist and none currently carry an `installed_as` frontmatter key. Grep across the entire `skills/` tree confirms zero `installed_as` occurrences, consistent with waves 5 and 6 being the next predecessors in the series. Wave 1 (PR #710) established the pattern: `installed_as: roslyn-mcp:<bare-name>` immediately after the `name:` line in the YAML frontmatter block (confirmed via `.claude/skills/backlog-intake/SKILL.md:3`). The four target files — `skills/format-sweep/SKILL.md`, `skills/generate-tests/SKILL.md`, `skills/impact-assessment/SKILL.md`, `skills/inheritance-explorer/SKILL.md` — all open with a standard `---` / `name:` / `description:` frontmatter block. No other structural issues found. |
 | Approach | Edit each of the four SKILL.md files to insert `installed_as: roslyn-mcp:<bare-name>` as the second line of the YAML frontmatter block, immediately after `name:`. Exact values: `roslyn-mcp:format-sweep`, `roslyn-mcp:generate-tests`, `roslyn-mcp:impact-assessment`, `roslyn-mcp:inheritance-explorer`. Mirror the pattern established at `.claude/skills/backlog-intake/SKILL.md:3`. No other content in the files changes. After editing, run `pwsh -NoProfile -File eng/list-skills.ps1` to confirm the missing count drops by 4 from the pre-edit baseline. |
@@ -137,7 +137,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #723, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-8` |
 | Diagnosis | All four anchor SKILL.md files exist and confirmed missing `installed_as:` frontmatter. Verified by reading each file directly: `skills/mcp-server-surface-test/SKILL.md` (line 2: `name: mcp-server-surface-test`, no `installed_as:` present), `skills/migrate-package/SKILL.md` (line 2: `name: migrate-package`, no `installed_as:` present), `skills/modernize/SKILL.md` (line 2: `name: modernize`, no `installed_as:` present), `skills/nuget-preflight/SKILL.md` (line 2: `name: nuget-preflight`, no `installed_as:` present). A repo-wide grep for `installed_as` in `skills/*/SKILL.md` returned zero matches — the entire `skills/` tree remains unpatched. These four files are shipped plugin skills so the correct namespace prefix is `roslyn-mcp:`. |
 | Approach | For each of the four SKILL.md files, insert `installed_as: roslyn-mcp:<bare-name>` as a new line immediately after the `name:` line in the YAML frontmatter block (between current line 2 and line 3), shifting `description:` down by one. Mirror the exact insertion pattern established in PR #710 wave 1 and carried through waves 2–7. Specific values: `skills/mcp-server-surface-test/SKILL.md` — insert `installed_as: roslyn-mcp:mcp-server-surface-test`; `skills/migrate-package/SKILL.md` — insert `installed_as: roslyn-mcp:migrate-package`; `skills/modernize/SKILL.md` — insert `installed_as: roslyn-mcp:modernize`; `skills/nuget-preflight/SKILL.md` — insert `installed_as: roslyn-mcp:nuget-preflight`. No other content in any file changes. |
@@ -157,7 +157,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #724, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-9` |
 | Diagnosis | All four anchor SKILL.md files are confirmed present and confirmed missing `installed_as:` frontmatter. Direct reads verify: `skills/project-inspection/SKILL.md` line 2 is `name: project-inspection` with no `installed_as:`; `skills/refactor-loop/SKILL.md` line 2 is `name: refactor-loop` with no `installed_as:`; `skills/refactor/SKILL.md` line 2 is `name: refactor` with no `installed_as:`; `skills/review/SKILL.md` line 2 is `name: review` with no `installed_as:`. A repo-wide Grep for `installed_as` across `skills/*/SKILL.md` returned zero matches, confirming no wave has already touched these files. The backlog row's stated missing-count drop of 14 → 10 is correct for this wave's 4 files. |
 | Approach | For each of the four SKILL.md files, insert `installed_as: roslyn-mcp:<bare-name>` immediately after the `name:` line in the YAML frontmatter block, shifting `description:` down by one line. No other content in any file changes. Specific edits: (1) `skills/project-inspection/SKILL.md` line 3: insert `installed_as: roslyn-mcp:project-inspection`; (2) `skills/refactor-loop/SKILL.md` line 3: insert `installed_as: roslyn-mcp:refactor-loop`; (3) `skills/refactor/SKILL.md` line 3: insert `installed_as: roslyn-mcp:refactor`; (4) `skills/review/SKILL.md` line 3: insert `installed_as: roslyn-mcp:review`. After all four edits, validate with `pwsh -NoProfile -File eng/list-skills.ps1` — missing count must drop by exactly 4 from the pre-edit baseline. |
@@ -177,7 +177,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #725, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-10` |
 | Diagnosis | All four target SKILL.md files exist and are missing the `installed_as:` frontmatter field, confirmed by live inspection. `skills/security/SKILL.md` line 1–6 frontmatter has `name: security` with no `installed_as` key. `skills/semantic-find/SKILL.md` line 1–6 has `name: semantic-find` with no `installed_as` key. `skills/session-undo/SKILL.md` line 1–6 has `name: session-undo` with no `installed_as` key. `skills/snippet-eval/SKILL.md` line 1–6 has `name: snippet-eval` with no `installed_as` key. The backlog description is fully accurate — these are shipped plugin skills requiring the `roslyn-mcp:` namespace prefix per the pattern established in PR #710. |
 | Approach | Edit the YAML frontmatter of each of the four files. In each file, insert `installed_as: roslyn-mcp:<bare-name>` immediately after the `name:` line (line 2 of the frontmatter block). Specific edits: (1) `skills/security/SKILL.md` — add `installed_as: roslyn-mcp:security` after `name: security`. (2) `skills/semantic-find/SKILL.md` — add `installed_as: roslyn-mcp:semantic-find` after `name: semantic-find`. (3) `skills/session-undo/SKILL.md` — add `installed_as: roslyn-mcp:session-undo` after `name: session-undo`. (4) `skills/snippet-eval/SKILL.md` — add `installed_as: roslyn-mcp:snippet-eval` after `name: snippet-eval`. No code changes. No test changes. |
@@ -197,7 +197,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #726, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-11` |
 | Diagnosis | All four anchor SKILL.md files confirmed present in the current tree and all confirmed missing `installed_as:` frontmatter. Direct reads verify: `skills/test-coverage/SKILL.md` (line 2: `name: test-coverage`, no `installed_as:`); `skills/test-triage/SKILL.md` (line 2: `name: test-triage`, no `installed_as:`); `skills/trace-flow/SKILL.md` (line 2: `name: trace-flow`, no `installed_as:`); `skills/update/SKILL.md` (line 2: `name: update`, no `installed_as:`). All four are in the `skills/` tree (shipped plugin skills), so each value must carry the `roslyn-mcp:` namespace prefix per the established wave convention. Note: `skills/update/SKILL.md` is the shipped plugin skill distinct from `.claude/skills/update/SKILL.md` (bare name `update`, already patched in wave 4) — executor must not confuse the two paths. By the time wave 11 executes, waves 2–10 will have resolved 36 of the original 42 missing entries, leaving exactly 6 — consistent with the backlog row's stated precondition. |
 | Approach | For each of the four `skills/` SKILL.md files, insert `installed_as: roslyn-mcp:<bare-name>` as a new line immediately after the `name:` line in the YAML frontmatter block, shifting `description:` and subsequent lines down by one. Mirror the exact insertion pattern from `skills/backlog-intake/SKILL.md:3` (wave 1 reference). Specific edits: (1) `skills/test-coverage/SKILL.md` — insert `installed_as: roslyn-mcp:test-coverage` after line 2. (2) `skills/test-triage/SKILL.md` — insert `installed_as: roslyn-mcp:test-triage` after line 2. (3) `skills/trace-flow/SKILL.md` — insert `installed_as: roslyn-mcp:trace-flow` after line 2. (4) `skills/update/SKILL.md` — insert `installed_as: roslyn-mcp:update` after line 2. No other content in any file changes. |
