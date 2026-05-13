@@ -1,5 +1,6 @@
 ---
 name: analyze
+installed_as: roslyn-mcp:analyze
 description: "Solution health check. Use when: analyzing a C# solution or project, checking build health, finding diagnostics, assessing code quality, or getting an overview of a .sln/.csproj. Takes a path to a solution or project file as input."
 user-invocable: true
 argument-hint: "path to .sln, .slnx, or .csproj"
