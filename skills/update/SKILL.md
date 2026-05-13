@@ -1,5 +1,6 @@
 ---
 name: update
+installed_as: roslyn-mcp:update
 description: "Update the Roslyn MCP plugin. Use when: server_info shows an update is available, the user wants to update to the latest version, or the plugin reports an older version than NuGet. Handles both the global tool binary (Layer 1) and the Claude Code plugin metadata (Layer 2)."
 user-invocable: true
 argument-hint: ""

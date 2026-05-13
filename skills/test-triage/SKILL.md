@@ -1,5 +1,6 @@
 ---
 name: test-triage
+installed_as: roslyn-mcp:test-triage
 description: "Test discovery and failure triage. Use when: CI is red, tests fail locally, or you need to find and run the right tests after a change. Optionally takes project name or filter."
 user-invocable: true
 argument-hint: "[optional project name or test filter]"
