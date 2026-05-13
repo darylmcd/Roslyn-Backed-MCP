@@ -1,5 +1,6 @@
 ---
 name: reconcile-backlog-vs-issues
+installed_as: reconcile-backlog-vs-issues
 description: "Audit every `gh #NNN` reference in `ai_docs/backlog.md` against live GitHub Issue state and emit a 5-state triage report. Use when: chasing drift between backlog rows and Issues after merges, manual issue closures, label changes, or contributor inactivity; before a `/backlog-sweep:plan` run to surface zombie rows or stale reservations the planner shouldn't pick. Read-only — does not edit `backlog.md` or close Issues; produces a structured recommendation list the maintainer applies via `/close-backlog-rows` or manual edits."
 user-invocable: true
 argument-hint: "[--stale-days N] (default 60) — threshold for the reserved-stale classification"

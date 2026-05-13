@@ -1,5 +1,6 @@
 ---
 name: recover-stalled-subagent
+installed_as: recover-stalled-subagent
 description: "Recover a stalled initiative-executor subagent's uncommitted worktree into a WIP branch + remove the worktree cleanly in one invocation. Use when: an orchestrator spawn returned a malformed result (no `<<<RESULT>>>` sentinel) or emitted an internal-thought fragment as its final message, and the subagent's `.worktrees/<id>` still contains uncommitted work that must not be lost. Takes the remediation branch name as input. Alternative to the 3-turn manual `cd -> git status -> stage -> commit -> push -> cd back -> build-server shutdown -> worktree remove` dance."
 user-invocable: true
 argument-hint: "<branch-name> (e.g. remediation/subagent-malformed-result-orphans-uncommitted-work)"

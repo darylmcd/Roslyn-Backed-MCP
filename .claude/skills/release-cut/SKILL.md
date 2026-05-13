@@ -1,5 +1,6 @@
 ---
 name: release-cut
+installed_as: release-cut
 description: "Atomic release pipeline — bump -> verify -> ship -> tag -> reinstall-both-layers. Use when: cutting a new release (major/minor/patch), turning [Unreleased] CHANGELOG content into a tagged+published version, or after validating a batch of merges ready for v-bump. Takes bump type as input: 'major', 'minor', or 'patch'. Delegates to /bump, /ship, and the maintainer-local /update (NOT the shipped /roslyn-mcp:update — that one bottoms out at chat-side /plugin commands and leaves Layer 2 stale); checkpointed so mid-flow failure is re-runnable."
 user-invocable: true
 argument-hint: "patch | minor | major"
