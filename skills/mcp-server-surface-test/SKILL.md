@@ -1,5 +1,6 @@
 ---
 name: mcp-server-surface-test
+installed_as: roslyn-mcp:mcp-server-surface-test
 description: "Consumer-facing audit of the Roslyn MCP server's live surface against a loaded C# repo. Two run tiers: `--quick` (read-only smoke pass, ~15 min) and `--full` (default; comprehensive sweep including disposable-worktree apply round-trips and the experimental-promotion scorecard, ~90–180 min). Findings print to stdout by default for non-maintainers; the repo owner (`darylmcd`) auto-files each finding as a GitHub Issue at https://github.com/darylmcd/Roslyn-Backed-MCP. Pass `--auto-file` to force-enable or `--no-auto-file` to force-disable. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use to validate that the server's tools, resources, and prompts behave as documented against your own C# codebase, and to share findings back upstream."
 user-invocable: true
 argument-hint: "[<target-repo-path>] [--quick | --full] [--output-mode=findings | fragments] [--auto-file | --no-auto-file] [--no-worktree] [--single-agent]"
