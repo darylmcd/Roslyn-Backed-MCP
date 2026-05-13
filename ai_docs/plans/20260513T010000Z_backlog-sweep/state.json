@@ -7,14 +7,20 @@
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "passed",
-  "reviewFindings": { "block": 0, "warn": 0, "info": 0 },
+  "reviewFindings": {
+    "block": 0,
+    "warn": 0,
+    "info": 0
+  },
   "readyForExecute": true,
   "initiatives": [
     {
       "id": "skill-namespace-installed-as-wave-2",
       "order": 1,
-      "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-2"],
+      "status": "merged",
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-2"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -26,15 +32,17 @@
       "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "All four anchor files verified present with name: frontmatter on line 2 and no existing installed_as: field. list-skills.ps1 confirms 42 missing currently; count drops to 38 after this wave."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/716",
+      "mergedAt": "2026-05-13T13:14:33Z",
+      "notes": "Shipped as PR #716 (squash 61387df4bb56fe03eeac3ab4666ddba8775118ef)."
     },
     {
       "id": "skill-namespace-installed-as-wave-3",
       "order": 2,
-      "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-3"],
+      "status": "merged",
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-3"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -46,15 +54,17 @@
       "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Wave ordering dependency — this initiative assumes wave 2 ships first for the missing-count validation to match the backlog row exactly, but the edits themselves are independent and safe to execute in any order."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/717",
+      "mergedAt": "2026-05-13T13:15:52Z",
+      "notes": "Shipped as PR #717 (squash 3c86ad94031aadf5e6106da5c40a96e0b7f6d444)."
     },
     {
       "id": "skill-namespace-installed-as-wave-4",
       "order": 3,
-      "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-4"],
+      "status": "merged",
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-4"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -66,15 +76,17 @@
       "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Current missing count is 42 (waves 2+3 not yet shipped); executor should validate delta (−4) not absolute target (30). .claude/skills/update/SKILL.md must get bare value 'update', not 'roslyn-mcp:update'."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/718",
+      "mergedAt": "2026-05-13T13:16:51Z",
+      "notes": "Shipped as PR #718 (squash d857b0134dd1c9f83c1d97c96c983126dd028933)."
     },
     {
       "id": "skill-namespace-installed-as-wave-5",
       "order": 4,
-      "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-5"],
+      "status": "merged",
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-5"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -86,15 +98,17 @@
       "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/719",
+      "mergedAt": "2026-05-13T13:18:08Z",
+      "notes": "Shipped as PR #719 (squash 4ac7a97be70e1417b240d9a531768523f7626e39)."
     },
     {
       "id": "skill-namespace-installed-as-wave-6",
       "order": 5,
-      "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-6"],
+      "status": "merged",
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-6"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -106,15 +120,17 @@
       "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Fanout probe skipped — surgical frontmatter edit, no cross-cutting symbol changes."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/720",
+      "mergedAt": "2026-05-13T13:25:43Z",
+      "notes": "Shipped as PR #720 (squash 29a8e3a09c26d4ce5b0f165856ae9222c5bb57ae)."
     },
     {
       "id": "skill-namespace-installed-as-wave-7",
       "order": 6,
       "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-7"],
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-7"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -134,7 +150,9 @@
       "id": "skill-namespace-installed-as-wave-8",
       "order": 7,
       "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-8"],
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-8"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -154,7 +172,9 @@
       "id": "skill-namespace-installed-as-wave-9",
       "order": 8,
       "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-9"],
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-9"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -168,13 +188,15 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Fanout probe skipped — all four edits are YAML frontmatter insertions with no symbol changes and no cross-cutting impact."
+      "notes": "Fanout probe skipped \u00e2\u20ac\u201d all four edits are YAML frontmatter insertions with no symbol changes and no cross-cutting impact."
     },
     {
       "id": "skill-namespace-installed-as-wave-10",
       "order": 9,
       "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-10"],
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-10"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -188,13 +210,15 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "All four anchor files verified present and confirmed missing the installed_as field. Fanout probe skipped — pure frontmatter edits with no symbol changes."
+      "notes": "All four anchor files verified present and confirmed missing the installed_as field. Fanout probe skipped \u00e2\u20ac\u201d pure frontmatter edits with no symbol changes."
     },
     {
       "id": "skill-namespace-installed-as-wave-11",
       "order": 10,
       "status": "pending",
-      "backlogRowsClosed": ["skill-namespace-installed-as-wave-11"],
+      "backlogRowsClosed": [
+        "skill-namespace-installed-as-wave-11"
+      ],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
@@ -208,16 +232,35 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "skills/update/SKILL.md is the shipped plugin skill (roslyn-mcp:update); wave 4 already handled .claude/skills/update/SKILL.md (bare value 'update') — these are distinct files and must not be confused."
+      "notes": "skills/update/SKILL.md is the shipped plugin skill (roslyn-mcp:update); wave 4 already handled .claude/skills/update/SKILL.md (bare value 'update') \u00e2\u20ac\u201d these are distinct files and must not be confused."
     }
   ],
   "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [],
     "degrees": {
-      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
-      "6": 0, "7": 0, "8": 0, "9": 0, "10": 0
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 0,
+      "6": 0,
+      "7": 0,
+      "8": 0,
+      "9": 0,
+      "10": 0
     },
-    "zeroDegreeInitiatives": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    "zeroDegreeInitiatives": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10
+    ]
   }
 }

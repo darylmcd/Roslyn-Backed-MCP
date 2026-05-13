@@ -17,7 +17,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #716, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-2` |
 | Diagnosis | Confirmed: none of the four target SKILL.md files carry `installed_as:` in their frontmatter. Running `pwsh -NoProfile -File eng/list-skills.ps1` against the current tree reports 46 skills, 42 missing `installed_as:` (shown in yellow). All four files exist at their cited paths: `.claude/skills/draft-changelog-entry/SKILL.md` (line 2 is `name: draft-changelog-entry`), `.claude/skills/mcp-server-stress/SKILL.md` (line 2 is `name: mcp-server-stress`), `.claude/skills/promote-tier/SKILL.md` (line 2 is `name: promote-tier`), `.claude/skills/publish-preflight/SKILL.md` (line 2 is `name: publish-preflight`). Wave-1 established the canonical frontmatter shape — `installed_as: <bare-name>` inserted on line 3, immediately after `name:` (confirmed in `.claude/skills/backlog-intake/SKILL.md:3`). The missing count will drop from 42 to 38 upon completion. |
 | Approach | For each of the four SKILL.md files, insert `installed_as: <bare-name>` as a new line immediately after the `name:` line (line 2 → new line 3), shifting the existing `description:` line down by one. Mirror the exact pattern established in `.claude/skills/backlog-intake/SKILL.md:3`. Values: `draft-changelog-entry` → `installed_as: draft-changelog-entry`; `mcp-server-stress` → `installed_as: mcp-server-stress`; `promote-tier` → `installed_as: promote-tier`; `publish-preflight` → `installed_as: publish-preflight`. No other content in any file changes. After edits, validate with `pwsh -NoProfile -File eng/list-skills.ps1` — missing count must read 38. |
@@ -37,7 +37,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #717, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-3` |
 | Diagnosis | All four target SKILL.md files exist and are confirmed missing `installed_as:` frontmatter. Verified by reading each file: `.claude/skills/reconcile-backlog-sweep-plan/SKILL.md` (line 2: `name: reconcile-backlog-sweep-plan`), `.claude/skills/reconcile-backlog-vs-issues/SKILL.md` (line 2: `name: reconcile-backlog-vs-issues`), `.claude/skills/recover-stalled-subagent/SKILL.md` (line 2: `name: recover-stalled-subagent`), `.claude/skills/release-cut/SKILL.md` (line 2: `name: release-cut`). None contain `installed_as:` anywhere in their frontmatter block. The backlog row's stated drop of 38→34 counts across the full 46-file set (including `skills/` files still untouched by waves 2–3), which is consistent. |
 | Approach | Insert `installed_as: <bare-name>` immediately after the `name:` line in each of the four frontmatter blocks. No namespace prefix — `.claude/skills/` files are maintainer-only, not shipped plugin skills. Specific edits: (1) `.claude/skills/reconcile-backlog-sweep-plan/SKILL.md` line 3: insert `installed_as: reconcile-backlog-sweep-plan`. (2) `.claude/skills/reconcile-backlog-vs-issues/SKILL.md` line 3: insert `installed_as: reconcile-backlog-vs-issues`. (3) `.claude/skills/recover-stalled-subagent/SKILL.md` line 3: insert `installed_as: recover-stalled-subagent`. (4) `.claude/skills/release-cut/SKILL.md` line 3: insert `installed_as: release-cut`. The `SkillFrontmatterInstalledAsTests` CI test remains `[Ignore]`-marked until wave 12 — no test file changes in this wave. |
@@ -57,7 +57,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #718, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-4` |
 | Diagnosis | All four cited anchor files are confirmed present and all currently show `installed_as: [missing]` per `eng/list-skills.ps1` live output. The two `.claude/skills/` files need bare-name values (no namespace — maintainer-only skills); the two `skills/` files need `roslyn-mcp:` prefixed values (shipped plugin skills). Live state confirmed: `.claude/skills/surface-audit/SKILL.md` frontmatter has `name: surface-audit` with no `installed_as:`; `.claude/skills/update/SKILL.md` has `name: update` with no `installed_as:`; `skills/analyze/SKILL.md` has `name: analyze` with no `installed_as:`; `skills/architecture-review/SKILL.md` has `name: architecture-review` with no `installed_as:`. Note: `eng/list-skills.ps1` currently reports 42 missing (not 34 as the backlog row predicts) because waves 2 and 3 have not yet executed. The wave 4 precondition count of 34 → 30 is correct only after waves 2 and 3 land; executor should validate using delta (−4 missing) rather than absolute count. |
 | Approach | Edit all four SKILL.md files, inserting the `installed_as:` line immediately after `name:` in the frontmatter block: (1) `.claude/skills/surface-audit/SKILL.md` — insert `installed_as: surface-audit`; (2) `.claude/skills/update/SKILL.md` — insert `installed_as: update`; (3) `skills/analyze/SKILL.md` — insert `installed_as: roslyn-mcp:analyze`; (4) `skills/architecture-review/SKILL.md` — insert `installed_as: roslyn-mcp:architecture-review`. After all four edits, run `pwsh -NoProfile -File eng/list-skills.ps1` and verify the missing count dropped by exactly 4 from the pre-edit baseline. The `skills/` namespace values must match `^roslyn-mcp:[a-z][a-z0-9-]+$`; the `.claude/skills/` values must match `^[a-z][a-z0-9-]+$`. |
@@ -77,7 +77,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #719, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-5` |
 | Diagnosis | All four anchor SKILL.md files exist and confirmed present in the current tree. Frontmatter inspection shows each file has `name:` but no `installed_as:` key: `skills/code-actions/SKILL.md` line 2 (`name: code-actions`), `skills/complexity/SKILL.md` line 2 (`name: complexity`), `skills/dead-code/SKILL.md` line 2 (`name: dead-code`), `skills/di-audit/SKILL.md` line 2 (`name: di-audit`). The fix is a mechanical one-line frontmatter insert in each file. Matches the backlog description exactly; no staleness detected. |
 | Approach | For each of the four SKILL.md files, insert `installed_as: roslyn-mcp:<bare-name>` as a new line immediately after the `name:` line in the YAML frontmatter block. Specific values: `roslyn-mcp:code-actions` in `skills/code-actions/SKILL.md`, `roslyn-mcp:complexity` in `skills/complexity/SKILL.md`, `roslyn-mcp:dead-code` in `skills/dead-code/SKILL.md`, `roslyn-mcp:di-audit` in `skills/di-audit/SKILL.md`. Mirror the exact insertion pattern from PR #710 wave 1. No other file changes needed; no source code touched. |
@@ -97,7 +97,7 @@ All 8 Reserved rows (good-first-issue) skipped per sweep rules. `tool-surface-pa
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #720, 2026-05-13) |
 | Backlog rows closed | `skill-namespace-installed-as-wave-6` |
 | Diagnosis | All four target SKILL.md files confirmed present in the current tree and all confirmed missing `installed_as` frontmatter (grep for `installed_as` across `skills/*/SKILL.md` returns zero matches repo-wide). The fix is a pure YAML frontmatter insertion — one line per file, no prose or logic change. Pattern: insert `installed_as: roslyn-mcp:<bare-name>` immediately after the `name:` line in the YAML frontmatter block of each file, consistent with the `roslyn-mcp:` namespace used for shipped plugin skills. |
 | Approach | Edit four files — add `installed_as: roslyn-mcp:document` after `name: document` in `skills/document/SKILL.md`; add `installed_as: roslyn-mcp:exception-audit` after `name: exception-audit` in `skills/exception-audit/SKILL.md`; add `installed_as: roslyn-mcp:explain-error` after `name: explain-error` in `skills/explain-error/SKILL.md`; add `installed_as: roslyn-mcp:extract-method` after `name: extract-method` in `skills/extract-method/SKILL.md`. The `installed_as:` key sits on the line immediately after `name:` inside the `---` YAML block. No other prose, logic, or test file changes. |
