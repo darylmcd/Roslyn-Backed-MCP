@@ -25,7 +25,7 @@ public sealed class WorkspaceCloseDrainTests
     public async Task CloseWorkspace_DrainProcessesTrue_InvokesBuildServerShutdown()
     {
         const string expectedWorkspaceId = "test-ws-drain-1";
-        const string loadedPath = @"C:\repo\Sample.slnx";
+        var loadedPath = Path.Combine(Path.GetTempPath(), "repo", "Sample.slnx");
 
         var status = CreateStatus(expectedWorkspaceId, loadedPath);
         var fakeWorkspace = new FakeWorkspaceManagerForDrain(status);
@@ -73,7 +73,7 @@ public sealed class WorkspaceCloseDrainTests
     public async Task CloseWorkspace_DrainProcessesFalse_DoesNotInvokeCommandRunner()
     {
         const string expectedWorkspaceId = "test-ws-no-drain";
-        const string loadedPath = @"C:\repo\Another.slnx";
+        var loadedPath = Path.Combine(Path.GetTempPath(), "repo", "Another.slnx");
 
         var status = CreateStatus(expectedWorkspaceId, loadedPath);
         var fakeWorkspace = new FakeWorkspaceManagerForDrain(status);
