@@ -93,7 +93,7 @@
     {
       "id": "scaffolding-service-split-by-scaffold-type",
       "order": 5,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": ["scaffolding-service-split-by-scaffold-type"],
       "productionFilesTouched": 4,
       "testFilesAdded": 0,
@@ -104,8 +104,8 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/scaffolding-service-split-by-scaffold-type",
+      "worktreePath": ".worktrees/scaffolding-service-split-by-scaffold-type",
       "prUrl": null,
       "mergedAt": null,
       "notes": "anchorStale: backlog row cited 2521 LOC; current file is 2776 lines (verified by deepener). All structural anchors (method entry points) confirmed in current tree. judgmentHeavy: nested-type ownership and TestBatch+FirstTest grouping are judgment calls."
