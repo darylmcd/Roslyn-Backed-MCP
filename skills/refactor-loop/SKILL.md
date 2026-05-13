@@ -1,5 +1,6 @@
 ---
 name: refactor-loop
+installed_as: roslyn-mcp:refactor-loop
 description: "Guided refactor → preview → apply → validate loop using v1.17/v1.18 primitives. Use when: implementing a non-trivial refactor that benefits from explicit staging through preview, apply-with-verify, and the validate_workspace bundle. Pairs well with the refactor skill for upstream symbol-level work."
 user-invocable: true
 argument-hint: "natural-language refactor intent"

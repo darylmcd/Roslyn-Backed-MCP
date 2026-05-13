@@ -1,5 +1,6 @@
 ---
 name: project-inspection
+installed_as: roslyn-mcp:project-inspection
 description: "MSBuild and project-file inspection. Use when: debugging TargetFramework, OutputPath, package references, item includes, or evaluated MSBuild properties for a .csproj."
 user-invocable: true
 argument-hint: "path to .csproj [property or item type]"

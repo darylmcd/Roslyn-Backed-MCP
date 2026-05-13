@@ -1,5 +1,6 @@
 ---
 name: refactor
+installed_as: roslyn-mcp:refactor
 description: "Guided semantic refactoring. Use when: renaming symbols, extracting interfaces, extracting types, moving types between files or projects, splitting classes, or performing bulk type replacements in C# code. Describe the desired refactoring as input."
 user-invocable: true
 argument-hint: "natural-language refactoring goal"
