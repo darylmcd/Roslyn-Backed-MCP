@@ -1,5 +1,6 @@
 ---
 name: update
+installed_as: update
 description: "Maintainer-local override of the shipped /roslyn-mcp:update skill. Use when: updating Layer 2 (Claude Code plugin cache) from this repo checkout and the user's client does not support /plugin slash-commands. Adds an agent-executable PowerShell fallback that the shipped generic skill cannot mention."
 user-invocable: true
 argument-hint: ""

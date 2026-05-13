@@ -1,5 +1,6 @@
 ---
 name: architecture-review
+installed_as: roslyn-mcp:architecture-review
 description: "Layering and Dependency-Inversion-Principle audit of a C# solution. Use when: auditing layering, detecting cycles, checking DIP compliance, or finding cross-layer leaks. Takes an optional project or namespace filter as input."
 user-invocable: true
 argument-hint: "(optional) project or namespace filter"

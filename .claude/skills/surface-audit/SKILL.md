@@ -1,5 +1,6 @@
 ---
 name: surface-audit
+installed_as: surface-audit
 description: One-pass audit of the Roslyn MCP server's live surface (tools / resources / prompts / shipped skills) against documentation count claims. Use when preparing a release, chasing doc drift, or answering "how many tools does this server have?" without burning a dozen greps. Calls server_info, globs skills/*/SKILL.md, greps README / CHANGELOG / ai_docs / docs for numeric surface claims (e.g. "X tools", "Y prompts", "Z skills"), and reports drift as a compact table. Read-only; never edits docs.
 ---
 
