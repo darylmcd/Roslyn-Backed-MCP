@@ -1,5 +1,6 @@
 ---
 name: format-sweep
+installed_as: roslyn-mcp:format-sweep
 description: "Whole-solution formatting compliance pass. Use when: enforcing whole-solution formatting, running `dotnet format` equivalents, bulk-organizing usings, or performing an editorconfig compliance sweep. Optionally takes a project name or file glob to narrow scope."
 user-invocable: true
 argument-hint: "(optional) project name or file glob"

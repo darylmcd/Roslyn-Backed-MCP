@@ -1,5 +1,6 @@
 ---
 name: generate-tests
+installed_as: roslyn-mcp:generate-tests
 description: "Batch-scaffold test stubs for untested public APIs. Use when: batch-scaffolding tests for untested public APIs, generating test stubs, or bootstrapping a test project. Takes a top-N count, a project name, or a type name."
 user-invocable: true
 argument-hint: "[top-N | project name | type name]"
