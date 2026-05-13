@@ -1,5 +1,6 @@
 ---
 name: complexity
+installed_as: roslyn-mcp:complexity
 description: "Complexity hotspot analysis. Use when: finding complex methods, identifying god classes, measuring maintainability, or planning refactoring priorities in a C# solution. Optionally takes a project name."
 user-invocable: true
 argument-hint: "[optional project name]"
