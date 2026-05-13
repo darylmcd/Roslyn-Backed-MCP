@@ -1,5 +1,6 @@
 ---
 name: extract-method
+installed_as: roslyn-mcp:extract-method
 description: "Extract method refactoring. Use when: extracting a block of statements into a new method, reducing method complexity, or breaking up long methods. Describe the code region and target method name as input."
 user-invocable: true
 argument-hint: "<method name> from <file or type>"
