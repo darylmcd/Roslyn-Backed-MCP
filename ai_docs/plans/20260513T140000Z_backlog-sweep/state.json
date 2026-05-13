@@ -13,11 +13,13 @@
     "info": 1
   },
   "readyForExecute": true,
+  "completed": true,
+  "completedAt": "2026-05-13T14:48:06Z",
   "initiatives": [
     {
       "id": "skill-namespace-installed-as-wave-12",
       "order": 1,
-      "status": "in-progress",
+      "status": "merged",
       "backlogRowsClosed": [
         "skill-namespace-installed-as-wave-12",
         "skill-namespace-installed-as-bulk-frontmatter-migration"
@@ -33,9 +35,9 @@
       "deepenerStatus": "ok",
       "branch": "remediation/skill-namespace-installed-as-wave-12",
       "worktreePath": ".worktrees/skill-namespace-installed-as-wave-12",
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Final wave. Closes both the wave-12 spin-off row and the master tracking row per wave-12 row description. Master row closure is a tracking sync, not a Rule 1 bundle."
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/729",
+      "mergedAt": "2026-05-13T14:48:06Z",
+      "notes": "Final wave. Closes both the wave-12 spin-off row and the master tracking row per wave-12 row description. Master row closure is a tracking sync, not a Rule 1 bundle. Shipped as PR #729 (squash b7921e3)."
     }
   ],
   "anchorVerification": "performed",
