@@ -19,7 +19,7 @@ Eligible rows (count=10 requested; 1 found):
 
 | Field | Content |
 |---|---|
-| Status | in-progress (branch: remediation/skill-namespace-installed-as-wave-12, worktree: .worktrees/skill-namespace-installed-as-wave-12) |
+| Status | merged (PR #729, 2026-05-13) |
 | Backlog rows closed | skill-namespace-installed-as-wave-12, skill-namespace-installed-as-bulk-frontmatter-migration |
 | Diagnosis | Wave 12/12 (final wave) of the bulk `installed_as:` frontmatter migration. Confirmed: `skills/version-bump/SKILL.md` frontmatter (lines 1-6) has no `installed_as:` key. Confirmed: `skills/workspace-health/SKILL.md` frontmatter (lines 1-6) has no `installed_as:` key. Confirmed: `tests/RoslynMcp.Tests/Skills/SkillFrontmatterInstalledAsTests.cs:39` carries `[Ignore("Pending bulk frontmatter migration…")]` suppressing CI enforcement. All previous waves 2–11 shipped in PRs #716–#726. Master tracking row `skill-namespace-installed-as-bulk-frontmatter-migration` is still open; its row description explicitly requires closure in the same PR as wave-12 — this is a tracking-row closure, not a Rule 1 bundle of two independent implementations. |
 | Approach | (1) Add `installed_as: roslyn-mcp:version-bump` to `skills/version-bump/SKILL.md` frontmatter after the `argument-hint:` line. (2) Add `installed_as: roslyn-mcp:workspace-health` to `skills/workspace-health/SKILL.md` frontmatter after the `argument-hint:` line. (3) Remove the `[Ignore]` attribute at line 39 of `tests/RoslynMcp.Tests/Skills/SkillFrontmatterInstalledAsTests.cs`. (4) Before committing, run `eng/list-skills.ps1` to confirm missing count = 0. (5) Close both backlog rows in the same PR via the reconcile step. |

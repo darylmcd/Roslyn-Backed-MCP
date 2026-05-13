@@ -87,6 +87,7 @@
 | `ai_docs/prompts/backlog-sweep-execute.md` | Executor companion; consumes the `state.json` the planner emits and vets each initiative against Rules 3/4/5 before starting work. |
 | `ai_docs/bootstrap-read-tool-primer.md` | Self-edit session read-only tool primer (Roslyn-MCP read-side tools to prefer over Bash/Grep). |
 | `ai_docs/runtime.md` | Bootstrap scope policy — distinguishes main-checkout self-edit (no `*_apply`) from worktree/parallel-subagent sessions. |
+| `ai_docs/plans/20260513T140000Z_backlog-sweep/plan.md` | Backlog sweep (2026-05-13T14:00:00Z). Shipped 1 initiative across 1 PR; closed 2 backlog rows. |
 | `docs/large-solution-profiling-baseline.md` | Evidence gate for daemon/process-pool performance work. |
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Intake procedure for future audit batches. |
 | `review-inbox/` | Staging folder for the NEXT audit batch (flat directory; `/backlog-intake` reads here). |
