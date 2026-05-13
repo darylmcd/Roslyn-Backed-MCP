@@ -1,5 +1,6 @@
 ---
 name: document
+installed_as: roslyn-mcp:document
 description: "C# XML documentation generator. Use when: adding XML doc comments, documenting public APIs, fixing CS1591 warnings, or improving documentation quality in *.cs files. Takes a file path or type name as input."
 user-invocable: true
 argument-hint: "file path or type name"

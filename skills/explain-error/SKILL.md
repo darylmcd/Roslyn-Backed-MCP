@@ -1,5 +1,6 @@
 ---
 name: explain-error
+installed_as: roslyn-mcp:explain-error
 description: "Diagnostic explainer and fixer. Use when: understanding a C# compiler error or warning, finding fixes for diagnostics, batch-fixing all instances of a diagnostic, or troubleshooting build failures. Takes a diagnostic ID (e.g., CS0246) or file:line as input."
 user-invocable: true
 argument-hint: "CSxxxx | file:line | description"

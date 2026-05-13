@@ -1,5 +1,6 @@
 ---
 name: exception-audit
+installed_as: roslyn-mcp:exception-audit
 description: "Repo-wide classification of exception handling patterns. Use when: auditing exception handling, finding swallowed exceptions, classifying catch patterns, finding overly-broad catches, or mapping unhandled-at-boundary throw sites in a C# solution. Optionally takes an exception type name to filter the audit."
 user-invocable: true
 argument-hint: "(optional) exception type filter; default: all"
