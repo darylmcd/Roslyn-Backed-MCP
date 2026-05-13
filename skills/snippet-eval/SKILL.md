@@ -1,5 +1,6 @@
 ---
 name: snippet-eval
+installed_as: roslyn-mcp:snippet-eval
 description: "Quick C# feedback without loading a solution. Use when: validating syntax, semantics, or running a small script; prototyping an expression; or explaining an isolated code fragment."
 user-invocable: true
 argument-hint: "snippet path | inline code | script"
