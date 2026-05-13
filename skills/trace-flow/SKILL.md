@@ -1,5 +1,6 @@
 ---
 name: trace-flow
+installed_as: roslyn-mcp:trace-flow
 description: "Walk a value, parameter, or symbol through control flow, data flow, and exception flow paths. Use when: tracing a value through control/data/exception flow, understanding how a parameter propagates, finding where an exception is caught, or answering 'where can this value go?' / 'what paths does control take?' / 'if this throws, who catches it?'."
 user-invocable: true
 argument-hint: "<symbol-or-file:line> [mode: control|data|exception|all]"

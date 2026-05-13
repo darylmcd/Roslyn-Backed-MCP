@@ -1,5 +1,6 @@
 ---
 name: test-coverage
+installed_as: roslyn-mcp:test-coverage
 description: "Test coverage analysis. Use when: checking test coverage, finding untested code, identifying gaps in test suites, scaffolding new tests, or auditing which public APIs have tests. Optionally takes a project name."
 user-invocable: true
 argument-hint: "[optional project or test project name]"
