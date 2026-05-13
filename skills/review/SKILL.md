@@ -1,5 +1,6 @@
 ---
 name: review
+installed_as: roslyn-mcp:review
 description: "Semantic code review. Use when: reviewing C# code quality, finding issues before a PR, auditing a file or project for problems, or doing a comprehensive quality check. Optionally takes a file path or project name as input."
 user-invocable: true
 argument-hint: "[optional file path or project name]"
