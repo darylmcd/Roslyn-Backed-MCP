@@ -16,6 +16,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.38.0] - 2026-05-13
+
+### Fixed
+
+- **Fixed:** `compile_check` transport-disconnect errors now emit a structured `category: "Disconnected"` envelope with a `workspace_reload` recovery hint instead of a raw `"Not connected"` string.
+- **Fixed:** `list_analyzers` returning non-deterministic `totalRules` counts across sessions against the same workspace. The service-layer deduplication guard was exiting early on the first project to reference an analyzer assembly, discarding rules visible only from other projects' language contexts. The fix accumulates rules from all projects before deduplicating by rule ID, making the result session-stable.
+- **Fixed:** Cross-workspace staleness contamination where writes to a worktree workspace (`.worktrees/`) under the same solution root triggered spurious stale-reload delays on the primary workspace.
+
+### Maintenance
+
+- **Maintenance:** Split `ScaffoldingService.cs` (2776 lines) into three focused partial-class files by scaffold type: `ScaffoldingService.TypePreview.cs` (type scaffolding + interface resolution), `ScaffoldingService.TestPreview.cs` (single-test scaffolding + sibling-pattern inference), and `ScaffoldingService.TestBatchAndFirstTestPreview.cs` (batch-test and first-test-file scaffolding). Pure code organization — no behavior changes; all 24 ScaffoldingIntegration tests pass unchanged.
+- **Maintenance:** Add `installed_as` frontmatter field to backlog-intake, backlog-split, bump, and close-backlog-rows SKILL.md files so the skill namespace resolver can match each skill to its installed name without ambiguity.
+- **Maintenance:** Added `installed_as:` frontmatter field to 4 maintainer-only `.claude/skills/` SKILL.md files (`draft-changelog-entry`, `mcp-server-stress`, `promote-tier`, `publish-preflight`), reducing the missing-field count from 42 to 38.
+- **Maintenance:** Add `installed_as` frontmatter to `.claude/skills/reconcile-backlog-sweep-plan`, `reconcile-backlog-vs-issues`, `recover-stalled-subagent`, and `release-cut` SKILL.md files (wave 3 of bulk migration).
+- **Maintenance:** Add `installed_as:` frontmatter to `.claude/skills/surface-audit`, `.claude/skills/update`, `skills/analyze`, and `skills/architecture-review` SKILL.md files (wave 4 of 12 in the bulk `installed_as` migration).
+- **Maintenance:** Add `installed_as: roslyn-mcp:<name>` frontmatter to `skills/code-actions`, `skills/complexity`, `skills/dead-code`, and `skills/di-audit` SKILL.md files (wave 5 of 12 bulk migration).
+- **Maintenance:** Add `installed_as` frontmatter to `skills/document`, `skills/exception-audit`, `skills/explain-error`, and `skills/extract-method` SKILL.md files (wave 6/12 of bulk frontmatter migration).
+- **Maintenance:** Add `installed_as: roslyn-mcp:<bare-name>` frontmatter to `skills/format-sweep`, `skills/generate-tests`, `skills/impact-assessment`, and `skills/inheritance-explorer` SKILL.md files (wave 7 of 12 in the bulk `installed_as` migration).
+- **Maintenance:** Add `installed_as: roslyn-mcp:<name>` frontmatter to `skills/mcp-server-surface-test`, `skills/migrate-package`, `skills/modernize`, and `skills/nuget-preflight` SKILL.md files (wave 8 of 12 bulk frontmatter migration, reducing missing count from 18 to 14).
+- **Maintenance:** Add `installed_as: roslyn-mcp:*` frontmatter to `skills/project-inspection`, `skills/refactor-loop`, `skills/refactor`, and `skills/review` SKILL.md files (wave 9 of 12 in the bulk `installed_as` migration), reducing the missing-field count from 22 to 18.
+- **Maintenance:** Add `installed_as: roslyn-mcp:<name>` frontmatter to `skills/security`, `skills/semantic-find`, `skills/session-undo`, and `skills/snippet-eval` SKILL.md files (wave 10/12 of bulk frontmatter migration).
+- **Maintenance:** Add `installed_as: roslyn-mcp:<name>` frontmatter to `skills/test-coverage`, `skills/test-triage`, `skills/trace-flow`, and `skills/update` SKILL.md files (wave 11/12 of bulk `installed_as` migration), reducing the missing-field count from 6 to 2.
+- **Maintenance:** Completed `installed_as:` frontmatter migration (wave 12/12): added `installed_as: roslyn-mcp:version-bump` to `skills/version-bump/SKILL.md` and `installed_as: roslyn-mcp:workspace-health` to `skills/workspace-health/SKILL.md`; removed `[Ignore]` from `SkillFrontmatterInstalledAsTests` to activate full CI enforcement of the 46-file `installed_as:` contract (`skill-namespace-installed-as-wave-12`, `skill-namespace-installed-as-bulk-frontmatter-migration`).
+
 ## [1.37.0] - 2026-05-12
 
 ### Fixed
