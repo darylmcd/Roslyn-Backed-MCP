@@ -17,7 +17,7 @@
     {
       "id": "skill-namespace-installed-as-wave-12",
       "order": 1,
-      "status": "pending",
+      "status": "in-progress",
       "backlogRowsClosed": [
         "skill-namespace-installed-as-wave-12",
         "skill-namespace-installed-as-bulk-frontmatter-migration"
@@ -31,8 +31,8 @@
       "fanoutEstimate": 2,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
+      "branch": "remediation/skill-namespace-installed-as-wave-12",
+      "worktreePath": ".worktrees/skill-namespace-installed-as-wave-12",
       "prUrl": null,
       "mergedAt": null,
       "notes": "Final wave. Closes both the wave-12 spin-off row and the master tracking row per wave-12 row description. Master row closure is a tracking sync, not a Rule 1 bundle."
