@@ -1,5 +1,6 @@
 ---
 name: di-audit
+installed_as: roslyn-mcp:di-audit
 description: "Audit dependency-injection registrations in a .NET solution. Use when: auditing DI registrations, finding missing bindings, composition-root review, or detecting lifetime mismatches (Singleton depending on Scoped, etc.). Produces a layered report of every registered service, missing interfaces, unresolved implementations, and DI anti-patterns."
 user-invocable: true
 argument-hint: "(optional) project name or service-type filter"

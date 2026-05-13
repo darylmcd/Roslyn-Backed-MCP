@@ -1,5 +1,6 @@
 ---
 name: dead-code
+installed_as: roslyn-mcp:dead-code
 description: "Dead code detection and cleanup. Use when: finding unused symbols, removing dead code, cleaning up unreferenced private/internal members, or auditing a C# project for code that can be safely deleted. Optionally takes a project name."
 user-invocable: true
 argument-hint: "[optional project name]"

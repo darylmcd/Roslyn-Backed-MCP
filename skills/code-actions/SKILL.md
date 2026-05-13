@@ -1,5 +1,6 @@
 ---
 name: code-actions
+installed_as: roslyn-mcp:code-actions
 description: "Roslyn code actions (fixes and refactorings). Use when: applying IDE-style quick fixes or refactorings at a position or selection, including introduce parameter and inline temporary variable. Takes file path and line/column (and optional selection end) as input."
 user-invocable: true
 argument-hint: "file path and line:column [endLine:endColumn]"
