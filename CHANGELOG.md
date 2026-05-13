@@ -16,6 +16,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.38.1] - 2026-05-13
+
+### Fixed
+
+- **Fixed:** `WorkspaceCloseDrainTests` used hardcoded Windows paths (`C:\repo\...`) that caused `Path.GetDirectoryName` to return an empty string on Linux, silently skipping the drain call and failing the assertion; paths replaced with `Path.Combine(Path.GetTempPath(), ...)` so the test is cross-platform. This was blocking NuGet publish for v1.37.0 and v1.38.0.
+
+### Maintenance
+
+- **Maintenance:** `PersistentCompositeStorage` and `WorkspaceCacheStore` now accept an optional `ILogger<T>` (injected via DI in both `ServiceCollectionExtensions`); corrupt-entry drops and best-effort delete failures are logged at `Debug` level instead of silently swallowed.
+
 ## [1.38.0] - 2026-05-13
 
 ### Fixed
