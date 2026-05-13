@@ -36,7 +36,6 @@ public sealed class SkillFrontmatterInstalledAsTests
         new(@"^---\s*\r?\n(?<body>.*?)\r?\n---\s*\r?\n", RegexOptions.Compiled | RegexOptions.Singleline);
 
     [TestMethod]
-    [Ignore("Pending bulk frontmatter migration — see backlog row skill-namespace-installed-as-bulk-frontmatter-migration")]
     public void AllSkillFiles_ShouldHave_InstalledAs_Frontmatter()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();

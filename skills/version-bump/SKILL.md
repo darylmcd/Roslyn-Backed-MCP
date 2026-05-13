@@ -3,6 +3,7 @@ name: version-bump
 description: "Multi-project version bump across a .NET solution. Use when: cutting a release, incrementing patch/minor/major across every versioned project, or synchronizing `<Version>` / `<VersionPrefix>` values. Takes a bump type (patch, minor, or major) as input. Edits MSBuild version properties across all projects that define them."
 user-invocable: true
 argument-hint: "patch | minor | major"
+installed_as: roslyn-mcp:version-bump
 ---
 
 # Multi-Project Version Bump
