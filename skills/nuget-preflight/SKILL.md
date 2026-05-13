@@ -1,5 +1,6 @@
 ---
 name: nuget-preflight
+installed_as: roslyn-mcp:nuget-preflight
 description: "Pre-NuGet-publish readiness check. Use when: preparing to publish to NuGet, checking release readiness for a .NET library, or validating package metadata, build, tests, and vulnerabilities before a release cut. Optionally takes a project name to narrow the scope."
 user-invocable: true
 argument-hint: "(optional) project name to preflight; default: every IsPackable=true project"

@@ -1,5 +1,6 @@
 ---
 name: modernize
+installed_as: roslyn-mcp:modernize
 description: "Staged codebase modernization. Use when: systematically modernizing a C# codebase toward a stated goal, migrating between patterns/attributes/APIs at scale, or adopting newer language features (file-scoped namespaces, primary constructors, collection expressions) across many files. Takes a natural-language modernization goal as input."
 user-invocable: true
 argument-hint: "<modernization-goal>"

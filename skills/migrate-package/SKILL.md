@@ -1,5 +1,6 @@
 ---
 name: migrate-package
+installed_as: roslyn-mcp:migrate-package
 description: "NuGet package migration. Use when: replacing one NuGet package with another across a solution, upgrading packages, or migrating from deprecated packages. Takes old package name, new package name, and new version as input."
 user-invocable: true
 argument-hint: "<old-package> <new-package> <version>"
