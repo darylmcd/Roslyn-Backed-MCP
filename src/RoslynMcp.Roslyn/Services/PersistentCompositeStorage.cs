@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -24,11 +25,16 @@ public sealed class PersistentCompositeStorage
 
     private readonly string _rootDirectory;
     private readonly TimeSpan _ttl;
+    private readonly ILogger<PersistentCompositeStorage>? _logger;
 
-    public PersistentCompositeStorage(string rootDirectory, TimeSpan ttl)
+    public PersistentCompositeStorage(
+        string rootDirectory,
+        TimeSpan ttl,
+        ILogger<PersistentCompositeStorage>? logger = null)
     {
         _rootDirectory = rootDirectory ?? throw new ArgumentNullException(nameof(rootDirectory));
         _ttl = ttl > TimeSpan.Zero ? ttl : TimeSpan.FromMinutes(5);
+        _logger = logger;
         Directory.CreateDirectory(_rootDirectory);
     }
 
@@ -80,9 +86,10 @@ public sealed class PersistentCompositeStorage
                     dto.Mutations.Select(m => new CompositeFileMutation(m.FilePath, m.UpdatedContent, m.DeleteFile)).ToArray(),
                     dto.CreatedAt);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Corrupt entry — drop it and return null so the in-memory miss path takes over.
+                _logger?.LogDebug(ex, "PersistentCompositeStorage: dropping unreadable entry at {Path}.", path);
                 TryDelete(path);
                 return null;
             }
@@ -100,9 +107,18 @@ public sealed class PersistentCompositeStorage
         }
     }
 
-    private static void TryDelete(string path)
+    private void TryDelete(string path)
     {
-        try { File.Delete(path); } catch { /* best-effort */ }
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort cleanup — a stale file will simply fail to deserialize on the
+            // next read and be cleaned up there.
+            _logger?.LogDebug(ex, "PersistentCompositeStorage: failed to delete entry at {Path}.", path);
+        }
     }
 
     private sealed record PersistedEntry(

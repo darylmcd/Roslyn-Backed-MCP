@@ -1,7 +1,8 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace RoslynMcp.Roslyn;
 
@@ -27,7 +28,7 @@ public static class ServiceCollectionExtensions
         });
         services.AddSingleton<IDotnetCommandRunner, DotnetCommandRunner>();
         services.AddSingleton<IGatedCommandExecutor, GatedCommandExecutor>();
-               services.AddSingleton<IPreviewStore>(sp =>
+        services.AddSingleton<IPreviewStore>(sp =>
         {
             var (maxEntries, ttl) = ResolvePreviewStoreConfiguration(sp);
             return new PreviewStore(maxEntries, ttl);
@@ -45,7 +46,10 @@ public static class ServiceCollectionExtensions
             PersistentCompositeStorage? disk = null;
             if (!string.IsNullOrWhiteSpace(opts.PersistDirectory))
             {
-                disk = new PersistentCompositeStorage(opts.PersistDirectory!, ttl);
+                disk = new PersistentCompositeStorage(
+                    opts.PersistDirectory!,
+                    ttl,
+                    sp.GetService<ILogger<PersistentCompositeStorage>>());
             }
             return new CompositePreviewStore(maxEntries, ttl, disk);
         });

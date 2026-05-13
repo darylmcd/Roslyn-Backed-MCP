@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Services;
@@ -68,6 +69,7 @@ public sealed class ServiceCollectionExtensionsTests
         AssertSingleRegistration<HttpClient>(services);
         AssertSingleRegistration<NuGetVersionChecker>(services);
         AssertSingleRegistration<ILatestVersionProvider>(services);
+        AssertSingleRegistration<IWorkspaceCacheStore>(services);
     }
 
     /// <summary>
@@ -98,11 +100,66 @@ public sealed class ServiceCollectionExtensionsTests
             "Interface and concrete registrations must share the same singleton.");
     }
 
+    [TestMethod]
+    public void AddRoslynMcpHostServices_WorkspaceCacheStore_ReceivesLogger()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.ClearProviders());
+        services.AddRoslynMcpHostServices(
+            new WorkspaceManagerOptions(),
+            new ValidationServiceOptions(),
+            new PreviewStoreOptions(),
+            new ExecutionGateOptions(),
+            new SecurityOptions(),
+            new ScriptingServiceOptions());
+
+        using var sp = services.BuildServiceProvider();
+        var store = sp.GetRequiredService<IWorkspaceCacheStore>();
+
+        AssertPrivateFieldNotNull(store, "_logger");
+    }
+
+    [TestMethod]
+    public void AddRoslynServices_PersistentCompositeStorage_ReceivesLogger()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), "RoslynMcpTests", "PersistentCompositeStorage", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var services = new ServiceCollection();
+            services.AddLogging(b => b.ClearProviders());
+            services.AddSingleton(new PreviewStoreOptions { PersistDirectory = tempDir });
+            services.AddRoslynServices();
+
+            using var sp = services.BuildServiceProvider();
+            var store = sp.GetRequiredService<ICompositePreviewStore>();
+            var diskBackend = AssertPrivateFieldNotNull(store, "_diskBackend");
+
+            AssertPrivateFieldNotNull(diskBackend, "_logger");
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
     private static void AssertSingleRegistration<T>(IServiceCollection services)
     {
         var count = services.Count(d => d.ServiceType == typeof(T));
         Assert.AreEqual(1, count,
             $"Service type {typeof(T).Name} must be registered exactly once via " +
             $"AddRoslynMcpHostServices; found {count}. Triple-registration regression.");
+    }
+
+    private static object AssertPrivateFieldNotNull(object instance, string fieldName)
+    {
+        var field = instance.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, $"{instance.GetType().Name} should still declare private field '{fieldName}'.");
+
+        var value = field.GetValue(instance);
+        Assert.IsNotNull(value, $"{instance.GetType().Name}.{fieldName} should be populated by DI.");
+        return value;
     }
 }
