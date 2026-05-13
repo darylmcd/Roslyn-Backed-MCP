@@ -1,5 +1,6 @@
 ---
 name: impact-assessment
+installed_as: roslyn-mcp:impact-assessment
 description: "Pre-change blast-radius report for a C# symbol. Use when: planning a rename, signature change, or deletion and you need to know how far the change reaches before touching code. Takes a symbol name (and optional change type) as input. Produces a ranked safe-to-change verdict with direct references, semantic consumers, polymorphic impact, and mutation sites."
 user-invocable: true
 argument-hint: "<symbol-name> [change-type: rename|signature|delete]"

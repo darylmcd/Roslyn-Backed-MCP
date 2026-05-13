@@ -1,5 +1,6 @@
 ---
 name: inheritance-explorer
+installed_as: roslyn-mcp:inheritance-explorer
 description: "Walk the inheritance and member-override graph for a type or member. Use when: exploring type hierarchies, finding overrides, finding implementations, understanding polymorphic dispatch, auditing interfaces. Takes a type or member name as input."
 user-invocable: true
 argument-hint: "<type-or-member-name>"
