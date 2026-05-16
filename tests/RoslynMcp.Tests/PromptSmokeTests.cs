@@ -1,10 +1,14 @@
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Prompts;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
 
@@ -296,6 +300,55 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             "Template must direct the caller to invoke nuget_vulnerability_scan — the prompt no longer pre-fetches CVE data.");
     }
 
+    // guided-extract-interface-prompt-payload-cap (gh #776): the prompt embedded the full
+    // document-symbol list and full ProjectGraphDto without caps, so a 9+ project workspace
+    // with several large files would overflow the MCP inline payload cap. Cap document
+    // symbols at 50 and project-graph nodes at 20 — mirrors analyze_dependencies's existing
+    // 50-cap on graph.Projects. This test guards both caps and bounds the rendered
+    // prompt length so future template growth cannot silently re-open the regression.
+    [TestMethod]
+    public async Task GuidedExtractInterface_LargeWorkspace_PromptFitsInlineCap()
+    {
+        const int documentSymbolCount = 200;
+        // Use a project count above the 20-cap so the truncation footer must appear.
+        // The plan stanza cited 15 projects (which exercises the original gh #776 condition)
+        // but 15 is below the cap and produces no footer — we want both caps verified.
+        const int projectCount = 25;
+        const string fakeWorkspaceId = "fake-large-workspace";
+        const string fakeFilePath = @"C:\fake\path\BigFile.cs";
+        const string fakeTypeName = "BigType";
+
+        var stubWorkspace = new StubWorkspaceManagerForGuidedExtract(
+            workspaceId: fakeWorkspaceId,
+            sourceText: "// pretend source text — the prompt only checks for non-null",
+            projectCount: projectCount);
+        var stubSymbolSearch = new StubSymbolSearchServiceForGuidedExtract(
+            documentSymbolCount: documentSymbolCount);
+
+        var messages = (await RoslynPrompts.GuidedExtractInterface(
+            stubWorkspace,
+            stubSymbolSearch,
+            workspaceId: fakeWorkspaceId,
+            filePath: fakeFilePath,
+            typeName: fakeTypeName,
+            targetProjectName: null,
+            CancellationToken.None)).ToList();
+
+        Assert.AreEqual(1, messages.Count);
+        var text = GetText(messages[0]);
+
+        // The pre-cap rendering on a 200-symbol / 15-project workspace embedded the full
+        // serialized lists and routinely exceeded 30 KB. Bound the post-cap length to
+        // 25 000 characters; the truncated body fits comfortably under that.
+        Assert.IsTrue(text.Length < 25_000,
+            $"Prompt body must fit under the inline payload cap. Actual length: {text.Length} chars.");
+
+        StringAssert.Contains(text, "[Showing 50 of 200 items]",
+            "Document-symbol list must be capped at 50 entries with a count footer.");
+        StringAssert.Contains(text, $"[Showing 20 of {projectCount} items]",
+            "Project graph (Projects) must be capped at 20 entries with a count footer.");
+    }
+
     private static string GetText(PromptMessage message) =>
         (message.Content as TextContentBlock)?.Text
         ?? throw new AssertFailedException("Expected text content.");
@@ -308,5 +361,91 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             .FirstOrDefault(document => string.Equals(document.Name, name, StringComparison.Ordinal))?.FilePath;
 
         return path ?? throw new AssertFailedException($"Document '{name}' was not found.");
+    }
+
+    // guided-extract-interface-prompt-payload-cap: minimal stub that returns canned source
+    // text and a synthetic ProjectGraphDto with the requested number of project nodes. Every
+    // other IWorkspaceManager member throws — the prompt only touches GetSourceTextAsync and
+    // GetProjectGraph, so the rest is intentionally unreachable.
+    private sealed class StubWorkspaceManagerForGuidedExtract : IWorkspaceManager
+    {
+        private readonly string _workspaceId;
+        private readonly string _sourceText;
+        private readonly ProjectGraphDto _graph;
+
+        public StubWorkspaceManagerForGuidedExtract(string workspaceId, string sourceText, int projectCount)
+        {
+            _workspaceId = workspaceId;
+            _sourceText = sourceText;
+            var projects = Enumerable.Range(0, projectCount).Select(i => new ProjectGraphNodeDto(
+                ProjectName: $"FakeProject{i}",
+                FilePath: $@"C:\fake\path\FakeProject{i}\FakeProject{i}.csproj",
+                AssemblyName: $"FakeProject{i}",
+                IsTestProject: false,
+                OutputType: "Library",
+                TargetFrameworks: new[] { "net10.0" },
+                ProjectReferences: Array.Empty<string>())).ToList();
+            _graph = new ProjectGraphDto(workspaceId, projects);
+        }
+
+        public event Action<string>? WorkspaceClosed { add { } remove { } }
+        public event Action<string>? WorkspaceReloaded { add { } remove { } }
+
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
+        public bool ContainsWorkspace(string workspaceId) => string.Equals(workspaceId, _workspaceId, StringComparison.Ordinal);
+        public bool IsStale(string workspaceId) => false;
+        public bool Close(string workspaceId) => throw new NotSupportedException();
+        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => Array.Empty<WorkspaceStatusDto>();
+        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public ProjectGraphDto GetProjectGraph(string workspaceId) =>
+            string.Equals(workspaceId, _workspaceId, StringComparison.Ordinal)
+                ? _graph
+                : throw new KeyNotFoundException(workspaceId);
+
+        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) =>
+            Task.FromResult<string?>(string.Equals(workspaceId, _workspaceId, StringComparison.Ordinal) ? _sourceText : null);
+
+        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
+        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
+        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+    }
+
+    // guided-extract-interface-prompt-payload-cap: minimal stub that returns the requested
+    // number of synthetic DocumentSymbolDto entries from GetDocumentSymbolsAsync. The other
+    // members are unreachable from GuidedExtractInterface and throw to surface mis-wiring.
+    private sealed class StubSymbolSearchServiceForGuidedExtract : ISymbolSearchService
+    {
+        private readonly IReadOnlyList<DocumentSymbolDto> _symbols;
+
+        public StubSymbolSearchServiceForGuidedExtract(int documentSymbolCount)
+        {
+            _symbols = Enumerable.Range(0, documentSymbolCount).Select(i => new DocumentSymbolDto(
+                Name: $"FakeMember{i}",
+                Kind: "Method",
+                Modifiers: new[] { "public" },
+                StartLine: i + 1,
+                EndLine: i + 2,
+                Children: null)).ToList();
+        }
+
+        public Task<IReadOnlyList<SymbolDto>> SearchSymbolsAsync(
+            string workspaceId, string query, string? projectFilter, string? kindFilter, string? namespaceFilter, int maxResults, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<SymbolDto?> GetSymbolInfoAsync(string workspaceId, SymbolLocator locator, CancellationToken ct, bool allowAdjacent = false) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(string workspaceId, string filePath, CancellationToken ct) =>
+            Task.FromResult(_symbols);
+
+        public Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct) =>
+            throw new NotSupportedException();
     }
 }
