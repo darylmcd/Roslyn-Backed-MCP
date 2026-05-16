@@ -62,7 +62,7 @@
     {
       "id": "compact-paged-high-volume-analysis-results",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "compact-paged-high-volume-analysis-results"
       ],
@@ -75,11 +75,11 @@
       "fanoutEstimate": 3,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Split: scope reduced to find_reflection_usages only; spin-off row compact-semantic-grep-pagination needed for semantic_grep pagination. judgmentHeavy."
+      "branch": "remediation/compact-paged-high-volume-analysis-results",
+      "worktreePath": ".worktrees/compact-paged-high-volume-analysis-results",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/780",
+      "mergedAt": "2026-05-16T22:44:46Z",
+      "notes": "Split: scope reduced to find_reflection_usages only; spin-off row compact-semantic-grep-pagination needed for semantic_grep pagination. judgmentHeavy. Shipped as PR #780 (squash b827ca8). Executor chose wrapper-side paging (mirrors FindTypeUsages) instead of interface-side; ICodePatternAnalyzer signature unchanged."
     },
     {
       "id": "get-di-registrations-default-response-exceeds-mcp-cap",
@@ -128,11 +128,11 @@
     {
       "id": "symbol-refactor-preview-auto-applies-without-explicit-apply-call",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "symbol-refactor-preview-auto-applies-without-explicit-apply-call"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 4,
       "testFilesAdded": 1,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 35000,
@@ -141,16 +141,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Hypothesis 1 confirmed (auto-apply). judgmentHeavy: Execute*Async helpers may need a Solution-accepting overload \u2014 possible expansion to 2nd file at execute time."
+      "branch": "remediation/symbol-refactor-preview-auto-applies-without-explicit-apply-call",
+      "worktreePath": ".worktrees/symbol-refactor-preview-auto-applies-without-explicit-apply-call",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/782",
+      "mergedAt": "2026-05-16T22:44:56Z",
+      "notes": "Hypothesis 1 confirmed (auto-apply). judgmentHeavy: Execute*Async helpers needed Solution-accepting overloads on 3 service files \u2014 plan's Risk #1 anticipated this; landed at 4 production files (Rule 3 cap). Shipped as PR #782 (squash 527213d)."
     },
     {
       "id": "symbol-search-broad-query-response-cap-overflow",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "symbol-search-broad-query-response-cap-overflow"
       ],
@@ -163,11 +163,11 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Regression of CLOSED #617 (PR #659 fix). Add summary=true + lower cap from 200 to 50. judgmentHeavy (breaking-change tradeoff)."
+      "branch": "remediation/symbol-search-broad-query-response-cap-overflow",
+      "worktreePath": ".worktrees/symbol-search-broad-query-response-cap-overflow",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/779",
+      "mergedAt": "2026-05-16T22:44:41Z",
+      "notes": "Regression of CLOSED #617 (PR #659 fix). Added summary=true + lowered cap from 200 to 50. judgmentHeavy (breaking-change tradeoff). Shipped as PR #779 (squash 42b40ac)."
     },
     {
       "id": "guided-extract-interface-prompt-payload-cap",
@@ -194,7 +194,7 @@
     {
       "id": "project-graph-output-type-misreports-sdk-defaulted-exe",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "project-graph-output-type-misreports-sdk-defaulted-exe"
       ],
@@ -207,11 +207,11 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "WorkspaceManager.cs hotspot \u2014 potential wave conflict with initiative 14 (workspace-toolchain-status-preflight). Real anchor is ProjectMetadataParser.cs (helper), not the cited WorkspaceTools.cs."
+      "branch": "remediation/project-graph-output-type-misreports-sdk-defaulted-exe",
+      "worktreePath": ".worktrees/project-graph-output-type-misreports-sdk-defaulted-exe",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/781",
+      "mergedAt": "2026-05-16T22:44:51Z",
+      "notes": "WorkspaceManager.cs hotspot \u2014 confirmed no wave conflict with init 14. Real anchor is ProjectMetadataParser.cs (helper). Shipped as PR #781 (squash d74d4e7). Required follow-up commit aligning ValidationIntegrationTests OutputType expectation with SDK eval (Microsoft.NET.Test.Sdk injects OutputType=Exe)."
     },
     {
       "id": "surface-test-subagent-symbol-selection-must-be-autonomous",
