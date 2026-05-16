@@ -114,6 +114,85 @@ public sealed class RestructureService : IRestructureService
         return new RefactoringPreviewDto(token, description, changes, null);
     }
 
+    /// <summary>
+    /// symbol-refactor-preview-auto-applies-without-explicit-apply-call: pure-functional
+    /// structural-rewrite simulation that operates on an explicit input
+    /// <paramref name="inputSolution"/> and returns the post-rewrite <see cref="Solution"/>
+    /// snapshot. Mirrors <see cref="PreviewRestructureAsync"/>'s parse-and-walk logic but
+    /// never touches the workspace, the disk, or <see cref="IPreviewStore"/>. Used by
+    /// <see cref="SymbolRefactorService.PreviewAsync"/> to chain ops in-memory so each op
+    /// sees its predecessor's rewrites without the previous auto-apply-each-step disk write
+    /// that fired before the agent ever called <c>apply_composite_preview</c>.
+    /// </summary>
+    internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+        PreviewRestructureOnSolutionAsync(
+            Solution inputSolution, string pattern, string goal, RestructureScope scope, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(pattern))
+            throw new ArgumentException("pattern must be non-empty.", nameof(pattern));
+        if (goal is null)
+            throw new ArgumentException("goal must be non-null (use empty string to delete matches).", nameof(goal));
+
+        var (patternNode, patternKind) = ParsePatternOrGoal(pattern, "pattern");
+        var (goalNode, goalKind) = ParsePatternOrGoal(goal, "goal");
+        if (patternKind != goalKind)
+        {
+            throw new ArgumentException(
+                $"pattern and goal must be the same syntactic kind (both expressions or both statements). " +
+                $"pattern={patternKind}, goal={goalKind}.");
+        }
+
+        var patternPlaceholderNames = ExtractPlaceholderNames(patternNode);
+        var goalPlaceholderNames = ExtractPlaceholderNames(goalNode);
+        var orphaned = goalPlaceholderNames.Except(patternPlaceholderNames, StringComparer.Ordinal).ToList();
+        if (orphaned.Count > 0)
+        {
+            throw new ArgumentException(
+                $"goal references placeholder(s) not captured by the pattern: {string.Join(", ", orphaned.Select(n => $"__{n}__"))}. " +
+                $"Every `__name__` in the goal must appear in the pattern so it has a captured value to substitute.",
+                nameof(goal));
+        }
+
+        var accumulator = inputSolution;
+        var changes = new List<FileChangeDto>();
+        var totalMatches = 0;
+
+        foreach (var project in EnumerateProjects(inputSolution, scope))
+        {
+            foreach (var document in EnumerateDocuments(project, scope))
+            {
+                ct.ThrowIfCancellationRequested();
+                var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
+                if (root is null) continue;
+
+                var rewriter = new StructuralRewriter(patternNode, goalNode, goalPlaceholderNames);
+                var newRoot = rewriter.Visit(root);
+
+                if (rewriter.MatchCount == 0 || newRoot is null) continue;
+                totalMatches += rewriter.MatchCount;
+
+                var newText = newRoot.ToFullString();
+                var oldText = root.ToFullString();
+
+                accumulator = accumulator.WithDocumentText(document.Id, Microsoft.CodeAnalysis.Text.SourceText.From(newText));
+                var docPath = document.FilePath ?? document.Name;
+                changes.Add(new FileChangeDto(
+                    FilePath: docPath,
+                    UnifiedDiff: DiffGenerator.GenerateUnifiedDiff(oldText, newText, docPath)));
+            }
+        }
+
+        if (changes.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"restructure_preview: no matches found for pattern in scope. " +
+                $"Verify pattern kind ({patternKind}), placeholder names, and scope filters.");
+        }
+
+        var description = $"Restructure {totalMatches} match(es) across {changes.Count} file(s)";
+        return (accumulator, changes, description);
+    }
+
     private static (SyntaxNode Node, string Kind) ParsePatternOrGoal(string text, string argName)
     {
         // Try expression first (most common case per the backlog examples); fall back to statement.
