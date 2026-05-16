@@ -41,11 +41,6 @@ Each rollup should include:
 
 ## Current files
 
-| File | Purpose |
-|------|---------|
-| `reports/2026-04-06-test-suite-audit.md` | Cross-cutting audit of the test suite's speed, SRP, and setup costs. |
-| `reports/20260505_mcp-best-practices-restored-rows.md` | Provenance for active MCP best-practices backlog rows that remain open or deferred. |
-| `reports/20260505T131500Z_apply-verify-rollback-audit.md` | Actioning audit that closed `apply-with-verify-false-positive-audit` as obsolete. |
-| `reports/test-parallelization-triage-2026-04-22.md` | Test parallelization triage notes. |
+No standalone report artifacts are currently retained. The May 2026 intake moved live findings into `../backlog.md`, left fixed or stale findings out, and removed the consumed reports.
 
 For the full deep-review workflow, start with `../procedures/deep-review-program.md`.
