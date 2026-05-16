@@ -90,21 +90,69 @@ public static class TestCoverageTools
                 coverageDir
             };
 
-            var execution = await commandRunner.RunAsync(Path.GetDirectoryName(loadedPath)!, targetPath, arguments, c).ConfigureAwait(false);
-            ProgressHelper.Report(progress, 0.8f, 1);
+            // test-coverage-timeout-failure-envelope: wrap the runner invocation and the
+            // downstream coverage-file scan so that cancellation (MCP timeout, caller cancel)
+            // or an unexpected runner exception is reported as a structured failureEnvelope
+            // rather than escaping the gate lambda as a bare invocation error. Mirrors the
+            // WorkspaceValidationService pattern at lines 185-208 (OCE-then-Exception order)
+            // and the TestRunnerService timeout-envelope shape at lines 98-127.
+            try
+            {
+                var execution = await commandRunner.RunAsync(Path.GetDirectoryName(loadedPath)!, targetPath, arguments, c).ConfigureAwait(false);
+                ProgressHelper.Report(progress, 0.8f, 1);
 
-            // Find the coverage XML file
-            var coverageFiles = Directory.Exists(coverageDir)
-                ? Directory.GetFiles(coverageDir, "coverage.cobertura.xml", SearchOption.AllDirectories)
-                : [];
+                // Find the coverage XML file
+                var coverageFiles = Directory.Exists(coverageDir)
+                    ? Directory.GetFiles(coverageDir, "coverage.cobertura.xml", SearchOption.AllDirectories)
+                    : [];
 
-            if (coverageFiles.Length == 0)
+                if (coverageFiles.Length == 0)
+                {
+                    ProgressHelper.Report(progress, 1, 1);
+                    var errorKind = !execution.Succeeded ? "TestFailure" : "CoverletMissing";
+                    var summary = !execution.Succeeded
+                        ? $"Tests failed (exit code {execution.ExitCode}). Coverage file not found."
+                        : "Coverage file not generated. Ensure coverlet.collector NuGet package is referenced in test projects.";
+                    return SerializeWithDeprecation(new TestCoverageResultDto(
+                        Success: false,
+                        Error: summary,
+                        LineCoveragePercent: null,
+                        BranchCoveragePercent: null,
+                        Modules: [],
+                        FailureEnvelope: new TestCoverageFailureEnvelopeDto(
+                            ErrorKind: errorKind,
+                            IsRetryable: errorKind == "TestFailure",
+                            Summary: summary)), deprecation);
+                }
+
+                var latestCoverage = coverageFiles.OrderByDescending(File.GetLastWriteTimeUtc).First();
+                var result = ParseCoberturaXml(latestCoverage);
+                ProgressHelper.Report(progress, 1, 1);
+                return SerializeWithDeprecation(result, deprecation);
+            }
+            catch (OperationCanceledException)
+            {
+                // OCE-first ordering: if the generic Exception catch is ordered first the
+                // cancellation path would be misclassified as Unknown. Do NOT re-throw —
+                // the gate lambda's return type is string and the caller expects a structured
+                // envelope identical to the other failure paths above.
+                ProgressHelper.Report(progress, 1, 1);
+                const string cancelSummary = "test_coverage was cancelled (timeout or caller cancellation).";
+                return SerializeWithDeprecation(new TestCoverageResultDto(
+                    Success: false,
+                    Error: cancelSummary,
+                    LineCoveragePercent: null,
+                    BranchCoveragePercent: null,
+                    Modules: [],
+                    FailureEnvelope: new TestCoverageFailureEnvelopeDto(
+                        ErrorKind: "Timeout",
+                        IsRetryable: false,
+                        Summary: cancelSummary)), deprecation);
+            }
+            catch (Exception ex)
             {
                 ProgressHelper.Report(progress, 1, 1);
-                var errorKind = !execution.Succeeded ? "TestFailure" : "CoverletMissing";
-                var summary = !execution.Succeeded
-                    ? $"Tests failed (exit code {execution.ExitCode}). Coverage file not found."
-                    : "Coverage file not generated. Ensure coverlet.collector NuGet package is referenced in test projects.";
+                var summary = $"test_coverage failed with an unexpected error: {ex.Message}";
                 return SerializeWithDeprecation(new TestCoverageResultDto(
                     Success: false,
                     Error: summary,
@@ -112,15 +160,10 @@ public static class TestCoverageTools
                     BranchCoveragePercent: null,
                     Modules: [],
                     FailureEnvelope: new TestCoverageFailureEnvelopeDto(
-                        ErrorKind: errorKind,
-                        IsRetryable: errorKind == "TestFailure",
+                        ErrorKind: "Unknown",
+                        IsRetryable: false,
                         Summary: summary)), deprecation);
             }
-
-            var latestCoverage = coverageFiles.OrderByDescending(File.GetLastWriteTimeUtc).First();
-            var result = ParseCoberturaXml(latestCoverage);
-            ProgressHelper.Report(progress, 1, 1);
-            return SerializeWithDeprecation(result, deprecation);
         }, ct);
     }
 

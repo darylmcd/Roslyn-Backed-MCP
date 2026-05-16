@@ -15,7 +15,7 @@ public sealed record TestCoverageResultDto(
 /// Structured failure envelope for test coverage operations, enabling programmatic
 /// detection of failure conditions (e.g., missing coverlet package).
 /// </summary>
-/// <param name="ErrorKind">Machine-readable bucket: <c>CoverletMissing</c>, <c>TestFailure</c>, <c>Unknown</c>.</param>
+/// <param name="ErrorKind">Machine-readable bucket: <c>CoverletMissing</c>, <c>TestFailure</c>, <c>Timeout</c>, <c>Unknown</c>.</param>
 /// <param name="IsRetryable">True when the caller can retry after fixing a transient condition.</param>
 /// <param name="Summary">Human-readable summary.</param>
 /// <param name="MissingPackages">
