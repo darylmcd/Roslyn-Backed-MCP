@@ -20,6 +20,20 @@ This document is the single canonical source for validation requirements and mer
 - For release-impacting or code changes, run `./eng/verify-release.ps1`.
 - `eng/verify-release.ps1` performs restore, build, test (with Cobertura coverage under `artifacts/coverage`), publish, and hash-manifest generation. Pass `-NoCoverage` to skip the `--collect:"XPlat Code Coverage"` IL-rewrite step for faster iteration when you don't need the coverage artifact (matches the CI pull-request path).
 
+### Test Category Lanes
+
+Tests are tagged with `[TestCategory(...)]` to enable selective execution. Only `Benchmark` is excluded from the default CI run (`eng/verify-release.ps1` applies `--filter "TestCategory!=Benchmark"`); all other lanes execute in the default pipeline and are available for local opt-in filtering when you want to isolate or skip heavy lanes during iteration.
+
+| Lane | Meaning | Sample opt-in / opt-out filter |
+|---|---|---|
+| `Benchmark` | Wall-clock micro-benchmarks (e.g. `WorkspaceReadConcurrencyBenchmark`). Excluded from default CI. | Opt-in: `dotnet test --filter "TestCategory=Benchmark"` |
+| `Network` | Live calls to external services (e.g. `api.nuget.org` from `NuGetVulnerabilityScanIntegrationTests`). | Opt-out: `dotnet test --filter "TestCategory!=Network"` |
+| `RepoSolution` | Loads the repository's own `RoslynMcp.slnx` (or a second large workspace) rather than the small sample fixture; high memory + warm-up cost. | Opt-out: `dotnet test --filter "TestCategory!=RepoSolution"` |
+| `Process` | Shells out to an external process (e.g. `dotnet test` via `IDotnetCommandRunner.RunAsync`); requires the .NET SDK and is sensitive to process-startup variance. | Opt-out: `dotnet test --filter "TestCategory!=Process"` |
+| `Performance` | Wall-clock budget assertions (the `PerformanceBaselineTests` class); pass/fail depends on CPU contention and is flaky under heavy parallel load. | Opt-out: `dotnet test --filter "TestCategory!=Performance"` |
+
+Combine filters with `&` (AND) or `\|` (OR) per `dotnet test --filter` syntax — e.g. `dotnet test --filter "TestCategory!=Network&TestCategory!=Performance"` to skip both lanes while iterating on a normal change.
+
 ## Merge Gating Expectations
 
 - Treat the documented CI workflow as the required merge gate.

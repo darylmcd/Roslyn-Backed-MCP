@@ -390,6 +390,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    [TestCategory("RepoSolution")]
     public async Task Reflection_And_Di_Analysis_Run_On_Repo_Solution()
     {
         var repositorySolutionPath = Path.Combine(RepositoryRootPath, "RoslynMcp.slnx");
@@ -553,6 +554,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    [TestCategory("Process")]
     public async Task TestCoverageTool_Returns_Structured_Response()
     {
         var json = await TestCoverageTools.RunTestCoverage(
