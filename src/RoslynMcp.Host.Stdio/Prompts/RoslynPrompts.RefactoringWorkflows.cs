@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -261,6 +260,14 @@ public static partial class RoslynPrompts
             var documentSymbols = await symbolSearchService.GetDocumentSymbolsAsync(workspaceId, filePath, ct).ConfigureAwait(false);
             var projectGraph = workspace.GetProjectGraph(workspaceId);
 
+            // guided-extract-interface-prompt-payload-cap (gh #776): both lists were
+            // previously serialized in full, scaling linearly with workspace size and
+            // overflowing the MCP inline payload cap on 9+ project workspaces. Cap
+            // document symbols at 50 and project-graph nodes at 20 (mirrors
+            // analyze_dependencies's existing 50-cap on graph.Projects).
+            var documentSymbolsJson = PromptMessageBuilder.SerializeTruncatedList(documentSymbols, 50, JsonDefaults.Indented);
+            var projectGraphJson = PromptMessageBuilder.SerializeTruncatedList(projectGraph.Projects, 20, JsonDefaults.Indented);
+
             return
             [
                 PromptMessageBuilder.CreatePromptMessage($"""
@@ -271,12 +278,12 @@ public static partial class RoslynPrompts
 
                     **Document Symbols:**
                     ```json
-                    {JsonSerializer.Serialize(documentSymbols, JsonDefaults.Indented)}
+                    {documentSymbolsJson}
                     ```
 
-                    **Project Graph:**
+                    **Project Graph (Projects):**
                     ```json
-                    {JsonSerializer.Serialize(projectGraph, JsonDefaults.Indented)}
+                    {projectGraphJson}
                     ```
 
                     Use this workflow:
