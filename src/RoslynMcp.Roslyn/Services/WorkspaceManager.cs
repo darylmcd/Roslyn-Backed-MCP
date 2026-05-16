@@ -2131,7 +2131,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 TargetFrameworks: Helpers.ProjectMetadataParser.GetTargetFrameworks(project, projectDoc, _logger),
                 IsTestProject: Helpers.ProjectMetadataParser.IsTestProject(projectDoc),
                 AssemblyName: Helpers.ProjectMetadataParser.GetAssemblyName(project),
-                OutputType: Helpers.ProjectMetadataParser.GetOutputType(projectDoc));
+                OutputType: Helpers.ProjectMetadataParser.GetOutputType(project, projectDoc, _logger));
         }).ToImmutableArray();
     }
 

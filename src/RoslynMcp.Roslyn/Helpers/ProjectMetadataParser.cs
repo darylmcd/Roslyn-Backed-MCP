@@ -119,9 +119,51 @@ internal static class ProjectMetadataParser
         return IsTestProject(doc);
     }
 
+    /// <summary>
+    /// project-graph-output-type-misreports-sdk-defaulted-exe: SDK-defaulted OutputType
+    /// resolution. The raw-XML overload below sees no <c>&lt;OutputType&gt;</c> element for
+    /// <c>Microsoft.NET.Sdk.Web</c> and <c>Microsoft.NET.Sdk.Worker</c> projects that omit
+    /// the property explicitly, and incorrectly returns <c>"Library"</c>. The SDK targets
+    /// inject <c>OutputType=Exe</c> at evaluation time; this overload runs the same
+    /// <see cref="ProjectCollection"/> evaluation as <see cref="GetEvaluatedTargetFrameworks"/>
+    /// and falls back to the XML-only path when MSBuild evaluation is unavailable.
+    /// </summary>
+    public static string GetOutputType(RoslynProject project, XDocument? document, ILogger? logger = null)
+    {
+        var evaluated = GetEvaluatedOutputType(project.FilePath, logger);
+        return !string.IsNullOrWhiteSpace(evaluated) ? evaluated : GetOutputType(document);
+    }
+
     public static string GetOutputType(XDocument? document)
     {
         return document?.Descendants("OutputType").FirstOrDefault()?.Value.Trim() ?? "Library";
+    }
+
+    internal static string? GetEvaluatedOutputType(string? projectFilePath, ILogger? logger)
+    {
+        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
+        {
+            return null;
+        }
+
+        MsBuildInitializer.EnsureInitialized();
+        var projectCollection = new ProjectCollection();
+
+        try
+        {
+            var evaluatedProject = projectCollection.LoadProject(projectFilePath);
+            var outputType = evaluatedProject.GetPropertyValue("OutputType");
+            return string.IsNullOrWhiteSpace(outputType) ? null : outputType.Trim();
+        }
+        catch (Exception ex)
+        {
+            logger?.LogDebug(ex, "Failed to evaluate output type for project {Path}", projectFilePath);
+            return null;
+        }
+        finally
+        {
+            projectCollection.UnloadAllProjects();
+        }
     }
 
     public static string GetAssemblyName(RoslynProject project)

@@ -31,7 +31,11 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
 
         Assert.IsNotNull(testProject, "SampleLib.Tests project not found.");
         Assert.IsTrue(testProject.IsTestProject, "SampleLib.Tests should be recognized as a test project.");
-        Assert.AreEqual("Library", testProject.OutputType);
+        // Microsoft.NET.Test.Sdk injects <OutputType>Exe</OutputType> for the test-host runner
+        // (`dotnet test` invokes testhost.exe). The post-fix MSBuild evaluator surfaces this value;
+        // the pre-fix XML-only path saw no element and defaulted to "Library". Test-vs-library
+        // discrimination lives on IsTestProject (asserted above), not OutputType.
+        Assert.AreEqual("Exe", testProject.OutputType);
         Assert.AreEqual("SampleLib.Tests", testProject.AssemblyName);
     }
 
