@@ -13,81 +13,78 @@ public static partial class RoslynPrompts
     // ── New prompts: Security and Agent Awareness ──
 
     [McpServerPrompt(Name = "security_review")]
-    [Description("Generate a prompt that guides a comprehensive security review using security diagnostic tools and code fix workflows.")]
-    public static async Task<IEnumerable<PromptMessage>> SecurityReview(
-        ISecurityDiagnosticService securityService,
-        INuGetDependencyService nuGetDependencyService,
+    [Description("Generate a pure-template prompt that walks the agent through a comprehensive security review. Renders instructions only — the caller is responsible for invoking `security_analyzer_status`, `security_diagnostics`, and `nuget_vulnerability_scan` in sequence and feeding their structured results into the triage step.")]
+    public static IEnumerable<PromptMessage> SecurityReview(
         [Description("The workspace session identifier")] string workspaceId,
-        [Description("Optional: filter by project name")] string? projectName = null,
-        CancellationToken ct = default)
+        [Description("Optional: filter by project name")] string? projectName = null)
     {
-        try
-        {
-            var status = await securityService.GetAnalyzerStatusAsync(workspaceId, ct).ConfigureAwait(false);
-            var findings = await securityService.GetSecurityDiagnosticsAsync(workspaceId, projectName, null, ct).ConfigureAwait(false);
-            NuGetVulnerabilityScanResultDto? vulnScan = null;
-            try
-            {
-                vulnScan = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(
-                    workspaceId, projectName, includeTransitive: false, ct).ConfigureAwait(false);
-            }
-            catch (Exception)
-            {
-                // Network/SDK: still emit prompt; agent can run nuget_vulnerability_scan manually.
-            }
+        // get-prompt-text-side-effects-in-rendering: this prompt MUST stay pure — no service
+        // calls during template rendering. The previous implementation eagerly invoked
+        // `ISecurityDiagnosticService.GetAnalyzerStatusAsync`,
+        // `ISecurityDiagnosticService.GetSecurityDiagnosticsAsync`, and
+        // `INuGetDependencyService.ScanNuGetVulnerabilitiesAsync` (the last spawns
+        // `dotnet list package --vulnerable`, a network/SDK call). That violated the
+        // `get_prompt_text` contract ("pure template substitution") and ran a full security
+        // sweep on every prompt fetch. The caller now invokes the three security tools
+        // explicitly and passes their results back into the triage step.
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
+                Perform a comprehensive security review of workspace `{workspaceId}` using the server's security tools.
 
-            var statusSummary = new List<string>();
-            statusSummary.Add($"- .NET SDK Analyzers: {(status.NetAnalyzersPresent ? "Present" : "Not detected")}");
-            statusSummary.Add($"- SecurityCodeScan: {(status.SecurityCodeScanPresent ? "Present" : "Not installed")}");
-            if (status.MissingRecommendedPackages.Count > 0)
-            {
-                statusSummary.Add($"- Recommended packages to add: {string.Join(", ", status.MissingRecommendedPackages)}");
-            }
+                **Project Filter:** {projectName ?? "(entire workspace)"}
 
-            var findingsSummary = findings.Findings.Take(20).Select(f =>
-                $"- [{f.SecuritySeverity}] {f.DiagnosticId} ({f.OwaspCategory}): {f.Message} at {f.FilePath}:{f.StartLine}").ToArray();
+                ## Step 1 — Gather analyzer coverage
+                Call `security_analyzer_status` to confirm which analyzer packages are present:
+                - `.NET SDK Analyzers` (built-in)
+                - `SecurityCodeScan` (optional NuGet)
+                - `MissingRecommendedPackages` — any package the workspace would benefit from adding.
 
-            var vulnSummary = vulnScan is null
-                ? "(NuGet vulnerability scan was not run in this prompt — call `nuget_vulnerability_scan` on the workspace.)"
-                : $"{vulnScan.TotalVulnerabilities} vulnerable package reference(s) ({vulnScan.CriticalCount} critical, {vulnScan.HighCount} high, {vulnScan.MediumCount} medium, {vulnScan.LowCount} low). Scanned projects: {vulnScan.ScannedProjects}.";
+                If `MissingRecommendedPackages` is non-empty, call `add_package_reference_preview`
+                to add them, apply the preview, then call `workspace_reload` so the new analyzers
+                participate in the next diagnostic sweep.
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
-                    Perform a comprehensive security review of this .NET workspace.
+                ## Step 2 — Pull Roslyn security findings
+                Call `security_diagnostics` with the optional `projectFilter` above and inspect the
+                result envelope:
+                - `TotalFindings` and the per-severity counts (`CriticalCount`, `HighCount`,
+                  `MediumCount`, `LowCount`).
+                - `Findings[]` — each entry carries `DiagnosticId`, `SecuritySeverity`,
+                  `OwaspCategory`, `Message`, `FilePath`, `StartLine`, `StartColumn`.
 
-                    **Project Filter:** {projectName ?? "(entire workspace)"}
+                Triage by severity: address Critical and High first.
 
-                    **Analyzer Coverage:**
-                    {string.Join('\n', statusSummary)}
+                ## Step 3 — Pull NuGet CVE coverage
+                Call `nuget_vulnerability_scan` (optionally with `includeTransitive: true`) to
+                refresh dependency CVE data. Inspect:
+                - `TotalVulnerabilities` and the per-severity counts.
+                - `ScannedProjects` — confirm the scan covered the expected scope.
 
-                    **NuGet dependency vulnerabilities (CVE database):**
-                    {vulnSummary}
+                Treat Critical/High package vulnerabilities as urgent — use
+                `add_package_reference_preview` / package upgrades to resolved patched versions
+                when available.
 
-                    **Security Findings Summary:** {findings.TotalFindings} total ({findings.CriticalCount} critical, {findings.HighCount} high, {findings.MediumCount} medium, {findings.LowCount} low)
+                ## Step 4 — Fix one finding at a time
+                For each Roslyn finding (Step 2):
+                1. Call `diagnostic_details` with the diagnostic ID, file, line, and column to get
+                   detailed fix information.
+                2. If a Roslyn code fix is available, call `code_fix_preview` to inspect the
+                   proposed change, then `code_fix_apply` once satisfied.
+                3. If no automated fix is available, use `get_code_actions` at the finding
+                   location, or apply manual fixes via `apply_text_edit` / `apply_multi_file_edit`.
 
-                    **Findings:**
-                    {PromptMessageBuilder.FormatBulletList(findingsSummary, "No security findings detected.")}
+                ## Step 5 — Validate and re-scan
+                1. After fixing a batch of findings, call `build_workspace` to confirm the fixes
+                   compile.
+                2. Re-run `security_diagnostics` and `nuget_vulnerability_scan` to confirm exposure
+                   has decreased.
+                3. Flag any findings that require architectural changes or manual review rather
+                   than mechanical fixes — these belong in a follow-up review, not the current pass.
 
-                    Use this workflow:
-                    1. Review the analyzer coverage above. If recommended packages are missing, consider using `add_package_reference_preview` to add them, then `workspace_reload` to pick up new analyzers.
-                    2. Run `nuget_vulnerability_scan` (optionally with `includeTransitive: true`) to refresh dependency CVE data. Treat Critical/High package vulnerabilities as urgent; use `add_package_reference_preview` / package upgrades to resolved patched versions when available.
-                    3. Triage Roslyn security findings by severity — address Critical and High first.
-                    4. For each finding, call `diagnostic_details` with the diagnostic ID, file, line, and column to get detailed fix information.
-                    5. If a Roslyn code fix is available, use `code_fix_preview` to inspect the proposed change, then `code_fix_apply` to apply it.
-                    6. If no automated fix is available, use `get_code_actions` at the finding location, or apply manual fixes via `apply_text_edit` or `apply_multi_file_edit`.
-                    7. After fixing a batch of findings, call `build_workspace` to verify the fixes compile.
-                    8. Re-run `security_diagnostics` and `nuget_vulnerability_scan` to confirm exposure has decreased.
-                    9. Flag any findings that require architectural changes or manual review rather than mechanical fixes.
-
-                    Prioritize fixes that eliminate injection vulnerabilities and insecure deserialization patterns.
-                    """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("security_review", ex)];
-        }
+                Prioritize fixes that eliminate injection vulnerabilities and insecure
+                deserialization patterns.
+                """)
+        ];
     }
 
     [McpServerPrompt(Name = "discover_capabilities")]
