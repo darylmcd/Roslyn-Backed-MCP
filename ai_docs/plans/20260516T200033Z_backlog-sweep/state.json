@@ -84,7 +84,7 @@
     {
       "id": "get-di-registrations-default-response-exceeds-mcp-cap",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "get-di-registrations-default-response-exceeds-mcp-cap"
       ],
@@ -97,11 +97,11 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Backlog row claimed showLifetimeOverrides=true default; actual is false. Fact corrected in stanza. judgmentHeavy (two API approaches)."
+      "branch": "remediation/get-di-registrations-default-response-exceeds-mcp-cap",
+      "worktreePath": ".worktrees/get-di-registrations-default-response-exceeds-mcp-cap",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/788",
+      "mergedAt": "2026-05-16T23:45:56Z",
+      "notes": "Backlog row claimed showLifetimeOverrides=true default; actual is false. Fact corrected in stanza. judgmentHeavy (two API approaches). Shipped as PR #788 (squash abd0d5e). Default limit=100 (existing test passes explicit limit=1, default change not regression-covered)."
     },
     {
       "id": "get-prompt-text-side-effects-in-rendering",
@@ -172,7 +172,7 @@
     {
       "id": "guided-extract-interface-prompt-payload-cap",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "guided-extract-interface-prompt-payload-cap"
       ],
@@ -185,11 +185,11 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Conflict with initiative 3 \u2014 both touch RoslynPrompts.RefactoringWorkflows.cs (different methods). Schedule init 6 in later wave."
+      "branch": "remediation/guided-extract-interface-prompt-payload-cap",
+      "worktreePath": ".worktrees/guided-extract-interface-prompt-payload-cap",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/790",
+      "mergedAt": "2026-05-16T23:46:06Z",
+      "notes": "Conflict with init 3 (PR #786) \u2014 different methods in same file; init 3 landed first, no rebase friction. Shipped as PR #790 (squash 8c611c0). Test bumped synthetic project count from plan's 15 to 25 so truncation footer is actually exercised by assertion."
     },
     {
       "id": "project-graph-output-type-misreports-sdk-defaulted-exe",
@@ -238,7 +238,7 @@
     {
       "id": "test-coverage-timeout-failure-envelope",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-coverage-timeout-failure-envelope"
       ],
@@ -251,11 +251,11 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Anchor stale \u2014 backlog cited TestCoverageResultDto.cs (actual: TestCoverageDto.cs) and tests/TestCoverage* (no matches; new file needed). judgmentHeavy (OCE catch scope)."
+      "branch": "remediation/test-coverage-timeout-failure-envelope",
+      "worktreePath": ".worktrees/test-coverage-timeout-failure-envelope",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/789",
+      "mergedAt": "2026-05-16T23:46:01Z",
+      "notes": "Anchor stale corrected in stanza (TestCoverageDto.cs not TestCoverageResultDto.cs; new test file created). judgmentHeavy (OCE catch scope). Shipped as PR #789 (squash 31d9a0d)."
     },
     {
       "id": "test-reference-map-pagination-only-covers-covered-symbols",
