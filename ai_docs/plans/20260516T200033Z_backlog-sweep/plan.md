@@ -56,6 +56,18 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG entry (draft) | Fixed `find_reflection_usages` now returns bounded, paginated results (limit/offset/summary/hasMore/totalCount) — previously returned all hits with no cap, producing 100+ KB responses on reflection-heavy solutions (gh #760). |
 | Backlog sync | Close rows: [`compact-paged-high-volume-analysis-results`]. Spin off new row: `compact-semantic-grep-pagination` — add `offset`/`totalCount`/`hasMore` to `semantic_grep` tool and `ISemanticGrepService.SearchAsync` (3 files: `AnalysisTools.cs`, `ISemanticGrepService.cs`, `SemanticGrepService.cs`; the current `limit` hard-cap exists but there is no paging envelope). |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** strongest mirror for the wrapper envelope is `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:382-418` (`FindTypeUsages`) — same shape: `Skip(offset).Take(limit)` + group-by-classification dictionary + `count`/`totalCount`/`hasMore`/`offset`/`limit` fields. Use this for `AdvancedAnalysisTools.cs:167-181`. Summary-mode shape lives at `AnalysisTools.cs:77-102`.
+- **Test target:** new file `tests/RoslynMcp.Tests/FindReflectionUsagesPaginationTests.cs` must inherit `SharedWorkspaceTestBase` and use the `ClassInitialize` + `LoadSharedSampleWorkspaceAsync` pattern — mirror `tests/RoslynMcp.Tests/CohesionAnalysisTests.cs:1-20`. Call `CodePatternAnalyzer.FindReflectionUsagesAsync` directly from the static service field. The shared `SampleLib` already contains reflection sites; verify count before fabricating synthetic ones.
+- **Edge cases to cover:** (1) `CollectReflectionInvocations` and `CollectTypeofUsages` both run at `CodePatternAnalyzer.cs:47-48` — early-exit must be applied AFTER both collectors emit (collect `offset + limit + 1`, then slice) so neither `UsageKind` family is starved; (2) `projectFilter` null vs set — paging must apply post-filter; (3) `summary=true` must compute `usageKindCounts` on the FULL result set, not the paged slice.
+- **Negative space:** do NOT touch `src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs` or `AnalysisTools.cs:421-439` (`SemanticGrep`) — that fix is the `compact-semantic-grep-pagination` follow-up row. Do NOT modify `ICodePatternAnalyzer.SemanticSearchAsync` — unrelated method on the same interface.
+
+</details>
+
 ### 2. get-di-registrations-default-response-exceeds-mcp-cap
 
 | Field | Content |
@@ -73,6 +85,18 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `get_di_registrations` default response now returns a bounded first page (offset/limit, default 100 registrations) with `totalCount`/`hasMore` metadata, preventing MCP inline transport cap overflow on large DI graphs (fixes gh #771). |
 | Backlog sync | Close rows: [`get-di-registrations-default-response-exceeds-mcp-cap`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror the `find_type_usages` envelope at `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:403-417` (`count` / `totalCount` / `hasMore` / `offset` / `limit` + payload key, using `paged = results.Skip(offset).Take(limit).ToList()` and `hasMore = offset + paged.Count < results.Count`). The cited `project_diagnostics` precedent lives at `AnalysisTools.cs:55-63`. Use the existing `ParameterValidation.ValidatePagination(offset, limit)` helper (called at `AnalysisTools.cs:400`) — do not roll your own clamp.
+- **Test target:** add the new test to `tests/RoslynMcp.Tests/DiLifetimeOverrideTests.cs` (existing class at line 16); mirror `Summary_Mode_Returns_Compact_Counts_And_Paged_Override_Chains` at line 144 for the `AdvancedAnalysisTools.GetDiRegistrations(...)` + `JsonDocument.Parse` shape. Do NOT create a new test file. Write 101 distinct service-type interfaces into the shim (extend `WriteServiceCollectionShimAsync` at line 187) so the default `limit=100` produces `hasMore=true`, `totalCount=101`, `registrations` length = 100.
+- **Hotspot seam:** two distinct serialize sites need paging — `AdvancedAnalysisTools.cs:79` (non-overrides) AND `AdvancedAnalysisTools.cs:92-98` (overrides). Both must page the `registrations` list identically; the overrides path keeps emitting `overrideChainCount` / `overrideChains` unchanged.
+- **Negative space:** do NOT touch the `summary=true` branches at `AdvancedAnalysisTools.cs:72-77` and `85-90` — those already page `overrideChains` via `BuildDiRegistrationSummary` and are covered by the existing `Summary_Mode_...` test. Also update the parameter `Description` text at lines 63-64 to drop the Ignored-for-detailed-responses caveat — leaving the stale caveat is documented Risk #1.
+
+</details>
 
 ### 3. get-prompt-text-side-effects-in-rendering
 
@@ -92,6 +116,19 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG entry (draft) | Fixed `get_prompt_text` side effects: `debug_test_failure` and `security_review` prompts now return pure instruction templates instead of eagerly invoking `dotnet test` and NuGet vulnerability scans during rendering (fixes gh #772). |
 | Backlog sync | Close rows: [`get-prompt-text-side-effects-in-rendering`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `RoslynPrompts.AnalysisWorkflows.cs:93-149` (`DiscoverCapabilities`) — already-pure template: accepts only the user-facing parameter, builds the `PromptMessage` directly from string interpolation with no `await` of any injected service. Replace the bodies of `DebugTestFailure` (`RoslynPrompts.RefactoringWorkflows.cs:15-70`) and `SecurityReview` (`RoslynPrompts.AnalysisWorkflows.cs:15-91`) to follow that shape.
+- **Bounded refactor scope:** only two named methods in two named files. Do NOT generalize this into a sweep across the 9 sibling prompts — that is a follow-up intake row.
+- **Test target:** add new tests to existing class `tests/RoslynMcp.Tests/PromptSmokeTests.cs` — do NOT create a new file. Mirror the existing sibling fixture `DebugTestFailure_FileLockEnvelope_RendersBypassGuidance` at line 214; reuse its private `StubTestRunnerService` pattern at line 267 (extend it to throw on `RunTestsAsync` to assert non-invocation). Add equivalent throwing stubs for `ISecurityDiagnosticService` + `INuGetDependencyService`. Refactor or delete the existing `SecurityReview_Returns_Text` at line 91 — its live-service exercise is now invalidated.
+- **Edge cases to cover:** (1) the FileLock short-circuit at `RefactoringWorkflows.cs:30-33` must be removed along with the eager call; (2) the inner `try/catch` swallowing `ScanNuGetVulnerabilitiesAsync` at `AnalysisWorkflows.cs:28-37` becomes dead code after refactor; (3) update the `[Description]` on `DebugTestFailure` at `RefactoringWorkflows.cs:14` to pure-template wording (in scope).
+- **Negative space:** do NOT modify `PromptMessageBuilder.cs` — Diagnosis explicitly states it is pure formatting utilities and not implicated. Do NOT touch `GuidedExtractInterface` (`RefactoringWorkflows.cs:240-297`) — that is initiative 6 surface area.
+
+</details>
+
 ### 4. symbol-refactor-preview-auto-applies-without-explicit-apply-call
 
 | Field | Content |
@@ -110,6 +147,23 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG entry (draft) | Fixed `symbol_refactor_preview` incorrectly applying each chained sub-operation to the workspace during preview, writing files to disk and recording ledger entries before the agent called any `*_apply` tool. Preview now chains operations purely in-memory (fixes gh #770). |
 | Backlog sync | Close rows: [`symbol-refactor-preview-auto-applies-without-explicit-apply-call`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates for Solution-threading:**
+  - `Renamer.RenameSymbolAsync(solution, symbol, …)` at `src/RoslynMcp.Roslyn/Services/RefactoringService.cs:70-71` already accepts an explicit `Solution` — direct precedent for `ExecuteRenameAsync`.
+  - `EditService.PreviewMultiFileTextEditsAsync` at `src/RoslynMcp.Roslyn/Services/EditService.cs:206-275` already threads an `accumulator = initialSolution` internally; expose that accumulator via a Solution-accepting overload.
+  - `RestructureService.PreviewRestructureAsync` at `src/RoslynMcp.Roslyn/Services/RestructureService.cs:38-115` — same overload shape.
+  - `IPreviewStore.Retrieve` (`src/RoslynMcp.Roslyn/Contracts/IPreviewStore.cs:60`) already exposes `ModifiedSolution` on the returned tuple — extract it instead of calling `ApplyRefactoringAsync`.
+- **Critical: token-store mismatch.** The Validation step redeem with `apply_composite_preview` retrieves from **`ICompositePreviewStore`** — NOT `IPreviewStore`. Mirror the existing in-file pattern at `SymbolRefactorService.cs:175-185` (`PreviewSplitServiceWithDiAsync`): build a `List<CompositeFileMutation>` from `finalSolution.GetChanges(initialSolution)` and store via `_compositePreviewStore.Store(workspaceId, version, description, mutations)`. **The plan Approach step (3) saying `_previewStore.Store` is incorrect** for the redeem path described in Validation.
+- **Test target:** add `tests/RoslynMcp.Tests/SymbolRefactorPreviewTests.cs` mirroring `RecordFieldAddSatelliteTests.cs:34-290` — `IsolatedWorkspaceTestBase` inheritance, same `[ClassInitialize]/[ClassCleanup]` shape, same private `CreateSymbolRefactorService(CompositePreviewStore)` helper at line 279-290. Use `ChangeTracker.GetChanges(wsId)` for the ledger-empty assertion (sibling pattern at `tests/RoslynMcp.Tests/ChangeTrackerTests.cs:42`).
+- **Hotspot seam:** edits confined to `PreviewAsync` (lines 57-114) and possibly the private `ExecuteRenameAsync`/`ExecuteEditAsync`/`ExecuteRestructureAsync` helpers (lines 129-152). Do NOT touch `PreviewSplitServiceWithDiAsync` (line 162+) or `PreviewRecordFieldAddWithSatellitesAsync` — those already use the correct composite-store path.
+- **Negative space:** do NOT modify `RefactoringService.ApplyRefactoringAsync`, `IPreviewStore` interface, `IChangeTracker`, or `SymbolRefactorTools.cs`. Invalidate intermediate per-step preview tokens via `_previewStore.Invalidate(stepPreview.PreviewToken)` after extracting their `ModifiedSolution`.
+
+</details>
+
 ### 5. symbol-search-broad-query-response-cap-overflow
 
 | Field | Content |
@@ -127,6 +181,19 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `symbol_search` regression (gh #617): broad queries with `limit > ~30` exceeded the MCP inline transport cap (171 KB observed at limit=100). Added `summary=true` parameter that drops expensive per-symbol fields. Lowered server-side hard cap from 200 to 50; callers relying on `limit > 50` were already receiving tool-results-file fallbacks. |
 | Backlog sync | Close rows: [`symbol-search-broad-query-response-cap-overflow`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `SymbolTools.cs:200,202,239` for the `summary` parameter shape — `int limit = 100` placement, `[Description("When true, drops…")]` text style, and `summary` echo in the response envelope. CAUTION: `find_references` threads `summary` into `IReferenceService.FindReferencesAsync(..., summary, ...)` at line 229; for `symbol_search` the plan deliberately does NOT change `ISymbolSearchService` — projection happens at the tool wrapper via anonymous select over `paged`. Do not edit `SymbolSearchService.cs` or `SymbolDto`.
+- **Two response sites to project:** both envelopes in `SearchSymbols` serialize raw `SymbolDto`. Apply the anonymous-object projection in BOTH: (a) elicitation single-pick envelope at `SymbolTools.cs:93-102`, (b) list envelope at `SymbolTools.cs:106-114`. Skipping the elicitation branch reopens the overflow path.
+- **Test target:** extend `tests/RoslynMcp.Tests/SymbolSearchPaginationTests.cs` (existing tool-layer fixture via `ToolExecutionTestHarness.RunAsync("symbol_search", …)`). Do NOT model on `FindReferencesSummaryTests.cs` — that calls the service directly; `symbol_search` projection is tool-layer-only. Mirror the harness pattern at `SymbolSearchPaginationTests.cs:31-60`.
+- **Existing test to update:** `SymbolSearch_HasMore_FalseOnLastPage` at line 112 passes `limit: 200` (line 121) — lower to `limit: 50`. `SymbolSearch_LimitExceeds200_ThrowsArgumentException` at line 166 must rename to `…Exceeds50…` and pass `limit: 51` (line 174). Update the cap guard at `SymbolTools.cs:38-39` AND the `[Description]` text at `SymbolTools.cs:31` (`max: 200` → `max: 50`).
+- **Negative space:** do NOT touch `GetSymbolInfo` (line 121), `GoToDefinition` (line 151), `FindReferences` (line 189), or `FindImplementations` (line 248). Do NOT modify `SymbolDto` or `ISymbolSearchService` — projection is tool-wrapper-only.
+
+</details>
 
 ### 6. guided-extract-interface-prompt-payload-cap
 
@@ -182,6 +249,18 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG entry (draft) | Fixed `audit-phase-runner` subagents dispatched for Phases 3 and 4 of `/mcp-server-surface-test --full` now use a deterministic type/method selection rule (top-N by cyclomatic score; alphabetical fallback) and are explicitly prohibited from calling `AskUserQuestion` — eliminating operator-attention interruptions during the 90–180 minute parallel audit fanout. |
 | Backlog sync | Close rows: [`surface-test-subagent-symbol-selection-must-be-autonomous`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates (selection rule insertion):** insert the deterministic selection rule as a new paragraph between `setup-and-analysis.md:137` (Phase 3 heading) and `setup-and-analysis.md:139` (`For each key type:` lede). Mirror the same insertion between `setup-and-analysis.md:164` (Phase 4 heading) and `setup-and-analysis.md:166` (`For each:` lede). The Phase 2 tool `get_complexity_metrics` referenced by the rule is defined at `setup-and-analysis.md:120` — verify the metadata name matches verbatim.
+- **Pattern coordinates (Allowed Phases table):** the existing table at `audit-phase-runner.md:25-31` uses the schema `| Phase <n> | <Purpose> | <Expected tool families> |`. Append two new rows after line 30 (Phase 8) and before line 31 (Phase 8b) to preserve numeric order. Phase 3 tool families: `symbol_search`, `symbol_info`, `type_hierarchy`, `find_implementations`, `find_references`. Phase 4 tool families: `analyze_data_flow`, `analyze_control_flow`, `get_operations`, `trace_exception_flow`. Match column-alignment style exactly.
+- **Pattern coordinates (Execution Rules):** append the new `AskUserQuestion` prohibition bullet at `audit-phase-runner.md:41` — immediately before the existing closing bullet so ordering remains tool-preference → output-discipline → mutation-prohibition → ask-prohibition → terminator. The blocked-fallback contract referenced is at `audit-phase-runner.md:19`.
+- **Negative space:** do NOT modify the Budget and truncation contract block (`audit-phase-runner.md:43-55`). Do NOT touch MCP audit checkpoint paragraphs at `setup-and-analysis.md:160` (Phase 3) and `:175` (Phase 4). Do NOT alter Phase 3 step-7b note about `find_type_consumers` or Phase 4 v1.8+ expression-body notes.
+
+</details>
+
 ### 9. test-coverage-timeout-failure-envelope
 
 | Field | Content |
@@ -199,6 +278,18 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `test_coverage` now returns a structured `failureEnvelope` (`errorKind=Timeout` or `errorKind=Unknown`) when the dotnet test run is cancelled or encounters an unexpected runner error, instead of surfacing a bare invocation exception to the MCP host. |
 | Backlog sync | Close rows: [`test-coverage-timeout-failure-envelope`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates (catch ordering precedent):** mirror `WorkspaceValidationService.cs:185-208` — wraps an awaited call with `catch (OperationCanceledException) { throw; }` ordered BEFORE `catch (Exception ex)`. Stanza tells you NOT to rethrow OCE; instead use the `WorkspaceValidationService.cs:442-449` pattern where OCE is caught and a structured DTO is returned. For the timeout-envelope shape, see `TestRunnerService.cs:98-127`.
+- **Test target:** create new file `tests/RoslynMcp.Tests/TestCoverageFailureEnvelopeTests.cs` (no existing `TestCoverage*` file matches); mirror the `[TestClass] public sealed class` + `FakeExecution` helper shape from `TestRunFailureEnvelopeTests.cs:13-58`. Use a hand-rolled `IDotnetCommandRunner` stub in the style of `HardeningBehaviorTests.cs:92-100` (`HangingDotnetCommandRunner`) — those tests do not use NSubstitute for this interface. Tests must invoke `TestCoverageTools.RunTestCoverageCore` (internal method) not the public `RunTestCoverage` entry point.
+- **Edge cases to cover:** (1) `OperationCanceledException` from `RunAsync` → `Timeout`/`IsRetryable=false`; (2) generic `Exception` from `RunAsync` → `Unknown` with `ex.Message` embedded in summary; (3) regression guard — `CommandExecutionDto(Succeeded=false, ExitCode=1)` returned normally still emits the existing `TestFailure` envelope at `TestCoverageTools.cs:104-117`; (4) OCE escaping the `Directory.GetFiles` scan block at `TestCoverageTools.cs:97-99` must also be caught — wrap through line 123, not just line 93.
+- **Negative space:** do NOT add a `Timeout` case to the `errorKind` ternary at `TestCoverageTools.cs:104` — that is the no-coverage-file fallback for a *successful* runner invocation; the new envelope is for the exception path only. Do NOT modify `TestCoverageResultDto` record signature at `TestCoverageDto.cs:6-12` — only the XML doc at line 18 changes. Do NOT touch `MissingPackages` semantics.
+
+</details>
 
 ### 10. test-reference-map-pagination-only-covers-covered-symbols
 
@@ -218,6 +309,18 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG entry (draft) | Fixed `test_reference_map` ignoring `limit` for mock-drift warnings: `mockDriftWarnings` is now bounded by a new `maxMockDriftWarnings` parameter (default 50) with `totalMockDriftCount`/`hasMoreMockDrift` metadata (fixes gh #774). |
 | Backlog sync | Close rows: [`test-reference-map-pagination-only-covers-covered-symbols`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `TotalCoveredCount`/`TotalUncoveredCount` — DTO doc-comments at `src/RoslynMcp.Core/Services/ITestReferenceMapService.cs:51-52`, positional-record params at `ITestReferenceMapService.cs:63-64`. Add `TotalMockDriftCount` after `TotalUncoveredCount` and `HasMoreMockDrift` after `HasMore` to preserve declaration order (`MockDriftWarnings` slot at line 60 stays put).
+- **Hotspot seam:** the clamp/take edit goes in `BuildPaginatedResult` at `src/RoslynMcp.Roslyn/Services/TestReferenceMapService.cs:252-295` (add `int maxMockDriftWarnings` param, `clampedMax = Math.Clamp(...)` near line 265, `mockDrift.Take(clampedMax).ToArray()` before the `new TestReferenceMapDto(...)` construction at line 283). Call site is `BuildAsync` at line 73-74 — thread the new param there. Do NOT touch `DetectMockDriftAsync` at line 310+ — that is the collector, not the paginator.
+- **Test target:** extend `tests/RoslynMcp.Tests/TestReferenceMapServiceTests.cs`. Mirror `BuildAsync_Limit1_TruncatesAndSurfacesHasMore` at line 42-56. **WARNING**: `BuildPaginatedResult` is `private static` and `DetectMockDriftAsync` builds `mockDrift` from real Roslyn data — the plan synthetic 109-entry `mockDrift` cannot be injected through the public `BuildAsync` surface. Either (a) bump `BuildPaginatedResult` to `internal static` and add `InternalsVisibleTo("RoslynMcp.Tests")` (check if already present in `RoslynMcp.Roslyn.csproj`), or (b) write the test against the public `BuildAsync` and assert cap-at-default behavior using whatever mock-drift count the fixture produces. Path (a) is cleaner.
+- **Negative space:** do NOT touch `src/RoslynMcp.Host.Stdio/Tools/TestCoverageTools.cs` or `src/RoslynMcp.Core/Models/TestCoverageDto.cs` — those are the stale-anchor target AND Initiative 9 scope. The fix lives in `TestReferenceMap*`, not `TestCoverage*`.
+
+</details>
+
 ### 11. test-suite-heavy-fixture-reuse
 
 | Field | Content |
@@ -235,6 +338,18 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG category | Maintenance |
 | CHANGELOG entry (draft) | Refactored `ChangeSignaturePreviewTests` to inherit `IsolatedWorkspaceTestBase`, replacing 14 repeated copy/load/close boilerplate blocks with `CreateIsolatedWorkspaceAsync()` — no behaviour change. |
 | Backlog sync | Close rows: [`test-suite-heavy-fixture-reuse`]. Spin off sibling row: `test-suite-fixture-reuse-cohesion-and-validate-git` covering `CohesionAnalysisTests` 6 isolated tests + `ValidateRecentGitChangesTests` + `ChangeSignaturePreviewMetadataNameShapeTests`. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs:30-36` and `:99-106` — canonical write-then-load: `CreateIsolatedWorkspaceCopy()` → `workspace.GetPath(...)` + `File.WriteAllTextAsync` → `await workspace.LoadAsync(CancellationToken.None)`. The `IsolatedWorkspaceScope` API is at `tests/RoslynMcp.Tests/IsolatedWorkspaceTestBase.cs:21-85`.
+- **Helper-choice rule (all 14 tests):** Every test in `ChangeSignaturePreviewTests.cs` writes fixture `.cs` files BEFORE the workspace load. All 14 MUST use `CreateIsolatedWorkspaceCopy()` + write + `workspace.LoadAsync()` — NOT `CreateIsolatedWorkspaceAsync()` (which loads before you can write). The plan option A is a trap here; option B applies uniformly.
+- **Test method locations to convert:** lines 39, 123, 198, 308, 371, 441, 523, 591, 656, 721, 788, 851, 927, 975. Each has identical 3-line preamble (`copiedSolutionPath`/`solutionDir`/`sampleLibDir`) + `LoadAsync` block + `try`/`finally { WorkspaceManager.Close(workspaceId); }` to replace. Replace `sampleLibDir`/`solutionDir` references with `workspace.GetPath("SampleLib", ...)`; replace `workspaceId` with `workspace.WorkspaceId`.
+- **Negative space:** do NOT touch `tests/RoslynMcp.Tests/ChangeSignaturePreviewMetadataNameShapeTests.cs` — sibling class, same shape, explicitly deferred to follow-on row. Leave `[ClassInitialize]`/`[ClassCleanup]` at `:25-36` untouched.
+
+</details>
 
 ### 12. test-suite-heavy-lane-categorization
 
@@ -272,6 +387,23 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG entry (draft) | Maintenance: split `IntegrationTests` kitchen-sink class into three focused classes (`IntegrationTests_WorkspaceCore`, `IntegrationTests_SymbolNavigation`, `IntegrationTests_EditApply`) — no assertions changed. |
 | Backlog sync | Close rows: [`test-suite-integration-class-split`]. Spin off sibling row: `test-suite-expanded-surface-class-split` — split `ExpandedSurfaceIntegrationTests.cs` after init 12 lands; ≤ 3 new test files; no product code. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Method count is 28, not 21.** Validation criterion "Total method count = 21 (no tests lost)" will falsely fail. The actual count of `[TestMethod]` in `tests/RoslynMcp.Tests/IntegrationTests.cs` is **28**. Use 28 as the post-split sum target.
+- **Bucket assignments (exact line anchors, all from `IntegrationTests.cs`):**
+  - `IntegrationTests_WorkspaceCore` (8 tests): lines 25, 38, 45, 54, 61, 71, 80, 92.
+  - `IntegrationTests_SymbolNavigation` (14 tests, not 10): lines 100, 107, 117, 126, 136, 144, 157, 173, 196, 212, 230, 249, 259, 276.
+  - `IntegrationTests_EditApply` (6 tests, not 5): lines 296, 311, 325, 366, 396, 424.
+- **ClassCleanup safety is a non-issue.** `TestBase.DisposeServices()` at `tests/RoslynMcp.Tests/TestBase.cs:215-218` is an intentional no-op (assembly-lifecycle disposal lives in `AssemblyLifecycle.Cleanup` / `DisposeAssemblyResources` at L225). Three `[ClassCleanup] { DisposeServices(); }` blocks are safe.
+- **Class-name filter-string risk is empty.** Grep for `IntegrationTests` returned **zero hits** in `eng/`, `.github/workflows/`, and `CI_POLICY.md`. Validation step (4) reduces to a confirmatory re-grep; no edits expected.
+- **Pattern to mirror:** the existing `[ClassInitialize]`/`[ClassCleanup]` block at `IntegrationTests.cs:12-23`. All three new classes inherit `SharedWorkspaceTestBase`, mark `[DoNotParallelize][TestClass]`, and use the same `InitializeServices(); WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);` body.
+- **Negative space:** do NOT touch `tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs` — that is the explicit follow-on row spinoff and initiative 12 surface. Do NOT modify `TestBase.cs` or `SharedWorkspaceTestBase.cs`.
+
+</details>
+
 ### 14. workspace-toolchain-status-preflight
 
 | Field | Content |
@@ -290,6 +422,19 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG entry (draft) | Fixed `workspace_load` partial-load UX for legacy .NET Framework and COM-reference projects: `ResolveComReference` and `.NET Core MSBuild` diagnostics now classified as `WORKSPACE_VS_MSBUILD_REQUIRED` (Warning, not Error); `restoreHint` carries concrete remediation ("use Visual Studio MSBuild or remove COM references") instead of suggesting `dotnet restore`; `isReady: false` when this condition is present. |
 | Backlog sync | Close rows: [`workspace-toolchain-status-preflight`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates (Id flow precedent):** mirror the existing `WORKSPACE_UNRESOLVED_ANALYZER` chain end-to-end — counted in `From()` at `src/RoslynMcp.Core/Models/WorkspaceStatusSummaryDto.cs:70-77` (loop → counter → `analyzersReady` flag → `isReady` conjunction at line 80) and consumed by `BuildRestoreHint` at line 130-133 (highest-priority hint emission after `restoreRequired`).
+- **Plan-vs-reality gap on diagnostic Id:** the ingress at `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:1197-1206` auto-stamps `Id = "WORKSPACE_{Kind}".ToUpperInvariant()`, so a Failure-kind diagnostic arrives with `Id="WORKSPACE_FAILURE"` — the `WORKSPACE_VS_MSBUILD_REQUIRED` id never gets stamped today. Use the `IsVsMsbuildRequiredMessage(d.Message)` helper (which the plan tells you to add to the classifier) to detect the condition in `BuildRestoreHint`, mirroring the existing message-substring scan at `WorkspaceStatusSummaryDto.cs:135-152`. The `WORKSPACE_VS_MSBUILD_REQUIRED` token is currently unused in repo — no collision.
+- **Classifier coordinate:** the new branch in `IsInformationalWorkspaceFailureMessage` goes at `WorkspaceDiagnosticSeverityClassifier.cs:42-46` (immediately after the `pruned` check, before `return false`).
+- **Test target:** add the new file `tests/RoslynMcp.Tests/WorkspaceToolchainClassifierTests.cs` as the plan specifies; do NOT extend the existing `WorkspaceDiagnosticSeverityClassifierTests` class at `tests/RoslynMcp.Tests/DiagnosticServiceFilterTotalsTests.cs:100-129`. Mirror `From_UnresolvedAnalyzerWarning_AnalyzersReadyFalse_AndIsReadyFalse` at `WorkspaceStatusSummaryDtoTests.cs:79-91` for the `From_VsMsbuildRequired_IsReadyFalse_HintContainsRemediation` test.
+- **Negative space:** do NOT touch `WorkspaceManager.cs:1197-1206` (the failure-handler ingress) to rewrite the diagnostic Id; the message-content detection path keeps you out of the WorkspaceManager hotspot and preserves the 2-file scope. Do NOT modify the `StripUnresolvedAnalyzerReferencesAsync` path at `WorkspaceManager.cs:1869-1907`.
+
+</details>
+
 ### 15. find-unused-symbols-test-bridge-suffix-exclusion-gap
 
 | Field | Content |
@@ -307,3 +452,16 @@ The following row pairs share a theme but were intentionally NOT bundled — dif
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `find_unused_symbols` false positives for test-bridge accessor methods: names ending in `ForTest`, `ForTesting`, `_ForTest`, or `Internal` are now excluded when `excludeConventionInvoked=true` (default), matching the standard test-bridge accessor pattern (fixes gh #775). |
 | Backlog sync | Close rows: [`find-unused-symbols-test-bridge-suffix-exclusion-gap`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** edit `src/RoslynMcp.Roslyn/Services/UnusedCodeAnalyzer.cs:338-350` (`IsConventionInvokedMember`). Insert the suffix guard between line 341 (end of containing-type check) and line 343 (start of attribute loop). The companion type-level checker `IsConventionInvokedType` (lines 275-336) and the gating wrapper `IsConventionInvokedFiltered` (lines 263-268) are correct as-is — do NOT modify either.
+- **Test target:** the plan adds new `tests/RoslynMcp.Tests/UnusedSymbolsTestBridgeExclusionTests.cs`. Mirror the sibling convention-exclusion family at `tests/RoslynMcp.Tests/DeadCodeIntegrationTests.cs:119-214` — same `SharedWorkspaceTestBase` base class, `[DoNotParallelize]`, `ClassInit`/`ClassCleanup`, `LoadSharedSampleWorkspaceAsync` workspace setup, and the opt-out regression shape at lines 159-195 (`ExcludeConventionInvoked = false` → assertions invert).
+- **Fixture seeding (not in Scope but required):** assertions need test-bridge sample types in `samples/SampleSolution/SampleLib/ConventionFixtures.cs` (seed candidates: `BuildSelectCommandTextForTest`, `GetCacheForTesting`, `ResetStateInternal` on a plain internal class). **This is a fourth file beyond plan Scope — surface in the PR description, do not silently expand.**
+- **Edge cases to cover:** (1) private method (the gh #775 shape); (2) opt-out regression with `ExcludeConventionInvoked = false`; (3) negative control — `BuildInternal` on a truly-unused plain method MUST still be reported (confirms suffix-only is bounded); (4) keep `_ForTest` underscore variant as one test.
+- **Negative space:** do NOT touch `IUnusedCodeAnalyzer`, `UnusedSymbolsAnalysisOptions`, `AdvancedAnalysisTools.cs`, or `DeadCodeService.cs` (separate `remove_dead_code_preview` code path — anchor staleness in the backlog row pointed here). The suffix list is exact-suffix only — no `Contains`, no case-insensitive.
+
+</details>
