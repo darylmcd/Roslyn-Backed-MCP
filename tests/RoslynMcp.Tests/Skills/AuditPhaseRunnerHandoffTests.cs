@@ -68,13 +68,15 @@ public sealed class AuditPhaseRunnerHandoffTests
     [TestMethod]
     public void PromptAndRunner_AgreeOnDelegatedPhaseSet()
     {
-        // The runner agent declares the contract: phase parameter is one of `1`, `2`, `8`, or `8b`.
+        // The runner agent declares the contract: phase parameter is one of `1`, `2`, `3`, `4`, `8`, or `8b`.
         // The canonical prompt's Phase 0.5 dispatch plan must include those phase numbers somewhere
-        // in its group tables so the two files stay in sync.
+        // in its group tables so the two files stay in sync. Phase 3 (deep symbol analysis) and
+        // Phase 4 (flow analysis) were added in the surface-test-subagent-symbol-selection-must-be-autonomous
+        // initiative so G2 subagents have a codified phase listing and selection rule.
         var prompt = File.ReadAllText(ResolveFullPromptPath());
         var runner = File.ReadAllText(ResolveRunnerPath());
 
-        StringAssert.Contains(runner, "one of `1`, `2`, `8`, or `8b`");
+        StringAssert.Contains(runner, "one of `1`, `2`, `3`, `4`, `8`, or `8b`");
 
         // Each of these phase numbers must appear in the prompt's dispatch plan section. We don't
         // pin exact group placement because Phase 0.5 may legitimately re-group phases across
@@ -86,7 +88,7 @@ public sealed class AuditPhaseRunnerHandoffTests
         Assert.IsTrue(dispatchPlanEnd > dispatchPlanStart, "Phase 1 section not found after Phase 0.5 in full.md");
         var dispatchPlan = prompt[dispatchPlanStart..dispatchPlanEnd];
 
-        foreach (var phase in new[] { "1, 2", "7, 8, 8b" })
+        foreach (var phase in new[] { "1, 2", "3, 4", "7, 8, 8b" })
         {
             StringAssert.Contains(dispatchPlan, phase);
         }

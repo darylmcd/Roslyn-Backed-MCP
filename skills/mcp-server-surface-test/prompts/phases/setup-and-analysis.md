@@ -86,6 +86,8 @@ Group all dispatches in a single message with multiple `Agent` tool-use blocks w
 
 Each subagent prompt must include: (a) the workspace `workspaceId` (already loaded — subagents reuse the orchestrator's MCP session, no `workspace_load` needed), (b) the audit report path (read-only — for context only, do not write), (c) the disposable worktree path when relevant (G4 only), (d) the explicit phase numbers + the relevant prompt section excerpt, (e) "return a compact structured summary in <RESULT> envelope" instruction. The orchestrator pastes each returned summary into the report under the matching phase heading.
 
+**G2 data passthrough (Phase 2 → Phase 3/4):** When dispatching G2, the orchestrator MUST also paste Phase 2's `get_complexity_metrics` result (or a compact projection of it: list of `{ symbol, kind, cyclomatic }` entries sorted descending by cyclomatic score) into the subagent brief. Phase 3 and Phase 4 selection rules ("top-N by cyclomatic score") require this data — without it, the subagent falls back to alphabetical selection (functionally correct, less targeted). If G1 was skipped or its Phase 2 result was empty, paste an explicit `complexity: none` marker so the subagent knows to use the alphabetical fallback rather than ask.
+
 **Completion gate (load-bearing — replaces the soft `skipped-budget` fallback):**
 
 Any subagent that returns `skipped-budget`, `skipped-context`, `truncated`, or any equivalent self-imposed-limit marker for a phase is a **hard FAIL** of the `--full` contract. The orchestrator must either (a) re-dispatch that phase to a fresh subagent with a smaller scope, or (b) record `phase-failed-budget` in the coverage ledger and surface it in the report's *Coverage summary* as a P1 audit defect. Silent truncation labeled as "representative probe" is no longer an acceptable outcome — `--full` means full or it means honest failure with a named cause.
@@ -136,6 +138,8 @@ When the SKILL receives `--single-agent`, skip this dispatch plan and run all ph
 
 ### Phase 3: Deep symbol analysis (pick 3–5 key types)
 
+**Selection rule (deterministic, do not ask the operator):** Select types by descending cyclomatic score from Phase 2's `get_complexity_metrics` result — take the top 3–5. If Phase 2 did not run or returned no results, fall back to the first 3–5 type names in alphabetical order from `document_symbols` on the primary project's root namespace. Subagents dispatched for this phase must never call `AskUserQuestion` to disambiguate — apply the rule, record the resulting type list in the summary, and proceed.
+
 For each key type:
 
 1. `symbol_search` to locate by name.
@@ -162,6 +166,8 @@ For each key type:
 ---
 
 ### Phase 4: Flow analysis (pick 3–5 complex methods)
+
+**Selection rule (deterministic, do not ask the operator):** Select methods by descending cyclomatic score from Phase 2's `get_complexity_metrics` result with score > 5 — take the top 3–5. If Phase 2 did not run, returned no scores above the threshold, or returned no results at all, fall back to the first 3–5 method names in alphabetical order from `document_symbols` on the primary project's root namespace. Subagents dispatched for this phase must never call `AskUserQuestion` to disambiguate — apply the rule, record the resulting method list in the summary, and proceed.
 
 For each:
 
