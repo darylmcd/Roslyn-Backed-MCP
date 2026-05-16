@@ -119,6 +119,47 @@ public sealed class RefactoringService : IRefactoringService
         return new RefactoringPreviewDto(token, description, changes, warnings);
     }
 
+    /// <summary>
+    /// symbol-refactor-preview-auto-applies-without-explicit-apply-call: pure-functional
+    /// rename simulation that operates on an explicit input <paramref name="inputSolution"/>
+    /// and returns the post-rename <see cref="Solution"/> snapshot without touching the
+    /// workspace, the disk, the preview store, the change tracker, or any post-apply
+    /// resolver. Used by <see cref="SymbolRefactorService.PreviewAsync"/> to chain ops
+    /// in-memory so each op sees its predecessor's rewrites without the previous
+    /// auto-apply-each-step disk write that fired before the agent ever called
+    /// <c>apply_composite_preview</c>.
+    /// </summary>
+    /// <remarks>
+    /// Returned tuple carries the modified solution plus a per-file <see cref="FileChangeDto"/>
+    /// list (full-diff form — summary mode is not relevant here because the composite caller
+    /// aggregates diffs across ops before applying its own truncation) and a human-readable
+    /// step description suitable for the composite preview's combined description string.
+    /// </remarks>
+    internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+        PreviewRenameOnSolutionAsync(
+            Solution inputSolution, SymbolLocator locator, string newName, CancellationToken ct)
+    {
+        var symbol = await SymbolResolver.ResolveAsync(inputSolution, locator, ct).ConfigureAwait(false);
+        if (symbol is null)
+            throw new InvalidOperationException(BuildRenameTargetNotFoundMessage(locator));
+
+        if (!symbol.Locations.Any(static l => l.IsInSource))
+        {
+            throw new InvalidOperationException(
+                $"Cannot rename metadata or built-in symbol '{symbol.ToDisplayString()}' — renames require a source declaration.");
+        }
+
+        IdentifierValidation.ThrowIfInvalidIdentifier(newName);
+
+        var newSolution = await Renamer.RenameSymbolAsync(
+            inputSolution, symbol, new SymbolRenameOptions(), newName, ct).ConfigureAwait(false);
+
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(inputSolution, newSolution, ct).ConfigureAwait(false);
+        var description = $"Rename '{symbol.Name}' to '{newName}'";
+
+        return (newSolution, changes, description);
+    }
+
     private static string BuildRenameTargetNotFoundMessage(SymbolLocator locator)
     {
         if (locator.HasMetadataName)

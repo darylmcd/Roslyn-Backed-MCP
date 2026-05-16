@@ -275,6 +275,77 @@ public sealed class EditService : IEditService
     }
 
     /// <summary>
+    /// symbol-refactor-preview-auto-applies-without-explicit-apply-call: pure-functional
+    /// multi-file-edit simulation that operates on an explicit input
+    /// <paramref name="inputSolution"/> and returns the post-edit <see cref="Solution"/>
+    /// snapshot. Mirrors <see cref="PreviewMultiFileTextEditsAsync"/>'s validation +
+    /// accumulator semantics but never touches the workspace, the disk, or
+    /// <see cref="Contracts.IPreviewStore"/>. Used by <see cref="SymbolRefactorService.PreviewAsync"/>
+    /// to chain ops in-memory so each op sees its predecessor's rewrites without the previous
+    /// auto-apply-each-step disk write that fired before the agent ever called
+    /// <c>apply_composite_preview</c>.
+    /// </summary>
+    internal async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description, IReadOnlyList<string>? Warnings)>
+        PreviewMultiFileTextEditsOnSolutionAsync(
+            Solution inputSolution,
+            IReadOnlyList<FileEditsDto> fileEdits,
+            CancellationToken ct,
+            bool skipSyntaxCheck = false)
+    {
+        if (fileEdits is null || fileEdits.Count == 0)
+        {
+            throw new InvalidOperationException("preview_multi_file_edit requires at least one file edit.");
+        }
+
+        var perFile = new List<(Document Document, SourceText SourceText, string FilePath, IReadOnlyList<TextEditDto> Edits)>();
+        foreach (var fileEdit in fileEdits)
+        {
+            var (document, sourceText) = await ResolveDocumentAndTextAsync(inputSolution, fileEdit.FilePath, ct).ConfigureAwait(false);
+            ValidateEdits(fileEdit.FilePath, fileEdit.Edits, sourceText);
+            perFile.Add((document, sourceText, fileEdit.FilePath, fileEdit.Edits));
+        }
+
+        var accumulator = inputSolution;
+        var changes = new List<FileChangeDto>();
+        var warnings = new List<string>();
+
+        foreach (var (document, sourceText, filePath, edits) in perFile)
+        {
+            var merged = BuildPatchedSourceText(sourceText, edits);
+            if (!skipSyntaxCheck
+                && string.Equals(Path.GetExtension(filePath), ".cs", StringComparison.OrdinalIgnoreCase))
+            {
+                var syntaxErrors = GetCSharpSyntaxErrors(merged, filePath);
+                if (syntaxErrors.Count > 0)
+                {
+                    throw new InvalidOperationException(
+                        $"preview_multi_file_edit: simulated edits for '{filePath}' produce {syntaxErrors.Count} syntax error(s). " +
+                        "Pass skipSyntaxCheck=true if the intermediate state is intentional.");
+                }
+            }
+
+            var docInAccum = accumulator.GetDocument(document.Id);
+            if (docInAccum is null)
+            {
+                warnings.Add($"Skipped '{filePath}': document no longer present in the working solution.");
+                continue;
+            }
+            accumulator = accumulator.WithDocumentText(docInAccum.Id, merged);
+
+            var unified = DiffGenerator.GenerateUnifiedDiff(sourceText.ToString(), merged.ToString(), filePath);
+            changes.Add(new FileChangeDto(filePath, unified));
+        }
+
+        if (changes.Count == 0)
+        {
+            throw new InvalidOperationException("preview_multi_file_edit produced no diffs. See Warnings for per-file reasons.");
+        }
+
+        var description = $"Preview multi-file edit across {changes.Count} file(s)";
+        return (accumulator, changes, description, warnings.Count > 0 ? warnings : null);
+    }
+
+    /// <summary>
     /// Resolves <paramref name="filePath"/> against the supplied <paramref name="solution"/> and
     /// reads the current <see cref="SourceText"/>. Uses the shared
     /// <see cref="DocumentResolution"/> helper so every preview / apply path raises a single

@@ -36,6 +36,19 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
     private readonly ICompositePreviewStore _compositePreviewStore;
     private readonly IDiRegistrationService _diRegistrationService;
 
+    // symbol-refactor-preview-auto-applies-without-explicit-apply-call: concrete-typed
+    // accessors for in-memory composite chaining. The interface fields above remain the
+    // canonical references for everything except PreviewAsync's per-step Solution
+    // threading; the DI registration only ever resolves to these concrete types
+    // (RoslynMcp.Roslyn/ServiceCollectionExtensions.cs:67-69 + 71-73 + 78-80), so the
+    // downcast cannot fail under production wiring. Tests wiring a mock would
+    // surface as InvalidCastException at construction — the right outcome, since the
+    // composite path relies on the in-process Solution-threading semantics that mocks
+    // cannot reproduce.
+    private readonly RefactoringService _refactoringServiceConcrete;
+    private readonly EditService _editServiceConcrete;
+    private readonly RestructureService _restructureServiceConcrete;
+
     public SymbolRefactorService(
         IWorkspaceManager workspace,
         IPreviewStore previewStore,
@@ -52,8 +65,24 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
         _restructureService = restructureService;
         _compositePreviewStore = compositePreviewStore;
         _diRegistrationService = diRegistrationService;
+        _refactoringServiceConcrete = (RefactoringService)refactoringService;
+        _editServiceConcrete = (EditService)editService;
+        _restructureServiceConcrete = (RestructureService)restructureService;
     }
 
+    /// <summary>
+    /// Chains rename / edit / restructure operations in-memory and stores the accumulated
+    /// per-file mutations under one composite-preview token. The pre-fix implementation
+    /// auto-applied each sub-operation's preview to disk between steps so the next step's
+    /// service call could read the rewritten state from the live workspace — a side-effect
+    /// that wrote files and recorded ledger entries before the agent ever called
+    /// <c>apply_composite_preview</c> (gh #770). The current implementation threads a single
+    /// <see cref="Solution"/> snapshot through the loop via the concrete services'
+    /// <c>Preview*OnSolutionAsync</c> internal overloads, so no disk write or change-tracker
+    /// entry occurs at preview time. The composite token is stored in
+    /// <see cref="ICompositePreviewStore"/> (NOT <see cref="IPreviewStore"/>) so that
+    /// <c>apply_composite_preview</c>'s file-mutation replay path can redeem it.
+    /// </summary>
     public async Task<RefactoringPreviewDto> PreviewAsync(
         string workspaceId, IReadOnlyList<SymbolRefactorOperation> operations, CancellationToken ct)
     {
@@ -65,6 +94,8 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
 
         var aggregatedDiffs = new Dictionary<string, FileChangeDto>(StringComparer.OrdinalIgnoreCase);
         var descriptions = new List<string>();
+        var initialSolution = _workspace.GetCurrentSolution(workspaceId);
+        var accumulator = initialSolution;
 
         for (var i = 0; i < operations.Count; i++)
         {
@@ -72,18 +103,16 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
             var op = operations[i];
             try
             {
-                var stepPreview = await ExecuteOperationAsync(workspaceId, op, ct).ConfigureAwait(false);
-                descriptions.Add($"[{i + 1}/{operations.Count}] {op.Kind}: {stepPreview.Description}");
+                var (nextSolution, stepChanges, stepDescription) =
+                    await ExecuteOperationOnSolutionAsync(accumulator, op, ct).ConfigureAwait(false);
 
-                foreach (var change in stepPreview.Changes)
+                descriptions.Add($"[{i + 1}/{operations.Count}] {op.Kind}: {stepDescription}");
+                accumulator = nextSolution;
+
+                foreach (var change in stepChanges)
                 {
                     aggregatedDiffs[change.FilePath] = change;
                 }
-
-                // The previous step persisted its own preview token; we don't need it after the
-                // text changes have flowed into the workspace. Apply the step so the next op
-                // sees the rewritten state.
-                await _refactoringService.ApplyRefactoringAsync(stepPreview.PreviewToken, "symbol_refactor_preview", ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -98,13 +127,15 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
             }
         }
 
-        // After applying every step the workspace now reflects the final state. Snapshot the
-        // current solution and store it as the composite preview token. (Note: each sub-op
-        // already wrote to disk via apply — symbol_refactor_apply will be a no-op; this hands
-        // the user a unified diff while leaving the workspace in the post-refactor state.)
-        var finalSolution = _workspace.GetCurrentSolution(workspaceId);
+        // Build a CompositeFileMutation list from the accumulated Solution diff. The redeem
+        // path (apply_composite_preview / CompositeApplyOrchestrator) iterates this list and
+        // performs a plain File.WriteAllText per entry, so we materialize per-file text snapshots
+        // here from the post-final-op Solution.
+        var mutations = await BuildCompositeMutationsAsync(initialSolution, accumulator, ct).ConfigureAwait(false);
+
         var description = "Composite refactor:\n  " + string.Join("\n  ", descriptions);
-        var token = _previewStore.Store(workspaceId, finalSolution, _workspace.GetCurrentVersion(workspaceId), description);
+        var token = _compositePreviewStore.Store(
+            workspaceId, _workspace.GetCurrentVersion(workspaceId), description, mutations);
 
         return new RefactoringPreviewDto(
             PreviewToken: token,
@@ -113,42 +144,98 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
             Warnings: null);
     }
 
-    private async Task<RefactoringPreviewDto> ExecuteOperationAsync(
-        string workspaceId, SymbolRefactorOperation op, CancellationToken ct)
+    private async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+        ExecuteOperationOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         return op.Kind?.ToLowerInvariant() switch
         {
-            "rename" => await ExecuteRenameAsync(workspaceId, op, ct).ConfigureAwait(false),
-            "edit" => await ExecuteEditAsync(workspaceId, op, ct).ConfigureAwait(false),
-            "restructure" => await ExecuteRestructureAsync(workspaceId, op, ct).ConfigureAwait(false),
+            "rename" => await ExecuteRenameOnSolutionAsync(inputSolution, op, ct).ConfigureAwait(false),
+            "edit" => await ExecuteEditOnSolutionAsync(inputSolution, op, ct).ConfigureAwait(false),
+            "restructure" => await ExecuteRestructureOnSolutionAsync(inputSolution, op, ct).ConfigureAwait(false),
             _ => throw new ArgumentException(
                 $"Unsupported operation kind '{op.Kind}'. Valid: rename, edit, restructure."),
         };
     }
 
-    private Task<RefactoringPreviewDto> ExecuteRenameAsync(string workspaceId, SymbolRefactorOperation op, CancellationToken ct)
+    private Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+        ExecuteRenameOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(op.NewName))
             throw new ArgumentException("kind='rename' requires NewName.");
         var locator = new SymbolLocator(op.FilePath, op.Line, op.Column, op.SymbolHandle, op.MetadataName);
         locator.Validate();
-        return _refactoringService.PreviewRenameAsync(workspaceId, locator, op.NewName, ct);
+        return _refactoringServiceConcrete.PreviewRenameOnSolutionAsync(inputSolution, locator, op.NewName, ct);
     }
 
-    private Task<RefactoringPreviewDto> ExecuteEditAsync(string workspaceId, SymbolRefactorOperation op, CancellationToken ct)
+    private async Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+        ExecuteEditOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (op.FileEdits is null || op.FileEdits.Count == 0)
             throw new ArgumentException("kind='edit' requires FileEdits.");
-        return _editService.PreviewMultiFileTextEditsAsync(workspaceId, op.FileEdits, ct, skipSyntaxCheck: false);
+        var (newSolution, changes, description, _) = await _editServiceConcrete
+            .PreviewMultiFileTextEditsOnSolutionAsync(inputSolution, op.FileEdits, ct, skipSyntaxCheck: false)
+            .ConfigureAwait(false);
+        return (newSolution, changes, description);
     }
 
-    private Task<RefactoringPreviewDto> ExecuteRestructureAsync(string workspaceId, SymbolRefactorOperation op, CancellationToken ct)
+    private Task<(Solution NewSolution, IReadOnlyList<FileChangeDto> Changes, string Description)>
+        ExecuteRestructureOnSolutionAsync(Solution inputSolution, SymbolRefactorOperation op, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(op.Pattern) || op.Goal is null)
             throw new ArgumentException("kind='restructure' requires Pattern and Goal.");
-        return _restructureService.PreviewRestructureAsync(
-            workspaceId, op.Pattern, op.Goal,
+        return _restructureServiceConcrete.PreviewRestructureOnSolutionAsync(
+            inputSolution, op.Pattern, op.Goal,
             new RestructureScope(op.ScopeFilePath, op.ScopeProjectName), ct);
+    }
+
+    /// <summary>
+    /// Walks the Solution diff between <paramref name="initialSolution"/> and
+    /// <paramref name="finalSolution"/> and materializes a
+    /// <see cref="CompositeFileMutation"/> per changed / added / removed document. The
+    /// composite-apply redeem path (<c>CompositeApplyOrchestrator.ApplyCompositeAsync</c>)
+    /// iterates the list and writes per-entry via <see cref="File.WriteAllTextAsync(string, string?, CancellationToken)"/>
+    /// — no Solution snapshot is consulted at apply time, so the snapshot's lineage to the
+    /// post-apply workspace is irrelevant here.
+    /// </summary>
+    private static async Task<IReadOnlyList<CompositeFileMutation>> BuildCompositeMutationsAsync(
+        Solution initialSolution, Solution finalSolution, CancellationToken ct)
+    {
+        var mutations = new List<CompositeFileMutation>();
+        var solutionChanges = finalSolution.GetChanges(initialSolution);
+
+        foreach (var projectChange in solutionChanges.GetProjectChanges())
+        {
+            foreach (var docId in projectChange.GetChangedDocuments())
+            {
+                ct.ThrowIfCancellationRequested();
+                var newDoc = finalSolution.GetDocument(docId);
+                if (newDoc is null) continue;
+                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                var filePath = newDoc.FilePath ?? newDoc.Name;
+                mutations.Add(new CompositeFileMutation(filePath, newText));
+            }
+
+            foreach (var docId in projectChange.GetAddedDocuments())
+            {
+                ct.ThrowIfCancellationRequested();
+                var newDoc = finalSolution.GetDocument(docId);
+                if (newDoc is null) continue;
+                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
+                var filePath = newDoc.FilePath ?? newDoc.Name;
+                mutations.Add(new CompositeFileMutation(filePath, newText));
+            }
+
+            foreach (var docId in projectChange.GetRemovedDocuments())
+            {
+                ct.ThrowIfCancellationRequested();
+                var oldDoc = initialSolution.GetDocument(docId);
+                if (oldDoc is null) continue;
+                var filePath = oldDoc.FilePath ?? oldDoc.Name;
+                mutations.Add(new CompositeFileMutation(filePath, UpdatedContent: null, DeleteFile: true));
+            }
+        }
+
+        return mutations;
     }
 
     /// <summary>
