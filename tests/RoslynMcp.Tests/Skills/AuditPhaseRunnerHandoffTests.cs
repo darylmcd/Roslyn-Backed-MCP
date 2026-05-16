@@ -95,7 +95,7 @@ public sealed class AuditPhaseRunnerHandoffTests
     private static string ResolveRunnerPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
-        return Path.Combine(repoRoot, ".claude", "agents", "audit-phase-runner.md");
+        return Path.Combine(repoRoot, "agents", "audit-phase-runner.md");
     }
 
     private static string ResolveFullPromptPath()
