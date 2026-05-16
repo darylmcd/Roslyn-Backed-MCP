@@ -52,18 +52,25 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "get_di_registrations", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Inspect DI registration patterns in source."),
-     Description("Scan the solution for dependency injection registrations (AddSingleton, AddScoped, AddTransient) and return the service-to-implementation mappings. Pass showLifetimeOverrides=true to additionally emit per-service-type override chains (winning lifetime, lifetime-mismatch flag, dead-registration count) — opt-in to keep the default payload shape stable. Pass summary=true for large graphs to return aggregate counts plus a bounded page of override-chain summaries instead of full registrations/overrideChains.")]
+     Description("Scan the solution for dependency injection registrations (AddSingleton, AddScoped, AddTransient) and return the service-to-implementation mappings. " +
+        "Paginated via offset/limit (default limit=100) to bound response size on large DI graphs — callers on solutions with > limit registrations " +
+        "should iterate by increasing offset until hasMore=false. totalCount counts ALL registrations in the queried scope; the paged registrations slice " +
+        "contains only the [offset, offset+limit) window. Pass showLifetimeOverrides=true to additionally emit per-service-type override chains (winning lifetime, " +
+        "lifetime-mismatch flag, dead-registration count) — opt-in to keep the default payload shape stable; pagination applies identically to the registrations list " +
+        "in this mode while overrideChains remains unpaged (use summary=true if the override-chain list also needs paging). " +
+        "Pass summary=true for large graphs to return aggregate counts plus a bounded page of override-chain summaries instead of full registrations/overrideChains.")]
     public static Task<string> GetDiRegistrations(
         IWorkspaceExecutionGate gate,
         IDiRegistrationService diRegistrationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
-        [Description("When true, also emit overrideChains[] grouping registrations by service type with the winning lifetime, lifetime-mismatch flag (Singleton vs Scoped vs Transient), and dead-registration count. Default: false (legacy shape: count + registrations[]).")] bool showLifetimeOverrides = false,
-        [Description("When true, return a compact aggregate shape for large DI graphs. The detailed legacy/default response is unchanged when false.")] bool summary = false,
-        [Description("0-based offset into the compact override-chain summary page when summary=true. Ignored for detailed responses.")] int offset = 0,
-        [Description("Maximum override-chain summaries returned when summary=true. Clamped to [1, 500]. Ignored for detailed responses.")] int limit = 50,
+        [Description("When true, also emit overrideChains[] grouping registrations by service type with the winning lifetime, lifetime-mismatch flag (Singleton vs Scoped vs Transient), and dead-registration count. Default: false (legacy shape: count + registrations[] — now augmented with totalCount/hasMore/offset/limit for paging).")] bool showLifetimeOverrides = false,
+        [Description("When true, return a compact aggregate shape for large DI graphs. The detailed/default response is paginated via offset/limit when false.")] bool summary = false,
+        [Description("0-based offset into the paginated response. Applies to the registrations list in detailed mode and to the override-chain summary page when summary=true.")] int offset = 0,
+        [Description("Maximum items returned per call. Applies to the registrations list in detailed mode (default 100) and to the override-chain summary page when summary=true (clamped to [1, 500]).")] int limit = 100,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(offset, limit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
             if (!showLifetimeOverrides)
@@ -76,11 +83,25 @@ public static class AdvancedAnalysisTools
                         JsonDefaults.Indented);
                 }
 
-                return JsonSerializer.Serialize(new { count = results.Count, registrations = results }, JsonDefaults.Indented);
+                // gh #771: bound the detailed response to a paged window. Mirrors find_type_usages /
+                // find_reflection_usages envelope — collect-all + Skip/Take; totalCount = full count;
+                // hasMore = (offset + count) < totalCount.
+                var pagedResults = results.Skip(offset).Take(limit).ToList();
+                var resultsHasMore = offset + pagedResults.Count < results.Count;
+                return JsonSerializer.Serialize(new
+                {
+                    count = pagedResults.Count,
+                    totalCount = results.Count,
+                    offset,
+                    limit,
+                    hasMore = resultsHasMore,
+                    registrations = pagedResults,
+                }, JsonDefaults.Indented);
             }
 
-            // di-lifetime-mismatch-detection: opt-in path returns the legacy registrations
-            // list (unchanged shape) plus the per-service-type override chains.
+            // di-lifetime-mismatch-detection: opt-in path returns the (paged) registrations
+            // list plus the per-service-type override chains. Override-chain output remains
+            // unpaged in this mode — callers needing chain-level paging use summary=true.
             var scan = await diRegistrationService.GetDiRegistrationsWithOverridesAsync(workspaceId, projectName, c);
             if (summary)
             {
@@ -89,10 +110,19 @@ public static class AdvancedAnalysisTools
                     JsonDefaults.Indented);
             }
 
+            // gh #771: same paging contract for the registrations list when override chains
+            // are also emitted. overrideChainCount/overrideChains continue to reflect the
+            // full chain set unchanged.
+            var pagedRegistrations = scan.Registrations.Skip(offset).Take(limit).ToList();
+            var registrationsHasMore = offset + pagedRegistrations.Count < scan.Registrations.Count;
             return JsonSerializer.Serialize(new
             {
-                count = scan.Registrations.Count,
-                registrations = scan.Registrations,
+                count = pagedRegistrations.Count,
+                totalCount = scan.Registrations.Count,
+                offset,
+                limit,
+                hasMore = registrationsHasMore,
+                registrations = pagedRegistrations,
                 overrideChainCount = scan.OverrideChains.Count,
                 overrideChains = scan.OverrideChains,
             }, JsonDefaults.Indented);
