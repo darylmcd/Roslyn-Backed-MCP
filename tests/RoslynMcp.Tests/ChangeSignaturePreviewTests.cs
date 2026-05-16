@@ -18,7 +18,7 @@ namespace RoslynMcp.Tests;
 /// before the body brace).
 /// </summary>
 [TestClass]
-public sealed class ChangeSignaturePreviewTests : TestBase
+public sealed class ChangeSignaturePreviewTests : IsolatedWorkspaceTestBase
 {
     private static ChangeSignatureService _changeSignatureService = null!;
 
@@ -38,14 +38,12 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_AddOp_PreservesBodyBraceLineBreak()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
         // Method with two params + body brace on its own line. Pre-fix this rendered as
         // `public int Compute(int a, int b, int c) {` — body brace concatenated, original
         // `{` line removed, comma-separator space stripped between `b` and the new `c`.
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -66,70 +64,60 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            // Add a third parameter `int c = 0` at position 2.
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16); // `Compute` identifier
-            var request = new ChangeSignatureRequest(
-                Op: "add",
-                Name: "c",
-                ParameterType: "int",
-                Position: 2,
-                NewName: null,
-                DefaultValue: "0");
+        // Add a third parameter `int c = 0` at position 2.
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16); // `Compute` identifier
+        var request = new ChangeSignatureRequest(
+            Op: "add",
+            Name: "c",
+            ParameterType: "int",
+            Position: 2,
+            NewName: null,
+            DefaultValue: "0");
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
 
-            Assert.IsNotNull(preview.PreviewToken);
-            Assert.IsTrue(preview.Changes.Count >= 1, "preview must report at least one changed file");
+        Assert.IsNotNull(preview.PreviewToken);
+        Assert.IsTrue(preview.Changes.Count >= 1, "preview must report at least one changed file");
 
-            var declarationDiff = preview.Changes
-                .FirstOrDefault(c => c.FilePath.EndsWith("ChangeSignatureFixture.cs", StringComparison.OrdinalIgnoreCase))
-                ?.UnifiedDiff;
-            Assert.IsNotNull(declarationDiff, "expected diff for ChangeSignatureFixture.cs");
+        var declarationDiff = preview.Changes
+            .FirstOrDefault(c => c.FilePath.EndsWith("ChangeSignatureFixture.cs", StringComparison.OrdinalIgnoreCase))
+            ?.UnifiedDiff;
+        Assert.IsNotNull(declarationDiff, "expected diff for ChangeSignatureFixture.cs");
 
-            // Apply and inspect the resulting file. The previous bug rendered as
-            // `public int Compute(int a, int b, int c = 0) {` (one line) — body brace
-            // concatenated. Post-fix the body brace stays on its own line.
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+        // Apply and inspect the resulting file. The previous bug rendered as
+        // `public int Compute(int a, int b, int c = 0) {` (one line) — body brace
+        // concatenated. Post-fix the body brace stays on its own line.
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
 
-            // Body brace must remain on its own line — i.e. the close-paren is followed
-            // by a newline + indentation + `{`, NOT by ` {` on the same line.
-            StringAssert.Contains(postApplyText, "public int Compute(int a, int b, int c = 0)\r\n    {",
-                $"body brace must stay on its own line; got:\n{postApplyText}");
+        // Body brace must remain on its own line — i.e. the close-paren is followed
+        // by a newline + indentation + `{`, NOT by ` {` on the same line.
+        StringAssert.Contains(postApplyText, "public int Compute(int a, int b, int c = 0)\r\n    {",
+            $"body brace must stay on its own line; got:\n{postApplyText}");
 
-            // Comma-separator spacing must be preserved between every parameter.
-            StringAssert.Contains(postApplyText, "int a, int b, int c = 0",
-                $"comma-separator spacing must be preserved; got:\n{postApplyText}");
+        // Comma-separator spacing must be preserved between every parameter.
+        StringAssert.Contains(postApplyText, "int a, int b, int c = 0",
+            $"comma-separator spacing must be preserved; got:\n{postApplyText}");
 
-            // Default value emitted.
-            StringAssert.Contains(postApplyText, "int c = 0",
-                "default value '= 0' must appear on the new parameter");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        // Default value emitted.
+        StringAssert.Contains(postApplyText, "int c = 0",
+            "default value '= 0' must appear on the new parameter");
     }
 
     [TestMethod]
     public async Task ChangeSignaturePreview_AddOp_NewParameterEmitsCorrectInternalSpacing()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
         // Fixture exercises: the previous trailing-space hack on `ParseTypeName(parameterType + " ")`
         // built parameters like `Stringx` (no space) when the type itself didn't tokenize cleanly.
         // Post-fix `SyntaxFactory.ParseParameter(paramText)` produces `string x` reliably.
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureSpacingFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureSpacingFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -145,43 +133,35 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 19); // `Format` identifier
-            var request = new ChangeSignatureRequest(
-                Op: "add",
-                Name: "prefix",
-                ParameterType: "string",
-                Position: 0,
-                NewName: null,
-                DefaultValue: "\"\"");
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 19); // `Format` identifier
+        var request = new ChangeSignatureRequest(
+            Op: "add",
+            Name: "prefix",
+            ParameterType: "string",
+            Position: 0,
+            NewName: null,
+            DefaultValue: "\"\"");
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
 
-            // Type and identifier must be space-separated, NOT concatenated.
-            StringAssert.Contains(postApplyText, "string prefix",
-                $"new parameter must have proper type/identifier spacing; got:\n{postApplyText}");
+        // Type and identifier must be space-separated, NOT concatenated.
+        StringAssert.Contains(postApplyText, "string prefix",
+            $"new parameter must have proper type/identifier spacing; got:\n{postApplyText}");
 
-            // Default value must appear with `= ` separator.
-            StringAssert.Contains(postApplyText, "string prefix = \"\"",
-                $"default value must render with `= ` separator; got:\n{postApplyText}");
+        // Default value must appear with `= ` separator.
+        StringAssert.Contains(postApplyText, "string prefix = \"\"",
+            $"default value must render with `= ` separator; got:\n{postApplyText}");
 
-            // Comma between new param and existing `int n` must have a space after it.
-            StringAssert.Contains(postApplyText, "string prefix = \"\", int n",
-                $"comma-separator spacing must be preserved; got:\n{postApplyText}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        // Comma between new param and existing `int n` must have a space after it.
+        StringAssert.Contains(postApplyText, "string prefix = \"\", int n",
+            $"comma-separator spacing must be preserved; got:\n{postApplyText}");
     }
 
     /// <summary>
@@ -197,15 +177,13 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_AddOp_OnInterfaceMethod_EnumeratesAllImplementerCallsiteFiles()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
         // Interface + 2 implementers + a caller invoking through the interface. Pre-fix,
         // change_signature_preview on `IService.Compute` would only diff the interface
         // file (and maybe Caller.cs). The two implementations would be invisible until
         // apply rewrote them.
-        var interfacePath = Path.Combine(sampleLibDir, "ICallsiteSummaryService.cs");
+        var interfacePath = workspace.GetPath("SampleLib", "ICallsiteSummaryService.cs");
         await File.WriteAllTextAsync(interfacePath,
             string.Join("\r\n", new[]
             {
@@ -218,7 +196,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
                 "",
             }));
 
-        var impl1Path = Path.Combine(sampleLibDir, "CallsiteSummaryServiceA.cs");
+        var impl1Path = workspace.GetPath("SampleLib", "CallsiteSummaryServiceA.cs");
         await File.WriteAllTextAsync(impl1Path,
             string.Join("\r\n", new[]
             {
@@ -231,7 +209,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
                 "",
             }));
 
-        var impl2Path = Path.Combine(sampleLibDir, "CallsiteSummaryServiceB.cs");
+        var impl2Path = workspace.GetPath("SampleLib", "CallsiteSummaryServiceB.cs");
         await File.WriteAllTextAsync(impl2Path,
             string.Join("\r\n", new[]
             {
@@ -244,7 +222,7 @@ public sealed class ChangeSignaturePreviewTests : TestBase
                 "",
             }));
 
-        var callerPath = Path.Combine(sampleLibDir, "CallsiteSummaryCaller.cs");
+        var callerPath = workspace.GetPath("SampleLib", "CallsiteSummaryCaller.cs");
         await File.WriteAllTextAsync(callerPath,
             string.Join("\r\n", new[]
             {
@@ -258,60 +236,50 @@ public sealed class ChangeSignaturePreviewTests : TestBase
                 "",
             }));
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            // Locate the interface method declaration.
-            var locator = SymbolLocator.BySource(interfacePath, line: 5, column: 9); // `Compute` on interface
-            var request = new ChangeSignatureRequest(
-                Op: "add",
-                Name: "c",
-                ParameterType: "int",
-                Position: 2,
-                NewName: null,
-                DefaultValue: "0");
+        // Locate the interface method declaration.
+        var locator = SymbolLocator.BySource(interfacePath, line: 5, column: 9); // `Compute` on interface
+        var request = new ChangeSignatureRequest(
+            Op: "add",
+            Name: "c",
+            ParameterType: "int",
+            Position: 2,
+            NewName: null,
+            DefaultValue: "0");
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
 
-            Assert.IsNotNull(preview.PreviewToken);
+        Assert.IsNotNull(preview.PreviewToken);
 
-            // The preview MUST enumerate the interface declaration + both implementers +
-            // the caller file (because it invokes through the interface). Pre-fix only
-            // the interface file would appear.
-            var touchedFiles = preview.Changes.Select(c => Path.GetFileName(c.FilePath)).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            Assert.IsTrue(touchedFiles.Contains("ICallsiteSummaryService.cs"),
-                $"interface file must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
-            Assert.IsTrue(touchedFiles.Contains("CallsiteSummaryServiceA.cs"),
-                $"impl A must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
-            Assert.IsTrue(touchedFiles.Contains("CallsiteSummaryServiceB.cs"),
-                $"impl B must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
-            Assert.IsTrue(touchedFiles.Contains("CallsiteSummaryCaller.cs"),
-                $"caller file must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
+        // The preview MUST enumerate the interface declaration + both implementers +
+        // the caller file (because it invokes through the interface). Pre-fix only
+        // the interface file would appear.
+        var touchedFiles = preview.Changes.Select(c => Path.GetFileName(c.FilePath)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Assert.IsTrue(touchedFiles.Contains("ICallsiteSummaryService.cs"),
+            $"interface file must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
+        Assert.IsTrue(touchedFiles.Contains("CallsiteSummaryServiceA.cs"),
+            $"impl A must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
+        Assert.IsTrue(touchedFiles.Contains("CallsiteSummaryServiceB.cs"),
+            $"impl B must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
+        Assert.IsTrue(touchedFiles.Contains("CallsiteSummaryCaller.cs"),
+            $"caller file must appear in changes; got: [{string.Join(", ", touchedFiles)}]");
 
-            // CallsiteUpdates summary populated for the caller file (2 invocations).
-            Assert.IsNotNull(preview.CallsiteUpdates, "CallsiteUpdates summary must be populated when apply rewrites invocations");
-            var callerUpdate = preview.CallsiteUpdates.FirstOrDefault(u => u.FilePath.EndsWith("CallsiteSummaryCaller.cs", StringComparison.OrdinalIgnoreCase));
-            Assert.IsNotNull(callerUpdate, "caller file must appear in CallsiteUpdates");
-            Assert.AreEqual(2, callerUpdate.CallsiteCount,
-                $"caller file has 2 invocations (svc.Compute + a.Compute); CallsiteUpdates must reflect that");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        // CallsiteUpdates summary populated for the caller file (2 invocations).
+        Assert.IsNotNull(preview.CallsiteUpdates, "CallsiteUpdates summary must be populated when apply rewrites invocations");
+        var callerUpdate = preview.CallsiteUpdates.FirstOrDefault(u => u.FilePath.EndsWith("CallsiteSummaryCaller.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(callerUpdate, "caller file must appear in CallsiteUpdates");
+        Assert.AreEqual(2, callerUpdate.CallsiteCount,
+            $"caller file has 2 invocations (svc.Compute + a.Compute); CallsiteUpdates must reflect that");
     }
 
     [TestMethod]
     public async Task ChangeSignaturePreview_RemoveOp_PreservesBodyBraceLineBreak()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureRemoveFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureRemoveFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -332,33 +300,25 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
-            var request = new ChangeSignatureRequest(
-                Op: "remove",
-                Name: null,
-                ParameterType: null,
-                Position: 1,
-                NewName: null,
-                DefaultValue: null);
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+        var request = new ChangeSignatureRequest(
+            Op: "remove",
+            Name: null,
+            ParameterType: null,
+            Position: 1,
+            NewName: null,
+            DefaultValue: null);
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success);
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success);
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-            StringAssert.Contains(postApplyText, "public int Compute(int a, int c)\r\n    {",
-                $"body brace must stay on its own line after remove; got:\n{postApplyText}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        StringAssert.Contains(postApplyText, "public int Compute(int a, int c)\r\n    {",
+            $"body brace must stay on its own line after remove; got:\n{postApplyText}");
     }
 
     /// <summary>
@@ -370,11 +330,9 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_RemoveOp_CaretOnParameter_AutoResolvesIndex()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureCaretFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureCaretFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -390,38 +348,30 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            // Caret on `b` — the parameter name at position 1. Pre-fix this would throw
-            // "requires a method symbol". Post-fix it auto-promotes + dispatches.
-            // Line 5 content: `    public int Compute(int a, int b, int c)`
-            // Column math: 4 spaces + "public int Compute(" = 23 chars; "int " = 4 more → `a` at col 27.
-            // `, int ` between a and b = 6 chars; `b` at col 27 + 1 + 6 = 34.
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 35);
-            var request = new ChangeSignatureRequest(
-                Op: "remove",
-                Name: null,
-                ParameterType: null,
-                Position: null,     // explicitly unset — auto-resolve should fill
-                NewName: null,
-                DefaultValue: null);
+        // Caret on `b` — the parameter name at position 1. Pre-fix this would throw
+        // "requires a method symbol". Post-fix it auto-promotes + dispatches.
+        // Line 5 content: `    public int Compute(int a, int b, int c)`
+        // Column math: 4 spaces + "public int Compute(" = 23 chars; "int " = 4 more → `a` at col 27.
+        // `, int ` between a and b = 6 chars; `b` at col 27 + 1 + 6 = 34.
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 35);
+        var request = new ChangeSignatureRequest(
+            Op: "remove",
+            Name: null,
+            ParameterType: null,
+            Position: null,     // explicitly unset — auto-resolve should fill
+            NewName: null,
+            DefaultValue: null);
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-            StringAssert.Contains(postApplyText, "public int Compute(int a, int c)",
-                $"parameter `b` at position 1 must be removed via caret-on-parameter; got:\n{postApplyText}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        StringAssert.Contains(postApplyText, "public int Compute(int a, int c)",
+            $"parameter `b` at position 1 must be removed via caret-on-parameter; got:\n{postApplyText}");
     }
 
     /// <summary>
@@ -440,15 +390,13 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_AddOp_CancellationToken_SucceedsWithEndAppend_WhenCallsiteOmitsDefaultArg()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
         // Method already has a default-valued parameter that the caller omits — this is the
         // shape that previously broke. method has 2 params (the second has a default value);
         // callsite passes only 1 arg. Adding `CancellationToken ct = default` at end makes
         // insertPosition=2 but args.Count=1 → pre-fix throws.
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureCtAppendFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureCtAppendFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "using System.Threading;",
@@ -471,45 +419,37 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            // Caret on `Compute` (line 7, column 16). Add CancellationToken at end (no Position
-            // specified — defaults to method.Parameters.Length=2).
-            var locator = SymbolLocator.BySource(fixturePath, line: 7, column: 16);
-            var request = new ChangeSignatureRequest(
-                Op: "add",
-                Name: "cancellationToken",
-                ParameterType: "System.Threading.CancellationToken",
-                Position: null, // explicit end-append default
-                NewName: null,
-                DefaultValue: "default");
+        // Caret on `Compute` (line 7, column 16). Add CancellationToken at end (no Position
+        // specified — defaults to method.Parameters.Length=2).
+        var locator = SymbolLocator.BySource(fixturePath, line: 7, column: 16);
+        var request = new ChangeSignatureRequest(
+            Op: "add",
+            Name: "cancellationToken",
+            ParameterType: "System.Threading.CancellationToken",
+            Position: null, // explicit end-append default
+            NewName: null,
+            DefaultValue: "default");
 
-            // Pre-fix this throws ArgumentOutOfRangeException with paramName='index'.
-            // Post-fix the preview succeeds and the declaration is rewritten.
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
-            Assert.IsNotNull(preview.PreviewToken);
-            Assert.IsTrue(preview.Changes.Count >= 1, "preview must report at least the declaration file");
+        // Pre-fix this throws ArgumentOutOfRangeException with paramName='index'.
+        // Post-fix the preview succeeds and the declaration is rewritten.
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+        Assert.IsNotNull(preview.PreviewToken);
+        Assert.IsTrue(preview.Changes.Count >= 1, "preview must report at least the declaration file");
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-            StringAssert.Contains(postApplyText, "int a, int b = 0, System.Threading.CancellationToken cancellationToken = default",
-                $"new parameter must append at end of declaration; got:\n{postApplyText}");
-            // Callsite Compute(1) remains valid post-rewrite because both `b` and the new
-            // CancellationToken parameter have defaults — the file still compiles. The
-            // backlog row's contract is "preview succeeds + declaration shows the change",
-            // not "every callsite is rewritten" (that's a separate concern tracked by
-            // change-signature-preview-callsite-summary).
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        StringAssert.Contains(postApplyText, "int a, int b = 0, System.Threading.CancellationToken cancellationToken = default",
+            $"new parameter must append at end of declaration; got:\n{postApplyText}");
+        // Callsite Compute(1) remains valid post-rewrite because both `b` and the new
+        // CancellationToken parameter have defaults — the file still compiles. The
+        // backlog row's contract is "preview succeeds + declaration shows the change",
+        // not "every callsite is rewritten" (that's a separate concern tracked by
+        // change-signature-preview-callsite-summary).
     }
 
     /// <summary>
@@ -522,11 +462,9 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_AddOp_ExplicitEndPosition_Succeeds_WhenCallsiteOmitsDefaultArg()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureExplicitEndFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureExplicitEndFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "using System.Threading;",
@@ -549,35 +487,27 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            var locator = SymbolLocator.BySource(fixturePath, line: 7, column: 16);
-            var request = new ChangeSignatureRequest(
-                Op: "add",
-                Name: "cancellationToken",
-                ParameterType: "System.Threading.CancellationToken",
-                Position: 2, // explicit end-position
-                NewName: null,
-                DefaultValue: "default");
+        var locator = SymbolLocator.BySource(fixturePath, line: 7, column: 16);
+        var request = new ChangeSignatureRequest(
+            Op: "add",
+            Name: "cancellationToken",
+            ParameterType: "System.Threading.CancellationToken",
+            Position: 2, // explicit end-position
+            NewName: null,
+            DefaultValue: "default");
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
-            Assert.IsNotNull(preview.PreviewToken);
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+        Assert.IsNotNull(preview.PreviewToken);
 
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-            StringAssert.Contains(postApplyText, "int a, int b = 0, System.Threading.CancellationToken cancellationToken = default",
-                $"explicit end-position must succeed same as omitted-Position; got:\n{postApplyText}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        StringAssert.Contains(postApplyText, "int a, int b = 0, System.Threading.CancellationToken cancellationToken = default",
+            $"explicit end-position must succeed same as omitted-Position; got:\n{postApplyText}");
     }
 
     /// <summary>
@@ -590,11 +520,9 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_AddOp_HeadPosition_StillSplicesAtFrontOfDeclaration()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureHeadPosFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureHeadPosFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -615,34 +543,26 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
-            var request = new ChangeSignatureRequest(
-                Op: "add",
-                Name: "prefix",
-                ParameterType: "string",
-                Position: 0, // head insert — Math.Min(0, args.Count) must remain 0
-                NewName: null,
-                DefaultValue: "\"\"");
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+        var request = new ChangeSignatureRequest(
+            Op: "add",
+            Name: "prefix",
+            ParameterType: "string",
+            Position: 0, // head insert — Math.Min(0, args.Count) must remain 0
+            NewName: null,
+            DefaultValue: "\"\"");
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-            // Declaration: `string prefix = ""` then `int a`.
-            StringAssert.Contains(postApplyText, "string prefix = \"\", int a",
-                $"head insert must put new parameter first in declaration; got:\n{postApplyText}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        // Declaration: `string prefix = ""` then `int a`.
+        StringAssert.Contains(postApplyText, "string prefix = \"\", int a",
+            $"head insert must put new parameter first in declaration; got:\n{postApplyText}");
     }
 
     /// <summary>
@@ -655,11 +575,9 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_AddOp_OutOfRangePosition_EmitsActionableError()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureOutOfRangeFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureOutOfRangeFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -675,41 +593,33 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
-            var request = new ChangeSignatureRequest(
-                Op: "add",
-                Name: "cancellationToken",
-                ParameterType: "System.Threading.CancellationToken",
-                Position: 99, // genuinely out of range — method has 2 params, valid 0..2
-                NewName: null,
-                DefaultValue: "default");
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+        var request = new ChangeSignatureRequest(
+            Op: "add",
+            Name: "cancellationToken",
+            ParameterType: "System.Threading.CancellationToken",
+            Position: 99, // genuinely out of range — method has 2 params, valid 0..2
+            NewName: null,
+            DefaultValue: "default");
 
-            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
-                await _changeSignatureService.PreviewChangeSignatureAsync(
-                    workspaceId, locator, request, CancellationToken.None));
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, request, CancellationToken.None));
 
-            // Error must cite Name, ParameterType, valid range, and the "omit Position" hint.
-            // Must NOT mention internal "index" identifier.
-            StringAssert.Contains(ex.Message, "cancellationToken",
-                $"error must cite caller-supplied Name; got: {ex.Message}");
-            StringAssert.Contains(ex.Message, "CancellationToken",
-                $"error must cite caller-supplied ParameterType; got: {ex.Message}");
-            StringAssert.Contains(ex.Message, "0..2",
-                $"error must cite the valid Position range; got: {ex.Message}");
-            StringAssert.Contains(ex.Message, "omit Position",
-                $"error must hint that omitting Position appends at end; got: {ex.Message}");
-            Assert.IsFalse(ex.Message.Contains("Parameter 'index'", StringComparison.Ordinal),
-                $"error must NOT leak the internal 'index' paramName; got: {ex.Message}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        // Error must cite Name, ParameterType, valid range, and the "omit Position" hint.
+        // Must NOT mention internal "index" identifier.
+        StringAssert.Contains(ex.Message, "cancellationToken",
+            $"error must cite caller-supplied Name; got: {ex.Message}");
+        StringAssert.Contains(ex.Message, "CancellationToken",
+            $"error must cite caller-supplied ParameterType; got: {ex.Message}");
+        StringAssert.Contains(ex.Message, "0..2",
+            $"error must cite the valid Position range; got: {ex.Message}");
+        StringAssert.Contains(ex.Message, "omit Position",
+            $"error must hint that omitting Position appends at end; got: {ex.Message}");
+        Assert.IsFalse(ex.Message.Contains("Parameter 'index'", StringComparison.Ordinal),
+            $"error must NOT leak the internal 'index' paramName; got: {ex.Message}");
     }
 
     /// <summary>
@@ -720,11 +630,9 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_ReorderOp_PositionalCallsite_ReordersDeclarationAndArgs()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureReorderFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureReorderFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -745,38 +653,30 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
-            // Reorder (a, b, c) -> (c, a, b). Validates name-token parsing too.
-            var request = new ChangeSignatureRequest(
-                Op: "reorder",
-                NewOrder: "c, a, b");
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+        // Reorder (a, b, c) -> (c, a, b). Validates name-token parsing too.
+        var request = new ChangeSignatureRequest(
+            Op: "reorder",
+            NewOrder: "c, a, b");
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
 
-            // Declaration reordered.
-            StringAssert.Contains(postApplyText, "public int Compute(int c, int a, int b)",
-                $"declaration must be reordered to (c, a, b); got:\n{postApplyText}");
-            // Body brace stays on its own line (uses the same parse-from-text trivia path).
-            StringAssert.Contains(postApplyText, "public int Compute(int c, int a, int b)\r\n    {",
-                $"body brace must stay on its own line; got:\n{postApplyText}");
-            // Positional callsite Compute(1, 2, 3) was reordered to Compute(3, 1, 2).
-            StringAssert.Contains(postApplyText, "Compute(3, 1, 2)",
-                $"positional callsite arguments must be reordered to (3, 1, 2); got:\n{postApplyText}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        // Declaration reordered.
+        StringAssert.Contains(postApplyText, "public int Compute(int c, int a, int b)",
+            $"declaration must be reordered to (c, a, b); got:\n{postApplyText}");
+        // Body brace stays on its own line (uses the same parse-from-text trivia path).
+        StringAssert.Contains(postApplyText, "public int Compute(int c, int a, int b)\r\n    {",
+            $"body brace must stay on its own line; got:\n{postApplyText}");
+        // Positional callsite Compute(1, 2, 3) was reordered to Compute(3, 1, 2).
+        StringAssert.Contains(postApplyText, "Compute(3, 1, 2)",
+            $"positional callsite arguments must be reordered to (3, 1, 2); got:\n{postApplyText}");
     }
 
     /// <summary>
@@ -787,11 +687,9 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_ReorderOp_NamedCallsite_LeftUntouched_IndexPermutation()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureReorderNamedFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureReorderNamedFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -812,34 +710,26 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
-            // Index-form permutation: (a, b) -> (b, a).
-            var request = new ChangeSignatureRequest(
-                Op: "reorder",
-                NewOrder: "1,0");
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+        // Index-form permutation: (a, b) -> (b, a).
+        var request = new ChangeSignatureRequest(
+            Op: "reorder",
+            NewOrder: "1,0");
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, $"apply must succeed: {applyResult.Error}");
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
 
-            StringAssert.Contains(postApplyText, "public int Compute(int b, int a)",
-                $"declaration must be reordered via index permutation; got:\n{postApplyText}");
-            // Named callsite must remain untouched — args bind by name.
-            StringAssert.Contains(postApplyText, "Compute(a: 1, b: 2)",
-                $"all-named callsite must remain unchanged after reorder; got:\n{postApplyText}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        StringAssert.Contains(postApplyText, "public int Compute(int b, int a)",
+            $"declaration must be reordered via index permutation; got:\n{postApplyText}");
+        // Named callsite must remain untouched — args bind by name.
+        StringAssert.Contains(postApplyText, "Compute(a: 1, b: 2)",
+            $"all-named callsite must remain unchanged after reorder; got:\n{postApplyText}");
     }
 
     /// <summary>
@@ -850,11 +740,9 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_ReorderOp_InvalidNewOrder_EmitsActionableError()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureReorderInvalidFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureReorderInvalidFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -870,52 +758,44 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
 
-            // Missing NewOrder.
-            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
-                await _changeSignatureService.PreviewChangeSignatureAsync(
-                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder"), CancellationToken.None));
-            StringAssert.Contains(ex.Message, "NewOrder",
-                $"missing-NewOrder error must cite 'NewOrder'; got: {ex.Message}");
+        // Missing NewOrder.
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "NewOrder",
+            $"missing-NewOrder error must cite 'NewOrder'; got: {ex.Message}");
 
-            // Wrong arity (2 tokens for 3-param method).
-            ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
-                await _changeSignatureService.PreviewChangeSignatureAsync(
-                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b"), CancellationToken.None));
-            StringAssert.Contains(ex.Message, "exactly once",
-                $"wrong-arity error must explain that every parameter must appear exactly once; got: {ex.Message}");
+        // Wrong arity (2 tokens for 3-param method).
+        ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "exactly once",
+            $"wrong-arity error must explain that every parameter must appear exactly once; got: {ex.Message}");
 
-            // Unknown name token.
-            ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
-                await _changeSignatureService.PreviewChangeSignatureAsync(
-                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,zz"), CancellationToken.None));
-            StringAssert.Contains(ex.Message, "zz",
-                $"unknown-token error must cite the offending token; got: {ex.Message}");
+        // Unknown name token.
+        ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,zz"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "zz",
+            $"unknown-token error must cite the offending token; got: {ex.Message}");
 
-            // Duplicate token.
-            ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
-                await _changeSignatureService.PreviewChangeSignatureAsync(
-                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,a,b"), CancellationToken.None));
-            StringAssert.Contains(ex.Message, "more than once",
-                $"duplicate-token error must explain the parameter is listed twice; got: {ex.Message}");
+        // Duplicate token.
+        ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,a,b"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "more than once",
+            $"duplicate-token error must explain the parameter is listed twice; got: {ex.Message}");
 
-            // Identity permutation (no-op).
-            ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
-                await _changeSignatureService.PreviewChangeSignatureAsync(
-                    workspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,c"), CancellationToken.None));
-            StringAssert.Contains(ex.Message, "identity",
-                $"identity-permutation error must call out the no-op; got: {ex.Message}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        // Identity permutation (no-op).
+        ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, new ChangeSignatureRequest(Op: "reorder", NewOrder: "a,b,c"), CancellationToken.None));
+        StringAssert.Contains(ex.Message, "identity",
+            $"identity-permutation error must call out the no-op; got: {ex.Message}");
     }
 
     /// <summary>
@@ -926,11 +806,9 @@ public sealed class ChangeSignaturePreviewTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_ReorderOp_MixedPositionalAndNamedCallsite_Refused()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureReorderMixedFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureReorderMixedFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -951,34 +829,24 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
-            var request = new ChangeSignatureRequest(Op: "reorder", NewOrder: "c,a,b");
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 16);
+        var request = new ChangeSignatureRequest(Op: "reorder", NewOrder: "c,a,b");
 
-            var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
-                await _changeSignatureService.PreviewChangeSignatureAsync(
-                    workspaceId, locator, request, CancellationToken.None));
-            StringAssert.Contains(ex.Message, "mixes positional and named",
-                $"mixed-callsite refusal must explain why; got: {ex.Message}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, request, CancellationToken.None));
+        StringAssert.Contains(ex.Message, "mixes positional and named",
+            $"mixed-callsite refusal must explain why; got: {ex.Message}");
     }
 
     [TestMethod]
     public async Task ChangeSignaturePreview_RemoveOp_CaretOnParameter_ExplicitPositionOverridesAutoResolve()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
-        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        var fixturePath = Path.Combine(sampleLibDir, "ChangeSignatureCaretOverrideFixture.cs");
+        var fixturePath = workspace.GetPath("SampleLib", "ChangeSignatureCaretOverrideFixture.cs");
         var content = string.Join("\r\n", new[]
         {
             "namespace SampleLib;",
@@ -994,33 +862,25 @@ public sealed class ChangeSignaturePreviewTests : TestBase
         });
         await File.WriteAllTextAsync(fixturePath, content);
 
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            // Caret on `b` (parameter 1) but explicit Position=2 — auto-resolve must defer.
-            var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 35);
-            var request = new ChangeSignatureRequest(
-                Op: "remove",
-                Name: null,
-                ParameterType: null,
-                Position: 2,
-                NewName: null,
-                DefaultValue: null);
+        // Caret on `b` (parameter 1) but explicit Position=2 — auto-resolve must defer.
+        var locator = SymbolLocator.BySource(fixturePath, line: 5, column: 35);
+        var request = new ChangeSignatureRequest(
+            Op: "remove",
+            Name: null,
+            ParameterType: null,
+            Position: 2,
+            NewName: null,
+            DefaultValue: null);
 
-            var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
-                workspaceId, locator, request, CancellationToken.None);
-            var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
-            Assert.IsTrue(applyResult.Success);
+        var preview = await _changeSignatureService.PreviewChangeSignatureAsync(
+            workspace.WorkspaceId, locator, request, CancellationToken.None);
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken!, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success);
 
-            var postApplyText = await File.ReadAllTextAsync(fixturePath);
-            StringAssert.Contains(postApplyText, "public int Compute(int a, int b)",
-                $"explicit Position=2 must win over caret-on-b auto-resolve; got:\n{postApplyText}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var postApplyText = await File.ReadAllTextAsync(fixturePath);
+        StringAssert.Contains(postApplyText, "public int Compute(int a, int b)",
+            $"explicit Position=2 must win over caret-on-b auto-resolve; got:\n{postApplyText}");
     }
 }
