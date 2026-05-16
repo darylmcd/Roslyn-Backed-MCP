@@ -88,7 +88,8 @@ Execute phases in the order stated in the *Phase order* line above: **-1 → 0 �
 This orchestrator delegates log-heavy read-side phases to the `audit-phase-runner` agent via the **Subagent dispatch groups** defined in `prompts/phases/setup-and-analysis.md`. The dispatch groups are:
 
 - **Group A** (read-side diagnostics and metrics): phases 1, 2
-- **Group B** (build, test, concurrency): phases 7, 8, 8b
+- **Group B** (symbol and flow analysis on selected types/methods): phases 3, 4
+- **Group C** (build, test, concurrency): phases 7, 8, 8b
 
 **Orchestrator-owned phases** (never delegated): Phase 6 **setup** and teardown of the disposable worktree remain in this orchestrator. The try/finally discipline for the worktree must live in this single surviving caller — a crashed runner subagent must not leak an open worktree. All preview/apply chains in Phase 6 stay inline.
 
