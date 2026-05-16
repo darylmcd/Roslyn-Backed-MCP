@@ -179,6 +179,113 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
+    /// gh #771: the detailed default response previously serialized the entire registrations
+    /// list with no cap, producing an 86 KB body on a 141-registration DI graph that exceeded
+    /// the MCP inline transport cap. The fix paginates the detailed response via offset/limit
+    /// (default limit=100) and emits totalCount/hasMore/offset/limit alongside the paged
+    /// registrations slice. This test writes 101 distinct service-type registrations and
+    /// verifies the default call returns a bounded first page with hasMore=true.
+    /// </summary>
+    [TestMethod]
+    public async Task Default_Detailed_Response_Pages_Registrations_With_Hundred_Item_Default_Limit()
+    {
+        const int TotalRegistrations = 101;
+
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+        await WriteManyRegistrationsAsync(workspace, TotalRegistrations, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        // showLifetimeOverrides=false, summary=false → exercises the detailed default path
+        // at AdvancedAnalysisTools.cs:79 with default offset=0, limit=100.
+        var jsonDefault = await AdvancedAnalysisTools.GetDiRegistrations(
+            WorkspaceExecutionGate,
+            DiRegistrationService,
+            workspace.WorkspaceId,
+            projectName: "SampleLib",
+            showLifetimeOverrides: false,
+            summary: false,
+            ct: CancellationToken.None);
+
+        using var documentDefault = JsonDocument.Parse(jsonDefault);
+        var rootDefault = documentDefault.RootElement;
+        Assert.AreEqual(100, rootDefault.GetProperty("count").GetInt32(),
+            "Default limit=100 must bound the registrations slice.");
+        Assert.AreEqual(TotalRegistrations, rootDefault.GetProperty("totalCount").GetInt32(),
+            "totalCount must reflect the full registration count across the queried scope.");
+        Assert.AreEqual(0, rootDefault.GetProperty("offset").GetInt32());
+        Assert.AreEqual(100, rootDefault.GetProperty("limit").GetInt32());
+        Assert.IsTrue(rootDefault.GetProperty("hasMore").GetBoolean(),
+            "With 101 registrations and default limit=100, hasMore must be true.");
+        Assert.IsTrue(rootDefault.TryGetProperty("registrations", out var registrationsDefault));
+        Assert.AreEqual(100, registrationsDefault.GetArrayLength(),
+            "The paged registrations array must contain exactly limit entries.");
+
+        // Also verify the showLifetimeOverrides=true detailed path applies the same pagination
+        // to the registrations list (separate serialize site at AdvancedAnalysisTools.cs:92-98).
+        // Note: the override-chains output remains unpaged in this mode; pagination only applies
+        // to the registrations list. With 101 single-registration service types we expect zero
+        // override chains (services need >= 2 registrations to qualify).
+        var jsonOverrides = await AdvancedAnalysisTools.GetDiRegistrations(
+            WorkspaceExecutionGate,
+            DiRegistrationService,
+            workspace.WorkspaceId,
+            projectName: "SampleLib",
+            showLifetimeOverrides: true,
+            summary: false,
+            ct: CancellationToken.None);
+
+        using var documentOverrides = JsonDocument.Parse(jsonOverrides);
+        var rootOverrides = documentOverrides.RootElement;
+        Assert.AreEqual(100, rootOverrides.GetProperty("count").GetInt32(),
+            "Default limit=100 must bound the registrations slice on the overrides path too.");
+        Assert.AreEqual(TotalRegistrations, rootOverrides.GetProperty("totalCount").GetInt32());
+        Assert.IsTrue(rootOverrides.GetProperty("hasMore").GetBoolean(),
+            "hasMore must also be true on the overrides path with > limit registrations.");
+        Assert.IsTrue(rootOverrides.TryGetProperty("registrations", out var registrationsOverrides));
+        Assert.AreEqual(100, registrationsOverrides.GetArrayLength());
+        Assert.IsTrue(rootOverrides.TryGetProperty("overrideChainCount", out _),
+            "overrideChainCount must still be emitted on the overrides path.");
+        Assert.IsTrue(rootOverrides.TryGetProperty("overrideChains", out _),
+            "overrideChains must still be emitted on the overrides path.");
+    }
+
+    /// <summary>
+    /// Materialises <paramref name="count"/> distinct service-type registrations into the
+    /// workspace by emitting one file with <paramref name="count"/> interfaces, implementations,
+    /// and AddSingleton&lt;,&gt; calls — sufficient for exercising paging on the detailed
+    /// response shape without interacting with the shared shim used by the other tests.
+    /// </summary>
+    private static async Task WriteManyRegistrationsAsync(IsolatedWorkspaceScope workspace, int count, CancellationToken ct)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("namespace SampleLib;");
+        sb.AppendLine();
+        for (var i = 0; i < count; i++)
+        {
+            sb.Append("public interface IService").Append(i).AppendLine(" { }");
+            sb.Append("public sealed class Service").Append(i).Append("Impl : IService").Append(i).AppendLine(" { }");
+        }
+        sb.AppendLine();
+        sb.AppendLine("public static class ManyRegistrations");
+        sb.AppendLine("{");
+        sb.AppendLine("    public static void Configure(IServiceCollection services)");
+        sb.AppendLine("    {");
+        for (var i = 0; i < count; i++)
+        {
+            sb.Append("        services.AddSingleton<IService").Append(i)
+              .Append(", Service").Append(i).AppendLine("Impl>();");
+        }
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
+
+        await File.WriteAllTextAsync(
+            workspace.GetPath("SampleLib", "ManyRegistrations.cs"),
+            sb.ToString(),
+            ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Writes a self-contained shim of <c>IServiceCollection</c> + extension methods to
     /// SampleLib. The DI registration walker matches by containing-type name shape
     /// ("ServiceCollection") and method-name lifetime mapping, so this gives full semantic
