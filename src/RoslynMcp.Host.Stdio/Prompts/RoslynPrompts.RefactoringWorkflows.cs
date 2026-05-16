@@ -11,62 +11,64 @@ namespace RoslynMcp.Host.Stdio.Prompts;
 public static partial class RoslynPrompts
 {
     [McpServerPrompt(Name = "debug_test_failure")]
-    [Description("Generate a prompt to diagnose test failures by running tests and analyzing the output")]
-    public static async Task<IEnumerable<PromptMessage>> DebugTestFailure(
-        ITestRunnerService testRunnerService,
+    [Description("Generate a pure-template prompt that walks the agent through running tests and diagnosing failures. Renders instructions only — the caller is responsible for invoking `test_run` / `test_related_files` and passing the results into the analysis step.")]
+    public static IEnumerable<PromptMessage> DebugTestFailure(
         [Description("The workspace session identifier")] string workspaceId,
         [Description("Optional: specific test project name")] string? projectName = null,
-        [Description("Optional: test filter expression to narrow which tests to run")] string? filter = null,
-        CancellationToken ct = default)
+        [Description("Optional: test filter expression to narrow which tests to run")] string? filter = null)
     {
-        try
-        {
-            var testResult = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, ct).ConfigureAwait(false);
+        // get-prompt-text-side-effects-in-rendering: this prompt MUST stay pure — no service
+        // calls during template rendering. The previous implementation eagerly invoked
+        // `ITestRunnerService.RunTestsAsync`, which violated the `get_prompt_text` contract
+        // ("pure template substitution") and caused a live `dotnet test` to spawn on every
+        // prompt fetch. The caller now invokes `test_run` / `test_related_files` first and
+        // passes the structured result into the diagnose step.
+        return
+        [
+            PromptMessageBuilder.CreatePromptMessage($"""
+                Diagnose test failures in workspace `{workspaceId}` using the server's read-side tools.
 
-            // file-lock-aware-prompt-validation-guidance: FileLock envelopes are infrastructure
-            // failures, not test-authoring failures. Short-circuit the diagnose-and-retry loop
-            // before rendering the standard failure framing — re-running validation in the same
-            // loaded workspace re-acquires the lock.
-            if (string.Equals(testResult.FailureEnvelope?.ErrorKind, "FileLock", StringComparison.Ordinal))
-            {
-                return [PromptMessageBuilder.CreateFileLockBypassGuidance("debug_test_failure", testResult.FailureEnvelope!)];
-            }
+                **Project Filter:** {projectName ?? "(entire workspace)"}
+                **Test Filter:** {filter ?? "(no filter — all tests in scope)"}
 
-            var testResultJson = JsonSerializer.Serialize(testResult, JsonDefaults.Indented);
+                ## Step 1 — Pick the right validation entry point
+                - For a focused, just-edited slice, prefer `test_related_files` (file paths only — runs the smallest set that covers the changed source files).
+                - For a broader sweep or when you don't know the affected tests yet, call `test_run` with the optional `projectName` / `filter` arguments above.
 
-            var failureSummary = testResult.Failures.Count > 0
-                ? string.Join("\n", testResult.Failures.Select((f, i) =>
-                    $"  {i + 1}. **{f.DisplayName}**\n     Message: {f.Message}\n     Stack: {f.StackTrace ?? "N/A"}"))
-                : "No failures detected.";
+                ## Step 2 — Inspect the result envelope
+                The result envelope includes:
+                - `Total` / `Passed` / `Failed` / `Skipped` counts.
+                - `Failures[]` with `DisplayName`, `Message`, `StackTrace`.
+                - `FailureEnvelope` when the run aborted before producing test results.
 
-            return
-            [
-                PromptMessageBuilder.CreatePromptMessage($"""
-                    Diagnose the following test failure(s) and suggest fixes.
+                **If `FailureEnvelope.ErrorKind == "FileLock"`** (MSB3027/MSB3021), the failure is
+                infrastructure-class — another process is still holding the test assembly or an
+                analyzer reference. **Do not modify test or production code.** Re-running validation
+                in the same loaded workspace will re-acquire the lock. Bypass:
+                1. Use `compile_check` / `project_diagnostics` / `diagnostic_details` for read-side
+                   evidence while the lock persists.
+                2. Close any IDE or sidecar process still running tests (Visual Studio Test Explorer,
+                   JetBrains Rider runner, stale `dotnet watch`), then call `workspace_reload` and
+                   retry validation. The reload releases the analyzer-DLL handles inside the MCP
+                   server's own workspace.
+                3. If the holder is unclear, run `dotnet build-server shutdown` from a shell outside
+                   this MCP server, then re-issue the validation from an isolated process. Only
+                   return to the diagnose-fix-revalidate loop after the bypass produces a structured
+                   pass/fail result.
 
-                    **Test Summary:** {testResult.Total} total, {testResult.Passed} passed, {testResult.Failed} failed, {testResult.Skipped} skipped
+                ## Step 3 — Diagnose each failure
+                For every entry in `Failures[]`:
+                1. Identify the root cause of the failing test.
+                2. Determine if the failure is in the test itself or the code under test.
+                3. Suggest specific code changes to fix the failure.
+                4. If the test expectation is wrong, explain why and suggest the correct assertion.
+                5. Note any test isolation issues (shared state, timing, external dependencies).
 
-                    **Test Results (full):**
-                    ```json
-                    {testResultJson}
-                    ```
-
-                    **Failure Details:**
-                    {failureSummary}
-
-                    Please:
-                    1. Identify the root cause of each failing test
-                    2. Determine if the failure is in the test itself or the code under test
-                    3. Suggest specific code changes to fix the failure
-                    4. If the test expectation is wrong, explain why and suggest the correct assertion
-                    5. Note any test isolation issues (shared state, timing, external dependencies)
-                    """)
-            ];
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return [PromptMessageBuilder.CreateErrorMessage("debug_test_failure", ex)];
-        }
+                ## Step 4 — Re-validate
+                After applying fixes, call `test_run` (or `test_related_files`) again with the same
+                filter to confirm the failures cleared and no regressions were introduced.
+                """)
+        ];
     }
 
     [McpServerPrompt(Name = "refactor_and_validate")]

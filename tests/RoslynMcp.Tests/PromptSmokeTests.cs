@@ -1,14 +1,12 @@
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
-using RoslynMcp.Core.Models;
+using ModelContextProtocol.Protocol;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Prompts;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 using RoslynMcp.Tests.Helpers;
-using ModelContextProtocol.Protocol;
 
 namespace RoslynMcp.Tests;
 
@@ -17,19 +15,12 @@ namespace RoslynMcp.Tests;
 public sealed class PromptSmokeTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
-    private static SecurityDiagnosticService SecurityService { get; set; } = null!;
 
     [ClassInitialize]
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
-        var msBuildEvaluation = new MsBuildEvaluationService(WorkspaceManager);
-        SecurityService = new SecurityDiagnosticService(
-            DiagnosticService,
-            WorkspaceManager,
-            msBuildEvaluation,
-            NullLogger<SecurityDiagnosticService>.Instance);
     }
 
     [ClassCleanup]
@@ -88,17 +79,21 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             $"Actual parameters: [{string.Join(", ", parameterNames)}]");
     }
 
+    // get-prompt-text-side-effects-in-rendering: security_review must be a pure template — it
+    // MUST NOT invoke ISecurityDiagnosticService or INuGetDependencyService during rendering.
+    // The previous implementation eagerly invoked all three security tools (including the
+    // network/SDK `dotnet list package --vulnerable` call) on every prompt fetch.
     [TestMethod]
-    public async Task SecurityReview_Returns_Text()
+    public void SecurityReview_Returns_Text()
     {
-        var messages = (await RoslynPrompts.SecurityReview(
-            SecurityService,
-            NuGetDependencyService,
-            WorkspaceId,
-            projectName: null,
-            CancellationToken.None)).ToList();
+        var messages = RoslynPrompts.SecurityReview(
+            workspaceId: WorkspaceId,
+            projectName: null).ToList();
         Assert.AreEqual(1, messages.Count);
-        StringAssert.Contains(GetText(messages[0]), "security");
+        var text = GetText(messages[0]);
+        StringAssert.Contains(text, "security");
+        StringAssert.Contains(text, "security_diagnostics",
+            "Template must direct the caller to invoke security_diagnostics — the prompt no longer pre-fetches findings.");
     }
 
     [TestMethod]
@@ -206,51 +201,26 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             "could not be deserialized");
     }
 
-    // file-lock-aware-prompt-validation-guidance: when test_run surfaces a FileLock envelope
-    // (MSB3027/MSB3021), debug_test_failure must render an infrastructure-class bypass
-    // instead of the standard "diagnose the root cause" framing — otherwise the operator
-    // re-runs validation in the same loaded workspace and re-acquires the lock.
+    // file-lock-aware-prompt-validation-guidance + get-prompt-text-side-effects-in-rendering:
+    // the FileLock-bypass guidance is now baked into the static template. The prompt no longer
+    // takes a TestRunnerService parameter and never invokes RunTestsAsync — the caller runs
+    // `test_run` first and follows the appropriate template branch based on the result envelope.
+    // This test guards the template content so the bypass branch can't be removed without
+    // breaking the smoke test.
     [TestMethod]
-    public async Task DebugTestFailure_FileLockEnvelope_RendersBypassGuidance()
+    public void DebugTestFailure_RendersFileLockBypassGuidance()
     {
-        var envelope = new TestRunFailureEnvelopeDto(
-            ErrorKind: "FileLock",
-            IsRetryable: true,
-            Summary: "dotnet test exited with code 1 due to an MSBuild file lock (MSB3027/MSB3021).",
-            StdOutTail: "MSB3027: Could not copy ... testhost.exe is still locking the file.",
-            StdErrTail: "MSB3021: Unable to copy file ... it is being used by another process.");
-
-        var stub = new StubTestRunnerService(new TestRunResultDto(
-            Execution: new CommandExecutionDto(
-                Command: "dotnet",
-                Arguments: ["test"],
-                WorkingDirectory: "C:\\fake",
-                TargetPath: "C:\\fake\\Solution.sln",
-                ExitCode: 1,
-                Succeeded: false,
-                DurationMs: 1234,
-                StdOut: "",
-                StdErr: ""),
-            Total: 0,
-            Passed: 0,
-            Failed: 0,
-            Skipped: 0,
-            Failures: [],
-            FailureEnvelope: envelope));
-
-        var messages = (await RoslynPrompts.DebugTestFailure(
-            stub,
+        var messages = RoslynPrompts.DebugTestFailure(
             workspaceId: "any-workspace",
             projectName: null,
-            filter: null,
-            CancellationToken.None)).ToList();
+            filter: null).ToList();
 
         Assert.AreEqual(1, messages.Count);
         var text = GetText(messages[0]);
 
-        StringAssert.Contains(text, "infrastructure failure",
+        StringAssert.Contains(text, "infrastructure",
             "Bypass guidance must declare the failure infrastructure-class.");
-        StringAssert.Contains(text, "errorKind: FileLock",
+        StringAssert.Contains(text, "FileLock",
             "Bypass guidance must name the FileLock envelope so the operator can correlate.");
         StringAssert.Contains(text, "compile_check",
             "Bypass guidance must point to a read-side alternative.");
@@ -258,16 +228,72 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             "Bypass guidance must instruct the operator to release in-process analyzer-DLL handles.");
         StringAssert.Contains(text, "dotnet build-server shutdown",
             "Bypass guidance must instruct shutting down the build daemon when the holder is unclear.");
-
-        Assert.IsFalse(text.Contains("Identify the root cause of each failing test"),
-            "Standard diagnose-failure framing must be suppressed for FileLock envelopes — "
-            + "otherwise the operator re-runs validation and re-acquires the lock.");
     }
 
-    private sealed class StubTestRunnerService(TestRunResultDto result) : ITestRunnerService
+    // get-prompt-text-side-effects-in-rendering: debug_test_failure must be a pure template — it
+    // MUST NOT accept an ITestRunnerService parameter and MUST NOT invoke RunTestsAsync during
+    // rendering. The previous implementation spawned a live `dotnet test` on every prompt fetch.
+    // This test guards against regression by verifying the prompt signature is parameter-free of
+    // service injection AND by calling it with a workspaceId that would have failed in the old
+    // implementation (no live runner present).
+    [TestMethod]
+    public void DebugTestFailure_DoesNotInvokeTestRunnerService()
     {
-        public Task<TestRunResultDto> RunTestsAsync(string workspaceId, string? projectName, string? filter, CancellationToken ct) =>
-            Task.FromResult(result);
+        var method = typeof(RoslynPrompts).GetMethod(
+            nameof(RoslynPrompts.DebugTestFailure),
+            BindingFlags.Public | BindingFlags.Static)
+            ?? throw new AssertFailedException($"Could not find {nameof(RoslynPrompts)}.{nameof(RoslynPrompts.DebugTestFailure)}.");
+
+        var parameterTypes = method.GetParameters().Select(p => p.ParameterType).ToArray();
+
+        Assert.IsFalse(parameterTypes.Any(t => t == typeof(ITestRunnerService)),
+            "debug_test_failure must not accept ITestRunnerService — that parameter was the side-effect carrier. "
+            + $"Actual parameter types: [{string.Join(", ", parameterTypes.Select(t => t.Name))}]");
+
+        // Behavioral guard: calling the prompt with a non-existent workspace id must not throw —
+        // the old eager call would have surfaced a workspace-not-found exception from the runner.
+        var messages = RoslynPrompts.DebugTestFailure(
+            workspaceId: "nonexistent-workspace-id-that-no-runner-could-resolve",
+            projectName: null,
+            filter: null).ToList();
+        Assert.AreEqual(1, messages.Count);
+        StringAssert.Contains(GetText(messages[0]), "test_run",
+            "Template must direct the caller to invoke test_run — the prompt no longer runs tests itself.");
+    }
+
+    // get-prompt-text-side-effects-in-rendering: security_review must be a pure template — it
+    // MUST NOT accept ISecurityDiagnosticService or INuGetDependencyService parameters and MUST
+    // NOT invoke any security tools during rendering. The previous implementation spawned a
+    // `dotnet list package --vulnerable` network/SDK call on every prompt fetch.
+    [TestMethod]
+    public void SecurityReview_DoesNotInvokeSecurityServices()
+    {
+        var method = typeof(RoslynPrompts).GetMethod(
+            nameof(RoslynPrompts.SecurityReview),
+            BindingFlags.Public | BindingFlags.Static)
+            ?? throw new AssertFailedException($"Could not find {nameof(RoslynPrompts)}.{nameof(RoslynPrompts.SecurityReview)}.");
+
+        var parameterTypes = method.GetParameters().Select(p => p.ParameterType).ToArray();
+
+        Assert.IsFalse(parameterTypes.Any(t => t == typeof(ISecurityDiagnosticService)),
+            "security_review must not accept ISecurityDiagnosticService — that parameter was a side-effect carrier. "
+            + $"Actual parameter types: [{string.Join(", ", parameterTypes.Select(t => t.Name))}]");
+        Assert.IsFalse(parameterTypes.Any(t => t == typeof(INuGetDependencyService)),
+            "security_review must not accept INuGetDependencyService — that parameter was a side-effect carrier "
+            + "(the old implementation spawned `dotnet list package --vulnerable` on every prompt fetch). "
+            + $"Actual parameter types: [{string.Join(", ", parameterTypes.Select(t => t.Name))}]");
+
+        // Behavioral guard: calling the prompt with a non-existent workspace id must not throw —
+        // the old eager call would have surfaced a workspace-not-found exception from the runner.
+        var messages = RoslynPrompts.SecurityReview(
+            workspaceId: "nonexistent-workspace-id-that-no-service-could-resolve",
+            projectName: null).ToList();
+        Assert.AreEqual(1, messages.Count);
+        var text = GetText(messages[0]);
+        StringAssert.Contains(text, "security_analyzer_status",
+            "Template must direct the caller to invoke security_analyzer_status — the prompt no longer pre-fetches status.");
+        StringAssert.Contains(text, "nuget_vulnerability_scan",
+            "Template must direct the caller to invoke nuget_vulnerability_scan — the prompt no longer pre-fetches CVE data.");
     }
 
     private static string GetText(PromptMessage message) =>
