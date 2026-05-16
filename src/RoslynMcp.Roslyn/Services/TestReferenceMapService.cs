@@ -25,6 +25,7 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
         string? projectName,
         int offset,
         int limit,
+        int maxMockDriftWarnings,
         CancellationToken ct)
     {
         var status = _workspace.GetStatus(workspaceId);
@@ -71,7 +72,7 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
             .ToArray();
 
         return BuildPaginatedResult(
-            coveredAll, uncoveredAll, offset, limit, scannedTestProjects, notes, mockDrift);
+            coveredAll, uncoveredAll, offset, limit, maxMockDriftWarnings, scannedTestProjects, notes, mockDrift);
     }
 
     /// <summary>
@@ -248,12 +249,29 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
     /// The combined ordering is stable between calls so callers can resume at
     /// <c>offset + returnedCount</c>. <see cref="TestReferenceMapDto.CoveragePercent"/> stays pegged
     /// to the full counts so the verdict doesn't wobble based on page window.
+    ///
+    /// <para>
+    /// gh #774 follow-up (test-reference-map-pagination-only-covers-covered-symbols): the
+    /// <see cref="TestReferenceMapDto.MockDriftWarnings"/> collection is also bounded by
+    /// <paramref name="maxMockDriftWarnings"/> (clamped to [0, 500]) — pre-fix the collection
+    /// passed through uncapped and dominated payload size in repos with many mocked interfaces.
+    /// <see cref="TestReferenceMapDto.TotalMockDriftCount"/> always carries the full count and
+    /// <see cref="TestReferenceMapDto.HasMoreMockDrift"/> flags truncation.
+    /// </para>
+    ///
+    /// <para>
+    /// Internal (not private) so <c>TestReferenceMapServiceTests</c> can exercise the cap with
+    /// synthetic mock-drift inputs that cannot be produced through the public <see cref="BuildAsync"/>
+    /// surface — <see cref="DetectMockDriftAsync"/> walks live Roslyn data and the sample
+    /// solution does not produce 109-entry edge cases organically.
+    /// </para>
     /// </summary>
-    private static TestReferenceMapDto BuildPaginatedResult(
+    internal static TestReferenceMapDto BuildPaginatedResult(
         CoveredSymbolDto[] coveredAll,
         string[] uncoveredAll,
         int offset,
         int limit,
+        int maxMockDriftWarnings,
         IReadOnlyList<string> scannedTestProjects,
         IReadOnlyList<string> notes,
         IReadOnlyList<MockDriftWarningDto> mockDrift)
@@ -280,18 +298,29 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
         var returned = coveredPage.Length + uncoveredPage.Length;
         var hasMore = clampedOffset + returned < denominator;
 
+        // gh #774: per-collection cap for MockDriftWarnings. Clamp to [0, 500]; a 0 max returns
+        // an empty list while keeping TotalMockDriftCount/HasMoreMockDrift truthful so callers
+        // can still detect drift exists without paying the payload tax.
+        var clampedMaxMockDrift = Math.Clamp(maxMockDriftWarnings, 0, 500);
+        var mockDriftPage = clampedMaxMockDrift > 0 && mockDrift.Count > 0
+            ? (IReadOnlyList<MockDriftWarningDto>)mockDrift.Take(clampedMaxMockDrift).ToArray()
+            : Array.Empty<MockDriftWarningDto>();
+        var hasMoreMockDrift = mockDrift.Count > mockDriftPage.Count;
+
         return new TestReferenceMapDto(
             coveredPage,
             uncoveredPage,
             percent,
             scannedTestProjects,
             notes,
-            mockDrift,
+            mockDriftPage,
             Offset: clampedOffset,
             Limit: clampedLimit,
             TotalCoveredCount: coveredAll.Length,
             TotalUncoveredCount: uncoveredAll.Length,
-            HasMore: hasMore);
+            TotalMockDriftCount: mockDrift.Count,
+            HasMore: hasMore,
+            HasMoreMockDrift: hasMoreMockDrift);
     }
 
     /// <summary>

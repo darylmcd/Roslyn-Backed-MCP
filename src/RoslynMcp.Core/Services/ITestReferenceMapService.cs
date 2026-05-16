@@ -29,11 +29,18 @@ public interface ITestReferenceMapService
     /// Maximum symbols returned per page. Clamps to [1, 500]. Default 200 matches the other
     /// paginated tools.
     /// </param>
+    /// <param name="maxMockDriftWarnings">
+    /// Maximum NSubstitute mock-drift warnings returned. Clamps to [0, 500]. Default 50 keeps
+    /// typical small-workspace responses near pre-fix sizing while bounding pathological cases
+    /// where production code accumulates dozens of unstubbed interface methods. Pre-fix the
+    /// collection was uncapped and dominated payload size in repos with many mocked interfaces.
+    /// </param>
     Task<TestReferenceMapDto> BuildAsync(
         string workspaceId,
         string? projectName,
         int offset,
         int limit,
+        int maxMockDriftWarnings,
         CancellationToken ct);
 }
 
@@ -45,12 +52,14 @@ public interface ITestReferenceMapService
 /// <param name="CoveragePercent">Ratio <c>covered/(covered+uncovered)</c> × 100, rounded to one decimal. Always computed against the full (pre-pagination) counts so the verdict doesn't change with page size.</param>
 /// <param name="InspectedTestProjects">Test projects actually scanned during the sweep.</param>
 /// <param name="Notes">Structural caveats the caller should surface (e.g., reflection-heavy code, DI-driven tests).</param>
-/// <param name="MockDriftWarnings">Item 9 (v1.18) — NSubstitute mock drift findings. Not paginated (typically small).</param>
+/// <param name="MockDriftWarnings">Item 9 (v1.18) — NSubstitute mock drift findings. Bounded to <c>maxMockDriftWarnings</c>; see <see cref="HasMoreMockDrift"/> and <see cref="TotalMockDriftCount"/> for the full count.</param>
 /// <param name="Offset">Echoes the effective (clamped) offset so callers can paginate without re-computing.</param>
 /// <param name="Limit">Echoes the effective (clamped) limit.</param>
 /// <param name="TotalCoveredCount">Full covered-symbol count before pagination.</param>
 /// <param name="TotalUncoveredCount">Full uncovered-symbol count before pagination.</param>
+/// <param name="TotalMockDriftCount">Full mock-drift warning count before the per-collection cap.</param>
 /// <param name="HasMore">True when <c>Offset + CoveredSymbols.Count + UncoveredSymbols.Count</c> is less than the combined total.</param>
+/// <param name="HasMoreMockDrift">True when <c>TotalMockDriftCount</c> exceeds <c>MockDriftWarnings.Count</c> — the per-collection cap truncated the warning list.</param>
 public sealed record TestReferenceMapDto(
     IReadOnlyList<CoveredSymbolDto> CoveredSymbols,
     IReadOnlyList<string> UncoveredSymbols,
@@ -62,7 +71,9 @@ public sealed record TestReferenceMapDto(
     int Limit,
     int TotalCoveredCount,
     int TotalUncoveredCount,
-    bool HasMore);
+    int TotalMockDriftCount,
+    bool HasMore,
+    bool HasMoreMockDrift);
 
 /// <summary>One covered-symbol row with referencing test method names.</summary>
 public sealed record CoveredSymbolDto(
