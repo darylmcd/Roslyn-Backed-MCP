@@ -7,8 +7,11 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Regression coverage for <c>symbol-search-pagination</c>: <c>symbol_search</c> now supports
-/// <c>offset</c> / <c>limit</c> pagination (max 200) with <c>totalCount</c> and <c>hasMore</c>
-/// in the response envelope.
+/// <c>offset</c> / <c>limit</c> pagination (max 50, lowered from 200 in
+/// <c>symbol-search-broad-query-response-cap-overflow</c>) with <c>totalCount</c> and
+/// <c>hasMore</c> in the response envelope. Also covers the <c>summary=true</c> projection
+/// that drops expensive per-symbol fields (documentation, parameters, baseTypes, interfaces,
+/// modifiers, returnType) to keep broad-query payloads under the MCP inline transport cap.
 /// </summary>
 [DoNotParallelize]
 [TestClass]
@@ -111,21 +114,23 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task SymbolSearch_HasMore_FalseOnLastPage()
     {
-        // First page: find out how many Animal symbols are present.
+        // First page: find out how many Animal symbols are present. The hard cap is 50
+        // (lowered from 200 in symbol-search-broad-query-response-cap-overflow); SampleSolution
+        // currently surfaces well under 50 'Animal' matches so a single page covers the full set.
         var probeJson = await ToolExecutionTestHarness.RunAsync(
             "symbol_search",
             () => SymbolTools.SearchSymbols(
                 server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
-                limit: 200, offset: 0,
+                limit: 50, offset: 0,
                 ct: CancellationToken.None));
 
         using var probeDoc = JsonDocument.Parse(probeJson);
         var total = probeDoc.RootElement.GetProperty("totalCount").GetInt32();
         var hasMoreProbe = probeDoc.RootElement.GetProperty("hasMore").GetBoolean();
         Assert.IsFalse(hasMoreProbe,
-            "When limit=200 covers all results, hasMore must be false");
+            "When limit=50 covers all results, hasMore must be false");
         Assert.IsTrue(total >= 1, "SampleSolution must contain at least one 'Animal' symbol");
     }
 
@@ -160,10 +165,10 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         }
     }
 
-    // ── limit = 200 max ─────────────────────────────────────────────────────
+    // ── limit = 50 max (lowered from 200 in symbol-search-broad-query-response-cap-overflow) ─
 
     [TestMethod]
-    public async Task SymbolSearch_LimitExceeds200_ThrowsArgumentException()
+    public async Task SymbolSearch_LimitExceeds50_ThrowsArgumentException()
     {
         await Assert.ThrowsExactlyAsync<ArgumentException>(async () =>
         {
@@ -171,7 +176,7 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
                 server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
                 query: "Animal",
                 projectName: null, kind: null, @namespace: null,
-                limit: 201, offset: 0,
+                limit: 51, offset: 0,
                 ct: CancellationToken.None);
         });
     }
@@ -214,5 +219,114 @@ public sealed class SymbolSearchPaginationTests : SharedWorkspaceTestBase
         Assert.IsFalse(root.GetProperty("hasMore").GetBoolean());
         Assert.AreEqual(0, root.GetProperty("offset").GetInt32());
         Assert.AreEqual(50, root.GetProperty("limit").GetInt32());
+    }
+
+    // ── summary=true projection (symbol-search-broad-query-response-cap-overflow) ───────────
+
+    [TestMethod]
+    public async Task SymbolSearch_Summary_DropsExpensiveFields()
+    {
+        // summary=true must strip Documentation, Parameters, BaseTypes, Interfaces, Modifiers,
+        // and ReturnType while retaining the locator-essential fields (Name, FullyQualifiedName,
+        // SymbolHandle, Kind, FilePath, StartLine, StartColumn).
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "symbol_search",
+            () => SymbolTools.SearchSymbols(
+                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                query: "Animal",
+                projectName: null, kind: null, @namespace: null,
+                limit: 10, offset: 0,
+                summary: true,
+                ct: CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        var symbols = doc.RootElement.GetProperty("symbols");
+        Assert.AreEqual(JsonValueKind.Array, symbols.ValueKind);
+        Assert.IsTrue(symbols.GetArrayLength() > 0,
+            "SampleSolution must surface at least one 'Animal' symbol for the projection to be observable");
+
+        var first = symbols[0];
+
+        // Locator-essential fields must remain.
+        Assert.IsTrue(first.TryGetProperty("name", out _), "name must remain in summary mode");
+        Assert.IsTrue(first.TryGetProperty("fullyQualifiedName", out _), "fullyQualifiedName must remain in summary mode");
+        Assert.IsTrue(first.TryGetProperty("symbolHandle", out _), "symbolHandle must remain in summary mode");
+        Assert.IsTrue(first.TryGetProperty("kind", out _), "kind must remain in summary mode");
+        Assert.IsTrue(first.TryGetProperty("filePath", out _), "filePath must remain in summary mode");
+        Assert.IsTrue(first.TryGetProperty("startLine", out _), "startLine must remain in summary mode");
+        Assert.IsTrue(first.TryGetProperty("startColumn", out _), "startColumn must remain in summary mode");
+
+        // Expensive fields must be dropped.
+        Assert.IsFalse(first.TryGetProperty("documentation", out _), "documentation must be dropped in summary mode");
+        Assert.IsFalse(first.TryGetProperty("parameters", out _), "parameters must be dropped in summary mode");
+        Assert.IsFalse(first.TryGetProperty("baseTypes", out _), "baseTypes must be dropped in summary mode");
+        Assert.IsFalse(first.TryGetProperty("interfaces", out _), "interfaces must be dropped in summary mode");
+        Assert.IsFalse(first.TryGetProperty("modifiers", out _), "modifiers must be dropped in summary mode");
+        Assert.IsFalse(first.TryGetProperty("returnType", out _), "returnType must be dropped in summary mode");
+    }
+
+    [TestMethod]
+    public async Task SymbolSearch_Summary_EchoedInEnvelope()
+    {
+        // The summary flag must surface in the envelope so callers can confirm whether
+        // their request resulted in a stripped projection.
+        var jsonTrue = await ToolExecutionTestHarness.RunAsync(
+            "symbol_search",
+            () => SymbolTools.SearchSymbols(
+                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                query: "Animal",
+                projectName: null, kind: null, @namespace: null,
+                limit: 5, offset: 0,
+                summary: true,
+                ct: CancellationToken.None));
+
+        using (var doc = JsonDocument.Parse(jsonTrue))
+        {
+            Assert.IsTrue(doc.RootElement.TryGetProperty("summary", out var s),
+                "envelope must echo the summary flag");
+            Assert.IsTrue(s.GetBoolean(), "summary=true must echo as true");
+        }
+
+        var jsonFalse = await ToolExecutionTestHarness.RunAsync(
+            "symbol_search",
+            () => SymbolTools.SearchSymbols(
+                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                query: "Animal",
+                projectName: null, kind: null, @namespace: null,
+                limit: 5, offset: 0,
+                summary: false,
+                ct: CancellationToken.None));
+
+        using (var doc = JsonDocument.Parse(jsonFalse))
+        {
+            Assert.IsTrue(doc.RootElement.TryGetProperty("summary", out var s),
+                "envelope must echo the summary flag even when false");
+            Assert.IsFalse(s.GetBoolean(), "summary=false must echo as false");
+        }
+    }
+
+    [TestMethod]
+    public async Task SymbolSearch_Summary_BroadQuery_PayloadBounded()
+    {
+        // Broad-query regression guard: at limit=50 with summary=true the projected payload
+        // must stay well under the MCP inline transport cap (~64 KB). Asserting < 50 KB gives
+        // headroom and remains robust as SampleSolution grows.
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "symbol_search",
+            () => SymbolTools.SearchSymbols(
+                server: null!, WorkspaceExecutionGate, SymbolSearchService, WorkspaceId,
+                query: "Service",
+                projectName: null, kind: null, @namespace: null,
+                limit: 50, offset: 0,
+                summary: true,
+                ct: CancellationToken.None));
+
+        Assert.IsTrue(json.Length < 50_000,
+            $"summary=true broad-query payload must stay under 50 KB; got {json.Length} bytes");
+
+        // Still a well-formed envelope.
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("symbols", out var symbols));
+        Assert.AreEqual(JsonValueKind.Array, symbols.ValueKind);
     }
 }
