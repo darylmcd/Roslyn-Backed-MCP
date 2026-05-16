@@ -163,20 +163,71 @@ public static class AdvancedAnalysisTools
     [McpServerTool(Name = "find_reflection_usages", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("advanced-analysis", "stable", true, false,
         "Find reflection-heavy call sites."),
-     Description("Find all reflection API usage in the solution (typeof, Type.GetMethod, Activator.CreateInstance, Assembly.Load, etc.)")]
+     Description("Find all reflection API usage in the solution (typeof, Type.GetMethod, Activator.CreateInstance, Assembly.Load, etc.). " +
+        "Paginated via offset/limit (default limit=200) to bound response size on reflection-heavy solutions — " +
+        "callers on solutions with > limit hits should iterate by increasing offset until hasMore=false. " +
+        "totalCount counts ALL reflection sites in the queried scope; the paged usagesByKind slice contains only " +
+        "the [offset, offset+limit) window. Pass summary=true for the per-UsageKind counts only (no item arrays) — " +
+        "a compact aggregate shape for large solutions where the default paginated response still exceeds the MCP cap.")]
     public static Task<string> FindReflectionUsages(
         IWorkspaceExecutionGate gate,
         ICodePatternAnalyzer codePatternAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: filter by project name")] string? projectName = null,
+        [Description("Number of usages to skip before returning results (default: 0).")] int offset = 0,
+        [Description("Maximum number of usages to return per call (default: 200); primary payload cap.")] int limit = 200,
+        [Description("When true, return only per-UsageKind aggregate counts (no item arrays). 10-100x smaller payload on reflection-heavy solutions.")] bool summary = false,
         CancellationToken ct = default)
     {
+        ParameterValidation.ValidatePagination(offset, limit);
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var results = await codePatternAnalyzer.FindReflectionUsagesAsync(workspaceId, projectName, c);
-            var grouped = results.GroupBy(r => r.UsageKind)
-                .ToDictionary(g => g.Key, g => g.ToList());
-            return JsonSerializer.Serialize(new { count = results.Count, usagesByKind = grouped }, JsonDefaults.Indented);
+
+            // Summary mode: drop the item arrays and return only per-UsageKind counts plus the
+            // total. usageKindCounts is computed on the FULL result set (not the paged slice)
+            // so callers see the true distribution regardless of paging. 10-100x smaller
+            // payload on reflection-heavy solutions — matches the project_diagnostics(summary=true)
+            // contract.
+            if (summary)
+            {
+                var usageKindCounts = results
+                    .GroupBy(r => r.UsageKind, StringComparer.Ordinal)
+                    .OrderByDescending(g => g.Count())
+                    .ThenBy(g => g.Key, StringComparer.Ordinal)
+                    .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+
+                return JsonSerializer.Serialize(new
+                {
+                    summary = true,
+                    count = 0,
+                    totalCount = results.Count,
+                    offset,
+                    limit,
+                    hasMore = false,
+                    usageKindCounts,
+                }, JsonDefaults.Indented);
+            }
+
+            // Default paginated mode mirrors FindTypeUsages: collect the full result set
+            // (the walk cost is the same either way), slice with Skip/Take, then group the
+            // paged slice by UsageKind for the wire envelope. count = paged slice size;
+            // totalCount = full result set size; hasMore = (offset + count) < totalCount.
+            var paged = results.Skip(offset).Take(limit).ToList();
+            var grouped = paged
+                .GroupBy(r => r.UsageKind, StringComparer.Ordinal)
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
+            var hasMore = offset + paged.Count < results.Count;
+
+            return JsonSerializer.Serialize(new
+            {
+                count = paged.Count,
+                totalCount = results.Count,
+                offset,
+                limit,
+                hasMore,
+                usagesByKind = grouped,
+            }, JsonDefaults.Indented);
         }, ct);
     }
 
