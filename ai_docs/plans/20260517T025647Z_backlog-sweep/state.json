@@ -3,16 +3,25 @@
   "generatedAt": "2026-05-17T02:56:47Z",
   "backlogSnapshot": "2026-05-17T00:55:00Z",
   "addendaLoaded": true,
-  "phase": "skeleton",
+  "phase": "conflict-graph-done",
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "pending",
   "readyForExecute": false,
-  "anchorVerification": "pending",
+  "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "degrees": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      2,
+      3
+    ]
   },
   "initiatives": [
     {
@@ -22,20 +31,20 @@
       "backlogRowsClosed": [
         "compact-semantic-grep-pagination"
       ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 25000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 1,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "Tool-surface-only exemption (1 prod file, no interface/impl changes). Design decision: keep ISemanticGrepService.SearchAsync signature unchanged — collect-then-paginate in wrapper mirrors find_type_usages pattern exactly."
     },
     {
       "id": "test-suite-fixture-reuse-cohesion-and-validate-git",
@@ -44,20 +53,20 @@
       "backlogRowsClosed": [
         "test-suite-fixture-reuse-cohesion-and-validate-git"
       ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 0,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "judgmentHeavy=true: CohesionAnalysisTests extends SharedWorkspaceTestBase (not TestBase), requires substituting LoadSharedSampleWorkspaceAsync with GetOrLoadWorkspaceIdAsync. 3 existing test files modified; 0 new test files."
     },
     {
       "id": "test-suite-expanded-surface-class-split",
@@ -66,20 +75,20 @@
       "backlogRowsClosed": [
         "test-suite-expanded-surface-class-split"
       ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 0,
+      "testFilesAdded": 3,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "judgmentHeavy=true: (a) general-tests-stay-in-original-file split boundary is editorial; (b) TestCoverageTool_WhenCoverletMissing lacks per-method [TestCategory(Process)] but belongs in CoverageProcess group. testFilesAdded=3 exactly at Rule 4 cap."
     },
     {
       "id": "tool-surface-pagination-or-tool-sets",
@@ -96,12 +105,12 @@
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "error",
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Row is self-described as 'Track only; act when (1) small-model discovery friction reported externally, OR (2) surface count crosses ~200 (currently 167)'. Deepener may flag as not-yet-actionable and recommend status: obsolete/deferred."
+      "notes": "Deepener returned status=error: row is self-described as track-only; neither trigger condition has fired (surface count 168 vs ~200 threshold; no small-model friction reported externally). Catalog-level pagination already implemented in ServerResources.cs via roslyn://server/catalog/{tools,prompts}/{offset}/{limit} resources. Recommend: leave as tracking row OR formally move to Defer section."
     }
   ]
 }
