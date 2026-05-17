@@ -58,6 +58,7 @@ public sealed record WorkspaceStatusSummaryDto(
         var errors = 0;
         var warnings = 0;
         var unresolvedAnalyzerWarnings = 0;
+        var vsMsbuildRequired = false;
         foreach (var diagnostic in status.WorkspaceDiagnostics)
         {
             if (string.Equals(diagnostic.Severity, "Error", StringComparison.OrdinalIgnoreCase))
@@ -72,9 +73,20 @@ public sealed record WorkspaceStatusSummaryDto(
                     unresolvedAnalyzerWarnings++;
                 }
             }
+
+            // VS-MSBuild-only diagnostics arrive with Id="WORKSPACE_FAILURE" and are downgraded
+            // to Warning by WorkspaceDiagnosticSeverityClassifier. Detect them by message content
+            // here (Core can't reference Roslyn for the helper) — mirrors the substring scan in
+            // BuildRestoreHint below. Treated as an analyzers-not-ready condition so callers see
+            // isReady=false and surface the VS-MSBuild remediation hint instead of proceeding
+            // with degraded results.
+            if (IsVsMsbuildRequiredMessage(diagnostic.Message))
+            {
+                vsMsbuildRequired = true;
+            }
         }
 
-        var analyzersReady = unresolvedAnalyzerWarnings == 0;
+        var analyzersReady = unresolvedAnalyzerWarnings == 0 && !vsMsbuildRequired;
         var solutionFileName = GetSolutionOrProjectFileName(status.LoadedPath);
         var restoreRequired = status.RestoreRequired;
         var isReady = status.IsLoaded && !status.IsStale && analyzersReady && errors == 0 && !restoreRequired;
@@ -83,7 +95,8 @@ public sealed record WorkspaceStatusSummaryDto(
             isStale: status.IsStale,
             errors: errors,
             unresolvedAnalyzerWarnings: unresolvedAnalyzerWarnings,
-            restoreRequired: restoreRequired);
+            restoreRequired: restoreRequired,
+            vsMsbuildRequired: vsMsbuildRequired);
 
         return new WorkspaceStatusSummaryDto(
             WorkspaceId: status.WorkspaceId,
@@ -107,8 +120,9 @@ public sealed record WorkspaceStatusSummaryDto(
 
     /// <summary>
     /// Builds an actionable hint string explaining why the workspace is not ready.
-    /// Three cases, in priority order:
+    /// Four cases, in priority order:
     /// <list type="number">
+    ///   <item><description>VS-MSBuild required (COM references, .NET Core MSBuild limitation) → tell caller this project needs Visual Studio MSBuild on PATH.</description></item>
     ///   <item><description>Unresolved analyzer warnings → tell caller analyzer-driven tools will under-report.</description></item>
     ///   <item><description>Many "could not be found" / CS0234 style errors → suggest <c>dotnet restore</c>.</description></item>
     ///   <item><description>Workspace is stale with no errors → likely transient post-apply; suggest a brief retry before reload.</description></item>
@@ -120,8 +134,17 @@ public sealed record WorkspaceStatusSummaryDto(
         bool isStale,
         int errors,
         int unresolvedAnalyzerWarnings,
-        bool restoreRequired)
+        bool restoreRequired,
+        bool vsMsbuildRequired)
     {
+        // Highest priority: COM references / .NET Core MSBuild limitations cannot be fixed by
+        // `dotnet restore` and must surface a concrete remediation BEFORE any restore-style hint.
+        // See `workspace-toolchain-status-preflight` (BioRemote 2026-05).
+        if (vsMsbuildRequired)
+        {
+            return "This project requires Visual Studio MSBuild (e.g. COM references or .NET Framework-only tasks). The .NET Core MSBuild bundled with this server cannot resolve these. Remediation: (a) remove or interop-wrap COM references, or (b) load this project from an environment where msbuild.exe (Visual Studio) is on PATH.";
+        }
+
         if (restoreRequired)
         {
             return "Package-restore inputs changed since the last restore. Run `dotnet restore` on the solution or project, then `workspace_reload`.";
@@ -178,5 +201,23 @@ public sealed record WorkspaceStatusSummaryDto(
             file.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
             return file;
         return file;
+    }
+
+    /// <summary>
+    /// VS-MSBuild-only diagnostic detector. Kept local to Core (DTO layer cannot depend on
+    /// the Roslyn layer for the canonical helper) — mirrors
+    /// <c>RoslynMcp.Roslyn.Helpers.WorkspaceDiagnosticSeverityClassifier.IsVsMsbuildRequiredMessage</c>.
+    /// Keep the two substring lists in sync.
+    /// </summary>
+    private static bool IsVsMsbuildRequiredMessage(string? message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return false;
+        }
+
+        return message.Contains("ResolveComReference", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("type library", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("The .NET Core version of MSBuild", StringComparison.OrdinalIgnoreCase);
     }
 }

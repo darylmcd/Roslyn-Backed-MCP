@@ -45,6 +45,36 @@ public static class WorkspaceDiagnosticSeverityClassifier
             return true;
         }
 
+        // VS-MSBuild-only failure indicators: COM references and .NET Framework-only MSBuild
+        // tasks that the .NET Core MSBuild bundled with this server cannot resolve. Downgrade
+        // to Warning so partial-load UX surfaces a concrete remediation hint instead of
+        // gating callers with raw WORKSPACE_FAILURE errors that suggest `dotnet restore`.
+        // See `workspace-toolchain-status-preflight` (BioRemote 2026-05).
+        if (IsVsMsbuildRequiredMessage(message))
+        {
+            return true;
+        }
+
         return false;
+    }
+
+    /// <summary>
+    /// Returns true if the message indicates a VS-MSBuild-only feature that the .NET Core
+    /// MSBuild cannot resolve. Currently matches COM-reference resolution failures
+    /// (<c>ResolveComReference</c>, <c>type library</c>) and explicit .NET Core MSBuild
+    /// limitation messages (<c>"The .NET Core version of MSBuild..."</c>). Public so the
+    /// hint builder in <see cref="Core.Models.WorkspaceStatusSummaryDto"/> can re-use the
+    /// detection without duplicating the substring list.
+    /// </summary>
+    public static bool IsVsMsbuildRequiredMessage(string message)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return false;
+        }
+
+        return message.Contains("ResolveComReference", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("type library", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("The .NET Core version of MSBuild", StringComparison.OrdinalIgnoreCase);
     }
 }
