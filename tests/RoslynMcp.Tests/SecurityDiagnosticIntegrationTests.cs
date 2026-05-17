@@ -7,6 +7,7 @@ namespace RoslynMcp.Tests;
 
 [DoNotParallelize]
 [TestClass]
+[TestCategory("RepoSolution")]
 public class SecurityDiagnosticIntegrationTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;

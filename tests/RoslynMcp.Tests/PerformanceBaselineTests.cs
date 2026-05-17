@@ -11,6 +11,7 @@ namespace RoslynMcp.Tests;
 /// </summary>
 [DoNotParallelize]
 [TestClass]
+[TestCategory("Performance")]
 public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
