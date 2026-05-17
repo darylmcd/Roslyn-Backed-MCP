@@ -260,7 +260,7 @@
     {
       "id": "test-reference-map-pagination-only-covers-covered-symbols",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-reference-map-pagination-only-covers-covered-symbols"
       ],
@@ -273,16 +273,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Anchor stale \u2014 backlog cited TestCoverageTools.cs (real: TestReferenceMapTools.cs). Scope smaller than backlog implied: only MockDriftWarnings unbounded. judgmentHeavy (per-collection vs unified cap design fork)."
+      "branch": "remediation/test-reference-map-pagination-only-covers-covered-symbols",
+      "worktreePath": ".worktrees/test-reference-map-pagination-only-covers-covered-symbols",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/794",
+      "mergedAt": "2026-05-17T00:25:58Z",
+      "notes": "Anchor stale corrected. Scope: MockDriftWarnings only (other collections already paged). judgmentHeavy (per-collection cap chosen). Shipped as PR #794 (squash e2b99d2). BuildPaginatedResult visibility bumped private\u2192internal static for test injection. Landed 4 cap tests instead of plan's 2 (full clamp coverage)."
     },
     {
       "id": "test-suite-heavy-fixture-reuse",
       "order": 11,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-suite-heavy-fixture-reuse"
       ],
@@ -295,16 +295,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Scoped to ChangeSignaturePreviewTests only. Spin-off needed for CohesionAnalysisTests + ValidateRecentGitChangesTests + ChangeSignaturePreviewMetadataNameShapeTests. judgmentHeavy (write-then-load ordering)."
+      "branch": "remediation/test-suite-heavy-fixture-reuse",
+      "worktreePath": ".worktrees/test-suite-heavy-fixture-reuse",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/795",
+      "mergedAt": "2026-05-17T00:26:03Z",
+      "notes": "Scoped to ChangeSignaturePreviewTests only. Shipped as PR #795 (squash 1fe0c72). Net -135 lines. Spin-off row test-suite-fixture-reuse-cohesion-and-validate-git added to backlog. judgmentHeavy (write-then-load ordering)."
     },
     {
       "id": "test-suite-heavy-lane-categorization",
       "order": 12,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-suite-heavy-lane-categorization"
       ],
@@ -317,16 +317,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "1 doc file (CI_POLICY.md) + 3 test files modified. Must land before init 13's follow-on ExpandedSurfaceIntegrationTests split."
+      "branch": "remediation/test-suite-heavy-lane-categorization",
+      "worktreePath": ".worktrees/test-suite-heavy-lane-categorization",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/792",
+      "mergedAt": "2026-05-17T00:25:48Z",
+      "notes": "1 doc (CI_POLICY.md) + 3 test files modified. Class-level RepoSolution category on SecurityDiagnosticIntegrationTests fans out to all 23 methods (per plan acceptance). Shipped as PR #792 (squash 9a63066)."
     },
     {
       "id": "test-suite-integration-class-split",
       "order": 13,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-suite-integration-class-split"
       ],
@@ -339,11 +339,11 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Scoped to IntegrationTests.cs only. Spin-off row test-suite-expanded-surface-class-split for the other file (sequenced after init 12). NO file conflict with init 12."
+      "branch": "remediation/test-suite-integration-class-split",
+      "worktreePath": ".worktrees/test-suite-integration-class-split",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/793",
+      "mergedAt": "2026-05-17T00:25:53Z",
+      "notes": "Scoped to IntegrationTests.cs only. Shipped as PR #793 (squash 20dea24). 28 tests preserved across 3 new classes (WorkspaceCore/SymbolNavigation/EditApply). Spin-off row test-suite-expanded-surface-class-split added to backlog. NO file conflict with init 12."
     },
     {
       "id": "workspace-toolchain-status-preflight",
