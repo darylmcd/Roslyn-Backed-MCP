@@ -492,10 +492,30 @@ PR title: `{type}({scope}): {short description} ({initiative.id})`. Examples:
 PR body must include:
 
 - **Closes:** explicit list of backlog row ids closed (machine-greppable).
+- **Fixes #NNN** (one line per linked Issue): for every non-Reserved
+  `[gh #NNN]` reference in the row's `do` cell in `ai_docs/backlog.md`, emit a
+  `Fixes #NNN` line. GitHub auto-closes the linked Issue on merge. **Reserved**
+  rows (`**Reserved — [gh #NNN] (good first issue); skip in sweeps...**`) are
+  pre-skipped by `/backlog-sweep:plan`; the parser still skips them defensively.
+  Follow-on rows that reference a parent tracked-only Issue (e.g. row text
+  `[gh #760] follow-on (split from ...)`) DO inject `Fixes #760` — the parent
+  Issue closes when the follow-on ships.
 - **Validation:** verify-release.ps1 outcome, test counts (before → after), any
   notable manual checks.
 - **Performance:** before/after numbers if Step 4 of plan declared a perf review.
 - **Spin-offs:** any new backlog rows added during verification (Step 3 of the plan).
+
+**Resolving Fixes references** (algorithm for the subagent / orchestrator at
+PR-create time):
+
+1. For each `rowId` in `Closes:`, `Grep` `^\| \`<rowId>\`` in
+   `ai_docs/backlog.md` to locate the row.
+2. Extract the `do` cell — everything after the 4th `|` and before the trailing `|`.
+3. Find every `\[gh #(\d+)\]` match in the cell.
+4. Skip any match whose position is inside a `\*\*Reserved — .*?\*\*` span
+   (non-greedy, no space before the closing `**`).
+5. Emit one `Fixes #N` line per surviving match. Zero matches → no `Fixes` lines
+   (common: rows without a GitHub mirror ship without auto-closing any Issue).
 
 ## Step 9 — Update state
 
