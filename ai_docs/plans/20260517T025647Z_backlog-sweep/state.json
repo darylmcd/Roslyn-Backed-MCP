@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 3,
+  "generatedAt": "2026-05-17T02:56:47Z",
+  "backlogSnapshot": "2026-05-17T00:55:00Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "anchorVerification": "pending",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {},
+    "zeroDegreeInitiatives": []
+  },
+  "initiatives": [
+    {
+      "id": "compact-semantic-grep-pagination",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "compact-semantic-grep-pagination"
+      ],
+      "productionFilesTouched": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "test-suite-fixture-reuse-cohesion-and-validate-git",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-suite-fixture-reuse-cohesion-and-validate-git"
+      ],
+      "productionFilesTouched": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "test-suite-expanded-surface-class-split",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-suite-expanded-surface-class-split"
+      ],
+      "productionFilesTouched": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null
+    },
+    {
+      "id": "tool-surface-pagination-or-tool-sets",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "tool-surface-pagination-or-tool-sets"
+      ],
+      "productionFilesTouched": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Row is self-described as 'Track only; act when (1) small-model discovery friction reported externally, OR (2) surface count crosses ~200 (currently 167)'. Deepener may flag as not-yet-actionable and recommend status: obsolete/deferred."
+    }
+  ]
+}
