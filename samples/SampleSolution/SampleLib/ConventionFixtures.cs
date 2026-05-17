@@ -109,3 +109,26 @@ internal sealed class TrulyUnusedConcreteType
 internal sealed class NotConventionInvokedHolder
 {
 }
+
+// Test-bridge accessor host (gh #775). Members ending in `ForTest`, `ForTesting`,
+// `_ForTest`, or `Internal` are typically internal hooks used by unit tests via
+// InternalsVisibleTo. Under the default convention filter they must NOT surface as
+// unused. Under opt-out (`ExcludeConventionInvoked=false`) every suffix-matched
+// member must surface again so the opt-out regression catches accidental hardening.
+//
+// `BuildSelectStatement` carries no suffix and is genuinely unreferenced; it acts
+// as a negative control: the suffix guard must not over-exclude plain unused
+// privates that do not match the test-bridge pattern.
+internal sealed class TestBridgeAccessorHost
+{
+    private void BuildSelectCommandTextForTest() { }
+
+    private void GetCacheForTesting() { }
+
+    private void ResetStateInternal() { }
+
+    private void BuildCache_ForTest() { }
+
+    // Negative control: same class, no suffix match — must still be reported.
+    private void BuildSelectStatement() { }
+}
