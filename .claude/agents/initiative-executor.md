@@ -60,7 +60,15 @@ If any field is missing, emit a failure `<<<RESULT>>>` immediately — do not gu
    git push -u origin remediation/{initiative.id}
    gh pr create --title "..." --body "..."
    ```
-   PR body MUST include `Closes: <backlog row ids>` for orchestrator correlation.
+   PR body MUST include both:
+   - `Closes: <backlog row ids>` — orchestrator correlation (machine-greppable).
+   - `Fixes #NNN` — one line per non-Reserved `[gh #NNN]` reference found in the row's `do` cell in `ai_docs/backlog.md`. GitHub then auto-closes the linked Issue when the PR merges. Reserved rows (text starts `**Reserved — [gh #NNN] (good first issue); skip in sweeps...**`) are pre-skipped by `/backlog-sweep:plan`, so this typically yields 0 or 1 reference; defensive parsing handles the rare follow-on row that references a parent tracked-only Issue (e.g. row text `[gh #760] follow-on (split from ..., shipped in PR #780)` — shipping this PR closes #760).
+
+   **Resolution algorithm** (run before `gh pr create`):
+   1. For each `rowId` in `Closes:`, `Grep` `^\| \`<rowId>\`` in `ai_docs/backlog.md` to locate the row.
+   2. Extract the `do` cell (text after the 4th `|`, before the trailing `|`).
+   3. Find every `\[gh #(\d+)\]` match in the cell that is NOT inside a `**Reserved — ... **` span.
+   4. Emit one `Fixes #N` line per surviving match. Zero matches = no `Fixes` lines (common case for rows without a GitHub mirror — the PR ships without auto-closing any Issue).
 
 5. **Emit `<<<RESULT>>>`** — see output contract below.
 
