@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-17T00:55:00Z**
+**updated_at: 2026-05-17T14:59:01Z**
 
 ## Agent contract
 
@@ -45,15 +45,12 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `compact-semantic-grep-pagination` | High | none | [gh #760](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/760) follow-on (split from `compact-paged-high-volume-analysis-results`, shipped in PR #780). `semantic_grep` accepts `limit` and stops the walk at `limit` hits (`SemanticGrepService.SearchAsync` at `src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs:41`), but the tool wrapper at `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:436` returns only `{ count, items }` — no `offset`, `totalCount`, or `hasMore`. Callers cannot page past the first window; broad queries also lose the upper-bound signal. Fix: add `offset`/`totalCount`/`hasMore` to the envelope, mirror the `find_reflection_usages` pattern landed in PR #780. Anchors: `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs`, `src/RoslynMcp.Core/Services/ISemanticGrepService.cs`, `src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs`. Regression test shape: fixture with > `limit` semantic-grep matches; assert `hasMore: true`, `totalCount` matches, `offset` slides the window. Evidence: split from the parent row's six-file blast radius (Rule 3 cap is 4); parent shipped the `find_reflection_usages` half, this is the `semantic_grep` half. |
 
 
 ## Medium
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `test-suite-fixture-reuse-cohesion-and-validate-git` | Medium | none | Follow-on (split from `test-suite-heavy-fixture-reuse`, shipped in PR #795). Three remaining test classes still call `CreateSampleSolutionCopy()` directly and bypass `IsolatedWorkspaceTestBase`: (1) `CohesionAnalysisTests.cs` — 6 isolated tests that write custom fixture files; (2) `ValidateRecentGitChangesTests.cs` — one git-repo mutation test; (3) `ChangeSignaturePreviewMetadataNameShapeTests.cs` — sibling class with same 3-line preamble/finally shape as the already-converted `ChangeSignaturePreviewTests`. Convert each to `IsolatedWorkspaceTestBase` per the pattern in PR #795. Anchors: `tests/RoslynMcp.Tests/CohesionAnalysisTests.cs`, `tests/RoslynMcp.Tests/ValidateRecentGitChangesTests.cs`, `tests/RoslynMcp.Tests/ChangeSignaturePreviewMetadataNameShapeTests.cs`. Regression test shape: no new product behavior; converted suites continue to pass. Evidence: parent row's split scope (≤4 production files / ≤3 test files per Rule 4); parent shipped only `ChangeSignaturePreviewTests` to stay within cap. |
-| `test-suite-expanded-surface-class-split` | Medium | none | Follow-on (split from `test-suite-integration-class-split`, shipped in PR #793). `tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs` is still a kitchen-sink class mixing reflection/DI repo-solution tests, tool-contract resource/prompt tests, and coverage-tool process tests. Split into ≤3 focused classes mirroring the `IntegrationTests_*` pattern (e.g. `ExpandedSurfaceIntegrationTests.RepoSolutionAnalysis.cs`, `*.ToolContract.cs`, `*.CoverageProcess.cs`). Sequenced AFTER PR #792 (`test-suite-heavy-lane-categorization`) so child classes inherit the `RepoSolution`/`Process` category attributes. Anchors: `tests/RoslynMcp.Tests/ExpandedSurfaceIntegrationTests.cs`. Regression test shape: no product-code change; moved tests continue to pass and class-level setup remains limited to the concern each class covers. Evidence: parent row Rule 4 cap; parent shipped only the `IntegrationTests.cs` split. |
 
 ## Low
 
@@ -95,3 +92,4 @@
 | `review-inbox/archive/<batch-ts>/` | Processed audit/retro/promotion batches — one subdirectory per successful intake. Delete a batch after every actionable item is either shipped, explicitly rejected as stale, or summarized in current backlog rows. |
 | `ai_docs/plans/20260513T010000Z_backlog-sweep/plan.md` | Backlog sweep (20260513T010000Z). Shipped 10 initiatives across 10 PRs (#716–#720, #722–#726); closed 10 backlog rows (skill-namespace-installed-as waves 2–11). |
 | `ai_docs/plans/20260516T200033Z_backlog-sweep/plan.md` | Backlog sweep (2026-05-16T20:00:33Z). Shipped 15 initiatives across 15 PRs (#779–#782, #785–#786, #788–#790, #792–#795, #797–#798) over 5 parallel waves; closed 15 backlog rows; added 3 spin-off rows (`compact-semantic-grep-pagination`, `test-suite-fixture-reuse-cohesion-and-validate-git`, `test-suite-expanded-surface-class-split`). Precursor #783 fixed pre-existing `audit-phase-runner.md` test path breakage from PR #734. |
+| `ai_docs/plans/20260517T025647Z_backlog-sweep/plan.md` | Backlog sweep (2026-05-17T02:56:47Z). Shipped 3 initiatives across 3 PRs (#803, #804, #805) in one parallel wave; closed 3 backlog rows (all spin-offs from the 20260516T200033Z sweep). Init 4 (`tool-surface-pagination-or-tool-sets`) deferred per reviewer warning (track-only row whose act-on triggers have not fired). Workflow improvement shipped mid-sweep in PR #802 — `initiative-executor` PR-body contract now auto-injects `Fixes #NNN` for non-Reserved `[gh #NNN]` row references; fired correctly on Init 1's PR #803 closing gh #760 (manually closed earlier in same session because PR #780 used `Refs` not `Fixes`). Observed flake on `WorkspaceExecutionGateTests.AutoReload_ResetsTimeoutBudget_ToolActionGetsFullBudget` failed validate on PR #803 + #804 before passing on retry — needs registry entry, see spin-off note in this PR. |
