@@ -418,7 +418,16 @@ public static class AnalysisTools
         }, ct);
     }
 
-    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Token-aware regex search over the loaded C# workspace. Walks every document's syntax tokens (and comment trivia) and applies the supplied .NET regex to the text of tokens whose syntactic kind matches `scope`. Lets callers exclude false-positive matches that plain text grep would return inside string literals or comments. Scopes: `identifiers` (identifier tokens only), `strings` (string-literal tokens — verbatim, interpolated text, raw, char, utf8), `comments` (single-line, multi-line, and doc-comment trivia), or `all` (the union). Pattern syntax: uses .NET regex (System.Text.RegularExpressions), NOT ripgrep/PCRE syntax — backreferences, lookaheads, and .NET-specific constructs are supported; use anchors (^/$) carefully as each token is matched independently. Per-document regex evaluation is hard-capped at 2 seconds; tokens that trigger a timeout are silently skipped rather than failing the call — use simpler patterns if results seem incomplete on large files. Optional `projectFilter` restricts the walk by Project.Name. Hard-capped at 500 hits per call to bound response size — narrow `pattern` or `projectFilter` if hits are truncated. Response shape: { count, items: [{ filePath, line, column, tokenKind, snippet }] } sorted by ascending file/line/column.")]
+    /// <summary>
+    /// Hard cap on the per-call hit collection inside <see cref="SemanticGrep"/>.
+    /// Mirrors the legacy default-500 ceiling that callers and docs already expect, but
+    /// decouples the collection cap from the user-facing page <c>limit</c> so pagination
+    /// can actually advance: the service collects up to <see cref="SemanticGrepHardCap"/>
+    /// hits, then the wrapper slices a <c>[offset, offset+limit)</c> window client-side.
+    /// </summary>
+    private const int SemanticGrepHardCap = 500;
+
+    [McpServerTool(Name = "semantic_grep", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Token-aware regex search over the loaded C# workspace. Walks every document's syntax tokens (and comment trivia) and applies the supplied .NET regex to the text of tokens whose syntactic kind matches `scope`. Lets callers exclude false-positive matches that plain text grep would return inside string literals or comments. Scopes: `identifiers` (identifier tokens only), `strings` (string-literal tokens — verbatim, interpolated text, raw, char, utf8), `comments` (single-line, multi-line, and doc-comment trivia), or `all` (the union). Pattern syntax: uses .NET regex (System.Text.RegularExpressions), NOT ripgrep/PCRE syntax — backreferences, lookaheads, and .NET-specific constructs are supported; use anchors (^/$) carefully as each token is matched independently. Per-document regex evaluation is hard-capped at 2 seconds; tokens that trigger a timeout are silently skipped rather than failing the call — use simpler patterns if results seem incomplete on large files. Optional `projectFilter` restricts the walk by Project.Name. Hard-capped at 500 hits per call to bound response size — narrow `pattern` or `projectFilter` if hits are truncated. Paginated via offset/limit — callers should iterate until hasMore=false. totalCount counts all hits up to the 500-hit hard cap (collection ceiling, decoupled from the user-facing page limit); the paged items slice contains only the [offset, offset+limit) window. Response shape: { count, totalCount, hasMore, offset, limit, items: [{ filePath, line, column, tokenKind, snippet }] } sorted by ascending file/line/column.")]
     [McpToolMetadata("analysis", "experimental", true, false,
         "Token-aware regex search over C# code (identifier / string / comment scopes).")]
     public static Task<string> SemanticGrep(
@@ -428,13 +437,29 @@ public static class AnalysisTools
         [Description(".NET regex pattern to match against token text.")] string pattern,
         [Description("Token-kind scope: 'identifiers' | 'strings' | 'comments' | 'all'.")] string scope = "identifiers",
         [Description("Optional: case-sensitive Project.Name filter to scope the walk.")] string? projectFilter = null,
-        [Description("Maximum hits to return (default 500; hard cap to bound response size).")] int limit = 500,
+        [Description("Page size — maximum hits to return per call (default 500). Hits beyond the 500-hit collection ceiling are dropped; narrow pattern or projectFilter if hasMore stays true at offset=500.")] int limit = 500,
+        [Description("Number of hits to skip before returning results (default: 0).")] int offset = 0,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            var results = await semanticGrepService.SearchAsync(workspaceId, pattern, scope, projectFilter, limit, c);
-            return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
+            ParameterValidation.ValidatePagination(offset, limit);
+            // Always collect up to the 500-hit hard cap so pagination can actually advance.
+            // The user-facing `limit` is the page size, not the collection ceiling — see
+            // SemanticGrepHardCap comment. Mirrors find_type_usages / find_reflection_usages
+            // which collect-all then Skip/Take client-side.
+            var results = await semanticGrepService.SearchAsync(workspaceId, pattern, scope, projectFilter, SemanticGrepHardCap, c);
+            var paged = results.Skip(offset).Take(limit).ToList();
+            var hasMore = offset + paged.Count < results.Count;
+            return JsonSerializer.Serialize(new
+            {
+                count = paged.Count,
+                totalCount = results.Count,
+                hasMore,
+                offset,
+                limit,
+                items = paged,
+            }, JsonDefaults.Indented);
         }, ct);
     }
 }
