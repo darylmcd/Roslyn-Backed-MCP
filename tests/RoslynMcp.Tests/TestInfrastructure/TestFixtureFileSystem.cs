@@ -30,9 +30,30 @@ internal static class TestFixtureFileSystem
 
     public static void DeleteDirectoryIfExists(string path)
     {
-        if (Directory.Exists(path))
+        if (!Directory.Exists(path))
         {
-            Directory.Delete(path, recursive: true);
+            return;
+        }
+
+        // `Directory.Delete(..., recursive: true)` fails on Windows when the tree contains
+        // read-only files (e.g. `.git/objects/**` loose objects after `git init`, which the
+        // git tooling marks read-only by convention). Clear the read-only attribute on every
+        // file first so the recursive delete succeeds. Equivalent to PowerShell's
+        // `Remove-Item -Recurse -Force`. Tests that run `git init` inside an
+        // `IsolatedWorkspaceScope` rely on this behavior at scope-dispose time.
+        ClearReadOnlyAttributes(path);
+        Directory.Delete(path, recursive: true);
+    }
+
+    private static void ClearReadOnlyAttributes(string path)
+    {
+        foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            var attributes = File.GetAttributes(file);
+            if ((attributes & FileAttributes.ReadOnly) != 0)
+            {
+                File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+            }
         }
     }
 
