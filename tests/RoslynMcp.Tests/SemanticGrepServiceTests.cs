@@ -1,3 +1,6 @@
+using System.Text.Json;
+using RoslynMcp.Host.Stdio.Tools;
+
 namespace RoslynMcp.Tests;
 
 [DoNotParallelize]
@@ -118,5 +121,117 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
         await Assert.ThrowsExceptionAsync<ArgumentException>(
             () => SemanticGrepService.SearchAsync(
                 WorkspaceId, "(unclosed", "identifiers", projectFilter: null, limit: 10, CancellationToken.None));
+    }
+
+    // ----- Pagination envelope tests (PR for compact-semantic-grep-pagination, gh #760 split) -----
+    //
+    // These tests exercise the wrapper layer in AnalysisTools.SemanticGrep, not the service.
+    // The service still hard-caps collection at `limit`; the wrapper slices the returned list
+    // via Skip(offset).Take(limit) and emits the { count, totalCount, hasMore, offset, limit,
+    // items } envelope. Mirrors the contract established by FindReflectionUsages and FindTypeUsages.
+
+    /// <summary>
+    /// Bounded-collection contract: when offset=0 and limit &lt; the actual hit count the
+    /// response must report hasMore=true, count==limit, and a totalCount strictly greater
+    /// than count. Uses the "." all-identifier pattern, which on the shared sample workspace
+    /// always produces a totalCount well above 5 (most identifier tokens are single-character-
+    /// or-longer, so they match ".").
+    /// </summary>
+    [TestMethod]
+    public async Task SemanticGrep_WrapperLimitSmallerThanTotal_ReportsHasMoreAndPagedCount()
+    {
+        const int Limit = 5;
+
+        var json = await AnalysisTools.SemanticGrep(
+            gate: WorkspaceExecutionGate,
+            semanticGrepService: SemanticGrepService,
+            workspaceId: WorkspaceId,
+            pattern: ".",
+            scope: "identifiers",
+            projectFilter: null,
+            limit: Limit,
+            offset: 0,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var count = root.GetProperty("count").GetInt32();
+        var totalCount = root.GetProperty("totalCount").GetInt32();
+        var hasMore = root.GetProperty("hasMore").GetBoolean();
+
+        Assert.AreEqual(Limit, count, "count must equal the requested limit when totalCount > limit.");
+        Assert.IsTrue(totalCount > Limit,
+            $"Sample workspace totalCount ({totalCount}) must exceed Limit ({Limit}) for this test to be meaningful.");
+        Assert.IsTrue(hasMore, "hasMore must be true when totalCount > offset + count.");
+
+        // Echoed paging knobs let callers route follow-up requests off the same envelope shape.
+        Assert.AreEqual(0, root.GetProperty("offset").GetInt32());
+        Assert.AreEqual(Limit, root.GetProperty("limit").GetInt32());
+
+        // items array must contain exactly `count` entries.
+        var items = root.GetProperty("items");
+        Assert.AreEqual(count, items.GetArrayLength(),
+            "items.Length must equal count (the paged slice size).");
+    }
+
+    /// <summary>
+    /// Pagination is deterministic: the first window (offset=0, limit=N) and a second
+    /// window (offset=N, limit=N) must return different first items. Service results are
+    /// sorted by ascending file/line/column, so the items[0] of the two windows must differ
+    /// whenever totalCount &gt; N. Both windows must report the same totalCount.
+    /// </summary>
+    [TestMethod]
+    public async Task SemanticGrep_WrapperDifferentOffsets_ReturnDifferentSlicesSameTotal()
+    {
+        const int Limit = 5;
+
+        var firstJson = await AnalysisTools.SemanticGrep(
+            gate: WorkspaceExecutionGate,
+            semanticGrepService: SemanticGrepService,
+            workspaceId: WorkspaceId,
+            pattern: ".",
+            scope: "identifiers",
+            projectFilter: null,
+            limit: Limit,
+            offset: 0,
+            ct: CancellationToken.None);
+
+        var secondJson = await AnalysisTools.SemanticGrep(
+            gate: WorkspaceExecutionGate,
+            semanticGrepService: SemanticGrepService,
+            workspaceId: WorkspaceId,
+            pattern: ".",
+            scope: "identifiers",
+            projectFilter: null,
+            limit: Limit,
+            offset: Limit,
+            ct: CancellationToken.None);
+
+        using var first = JsonDocument.Parse(firstJson);
+        using var second = JsonDocument.Parse(secondJson);
+
+        var firstTotal = first.RootElement.GetProperty("totalCount").GetInt32();
+        var secondTotal = second.RootElement.GetProperty("totalCount").GetInt32();
+        Assert.AreEqual(firstTotal, secondTotal,
+            "totalCount must be stable across paging requests against the same workspace.");
+
+        Assert.AreEqual(0, first.RootElement.GetProperty("offset").GetInt32());
+        Assert.AreEqual(Limit, second.RootElement.GetProperty("offset").GetInt32());
+
+        // items[0] of the two windows must differ since the service returns results sorted
+        // deterministically and totalCount > 2*Limit.
+        Assert.IsTrue(firstTotal > 2 * Limit,
+            $"Sample workspace totalCount ({firstTotal}) must exceed 2*Limit ({2 * Limit}) for the disjoint-window assertion.");
+
+        var firstItems = first.RootElement.GetProperty("items");
+        var secondItems = second.RootElement.GetProperty("items");
+        Assert.IsTrue(firstItems.GetArrayLength() > 0);
+        Assert.IsTrue(secondItems.GetArrayLength() > 0);
+
+        var firstItem0 = firstItems[0].GetRawText();
+        var secondItem0 = secondItems[0].GetRawText();
+        Assert.AreNotEqual(firstItem0, secondItem0,
+            "offset=0 and offset=Limit windows must surface different first items (deterministic file/line/column sort).");
     }
 }
