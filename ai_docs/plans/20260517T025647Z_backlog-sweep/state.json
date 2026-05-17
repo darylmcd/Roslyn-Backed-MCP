@@ -1,0 +1,124 @@
+{
+  "schemaVersion": 3,
+  "generatedAt": "2026-05-17T02:56:47Z",
+  "backlogSnapshot": "2026-05-17T00:55:00Z",
+  "addendaLoaded": true,
+  "phase": "complete",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "passed-with-warnings",
+  "readyForExecute": true,
+  "reviewFindings": {
+    "block": 0,
+    "warn": 1,
+    "info": 3
+  },
+  "handoffPolicy": "auto",
+  "handoffSpawned": 2,
+  "handoffSkipped": 2,
+  "anchorVerification": "performed",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {
+      "1": 0,
+      "2": 0,
+      "3": 0,
+      "4": 0
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      2,
+      3
+    ]
+  },
+  "initiatives": [
+    {
+      "id": "compact-semantic-grep-pagination",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "compact-semantic-grep-pagination"
+      ],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 25000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 1,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Tool-surface-only exemption (1 prod file, no interface/impl changes). Design decision: keep ISemanticGrepService.SearchAsync signature unchanged — collect-then-paginate in wrapper mirrors find_type_usages pattern exactly."
+    },
+    {
+      "id": "test-suite-fixture-reuse-cohesion-and-validate-git",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-suite-fixture-reuse-cohesion-and-validate-git"
+      ],
+      "productionFilesTouched": 0,
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "judgmentHeavy=true: CohesionAnalysisTests extends SharedWorkspaceTestBase (not TestBase), requires substituting LoadSharedSampleWorkspaceAsync with GetOrLoadWorkspaceIdAsync. 3 existing test files modified; 0 new test files."
+    },
+    {
+      "id": "test-suite-expanded-surface-class-split",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "test-suite-expanded-surface-class-split"
+      ],
+      "productionFilesTouched": 0,
+      "testFilesAdded": 3,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "judgmentHeavy=true: (a) general-tests-stay-in-original-file split boundary is editorial; (b) TestCoverageTool_WhenCoverletMissing lacks per-method [TestCategory(Process)] but belongs in CoverageProcess group. testFilesAdded=3 exactly at Rule 4 cap."
+    },
+    {
+      "id": "tool-surface-pagination-or-tool-sets",
+      "order": 4,
+      "status": "deferred",
+      "backlogRowsClosed": [
+        "tool-surface-pagination-or-tool-sets"
+      ],
+      "productionFilesTouched": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "error",
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Deepener returned status=error and reviewer cycle 0 emitted warn finding: row is self-described as track-only; neither trigger condition has fired (surface count 168 vs ~200 threshold; no external small-model friction reported). Catalog-level pagination already implemented in ServerResources.cs via roslyn://server/catalog/{tools,prompts}/{offset}/{limit}. Transitioned to status=deferred by orchestrator per reviewer recommendation so executor Step 5a re-vet does not choke on null contract fields. Backlog row remains in place as tracking entry; future intake may move it to Defer section formally."
+    }
+  ]
+}
