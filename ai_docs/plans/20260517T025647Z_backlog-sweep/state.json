@@ -3,16 +3,19 @@
   "generatedAt": "2026-05-17T02:56:47Z",
   "backlogSnapshot": "2026-05-17T00:55:00Z",
   "addendaLoaded": true,
-  "phase": "review-cycle-0-done",
+  "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "passed-with-warnings",
-  "readyForExecute": false,
+  "readyForExecute": true,
   "reviewFindings": {
     "block": 0,
     "warn": 1,
     "info": 3
   },
+  "handoffPolicy": "auto",
+  "handoffSpawned": 2,
+  "handoffSkipped": 2,
   "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [],
