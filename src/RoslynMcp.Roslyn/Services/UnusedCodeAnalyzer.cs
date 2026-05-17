@@ -340,6 +340,21 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
         if (symbol.ContainingType is { } containingType && IsConventionInvokedType(containingType))
             return true;
 
+        // Test-bridge accessor naming convention: members whose names end in
+        // `ForTest`, `ForTesting`, `_ForTest`, or `Internal` are typically internal
+        // hooks exposed for unit tests / InternalsVisibleTo consumers. Without this
+        // guard, `find_unused_symbols` reports them as `confidence=high` false
+        // positives because no direct C# caller exists in the production assembly
+        // (gh #775). Exact-suffix match is intentional — substring/case-insensitive
+        // matching would over-exclude. The whole guard is gated by
+        // `ExcludeConventionInvoked=true` (the default) via the wrapper at
+        // <see cref="IsConventionInvokedFiltered" /> — opt out to surface these.
+        if (symbol.Name.EndsWith("ForTest", StringComparison.Ordinal)
+            || symbol.Name.EndsWith("ForTesting", StringComparison.Ordinal)
+            || symbol.Name.EndsWith("_ForTest", StringComparison.Ordinal)
+            || symbol.Name.EndsWith("Internal", StringComparison.Ordinal))
+            return true;
+
         foreach (var attribute in symbol.GetAttributes())
         {
             var name = attribute.AttributeClass?.Name;

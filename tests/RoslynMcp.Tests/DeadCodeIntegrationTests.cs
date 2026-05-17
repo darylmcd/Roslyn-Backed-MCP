@@ -41,7 +41,12 @@ public sealed class DeadCodeIntegrationTests : SharedWorkspaceTestBase
             var workspaceId = status.WorkspaceId;
             var unusedSymbols = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
                 workspaceId,
-                new UnusedSymbolsAnalysisOptions { ProjectFilter = "SampleLib", IncludePublic = false, Limit = 50 },
+                // Limit bumped from 50 to 500 — the prior cap was fragile because every new
+                // SampleLib fixture (e.g. find-unused-symbols-test-bridge-suffix-exclusion-gap
+                // added `TestBridgeAccessorHost` + members) risked pushing the seeded
+                // `UnusedTestOnlyMethod` out of the result window. The other SampleLib
+                // unused-analysis tests in this file already use 200/500.
+                new UnusedSymbolsAnalysisOptions { ProjectFilter = "SampleLib", IncludePublic = false, Limit = 500 },
                 CancellationToken.None);
             var unusedField = unusedSymbols.First(symbol => symbol.SymbolName == "UnusedTestOnlyMethod");
 
