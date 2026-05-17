@@ -8,6 +8,8 @@
   "maxCycles": 2,
   "reviewStatus": "passed-with-warnings",
   "readyForExecute": true,
+  "completed": true,
+  "completedAt": "2026-05-17T14:59:01Z",
   "reviewFindings": {
     "block": 0,
     "warn": 1,
@@ -35,7 +37,7 @@
     {
       "id": "compact-semantic-grep-pagination",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "compact-semantic-grep-pagination"
       ],
@@ -48,16 +50,17 @@
       "fanoutEstimate": 1,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Tool-surface-only exemption (1 prod file, no interface/impl changes). Design decision: keep ISemanticGrepService.SearchAsync signature unchanged — collect-then-paginate in wrapper mirrors find_type_usages pattern exactly."
+      "branch": "remediation/compact-semantic-grep-pagination",
+      "worktreePath": ".worktrees/compact-semantic-grep-pagination",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/803",
+      "mergedAt": "2026-05-17T14:34:22Z",
+      "mergeCommit": "0ad44e1bf1c029198a33a8502461bd5c2debf151",
+      "notes": "Tool-surface-only exemption (1 prod file, no interface/impl changes). Subagent caught a bug in the plan-as-written (passing user's limit to service made hasMore permanently false) and corrected it by decoupling the 500-hit collection ceiling from the user-facing page limit — matches plan-author's clear intent per description text. shims-added=0. PR-body Fixes #760 fired correctly per new contract from PR #802."
     },
     {
       "id": "test-suite-fixture-reuse-cohesion-and-validate-git",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-suite-fixture-reuse-cohesion-and-validate-git"
       ],
@@ -70,16 +73,17 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "judgmentHeavy=true: CohesionAnalysisTests extends SharedWorkspaceTestBase (not TestBase), requires substituting LoadSharedSampleWorkspaceAsync with GetOrLoadWorkspaceIdAsync. 3 existing test files modified; 0 new test files."
+      "branch": "remediation/test-suite-fixture-reuse-cohesion-and-validate-git",
+      "worktreePath": ".worktrees/test-suite-fixture-reuse-cohesion-and-validate-git",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/805",
+      "mergedAt": "2026-05-17T14:45:18Z",
+      "mergeCommit": "03609e7d27fa5a836f62b11553e0b9569b1d83d1",
+      "notes": "judgmentHeavy=true. Scope grew 3 -> 4 test files: hardened TestFixtureFileSystem.DeleteDirectoryIfExists to clear read-only attribute before recursive delete because plan's risk #4 (scope-disposal-handles-cleanup) proved empirically wrong against git-init'd .git/objects loose-object read-only files. Fix is strict superset of prior behavior; all 50 callers benefit. 17/17 targeted tests pass. shims-added=0."
     },
     {
       "id": "test-suite-expanded-surface-class-split",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "test-suite-expanded-surface-class-split"
       ],
@@ -92,11 +96,12 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "judgmentHeavy=true: (a) general-tests-stay-in-original-file split boundary is editorial; (b) TestCoverageTool_WhenCoverletMissing lacks per-method [TestCategory(Process)] but belongs in CoverageProcess group. testFilesAdded=3 exactly at Rule 4 cap."
+      "branch": "remediation/test-suite-expanded-surface-class-split",
+      "worktreePath": ".worktrees/test-suite-expanded-surface-class-split",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/804",
+      "mergedAt": "2026-05-17T14:57:24Z",
+      "mergeCommit": "0d92ec2707c29bec896011131bff348a4fc185b2",
+      "notes": "Pure file split: 11 retained + 3 + 1 + 2 = 17 tests across 4 classes; class-level [TestCategory] attributes correctly scope RepoSolution + Process filters. shims-added=0."
     },
     {
       "id": "tool-surface-pagination-or-tool-sets",
