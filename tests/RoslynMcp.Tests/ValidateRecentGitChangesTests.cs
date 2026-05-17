@@ -13,7 +13,7 @@ namespace RoslynMcp.Tests;
 /// </summary>
 [TestClass]
 [DoNotParallelize]
-public sealed class ValidateRecentGitChangesTests : TestBase
+public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 {
     private static WorkspaceValidationService _validationService = null!;
 
@@ -47,59 +47,51 @@ public sealed class ValidateRecentGitChangesTests : TestBase
             return;
         }
 
-        var solutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(solutionPath)!;
-        InitializeGitRepo(solutionDir);
-        StageAndCommitAll(solutionDir); // seed HEAD so only our edits appear as Modified
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        InitializeGitRepo(workspace.RootPath);
+        StageAndCommitAll(workspace.RootPath); // seed HEAD so only our edits appear as Modified
 
         // Edit three existing `.cs` files so porcelain reports them as Modified — the
         // initial `git add -A && commit` above ensures nothing else is pending.
-        var file1 = Path.Combine(solutionDir, "SampleLib", "AnimalService.cs");
-        var file2 = Path.Combine(solutionDir, "SampleLib", "AnimalExtensions.cs");
-        var file3 = Path.Combine(solutionDir, "SampleLib", "Cat.cs");
+        var file1 = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var file2 = workspace.GetPath("SampleLib", "AnimalExtensions.cs");
+        var file3 = workspace.GetPath("SampleLib", "Cat.cs");
         foreach (var path in new[] { file1, file2, file3 })
         {
             // Append-only mutation keeps the file compilable (just adds a trailing comment).
             await File.AppendAllTextAsync(path, $"{Environment.NewLine}// touched {Guid.NewGuid():N}{Environment.NewLine}");
         }
 
-        var status = await WorkspaceManager.LoadAsync(solutionPath, CancellationToken.None);
-        var workspaceId = status.WorkspaceId;
-        try
-        {
-            var result = await _validationService.ValidateRecentGitChangesAsync(
-                workspaceId, runTests: false, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-            // Warnings must be empty — git was present, so the scoped path ran.
-            Assert.AreEqual(0, result.Warnings.Count,
-                $"Expected no warnings on happy path; got [{string.Join("; ", result.Warnings)}].");
+        var result = await _validationService.ValidateRecentGitChangesAsync(
+            workspace.WorkspaceId, runTests: false, CancellationToken.None);
 
-            // Because we committed the seed state first, only our three edits are pending.
-            // The scoped set must be exactly those three (set-comparison — order / casing
-            // may vary across platforms).
-            var changedLower = result.ChangedFilePaths
-                .Select(p => Path.GetFullPath(p).ToLowerInvariant())
-                .ToHashSet();
-            Assert.AreEqual(3, changedLower.Count,
-                $"Expected exactly 3 touched files; got: {string.Join("; ", result.ChangedFilePaths)}");
-            Assert.IsTrue(changedLower.Contains(Path.GetFullPath(file1).ToLowerInvariant()),
-                $"Missing {file1} in ChangedFilePaths: {string.Join("; ", result.ChangedFilePaths)}");
-            Assert.IsTrue(changedLower.Contains(Path.GetFullPath(file2).ToLowerInvariant()),
-                $"Missing {file2} in ChangedFilePaths: {string.Join("; ", result.ChangedFilePaths)}");
-            Assert.IsTrue(changedLower.Contains(Path.GetFullPath(file3).ToLowerInvariant()),
-                $"Missing {file3} in ChangedFilePaths: {string.Join("; ", result.ChangedFilePaths)}");
+        // Warnings must be empty — git was present, so the scoped path ran.
+        Assert.AreEqual(0, result.Warnings.Count,
+            $"Expected no warnings on happy path; got [{string.Join("; ", result.Warnings)}].");
 
-            // UnknownFilePaths must be empty — every touched file lives in the workspace.
-            Assert.AreEqual(0, result.UnknownFilePaths.Count,
-                $"Unexpected unknown paths: [{string.Join("; ", result.UnknownFilePaths)}].");
+        // Because we committed the seed state first, only our three edits are pending.
+        // The scoped set must be exactly those three (set-comparison — order / casing
+        // may vary across platforms).
+        var changedLower = result.ChangedFilePaths
+            .Select(p => Path.GetFullPath(p).ToLowerInvariant())
+            .ToHashSet();
+        Assert.AreEqual(3, changedLower.Count,
+            $"Expected exactly 3 touched files; got: {string.Join("; ", result.ChangedFilePaths)}");
+        Assert.IsTrue(changedLower.Contains(Path.GetFullPath(file1).ToLowerInvariant()),
+            $"Missing {file1} in ChangedFilePaths: {string.Join("; ", result.ChangedFilePaths)}");
+        Assert.IsTrue(changedLower.Contains(Path.GetFullPath(file2).ToLowerInvariant()),
+            $"Missing {file2} in ChangedFilePaths: {string.Join("; ", result.ChangedFilePaths)}");
+        Assert.IsTrue(changedLower.Contains(Path.GetFullPath(file3).ToLowerInvariant()),
+            $"Missing {file3} in ChangedFilePaths: {string.Join("; ", result.ChangedFilePaths)}");
 
-            // OverallStatus must surface — the bundle ran end-to-end.
-            Assert.IsFalse(string.IsNullOrWhiteSpace(result.OverallStatus));
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        // UnknownFilePaths must be empty — every touched file lives in the workspace.
+        Assert.AreEqual(0, result.UnknownFilePaths.Count,
+            $"Unexpected unknown paths: [{string.Join("; ", result.UnknownFilePaths)}].");
+
+        // OverallStatus must surface — the bundle ran end-to-end.
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.OverallStatus));
     }
 
     [TestMethod]
@@ -111,16 +103,14 @@ public sealed class ValidateRecentGitChangesTests : TestBase
             return;
         }
 
-        var solutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(solutionPath)!;
-        InitializeGitRepo(solutionDir);
-        StageAndCommitAll(solutionDir);
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        InitializeGitRepo(workspace.RootPath);
+        StageAndCommitAll(workspace.RootPath);
 
-        var touchedFile = Path.Combine(solutionDir, "SampleLib", "AnimalService.cs");
+        var touchedFile = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(touchedFile, $"{Environment.NewLine}// timeout scope {Guid.NewGuid():N}{Environment.NewLine}");
 
-        var status = await WorkspaceManager.LoadAsync(solutionPath, CancellationToken.None);
-        var workspaceId = status.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
         var timeoutService = new WorkspaceValidationService(
             new SlowCompileCheckService(),
             DiagnosticService,
@@ -131,28 +121,21 @@ public sealed class ValidateRecentGitChangesTests : TestBase
             gitStatusTimeout: TimeSpan.FromSeconds(5),
             validationPhaseTimeout: TimeSpan.FromMilliseconds(25));
 
-        try
-        {
-            var result = await timeoutService.ValidateRecentGitChangesAsync(
-                workspaceId, runTests: false, CancellationToken.None);
+        var result = await timeoutService.ValidateRecentGitChangesAsync(
+            workspace.WorkspaceId, runTests: false, CancellationToken.None);
 
-            Assert.AreEqual("timeout", result.OverallStatus);
-            Assert.AreEqual(1, result.ChangedFilePaths.Count,
-                $"Timeout envelope should keep the git-derived changed-file set; got [{string.Join("; ", result.ChangedFilePaths)}].");
-            Assert.AreEqual(Path.GetFullPath(touchedFile), Path.GetFullPath(result.ChangedFilePaths[0]));
-            Assert.IsTrue(result.Warnings.Any(w => w.Contains("compile_check", StringComparison.Ordinal)
-                && w.Contains("retryable=true", StringComparison.Ordinal)),
-                $"Expected retryable compile_check timeout warning; got [{string.Join("; ", result.Warnings)}].");
-            Assert.IsNotNull(result.TestRunResult?.FailureEnvelope,
-                "Timeout result should include a structured retry envelope.");
-            Assert.AreEqual("Timeout", result.TestRunResult.FailureEnvelope.ErrorKind);
-            Assert.IsTrue(result.TestRunResult.FailureEnvelope.IsRetryable);
-            StringAssert.Contains(result.TestRunResult.FailureEnvelope.Summary, "compile_check");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        Assert.AreEqual("timeout", result.OverallStatus);
+        Assert.AreEqual(1, result.ChangedFilePaths.Count,
+            $"Timeout envelope should keep the git-derived changed-file set; got [{string.Join("; ", result.ChangedFilePaths)}].");
+        Assert.AreEqual(Path.GetFullPath(touchedFile), Path.GetFullPath(result.ChangedFilePaths[0]));
+        Assert.IsTrue(result.Warnings.Any(w => w.Contains("compile_check", StringComparison.Ordinal)
+            && w.Contains("retryable=true", StringComparison.Ordinal)),
+            $"Expected retryable compile_check timeout warning; got [{string.Join("; ", result.Warnings)}].");
+        Assert.IsNotNull(result.TestRunResult?.FailureEnvelope,
+            "Timeout result should include a structured retry envelope.");
+        Assert.AreEqual("Timeout", result.TestRunResult.FailureEnvelope.ErrorKind);
+        Assert.IsTrue(result.TestRunResult.FailureEnvelope.IsRetryable);
+        StringAssert.Contains(result.TestRunResult.FailureEnvelope.Summary, "compile_check");
     }
 
     // ------------------------------------------------------------------
@@ -163,36 +146,28 @@ public sealed class ValidateRecentGitChangesTests : TestBase
     [TestMethod]
     public async Task ValidateRecentGitChangesAsync_NoGitRepo_FallsBackWithWarning()
     {
-        var solutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(solutionPath)!;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
         // Ensure no `.git` entry is anywhere at or above the solution dir. The helper
         // returns a path under `%TEMP%` which should never be inside a repo, but we
         // guard explicitly so the test is robust against future changes.
-        RemoveAnyAncestorGitDir(solutionDir);
+        RemoveAnyAncestorGitDir(workspace.RootPath);
 
-        var status = await WorkspaceManager.LoadAsync(solutionPath, CancellationToken.None);
-        var workspaceId = status.WorkspaceId;
-        try
-        {
-            var result = await _validationService.ValidateRecentGitChangesAsync(
-                workspaceId, runTests: false, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-            Assert.AreEqual(1, result.Warnings.Count,
-                $"Expected exactly one warning on git-unavailable fallback; got [{string.Join("; ", result.Warnings)}].");
-            StringAssert.Contains(result.Warnings[0], "git",
-                "Warning must explain why git scoping was skipped.");
-            StringAssert.Contains(result.Warnings[0], "full workspace",
-                "Warning must indicate the fallback scope.");
+        var result = await _validationService.ValidateRecentGitChangesAsync(
+            workspace.WorkspaceId, runTests: false, CancellationToken.None);
 
-            // OverallStatus must still surface — the bundle ran end-to-end against the
-            // full workspace instead of the (now-empty) scoped set.
-            Assert.IsFalse(string.IsNullOrWhiteSpace(result.OverallStatus));
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        Assert.AreEqual(1, result.Warnings.Count,
+            $"Expected exactly one warning on git-unavailable fallback; got [{string.Join("; ", result.Warnings)}].");
+        StringAssert.Contains(result.Warnings[0], "git",
+            "Warning must explain why git scoping was skipped.");
+        StringAssert.Contains(result.Warnings[0], "full workspace",
+            "Warning must indicate the fallback scope.");
+
+        // OverallStatus must still surface — the bundle ran end-to-end against the
+        // full workspace instead of the (now-empty) scoped set.
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.OverallStatus));
     }
 
     // ------------------------------------------------------------------
@@ -210,28 +185,20 @@ public sealed class ValidateRecentGitChangesTests : TestBase
             return;
         }
 
-        var solutionPath = CreateSampleSolutionCopy();
-        var solutionDir = Path.GetDirectoryName(solutionPath)!;
-        InitializeGitRepo(solutionDir);
-        StageAndCommitAll(solutionDir);
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        InitializeGitRepo(workspace.RootPath);
+        StageAndCommitAll(workspace.RootPath);
 
-        var status = await WorkspaceManager.LoadAsync(solutionPath, CancellationToken.None);
-        var workspaceId = status.WorkspaceId;
-        try
-        {
-            var result = await _validationService.ValidateRecentGitChangesAsync(
-                workspaceId, runTests: false, CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
 
-            Assert.AreEqual(0, result.Warnings.Count,
-                $"Expected no warnings on clean tree; got [{string.Join("; ", result.Warnings)}].");
-            Assert.AreEqual(0, result.ChangedFilePaths.Count,
-                $"Expected empty scope on clean tree; got [{string.Join("; ", result.ChangedFilePaths)}].");
-            Assert.IsFalse(string.IsNullOrWhiteSpace(result.OverallStatus));
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        var result = await _validationService.ValidateRecentGitChangesAsync(
+            workspace.WorkspaceId, runTests: false, CancellationToken.None);
+
+        Assert.AreEqual(0, result.Warnings.Count,
+            $"Expected no warnings on clean tree; got [{string.Join("; ", result.Warnings)}].");
+        Assert.AreEqual(0, result.ChangedFilePaths.Count,
+            $"Expected empty scope on clean tree; got [{string.Join("; ", result.ChangedFilePaths)}].");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.OverallStatus));
     }
 
     // ------------------------------------------------------------------

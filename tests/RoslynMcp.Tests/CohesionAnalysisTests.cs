@@ -4,7 +4,7 @@ namespace RoslynMcp.Tests;
 
 [DoNotParallelize]
 [TestClass]
-public sealed class CohesionAnalysisTests : SharedWorkspaceTestBase
+public sealed class CohesionAnalysisTests : IsolatedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
 
@@ -12,7 +12,7 @@ public sealed class CohesionAnalysisTests : SharedWorkspaceTestBase
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
-        WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
+        WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
     }
 
     [ClassCleanup]
@@ -92,14 +92,10 @@ public sealed class CohesionAnalysisTests : SharedWorkspaceTestBase
         // several [LoggerMessage] partials previously got Lcom4Score = N+1 because each
         // partial was counted as its own LCOM4 cluster. After the fix, partials are excluded
         // from the method enumeration entirely, so the score reflects only the real method.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        string? workspaceId = null;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        try
-        {
-            var filePath = Path.Combine(copiedRoot, "SampleLib", "QuestionClassifier.cs");
-            await File.WriteAllTextAsync(filePath, """
+        var filePath = workspace.GetPath("SampleLib", "QuestionClassifier.cs");
+        await File.WriteAllTextAsync(filePath, """
 namespace SampleLib;
 
 using Microsoft.Extensions.Logging;
@@ -124,11 +120,11 @@ public partial class QuestionClassifier
 }
 """, CancellationToken.None);
 
-            // Add a stub LoggerMessageAttribute so the file compiles without referencing the
-            // Microsoft.Extensions.Logging.Abstractions package — IsSourceGenPartial matches
-            // by fully-qualified attribute name regardless of where the type is declared.
-            var stubPath = Path.Combine(copiedRoot, "SampleLib", "LoggerMessageStub.cs");
-            await File.WriteAllTextAsync(stubPath, """
+        // Add a stub LoggerMessageAttribute so the file compiles without referencing the
+        // Microsoft.Extensions.Logging.Abstractions package — IsSourceGenPartial matches
+        // by fully-qualified attribute name regardless of where the type is declared.
+        var stubPath = workspace.GetPath("SampleLib", "LoggerMessageStub.cs");
+        await File.WriteAllTextAsync(stubPath, """
 namespace Microsoft.Extensions.Logging;
 
 [System.AttributeUsage(System.AttributeTargets.Method)]
@@ -142,33 +138,22 @@ internal interface ILogger { }
 internal enum LogLevel { Information }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            workspaceId = status.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
-                workspaceId, filePath, projectFilter: null, minMethods: 1, limit: 50,
-                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+        var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            workspace.WorkspaceId, filePath, projectFilter: null, minMethods: 1, limit: 50,
+            includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
 
-            var classifier = metrics.FirstOrDefault(m => m.TypeName == "QuestionClassifier");
-            // With minMethods=1 and only Classify counted, the score should be 1 (or 0 if the
-            // class is filtered out for having < 2 instance methods after exclusions). The
-            // bug case was Lcom4Score = 2+ because LogStarting was a separate cluster.
-            if (classifier is not null)
-            {
-                Assert.AreEqual(1, classifier.Lcom4Score,
-                    "QuestionClassifier should have Lcom4Score=1 — only the real method counts, not [LoggerMessage] partials.");
-                Assert.AreEqual(1, classifier.MethodCount,
-                    "MethodCount should exclude source-gen partials.");
-            }
-        }
-        finally
+        var classifier = metrics.FirstOrDefault(m => m.TypeName == "QuestionClassifier");
+        // With minMethods=1 and only Classify counted, the score should be 1 (or 0 if the
+        // class is filtered out for having < 2 instance methods after exclusions). The
+        // bug case was Lcom4Score = 2+ because LogStarting was a separate cluster.
+        if (classifier is not null)
         {
-            if (workspaceId is not null)
-            {
-                WorkspaceManager.Close(workspaceId);
-            }
-
-            DeleteDirectoryIfExists(copiedRoot);
+            Assert.AreEqual(1, classifier.Lcom4Score,
+                "QuestionClassifier should have Lcom4Score=1 — only the real method counts, not [LoggerMessage] partials.");
+            Assert.AreEqual(1, classifier.MethodCount,
+                "MethodCount should exclude source-gen partials.");
         }
     }
 
@@ -179,14 +164,10 @@ internal enum LogLevel { Information }
         // method that two public methods both call previously appeared in the cluster's
         // SharedFields list alongside real fields. After the split into methodFieldMap +
         // methodCallMap, only fields/properties show up in SharedFields.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        string? workspaceId = null;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        try
-        {
-            var filePath = Path.Combine(copiedRoot, "SampleLib", "AdapterUnderTest.cs");
-            await File.WriteAllTextAsync(filePath, """
+        var filePath = workspace.GetPath("SampleLib", "AdapterUnderTest.cs");
+        await File.WriteAllTextAsync(filePath, """
 namespace SampleLib;
 
 public class AdapterUnderTest
@@ -215,45 +196,30 @@ public class AdapterUnderTest
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            workspaceId = status.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
-                workspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
-                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+        var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            workspace.WorkspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+            includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
 
-            var adapter = metrics.FirstOrDefault(m => m.TypeName == "AdapterUnderTest");
-            Assert.IsNotNull(adapter, "AdapterUnderTest should appear in cohesion metrics.");
-            Assert.IsTrue(adapter.Clusters.Count >= 1, "AdapterUnderTest should have at least one cluster.");
+        var adapter = metrics.FirstOrDefault(m => m.TypeName == "AdapterUnderTest");
+        Assert.IsNotNull(adapter, "AdapterUnderTest should appear in cohesion metrics.");
+        Assert.IsTrue(adapter.Clusters.Count >= 1, "AdapterUnderTest should have at least one cluster.");
 
-            foreach (var cluster in adapter.Clusters)
-            {
-                Assert.IsFalse(cluster.SharedFields.Contains("CreateFailure"),
-                    "BUG-N9: SharedFields must not contain private helper method names.");
-            }
-        }
-        finally
+        foreach (var cluster in adapter.Clusters)
         {
-            if (workspaceId is not null)
-            {
-                WorkspaceManager.Close(workspaceId);
-            }
-
-            DeleteDirectoryIfExists(copiedRoot);
+            Assert.IsFalse(cluster.SharedFields.Contains("CreateFailure"),
+                "BUG-N9: SharedFields must not contain private helper method names.");
         }
     }
 
     [TestMethod]
     public async Task GetCohesionMetrics_SharedFields_IncludePrivateProperties_ButNotHelperNames()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        string? workspaceId = null;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        try
-        {
-            var filePath = Path.Combine(copiedRoot, "SampleLib", "PropertyBackedAdapter.cs");
-            await File.WriteAllTextAsync(filePath, """
+        var filePath = workspace.GetPath("SampleLib", "PropertyBackedAdapter.cs");
+        await File.WriteAllTextAsync(filePath, """
 namespace SampleLib;
 
 public class PropertyBackedAdapter
@@ -277,32 +243,21 @@ public class PropertyBackedAdapter
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            workspaceId = status.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
-                workspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
-                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+        var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            workspace.WorkspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+            includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
 
-            var adapter = metrics.FirstOrDefault(m => m.TypeName == "PropertyBackedAdapter");
-            Assert.IsNotNull(adapter, "PropertyBackedAdapter should appear in cohesion metrics.");
-            Assert.IsTrue(adapter.Clusters.Count >= 1, "PropertyBackedAdapter should have at least one cluster.");
+        var adapter = metrics.FirstOrDefault(m => m.TypeName == "PropertyBackedAdapter");
+        Assert.IsNotNull(adapter, "PropertyBackedAdapter should appear in cohesion metrics.");
+        Assert.IsTrue(adapter.Clusters.Count >= 1, "PropertyBackedAdapter should have at least one cluster.");
 
-            var sharedFields = adapter.Clusters.SelectMany(cluster => cluster.SharedFields).ToList();
-            CollectionAssert.Contains(sharedFields, "ConnectionString",
-                "Private properties accessed by multiple public methods should still appear in SharedFields.");
-            CollectionAssert.DoesNotContain(sharedFields, "Format",
-                "Private helper method names must stay out of SharedFields.");
-        }
-        finally
-        {
-            if (workspaceId is not null)
-            {
-                WorkspaceManager.Close(workspaceId);
-            }
-
-            DeleteDirectoryIfExists(copiedRoot);
-        }
+        var sharedFields = adapter.Clusters.SelectMany(cluster => cluster.SharedFields).ToList();
+        CollectionAssert.Contains(sharedFields, "ConnectionString",
+            "Private properties accessed by multiple public methods should still appear in SharedFields.");
+        CollectionAssert.DoesNotContain(sharedFields, "Format",
+            "Private helper method names must stay out of SharedFields.");
     }
 
     [TestMethod]
@@ -313,14 +268,10 @@ public class PropertyBackedAdapter
         // public methods are orthogonal on fields by design. LCOM4 should still report the
         // real cluster count, but the DTO carries LifecyclePattern="action-triad" and a
         // softened Recommendation so callers can suppress the "split" suggestion.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        string? workspaceId = null;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        try
-        {
-            var filePath = Path.Combine(copiedRoot, "SampleLib", "FooAction.cs");
-            await File.WriteAllTextAsync(filePath, """
+        var filePath = workspace.GetPath("SampleLib", "FooAction.cs");
+        await File.WriteAllTextAsync(filePath, """
 namespace SampleLib;
 
 public class FooAction
@@ -344,36 +295,25 @@ public class FooAction
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            workspaceId = status.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
-                workspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
-                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+        var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            workspace.WorkspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+            includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
 
-            var action = metrics.FirstOrDefault(m => m.TypeName == "FooAction");
-            Assert.IsNotNull(action, "FooAction should appear in cohesion metrics.");
-            Assert.AreEqual("action-triad", action.LifecyclePattern,
-                "FooAction with Describe/Validate/Execute triad should be classified as action-triad.");
-            Assert.IsNotNull(action.Recommendation,
-                "Recommendation should be populated for a detected lifecycle pattern.");
-            StringAssert.Contains(action.Recommendation, "action-triad",
-                "Recommendation should mention the action-triad pattern so callers can downgrade the split suggestion.");
-            // Triad methods are orthogonal on fields — each uses a different private field and
-            // forms its own LCOM4 cluster. Lcom4Score = 3 confirms this is exactly the shape the
-            // detector is designed to de-emphasize (without suppressing the raw score itself).
-            Assert.AreEqual(3, action.Lcom4Score,
-                "Describe/_name, Validate/_limit, Execute/_strict are orthogonal → expect Lcom4Score=3.");
-        }
-        finally
-        {
-            if (workspaceId is not null)
-            {
-                WorkspaceManager.Close(workspaceId);
-            }
-
-            DeleteDirectoryIfExists(copiedRoot);
-        }
+        var action = metrics.FirstOrDefault(m => m.TypeName == "FooAction");
+        Assert.IsNotNull(action, "FooAction should appear in cohesion metrics.");
+        Assert.AreEqual("action-triad", action.LifecyclePattern,
+            "FooAction with Describe/Validate/Execute triad should be classified as action-triad.");
+        Assert.IsNotNull(action.Recommendation,
+            "Recommendation should be populated for a detected lifecycle pattern.");
+        StringAssert.Contains(action.Recommendation, "action-triad",
+            "Recommendation should mention the action-triad pattern so callers can downgrade the split suggestion.");
+        // Triad methods are orthogonal on fields — each uses a different private field and
+        // forms its own LCOM4 cluster. Lcom4Score = 3 confirms this is exactly the shape the
+        // detector is designed to de-emphasize (without suppressing the raw score itself).
+        Assert.AreEqual(3, action.Lcom4Score,
+            "Describe/_name, Validate/_limit, Execute/_strict are orthogonal → expect Lcom4Score=3.");
     }
 
     [TestMethod]
@@ -383,14 +323,10 @@ public class FooAction
         // methods are NOT the Describe/Validate*/Execute* triad should still report a regular
         // LCOM4 score with no LifecyclePattern and no softened Recommendation — ensuring the
         // detector is conservative and does not suppress real low-cohesion signals.
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        string? workspaceId = null;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        try
-        {
-            var filePath = Path.Combine(copiedRoot, "SampleLib", "NotATriadAction.cs");
-            await File.WriteAllTextAsync(filePath, """
+        var filePath = workspace.GetPath("SampleLib", "NotATriadAction.cs");
+        await File.WriteAllTextAsync(filePath, """
 namespace SampleLib;
 
 public class NotATriadAction
@@ -414,44 +350,29 @@ public class NotATriadAction
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            workspaceId = status.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-            var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
-                workspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
-                includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+        var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            workspace.WorkspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+            includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
 
-            var notTriad = metrics.FirstOrDefault(m => m.TypeName == "NotATriadAction");
-            Assert.IsNotNull(notTriad, "NotATriadAction should appear in cohesion metrics.");
-            Assert.IsNull(notTriad.LifecyclePattern,
-                "LifecyclePattern must be null when the Describe/Validate/Execute triad is incomplete (only Describe + Foo + Bar).");
-            Assert.IsNull(notTriad.Recommendation,
-                "Recommendation must be null when no lifecycle pattern applies, so callers fall back to the default split suggestion.");
-            Assert.AreEqual(3, notTriad.Lcom4Score,
-                "Three orthogonal methods with no shared fields should yield Lcom4Score=3 (default message applies).");
-        }
-        finally
-        {
-            if (workspaceId is not null)
-            {
-                WorkspaceManager.Close(workspaceId);
-            }
-
-            DeleteDirectoryIfExists(copiedRoot);
-        }
+        var notTriad = metrics.FirstOrDefault(m => m.TypeName == "NotATriadAction");
+        Assert.IsNotNull(notTriad, "NotATriadAction should appear in cohesion metrics.");
+        Assert.IsNull(notTriad.LifecyclePattern,
+            "LifecyclePattern must be null when the Describe/Validate/Execute triad is incomplete (only Describe + Foo + Bar).");
+        Assert.IsNull(notTriad.Recommendation,
+            "Recommendation must be null when no lifecycle pattern applies, so callers fall back to the default split suggestion.");
+        Assert.AreEqual(3, notTriad.Lcom4Score,
+            "Three orthogonal methods with no shared fields should yield Lcom4Score=3 (default message applies).");
     }
 
     [TestMethod]
     public async Task FindSharedMembers_Supports_StaticClasses()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var copiedRoot = Path.GetDirectoryName(copiedSolutionPath)!;
-        string? workspaceId = null;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
 
-        try
-        {
-            var staticFilePath = Path.Combine(copiedRoot, "SampleLib", "StaticUtility.cs");
-            await File.WriteAllTextAsync(staticFilePath, """
+        var staticFilePath = workspace.GetPath("SampleLib", "StaticUtility.cs");
+        await File.WriteAllTextAsync(staticFilePath, """
 namespace SampleLib;
 
 public static class StaticUtility
@@ -470,25 +391,14 @@ public static class StaticUtility
 }
 """, CancellationToken.None);
 
-            var status = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-            workspaceId = status.WorkspaceId;
+        await workspace.LoadAsync(CancellationToken.None);
 
-            var shared = await CohesionAnalysisService.FindSharedMembersAsync(
-                workspaceId,
-                SymbolLocator.ByMetadataName("SampleLib.StaticUtility"),
-                CancellationToken.None);
+        var shared = await CohesionAnalysisService.FindSharedMembersAsync(
+            workspace.WorkspaceId,
+            SymbolLocator.ByMetadataName("SampleLib.StaticUtility"),
+            CancellationToken.None);
 
-            Assert.IsTrue(shared.Any(m => m.MemberName == "_counter"),
-                "Expected static private field '_counter' to be reported as shared by multiple public static methods.");
-        }
-        finally
-        {
-            if (workspaceId is not null)
-            {
-                WorkspaceManager.Close(workspaceId);
-            }
-
-            DeleteDirectoryIfExists(copiedRoot);
-        }
+        Assert.IsTrue(shared.Any(m => m.MemberName == "_counter"),
+            "Expected static private field '_counter' to be reported as shared by multiple public static methods.");
     }
 }

@@ -17,7 +17,7 @@ namespace RoslynMcp.Tests;
 /// `symbol_search`).
 /// </summary>
 [TestClass]
-public sealed class ChangeSignaturePreviewMetadataNameShapeTests : TestBase
+public sealed class ChangeSignaturePreviewMetadataNameShapeTests : IsolatedWorkspaceTestBase
 {
     private static ChangeSignatureService _changeSignatureService = null!;
 
@@ -46,52 +46,44 @@ public sealed class ChangeSignaturePreviewMetadataNameShapeTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_MetadataNameWithParens_RejectsWithActionableError()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await workspace.LoadAsync(CancellationToken.None);
 
-        try
-        {
-            // Parenthesized metadata name — exactly the shape an agent that pastes a
-            // Roslyn `ToDisplayString()` output naturally produces. Pre-fix this throws
-            // `InvalidOperationException("requires a method symbol; resolved null")` —
-            // misleading. Post-fix it throws `ArgumentException` whose message names the
-            // shape mismatch and the supported alternatives.
-            var locator = SymbolLocator.ByMetadataName("SampleLib.AnimalService.GetAllAnimals(string)");
-            var request = new ChangeSignatureRequest(
-                Op: "remove",
-                Name: null,
-                ParameterType: null,
-                Position: 0,
-                NewName: null,
-                DefaultValue: null);
+        // Parenthesized metadata name — exactly the shape an agent that pastes a
+        // Roslyn `ToDisplayString()` output naturally produces. Pre-fix this throws
+        // `InvalidOperationException("requires a method symbol; resolved null")` —
+        // misleading. Post-fix it throws `ArgumentException` whose message names the
+        // shape mismatch and the supported alternatives.
+        var locator = SymbolLocator.ByMetadataName("SampleLib.AnimalService.GetAllAnimals(string)");
+        var request = new ChangeSignatureRequest(
+            Op: "remove",
+            Name: null,
+            ParameterType: null,
+            Position: 0,
+            NewName: null,
+            DefaultValue: null);
 
-            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
-                await _changeSignatureService.PreviewChangeSignatureAsync(
-                    workspaceId, locator, request, CancellationToken.None));
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(async () =>
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, request, CancellationToken.None));
 
-            // Error must name the shape mismatch (the actual cause) so the agent knows what
-            // to fix.
-            StringAssert.Contains(ex.Message, "parenthesized",
-                $"error must call out the parenthesized signature as the cause; got: {ex.Message}");
+        // Error must name the shape mismatch (the actual cause) so the agent knows what
+        // to fix.
+        StringAssert.Contains(ex.Message, "parenthesized",
+            $"error must call out the parenthesized signature as the cause; got: {ex.Message}");
 
-            // Error must point at the supported alternative.
-            StringAssert.Contains(ex.Message, "symbolHandle",
-                $"error must name `symbolHandle` as the alternative; got: {ex.Message}");
+        // Error must point at the supported alternative.
+        StringAssert.Contains(ex.Message, "symbolHandle",
+            $"error must name `symbolHandle` as the alternative; got: {ex.Message}");
 
-            // Error must echo back the offending input so the agent can correlate with
-            // its own request payload.
-            StringAssert.Contains(ex.Message, "SampleLib.AnimalService.GetAllAnimals(string)",
-                $"error must echo the offending metadata name input; got: {ex.Message}");
+        // Error must echo back the offending input so the agent can correlate with
+        // its own request payload.
+        StringAssert.Contains(ex.Message, "SampleLib.AnimalService.GetAllAnimals(string)",
+            $"error must echo the offending metadata name input; got: {ex.Message}");
 
-            // Error must NOT use the misleading pre-fix wording.
-            Assert.IsFalse(ex.Message.Contains("requires a method symbol", StringComparison.Ordinal),
-                $"error must NOT use the pre-fix 'requires a method symbol' wording; got: {ex.Message}");
-        }
-        finally
-        {
-            WorkspaceManager.Close(workspaceId);
-        }
+        // Error must NOT use the misleading pre-fix wording.
+        Assert.IsFalse(ex.Message.Contains("requires a method symbol", StringComparison.Ordinal),
+            $"error must NOT use the pre-fix 'requires a method symbol' wording; got: {ex.Message}");
     }
 
     /// <summary>
@@ -106,44 +98,36 @@ public sealed class ChangeSignaturePreviewMetadataNameShapeTests : TestBase
     [TestMethod]
     public async Task ChangeSignaturePreview_BareMetadataName_DoesNotHitShapeMismatchPath()
     {
-        var copiedSolutionPath = CreateSampleSolutionCopy();
-        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
-        var workspaceId = loadResult.WorkspaceId;
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await workspace.LoadAsync(CancellationToken.None);
 
+        // Bare fully-qualified method name — the supported shape. The resolver must
+        // accept this and proceed past the new shape-rejection branch. The downstream
+        // service may still surface a different error (e.g. method has no parameters,
+        // or position out of range), but that error must NOT contain the new
+        // shape-mismatch wording.
+        var locator = SymbolLocator.ByMetadataName("SampleLib.AnimalService.GetAllAnimals");
+        var request = new ChangeSignatureRequest(
+            Op: "remove",
+            Name: null,
+            ParameterType: null,
+            Position: 99, // genuinely out of range — exercises the post-resolution path
+            NewName: null,
+            DefaultValue: null);
+
+        // The bare name resolves and the pipeline proceeds past the parenthesis check.
+        // The downstream behavior may succeed or fail, but it must NOT raise the new
+        // shape-mismatch error.
         try
         {
-            // Bare fully-qualified method name — the supported shape. The resolver must
-            // accept this and proceed past the new shape-rejection branch. The downstream
-            // service may still surface a different error (e.g. method has no parameters,
-            // or position out of range), but that error must NOT contain the new
-            // shape-mismatch wording.
-            var locator = SymbolLocator.ByMetadataName("SampleLib.AnimalService.GetAllAnimals");
-            var request = new ChangeSignatureRequest(
-                Op: "remove",
-                Name: null,
-                ParameterType: null,
-                Position: 99, // genuinely out of range — exercises the post-resolution path
-                NewName: null,
-                DefaultValue: null);
-
-            // The bare name resolves and the pipeline proceeds past the parenthesis check.
-            // The downstream behavior may succeed or fail, but it must NOT raise the new
-            // shape-mismatch error.
-            try
-            {
-                await _changeSignatureService.PreviewChangeSignatureAsync(
-                    workspaceId, locator, request, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                // Whatever the downstream raises, it must NOT be the shape-mismatch error.
-                Assert.IsFalse(ex.Message.Contains("parenthesized", StringComparison.Ordinal),
-                    $"bare name must not be flagged as parenthesized; got: {ex.Message}");
-            }
+            await _changeSignatureService.PreviewChangeSignatureAsync(
+                workspace.WorkspaceId, locator, request, CancellationToken.None);
         }
-        finally
+        catch (Exception ex)
         {
-            WorkspaceManager.Close(workspaceId);
+            // Whatever the downstream raises, it must NOT be the shape-mismatch error.
+            Assert.IsFalse(ex.Message.Contains("parenthesized", StringComparison.Ordinal),
+                $"bare name must not be flagged as parenthesized; got: {ex.Message}");
         }
     }
 }
