@@ -348,7 +348,7 @@
     {
       "id": "workspace-toolchain-status-preflight",
       "order": 14,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-toolchain-status-preflight"
       ],
@@ -361,21 +361,21 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Took classifier-enhancement path (cheaper, no WorkspaceManager.cs touch) \u2014 NO wave conflict with init 7. judgmentHeavy (approach choice + pattern specificity)."
+      "branch": "remediation/workspace-toolchain-status-preflight",
+      "worktreePath": ".worktrees/workspace-toolchain-status-preflight",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/797",
+      "mergedAt": "2026-05-17T00:52:23Z",
+      "notes": "Took classifier-enhancement path (cheaper, no WorkspaceManager.cs touch) \u2014 confirmed NO wave conflict with init 7. judgmentHeavy. Shipped as PR #797 (squash 1df5646). VS-MSBuild substring detection mirrored across Roslyn-layer classifier + Core-layer DTO (Core cannot depend on Roslyn); both sites carry sync comments naming the canonical helper."
     },
     {
       "id": "find-unused-symbols-test-bridge-suffix-exclusion-gap",
       "order": 15,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "find-unused-symbols-test-bridge-suffix-exclusion-gap"
       ],
-      "productionFilesTouched": 1,
-      "testFilesAdded": 1,
+      "productionFilesTouched": 2,
+      "testFilesAdded": 2,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 28000,
       "toolPolicy": "edit-only",
@@ -383,11 +383,11 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Anchor stale \u2014 backlog cited DeadCodeService.cs; real file is UnusedCodeAnalyzer.cs. judgmentHeavy (*Internal suffix breadth)."
+      "branch": "remediation/find-unused-symbols-test-bridge-suffix-exclusion-gap",
+      "worktreePath": ".worktrees/find-unused-symbols-test-bridge-suffix-exclusion-gap",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/798",
+      "mergedAt": "2026-05-17T00:52:28Z",
+      "notes": "Anchor stale corrected (UnusedCodeAnalyzer.cs not DeadCodeService.cs). judgmentHeavy (*Internal suffix breadth). Shipped as PR #798 (squash bee5e68). Scope grew to 4 files: 1 production + 1 fixture (ConventionFixtures.cs anticipated by Sonnet handoff) + 2 test files (existing DeadCodeIntegrationTests Limit cap bumped 50\u2192500 to match siblings)."
     }
   ],
   "reviewFindings": {
@@ -397,5 +397,7 @@
   },
   "handoffPolicy": "auto",
   "handoffSpawned": 12,
-  "handoffSkipped": 3
+  "handoffSkipped": 3,
+  "completed": true,
+  "completedAt": "2026-05-17T00:55:00Z"
 }
