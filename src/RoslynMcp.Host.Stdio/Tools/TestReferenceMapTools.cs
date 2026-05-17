@@ -25,10 +25,11 @@ public static class TestReferenceMapTools
         [Description("Optional: restrict to a single project (name or path). Matching a productive project filters the covered/uncovered sets to that project's symbols; matching a test project scopes the test scan. Unknown name → structured error.")] string? projectName = null,
         [Description("0-based start index. Clamped to [0, total]. Default 0.")] int offset = 0,
         [Description("Max entries returned per page. Clamped to [1, 500]. Default 200.")] int limit = 200,
+        [Description("Max mock-drift warnings returned. Clamped to [0, 500]. Default 50. Use totalMockDriftCount and hasMoreMockDrift on the response to detect truncation.")] int maxMockDriftWarnings = 50,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
-            c => testReferenceMapService.BuildAsync(workspaceId, projectName, offset, limit, c),
+            c => testReferenceMapService.BuildAsync(workspaceId, projectName, offset, limit, maxMockDriftWarnings, c),
             ct);
 }
