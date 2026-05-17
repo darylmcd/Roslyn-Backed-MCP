@@ -16,6 +16,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [1.39.0] - 2026-05-17
+
+### Fixed
+
+- **Fixed:** `find_reflection_usages` now returns bounded, paginated results (`offset` / `limit` / `summary` / `hasMore` / `totalCount`) — previously returned all hits with no cap, producing 100+ KB responses on reflection-heavy solutions (gh #760).
+- **Fixed:** `find_unused_symbols` false positives for test-bridge accessor methods: names ending in `ForTest`, `ForTesting`, `_ForTest`, or `Internal` are now excluded when `excludeConventionInvoked=true` (default), matching the standard test-bridge accessor pattern (fixes gh #775).
+- **Fixed:** `get_di_registrations` default response now returns a bounded first page (`offset` / `limit`, default 100 registrations) with `totalCount` / `hasMore` metadata, preventing MCP inline transport cap overflow on large DI graphs (fixes gh #771).
+- **Fixed:** `get_prompt_text` side effects — `debug_test_failure` and `security_review` prompts now return pure instruction templates instead of eagerly invoking `dotnet test` and NuGet vulnerability scans during rendering. The previous implementations called `ITestRunnerService.RunTestsAsync` and `INuGetDependencyService.ScanNuGetVulnerabilitiesAsync` (which spawns `dotnet list package --vulnerable`) on every prompt fetch, violating the `get_prompt_text` contract of pure template substitution. Callers now invoke `test_run` / `security_analyzer_status` / `security_diagnostics` / `nuget_vulnerability_scan` explicitly and pass the structured results back into the analysis step (fixes gh #772).
+- **Fixed:** `guided_extract_interface` prompt overflow — `get_prompt_text` for this prompt now returns a bounded response by capping the embedded document-symbol list (50 entries) and project graph (20 projects), preventing MCP inline payload cap overflow on 9+ project solutions. The previous implementation embedded full `JsonSerializer.Serialize` output for both the `IReadOnlyList<DocumentSymbolDto>` and the entire `ProjectGraphDto`, scaling linearly with workspace size and exceeding the inline payload cap (~30+ KB observed) on larger solutions. Mirrors the truncation pattern already used by `analyze_dependencies` (fixes gh #776).
+- **Fixed:** `project_graph` silently misreporting `outputType: "Library"` for ASP.NET Core Web (`Microsoft.NET.Sdk.Web`) and Worker (`Microsoft.NET.Sdk.Worker`) projects that omit an explicit `<OutputType>` element. Now populated via MSBuild property evaluation (fixes gh #773).
+- **Fixed:** `audit-phase-runner` subagents dispatched for Phases 3 and 4 of `/mcp-server-surface-test --full` now use a deterministic type/method selection rule (top-N by cyclomatic score; alphabetical fallback) and are explicitly prohibited from calling `AskUserQuestion`.
+- **Fixed:** `symbol_refactor_preview` incorrectly applying each chained sub-operation to the workspace during preview, writing files to disk and recording ledger entries before the agent called any `*_apply` tool. Preview now chains operations purely in-memory and stores the accumulated mutations under one `apply_composite_preview` token (fixes gh #770).
+- **Fixed:** `symbol_search` regression (gh #617): broad queries with `limit > ~30` exceeded the MCP inline transport cap (171 KB observed at `limit=100`). Added `summary=true` parameter that drops expensive per-symbol fields (documentation, parameters, baseTypes, interfaces, modifiers, returnType). Lowered server-side hard cap from 200 to 50; callers relying on `limit > 50` were already receiving tool-results-file fallbacks.
+- **Fixed:** `test_coverage` now returns a structured `failureEnvelope` (`errorKind=Timeout` or `errorKind=Unknown`) when the dotnet test run is cancelled or encounters an unexpected runner error, instead of surfacing a bare invocation exception to the MCP host.
+- **Fixed:** `test_reference_map` ignoring `limit` for mock-drift warnings: `mockDriftWarnings` is now bounded by a new `maxMockDriftWarnings` parameter (default 50) with `totalMockDriftCount`/`hasMoreMockDrift` metadata (fixes gh #774).
+- **Fixed:** `workspace_load` partial-load UX for legacy .NET Framework and COM-reference projects — `ResolveComReference` and `.NET Core MSBuild` diagnostics are now downgraded from `WORKSPACE_FAILURE` Error to Warning, the summary DTO reports `isReady: false`, and `restoreHint` carries the concrete remediation ("requires Visual Studio MSBuild — remove COM references or load from an environment where msbuild.exe is on PATH") instead of misleading callers toward `dotnet restore`.
+
+### Maintenance
+
+- **Maintenance:** Refactored `ChangeSignaturePreviewTests` to inherit `IsolatedWorkspaceTestBase`, replacing 14 repeated copy/load/close boilerplate blocks with `CreateIsolatedWorkspaceCopy()` — no behaviour change.
+- **Maintenance:** Add `[TestCategory("RepoSolution")]`, `[TestCategory("Process")]`, and `[TestCategory("Performance")]` to remaining heavy integration and performance tests; document new lane categories and local filter syntax in `CI_POLICY.md`.
+- **Maintenance:** split `IntegrationTests` kitchen-sink class into three focused classes (`IntegrationTests_WorkspaceCore`, `IntegrationTests_SymbolNavigation`, `IntegrationTests_EditApply`) — no assertions changed.
+
 ## [1.38.1] - 2026-05-13
 
 ### Fixed
