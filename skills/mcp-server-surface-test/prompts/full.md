@@ -24,7 +24,7 @@ The static skills audit (SKILL.md frontmatter parity + tool-reference resolution
 
 ### Run shape
 
-This prompt describes one canonical run. Phase 6 applies are always exercised against a disposable worktree the prompt creates at run start and tears down at run end (`dotnet build-server shutdown` + `git worktree remove --force`, in that order). The promotion scorecard is always emitted. Typical duration: 90–180 min.
+This prompt describes one canonical run. Phase 6 applies are always exercised against a disposable worktree the prompt creates at run start and tears down at run end (`workspace_close(drainProcesses=true)` to release the MCP host's analyzer DLL handles atomically with `dotnet build-server shutdown`, then `git worktree remove --force`, in that order — `dotnet build-server shutdown` alone leaves the host's analyzer-DLL lock in place on Windows). The promotion scorecard is always emitted. Typical duration: 90–180 min.
 
 A single optional flag exists: `--no-worktree`, a degraded mode for environments that genuinely cannot create a git worktree (tight CI sandbox, missing `git` binary, read-only checkout). When set, Phase 6 is skipped, the *Isolation* row records `degraded — --no-worktree flag, Phase 6 applies skipped`, and writer rows whose round-trip evidence depended on the disposable worktree default to `needs-more-evidence` in the scorecard. Record `--no-worktree` in the report header so consumers know which evidence is missing.
 
