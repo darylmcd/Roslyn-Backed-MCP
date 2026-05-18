@@ -386,7 +386,6 @@ public sealed class EditorConfigService : IEditorConfigService
             return;
         }
 
-        var keyPrefix = key + " =";
         var end = lines.Count;
         for (var i = sectionIndex + 1; i < lines.Count; i++)
         {
@@ -398,6 +397,15 @@ public sealed class EditorConfigService : IEditorConfigService
             }
         }
 
+        // set-editorconfig-option-duplicate-key-append: parse each non-comment, non-blank
+        // line by splitting on the FIRST '=' and case-insensitively comparing the trimmed
+        // key portion. This recognizes `key=value`, `key = value`, and `key=  value`
+        // variants (hand-edited or IDE-generated .editorconfig files often omit the space
+        // around `=`). Previously the matcher used `trimmed.StartsWith(key + " =", ...)`,
+        // which silently missed the no-space variant and fell through to `Insert`,
+        // appending a duplicate key line. Split-on-first '=' mirrors the existing
+        // ParseEditorconfigCsKeys idiom (line 129) and is safe even when the value
+        // happens to contain '=' (e.g. quoted strings).
         for (var i = sectionIndex + 1; i < end; i++)
         {
             var trimmed = lines[i].Trim();
@@ -406,7 +414,14 @@ public sealed class EditorConfigService : IEditorConfigService
                 continue;
             }
 
-            if (trimmed.StartsWith(keyPrefix, StringComparison.OrdinalIgnoreCase))
+            var eqIndex = trimmed.IndexOf('=');
+            if (eqIndex <= 0)
+            {
+                continue;
+            }
+
+            var existingKey = trimmed[..eqIndex].Trim();
+            if (string.Equals(existingKey, key, StringComparison.OrdinalIgnoreCase))
             {
                 lines[i] = assignment;
                 return;
