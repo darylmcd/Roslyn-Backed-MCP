@@ -308,6 +308,171 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
         Assert.IsFalse(
             consumerContents.Contains("IAnimalServiceservice", StringComparison.Ordinal),
             $"Consumer parameter has glued-together type and name (FORMAT-BUG-002 regression).\nFile contents:\n{consumerContents}");
+
+        // (6) gh #765 — the DI-inversion path routes through CreateInterfaceExtractionSolutionAsync
+        // which calls CreateInterfaceCompilationUnit just like PreviewExtractInterfaceAsync. The
+        // generated interface in Contracts references IAnimal (lives in SampleLib) via the
+        // MakeThemSpeak / CountAnimals signatures; the using MUST be emitted or the apply round-trip
+        // produces a CS0246 in the Contracts project. Guards against silent regression of the
+        // semantic-walker pair on this path.
+        var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        Assert.IsTrue(File.Exists(interfaceFilePath), "DI-inversion path must emit interface file.");
+        var interfaceContents = await File.ReadAllTextAsync(interfaceFilePath, CancellationToken.None);
+        StringAssert.Contains(
+            interfaceContents,
+            "using SampleLib;",
+            $"DI-inversion interface MUST emit `using SampleLib;` — IAnimal is referenced by " +
+            $"the synthesized interface signatures and lives in the source project's namespace (gh #765).\nFile contents:\n{interfaceContents}");
+    }
+
+    [TestMethod]
+    public async Task Extract_Interface_Cross_Project_Emits_Using_For_Source_Project_Types()
+    {
+        // Regression for gh #765 (extract-interface-cross-project-uncompilable). Before the fix:
+        // CrossProjectRefactoringService.CreateInterfaceCompilationUnit routed usings through
+        // FilterUsingsForMember — a text-grep over the synthesized interface body that compared
+        // each source-file using's last namespace segment against MinimallyQualifiedFormat short
+        // names emitted into the interface text. When the source method's signature referenced a
+        // type from a sibling namespace inside the SAME source project (e.g. `Shape` from
+        // `SampleLib.Hierarchy`), the using's last segment (`Hierarchy`) never matched the
+        // short name (`Shape`), so the using was dropped. The cross-project fallback at the
+        // end of FilterUsingsForMember refused the full-source fallback, leaving an EMPTY
+        // using list — producing a generated interface file whose method signature referenced
+        // `Shape` without a `using SampleLib.Hierarchy;`, yielding CS0246 at compile time.
+        //
+        // After the fix: CollectReferencedNamespaces walks the type's public-instance member
+        // symbols and collects every referenced type's containing namespace. The generated
+        // interface emits a `using` for every collected namespace (excluding the interface's
+        // own target namespace, which would be self-referential).
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+
+        // Replace SampleLib/AnimalService.cs with a fixture whose method signature pulls in a
+        // type from a sibling namespace (SampleLib.Hierarchy.Shape). The interface file must
+        // emit `using SampleLib.Hierarchy;` or the apply round-trip produces uncompilable code.
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        const string sourceWithSiblingNamespaceDependency = """
+            using SampleLib.Hierarchy;
+
+            namespace SampleLib;
+
+            public class AnimalService
+            {
+                public Shape GetShape()
+                {
+                    throw new System.NotImplementedException();
+                }
+
+                public List<Shape> GetShapes()
+                {
+                    return new List<Shape>();
+                }
+            }
+            """;
+        File.WriteAllText(sourceFilePath, sourceWithSiblingNamespaceDependency);
+
+        var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "AnimalService",
+            "IAnimalService",
+            "Contracts",
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+        Assert.IsTrue(File.Exists(interfaceFilePath));
+
+        var interfaceText = await File.ReadAllTextAsync(interfaceFilePath, CancellationToken.None);
+
+        // (1) The required using for the source-project sibling namespace MUST be emitted.
+        // Without this the generated interface references `Shape` with no `using`, producing
+        // CS0246 in the consumer project at compile time.
+        StringAssert.Contains(
+            interfaceText,
+            "using SampleLib.Hierarchy;",
+            $"Generated interface MUST emit `using SampleLib.Hierarchy;` — the source type's " +
+            $"method signature references Shape from that namespace (gh #765).\nFile contents:\n{interfaceText}");
+
+        // (2) The synthesized interface signature itself must reference the short name
+        // `Shape` (MinimallyQualifiedFormat) — proving the using actually disambiguates it.
+        StringAssert.Contains(interfaceText, "Shape GetShape");
+
+        // (3) The generated file must parse as valid C# (sanity that the structural shape is intact).
+        var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(interfaceText);
+        var parseDiagnostics = tree.GetDiagnostics()
+            .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+            .ToList();
+        Assert.AreEqual(
+            0,
+            parseDiagnostics.Count,
+            $"Generated interface must parse as valid C#. Diagnostics: {string.Join("; ", parseDiagnostics.Select(d => d.ToString()))}\nFile contents:\n{interfaceText}");
+
+        // (4) The interface's target namespace must NOT also appear as a self-referential using
+        // (e.g. if the target namespace happens to match a referenced symbol's namespace by
+        // coincidence, the walker is supposed to exclude it). The target namespace here is
+        // derived from the Contracts project root, so it should be just "Contracts" — and there
+        // should not be a `using Contracts;` line because no symbol lives in that namespace yet.
+        Assert.IsFalse(
+            interfaceText.Contains("using Contracts;", StringComparison.Ordinal),
+            $"Generated interface must not emit a using for its own target namespace.\nFile contents:\n{interfaceText}");
+    }
+
+    [TestMethod]
+    public async Task Extract_Interface_Cross_Project_Recurses_Into_Generic_Arguments_For_Source_Project_Types()
+    {
+        // Companion to Extract_Interface_Cross_Project_Emits_Using_For_Source_Project_Types.
+        // Covers the recursive case: `Task<SourceProjectType>` must contribute both
+        // `System.Threading.Tasks` AND the source-project namespace (the inner generic
+        // argument). Mirrors `ExtractInterface_Recurses_Into_Generic_Arguments` in the
+        // same-project semantic-using tests.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        const string sourceWithGenericArg = """
+            using System.Threading.Tasks;
+            using SampleLib.Hierarchy;
+
+            namespace SampleLib;
+
+            public class AnimalService
+            {
+                public Task<Shape> FetchAsync()
+                {
+                    throw new System.NotImplementedException();
+                }
+            }
+            """;
+        File.WriteAllText(sourceFilePath, sourceWithGenericArg);
+
+        var interfaceFilePath = workspace.GetPath("Contracts", "IAnimalService.cs");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "AnimalService",
+            "IAnimalService",
+            "Contracts",
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var interfaceText = await File.ReadAllTextAsync(interfaceFilePath, CancellationToken.None);
+        StringAssert.Contains(
+            interfaceText,
+            "using System.Threading.Tasks;",
+            $"Generated interface MUST emit `using System.Threading.Tasks;` — the outer generic Task lives there.\nFile contents:\n{interfaceText}");
+        StringAssert.Contains(
+            interfaceText,
+            "using SampleLib.Hierarchy;",
+            $"Generated interface MUST emit `using SampleLib.Hierarchy;` — the inner generic " +
+            $"argument Shape lives there. Recursion through TypeArguments is the gh #765 fix.\nFile contents:\n{interfaceText}");
     }
 
     [TestMethod]
