@@ -9,6 +9,8 @@
   "reviewStatus": "passed-with-warnings",
   "readyForExecute": true,
   "anchorVerification": "performed",
+  "completed": true,
+  "completedAt": "2026-05-18T03:09:14Z",
   "conflictGraph": {
     "edges": [
       {
@@ -57,7 +59,7 @@
     {
       "id": "extract-method-preview-same-block-scope-false-negative",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "extract-method-preview-same-block-scope-false-negative"
       ],
@@ -70,16 +72,16 @@
       "fanoutEstimate": 1,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Anchor src/NetworkDocumentation.Parsers/... was sibling-repo path; live in-repo anchor confirmed at src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:415. Fanout probe: 1 reference, all same file."
+      "branch": "remediation/extract-method-preview-same-block-scope-false-negative",
+      "worktreePath": ".worktrees/extract-method-preview-same-block-scope-false-negative",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/813",
+      "mergedAt": "2026-05-18T02:24:40Z",
+      "notes": "Shipped as PR #813 (squash d460eec). Executor extended the plan's single-edit fix to also restrict collection to direct children of the innermost enclosing block via new FindEnclosingBlock helper — start-anchor alone would have over-collected nested-block descendants of compound statements like `if`."
     },
     {
       "id": "surface-test-teardown-directory-survives-windows-lock",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "surface-test-teardown-directory-survives-windows-lock"
       ],
@@ -92,16 +94,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Doc-only skill prompt edit: add workspace_close(drainProcesses=true) to Phase 6z before dotnet build-server shutdown. No C# changes."
+      "branch": "remediation/surface-test-teardown-directory-survives-windows-lock",
+      "worktreePath": ".worktrees/surface-test-teardown-directory-survives-windows-lock",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/810",
+      "mergedAt": "2026-05-18T01:00:14Z",
+      "notes": "Shipped as PR #810 (squash 0ea7117). Doc-only skill prompt edit: added workspace_close(drainProcesses=true) to Phase 6z before dotnet build-server shutdown."
     },
     {
       "id": "symbol-relationships-builtin-type-unbounded-enumeration",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "symbol-relationships-builtin-type-unbounded-enumeration"
       ],
@@ -114,16 +116,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Anchor stale: TradeWise sibling-repo path; fix target verified in this repo at SymbolRelationshipService.cs:132-168. Adds Hint field to SymbolRelationshipsDto + wrapper update."
+      "branch": "remediation/symbol-relationships-builtin-type-unbounded-enumeration",
+      "worktreePath": ".worktrees/symbol-relationships-builtin-type-unbounded-enumeration",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/815",
+      "mergedAt": "2026-05-18T01:54:25Z",
+      "notes": "Shipped as PR #815 (squash 2cd54bd). Added Hint field to SymbolRelationshipsDto + wrapper update. Shared file SymbolRelationshipService.cs with init 10; conflict-free at line level (different methods)."
     },
     {
       "id": "get-coupling-metrics-no-summary-mode",
       "order": 4,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "get-coupling-metrics-no-summary-mode"
       ],
@@ -136,20 +138,20 @@
       "fanoutEstimate": 1,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Tool-surface-only Rule 3 exemption (1 file). Pattern mirrors project_diagnostics summary mode in AnalysisTools.cs:77-102."
+      "branch": "remediation/get-coupling-metrics-no-summary-mode",
+      "worktreePath": ".worktrees/get-coupling-metrics-no-summary-mode",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/812",
+      "mergedAt": "2026-05-18T01:15:28Z",
+      "notes": "Shipped as PR #812 (squash 04366b2). Tool-surface-only Rule 3 exemption (1 file)."
     },
     {
       "id": "validate-workspace-runtests-total-zero",
       "order": 5,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "validate-workspace-runtests-total-zero"
       ],
-      "productionFilesTouched": 1,
+      "productionFilesTouched": 2,
       "testFilesAdded": 0,
       "rowsClosedCount": 1,
       "estimatedContextTokens": 28000,
@@ -158,16 +160,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Adds new status 'test-zero-run' for vacuous-pass gate. Breaking change for callers exact-matching 'clean'; flagged in CHANGELOG draft."
+      "branch": "remediation/validate-workspace-runtests-total-zero",
+      "worktreePath": ".worktrees/validate-workspace-runtests-total-zero",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/811",
+      "mergedAt": "2026-05-18T01:04:01Z",
+      "notes": "Shipped as PR #811 (squash 109e148). Added new status 'test-zero-run' for vacuous-pass gate. Breaking change for callers exact-matching 'clean'. Executor also touched IWorkspaceValidationService.cs (interface) — 2 production files vs plan's 1, within Rule 3 cap."
     },
     {
       "id": "extract-interface-cross-project-uncompilable",
       "order": 6,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "extract-interface-cross-project-uncompilable"
       ],
@@ -180,16 +182,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "CrossProjectRefactoringService.CreateInterfaceCompilationUnit:495 uses text-based using-filter that fails on minimally-qualified short names. Mirror InterfaceExtractionService.CollectReferencedNamespaces semantic walker."
+      "branch": "remediation/extract-interface-cross-project-uncompilable",
+      "worktreePath": ".worktrees/extract-interface-cross-project-uncompilable",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/818",
+      "mergedAt": "2026-05-18T02:03:48Z",
+      "notes": "Shipped as PR #818 (squash 2afbd3e). Mirrored CollectReferencedNamespaces + BuildUsingDirectives semantic-walker pattern from InterfaceExtractionService.cs."
     },
     {
       "id": "split-service-with-di-broken-output",
       "order": 7,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "split-service-with-di-broken-output"
       ],
@@ -202,16 +204,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "judgmentHeavy=true: field-migration strategy has two plausible approaches (emit fields into every referencing partition vs caller lists fields in SplitServicePartition). Async modifier strip is unambiguous. SymbolRefactorService.cs:310-736."
+      "branch": "remediation/split-service-with-di-broken-output",
+      "worktreePath": ".worktrees/split-service-with-di-broken-output",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/816",
+      "mergedAt": "2026-05-18T01:47:53Z",
+      "notes": "Shipped as PR #816 (squash 37aa0a8). judgmentHeavy resolved per Sonnet-handoff safe-minimal strategy: duplicate fields into every referencing partition with synthesized constructors."
     },
     {
       "id": "preview-token-stale-across-auto-reload",
       "order": 8,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "preview-token-stale-across-auto-reload"
       ],
@@ -224,16 +226,16 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "New PreviewTokenStaleException + ToolErrorHandler registration. ToolDispatch.cs:134, ApplyWithVerifyTool.cs:34, ToolErrorHandler.cs, new Core/Services/PreviewTokenStaleException.cs. Description-string updates for ~18 *_apply tools deferred to follow-on tool-surface-only initiative (>4 file cap)."
+      "branch": "remediation/preview-token-stale-across-auto-reload",
+      "worktreePath": ".worktrees/preview-token-stale-across-auto-reload",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/817",
+      "mergedAt": "2026-05-18T01:47:59Z",
+      "notes": "Shipped as PR #817 (squash a1ea713). At Rule 3 4-file cap. Executor also updated ToolDispatchTests.cs (1 existing test file modified) due to message-shape assertion drift."
     },
     {
       "id": "set-editorconfig-option-duplicate-key-append",
       "order": 9,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "set-editorconfig-option-duplicate-key-append"
       ],
@@ -246,21 +248,21 @@
       "fanoutEstimate": 1,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "EditorConfigService.cs:389 UpsertKeyInSection \u2014 replace StartsWith(key + ' =') with proper key-extraction (split on first =, trim, case-insensitive equality). 1 call site only."
+      "branch": "remediation/set-editorconfig-option-duplicate-key-append",
+      "worktreePath": ".worktrees/set-editorconfig-option-duplicate-key-append",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/814",
+      "mergedAt": "2026-05-18T02:13:56Z",
+      "notes": "Shipped as PR #814 (squash 6b3a392). EditorConfigService.cs:389 UpsertKeyInSection — replaced StartsWith(key + ' =') with proper key-extraction; 1 call site only."
     },
     {
       "id": "member-hierarchy-overrides-mislabels-sibling-interface-impls",
       "order": 10,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "member-hierarchy-overrides-mislabels-sibling-interface-impls",
         "find-overrides-vs-member-hierarchy-cross-tool-inconsistency"
       ],
-      "productionFilesTouched": 4,
+      "productionFilesTouched": 6,
       "testFilesAdded": 1,
       "rowsClosedCount": 2,
       "estimatedContextTokens": 45000,
@@ -269,11 +271,11 @@
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "BUNDLED with find-overrides-vs-member-hierarchy-cross-tool-inconsistency per Rule 1 (shared code path in ReferenceService.FindOverridesAsync). judgmentHeavy=true, anchorStale=true. Closes both rows: gh #736 + gh #737. Stale anchors: MemberHierarchyService.cs / OverridesService.cs do not exist; logic is in ReferenceService.cs + SymbolRelationshipService.cs. Splits true overrides from siblingInterfaceImplementations bucket on MemberHierarchyDto."
+      "branch": "remediation/member-hierarchy-overrides-mislabels-sibling-interface-impls",
+      "worktreePath": ".worktrees/member-hierarchy-overrides-mislabels-sibling-interface-impls",
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/819",
+      "mergedAt": "2026-05-18T03:06:33Z",
+      "notes": "Shipped as PR #819 (squash b91849e). Rule 1 bundle closing gh #736 + gh #737. Production file count 6 vs plan estimate 4 — the 2 extras (SymbolTools.cs, ServerSurfaceCatalog.Symbols.cs) are doc-string-only updates anticipated by Risk #4 in the plan; the catalog mirror is analyzer-enforced and cannot be omitted when description text changes. Validate failed once with self-hosted runner communication loss; passed on rerun."
     }
   ],
   "reviewFindings": {

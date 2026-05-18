@@ -22,7 +22,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #813, 2026-05-18) |
 | Backlog rows closed | `extract-method-preview-same-block-scope-false-negative` |
 | Source | gh #744 (P1 — `networkdocumentation` audit) |
 | Diagnosis | Root cause is in `FindStatementsInSelection` at `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:415-425`. The filter predicate `selectionSpan.Contains(s.Span)` requires that the entire statement's `TextSpan` (exclusive end, pointing one past the closing `}`) falls within the selection span computed by `BuildSelectionSpan` (line 106-113). When the caller supplies `endColumn` pointing at or adjacent to the closing brace of a multi-line `if`-block, `BuildSelectionSpan` sets `endPosition = text.Lines[endLine-1].Start + (endColumn - 1)` — a 0-based character index at or before the `}`. The if-statement's `Span.End` is `pos_of_} + 1`, which exceeds `endPosition`, so `Contains` returns false and the if-statement is silently dropped from the collected set. The statements inside the if-body's nested block ARE found (their `SpanStart` is contained and their parent is a `BlockSyntax`), but they share a different parent block from any outer-block statements. The caller `FindEnclosingMethodAndStatements` then fires the "All selected statements must be in the same block scope" guard — a false-negative rejection. Confirmed live at line 415; single reference from line 124. The backlog-row anchor cited a sibling-repo path (`NetworkDocumentation.Parsers`) — the relevant in-repo anchor is `src/RoslynMcp.Roslyn/Services/ExtractMethodService.cs:415-425`. |
@@ -41,7 +41,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #810, 2026-05-18) |
 | Backlog rows closed | `surface-test-teardown-directory-survives-windows-lock` |
 | Source | gh #745 (P1 — `networkdocumentation` audit; operational risk) |
 | Diagnosis | Phase 6z of `skills/mcp-server-surface-test/prompts/phases/apply-and-test.md` (lines 99–109) runs `dotnet build-server shutdown` as Step 1 of teardown — this releases `VBCSCompiler.exe` / `testhost.exe` locks on `bin/{Debug,Release}/net*/` but does NOT release locks held by the running `roslynmcp.exe` host process on analyzer DLLs (`RoslynMcp.Analyzers.dll`). The disposable worktree directory then survives `git worktree remove --force` because Windows retains the file handle. The fix mechanism is already shipped: `workspace_close(workspaceId, drainProcesses=true)` at `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:100-149` closes the MCP workspace session AND runs `dotnet build-server shutdown` as one operation. Phase 6z does not call it. Stale summary in `skills/mcp-server-surface-test/prompts/full.md:27` also omits `workspace_close`. Direct evidence in `ai_docs/audit-reports/20260508T154415Z_roslyn-backed-mcp_mcp-server-audit.md:171`. |
@@ -60,7 +60,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #815, 2026-05-18) |
 | Backlog rows closed | `symbol-relationships-builtin-type-unbounded-enumeration` |
 | Source | gh #757 (P1 — `tradewise` audit) |
 | Diagnosis | In `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs:132-168`, `GetSymbolRelationshipsAsync` calls `PromoteToDeclaringMemberIfRequestedAsync` (line 143) which short-circuits when `preferDeclaringMember=false` (guard at line 326). When the cursor lands on a builtin-type token like `void`, Roslyn resolves it to `System.Void` — an `INamedTypeSymbol` with `SpecialType != SpecialType.None` and no source locations. The code falls through to `_referenceService.FindReferencesAsync` (line 156) on `System.Void`, which enumerates every void-returning method reference solution-wide (57.7 KB measured on TradeWise's 11-project / 759-document solution). The `preferDeclaringMember=true` branch auto-promotes to the enclosing method and returns only 9 refs. Fix point: after line 143 promotion, if `preferDeclaringMember=false` AND the post-promotion symbol is a builtin (`SpecialType != None`), return early sentinel with empty buckets + hint. Note: backlog-row anchor `src/TradeWise.Infrastructure/Persistence/AlertRuleRepository.cs:269` is in sibling TradeWise repo, not this repo — fix is entirely in Roslyn-Backed-MCP. |
@@ -79,7 +79,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #812, 2026-05-18) |
 | Backlog rows closed | `get-coupling-metrics-no-summary-mode` |
 | Source | gh #763 (P1 — `firewallanalyzer` audit) |
 | Diagnosis | `get_coupling_metrics` at `src/RoslynMcp.Host.Stdio/Tools/CouplingAnalysisTools.cs:16-33` returns every type's full `CouplingMetricsDto` record unconditionally. On an 11-project solution the payload hit 62 KB, exceeding the MCP token cap (gh #763). No `summary` parameter exists. Service layer (`src/RoslynMcp.Roslyn/Services/CouplingAnalysisService.cs:29-81`) and interface (`src/RoslynMcp.Core/Services/ICouplingAnalysisService.cs:21`) return `IReadOnlyList<CouplingMetricsDto>` and are unchanged — aggregation lives entirely in the wrapper. Exact precedent: `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:77-102` implements `project_diagnostics` summary branch as a GroupBy+select inside the tool method without touching the service. |
@@ -98,7 +98,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #811, 2026-05-18) |
 | Backlog rows closed | `validate-workspace-runtests-total-zero` |
 | Source | gh #764 (P1 — `firewallanalyzer` audit) |
 | Diagnosis | Root cause in `src/RoslynMcp.Roslyn/Services/WorkspaceValidationService.cs:320-334` (`ComputeOverallStatus`). When `runTests=true` with non-empty filter, `ValidateInternalAsync` calls `TestRunnerService.RunTestsAsync` (line 188-192). If `dotnet test` fails to match any tests (working-directory or IChangeTracker-timing issue), subprocess returns exit-0 with `total=0, failed=0`. `ComputeOverallStatus` then returns `"clean"` because no branch fires: `ErrorCount == 0`, no analyzer errors, `testRunResult.Failed == 0` (line 331). The `total=0` signal is completely ignored; no guard for zero-run against non-empty filter. Confirmed in gh #764 repro: auto-derived 26-FQDN filter returned total=0; standalone `test_run` with same filter returned 36 passes. |
@@ -117,7 +117,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #818, 2026-05-18) |
 | Backlog rows closed | `extract-interface-cross-project-uncompilable` |
 | Source | gh #765 (P1 — `firewallanalyzer` audit) |
 | Diagnosis | `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:495-538` — `CreateInterfaceCompilationUnit` passes `filterUsings: isCrossProject` to `CreateCompilationUnitForMember`, which calls `FilterUsingsForMember` (line 449). That method is text-based: it collects identifier tokens from the already-generated interface member syntax nodes (short names rendered via `SymbolDisplayFormat.MinimallyQualifiedFormat`) and retains source-file usings only when the using's last namespace segment matches one of those names. Because `using FirewallAnalyzer.Application.Models;` has last segment `Models` (never `ExecutiveRollup`), the match fails and the using is dropped. Fallback at line 489 refuses to fall back to all source usings in cross-project case, leaving an empty using list. The semantic fix for the equivalent same-project bug (`InterfaceExtractionService.CollectReferencedNamespaces`, lines 301-338) was never backported. |
@@ -149,7 +149,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #816, 2026-05-18) |
 | Backlog rows closed | `split-service-with-di-broken-output` |
 | Source | gh #766 (P1 — `firewallanalyzer` audit; refactor tool emits non-functional code) |
 | Diagnosis | Two co-located bugs in `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs`. **Bug 1 — fields not migrated:** `SplitServiceContext` (line 310-316) and `ResolveSplitServiceContextAsync` (line 337) collect only `MethodDeclarationSyntax`; `FieldDeclarationSyntax` never gathered. `BuildPartitionFile` (line 638) + `BuildFacadeFile` (line 653) receive no field declarations. Partition types emit without instance fields (e.g. `_channel`) their methods reference → uncompilable. **Bug 2 — async+ValueTask compile error:** `BuildForwardingMethod` (line 736) copies `original.Modifiers` verbatim including `async`. Stub body `return _field.Method(args)` is sync delegation with no `await`. `async ValueTask Foo() { return _field.Foo(...); }` triggers CS4016. Both bugs share code path; existing test `CompositeSplitServiceDiPreviewTests` covers only trivial sync expression-body methods. |
@@ -181,7 +181,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #817, 2026-05-18) |
 | Backlog rows closed | `preview-token-stale-across-auto-reload` |
 | Source | gh #767 (P1 — `firewallanalyzer` audit) |
 | Diagnosis | At `src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs:134` and `src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs:34`, when `IPreviewStore.PeekWorkspaceId(token)` returns null (token expired/evicted by `InvalidateOnVersionBump`), both sites throw `new KeyNotFoundException("Preview token '...' not found or expired.")`. `ToolErrorHandler.cs` classifies all `KeyNotFoundException` as category `NotFound` — callers can't distinguish "preview token stale after auto-reload" from "workspace not found" or "symbol not found". Staleness lifecycle (`DefaultMaxVersionSpan = 1`, `InvalidateOnVersionBump` called from `WorkspaceManager.LoadIntoSessionAsync:1333`) is documented on `IPreviewStore`/`PreviewStore` XML docs but absent from tool-surface `Description` attributes. Repro: scaffold_test_preview → scaffold_type_apply triggers auto-reload (version V→V+1) → scaffold_test_apply(token) → null peek → bare `NotFound` with no staleness signal. |
@@ -200,7 +200,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #814, 2026-05-18) |
 | Backlog rows closed | `set-editorconfig-option-duplicate-key-append` |
 | Source | gh #735 (P2 — `roslyn-backed-mcp` self-audit) |
 | Diagnosis | `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:389` `UpsertKeyInSection`. Key-matching predicate at line 409 uses `trimmed.StartsWith(keyPrefix, OrdinalIgnoreCase)` where `keyPrefix = key + " ="` (space-equals). This matches lines written by the tool itself but silently fails to match `key=value` no-space variant common in hand-edited or IDE-generated `.editorconfig` files. When `StartsWith` misses, falls through to `lines.Insert(end, assignment)` at line 416 — duplicate line appended. Secondary trigger: if existing entry is under a different section glob than the writer's constant `[*.{cs,csx,cake}]` at line 349, `sectionIndex = -1` and writer creates a second section. `set_diagnostic_severity` shares the same `UpsertKeyInSection` call site (line 350). |
@@ -221,7 +221,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #819, 2026-05-18) |
 | Backlog rows closed | `member-hierarchy-overrides-mislabels-sibling-interface-impls`, `find-overrides-vs-member-hierarchy-cross-tool-inconsistency` |
 | Source | gh #736 + gh #737 (P2 — `roslyn-backed-mcp` self-audit, bundled) |
 | Diagnosis | Both symptoms originate in `ReferenceService.FindOverridesAsync` (`src/RoslynMcp.Roslyn/Services/ReferenceService.cs:142-174`). `member_hierarchy` calls it via `SymbolRelationshipService.GetMemberHierarchyAsync` at `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs:127`; `find_overrides` calls it directly via `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:392`. `FindOverridesAsync` calls BOTH `SymbolFinder.FindOverridesAsync` (correct virtual/abstract chain walk) AND `FindInterfaceMemberImplementationsAsync` (lines 176-219, walks all solution types via `type.FindImplementationForInterfaceMember(symbol)`). It conflates both results into the `overrides` bucket. For gh #736: positional resolve of `WorkspaceManager.Dispose()` promotes to `IDisposable.Dispose` via `PromoteToVirtualRoot`, then `FindInterfaceMemberImplementationsAsync` returns 14 sibling impls — all placed in `overrides` bucket. For gh #737: `find_overrides(metadataName="System.IDisposable.Dispose")` hits same `FindOverridesAsync`; symbol arrives as interface method directly; `SymbolFinder.FindOverridesAsync` on interface returns empty; `FindInterfaceMemberImplementationsAsync` should fire but `type.FindImplementationForInterfaceMember` returns null for metadata-only interface symbol that doesn't match compilation's internal interface references → count=0. The inconsistency between member_hierarchy (14) and find_overrides (0) at the same conceptual question stems from this conflation + locator-divergent promotion path. **Stale anchors:** both backlog rows cite `MemberHierarchyService.cs` and `OverridesService.cs` — neither file exists; live code is `ReferenceService.cs` + `SymbolRelationshipService.cs`. |
