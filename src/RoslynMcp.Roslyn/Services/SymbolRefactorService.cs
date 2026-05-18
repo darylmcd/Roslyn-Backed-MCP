@@ -304,12 +304,15 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
     }
 
     /// <summary>
-    /// Resolved context for a split-service preview: the target type declaration, its methods,
-    /// the per-member partition mapping, and formatting scaffolding (namespace, directory, usings).
+    /// Resolved context for a split-service preview: the target type declaration, its methods
+    /// and fields, the per-member partition mapping, and formatting scaffolding (namespace,
+    /// directory, usings). Field declarations are needed so that partition files include any
+    /// instance fields referenced by their migrated methods (split-service-with-di-broken-output).
     /// </summary>
     private sealed record SplitServiceContext(
         TypeDeclarationSyntax TypeDeclaration,
         IReadOnlyList<MethodDeclarationSyntax> MethodDeclarations,
+        IReadOnlyList<FieldDeclarationSyntax> FieldDeclarations,
         IReadOnlyDictionary<string, SplitServicePartition> MemberToPartition,
         string NamespaceName,
         string SourceDirectory,
@@ -335,6 +338,15 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
         // methods cleanly; we keep the first version intentionally method-only to avoid writing
         // a richer generator for properties / fields in scope).
         var methodDeclarations = typeDeclaration.Members.OfType<MethodDeclarationSyntax>().ToArray();
+
+        // split-service-with-di-broken-output: also collect instance field declarations so each
+        // partition file can migrate the fields its methods reference. Without this, partition
+        // classes emit field-less and any `_field.Member(...)` reference in the migrated method
+        // body fails to compile (gh #766).
+        var fieldDeclarations = typeDeclaration.Members.OfType<FieldDeclarationSyntax>()
+            .Where(field => !field.Modifiers.Any(token => token.IsKind(SyntaxKind.StaticKeyword)))
+            .ToArray();
+
         var memberToPartition = new Dictionary<string, SplitServicePartition>(StringComparer.Ordinal);
         foreach (var partition in partitions)
         {
@@ -359,13 +371,17 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
         return new SplitServiceContext(
             typeDeclaration,
             methodDeclarations,
+            fieldDeclarations,
             memberToPartition,
             GetNamespaceName(typeDeclaration),
             sourceDirectory,
             StripLeadingTriviaFromFirstUsing(root.Usings));
     }
 
-    // 1) Create partition files.
+    // 1) Create partition files. Each partition file emits the requested methods PLUS any
+    //    instance fields those methods reference (split-service-with-di-broken-output). When
+    //    a partition migrates one or more uninitialized fields, BuildPartitionFile also
+    //    synthesizes a constructor that accepts and assigns them so the partition compiles.
     private static void EmitPartitionFiles(
         SplitServiceContext context,
         IReadOnlyList<SplitServicePartition> partitions,
@@ -374,16 +390,64 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
     {
         foreach (var partition in partitions)
         {
-            var partitionMethods = context.MethodDeclarations
+            var rawPartitionMethods = context.MethodDeclarations
                 .Where(method => partition.MemberNames.Contains(method.Identifier.ValueText, StringComparer.Ordinal))
+                .ToArray();
+
+            var partitionMethods = rawPartitionMethods
                 .Select(method => NormalizeMemberForPartition(method))
                 .ToArray();
 
+            var referencedFields = ResolveFieldsReferencedByMethods(context.FieldDeclarations, rawPartitionMethods);
+
             var partitionFilePath = Path.Combine(context.SourceDirectory, $"{partition.TypeName}.cs");
-            var partitionContent = BuildPartitionFile(context.NamespaceName, partition.TypeName, partitionMethods, context.Usings);
+            var partitionContent = BuildPartitionFile(
+                context.NamespaceName, partition.TypeName, referencedFields, partitionMethods, context.Usings);
             mutations.Add(new CompositeFileMutation(partitionFilePath, partitionContent));
             changes.Add(new FileChangeDto(partitionFilePath, DiffGenerator.GenerateUnifiedDiff(string.Empty, partitionContent, partitionFilePath)));
         }
+    }
+
+    /// <summary>
+    /// Walks every method body and scans descendant <see cref="IdentifierNameSyntax"/> nodes
+    /// against the supplied field-name set. Any field whose declarator-name appears anywhere
+    /// in a method body is included in the returned set so the partition can carry it.
+    /// </summary>
+    private static IReadOnlyList<FieldDeclarationSyntax> ResolveFieldsReferencedByMethods(
+        IReadOnlyList<FieldDeclarationSyntax> candidateFields,
+        IReadOnlyList<MethodDeclarationSyntax> methods)
+    {
+        if (candidateFields.Count == 0 || methods.Count == 0)
+        {
+            return Array.Empty<FieldDeclarationSyntax>();
+        }
+
+        // Index every field by each declarator name so a multi-declarator field (`int x, y;`)
+        // is matched when either name appears in a method body.
+        var nameToField = new Dictionary<string, FieldDeclarationSyntax>(StringComparer.Ordinal);
+        foreach (var field in candidateFields)
+        {
+            foreach (var declarator in field.Declaration.Variables)
+            {
+                nameToField[declarator.Identifier.ValueText] = field;
+            }
+        }
+
+        var referenced = new HashSet<FieldDeclarationSyntax>();
+        foreach (var method in methods)
+        {
+            foreach (var identifier in method.DescendantNodes().OfType<IdentifierNameSyntax>())
+            {
+                if (nameToField.TryGetValue(identifier.Identifier.ValueText, out var field))
+                {
+                    referenced.Add(field);
+                }
+            }
+        }
+
+        // Preserve the original declaration order so the migrated file reads top-to-bottom
+        // in source order rather than a hash-randomized layout.
+        return candidateFields.Where(referenced.Contains).ToArray();
     }
 
     // 2) Rewrite the original file: the source type becomes a forwarding facade whose
@@ -638,16 +702,107 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
     private static string BuildPartitionFile(
         string namespaceName,
         string partitionTypeName,
+        IReadOnlyList<FieldDeclarationSyntax> referencedFields,
         IReadOnlyList<MethodDeclarationSyntax> methods,
         SyntaxList<UsingDirectiveSyntax> usings)
     {
+        // split-service-with-di-broken-output: assemble fields + (optional) ctor + methods so the
+        // partition file compiles when its migrated methods reference instance fields. Fields
+        // with their own initializer (`= new()`) keep the initializer and are NOT plumbed
+        // through the constructor; uninitialized fields become constructor parameters and are
+        // assigned in the synthesized ctor body. When no uninitialized fields remain the ctor
+        // is omitted entirely so we don't conflict with the implicit default constructor.
+        var partitionMembers = new List<MemberDeclarationSyntax>();
+        partitionMembers.AddRange(referencedFields.Select(NormalizeFieldForPartition));
+
+        var ctorEligibleFields = referencedFields
+            .Where(field => !FieldHasInitializer(field))
+            .ToArray();
+        if (ctorEligibleFields.Length > 0)
+        {
+            partitionMembers.Add(BuildPartitionConstructor(partitionTypeName, ctorEligibleFields));
+        }
+
+        partitionMembers.AddRange(methods);
+
         var classDecl = SyntaxFactory.ClassDeclaration(partitionTypeName)
             .WithModifiers(SyntaxFactory.TokenList(SyntaxFactory.Token(SyntaxKind.PublicKeyword)))
-            .WithMembers(SyntaxFactory.List<MemberDeclarationSyntax>(methods));
+            .WithMembers(SyntaxFactory.List(partitionMembers));
 
         var compilationUnit = SyntaxFactory.CompilationUnit().WithUsings(usings);
         compilationUnit = WrapInNamespace(compilationUnit, namespaceName, classDecl);
         return compilationUnit.NormalizeWhitespace().ToFullString() + Environment.NewLine;
+    }
+
+    private static FieldDeclarationSyntax NormalizeFieldForPartition(FieldDeclarationSyntax field)
+    {
+        // Strip attributes and reset trivia so the migrated field sits cleanly at the top of the
+        // partition. Field initializers are preserved verbatim — they may carry trailing trivia
+        // we don't want to disturb (e.g. `= new(); // configured at construction`).
+        return field
+            .WithAttributeLists(SyntaxFactory.List<AttributeListSyntax>())
+            .WithLeadingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed))
+            .WithTrailingTrivia(SyntaxFactory.TriviaList(SyntaxFactory.ElasticCarriageReturnLineFeed));
+    }
+
+    private static bool FieldHasInitializer(FieldDeclarationSyntax field)
+    {
+        return field.Declaration.Variables.Any(declarator => declarator.Initializer is not null);
+    }
+
+    private static ConstructorDeclarationSyntax BuildPartitionConstructor(
+        string partitionTypeName, IReadOnlyList<FieldDeclarationSyntax> ctorFields)
+    {
+        // Synthesize one parameter per migrated field-without-initializer, matching the facade's
+        // `LowerFirst` naming convention. A field named `_channel` becomes parameter `channel`
+        // with body `_channel = channel;`. Multi-declarator fields produce one parameter per
+        // declarator (rare but supported).
+        var parameters = new List<ParameterSyntax>();
+        var assignments = new List<StatementSyntax>();
+        foreach (var field in ctorFields)
+        {
+            foreach (var declarator in field.Declaration.Variables)
+            {
+                if (declarator.Initializer is not null)
+                {
+                    // Mixed-initializer field (`int _a, _b = 1;`) — only the uninitialized
+                    // declarator should be plumbed through the ctor.
+                    continue;
+                }
+
+                var fieldName = declarator.Identifier.ValueText;
+                var paramName = ParameterNameFromFieldName(fieldName);
+                parameters.Add(SyntaxFactory.Parameter(SyntaxFactory.Identifier(paramName))
+                    .WithType(field.Declaration.Type));
+                assignments.Add(SyntaxFactory.ExpressionStatement(
+                    SyntaxFactory.AssignmentExpression(
+                        SyntaxKind.SimpleAssignmentExpression,
+                        SyntaxFactory.IdentifierName(fieldName),
+                        SyntaxFactory.IdentifierName(paramName))));
+            }
+        }
+
+        return SyntaxFactory.ConstructorDeclaration(partitionTypeName)
+            .AddModifiers(SyntaxFactory.Token(SyntaxKind.PublicKeyword))
+            .WithParameterList(SyntaxFactory.ParameterList(SyntaxFactory.SeparatedList(parameters)))
+            .WithBody(SyntaxFactory.Block(assignments));
+    }
+
+    private static string ParameterNameFromFieldName(string fieldName)
+    {
+        // Strip leading underscore(s) and lowercase the first remaining char so `_channel`
+        // becomes `channel` and `_FooBar` becomes `fooBar`. Identifiers that are pure
+        // underscores or empty fall back to `value` so we never emit an invalid parameter name.
+        if (string.IsNullOrEmpty(fieldName))
+        {
+            return "value";
+        }
+        var stripped = fieldName.TrimStart('_');
+        if (stripped.Length == 0)
+        {
+            return "value";
+        }
+        return LowerFirst(stripped);
     }
 
     private static string BuildFacadeFile(
@@ -732,8 +887,17 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
             ? SyntaxFactory.Block(SyntaxFactory.ExpressionStatement(invocation))
             : SyntaxFactory.Block(SyntaxFactory.ReturnStatement(invocation));
 
+        // split-service-with-di-broken-output: strip `async` from the forwarding stub. The stub
+        // body is a sync `return _field.Method(args)` (no `await`); copying `async` verbatim
+        // from the source method triggers CS4016 on `Task` / `ValueTask` return types because
+        // the compiler expects an awaited expression in an async method. Returning the Task
+        // synchronously is the correct delegation pattern here — the partition method retains
+        // its `async` modifier and does the awaiting; the facade simply forwards the Task.
+        var modifiers = SyntaxFactory.TokenList(
+            original.Modifiers.Where(token => !token.IsKind(SyntaxKind.AsyncKeyword)));
+
         return SyntaxFactory.MethodDeclaration(original.ReturnType, original.Identifier)
-            .WithModifiers(original.Modifiers)
+            .WithModifiers(modifiers)
             .WithTypeParameterList(original.TypeParameterList)
             .WithParameterList(original.ParameterList)
             .WithBody(body);
