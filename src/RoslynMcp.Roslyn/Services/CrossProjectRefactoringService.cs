@@ -153,7 +153,13 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         await DetectExistingTypeConflictAsync(solution, namespaceName, resolvedInterfaceName, ct).ConfigureAwait(false);
 
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject);
+        // gh #765 — walk the source type's public-instance member symbols semantically and
+        // collect every referenced type's containing namespace. The generated interface file's
+        // using block is built from that set (plus aliases/static/global from the source file)
+        // instead of the legacy text-grep that dropped source-project usings whose last segment
+        // didn't match the synthesized short name. Mirrors InterfaceExtractionService:301-338.
+        var requiredNamespaces = CollectReferencedNamespaces(typeSymbol, namespaceName);
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, resolvedInterfaceName, namespaceName, isCrossProject, requiredNamespaces);
         var interfaceFilePath = Path.Combine(interfaceDirectory, resolvedInterfaceName + ".cs");
         if (File.Exists(interfaceFilePath))
         {
@@ -404,11 +410,17 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         MemberDeclarationSyntax member,
         string namespaceName,
         bool filterUsings = false,
-        bool normalizeWhitespace = false)
+        bool normalizeWhitespace = false,
+        SyntaxList<UsingDirectiveSyntax>? overrideUsings = null)
     {
-        var usings = filterUsings
-            ? FilterUsingsForMember(sourceRoot.Usings, member, crossProjectExtraction: filterUsings)
-            : sourceRoot.Usings;
+        // `overrideUsings` (gh #765) lets the interface-extraction path supply a semantically-
+        // derived using list and bypass both the text-grep FilterUsingsForMember and the
+        // raw-copy fallback. The move-type path leaves it null and continues to use either
+        // FilterUsingsForMember (filterUsings: true) or the raw source usings.
+        var usings = overrideUsings
+            ?? (filterUsings
+                ? FilterUsingsForMember(sourceRoot.Usings, member, crossProjectExtraction: filterUsings)
+                : sourceRoot.Usings);
 
         if (normalizeWhitespace)
         {
@@ -497,7 +509,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         INamedTypeSymbol typeSymbol,
         string interfaceName,
         string namespaceName,
-        bool filterUsings = false)
+        bool isCrossProject,
+        IReadOnlyCollection<string> requiredNamespaces)
     {
         var interfaceMembers = typeSymbol.GetMembers()
             .Where(member => member.DeclaredAccessibility == Accessibility.Public && !member.IsStatic && !member.IsImplicitlyDeclared)
@@ -514,9 +527,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // BUG-003: Match the source type's accessibility. A cross-project extraction MUST stay
         // public because the interface is moved into a different assembly and an internal
         // interface would not be visible to consumers; for in-project extraction we honor
-        // internal/private types so we don't accidentally widen visibility. `filterUsings` is
-        // true exactly when this is a cross-project extraction.
-        var matchSourceAccessibility = !filterUsings;
+        // internal/private types so we don't accidentally widen visibility.
+        var matchSourceAccessibility = !isCrossProject;
         var accessibilityToken = matchSourceAccessibility
             ? GetAccessibilityToken(typeSymbol.DeclaredAccessibility)
             : SyntaxFactory.Token(SyntaxKind.PublicKeyword);
@@ -524,6 +536,12 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         var interfaceDeclaration = SyntaxFactory.InterfaceDeclaration(interfaceName)
             .AddModifiers(accessibilityToken)
             .WithMembers(SyntaxFactory.List(interfaceMembers));
+
+        // gh #765 — build the using list semantically. Drop the legacy text-grep filter
+        // (`FilterUsingsForMember`) which silently dropped source-project usings whose last
+        // segment didn't match a `MinimallyQualifiedFormat` short name. Mirrors
+        // `InterfaceExtractionService.BuildUsingDirectives`.
+        var overrideUsings = BuildUsingDirectives(sourceRoot.Usings, requiredNamespaces);
 
         // FORMAT-BUG-001 (dr-9-2-format-bug-001-cross-project-interface-extractio): the
         // interface declaration and its members are built from raw SyntaxFactory nodes that
@@ -534,8 +552,9 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
             sourceRoot,
             interfaceDeclaration,
             namespaceName,
-            filterUsings,
-            normalizeWhitespace: true);
+            filterUsings: false,
+            normalizeWhitespace: true,
+            overrideUsings: overrideUsings);
     }
 
     /// <summary>
@@ -752,7 +771,11 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         await DetectExistingTypeConflictAsync(solution, namespaceName, interfaceName, ct).ConfigureAwait(false);
 
-        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject);
+        // gh #765 — collect required namespaces semantically (see PreviewExtractInterfaceAsync
+        // for the same call). The DI-inversion path routes through here too, so missing this
+        // produces silent regressions for cross-project extract+invert scenarios.
+        var requiredNamespaces = CollectReferencedNamespaces(typeSymbol, namespaceName);
+        var interfaceRoot = CreateInterfaceCompilationUnit(sourceRoot, typeSymbol, interfaceName, namespaceName, isCrossProject, requiredNamespaces);
         var interfaceFileDirectory = isCrossProject
             ? ResolvePreferredInterfaceSubdirectory(solution, targetProject, targetProjectDirectory)
             : targetProjectDirectory;
@@ -795,5 +818,190 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         return typeSymbol.ContainingNamespace.IsGlobalNamespace
             ? typeSymbol.MetadataName
             : typeSymbol.ContainingNamespace.ToDisplayString() + "." + typeSymbol.MetadataName;
+    }
+
+    /// <summary>
+    /// gh #765 — semantic using-collection. Walks the source type's public-instance method,
+    /// property, and event symbols and collects the containing namespaces of every referenced
+    /// type (return type, parameter types, property type, event type, type-parameter
+    /// constraints, recursive generic arguments, array element types). The result is the
+    /// authoritative list of namespaces the generated interface file needs, independent of
+    /// what the source file happened to declare. Excludes the target interface's own
+    /// namespace (a self-referential using would be invalid). Mirrors
+    /// <c>InterfaceExtractionService.CollectReferencedNamespaces</c>.
+    /// </summary>
+    private static IReadOnlyCollection<string> CollectReferencedNamespaces(
+        INamedTypeSymbol typeSymbol,
+        string targetNamespaceName)
+    {
+        var namespaces = new HashSet<string>(StringComparer.Ordinal);
+        var ownNamespace = string.IsNullOrWhiteSpace(targetNamespaceName) ? null : targetNamespaceName;
+
+        var members = typeSymbol.GetMembers()
+            .Where(member => member.DeclaredAccessibility == Accessibility.Public && !member.IsStatic && !member.IsImplicitlyDeclared);
+
+        foreach (var member in members)
+        {
+            switch (member)
+            {
+                case IMethodSymbol { MethodKind: MethodKind.Ordinary } method:
+                    AddType(namespaces, method.ReturnType, ownNamespace);
+                    foreach (var parameter in method.Parameters)
+                    {
+                        AddType(namespaces, parameter.Type, ownNamespace);
+                    }
+                    foreach (var typeParameter in method.TypeParameters)
+                    {
+                        foreach (var constraint in typeParameter.ConstraintTypes)
+                        {
+                            AddType(namespaces, constraint, ownNamespace);
+                        }
+                    }
+                    break;
+                case IPropertySymbol property:
+                    AddType(namespaces, property.Type, ownNamespace);
+                    break;
+                case IEventSymbol evt:
+                    AddType(namespaces, evt.Type, ownNamespace);
+                    break;
+            }
+        }
+
+        return namespaces;
+    }
+
+    private static void AddType(HashSet<string> namespaces, ITypeSymbol type, string? ownNamespace)
+    {
+        if (type is null)
+        {
+            return;
+        }
+
+        // Type-parameter symbols have no containing namespace — skip them outright.
+        if (type is ITypeParameterSymbol)
+        {
+            return;
+        }
+
+        var typeNamespace = type.ContainingNamespace;
+        if (typeNamespace is { IsGlobalNamespace: false })
+        {
+            var nsName = typeNamespace.ToDisplayString();
+            if (!string.Equals(nsName, ownNamespace, StringComparison.Ordinal))
+            {
+                namespaces.Add(nsName);
+            }
+        }
+
+        // Walk generic type arguments recursively so Task<SourceProjectType>, List<Foo>,
+        // Dictionary<Foo, Bar>, IEnumerable<Item>, etc. all contribute their inner-type
+        // namespaces. Without this the Task is captured but the inner is missed.
+        if (type is INamedTypeSymbol named && named.IsGenericType)
+        {
+            foreach (var argument in named.TypeArguments)
+            {
+                AddType(namespaces, argument, ownNamespace);
+            }
+        }
+
+        // Array element types and pointer element types also contribute. Rare for
+        // interfaces but handled for completeness.
+        if (type is IArrayTypeSymbol array)
+        {
+            AddType(namespaces, array.ElementType, ownNamespace);
+        }
+    }
+
+    /// <summary>
+    /// gh #765 — merge the semantically-required namespaces with the source file's using
+    /// block. Keeps source-file aliases, static usings, and global usings (they cannot be
+    /// re-synthesized from symbols), and adds plain-<c>using</c> directives for every
+    /// required namespace. Drops plain source-file usings that the semantic walk determined
+    /// are unnecessary. Mirrors <c>InterfaceExtractionService.BuildUsingDirectives</c>.
+    /// </summary>
+    private static SyntaxList<UsingDirectiveSyntax> BuildUsingDirectives(
+        SyntaxList<UsingDirectiveSyntax> sourceUsings,
+        IReadOnlyCollection<string> requiredNamespaces)
+    {
+        var result = new List<UsingDirectiveSyntax>();
+        var alreadyAddedPlainNamespaces = new HashSet<string>(StringComparer.Ordinal);
+
+        PreserveSpecialAndRequiredSourceUsings(
+            sourceUsings,
+            requiredNamespaces,
+            result,
+            alreadyAddedPlainNamespaces);
+        AddMissingRequiredUsingDirectives(requiredNamespaces, alreadyAddedPlainNamespaces, result);
+        return SortUsingDirectives(result);
+    }
+
+    private static void PreserveSpecialAndRequiredSourceUsings(
+        SyntaxList<UsingDirectiveSyntax> sourceUsings,
+        IReadOnlyCollection<string> requiredNamespaces,
+        List<UsingDirectiveSyntax> result,
+        ISet<string> alreadyAddedPlainNamespaces)
+    {
+        foreach (var source in sourceUsings)
+        {
+            if (IsSpecialUsingDirective(source))
+            {
+                result.Add(source);
+                continue;
+            }
+
+            var name = GetUsingNamespace(source);
+            if (name is null || !requiredNamespaces.Contains(name))
+            {
+                continue;
+            }
+
+            result.Add(source);
+            alreadyAddedPlainNamespaces.Add(name);
+        }
+    }
+
+    private static void AddMissingRequiredUsingDirectives(
+        IReadOnlyCollection<string> requiredNamespaces,
+        ISet<string> alreadyAddedPlainNamespaces,
+        List<UsingDirectiveSyntax> result)
+    {
+        foreach (var ns in requiredNamespaces)
+        {
+            if (!alreadyAddedPlainNamespaces.Contains(ns))
+            {
+                result.Add(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns)));
+            }
+        }
+    }
+
+    private static SyntaxList<UsingDirectiveSyntax> SortUsingDirectives(List<UsingDirectiveSyntax> usings)
+    {
+        var systemUsings = usings
+            .Where(IsSystemUsingDirective)
+            .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
+        var otherPlain = usings
+            .Where(u => !IsSpecialUsingDirective(u) && !IsSystemUsingDirective(u))
+            .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
+        var specials = usings.Where(IsSpecialUsingDirective);
+        return SyntaxFactory.List(systemUsings.Concat(otherPlain).Concat(specials));
+    }
+
+    private static string? GetUsingNamespace(UsingDirectiveSyntax source)
+    {
+        var name = source.Name?.ToString();
+        return string.IsNullOrWhiteSpace(name) ? null : name;
+    }
+
+    private static bool IsSystemUsingDirective(UsingDirectiveSyntax usingDirective)
+    {
+        return !IsSpecialUsingDirective(usingDirective)
+            && (usingDirective.Name?.ToString().StartsWith("System", StringComparison.Ordinal) ?? false);
+    }
+
+    private static bool IsSpecialUsingDirective(UsingDirectiveSyntax usingDirective)
+    {
+        return usingDirective.Alias is not null
+            || usingDirective.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
+            || usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword);
     }
 }
