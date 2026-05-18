@@ -217,6 +217,24 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
 
         var status = ComputeOverallStatus(compile, allErrors, testRunResult, runTests);
 
+        // validate-workspace-runtests-total-zero: when the new "test-zero-run" verdict fires,
+        // append a diagnostic warning that names the discovered filter and points at the most
+        // likely cause. Helps the caller decide whether to re-run test_run standalone (which
+        // tends to succeed because it does not race with the workspace's IChangeTracker
+        // refresh / dotnet test working-directory resolution).
+        var emittedWarnings = warnings;
+        if (runTests && testRunResult is not null && testRunResult.Total == 0 && !string.IsNullOrWhiteSpace(related.DotnetTestFilter))
+        {
+            emittedWarnings = warnings
+                .Concat(new[]
+                {
+                    $"validate_workspace: runTests=true produced testRunResult.total=0 with filter '{related.DotnetTestFilter}'; "
+                    + "this likely indicates filter resolution failure (working-directory or IChangeTracker timing). "
+                    + "Run test_run with the same filter to confirm."
+                })
+                .ToArray();
+        }
+
         // validate-workspace-output-cap-summary-mode: drop per-diagnostic + per-test detail
         // when caller asked for a summary. Counts + status still surface the verdict; the
         // CompileResult and TestRunResult are kept because they already carry their own
@@ -235,7 +253,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             DiscoveredTests: emittedTests,
             DotnetTestFilter: string.IsNullOrWhiteSpace(related.DotnetTestFilter) ? null : related.DotnetTestFilter,
             TestRunResult: testRunResult,
-            Warnings: warnings);
+            Warnings: emittedWarnings);
     }
 
     /// <summary>
@@ -317,6 +335,15 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     // "no work" signal, not a compiler failure. Gating on !Success alone would emit
     // overallStatus: compile-error with zero error diagnostics. Use ErrorCount and the
     // merged error-severity rows instead.
+    //
+    // validate-workspace-runtests-total-zero: when runTests=true and the test-run reports
+    // Total=0, dotnet test matched no tests for the discovered filter — almost always a
+    // filter-resolution failure (working-directory mismatch or IChangeTracker timing race),
+    // not a real pass. Pre-fix this branch returned "clean" because Failed==0 fired the
+    // final fall-through. The new "test-zero-run" verdict surfaces the symptom explicitly
+    // so a caller exact-matching "clean" doesn't treat a zero-run as success. This is a
+    // BREAKING change for callers that exact-match "clean" as the only passing value; the
+    // CHANGELOG flags it as such.
     internal static string ComputeOverallStatus(
         CompileCheckDto compile,
         IReadOnlyList<DiagnosticDto> errors,
@@ -330,6 +357,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             return "analyzer-error";
         if (runTests && testRunResult is not null && testRunResult.Failed > 0)
             return "test-failure";
+        if (runTests && testRunResult is not null && testRunResult.Total == 0)
+            return "test-zero-run";
         return "clean";
     }
 

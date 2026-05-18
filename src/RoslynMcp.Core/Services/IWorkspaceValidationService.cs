@@ -50,7 +50,7 @@ public interface IWorkspaceValidationService
 /// <summary>
 /// Aggregated output of <see cref="IWorkspaceValidationService.ValidateAsync"/>.
 /// </summary>
-/// <param name="OverallStatus">One of <c>clean</c>, <c>compile-error</c>, <c>analyzer-error</c>, <c>test-failure</c>, <c>skipped</c>.</param>
+/// <param name="OverallStatus">One of <c>clean</c>, <c>compile-error</c>, <c>analyzer-error</c>, <c>test-failure</c>, <c>test-zero-run</c>, <c>skipped</c>. <c>test-zero-run</c> (added in validate-workspace-runtests-total-zero) indicates <c>runTests=true</c> produced <c>testRunResult.Total=0</c> with a non-empty discovered filter — almost always a filter-resolution failure (working-directory or IChangeTracker timing), not a real pass. Callers exact-matching <c>"clean"</c> as the only passing verdict need to treat <c>"test-zero-run"</c> as a non-passing verdict.</param>
 /// <param name="ChangedFilePaths">Caller-supplied paths that actually resolved to a document in the workspace. Drives compile-check scoping + test discovery.</param>
 /// <param name="UnknownFilePaths">
 /// dr-9-8-bug-validate-fabricated-accepts-fabricated-silen — caller-supplied paths that did NOT

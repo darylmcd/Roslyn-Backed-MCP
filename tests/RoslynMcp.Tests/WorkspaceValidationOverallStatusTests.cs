@@ -153,4 +153,92 @@ public sealed class WorkspaceValidationOverallStatusTests
 
         Assert.AreEqual("analyzer-error", status);
     }
+
+    /// <summary>
+    /// validate-workspace-runtests-total-zero: when runTests=true and the discovered filter
+    /// produced a non-empty expression, but dotnet test reported Total=0, the symptom is almost
+    /// always a filter-resolution failure (working-directory or IChangeTracker timing). Pre-fix
+    /// this branch hit the final fall-through and returned "clean" — making the bundle silently
+    /// claim success on a non-pass. The new "test-zero-run" verdict surfaces the symptom.
+    /// </summary>
+    [TestMethod]
+    public void ComputeOverallStatus_RunTestsTrue_TotalZero_NonEmptyFilter_YieldsTestZeroRun()
+    {
+        var compileClean = new CompileCheckDto(
+            Success: true,
+            ErrorCount: 0,
+            WarningCount: 0,
+            TotalDiagnostics: 0,
+            ReturnedDiagnostics: 0,
+            Offset: 0,
+            Limit: 200,
+            HasMore: false,
+            Diagnostics: Array.Empty<DiagnosticDto>(),
+            ElapsedMs: 0,
+            Cancelled: false,
+            CompletedProjects: 1,
+            TotalProjects: 1);
+
+        // Simulates the gh #764 repro: dotnet test exited 0 (Succeeded=true), but matched no
+        // tests for the auto-derived filter, so Total/Passed/Failed/Skipped all settle at 0.
+        var testRunZero = new TestRunResultDto(
+            new CommandExecutionDto(
+                Command: "dotnet",
+                Arguments: ["test", "--filter", "FullyQualifiedName~Foo"],
+                WorkingDirectory: "/repo",
+                TargetPath: string.Empty,
+                ExitCode: 0,
+                Succeeded: true,
+                DurationMs: 0,
+                StdOut: string.Empty,
+                StdErr: string.Empty),
+            Total: 0,
+            Passed: 0,
+            Failed: 0,
+            Skipped: 0,
+            Failures: []);
+
+        var status = WorkspaceValidationService.ComputeOverallStatus(
+            compileClean,
+            Array.Empty<DiagnosticDto>(),
+            testRunZero,
+            runTests: true);
+
+        Assert.AreEqual(
+            "test-zero-run",
+            status,
+            "runTests=true with Total=0 must surface 'test-zero-run' — not 'clean' — so callers don't silently treat a filter-resolution failure as a pass.");
+    }
+
+    /// <summary>
+    /// Negative-control for the test-zero-run guard: runTests=false (the default) must keep
+    /// the legacy "clean" verdict even when no test_run was attempted. The guard only fires
+    /// when the caller asked for tests AND a test_run actually executed AND returned Total=0.
+    /// </summary>
+    [TestMethod]
+    public void ComputeOverallStatus_RunTestsFalse_NullTestResult_StillYieldsClean()
+    {
+        var compileClean = new CompileCheckDto(
+            Success: true,
+            ErrorCount: 0,
+            WarningCount: 0,
+            TotalDiagnostics: 0,
+            ReturnedDiagnostics: 0,
+            Offset: 0,
+            Limit: 200,
+            HasMore: false,
+            Diagnostics: Array.Empty<DiagnosticDto>(),
+            ElapsedMs: 0,
+            Cancelled: false,
+            CompletedProjects: 1,
+            TotalProjects: 1);
+
+        var status = WorkspaceValidationService.ComputeOverallStatus(
+            compileClean,
+            Array.Empty<DiagnosticDto>(),
+            testRunResult: null,
+            runTests: false);
+
+        Assert.AreEqual("clean", status, "runTests=false must remain a 'clean' verdict on a clean compile — the new test-zero-run guard must not regress that path.");
+    }
 }
