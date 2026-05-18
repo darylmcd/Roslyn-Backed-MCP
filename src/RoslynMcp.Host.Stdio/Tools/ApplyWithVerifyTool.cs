@@ -31,7 +31,9 @@ public static class ApplyWithVerifyTool
         CancellationToken ct = default)
     {
         var workspaceId = previewStore.PeekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            ?? throw new PreviewTokenStaleException(
+                previewToken,
+                $"Preview token '{previewToken}' has expired or was invalidated: the workspace was reloaded after the preview was created, dropping the stored solution snapshot. Re-issue the paired *_preview call against the current workspace.");
 
         return gate.RunWriteAsync(workspaceId, async c =>
         {

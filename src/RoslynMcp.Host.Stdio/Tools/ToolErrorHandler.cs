@@ -60,6 +60,22 @@ internal static class ToolErrorHandler
         [typeof(TimeoutException)] = (ex, _) => new("Timeout",
             $"Timed out: {ex.Message}. For build/test operations, increase ROSLYNMCP_BUILD_TIMEOUT_SECONDS or " +
             "ROSLYNMCP_TEST_TIMEOUT_SECONDS. For other operations, increase ROSLYNMCP_REQUEST_TIMEOUT_SECONDS."),
+        // preview-token-stale-across-auto-reload: a *_apply call whose paired preview was
+        // invalidated by an auto-reload version bump (InvalidateOnVersionBump) or TTL
+        // expiry surfaces as PreviewTokenStaleException instead of the legacy bare
+        // KeyNotFoundException. PreviewTokenStaleException derives from
+        // InvalidOperationException so this entry MUST register BEFORE the generic
+        // InvalidOperationException handler below — the dictionary walk's
+        // Type.IsAssignableFrom check uses insertion order, so a later InvalidOperation
+        // entry would otherwise win and surface the less-specific category. Recovery hint
+        // mirrors WorkspaceEvicted: structured, copy-pasteable signal that the workspace
+        // is intact and the client just needs to re-issue the paired *_preview call.
+        [typeof(PreviewTokenStaleException)] = (ex, _) =>
+        {
+            var stale = (PreviewTokenStaleException)ex;
+            return new("PreviewTokenStale",
+                $"Preview token '{stale.PreviewToken}' has expired: the workspace was reloaded after the preview was created, invalidating the stored solution snapshot. Re-issue the paired *_preview call.");
+        },
         // compile-check-not-connected-raw-transport-error-envelope: a disconnected stdio
         // pipe surfaces as InvalidOperationException("Not connected") from PipeStream when
         // the SDK attempts a write on an already-closed transport. Registered BEFORE the
