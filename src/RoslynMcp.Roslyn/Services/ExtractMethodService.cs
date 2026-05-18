@@ -415,13 +415,55 @@ public sealed class ExtractMethodService : IExtractMethodService
     private static List<StatementSyntax> FindStatementsInSelection(
         SyntaxNode enclosingMember, Microsoft.CodeAnalysis.Text.TextSpan selectionSpan)
     {
-        return enclosingMember
-            .DescendantNodes()
-            .OfType<StatementSyntax>()
-            .Where(s => s.Parent is BlockSyntax
-                     && selectionSpan.Contains(s.Span))
+        // extract-method-preview-same-block-scope-false-negative (gh #744):
+        // the previous implementation walked every descendant `StatementSyntax`
+        // and filtered with `selectionSpan.Contains(s.Span)`. That predicate
+        // rejected the outer statement when `BuildSelectionSpan` produced an
+        // end position one short of the statement's exclusive `Span.End` — the
+        // classic "endColumn points at the closing brace" case — while still
+        // accepting the statement's nested-block children. The collected set
+        // then mixed children of the enclosing block with children of a nested
+        // block, and the caller's same-parent guard fired the false-negative
+        // "All selected statements must be in the same block scope" error.
+        //
+        // The fix is two changes in one:
+        //
+        //   (a) anchor the selection on statement start (`SpanStart`) rather
+        //       than full-span containment, so a multi-line statement whose
+        //       closing brace lands exactly at `selectionSpan.End` is captured;
+        //
+        //   (b) restrict the collected set to DIRECT statement children of
+        //       the innermost block enclosing the selection start, so we do
+        //       not also collect descendants from compound statements (e.g.
+        //       the `if`-body children when the user selected the `if` as a
+        //       whole). The caller's same-parent guard then naturally holds.
+        var targetBlock = FindEnclosingBlock(enclosingMember, selectionSpan.Start);
+        if (targetBlock is null)
+            return new List<StatementSyntax>();
+
+        return targetBlock.Statements
+            .Where(s => s.SpanStart >= selectionSpan.Start
+                     && s.SpanStart < selectionSpan.End)
             .OrderBy(s => s.SpanStart)
             .ToList();
+    }
+
+    private static BlockSyntax? FindEnclosingBlock(SyntaxNode enclosingMember, int position)
+    {
+        // Walk from the token at `position` up to the enclosing member,
+        // returning the first `BlockSyntax` ancestor. `FindToken` skips
+        // leading trivia and returns the next real token, so selections
+        // starting on indentation whitespace still resolve to the correct
+        // statement's containing block.
+        var token = enclosingMember.FindToken(position);
+        var current = token.Parent;
+        while (current is not null && current != enclosingMember.Parent)
+        {
+            if (current is BlockSyntax block)
+                return block;
+            current = current.Parent;
+        }
+        return null;
     }
 
     private static ITypeSymbol? GetSymbolType(ISymbol symbol) => symbol switch

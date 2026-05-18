@@ -40,4 +40,23 @@ public class RefactoringProbe
         result = result + 5;
         return result;
     }
+
+    // Lines 56-60: single-statement if-block scenario for
+    // extract-method-preview-same-block-scope-false-negative (gh #744). The if
+    // statement spans lines 56-60 and ends with a closing brace on line 60.
+    // Selecting the entire if-block with `endColumn` pointing at or adjacent to
+    // that closing brace used to trip the same-block-scope false-negative
+    // because the if-statement's exclusive `Span.End` exceeded the computed
+    // selection end. The statement collector now anchors on `SpanStart` so the
+    // outer if-statement is captured even though its `}` falls outside the
+    // selection. The body only reads `input` and writes via `Console.WriteLine`
+    // (no out-flowing variables) so the extract is unambiguously legal.
+    public void IfBlockScenario(int input)
+    {
+        if (input > 0)
+        {
+            Console.WriteLine($"positive: {input}");
+            Console.WriteLine($"doubled:  {input * 2}");
+        }
+    }
 }

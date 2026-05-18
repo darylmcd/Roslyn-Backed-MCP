@@ -207,4 +207,43 @@ public sealed class ExtractMethodTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(diff.Contains("var doubled=ComputeDoubled") || diff.Contains("var doubled = ComputeDoubled"),
             $"Expected `var doubled = ComputeDoubled(...)` since the local is introduced by the region. Diff:\n{diff}");
     }
+
+    /// <summary>
+    /// extract-method-preview-same-block-scope-false-negative (gh #744): selecting a single
+    /// multi-line if-block where `endColumn` lands on the closing `}` used to throw the
+    /// "All selected statements must be in the same block scope" guard, because the old
+    /// `selectionSpan.Contains(s.Span)` filter rejected the outer if-statement (its
+    /// exclusive `Span.End` exceeded `selectionSpan.End`), leaving only the nested-block
+    /// body children whose parent differed from any outer statements that might have been
+    /// captured. The start-anchor filter restores correct collection of the outer if.
+    /// </summary>
+    [TestMethod]
+    public async Task ExtractMethod_SingleIfBlockEndingAtClosingBrace_Succeeds()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var filePath = workspace.GetPath("SampleLib", "RefactoringProbe.cs");
+
+        // IfBlockScenario lines 56-60: select the entire if-statement.
+        //   Line 56: "        if (result > 0)"            (if keyword starts at col 9, 1-based)
+        //   Line 60: "        }"                           (closing brace at col 9, 1-based)
+        // `endColumn: 9` puts the selection end exactly on the `}` character —
+        // the exclusive `Span.End` of the if-statement is one past `}`, so the
+        // pre-fix `Contains` predicate dropped the if-statement entirely and
+        // the same-block-scope guard fired the false-negative.
+        var preview = await ExtractMethodService.PreviewExtractMethodAsync(
+            workspace.WorkspaceId,
+            filePath,
+            startLine: 56, startColumn: 9,
+            endLine: 60, endColumn: 9,
+            "AmplifyResult",
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview.PreviewToken,
+            "Preview must produce a token — the if-block is a valid extraction target.");
+        Assert.IsTrue(preview.Changes.Count > 0, "Expected at least one file change.");
+
+        var diff = preview.Changes[0].UnifiedDiff;
+        Assert.IsTrue(diff.Contains("AmplifyResult"),
+            $"Diff should contain the extracted method name. Diff:\n{diff}");
+    }
 }
