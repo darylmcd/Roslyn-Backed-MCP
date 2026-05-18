@@ -21,12 +21,41 @@ public static class CouplingAnalysisTools
         [Description("Maximum number of results to return (default: 100)")] int limit = 100,
         [Description("When true, exclude MSBuild test projects (IsTestProject / test framework packages) from analysis")] bool excludeTestProjects = false,
         [Description("When true, include interface types alongside classes/structs/records")] bool includeInterfaces = false,
+        [Description("When true, return per-project rollup counts (typeCount, avgInstability, stableCount, balancedCount, unstableCount, isolatedCount) without per-type detail rows. 10-100x smaller payload on multi-project solutions.")] bool summary = false,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var results = await couplingAnalysisService.GetCouplingMetricsAsync(
                 workspaceId, projectName, limit, excludeTestProjects, includeInterfaces, c);
+
+            // Summary mode: per-project rollup with classification buckets, no per-type detail rows.
+            // 10-100x smaller payload for multi-project solutions (gh #763).
+            if (summary)
+            {
+                var projectGroups = results
+                    .GroupBy(r => r.ProjectName, StringComparer.Ordinal)
+                    .Select(group => new
+                    {
+                        projectName = group.Key,
+                        typeCount = group.Count(),
+                        avgInstability = group.Average(r => r.Instability),
+                        stableCount = group.Count(r => r.Classification == "stable"),
+                        balancedCount = group.Count(r => r.Classification == "balanced"),
+                        unstableCount = group.Count(r => r.Classification == "unstable"),
+                        isolatedCount = group.Count(r => r.Classification == "isolated"),
+                    })
+                    .OrderBy(g => g.projectName, StringComparer.Ordinal)
+                    .ToList();
+
+                return JsonSerializer.Serialize(new
+                {
+                    summary = true,
+                    projectCount = projectGroups.Count,
+                    totalTypes = results.Count,
+                    projects = projectGroups,
+                }, JsonDefaults.Indented);
+            }
 
             return JsonSerializer.Serialize(new { count = results.Count, metrics = results }, JsonDefaults.Indented);
         }, ct);
