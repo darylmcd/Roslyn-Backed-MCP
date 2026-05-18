@@ -372,7 +372,7 @@ public static class SymbolTools
             ct);
     }
 
-    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find overriding members for a virtual, abstract, or interface member. Response shape: { count, items }; each item is a SymbolDto (Name, FullyQualifiedName, FilePath, StartLine, etc.). Auto-promotes to the virtual/interface root: override chains, explicit interface implementations, and implicit interface implementations are normalized before the search so callers can anchor at the implementation or declaration site and get the same result set. Metadata-boundary members (e.g. IEquatable<T>.Equals) now surface with FilePath=null so count matches member_hierarchy.")]
+    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find true virtual/abstract overrides for a member — only symbols actually marked `override` of a virtual or abstract declaration. Sibling interface implementations (e.g. independent IDisposable.Dispose impls across a solution) are NOT included here; query member_hierarchy and read the siblingInterfaceImplementations bucket for that. Response shape: { count, items }; each item is a SymbolDto (Name, FullyQualifiedName, FilePath, StartLine, etc.). Auto-promotes to the virtual/interface root: override chains, explicit interface implementations, and implicit interface implementations are normalized before the search so callers can anchor at the implementation or declaration site and get the same result set. Metadata-boundary members (e.g. IEquatable<T>.Equals) surface with FilePath=null so the count matches member_hierarchy.overrides.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find overrides of a virtual or abstract member.")]
     public static Task<string> FindOverrides(
@@ -416,9 +416,9 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "member_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a summary of base members and overrides for a symbol")]
+    [McpServerTool(Name = "member_hierarchy", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get a summary of base members, true virtual/abstract overrides, and sibling interface implementations for a symbol. Response buckets: `baseMembers` (the base chain), `overrides` (members actually marked `override` of a virtual/abstract declaration — matches find_overrides), `siblingInterfaceImplementations` (every concrete type whose member fulfills the same interface contract — e.g. independent IDisposable.Dispose impls across a solution).")]
     [McpToolMetadata("symbols", "stable", true, false,
-        "Summarize base and override relationships for a member.")]
+        "Summarize base, override, and sibling interface implementation relationships for a member.")]
     public static Task<string> GetMemberHierarchy(
         IWorkspaceExecutionGate gate,
         ISymbolRelationshipService symbolRelationshipService,

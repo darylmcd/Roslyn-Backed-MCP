@@ -66,9 +66,13 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
             "At least one returned base member should carry FilePath=null (metadata-only).");
     }
 
-    // find-base-members-vs-member-hierarchy-metadata-drift: regression — find_overrides and
-    // member_hierarchy.Overrides must agree for a metadata-boundary symbol. The important
-    // invariant is that they AGREE (no silent drift between the two surfaces).
+    // member-hierarchy-overrides-mislabels-sibling-interface-impls (gh #736, gh #737):
+    // find_overrides and member_hierarchy.Overrides must agree on the same definition of
+    // "override" — symbols actually marked `override` of a virtual/abstract declaration.
+    // EquatablePoint.Equals is an IEquatable<T>.Equals implementation (an interface
+    // contract impl), NOT a true override of a virtual member, so both surfaces correctly
+    // return 0. The sibling interface implementations now live in the new
+    // member_hierarchy.SiblingInterfaceImplementations bucket instead.
     [TestMethod]
     public async Task Metadata_Boundary_Find_Overrides_Matches_Member_Hierarchy_Overrides()
     {
@@ -82,12 +86,18 @@ public class SemanticExpansionTests : SharedWorkspaceTestBase
         var overrides = await ReferenceService.FindOverridesAsync(WorkspaceId, locator, CancellationToken.None);
         var hierarchy = await SymbolRelationshipService.GetMemberHierarchyAsync(WorkspaceId, locator, CancellationToken.None);
         Assert.IsNotNull(hierarchy);
-        Assert.IsTrue(overrides.Count > 0,
-            "find_overrides should now find source implementations for metadata-boundary interface members.");
+        Assert.AreEqual(0, overrides.Count,
+            "find_overrides should now correctly return 0 for an IEquatable<T>.Equals implementation (a sibling impl, not a true override).");
         Assert.AreEqual(
             hierarchy.Overrides.Count,
             overrides.Count,
-            "find_overrides must match member_hierarchy.Overrides count for metadata-boundary symbols.");
+            "find_overrides must match member_hierarchy.Overrides count — both surface only true virtual/abstract overrides.");
+        Assert.IsTrue(hierarchy.SiblingInterfaceImplementations.Count > 0,
+            "member_hierarchy.SiblingInterfaceImplementations should surface concrete IEquatable<T>.Equals impls now that they're separated from overrides.");
+        Assert.IsTrue(
+            hierarchy.SiblingInterfaceImplementations.Any(symbol =>
+                symbol.FilePath?.EndsWith("EquatablePoint.cs", StringComparison.OrdinalIgnoreCase) == true),
+            "EquatablePoint.Equals should appear in the SiblingInterfaceImplementations bucket.");
     }
 
     [TestMethod]

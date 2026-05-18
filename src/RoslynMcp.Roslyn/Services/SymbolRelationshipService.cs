@@ -123,10 +123,22 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
             return null;
         }
 
+        // member-hierarchy-overrides-mislabels-sibling-interface-impls (gh #736, gh #737):
+        // member_hierarchy now exposes true overrides and sibling interface implementations
+        // as two distinct buckets so callers can tell the difference between "this is the
+        // override chain" and "these are the unrelated types that happen to satisfy the
+        // same interface contract". Run both lookups in parallel — they hit disjoint
+        // Roslyn APIs.
         var baseMembers = SymbolServiceHelpers.GetBaseMembers(symbol).Select(baseMember => SymbolMapper.ToDto(baseMember, solution)).ToList();
-        var overrides = await _referenceService.FindOverridesAsync(workspaceId, locator, ct).ConfigureAwait(false);
+        var overridesTask = _referenceService.FindOverridesAsync(workspaceId, locator, ct);
+        var siblingImplsTask = _referenceService.FindSiblingInterfaceImplementationsAsync(workspaceId, locator, ct);
+        await Task.WhenAll(overridesTask, siblingImplsTask).ConfigureAwait(false);
 
-        return new MemberHierarchyDto(SymbolMapper.ToDto(symbol, solution), baseMembers, overrides);
+        return new MemberHierarchyDto(
+            Symbol: SymbolMapper.ToDto(symbol, solution),
+            BaseMembers: baseMembers,
+            Overrides: await overridesTask.ConfigureAwait(false),
+            SiblingInterfaceImplementations: await siblingImplsTask.ConfigureAwait(false));
     }
 
     public async Task<SymbolRelationshipsDto?> GetSymbolRelationshipsAsync(string workspaceId, SymbolLocator locator, bool preferDeclaringMember, CancellationToken ct)

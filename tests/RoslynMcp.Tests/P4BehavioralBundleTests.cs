@@ -104,18 +104,24 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task FindOverrides_FromImplicitInterfaceImpl_PromotesToInterfaceMember()
+    public async Task FindSiblingInterfaceImplementations_FromImplicitInterfaceImpl_PromotesToInterfaceMember()
     {
+        // member-hierarchy-overrides-mislabels-sibling-interface-impls (gh #736, gh #737):
+        // After the find_overrides / member_hierarchy semantic split, interface-contract
+        // implementations live in FindSiblingInterfaceImplementationsAsync (NOT FindOverridesAsync —
+        // Dog.Speak is not marked `override` of a virtual member, so it is a sibling impl).
+        // The promotion behavior — caret-at-impl-site resolves to the same interface root as
+        // caret-at-decl-site — is still asserted here, just through the correct bucket.
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
         var dogFile = solution.Projects.SelectMany(p => p.Documents).First(d => d.Name == "Dog.cs");
         var animalFile = solution.Projects.SelectMany(p => p.Documents).First(d => d.Name == "IAnimal.cs");
 
-        var fromImpl = await ReferenceService.FindOverridesAsync(
+        var fromImpl = await ReferenceService.FindSiblingInterfaceImplementationsAsync(
             WorkspaceId,
             SymbolLocator.BySource(dogFile.FilePath!, 7, 21),
             CancellationToken.None);
 
-        var fromIface = await ReferenceService.FindOverridesAsync(
+        var fromIface = await ReferenceService.FindSiblingInterfaceImplementationsAsync(
             WorkspaceId,
             SymbolLocator.BySource(animalFile.FilePath!, 6, 13),
             CancellationToken.None);
@@ -124,13 +130,29 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
             fromIface.Any(symbol =>
                 symbol.Name == "Speak" &&
                 symbol.FilePath?.EndsWith("Dog.cs", StringComparison.OrdinalIgnoreCase) == true),
-            "Interface-member FindOverrides must include the implicit Dog.Speak implementation.");
+            "Interface-member FindSiblingInterfaceImplementations must include the implicit Dog.Speak implementation.");
         Assert.AreEqual(fromIface.Count, fromImpl.Count,
             "Implicit interface implementation site should promote to the interface member and match the interface declaration query.");
         CollectionAssert.AreEquivalent(
             fromIface.Select(s => (s.FilePath, s.StartLine, s.StartColumn)).OrderBy(t => t.FilePath).ToList(),
             fromImpl.Select(s => (s.FilePath, s.StartLine, s.StartColumn)).OrderBy(t => t.FilePath).ToList(),
-            "Override/implementation locations should match after promotion.");
+            "Sibling implementation locations should match after promotion.");
+
+        // Cross-check the new semantic boundary: FindOverridesAsync at either site MUST be
+        // empty for IAnimal.Speak because no concrete type uses `override` syntax against
+        // a virtual `Speak()` member — there is no virtual `Speak` anywhere in the chain.
+        var overridesFromImpl = await ReferenceService.FindOverridesAsync(
+            WorkspaceId,
+            SymbolLocator.BySource(dogFile.FilePath!, 7, 21),
+            CancellationToken.None);
+        var overridesFromIface = await ReferenceService.FindOverridesAsync(
+            WorkspaceId,
+            SymbolLocator.BySource(animalFile.FilePath!, 6, 13),
+            CancellationToken.None);
+        Assert.AreEqual(0, overridesFromImpl.Count,
+            "FindOverridesAsync must NOT include sibling interface impls — Dog.Speak isn't marked `override`.");
+        Assert.AreEqual(0, overridesFromIface.Count,
+            "FindOverridesAsync on an interface-only member returns 0; the sibling impls now live in the new bucket.");
     }
 
     // ── find-references-bulk-schema-error-ux ──
