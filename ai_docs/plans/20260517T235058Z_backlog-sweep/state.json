@@ -3,16 +3,44 @@
   "generatedAt": "2026-05-17T23:50:58Z",
   "backlogSnapshot": "2026-05-17T15:49:13Z",
   "addendaLoaded": true,
-  "phase": "deepening-in-progress",
+  "phase": "conflict-graph-done",
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "pending",
   "readyForExecute": false,
-  "anchorVerification": "pending",
+  "anchorVerification": "performed",
   "conflictGraph": {
-    "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "edges": [
+      {
+        "a": 3,
+        "b": 10,
+        "sharedFiles": [
+          "src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 0,
+      "2": 0,
+      "3": 1,
+      "4": 0,
+      "5": 0,
+      "6": 0,
+      "7": 0,
+      "8": 0,
+      "9": 0,
+      "10": 1
+    },
+    "zeroDegreeInitiatives": [
+      1,
+      2,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ]
   },
   "bundleCandidates": [
     {
@@ -20,14 +48,9 @@
         "member-hierarchy-overrides-mislabels-sibling-interface-impls",
         "find-overrides-vs-member-hierarchy-cross-tool-inconsistency"
       ],
-      "rationale": "Both rows touch MemberHierarchyService.cs / OverridesService.cs and describe the same cross-tool semantic question (what counts as override vs sibling-interface implementation). Deepener should verify Rule 1 four conditions."
-    },
-    {
-      "ids": [
-        "analyze-dependencies-prompt-payload-overflow",
-        "review-test-coverage-prompt-payload-overflow"
-      ],
-      "rationale": "Both rows are prompt-payload-cap overflows on different prompts; both likely need the same SerializeTruncatedList pattern (precedent: PR #790 for guided_extract_interface). Deepener should verify shared code-path."
+      "rationale": "Both rows touch MemberHierarchyService.cs / OverridesService.cs and describe the same cross-tool semantic question (what counts as override vs sibling-interface implementation). Deepener should verify Rule 1 four conditions.",
+      "resolution": "bundle",
+      "resolvedInto": "member-hierarchy-overrides-mislabels-sibling-interface-impls (order 10)"
     }
   ],
   "initiatives": [
@@ -148,20 +171,20 @@
       "backlogRowsClosed": [
         "extract-interface-cross-project-uncompilable"
       ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "CrossProjectRefactoringService.CreateInterfaceCompilationUnit:495 uses text-based using-filter that fails on minimally-qualified short names. Mirror InterfaceExtractionService.CollectReferencedNamespaces semantic walker."
     },
     {
       "id": "split-service-with-di-broken-output",
@@ -170,20 +193,20 @@
       "backlogRowsClosed": [
         "split-service-with-di-broken-output"
       ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 32000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "judgmentHeavy=true: field-migration strategy has two plausible approaches (emit fields into every referencing partition vs caller lists fields in SplitServicePartition). Async modifier strip is unambiguous. SymbolRefactorService.cs:310-736."
     },
     {
       "id": "preview-token-stale-across-auto-reload",
@@ -192,20 +215,20 @@
       "backlogRowsClosed": [
         "preview-token-stale-across-auto-reload"
       ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 4,
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "New PreviewTokenStaleException + ToolErrorHandler registration. ToolDispatch.cs:134, ApplyWithVerifyTool.cs:34, ToolErrorHandler.cs, new Core/Services/PreviewTokenStaleException.cs. Description-string updates for ~18 *_apply tools deferred to follow-on tool-surface-only initiative (>4 file cap)."
     },
     {
       "id": "set-editorconfig-option-duplicate-key-append",
@@ -214,262 +237,43 @@
       "backlogRowsClosed": [
         "set-editorconfig-option-duplicate-key-append"
       ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 1,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null
+      "notes": "EditorConfigService.cs:389 UpsertKeyInSection \u2014 replace StartsWith(key + ' =') with proper key-extraction (split on first =, trim, case-insensitive equality). 1 call site only."
     },
     {
       "id": "member-hierarchy-overrides-mislabels-sibling-interface-impls",
       "order": 10,
       "status": "pending",
       "backlogRowsClosed": [
-        "member-hierarchy-overrides-mislabels-sibling-interface-impls"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Bundle-candidate with order 11."
-    },
-    {
-      "id": "find-overrides-vs-member-hierarchy-cross-tool-inconsistency",
-      "order": 11,
-      "status": "pending",
-      "backlogRowsClosed": [
+        "member-hierarchy-overrides-mislabels-sibling-interface-impls",
         "find-overrides-vs-member-hierarchy-cross-tool-inconsistency"
       ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "productionFilesTouched": 4,
+      "testFilesAdded": 1,
+      "rowsClosedCount": 2,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Bundle-candidate with order 10."
-    },
-    {
-      "id": "project-diagnostics-totaldiagnostics-collapses-under-severity-filter",
-      "order": 12,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "project-diagnostics-totaldiagnostics-collapses-under-severity-filter"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "symbol-signature-help-returns-bare-null-for-resolvable-method-metadata",
-      "order": 13,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "symbol-signature-help-returns-bare-null-for-resolvable-method-metadata"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "extract-interface-preview-duplicate-interface-when-already-implements",
-      "order": 14,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "extract-interface-preview-duplicate-interface-when-already-implements"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "change-type-namespace-preview-omits-consumer-using-additions",
-      "order": 15,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "change-type-namespace-preview-omits-consumer-using-additions"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "symbol-refactor-preview-empty-appliedfiles-on-success",
-      "order": 16,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "symbol-refactor-preview-empty-appliedfiles-on-success"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "test-run-fqdn-drift-vs-test-discover",
-      "order": 17,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "test-run-fqdn-drift-vs-test-discover"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "find-overrides-payload-overflow-on-corlib-virtual",
-      "order": 18,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "find-overrides-payload-overflow-on-corlib-virtual"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": null
-    },
-    {
-      "id": "analyze-dependencies-prompt-payload-overflow",
-      "order": 19,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "analyze-dependencies-prompt-payload-overflow"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Bundle-candidate with order 20."
-    },
-    {
-      "id": "review-test-coverage-prompt-payload-overflow",
-      "order": 20,
-      "status": "pending",
-      "backlogRowsClosed": [
-        "review-test-coverage-prompt-payload-overflow"
-      ],
-      "productionFilesTouched": null,
-      "testFilesAdded": null,
-      "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": null,
-      "fanoutEstimate": null,
-      "fanoutOversize": false,
-      "deepenerStatus": "pending",
-      "branch": null,
-      "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
-      "notes": "Bundle-candidate with order 19."
+      "notes": "BUNDLED with find-overrides-vs-member-hierarchy-cross-tool-inconsistency per Rule 1 (shared code path in ReferenceService.FindOverridesAsync). judgmentHeavy=true, anchorStale=true. Closes both rows: gh #736 + gh #737. Stale anchors: MemberHierarchyService.cs / OverridesService.cs do not exist; logic is in ReferenceService.cs + SymbolRelationshipService.cs. Splits true overrides from siblingInterfaceImplementations bucket on MemberHierarchyDto."
     }
   ]
 }

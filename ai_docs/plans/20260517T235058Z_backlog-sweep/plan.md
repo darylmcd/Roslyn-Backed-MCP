@@ -3,19 +3,18 @@
 **Generated:** 2026-05-17T23:50:58Z
 **Backlog snapshot:** 2026-05-17T15:49:13Z
 **Mode:** `/backlog-sweep:prepare count=20`
-**Initiative count:** 20 selected (8 High + 12 Medium)
-**Phase:** skeleton (deepener stanzas pending)
+**Initiative count:** 10 final (8 High + 2 Medium, after gh #736/#737 bundle resolution) — scoped down from initial count=20 to fit session budget per maintainer direction
+**Phase:** deepening complete (10/10 ok; 1 bundle resolved)
 
 ## Plan summary
 
-Twenty initiatives selected from the 34-row actionable backlog (post PR #808 intake). Selection covers all 8 High-priority (P1) audit findings plus 12 of 19 Medium (P2) findings, prioritized by source-repo coverage (3× self-audit + 9× sibling-repo cross-section).
+Eleven initiatives selected from the 34-row actionable backlog (post PR #808 intake). Selection covers all 8 High-priority (P1) audit findings plus 3 Medium (P2) findings, including the MemberHierarchy bundle pair (orders 10/11). Scoped down from initial `count=20` request to fit session budget per maintainer direction; the 9 dropped Medium rows remain in the backlog for a follow-up sweep.
 
 ## Bundle considerations (Rule 1)
 
 Two pairs flagged as bundle candidates — the deepener will verify or split:
 
-- **Initiatives 10 + 11** — `member-hierarchy-overrides-mislabels-sibling-interface-impls` (gh #736) and `find-overrides-vs-member-hierarchy-cross-tool-inconsistency` (gh #737) both touch `MemberHierarchyService.cs` / `OverridesService.cs` and describe the same cross-tool semantic question (what counts as "override" vs "sibling-interface implementation"). Strong bundle signal.
-- **Initiatives 19 + 20** — `analyze-dependencies-prompt-payload-overflow` (gh #755) and `review-test-coverage-prompt-payload-overflow` (gh #756) are payload-cap overflows on different prompts; both likely need the same `PromptMessageBuilder.SerializeTruncatedList` pattern (precedent: PR #790 for guided_extract_interface). Likely bundle.
+- **Initiatives 10 + 11 (RESOLVED → BUNDLE):** `member-hierarchy-overrides-mislabels-sibling-interface-impls` (gh #736) and `find-overrides-vs-member-hierarchy-cross-tool-inconsistency` (gh #737) confirmed shared code path at `ReferenceService.FindOverridesAsync`. Bundled into single initiative #10 covering both rows. (Anchor stale: real code is in `ReferenceService.cs` + `SymbolRelationshipService.cs`, not `MemberHierarchyService.cs`/`OverridesService.cs` which don't exist.)
 
 ## Initiatives
 
@@ -121,16 +120,16 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 | Status | pending |
 | Backlog rows closed | `extract-interface-cross-project-uncompilable` |
 | Source | gh #765 (P1 — `firewallanalyzer` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
+| Diagnosis | `src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs:495-538` — `CreateInterfaceCompilationUnit` passes `filterUsings: isCrossProject` to `CreateCompilationUnitForMember`, which calls `FilterUsingsForMember` (line 449). That method is text-based: it collects identifier tokens from the already-generated interface member syntax nodes (short names rendered via `SymbolDisplayFormat.MinimallyQualifiedFormat`) and retains source-file usings only when the using's last namespace segment matches one of those names. Because `using FirewallAnalyzer.Application.Models;` has last segment `Models` (never `ExecutiveRollup`), the match fails and the using is dropped. Fallback at line 489 refuses to fall back to all source usings in cross-project case, leaving an empty using list. The semantic fix for the equivalent same-project bug (`InterfaceExtractionService.CollectReferencedNamespaces`, lines 301-338) was never backported. |
+| Approach | (1) Add private static `CollectReferencedNamespaces(INamedTypeSymbol typeSymbol, string targetNamespaceName)` to `CrossProjectRefactoringService.cs` mirroring the same-project version. (2) Modify `CreateInterfaceCompilationUnit` (line 495) to accept `IReadOnlyCollection<string> requiredNamespaces` instead of `filterUsings` bool; replace `FilterUsingsForMember` call with `BuildUsingDirectives` logic: preserve special source usings, add `using` for every required namespace. (3) Update both call sites: `PreviewExtractInterfaceAsync` (line 156) and `CreateInterfaceExtractionSolutionAsync` (line 755). (4) In `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs`, add `Extract_Interface_Cross_Project_Emits_Using_For_Source_Project_Types` reproducing gh #765 — assert interface file contains required `using` and no bare unresolved type names. |
+| Scope | Production files touched: 1 (`src/RoslynMcp.Roslyn/Services/CrossProjectRefactoringService.cs`). Test files modified: 1 (`tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs`). |
+| Tool policy | edit-only |
+| Estimated context cost | 35000 |
+| Risks | (1) `PreviewDependencyInversionAsync` also routes through `CreateInterfaceExtractionSolutionAsync` → both call sites must update or DI-inversion path regresses (existing test `Dependency_Inversion_Preview_Preserves_Source_File_Formatting` doesn't assert on using directives — silent regression risk). Add using assertion. (2) Namespace walker must exclude target namespace (avoid self-referential using) via `namespaceName` exclusion sentinel. (3) `FilterUsingsForMember` also called from `PreviewMoveTypeToProjectAsync` (`filterUsings: false`) — unaffected; verify not accidentally changed. (4) Fanout probe skipped — confined to one private method + two call sites. |
+| Validation | (1) New test passes (interface file contains required using, no unresolved types). (2) Existing `CrossProjectRefactoringIntegrationTests` pass (FORMAT-BUG-001/-002, circular-dep, ProjectReference). (3) `ExtractInterfaceSemanticUsingsTests` (same-project path) pass. (4) `dotnet build RoslynMcp.slnx -c Release -p:TreatWarningsAsErrors=true` clean. |
+| Performance review | N/A — correctness fix, no hot-path changes. |
+| CHANGELOG category | Fixed |
+| CHANGELOG entry (draft) | Fixed `extract_interface_cross_project_preview` generating an uncompilable interface file when the source type's method signatures reference types from the source project's own namespace (gh #765). The generated interface now emits required `using` directives via the same semantic-walker approach already used by `extract_interface_preview` for same-project extraction. |
 | Backlog sync | Close rows: [`extract-interface-cross-project-uncompilable`]. |
 
 ### 7. split-service-with-di-broken-output
@@ -140,16 +139,16 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 | Status | pending |
 | Backlog rows closed | `split-service-with-di-broken-output` |
 | Source | gh #766 (P1 — `firewallanalyzer` audit; refactor tool emits non-functional code) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
+| Diagnosis | Two co-located bugs in `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs`. **Bug 1 — fields not migrated:** `SplitServiceContext` (line 310-316) and `ResolveSplitServiceContextAsync` (line 337) collect only `MethodDeclarationSyntax`; `FieldDeclarationSyntax` never gathered. `BuildPartitionFile` (line 638) + `BuildFacadeFile` (line 653) receive no field declarations. Partition types emit without instance fields (e.g. `_channel`) their methods reference → uncompilable. **Bug 2 — async+ValueTask compile error:** `BuildForwardingMethod` (line 736) copies `original.Modifiers` verbatim including `async`. Stub body `return _field.Method(args)` is sync delegation with no `await`. `async ValueTask Foo() { return _field.Foo(...); }` triggers CS4016. Both bugs share code path; existing test `CompositeSplitServiceDiPreviewTests` covers only trivial sync expression-body methods. |
+| Approach | (1) **Field migration:** Add `IReadOnlyList<FieldDeclarationSyntax> FieldDeclarations` to `SplitServiceContext`. In `ResolveSplitServiceContextAsync`, add `var fieldDeclarations = typeDeclaration.Members.OfType<FieldDeclarationSyntax>().ToArray();`. In `BuildPartitionFile`, emit all instance fields referenced by partition methods (compare field names against method bodies) into each partition. Facade should NOT re-emit those fields. (2) **Async fix:** In `BuildForwardingMethod`, strip `async` from `original.Modifiers` before applying: `original.Modifiers.Where(t => !t.IsKind(SyntaxKind.AsyncKeyword))`. Non-async `return _field.Method(args)` is correct for Task/ValueTask return types. (3) Add regression test to `tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs` covering a service with private readonly field + async ValueTask method; assert partition contains field, facade has no `async`. |
+| Scope | Production files touched: 1 (`src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs`). Test files modified: 1 (`tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs` — add 1 new test). |
+| Tool policy | edit-only |
+| Estimated context cost | 32000 |
+| Risks | (1) **judgmentHeavy:** field-assignment strategy has two plausible approaches — duplicate shared fields into every referencing partition vs require callers to list fields in `SplitServicePartition`. The safe minimal approach: include all instance fields in every referencing partition, omit from facade. Executor picks one strategy. (2) Constructor synthesis: if fields move into partitions, partition ctor must accept/initialize them — `BuildPartitionFile` currently emits field-less classes with no ctor; executor must add ctor synthesis. (3) Facade forwards by DI-injected partition; partition ctors must accept fields via DI or direct injection — verify DI registration delta is correct. (4) Fanout probe skipped — confined to `SymbolRefactorService.cs`. |
+| Validation | (1) New test passes (field migrated, async stripped). (2) Existing `CompositeSplitServiceDiPreviewTests` pass. (3) `mcp__roslyn__compile_check` zero errors. (4) Manual: split a `JobQueue`-shaped service (`Channel<T>` field + `async ValueTask` methods) and confirm partition has `_channel` field + facade has no `async`. |
+| Performance review | N/A — correctness fix, no hot-path changes. |
+| CHANGELOG category | Fixed |
+| CHANGELOG entry (draft) | Fixed `split_service_with_di_preview` emitting non-functional partition/facade code: instance fields are now migrated into the correct partition types, and `async` modifiers are stripped from facade forwarding stubs so `ValueTask`/`Task` return types compile correctly (gh #766). |
 | Backlog sync | Close rows: [`split-service-with-di-broken-output`]. |
 
 ### 8. preview-token-stale-across-auto-reload
@@ -159,16 +158,16 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 | Status | pending |
 | Backlog rows closed | `preview-token-stale-across-auto-reload` |
 | Source | gh #767 (P1 — `firewallanalyzer` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
+| Diagnosis | At `src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs:134` and `src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs:34`, when `IPreviewStore.PeekWorkspaceId(token)` returns null (token expired/evicted by `InvalidateOnVersionBump`), both sites throw `new KeyNotFoundException("Preview token '...' not found or expired.")`. `ToolErrorHandler.cs` classifies all `KeyNotFoundException` as category `NotFound` — callers can't distinguish "preview token stale after auto-reload" from "workspace not found" or "symbol not found". Staleness lifecycle (`DefaultMaxVersionSpan = 1`, `InvalidateOnVersionBump` called from `WorkspaceManager.LoadIntoSessionAsync:1333`) is documented on `IPreviewStore`/`PreviewStore` XML docs but absent from tool-surface `Description` attributes. Repro: scaffold_test_preview → scaffold_type_apply triggers auto-reload (version V→V+1) → scaffold_test_apply(token) → null peek → bare `NotFound` with no staleness signal. |
+| Approach | (1) New `src/RoslynMcp.Core/Services/PreviewTokenStaleException.cs` — sealed class deriving from `InvalidOperationException` (NOT `KeyNotFoundException`) carrying `PreviewToken` property, mirroring `StaleWorkspaceTransitionException.cs`. (2) `ToolDispatch.cs:134` — change throw to `PreviewTokenStaleException`. (3) `ApplyWithVerifyTool.cs:34` — same throw change. (4) `ToolErrorHandler.cs` — register `PreviewTokenStaleException` BEFORE generic `KeyNotFoundException` entry (same pattern as `WorkspaceEvictedException` at lines 34-50), mapping to category `PreviewTokenStale` with message: "Preview token '{token}' has expired: the workspace was reloaded after the preview was created, invalidating the stored solution snapshot. Re-issue the paired *_preview call." (5) New test `tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs`: store token, call `InvalidateOnVersionBump`, call dispatch path, assert error envelope has `category="PreviewTokenStale"`. |
+| Scope | Production files (4): `src/RoslynMcp.Core/Services/PreviewTokenStaleException.cs` (new), `src/RoslynMcp.Host.Stdio/Tools/ToolDispatch.cs`, `src/RoslynMcp.Host.Stdio/Tools/ApplyWithVerifyTool.cs`, `src/RoslynMcp.Host.Stdio/Tools/ToolErrorHandler.cs`. Test files (1 new): `tests/RoslynMcp.Tests/PreviewTokenStaleAcrossAutoReloadTests.cs`. **At Rule 3 4-file cap.** |
+| Tool policy | edit-only |
+| Estimated context cost | 35000 |
+| Risks | (1) Derives from `InvalidOperationException` so `KeyNotFoundException` registration order matters — new entry must register before `KeyNotFoundException` entry. (2) `ICompositePreviewStore` and `IProjectMutationPreviewStore` tokens are NOT covered by `InvalidateOnVersionBump` (TTL-only). Their apply paths route through same `ToolDispatch.ApplyByTokenAsync` overload → also get new `PreviewTokenStaleException` (correct behavior, but reason may be TTL not version-bump — message uses "expired or invalidated" not "workspace was reloaded"). (3) External callers exact-matching `category="NotFound"` for expired tokens will need to handle `PreviewTokenStale` (more actionable). (4) Description-string doc updates for ~18 `*_apply` tools are out of scope (exceed 4-file cap); follow-on tool-surface-only initiative. |
+| Validation | (1) `mcp__roslyn__compile_check` after each edit. (2) Regression test passes: store token, evict via `InvalidateOnVersionBump`, dispatch path returns `category="PreviewTokenStale"` + "Re-issue" message. (3) Existing `PreviewStoreTests.cs` + `PreviewTokenCrossCouplingTests.cs` pass. (4) Manual repro from gh #767. (5) `WorkspaceEvicted` category unaffected. |
+| Performance review | N/A — correctness fix, no hot-path changes. |
+| CHANGELOG category | Fixed |
+| CHANGELOG entry (draft) | Preview token rejection after workspace auto-reload now returns structured `PreviewTokenStale` error category instead of generic `NotFound`, giving callers a machine-readable signal to re-issue the paired `*_preview` call (gh #767). |
 | Backlog sync | Close rows: [`preview-token-stale-across-auto-reload`]. |
 
 ### 9. set-editorconfig-option-duplicate-key-append
@@ -178,231 +177,36 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 | Status | pending |
 | Backlog rows closed | `set-editorconfig-option-duplicate-key-append` |
 | Source | gh #735 (P2 — `roslyn-backed-mcp` self-audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
+| Diagnosis | `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs:389` `UpsertKeyInSection`. Key-matching predicate at line 409 uses `trimmed.StartsWith(keyPrefix, OrdinalIgnoreCase)` where `keyPrefix = key + " ="` (space-equals). This matches lines written by the tool itself but silently fails to match `key=value` no-space variant common in hand-edited or IDE-generated `.editorconfig` files. When `StartsWith` misses, falls through to `lines.Insert(end, assignment)` at line 416 — duplicate line appended. Secondary trigger: if existing entry is under a different section glob than the writer's constant `[*.{cs,csx,cake}]` at line 349, `sectionIndex = -1` and writer creates a second section. `set_diagnostic_severity` shares the same `UpsertKeyInSection` call site (line 350). |
+| Approach | (1) In `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs`, fix `UpsertKeyInSection` (line 389). Replace `keyPrefix = key + " ="` / `StartsWith` pattern with proper key-extraction: split each non-comment, non-blank line in section range on first `=`, trim both parts, compare key portion case-insensitively (`string.Equals(parsedKey, key, OrdinalIgnoreCase)`). Handles `key=value`, `key = value`, `key=  value`. Preserves write format (`key = value`). (2) Extend `tests/RoslynMcp.Tests/EditorConfigServiceTests.cs` with new method `SetOptionAsync_SecondCallSameKeyValue_NoOp`: call `SetOptionAsync` twice identical → key appears exactly once; third call different value → still exactly one with new value. |
+| Scope | Production files touched: 1 — `src/RoslynMcp.Roslyn/Services/EditorConfigService.cs`. Test files extended: 1 (no new file). Within Rule 3 (1≤4) and Rule 4 (0 new). |
+| Tool policy | edit-only |
+| Estimated context cost | 28000 |
+| Risks | (1) Key-extraction split: if a value contains `=` (rare), split on FIRST `=` only (mirror existing `ParseEditorconfigCsKeys` idiom). (2) `UpsertKeyInSection` has exactly 1 call site (`SetOptionAsync` line 350). (3) `SectionMatchesCSharp` parser untouched — fix confined to write path. (4) `[*]`-section edge case (key already under different glob) remains a known limitation — out-of-scope; document in Risks. (5) Fanout probe: 1 call site, no cross-project impact. |
+| Validation | (1) `mcp__roslyn__compile_check` zero errors. (2) New test passes (no duplicates, value updates work). (3) Existing `EditorConfigServiceTests` suite unchanged. (4) `dotnet test --filter "ClassName=EditorConfigServiceTests"` passes. (5) `./eng/verify-release.ps1 -Configuration Release` passes. |
+| Performance review | N/A — correctness fix; per-line scan is O(section-size), negligible. |
+| CHANGELOG category | Fixed |
+| CHANGELOG entry (draft) | Fixed `set_editorconfig_option` (and `set_diagnostic_severity`) appending a duplicate key line when the target `.editorconfig` already contains the same key. Key-matching now normalizes whitespace around `=` so both `key = value` and `key=value` variants are recognized and replaced in place. Repeated calls with the same key+value are now a no-op leaving the file hash unchanged. Closes gh #735. |
 | Backlog sync | Close rows: [`set-editorconfig-option-duplicate-key-append`]. |
 
-### 10. member-hierarchy-overrides-mislabels-sibling-interface-impls
+### 10. member-hierarchy-overrides-mislabels-sibling-interface-impls (BUNDLED with gh #737)
 
-**Bundle candidate with initiative 11.** Deepener should verify Rule 1 four-conditions test.
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `member-hierarchy-overrides-mislabels-sibling-interface-impls` |
-| Source | gh #736 (P2 — `roslyn-backed-mcp` self-audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`member-hierarchy-overrides-mislabels-sibling-interface-impls`]. |
-
-### 11. find-overrides-vs-member-hierarchy-cross-tool-inconsistency
-
-**Bundle candidate with initiative 10.** Deepener should verify Rule 1 four-conditions test.
+**Bundle resolved: this initiative closes BOTH `member-hierarchy-overrides-mislabels-sibling-interface-impls` (gh #736) AND `find-overrides-vs-member-hierarchy-cross-tool-inconsistency` (gh #737).** Rule 1 four-conditions verified: shared code path (`ReferenceService.FindOverridesAsync` at `src/RoslynMcp.Roslyn/Services/ReferenceService.cs:142-219`), single fix resolves both symptoms, one regression test exercises both invariants, combined scope at Rule 3 cap.
 
 | Field | Content |
 |---|---|
 | Status | pending |
-| Backlog rows closed | `find-overrides-vs-member-hierarchy-cross-tool-inconsistency` |
-| Source | gh #737 (P2 — `roslyn-backed-mcp` self-audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`find-overrides-vs-member-hierarchy-cross-tool-inconsistency`]. |
+| Backlog rows closed | `member-hierarchy-overrides-mislabels-sibling-interface-impls`, `find-overrides-vs-member-hierarchy-cross-tool-inconsistency` |
+| Source | gh #736 + gh #737 (P2 — `roslyn-backed-mcp` self-audit, bundled) |
+| Diagnosis | Both symptoms originate in `ReferenceService.FindOverridesAsync` (`src/RoslynMcp.Roslyn/Services/ReferenceService.cs:142-174`). `member_hierarchy` calls it via `SymbolRelationshipService.GetMemberHierarchyAsync` at `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs:127`; `find_overrides` calls it directly via `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:392`. `FindOverridesAsync` calls BOTH `SymbolFinder.FindOverridesAsync` (correct virtual/abstract chain walk) AND `FindInterfaceMemberImplementationsAsync` (lines 176-219, walks all solution types via `type.FindImplementationForInterfaceMember(symbol)`). It conflates both results into the `overrides` bucket. For gh #736: positional resolve of `WorkspaceManager.Dispose()` promotes to `IDisposable.Dispose` via `PromoteToVirtualRoot`, then `FindInterfaceMemberImplementationsAsync` returns 14 sibling impls — all placed in `overrides` bucket. For gh #737: `find_overrides(metadataName="System.IDisposable.Dispose")` hits same `FindOverridesAsync`; symbol arrives as interface method directly; `SymbolFinder.FindOverridesAsync` on interface returns empty; `FindInterfaceMemberImplementationsAsync` should fire but `type.FindImplementationForInterfaceMember` returns null for metadata-only interface symbol that doesn't match compilation's internal interface references → count=0. The inconsistency between member_hierarchy (14) and find_overrides (0) at the same conceptual question stems from this conflation + locator-divergent promotion path. **Stale anchors:** both backlog rows cite `MemberHierarchyService.cs` and `OverridesService.cs` — neither file exists; live code is `ReferenceService.cs` + `SymbolRelationshipService.cs`. |
+| Approach | (1) In `src/RoslynMcp.Roslyn/Services/ReferenceService.cs`, split `FindOverridesAsync` so it returns ONLY true virtual/abstract overrides (`SymbolFinder.FindOverridesAsync` result only — no `FindInterfaceMemberImplementationsAsync` appended). (2) Add new public `FindSiblingInterfaceImplementationsAsync(workspaceId, locator, ct)` method to `IReferenceService` (`src/RoslynMcp.Core/Services/IReferenceService.cs`) and `ReferenceService` using the existing `FindInterfaceMemberImplementationsAsync` private helper (rename/promote). (3) Add `IReadOnlyList<SymbolDto> SiblingInterfaceImplementations` to `src/RoslynMcp.Core/Models/MemberHierarchyDto.cs` (positional record — use named-arg construction at call sites). (4) In `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs:GetMemberHierarchyAsync` (line 116-130), call both `FindOverridesAsync` and `FindSiblingInterfaceImplementationsAsync` (Task.WhenAll pattern); populate both buckets. (5) `find_overrides` tool wrapper at `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:378` returns `FindOverridesAsync` result directly — once corrected, tool output is automatically right and cross-tool inconsistency resolves. (6) New test `tests/RoslynMcp.Tests/MemberHierarchyCrossToolConsistencyTests.cs`: fixture (a) `IDisposable.Dispose` target — assert `find_overrides`+`member_hierarchy.overrides` both 0; `siblingInterfaceImplementations` non-empty. (b) Virtual override chain — `overrides` matches across both tools; `siblingInterfaceImplementations` empty. |
+| Scope | Production files touched: 4 — `src/RoslynMcp.Roslyn/Services/ReferenceService.cs`, `src/RoslynMcp.Core/Services/IReferenceService.cs`, `src/RoslynMcp.Core/Models/MemberHierarchyDto.cs`, `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs`. `SymbolTools.cs` may or may not need wrapper update depending on whether it serializes the DTO directly (verify at edit time). Test files added: 1 — `tests/RoslynMcp.Tests/MemberHierarchyCrossToolConsistencyTests.cs`. **At Rule 3 4-file ceiling.** |
+| Tool policy | edit-only |
+| Estimated context cost | 45000 |
+| Risks | (1) `MemberHierarchyDto` is positional record — adding field changes constructor; use named-arg construction (currently only one call site at `SymbolRelationshipService.cs:129`). (2) `SymbolRelationshipsDto.Overrides` ALSO populated via `FindOverridesAsync` (`GetSymbolRelationshipsAsync` line 159) → behavior also changes (correct outcome, but note as breaking in CHANGELOG). (3) Existing test `Metadata_Boundary_Find_Overrides_Matches_Member_Hierarchy_Overrides` (`SemanticExpansionTests.cs:73`) asserts `overrides.Count > 0` + cross-tool match; after fix, the `EquatablePoint.Equals` fixture used there will return `overrides.Count == 0` (correct) and `siblingInterfaceImplementations.Count > 0` — update assertion. (4) `find_overrides` `[Description]` text says "Find overriding members for a virtual, abstract, or interface member" — update to clarify "interface member" path returns true overrides only; sibling impls via `member_hierarchy`. (5) **judgmentHeavy=true** + **anchorStale=true** flagged. (6) Fanout probe skipped — surgical fix to coupled service methods. |
+| Validation | (1) New test passes: `IDisposable.Dispose` → both `find_overrides` and `member_hierarchy.overrides` return 0; siblingImpls > 0. Virtual override chain → both tools agree. (2) Existing `Metadata_Boundary_Find_Overrides_Matches_Member_Hierarchy_Overrides` updated to new shape. (3) Existing `FindOverrides_FromOverrideSite_PromotesToVirtualRoot` and `Find_Overrides_Finds_Rectangle_Describe` pass (Rectangle.Describe is true override, must remain in overrides bucket). (4) `mcp__roslyn__compile_check` after edits. |
+| Performance review | N/A — correctness fix; `FindSiblingInterfaceImplementationsAsync` was already executing inside `FindOverridesAsync`, now a separate call (not additional work). |
+| CHANGELOG category | Fixed |
+| CHANGELOG entry (draft) | Fixed cross-tool semantic inconsistency between `find_overrides` and `member_hierarchy.overrides`: both tools now use the canonical definition of "override" (symbols actually marked `override` of a virtual/abstract declaration). Sibling interface implementations (e.g., independent `IDisposable.Dispose` implementations across a solution) no longer misclassified as overrides — they now appear in the new `member_hierarchy.siblingInterfaceImplementations` bucket. `find_overrides` and `member_hierarchy.overrides` now agree on the same target. **Breaking:** `symbol_relationships.overrides` also loses sibling interface impls (shared fix). Closes gh #736, gh #737. |
+| Backlog sync | Close rows: [`member-hierarchy-overrides-mislabels-sibling-interface-impls`, `find-overrides-vs-member-hierarchy-cross-tool-inconsistency`]. |
 
-### 12. project-diagnostics-totaldiagnostics-collapses-under-severity-filter
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `project-diagnostics-totaldiagnostics-collapses-under-severity-filter` |
-| Source | gh #746 (P2 — `networkdocumentation` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`project-diagnostics-totaldiagnostics-collapses-under-severity-filter`]. |
-
-### 13. symbol-signature-help-returns-bare-null-for-resolvable-method-metadata
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `symbol-signature-help-returns-bare-null-for-resolvable-method-metadata` |
-| Source | gh #747 (P2 — `networkdocumentation` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`symbol-signature-help-returns-bare-null-for-resolvable-method-metadata`]. |
-
-### 14. extract-interface-preview-duplicate-interface-when-already-implements
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `extract-interface-preview-duplicate-interface-when-already-implements` |
-| Source | gh #748 (P2 — `networkdocumentation` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`extract-interface-preview-duplicate-interface-when-already-implements`]. |
-
-### 15. change-type-namespace-preview-omits-consumer-using-additions
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `change-type-namespace-preview-omits-consumer-using-additions` |
-| Source | gh #749 (P2 — `networkdocumentation` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`change-type-namespace-preview-omits-consumer-using-additions`]. |
-
-### 16. symbol-refactor-preview-empty-appliedfiles-on-success
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `symbol-refactor-preview-empty-appliedfiles-on-success` |
-| Source | gh #750 (P2 — `networkdocumentation` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`symbol-refactor-preview-empty-appliedfiles-on-success`]. |
-
-### 17. test-run-fqdn-drift-vs-test-discover
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `test-run-fqdn-drift-vs-test-discover` |
-| Source | gh #752 (P2 — `networkdocumentation` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`test-run-fqdn-drift-vs-test-discover`]. |
-
-### 18. find-overrides-payload-overflow-on-corlib-virtual
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `find-overrides-payload-overflow-on-corlib-virtual` |
-| Source | gh #754 (P2 — `networkdocumentation` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`find-overrides-payload-overflow-on-corlib-virtual`]. |
-
-### 19. analyze-dependencies-prompt-payload-overflow
-
-**Bundle candidate with initiative 20.** Deepener should verify Rule 1 four-conditions test.
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `analyze-dependencies-prompt-payload-overflow` |
-| Source | gh #755 (P2 — `networkdocumentation` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`analyze-dependencies-prompt-payload-overflow`]. |
-
-### 20. review-test-coverage-prompt-payload-overflow
-
-**Bundle candidate with initiative 19.** Deepener should verify Rule 1 four-conditions test.
-
-| Field | Content |
-|---|---|
-| Status | pending |
-| Backlog rows closed | `review-test-coverage-prompt-payload-overflow` |
-| Source | gh #756 (P2 — `networkdocumentation` audit) |
-| Diagnosis | _Pending deepener._ |
-| Approach | _Pending deepener._ |
-| Scope | _Pending deepener._ |
-| Tool policy | _Pending deepener._ |
-| Estimated context cost | _Pending deepener._ |
-| Risks | _Pending deepener._ |
-| Validation | _Pending deepener._ |
-| Performance review | _Pending deepener._ |
-| CHANGELOG category | _Pending deepener._ |
-| CHANGELOG entry (draft) | _Pending deepener._ |
-| Backlog sync | Close rows: [`review-test-coverage-prompt-payload-overflow`]. |
