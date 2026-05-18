@@ -141,6 +141,27 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
 
         var originalSymbol = symbol;
         symbol = await PromoteToDeclaringMemberIfRequestedAsync(solution, locator, symbol, preferDeclaringMember, ct).ConfigureAwait(false);
+
+        // `symbol-relationships-builtin-type-unbounded-enumeration` (gh #757): when the caret lands
+        // on a builtin-type token (e.g. `void`, `int`) and `preferDeclaringMember=false`, the
+        // promotion above intentionally short-circuits and we fall through to FindReferencesAsync
+        // on `System.Void`/`System.Int32`, which enumerates every reference to the special type
+        // solution-wide (measured 57+ KB on an 11-project / 759-document solution). Detect the
+        // post-promotion builtin and return an empty envelope with a Hint explaining the
+        // suppression. The `preferDeclaringMember=true` auto-promotion path is unaffected because
+        // by then the symbol has been swapped to the enclosing member.
+        if (!preferDeclaringMember && symbol is INamedTypeSymbol namedSym && namedSym.SpecialType != SpecialType.None)
+        {
+            return new SymbolRelationshipsDto(
+                Symbol: SymbolMapper.ToDto(symbol, solution),
+                Definitions: [],
+                References: [],
+                Implementations: [],
+                BaseMembers: [],
+                Overrides: [],
+                Hint: "Resolved to builtin type — references list suppressed. Set preferDeclaringMember=true or relocate cursor to a non-builtin token.");
+        }
+
         var relationshipLocator = SymbolEqualityComparer.Default.Equals(originalSymbol, symbol)
             ? locator
             : CreateLocatorForPromotedSymbol(symbol, locator);

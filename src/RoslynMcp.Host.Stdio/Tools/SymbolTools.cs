@@ -502,6 +502,7 @@ public static class SymbolTools
                 overrides,
                 limit,
                 hasMore,
+                hint = result.Hint,
                 totals = new
                 {
                     references = result.References.Count,
