@@ -132,6 +132,19 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 | CHANGELOG entry (draft) | Fixed `extract_interface_cross_project_preview` generating an uncompilable interface file when the source type's method signatures reference types from the source project's own namespace (gh #765). The generated interface now emits required `using` directives via the same semantic-walker approach already used by `extract_interface_preview` for same-project extraction. |
 | Backlog sync | Close rows: [`extract-interface-cross-project-uncompilable`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** port the semantic-walker pair from `InterfaceExtractionService.cs` — `CollectReferencedNamespaces` at lines 301-338 (returns required namespaces from method/property/event symbols, excludes self-namespace, traverses generics + type-parameter constraints) and `BuildUsingDirectives` at lines 389-403 (preserves aliases/static/global via `PreserveSpecialAndRequiredSourceUsings:405-433`, then `AddMissingRequiredUsingDirectives`, then `SortUsingDirectives`). Both are private static — copy into `CrossProjectRefactoringService.cs` rather than extracting to shared helper (keeps each service self-contained per existing duplication pattern).
+- **Hotspot seam:** new `CreateInterfaceCompilationUnit` signature at `CrossProjectRefactoringService.cs:495-539` should accept `IReadOnlyCollection<string> requiredNamespaces` instead of `bool filterUsings`. The `matchSourceAccessibility = !filterUsings` derivation at line 519 still needs the cross-project flag — pass `bool isCrossProject` separately or derive from non-null/non-empty `requiredNamespaces`. Update the `CreateCompilationUnitForMember` call at line 533 to route usings through the new builder, NOT the existing `FilterUsingsForMember` branch.
+- **Test target:** add `Extract_Interface_Cross_Project_Emits_Using_For_Source_Project_Types` to existing `tests/RoslynMcp.Tests/CrossProjectRefactoringIntegrationTests.cs` (class at line 6); mirror the fixture setup of `Extract_Interface_Preview_Generates_Formatted_Interface_File_Across_Projects` at line 144 (uses `AddProjectToCopiedSolution` for `Contracts` + `AnimalService` source). Add a method to `AnimalService` whose signature references a same-project type (e.g. a `Cat`/`Dog`-typed parameter) so the source-project namespace must be emitted as a using. Do NOT create a separate test file.
+- **Edge cases to cover:** (1) generic return type `Task<SourceProjectType>` — `AddType` must recurse via `ContainingNamespace` walk; (2) property type referencing source-project type; (3) `IEnumerable<T>` parameter where `T` is source-project — confirm `MinimallyQualifiedFormat` short name still triggers `using` emission; (4) type-parameter constraint `where T : SourceProjectBaseType`; (5) special usings (`using static`, `using Alias = ...`, `global using`) preserved verbatim.
+- **Negative space:** do NOT modify or delete `FilterUsingsForMember` at `CrossProjectRefactoringService.cs:449-493` — `PreviewMoveTypeToProjectAsync` at line 75 still routes through `CreateCompilationUnitForMember(..., filterUsings: false)` and the move-type path must keep working unchanged. Do NOT touch `InterfaceExtractionService.cs` — the same-project precedent is already correct. Both `CreateInterfaceCompilationUnit` call sites at lines 156 and 755 must be updated together — the latter is the DI-inversion path (silent-regression risk on `Dependency_Inversion_Preview_Preserves_Source_File_Formatting:210` — add a using assertion to that test or to the new fixture).
+
+</details>
+
 ### 7. split-service-with-di-broken-output
 
 | Field | Content |
@@ -150,6 +163,19 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `split_service_with_di_preview` emitting non-functional partition/facade code: instance fields are now migrated into the correct partition types, and `async` modifiers are stripped from facade forwarding stubs so `ValueTask`/`Task` return types compile correctly (gh #766). |
 | Backlog sync | Close rows: [`split-service-with-di-broken-output`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** `SplitServiceContext` record at `SymbolRefactorService.cs:310-316` (add `IReadOnlyList<FieldDeclarationSyntax> FieldDeclarations`); `ResolveSplitServiceContextAsync:337` collects only methods (add field collection mirroring the existing `OfType<MethodDeclarationSyntax>` shape); `BuildPartitionFile:638-651` emits field-less class (extend `WithMembers` at line 646 to prepend fields before methods); `BuildForwardingMethod:735-739` propagates `original.Modifiers` verbatim — filter `SyntaxKind.AsyncKeyword` before the `WithModifiers` call at line 736.
+- **Field-migration strategy (commit to the safe minimal path):** duplicate every instance field used by a partition's methods into THAT partition; the facade keeps zero instance fields beyond the partition-injection fields already emitted at lines 663-670. Partition constructor synthesis: `BuildPartitionFile` currently emits no ctor — synthesize one that accepts and assigns every migrated field as a `ctorParameters` + `ctorBody` pair mirroring `BuildFacadeFile:673-686`. Match the facade's `LowerFirst` parameter-naming convention.
+- **Test target:** add `Split_Service_With_Di_Preview_Migrates_Fields_And_Strips_Async_From_Forwarding_Stubs` to existing class `CompositeSplitServiceDiPreviewTests` at `tests/RoslynMcp.Tests/CompositeSplitServiceDiPreviewTests.cs:12` (do NOT create a new file). Mirror `Split_Service_With_Di_Preview_Emits_Partitions_Facade_And_Di_Registration_Rewrite` at line 27. Fixture: a `JobQueue`-shaped class with `private readonly Channel<int> _channel;` field + one `async ValueTask EnqueueAsync(int)` method + one sync `bool TryDequeue(out int)` method. Assert: partition file contains `_channel` field + synthesized ctor; facade contains no `async` keyword on the `EnqueueAsync` forwarding stub.
+- **Edge cases to cover:** (1) shared field referenced by methods in two different partitions — both partition files must duplicate it; (2) `async ValueTask` (no generic) vs `async Task<T>` (generic) — both must have `async` stripped; (3) partition constructor synthesis when a partition has zero migrated fields — emit no ctor or empty parameterless (do not conflict with implicit default); (4) field with initializer (`= new()`) — preserve the initializer trivia on the migrated declaration.
+- **Negative space:** do NOT modify same-file sibling refactor entry points `PreviewAsync:86`, `PreviewRecordFieldAddWithSatellitesAsync:819`, or the `Execute*OnSolutionAsync` operation handlers at lines 148-186 — separate refactor pipelines (`rename`/`edit`/`restructure`). Do NOT touch `NormalizeMemberForPartition:626` — field migration belongs in `BuildPartitionFile`, not in per-method normalization. Do NOT widen `IsVoidReturn:742-746` to "detect async" — async stripping happens at the modifier list, not the return-type predicate.
+
+</details>
 
 ### 8. preview-token-stale-across-auto-reload
 
@@ -209,4 +235,16 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed cross-tool semantic inconsistency between `find_overrides` and `member_hierarchy.overrides`: both tools now use the canonical definition of "override" (symbols actually marked `override` of a virtual/abstract declaration). Sibling interface implementations (e.g., independent `IDisposable.Dispose` implementations across a solution) no longer misclassified as overrides — they now appear in the new `member_hierarchy.siblingInterfaceImplementations` bucket. `find_overrides` and `member_hierarchy.overrides` now agree on the same target. **Breaking:** `symbol_relationships.overrides` also loses sibling interface impls (shared fix). Closes gh #736, gh #737. |
 | Backlog sync | Close rows: [`member-hierarchy-overrides-mislabels-sibling-interface-impls`, `find-overrides-vs-member-hierarchy-cross-tool-inconsistency`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** strip `overrides.AddRange(await FindInterfaceMemberImplementationsAsync(...))` at `ReferenceService.cs:160` — that is the conflation point inside `FindOverridesAsync` (lines 142-174). Rename private helper `FindInterfaceMemberImplementationsAsync` (lines 176-219) to public `FindSiblingInterfaceImplementationsAsync` and expose on `IReferenceService`. The consumer is `SymbolRelationshipService.GetMemberHierarchyAsync` at `SymbolRelationshipService.cs:127`; add a parallel `_referenceService.FindSiblingInterfaceImplementationsAsync(...)` invocation and pass a new `siblingInterfaceImplementations` arg to the `MemberHierarchyDto` constructor (positional record at `MemberHierarchyDto.cs:6-9` — use named-arg construction).
+- **Test target:** create `tests/RoslynMcp.Tests/MemberHierarchyCrossToolConsistencyTests.cs` mirroring shape of `SemanticExpansionTests.cs:73-91` (`SharedWorkspaceTestBase`-derived, two `[TestMethod]`s). Update assertion in `SemanticExpansionTests.cs:85` from `overrides.Count > 0` to `overrides.Count == 0` AND add `Assert.IsTrue(hierarchy.SiblingInterfaceImplementations.Count > 0, ...)` — `EquatablePoint.Equals` is `IEquatable<T>.Equals` (sibling impl), not a true override.
+- **Edge cases to cover:** (1) `IDisposable.Dispose` resolved positionally on a `Dispose()` method body — `overrides` MUST be 0, `siblingInterfaceImplementations` non-empty; (2) `find_overrides(metadataName="System.IDisposable.Dispose")` — same result, no metadata-vs-positional drift; (3) virtual override chain (`Shape.Describe` → `Rectangle.Describe`, see `P4BehavioralBundleTests.cs:60` + `SemanticExpansionTests.cs:25`) — `overrides` non-empty, `siblingInterfaceImplementations` empty.
+- **Negative space:** do NOT edit `SymbolTools.cs:437` (`GetMemberHierarchy` wrapper) — it serializes the DTO directly via `JsonSerializer.Serialize(result, ...)`; the new field auto-picks up and keeps file count at 4. Do NOT touch the `find_overrides` wrapper at `SymbolTools.cs:378-395` — it returns `FindOverridesAsync` directly and auto-corrects once the service split lands. Do NOT extend the split to `SymbolRelationshipsDto.Overrides` at `SymbolRelationshipService.cs:159` — losing sibling impls there is intentional cascading behavior (called out as breaking in CHANGELOG draft).
+
+</details>
 

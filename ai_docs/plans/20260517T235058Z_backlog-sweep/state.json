@@ -3,11 +3,11 @@
   "generatedAt": "2026-05-17T23:50:58Z",
   "backlogSnapshot": "2026-05-17T15:49:13Z",
   "addendaLoaded": true,
-  "phase": "conflict-graph-done",
+  "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
-  "reviewStatus": "pending",
-  "readyForExecute": false,
+  "reviewStatus": "passed-with-warnings",
+  "readyForExecute": true,
   "anchorVerification": "performed",
   "conflictGraph": {
     "edges": [
@@ -275,5 +275,14 @@
       "mergedAt": null,
       "notes": "BUNDLED with find-overrides-vs-member-hierarchy-cross-tool-inconsistency per Rule 1 (shared code path in ReferenceService.FindOverridesAsync). judgmentHeavy=true, anchorStale=true. Closes both rows: gh #736 + gh #737. Stale anchors: MemberHierarchyService.cs / OverridesService.cs do not exist; logic is in ReferenceService.cs + SymbolRelationshipService.cs. Splits true overrides from siblingInterfaceImplementations bucket on MemberHierarchyDto."
     }
-  ]
+  ],
+  "reviewFindings": {
+    "block": 0,
+    "warn": 2,
+    "info": 2
+  },
+  "handoffPolicy": "auto",
+  "handoffSpawned": 3,
+  "handoffSkipped": 7,
+  "handoffNotes": "Initiatives 6, 7, 10 received handoff sections (triggered by warn Rule 5b / judgmentHeavy / >35K tokens). Others skipped per `auto` policy."
 }
