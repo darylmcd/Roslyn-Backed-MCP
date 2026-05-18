@@ -76,12 +76,14 @@ internal static class ToolDispatch
     /// <returns>
     /// The DTO serialized with <see cref="JsonDefaults.Indented"/>.
     /// </returns>
-    /// <exception cref="KeyNotFoundException">
+    /// <exception cref="PreviewTokenStaleException">
     /// Thrown when <paramref name="previewToken"/> is not present in
-    /// <paramref name="previewStore"/> (expired, invalidated, or never stored). The
-    /// exception message matches the format used by the existing hand-written
-    /// shims so existing error-envelope tests remain valid when shims migrate to
-    /// this helper.
+    /// <paramref name="previewStore"/> (expired, invalidated by an auto-reload version
+    /// bump via <c>InvalidateOnVersionBump</c>, or never stored). Distinct from a bare
+    /// <see cref="KeyNotFoundException"/> so <c>ToolErrorHandler</c> can surface the
+    /// dedicated <c>PreviewTokenStale</c> category — callers re-issue the paired
+    /// <c>*_preview</c> against the post-reload workspace rather than mistaking the
+    /// failure for "workspace not found" or "symbol not found."
     /// </exception>
     public static Task<string> ApplyByTokenAsync<TDto>(
         IWorkspaceExecutionGate gate,
@@ -118,10 +120,12 @@ internal static class ToolDispatch
     /// </param>
     /// <param name="ct">The caller's cancellation token.</param>
     /// <returns>The DTO serialized with <see cref="JsonDefaults.Indented"/>.</returns>
-    /// <exception cref="KeyNotFoundException">
-    /// Thrown when <paramref name="peekWorkspaceId"/> returns <see langword="null"/>. The
-    /// exception message matches the format used by the existing hand-written shims so
-    /// existing error-envelope tests remain valid when shims migrate to this helper.
+    /// <exception cref="PreviewTokenStaleException">
+    /// Thrown when <paramref name="peekWorkspaceId"/> returns <see langword="null"/>
+    /// (token expired, invalidated by an auto-reload version bump, or never stored).
+    /// Distinct from a bare <see cref="KeyNotFoundException"/> so <c>ToolErrorHandler</c>
+    /// can surface the dedicated <c>PreviewTokenStale</c> category and direct callers to
+    /// re-issue the paired <c>*_preview</c>.
     /// </exception>
     public static Task<string> ApplyByTokenAsync<TDto>(
         IWorkspaceExecutionGate gate,
@@ -131,7 +135,9 @@ internal static class ToolDispatch
         CancellationToken ct)
     {
         var wsId = peekWorkspaceId(previewToken)
-            ?? throw new KeyNotFoundException($"Preview token '{previewToken}' not found or expired.");
+            ?? throw new PreviewTokenStaleException(
+                previewToken,
+                $"Preview token '{previewToken}' has expired or was invalidated: the workspace was reloaded after the preview was created, dropping the stored solution snapshot. Re-issue the paired *_preview call against the current workspace.");
         return gate.RunWriteAsync(wsId, async c =>
         {
             var result = await serviceCall(c).ConfigureAwait(false);

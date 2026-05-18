@@ -56,12 +56,17 @@ public sealed class ToolDispatchTests
     }
 
     [TestMethod]
-    public async Task ApplyByTokenAsync_UnknownToken_ThrowsKeyNotFoundException_WithExpectedMessage()
+    public async Task ApplyByTokenAsync_UnknownToken_ThrowsPreviewTokenStaleException_WithTokenAndRecoveryHint()
     {
+        // preview-token-stale-across-auto-reload: when PeekWorkspaceId returns null (token
+        // never stored, TTL-expired, or invalidated by InvalidateOnVersionBump after an
+        // auto-reload), ApplyByTokenAsync must throw PreviewTokenStaleException rather than
+        // a bare KeyNotFoundException so ToolErrorHandler can emit category=PreviewTokenStale
+        // with a re-issue-preview recovery hint instead of the generic NotFound envelope.
         var gate = new FakeGate();
         var store = new FakePreviewStore(token: "real-token", workspaceId: "ws-x");
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(() =>
+        var ex = await Assert.ThrowsExceptionAsync<PreviewTokenStaleException>(() =>
             ToolDispatch.ApplyByTokenAsync<FakeResultDto>(
                 gate,
                 store,
@@ -69,8 +74,12 @@ public sealed class ToolDispatchTests
                 serviceCall: _ => Task.FromResult(new FakeResultDto("unused", 0)),
                 ct: CancellationToken.None));
 
-        // Matches the hand-written shim format — migration must not change error envelope shape.
-        Assert.AreEqual("Preview token 'bogus-token' not found or expired.", ex.Message);
+        Assert.AreEqual("bogus-token", ex.PreviewToken,
+            "PreviewToken property must carry the rejected token for structured envelope use");
+        StringAssert.Contains(ex.Message, "bogus-token",
+            "exception message must name the failing token so log scrapers can correlate");
+        StringAssert.Contains(ex.Message, "*_preview",
+            "exception message must direct the caller to the recovery action (re-issue paired *_preview)");
         Assert.AreEqual(0, gate.WriteCallCount, "Must fail before entering the write gate");
     }
 
