@@ -155,9 +155,13 @@ public sealed class ReferenceService : IReferenceService
         // yield the same (complete) result set.
         var promoted = PromoteToVirtualRoot(symbol);
 
-        var overrides = (await SymbolFinder.FindOverridesAsync(promoted, solution, cancellationToken: ct).ConfigureAwait(false))
-            .ToList();
-        overrides.AddRange(await FindInterfaceMemberImplementationsAsync(promoted, solution, ct).ConfigureAwait(false));
+        // member-hierarchy-overrides-mislabels-sibling-interface-impls (gh #736, gh #737):
+        // FindOverridesAsync now returns ONLY true virtual/abstract overrides — symbols
+        // actually marked `override` of a virtual/abstract declaration. Sibling interface
+        // implementations (e.g., independent IDisposable.Dispose impls across a solution)
+        // moved to FindSiblingInterfaceImplementationsAsync; consumers that want both
+        // buckets must call both methods (see member_hierarchy).
+        var overrides = await SymbolFinder.FindOverridesAsync(promoted, solution, cancellationToken: ct).ConfigureAwait(false);
 
         // find-base-members-vs-member-hierarchy-metadata-drift: return SymbolDto instead of
         // LocationDto so metadata-boundary members (e.g. IEquatable<T>.Equals implementations
@@ -166,6 +170,29 @@ public sealed class ReferenceService : IReferenceService
         return overrides
             .Distinct(SymbolEqualityComparer.Default)
             .Select(overrideSymbol => SymbolMapper.ToDto(overrideSymbol, solution))
+            .OrderBy(d => d.FilePath ?? string.Empty, StringComparer.Ordinal)
+            .ThenBy(d => d.StartLine ?? int.MaxValue)
+            .ThenBy(d => d.StartColumn ?? int.MaxValue)
+            .ThenBy(d => d.FullyQualifiedName, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<SymbolDto>> FindSiblingInterfaceImplementationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct)
+    {
+        _logger.LogDebug("ReferenceService.FindSiblingInterfaceImplementationsAsync: workspaceId={WorkspaceId} locator={Locator}", workspaceId, locator);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
+
+        // Mirror the override-site promotion so a caret on an implementing method
+        // (e.g., `Dog.Speak`) resolves to the same interface root as a caret on the
+        // interface declaration (`IAnimal.Speak`) and produces the same sibling set.
+        var promoted = PromoteToVirtualRoot(symbol);
+
+        var siblings = await FindInterfaceMemberImplementationsAsync(promoted, solution, ct).ConfigureAwait(false);
+
+        return siblings
+            .Distinct(SymbolEqualityComparer.Default)
+            .Select(sibling => SymbolMapper.ToDto(sibling, solution))
             .OrderBy(d => d.FilePath ?? string.Empty, StringComparer.Ordinal)
             .ThenBy(d => d.StartLine ?? int.MaxValue)
             .ThenBy(d => d.StartColumn ?? int.MaxValue)
