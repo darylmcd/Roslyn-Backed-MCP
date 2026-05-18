@@ -1,4 +1,6 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
@@ -237,5 +239,94 @@ public class ConcreteThing : ThingBase, IThing
 
             DeleteDirectoryIfExists(copiedRoot);
         }
+    }
+
+    [TestMethod]
+    public async Task GetCouplingMetrics_SummaryMode_ReturnsPerProjectRollup()
+    {
+        // summary=true must emit a per-project rollup envelope (summary:true, projectCount,
+        // totalTypes, projects[]) with classification buckets and NO `metrics` array. This is
+        // the gh #763 mitigation: on multi-project solutions, the full per-type payload blew
+        // through the MCP token cap; summary mode trades detail rows for project-level counts
+        // so callers can drill in via projectName + summary=false on the project they care about.
+        var fullJson = await CouplingAnalysisTools.GetCouplingMetrics(
+            WorkspaceExecutionGate,
+            CouplingAnalysisService,
+            WorkspaceId,
+            projectName: null,
+            limit: 500,
+            excludeTestProjects: false,
+            includeInterfaces: false,
+            summary: false,
+            ct: CancellationToken.None);
+
+        var summaryJson = await CouplingAnalysisTools.GetCouplingMetrics(
+            WorkspaceExecutionGate,
+            CouplingAnalysisService,
+            WorkspaceId,
+            projectName: null,
+            limit: 500,
+            excludeTestProjects: false,
+            includeInterfaces: false,
+            summary: true,
+            ct: CancellationToken.None);
+
+        using var summaryDoc = JsonDocument.Parse(summaryJson);
+        var summaryRoot = summaryDoc.RootElement;
+
+        Assert.IsTrue(summaryRoot.TryGetProperty("summary", out var summaryFlag) && summaryFlag.GetBoolean(),
+            "summary=true must set summary:true so callers can detect the shape.");
+        Assert.IsFalse(summaryRoot.TryGetProperty("metrics", out _),
+            "summary=true must omit the per-type `metrics` array.");
+        Assert.IsTrue(summaryRoot.TryGetProperty("projects", out var projectsElement)
+                       && projectsElement.ValueKind == JsonValueKind.Array,
+            "summary=true must include a `projects` array.");
+        Assert.IsTrue(summaryRoot.TryGetProperty("projectCount", out var projectCountElement)
+                       && projectCountElement.GetInt32() == projectsElement.GetArrayLength(),
+            "projectCount must equal the projects array length.");
+        Assert.IsTrue(summaryRoot.TryGetProperty("totalTypes", out var totalTypesElement)
+                       && totalTypesElement.GetInt32() > 0,
+            "totalTypes must be > 0 on a non-empty sample solution.");
+
+        // Every project entry must carry the documented rollup shape.
+        foreach (var project in projectsElement.EnumerateArray())
+        {
+            Assert.IsTrue(project.TryGetProperty("projectName", out var projectName)
+                           && !string.IsNullOrWhiteSpace(projectName.GetString()),
+                "Each project rollup must have a non-empty projectName.");
+            Assert.IsTrue(project.TryGetProperty("typeCount", out var typeCount) && typeCount.GetInt32() > 0,
+                $"Each project rollup must have typeCount > 0 (project: {projectName.GetString()}).");
+            Assert.IsTrue(project.TryGetProperty("avgInstability", out var avgInstability)
+                           && avgInstability.GetDouble() is >= 0.0 and <= 1.0,
+                $"avgInstability must be in [0,1] (project: {projectName.GetString()}).");
+            Assert.IsTrue(project.TryGetProperty("stableCount", out var stableCount) && stableCount.GetInt32() >= 0,
+                "stableCount must be non-negative.");
+            Assert.IsTrue(project.TryGetProperty("balancedCount", out var balancedCount) && balancedCount.GetInt32() >= 0,
+                "balancedCount must be non-negative.");
+            Assert.IsTrue(project.TryGetProperty("unstableCount", out var unstableCount) && unstableCount.GetInt32() >= 0,
+                "unstableCount must be non-negative.");
+            Assert.IsTrue(project.TryGetProperty("isolatedCount", out var isolatedCount) && isolatedCount.GetInt32() >= 0,
+                "isolatedCount must be non-negative.");
+            Assert.AreEqual(
+                typeCount.GetInt32(),
+                stableCount.GetInt32() + balancedCount.GetInt32() + unstableCount.GetInt32() + isolatedCount.GetInt32(),
+                $"Classification buckets must sum to typeCount (project: {projectName.GetString()}).");
+        }
+
+        // Summary payload must be strictly smaller than the full payload on a non-trivial sample.
+        Assert.IsTrue(summaryJson.Length < fullJson.Length,
+            $"summary JSON must be smaller than full JSON; summary={summaryJson.Length}, full={fullJson.Length}");
+
+        // summary=false response shape must be preserved bit-for-bit — assert the existing
+        // envelope contract (`count` + `metrics` array) is still emitted unchanged.
+        using var fullDoc = JsonDocument.Parse(fullJson);
+        var fullRoot = fullDoc.RootElement;
+        Assert.IsTrue(fullRoot.TryGetProperty("count", out _),
+            "summary=false must keep the existing `count` field.");
+        Assert.IsTrue(fullRoot.TryGetProperty("metrics", out var metricsElement)
+                       && metricsElement.ValueKind == JsonValueKind.Array,
+            "summary=false must keep the existing `metrics` array.");
+        Assert.IsFalse(fullRoot.TryGetProperty("summary", out _),
+            "summary=false must NOT emit a `summary` field.");
     }
 }
