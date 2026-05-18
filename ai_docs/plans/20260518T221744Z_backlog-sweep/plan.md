@@ -4,8 +4,10 @@
 **Backlog snapshot:** 2026-05-18T03:09:14Z
 **Mode:** `/backlog-sweep:prepare count=15`
 **Initiative count:** 15 (all P2 Medium; skipped `firewallanalyzer-p2-polish-aggregate-20260516` aggregator row — intake-tracking only, not a single-initiative target)
-**Phase:** conflict-graph-done (review pending)
+**Phase:** complete (readyForExecute: true)
 **Conflict graph:** 2 edges — (6,13) share `WorkspaceValidationService.cs`; (9,12) share `SymbolTools.cs`. 11 zero-degree initiatives safely parallelizable.
+**Review:** passed (0 block, 0 warn, 3 info — cycle 0 only; no remediation needed)
+**Handoff:** 1 spawned (initiative 3, judgmentHeavy), 14 skipped per auto policy
 
 ## Plan summary
 
@@ -76,6 +78,19 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `extract_interface_preview` emitting a duplicate interface file when the target type already implements a covering interface. Previously the preview diff included a new `IFoo.cs` even when the type's base list already contained `IFoo`; the apply would create a conflicting file. The base list is also correctly left unmodified in this case. Fixes gh #748. |
 | Backlog sync | Close rows: [`extract-interface-preview-duplicate-interface-when-already-implements`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** the existing guard at `InterfaceExtractionService.cs:67-68` (`alreadyImplements = typeSymbol.AllInterfaces.Any(...)`) and the `if (!alreadyImplements)` block at lines 71-117 are the shape to mirror. The document-add block at lines 133-140 plus the `EnsureOpeningBraceOnOwnLine` call at lines 121-124 plus the `replaceUsages` path at lines 142-146 ALL must be moved inside `if (!alreadyImplements)` — risk #2 in the stanza calls out `replaceUsages` explicitly.
+- **Test target:** add new `[TestMethod]` to `ExtractInterfaceSemanticUsingsTests.cs` (existing class at line 22); mirror the fixture setup of `ExtractInterface_Emits_Using_For_Parameter_Type_Namespace` at line 37 (sibling-namespace model + service pattern). Do NOT create a new test file. Pre-seed the test class to already implement `IFoo` defined in a sibling-namespace file, then assert `previewDto.Changes.Count == 0` and `previewDto.Warnings` contains the no-op note. Do NOT call `ApplyRefactoringAsync` — assert on the preview DTO directly.
+- **Note-surfacing mechanism:** the `RefactoringPreviewDto` has no `description` mutation channel — surface the no-op via the `Warnings` parameter (4th ctor arg). Pattern: see `DeadCodeService.cs:77` (`warnings.Count > 0 ? warnings : null`). Do NOT change the DTO shape.
+- **Negative space:** do NOT touch `ExtractAndWireOrchestrator.cs:158-173` — that guard THROWS by design (and is already test-covered at `OrchestrationIntegrationTests.cs:368`). This initiative converts `InterfaceExtractionService` to a soft no-op, not a throw. Also do NOT modify `ValidateNoConflictsAsync` body (lines 495-523) — only its call-site ordering at line 54; the conflict check itself is correct.
+- **Edge case — namespace parity (risk #1):** the guard at line 67 matches on simple name only (`i.Name`). For the no-op path that's fine (it correctly catches the gh #748 scenario where `IFoo` exists in any namespace). When moving `ValidateNoConflictsAsync` to after the `alreadyImplements` check, short-circuit ONLY when `alreadyImplements==true` — do not skip the conflict check otherwise. The existing `Validate` uses fully-qualified-name lookup (line 510), so the "same-name different-namespace" case still surfaces when the type does NOT already implement.
+
+</details>
 
 ### 4. change-type-namespace-preview-omits-consumer-using-additions
 
