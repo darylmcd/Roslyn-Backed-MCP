@@ -4,6 +4,7 @@ using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
+using Microsoft.CodeAnalysis.Text;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -26,6 +27,42 @@ public sealed class ConsumerAnalysisService : IConsumerAnalysisService
 
         var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         var refLocations = references.SelectMany(r => r.Locations).ToList();
+
+        // find-references-static-extension-host-blind-spot: when the symbol is a static
+        // class whose members are exclusively consumed via extension-method invocation
+        // syntax (e.g. `animal.LoudName()`), Roslyn's type-level reference index returns 0
+        // locations — the type-name token never appears at the call site. Fall back to
+        // unioning per-member references so the consumer classification can still classify
+        // call sites that bind to the extension method (which carries a `ContainingType`
+        // back to the static host). Gate on public-only extension members to avoid pulling
+        // in references to non-extension static members (those would already have been
+        // captured by the type-level walk above when prefixed `Host.Member()`-style).
+        // Deduplicate by `(FilePath, SourceSpan)` since multiple members may resolve to
+        // overlapping locations in pathological cases.
+        if (refLocations.Count == 0 &&
+            symbol is INamedTypeSymbol { IsStatic: true } host &&
+            host.GetMembers().OfType<IMethodSymbol>().Any(m => m.IsExtensionMethod))
+        {
+            var seen = new HashSet<(string?, TextSpan)>();
+            foreach (var member in host.GetMembers()
+                .OfType<IMethodSymbol>()
+                .Where(m => m.DeclaredAccessibility == Accessibility.Public))
+            {
+                if (ct.IsCancellationRequested) break;
+                var memberRefs = await SymbolFinder
+                    .FindReferencesAsync(member, solution, ct)
+                    .ConfigureAwait(false);
+                foreach (var loc in memberRefs.SelectMany(r => r.Locations))
+                {
+                    var key = (loc.Document?.FilePath, loc.Location.SourceSpan);
+                    if (seen.Add(key))
+                    {
+                        refLocations.Add(loc);
+                    }
+                }
+            }
+        }
+
         // find-references-project-filter: scope consumer classification to the supplied projects.
         // Case-sensitive Project.Name match (matches semantic_grep + ReferenceService semantics).
         // Null/empty filter preserves unfiltered behavior byte-for-byte.
