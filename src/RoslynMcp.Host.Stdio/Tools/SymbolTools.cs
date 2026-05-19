@@ -746,7 +746,7 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file. Use filterText for case-insensitive prefix narrowing and maxItems for paging (UX-007). The response IsIncomplete flag indicates that the filtered list is longer than maxItems — raise maxItems or refine filterText to see the rest. InlineDescription may be empty when Roslyn does not supply inline text for an item.")]
+    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file. Use filterText for case-insensitive prefix narrowing and maxItems for paging (UX-007). To get instance-member candidates at a member-access position (e.g. right after typing `foo.`), pass triggerCharacter='.' — without it Roslyn returns only the position's general accessible-type set and method-tier candidates are NOT emitted, so the in-scope ranking has nothing to promote. The response IsIncomplete flag indicates that the filtered list is longer than maxItems — raise maxItems or refine filterText to see the rest. InlineDescription may be empty when Roslyn does not supply inline text for an item.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Return IntelliSense-style completion items at a position.")]
     public static Task<string> GetCompletions(
@@ -759,12 +759,13 @@ public static class SymbolTools
         [Description("1-based column number")] int column,
         [Description("Optional: case-insensitive prefix filter applied to candidate FilterText/DisplayText (UX-007)")] string? filterText = null,
         [Description("Maximum number of completion items to return (default: 100, must be > 0)")] int maxItems = 100,
+        [Description("Optional: trigger character (e.g. '.') that signals completion was invoked by typing this character. When supplied, Roslyn returns the member-access candidate set (instance members on the receiver expression) alongside the global accessible-type set; null returns only the position's general candidate set.")] char? triggerCharacter = null,
         CancellationToken ct = default)
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
             await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
-            var result = await completionService.GetCompletionsAsync(workspaceId, filePath, line, column, filterText, maxItems, c);
+            var result = await completionService.GetCompletionsAsync(workspaceId, filePath, line, column, filterText, maxItems, triggerCharacter, c);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
