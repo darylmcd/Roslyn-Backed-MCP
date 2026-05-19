@@ -23,7 +23,7 @@ public sealed class MutationAnalysisSideEffectsTests : SharedWorkspaceTestBase
         // returned zero mutating members because IsMutatingMember only checked
         // IAssignmentOperation on instance fields. After the side-effect classifier lands,
         // every public method that calls File.WriteAllText/Delete/etc. is reported with
-        // MutationScope=IO.
+        // MutationScopes containing IO.
         var ioPath = Path.Combine(CopiedRoot, "SampleLib", "FileSnapshotStoreSample.cs");
         await File.WriteAllTextAsync(ioPath, """
 namespace SampleLib;
@@ -120,6 +120,34 @@ public class PureComputeSample
 }
 """, CancellationToken.None);
 
+        // Fixture #4: a compound-mutation class whose SyncEntryAsync performs BOTH a
+        // ConcurrentDictionary.TryAdd (CollectionWrite) AND a File.WriteAllText (IO).
+        // Pre-fix ClassifyMethodMutationScope short-circuited on the side-effect scope and
+        // returned only "IO", masking the CollectionWrite signal. Regression guard for
+        // gh #741 — MutationScopes must surface every applicable scope rather than only
+        // the highest-severity one.
+        var compoundPath = Path.Combine(CopiedRoot, "SampleLib", "CompoundMutationSample.cs");
+        await File.WriteAllTextAsync(compoundPath, """
+namespace SampleLib;
+
+using System.Collections.Concurrent;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+
+public class CompoundMutationSample
+{
+    private readonly ConcurrentDictionary<string, string> _entries = new();
+
+    public async Task SyncEntryAsync(string path, string content, CancellationToken ct)
+    {
+        await Task.Yield();
+        File.WriteAllText(path, content);
+        _entries.TryAdd(path, content);
+    }
+}
+""", CancellationToken.None);
+
         var status = await WorkspaceManager.LoadAsync(CopiedSolutionPath, CancellationToken.None);
         WorkspaceId = status.WorkspaceId;
     }
@@ -145,13 +173,37 @@ public class PureComputeSample
 
         var writeManifest = result.MutatingMembers.FirstOrDefault(m => m.Name == "WriteManifest");
         Assert.IsNotNull(writeManifest, "WriteManifest should be flagged as a mutating member after the side-effect classifier lands.");
-        Assert.AreEqual(SideEffectClassifier.Scopes.IO, writeManifest.MutationScope,
+        CollectionAssert.Contains(writeManifest.MutationScopes.ToList(), SideEffectClassifier.Scopes.IO,
             "File.WriteAllText should classify as IO.");
 
         var deleteManifest = result.MutatingMembers.FirstOrDefault(m => m.Name == "DeleteManifest");
         Assert.IsNotNull(deleteManifest);
-        Assert.AreEqual(SideEffectClassifier.Scopes.IO, deleteManifest.MutationScope,
+        CollectionAssert.Contains(deleteManifest.MutationScopes.ToList(), SideEffectClassifier.Scopes.IO,
             "File.Delete should classify as IO.");
+    }
+
+    [TestMethod]
+    public async Task FindTypeMutations_CompoundIOAndCollectionWrite_ReportsBothScopes()
+    {
+        // Regression guard for gh #741: ClassifyMethodMutationScope pre-fix returned at the
+        // first non-null result from TryClassifyMethodSideEffects, so a method performing
+        // BOTH IO (File.WriteAllText) and CollectionWrite (ConcurrentDictionary.TryAdd)
+        // reported only "IO". The single-scope `MutationScope` string field has been
+        // replaced by `MutationScopes` (IReadOnlyList<string>) which must surface every
+        // applicable scope.
+        var locator = SymbolLocator.ByMetadataName("SampleLib.CompoundMutationSample");
+        var result = await MutationAnalysisService.FindTypeMutationsAsync(WorkspaceId, locator, CancellationToken.None);
+
+        Assert.IsNotNull(result, "CompoundMutationSample should resolve to a named type.");
+
+        var syncEntry = result.MutatingMembers.FirstOrDefault(m => m.Name == "SyncEntryAsync");
+        Assert.IsNotNull(syncEntry, "SyncEntryAsync should be flagged as a mutating member (File.WriteAllText + TryAdd).");
+
+        var scopes = syncEntry.MutationScopes.ToList();
+        CollectionAssert.Contains(scopes, SideEffectClassifier.Scopes.IO,
+            $"SyncEntryAsync should report IO for File.WriteAllText. Got: [{string.Join(", ", scopes)}]");
+        CollectionAssert.Contains(scopes, SideEffectClassifier.Scopes.CollectionWrite,
+            $"SyncEntryAsync should report CollectionWrite for _entries.TryAdd. Got: [{string.Join(", ", scopes)}]");
     }
 
     [TestMethod]

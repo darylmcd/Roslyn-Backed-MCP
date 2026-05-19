@@ -151,7 +151,7 @@ For each key type:
 7. `find_consumers` — dependency-kind classification.
 7b. `find_type_consumers` on the same type — type-scoped consumer enumeration; cross-check against `find_consumers`. Discrepancies between symbol-scoped and type-scoped surfaces are FLAG worthy.
 8. `find_shared_members` — private members shared across public methods.
-9. `find_type_mutations`. v1.8+ classifies each mutating member by `MutationScope` (`FieldWrite` / `CollectionWrite` / `IO` / `Network` / `Process` / `Database`). Types whose whole purpose is IO (e.g. a snapshot store) should now report their `WriteAllText` / `Delete` methods with `MutationScope=IO`, even without instance-field reassignment.
+9. `find_type_mutations`. v1.8+ classifies each mutating member by `MutationScopes` (a list whose entries are drawn from `FieldWrite` / `CollectionWrite` / `IO` / `Network` / `Process` / `Database`). Methods performing compound mutations (e.g. both `IO` and `CollectionWrite`) report every applicable scope rather than only the highest-severity one. Types whose whole purpose is IO (e.g. a snapshot store) should now report their `WriteAllText` / `Delete` methods with `MutationScopes` containing `IO`, even without instance-field reassignment.
 10. `find_type_usages` — return types, parameters, fields, casts.
 11. `callers_callees` on 2–3 methods.
 12. `find_property_writes` on settable properties (init vs post-construction).

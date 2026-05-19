@@ -92,7 +92,7 @@ Catalog `2026.04` ships **162 tools** (108 stable / 54 experimental), **9 resour
 | **Diagnostics** | `project_diagnostics`, `compile_check` (in-memory, with optional emit validation), `diagnostic_details`, `security_diagnostics`, `nuget_vulnerability_scan`, `list_analyzers`. |
 | **Refactoring (preview / apply)** | `rename_*`, `extract_interface_*`, `extract_type_*`, `move_type_to_file_*`, `bulk_replace_type_*`, `code_fix_*`, `fix_all_*`, `format_document_*`, `organize_usings_*`, `split_class_*`, dead-code removal. |
 | **Build / test** | `build_workspace`, `build_project`, `test_discover`, `test_run`, `test_related`, `test_related_files`, `test_coverage`. |
-| **Cohesion / complexity** | `get_cohesion_metrics` (LCOM4, source-gen aware), `get_complexity_metrics`, `find_unused_symbols`, `find_type_mutations` (with `MutationScope` for IO/Network/Process/Database side effects). |
+| **Cohesion / complexity** | `get_cohesion_metrics` (LCOM4, source-gen aware), `get_complexity_metrics`, `find_unused_symbols`, `find_type_mutations` (with `MutationScopes` for IO/Network/Process/Database side effects; compound mutations report every applicable scope). |
 | **Flow analysis** | `analyze_data_flow`, `analyze_control_flow` — supports both statement-bodied and `=> expr` expression-bodied members. |
 | **Snippets / scripting** | `analyze_snippet`, `evaluate_csharp` (with configurable script timeout). |
 | **Resources** | `roslyn://server/catalog`, `roslyn://workspaces`, `roslyn://workspace/{id}/status` (lean summary defaults; `/verbose` siblings for full payloads), `roslyn://workspace/{id}/projects`, `roslyn://workspace/{id}/diagnostics`, `roslyn://workspace/{id}/file/{filePath}`. |
