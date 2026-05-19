@@ -216,13 +216,17 @@ public static partial class RoslynPrompts
         try
         {
             var discovered = await testDiscoveryService.DiscoverTestsAsync(workspaceId, ct).ConfigureAwait(false);
-            var totalTests = discovered.TestProjects.Sum(p => p.Tests.Count);
-            var perProject = Math.Max(1, 200 / Math.Max(1, discovered.TestProjects.Count));
-            var truncatedProjects = discovered.TestProjects.Select(p =>
-                new Core.Models.TestProjectDto(p.ProjectName, p.ProjectFilePath, p.Tests.Take(perProject).ToList())).ToList();
-            var discoveredJson = JsonSerializer.Serialize(new Core.Models.TestDiscoveryDto(truncatedProjects), JsonDefaults.Indented);
-            if (totalTests > 200)
-                discoveredJson += $"\n[Showing ~200 of {totalTests} test cases]";
+            // review-test-coverage-prompt-payload-overflow (gh #756): the prompt previously
+            // applied a per-project cap of `200 / project_count` and embedded the resulting
+            // TestDiscoveryDto verbatim, so single-project solutions kept all 200 cases and
+            // pushed the JSON body past 100 KB on large test suites. Flatten the test cases
+            // into a single list, cap at 50 entries (consistent with the SerializeTruncatedList
+            // helper used elsewhere — see guided_extract_interface, analyze_dependencies), and
+            // let the helper emit the `[Showing N of M items]` footer. Callers needing the
+            // full list invoke `test_discover` directly; this section is orientation-only.
+            const int testCaseCap = 50;
+            var allTestCases = discovered.TestProjects.SelectMany(p => p.Tests).ToList();
+            var discoveredJson = PromptMessageBuilder.SerializeTruncatedList(allTestCases, testCaseCap, JsonDefaults.Indented);
 
             return
             [
