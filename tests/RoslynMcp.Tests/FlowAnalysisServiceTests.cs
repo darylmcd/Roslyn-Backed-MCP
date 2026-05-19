@@ -113,6 +113,64 @@ public class ExpressionBodiedSamples
     }
 
     [TestMethod]
+    public async Task AnalyzeControlFlow_FullMethodRange_NoSpuriousPartialSliceWarning()
+    {
+        // analyze-control-flow-partial-slice-warning-on-full-method (gh #743): pre-fix, a
+        // complete void method body whose range was supplied in full produced a succeeded
+        // analysis with zero entry/exit/return counts, and the unified warning branch
+        // misreported the result as "incomplete for this line range. Prefer a range that
+        // covers full statement blocks within a single method body (not a partial slice of
+        // a method)." Post-fix, that branch fires only when Succeeded == false; a succeeded
+        // zero-count result for a void block now returns Warning == null.
+
+        // Inject a void method fixture into the same target file. Append to the existing
+        // class body just before the closing brace so the existing tests at fixed line
+        // numbers stay valid.
+        var originalContent = await File.ReadAllTextAsync(TargetFilePath, CancellationToken.None);
+        var augmented = originalContent.TrimEnd().TrimEnd('}', '\r', '\n')
+            + Environment.NewLine
+            + Environment.NewLine
+            + "    public void VoidMethod() { int x = 1; }" + Environment.NewLine
+            + "}" + Environment.NewLine;
+
+        try
+        {
+            await File.WriteAllTextAsync(TargetFilePath, augmented, CancellationToken.None);
+            await WorkspaceManager.ReloadAsync(WorkspaceId, CancellationToken.None);
+
+            // VoidMethod lands on line 16 of the augmented fixture (original 15 lines + blank line + method line).
+            // Locate it dynamically so a small fixture shift cannot break the test.
+            var lines = augmented.Split('\n');
+            int methodLine = -1;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                if (lines[i].Contains("VoidMethod()"))
+                {
+                    methodLine = i + 1; // 1-based
+                    break;
+                }
+            }
+            Assert.IsTrue(methodLine > 0, "Could not locate VoidMethod in augmented fixture.");
+
+            var result = await FlowAnalysisService.AnalyzeControlFlowAsync(
+                WorkspaceId, TargetFilePath, startLine: methodLine, endLine: methodLine, CancellationToken.None);
+
+            Assert.IsTrue(result.Succeeded, "Roslyn should succeed on a complete void method body.");
+            Assert.AreEqual(0, result.EntryPoints.Count);
+            Assert.AreEqual(0, result.ExitPoints.Count);
+            Assert.AreEqual(0, result.ReturnStatements.Count, "Void body has no explicit returns.");
+            Assert.IsNull(result.Warning,
+                $"Expected no warning on a succeeded zero-count void method analysis. Actual: {result.Warning}");
+        }
+        finally
+        {
+            // Restore the fixture so other tests in this class continue to see fixed line offsets.
+            await File.WriteAllTextAsync(TargetFilePath, originalContent, CancellationToken.None);
+            await WorkspaceManager.ReloadAsync(WorkspaceId, CancellationToken.None);
+        }
+    }
+
+    [TestMethod]
     public async Task AnalyzeDataFlow_InvertedRange_ThrowsArgumentException()
     {
         // analyze-data-flow-inverted-range: pre-fix, inverted ranges fell through to the

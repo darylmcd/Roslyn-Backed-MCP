@@ -114,9 +114,15 @@ public sealed class FlowAnalysisService : IFlowAnalysisService
             .ToList();
 
         string? warning = null;
-        if (!result.Succeeded ||
-            (entryPoints.Count == 0 && exitPoints.Count == 0 && returnStatements.Count == 0))
+        if (!result.Succeeded)
         {
+            // analyze-control-flow-partial-slice-warning-on-full-method (gh #743):
+            // Emit the partial-slice warning only when Roslyn's analysis genuinely failed
+            // (Succeeded=false). A succeeded result with zero entry/exit/return counts is
+            // structurally correct for a complete void method body with no explicit
+            // control-flow exits (e.g. `public void Foo() { int x = 1; }`) — suppress
+            // the warning entirely in that case rather than misreporting a successful
+            // analysis as incomplete.
             warning =
                 "Control-flow results may be incomplete for this line range. Prefer a range that covers full statement blocks within a single method body (not a partial slice of a method).";
         }
