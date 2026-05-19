@@ -3,13 +3,23 @@ namespace RoslynMcp.Core.Models;
 /// <summary>
 /// Represents the result of collecting test coverage data.
 /// </summary>
+/// <param name="CoverageGaps">
+/// test-coverage-fail-fast-on-missing-coverlet: when a subset of in-scope test projects lack
+/// the <c>coverlet.collector</c> NuGet package, the tool now runs per-project coverage on the
+/// projects that DO have the collector and lists the skipped project names here so the caller
+/// can report partial coverage with <see cref="Success"/>=<c>true</c> instead of failing the
+/// entire call. <see langword="null"/> when every in-scope test project has coverlet (the
+/// classic happy path) and when the fail-fast path triggers (every project lacks coverlet —
+/// the <see cref="FailureEnvelope"/> carries the project list in that case).
+/// </param>
 public sealed record TestCoverageResultDto(
     bool Success,
     string? Error,
     double? LineCoveragePercent,
     double? BranchCoveragePercent,
     IReadOnlyList<ModuleCoverageDto> Modules,
-    TestCoverageFailureEnvelopeDto? FailureEnvelope = null);
+    TestCoverageFailureEnvelopeDto? FailureEnvelope = null,
+    IReadOnlyList<string>? CoverageGaps = null);
 
 /// <summary>
 /// Structured failure envelope for test coverage operations, enabling programmatic
