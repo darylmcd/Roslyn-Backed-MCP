@@ -131,8 +131,28 @@ All 6 selected rows are P3-priority single-bug fixes from the 2026-05-16 self-au
 
 ## Conflict graph
 
-_Pending — Phase C computes after Phase B merge._
+**No production-file overlaps across the 6 initiatives.** All 6 are zero-degree (safely parallelizable).
+
+| # | id | Production files |
+|---|----|------------------|
+| 1 | workspace-changes-atomic-batch-split-without-batchid | `src/RoslynMcp.Roslyn/Services/EditService.cs` |
+| 2 | validate-workspace-changetracker-no-disk-reconcile-after-git-checkout | `src/RoslynMcp.Roslyn/Services/WorkspaceValidationService.cs` |
+| 3 | find-type-mutations-single-scope-misses-compound-io | `src/RoslynMcp.Core/Models/TypeMutationDto.cs`, `src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs` |
+| 4 | analyze-control-flow-partial-slice-warning-on-full-method | `src/RoslynMcp.Roslyn/Services/FlowAnalysisService.cs` |
+| 5 | format-document-preview-empty-diff-instead-of-noop | `src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs`, `src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs` |
+| 6 | callers-callees-previewtext-asymmetry | `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs` |
+
+Hotspot check: none of the 6 touch `ServerSurfaceCatalog.cs`, `ServiceCollectionExtensions.cs`, or `WorkspaceManager.cs`. The wave rule (≤1 hotspot per wave) does not bind.
+
+Edges: 0. Zero-degree initiatives: [1, 2, 3, 4, 5, 6].
 
 ## Review
 
-_Pending — Phase D runs after Phase C._
+**Cycle 0 outcome: passed-with-warnings** (0 block, 1 warn, 6 info). See `review-cycle-0.md` (or `review.md`) for the full reviewer artifact.
+
+Key signal:
+- **Warn (Rule 5b):** Initiative 3 (`find-type-mutations-single-scope-misses-compound-io`) skipped the fanout probe on a BREAKING DTO-shape change (`MutationScope` → `MutationScopes`). Real-world fanout is bounded (~1 test consumer per reviewer spot check). Executor should re-verify consumer surface before applying.
+- **Info × 4:** Anchor-stale findings on initiatives 1, 3, 5, 6 — all already self-acknowledged by the plan stanzas.
+- **Info × 3:** Counting-convention inconsistency where `testFilesAdded: 0` in state.json paired with "Test files modified: 1" in Scope (initiatives 3, 5, 6). Rule 4 cap not threatened.
+
+No remediation cycle required (`block: 0`).
