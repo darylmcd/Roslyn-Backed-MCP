@@ -176,12 +176,26 @@ public sealed class EditService : IEditService
             }
 
             var result = await ApplyTextEditsCoreAsync(
-                workspaceId, fileEdit.FilePath, fileEdit.Edits, current, document, sourceText, merged, toolName, ct).ConfigureAwait(false);
+                workspaceId, fileEdit.FilePath, fileEdit.Edits, current, document, sourceText, merged, toolName, ct,
+                suppressChangeTrackerRecord: true).ConfigureAwait(false);
             var diff = result.Changes.Count > 0
                 ? string.Join("\n", result.Changes.Select(ch => ch.UnifiedDiff))
                 : null;
             results.Add(new FileEditSummaryDto(fileEdit.FilePath, result.EditsApplied, diff));
         }
+
+        // workspace-changes-atomic-batch-split-without-batchid (gh #740): emit ONE
+        // change-tracker entry covering the whole batch, mirroring
+        // CompositeApplyOrchestrator's post-loop single-entry pattern at
+        // CompositeApplyOrchestrator.cs:82-83. The per-file Core path's RecordChange is
+        // suppressed via suppressChangeTrackerRecord:true above so a 2-file batch
+        // produces a single workspace_changes / IUndoService.CommitPendingCapture
+        // pair rather than splitting into N independent ledger entries.
+        var batchAffectedFiles = results.Select(r => r.FilePath).ToList();
+        _changeTracker?.RecordChange(workspaceId,
+            $"Apply text edits to {fileEdits.Count} file(s)",
+            batchAffectedFiles,
+            toolName);
 
         VerifyOutcomeDto? verification = null;
         if (verify)
@@ -537,6 +551,14 @@ public sealed class EditService : IEditService
     /// responsible for snapshotting before invoking this method (single-file path
     /// snapshots once; multi-file path snapshots once at the batch boundary).
     /// </summary>
+    /// <param name="suppressChangeTrackerRecord">
+    /// When true, skip the per-file <c>_changeTracker.RecordChange(...)</c> call so the
+    /// caller can emit a single batch-level entry covering all affected files. Used by
+    /// <see cref="ApplyMultiFileTextEditsAsync"/> so a 2-file batch produces ONE ledger
+    /// entry rather than splitting into per-file entries
+    /// (<c>workspace-changes-atomic-batch-split-without-batchid</c>, gh #740).
+    /// Mirrors <see cref="CompositeApplyOrchestrator"/>'s post-loop single-entry pattern.
+    /// </param>
     private async Task<TextEditResultDto> ApplyTextEditsCoreAsync(
         string workspaceId,
         string filePath,
@@ -546,7 +568,8 @@ public sealed class EditService : IEditService
         SourceText sourceText,
         SourceText newSourceText,
         string toolName,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool suppressChangeTrackerRecord = false)
     {
         var normalizedPath = Path.GetFullPath(filePath);
         var originalText = sourceText.ToString();
@@ -574,9 +597,12 @@ public sealed class EditService : IEditService
         var unified = DiffGenerator.GenerateUnifiedDiff(originalText, newText, filePath);
         var fileChange = new FileChangeDto(filePath, unified);
 
-        _changeTracker?.RecordChange(workspaceId,
-            $"Apply text edit to {Path.GetFileName(filePath)}",
-            [filePath], toolName);
+        if (!suppressChangeTrackerRecord)
+        {
+            _changeTracker?.RecordChange(workspaceId,
+                $"Apply text edit to {Path.GetFileName(filePath)}",
+                [filePath], toolName);
+        }
 
         return new TextEditResultDto(true, filePath, edits.Count, [fileChange], null);
     }

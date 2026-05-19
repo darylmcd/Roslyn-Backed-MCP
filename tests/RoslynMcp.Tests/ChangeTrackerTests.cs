@@ -90,6 +90,53 @@ public sealed class ChangeTrackerTests : IsolatedWorkspaceTestBase
         Assert.AreEqual("apply_text_edit", changes[0].ToolName);
     }
 
+    /// <summary>
+    /// Regression test for workspace-changes-atomic-batch-split-without-batchid (gh #740):
+    /// an <c>apply_multi_file_edit</c> batch covering N files must produce exactly ONE
+    /// <see cref="ChangeTracker"/> entry whose <c>AffectedFiles</c> spans the whole batch,
+    /// mirroring <see cref="CompositeApplyOrchestrator"/>'s post-loop single-entry pattern.
+    /// Previously each per-file <see cref="EditService.ApplyTextEditsCoreAsync"/> emitted
+    /// its own entry, so a 2-file batch surfaced as 2 separate ledger rows and downstream
+    /// callers (<c>workspace_changes</c>, <c>revert_apply_by_sequence</c>) could not see
+    /// the batch as a single atomic unit.
+    /// </summary>
+    [TestMethod]
+    public async Task ApplyMultiFileEdit_TwoFileBatch_ProducesOneChangeTrackerEntry()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var wsId = workspace.WorkspaceId;
+
+        ChangeTracker.Clear(wsId);
+
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+        var catFilePath = workspace.GetPath("SampleLib", "Cat.cs");
+
+        var dogEdit = new TextEditDto(1, 1, 1, 1, "// dog batch\n");
+        var catEdit = new TextEditDto(1, 1, 1, 1, "// cat batch\n");
+
+        var fileEdits = new[]
+        {
+            new FileEditsDto(dogFilePath, new[] { dogEdit }),
+            new FileEditsDto(catFilePath, new[] { catEdit }),
+        };
+
+        var dto = await EditService.ApplyMultiFileTextEditsAsync(
+            wsId, fileEdits, "apply_multi_file_edit", CancellationToken.None);
+        Assert.IsTrue(dto.Success, "Multi-file edit should apply.");
+        Assert.AreEqual(2, dto.FilesModified);
+
+        var changes = ChangeTracker.GetChanges(wsId);
+        Assert.AreEqual(1, changes.Count,
+            "A 2-file apply_multi_file_edit batch must produce ONE consolidated " +
+            "ChangeTracker entry, not one per file — mirrors apply_composite_preview.");
+        Assert.AreEqual("apply_multi_file_edit", changes[0].ToolName,
+            "The single consolidated entry must surface with the originating tool name.");
+        Assert.AreEqual(2, changes[0].AffectedFiles.Count,
+            "The consolidated entry's AffectedFiles must span both files in the batch.");
+        CollectionAssert.Contains(changes[0].AffectedFiles.ToList(), dogFilePath);
+        CollectionAssert.Contains(changes[0].AffectedFiles.ToList(), catFilePath);
+    }
+
     [TestMethod]
     public async Task SetEditorConfigOption_RecordsEditorConfigToolName()
     {
