@@ -1,4 +1,6 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 
@@ -94,6 +96,105 @@ public sealed class DiagnosticServiceFilterTotalsTests : SharedWorkspaceTestBase
 
         Assert.AreNotSame(warningResult, errorResult,
             "Different severity filters must produce distinct cache entries (and distinct DTOs).");
+    }
+
+    [TestMethod]
+    public async Task ProjectDiagnostics_TotalDiagnosticsIsInvariantUnderSeverityFilter()
+    {
+        // BUG fix (project-diagnostics-totaldiagnostics-collapses-under-severity-filter):
+        // The tool-layer `totalDiagnostics` field previously counted the severity-filtered
+        // page (`allDiagnostics.Count`), so `severity=Error` collapsed `totalDiagnostics` to
+        // the error count even though `totalErrors`/`totalWarnings`/`totalInfo` reported the
+        // full scope. After the fix, `totalDiagnostics` must equal the sum of the per-severity
+        // totals and match between `severity=null` and `severity=Error` calls on the same
+        // workspace. Asserts both the default (paged) branch and the `summary=true` branch.
+        var unfilteredJson = await AnalysisTools.GetProjectDiagnostics(
+            WorkspaceExecutionGate,
+            DiagnosticService,
+            WorkspaceId,
+            projectName: null,
+            file: null,
+            severity: null,
+            diagnosticId: null,
+            offset: 0,
+            limit: 1,
+            summary: false,
+            progress: null,
+            ct: CancellationToken.None);
+        var errorOnlyJson = await AnalysisTools.GetProjectDiagnostics(
+            WorkspaceExecutionGate,
+            DiagnosticService,
+            WorkspaceId,
+            projectName: null,
+            file: null,
+            severity: "Error",
+            diagnosticId: null,
+            offset: 0,
+            limit: 1,
+            summary: false,
+            progress: null,
+            ct: CancellationToken.None);
+
+        using var unfilteredDoc = JsonDocument.Parse(unfilteredJson);
+        using var errorOnlyDoc = JsonDocument.Parse(errorOnlyJson);
+
+        AssertTotalDiagnosticsMatchesSumOfSeverityTotals(unfilteredDoc.RootElement, "severity=null (default branch)");
+        AssertTotalDiagnosticsMatchesSumOfSeverityTotals(errorOnlyDoc.RootElement, "severity=Error (default branch)");
+
+        Assert.AreEqual(
+            unfilteredDoc.RootElement.GetProperty("totalDiagnostics").GetInt32(),
+            errorOnlyDoc.RootElement.GetProperty("totalDiagnostics").GetInt32(),
+            "totalDiagnostics must be invariant under severity filter (default branch).");
+
+        // Also assert summary=true branch.
+        var unfilteredSummaryJson = await AnalysisTools.GetProjectDiagnostics(
+            WorkspaceExecutionGate,
+            DiagnosticService,
+            WorkspaceId,
+            projectName: null,
+            file: null,
+            severity: null,
+            diagnosticId: null,
+            offset: 0,
+            limit: 1,
+            summary: true,
+            progress: null,
+            ct: CancellationToken.None);
+        var errorOnlySummaryJson = await AnalysisTools.GetProjectDiagnostics(
+            WorkspaceExecutionGate,
+            DiagnosticService,
+            WorkspaceId,
+            projectName: null,
+            file: null,
+            severity: "Error",
+            diagnosticId: null,
+            offset: 0,
+            limit: 1,
+            summary: true,
+            progress: null,
+            ct: CancellationToken.None);
+
+        using var unfilteredSummaryDoc = JsonDocument.Parse(unfilteredSummaryJson);
+        using var errorOnlySummaryDoc = JsonDocument.Parse(errorOnlySummaryJson);
+
+        AssertTotalDiagnosticsMatchesSumOfSeverityTotals(unfilteredSummaryDoc.RootElement, "severity=null (summary branch)");
+        AssertTotalDiagnosticsMatchesSumOfSeverityTotals(errorOnlySummaryDoc.RootElement, "severity=Error (summary branch)");
+
+        Assert.AreEqual(
+            unfilteredSummaryDoc.RootElement.GetProperty("totalDiagnostics").GetInt32(),
+            errorOnlySummaryDoc.RootElement.GetProperty("totalDiagnostics").GetInt32(),
+            "totalDiagnostics must be invariant under severity filter (summary branch).");
+    }
+
+    private static void AssertTotalDiagnosticsMatchesSumOfSeverityTotals(JsonElement payload, string label)
+    {
+        var totalErrors = payload.GetProperty("totalErrors").GetInt32();
+        var totalWarnings = payload.GetProperty("totalWarnings").GetInt32();
+        var totalInfo = payload.GetProperty("totalInfo").GetInt32();
+        var totalDiagnostics = payload.GetProperty("totalDiagnostics").GetInt32();
+
+        Assert.AreEqual(totalErrors + totalWarnings + totalInfo, totalDiagnostics,
+            $"totalDiagnostics must equal totalErrors+totalWarnings+totalInfo ({label}).");
     }
 }
 
