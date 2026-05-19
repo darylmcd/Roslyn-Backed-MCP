@@ -51,22 +51,19 @@ public static class TestCoverageTools
             var loadedPath = status.LoadedPath ?? throw new InvalidOperationException("Workspace has no loaded path.");
 
             var coverageDir = Path.Combine(Path.GetTempPath(), "roslyn-mcp-coverage", Guid.NewGuid().ToString("N"));
-            var targetPath = projectName is not null
-                ? status.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase))?.FilePath ?? loadedPath
-                : loadedPath;
 
-            // test-coverage-vague-error-when-coverlet-missing: inspect the test projects
-            // we're about to run and short-circuit with a structured MissingPackages error
-            // when coverlet.collector isn't referenced. Pre-fix the tool ran `dotnet test`
-            // which would succeed (tests passed) but produce no coverage file — the caller
-            // then saw "Coverage file not generated" with no machine-readable hint that the
-            // fix is a NuGet install.
-            var testProjectsLackingCoverlet = FindTestProjectsWithoutCoverlet(status, projectName);
-            if (testProjectsLackingCoverlet.Count > 0)
+            // test-coverage-fail-fast-on-missing-coverlet: partition the in-scope test projects
+            // into those with and without coverlet.collector. Pre-fix the tool fail-fasted on
+            // the first missing collector and abandoned the whole call; now we run partial
+            // coverage on the projects that DO have the collector and list the skipped ones in
+            // the response's `coverageGaps` field. Fail-fast remains for the all-projects-lack
+            // case (no useful work to do).
+            var partition = PartitionTestProjectsByCoverlet(status, projectName);
+            if (partition.WithCoverlet.Count == 0 && partition.WithoutCoverlet.Count > 0)
             {
                 ProgressHelper.Report(progress, 1, 1);
-                var summary = $"Coverlet missing: {testProjectsLackingCoverlet.Count} test project(s) don't reference coverlet.collector. " +
-                    $"Install via `dotnet add package coverlet.collector` in: {string.Join(", ", testProjectsLackingCoverlet)}.";
+                var summary = $"Coverlet missing: {partition.WithoutCoverlet.Count} test project(s) don't reference coverlet.collector. " +
+                    $"Install via `dotnet add package coverlet.collector` in: {string.Join(", ", partition.WithoutCoverlet)}.";
                 return SerializeWithDeprecation(new TestCoverageResultDto(
                     Success: false,
                     Error: summary,
@@ -77,18 +74,8 @@ public static class TestCoverageTools
                         ErrorKind: "CoverletMissing",
                         IsRetryable: false,
                         Summary: summary,
-                        MissingPackages: testProjectsLackingCoverlet)), deprecation);
+                        MissingPackages: partition.WithoutCoverlet)), deprecation);
             }
-
-            var arguments = new List<string>
-            {
-                "test",
-                targetPath,
-                "--collect",
-                "XPlat Code Coverage",
-                "--results-directory",
-                coverageDir
-            };
 
             // test-coverage-timeout-failure-envelope: wrap the runner invocation and the
             // downstream coverage-file scan so that cancellation (MCP timeout, caller cancel)
@@ -98,13 +85,106 @@ public static class TestCoverageTools
             // and the TestRunnerService timeout-envelope shape at lines 98-127.
             try
             {
-                var execution = await commandRunner.RunAsync(Path.GetDirectoryName(loadedPath)!, targetPath, arguments, c).ConfigureAwait(false);
-                ProgressHelper.Report(progress, 0.8f, 1);
+                // test-coverage-fail-fast-on-missing-coverlet: choose between the
+                // single-target (whole-solution or single-project) classic path and the
+                // partial-coverage per-project path. The latter triggers only when the
+                // partition produced both with-coverlet AND without-coverlet entries —
+                // otherwise the classic path's `dotnet test` invocation against the
+                // solution / single project is cheaper and produces a single Cobertura
+                // file we can parse directly.
+                CommandExecutionDto execution;
+                string[] coverageFiles;
+                IReadOnlyList<string>? coverageGaps = null;
 
-                // Find the coverage XML file
-                var coverageFiles = Directory.Exists(coverageDir)
-                    ? Directory.GetFiles(coverageDir, "coverage.cobertura.xml", SearchOption.AllDirectories)
-                    : [];
+                if (partition.WithoutCoverlet.Count == 0)
+                {
+                    // Classic path — every in-scope project has coverlet. Run once against the
+                    // original `targetPath` (loadedPath OR a single-project filter).
+                    var targetPath = projectName is not null
+                        ? status.Projects.FirstOrDefault(p => string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase))?.FilePath ?? loadedPath
+                        : loadedPath;
+                    var arguments = new List<string>
+                    {
+                        "test",
+                        targetPath,
+                        "--collect",
+                        "XPlat Code Coverage",
+                        "--results-directory",
+                        coverageDir
+                    };
+                    execution = await commandRunner.RunAsync(Path.GetDirectoryName(loadedPath)!, targetPath, arguments, c).ConfigureAwait(false);
+                    ProgressHelper.Report(progress, 0.8f, 1);
+
+                    coverageFiles = Directory.Exists(coverageDir)
+                        ? Directory.GetFiles(coverageDir, "coverage.cobertura.xml", SearchOption.AllDirectories)
+                        : [];
+                }
+                else
+                {
+                    // Partial-coverage path — some projects lack coverlet. Run per-project
+                    // sequentially on the projects that DO have it, aggregating coverage XML
+                    // files from a shared results directory. We synthesize a single
+                    // CommandExecutionDto whose Succeeded reflects whether ANY per-project run
+                    // failed and whose ExitCode is the LAST non-zero exit code (so the
+                    // no-coverage-file fallback still has a meaningful exit code to surface).
+                    var lastExecution = (CommandExecutionDto?)null;
+                    var perProjectFailures = 0;
+                    var totalProjects = partition.WithCoverlet.Count;
+                    for (var i = 0; i < totalProjects; i++)
+                    {
+                        var project = partition.WithCoverlet[i];
+                        var arguments = new List<string>
+                        {
+                            "test",
+                            project.FilePath,
+                            "--collect",
+                            "XPlat Code Coverage",
+                            "--results-directory",
+                            coverageDir
+                        };
+                        var perProjectExecution = await commandRunner.RunAsync(
+                            Path.GetDirectoryName(loadedPath)!,
+                            project.FilePath,
+                            arguments,
+                            c).ConfigureAwait(false);
+                        lastExecution = perProjectExecution;
+                        if (!perProjectExecution.Succeeded)
+                            perProjectFailures++;
+                        // Progress from 0 to 0.8 across the per-project iterations so the
+                        // post-loop coverage-file scan can advance to 1.0.
+                        ProgressHelper.Report(progress, 0.8f * (i + 1) / totalProjects, 1);
+                    }
+
+                    // Synthesize a representative execution result. If we had at least one
+                    // success the synthesized Succeeded=true so the no-coverage-file fallback
+                    // can correctly classify a missing-XML state as CoverletMissing rather
+                    // than TestFailure. (`perProjectFailures < totalProjects` keeps the prior
+                    // semantics where a partial test failure still surfaces in the no-
+                    // coverage-file fallback path via the exit code.)
+                    execution = lastExecution ?? new CommandExecutionDto(
+                        Command: "dotnet",
+                        Arguments: [],
+                        WorkingDirectory: Path.GetDirectoryName(loadedPath) ?? string.Empty,
+                        TargetPath: loadedPath,
+                        ExitCode: 0,
+                        Succeeded: true,
+                        DurationMs: 0,
+                        StdOut: string.Empty,
+                        StdErr: string.Empty);
+                    if (perProjectFailures > 0 && perProjectFailures == totalProjects)
+                    {
+                        // Force Succeeded=false on the synthesized result when every per-project
+                        // run failed — same shape as the classic-path's `!execution.Succeeded`
+                        // branch in the no-coverage-file fallback below.
+                        execution = execution with { Succeeded = false };
+                    }
+
+                    coverageFiles = Directory.Exists(coverageDir)
+                        ? Directory.GetFiles(coverageDir, "coverage.cobertura.xml", SearchOption.AllDirectories)
+                        : [];
+
+                    coverageGaps = partition.WithoutCoverlet;
+                }
 
                 if (coverageFiles.Length == 0)
                 {
@@ -122,11 +202,16 @@ public static class TestCoverageTools
                         FailureEnvelope: new TestCoverageFailureEnvelopeDto(
                             ErrorKind: errorKind,
                             IsRetryable: errorKind == "TestFailure",
-                            Summary: summary)), deprecation);
+                            Summary: summary),
+                        CoverageGaps: coverageGaps), deprecation);
                 }
 
-                var latestCoverage = coverageFiles.OrderByDescending(File.GetLastWriteTimeUtc).First();
-                var result = ParseCoberturaXml(latestCoverage);
+                // test-coverage-fail-fast-on-missing-coverlet: aggregate ALL coverage XML files
+                // from the run, not just the newest. In the classic path there is one file (the
+                // OrderByDescending picks the latest of any incidentally-present older files);
+                // in the partial path there is one file per with-coverlet project and we want
+                // their module entries merged into a single TestCoverageResultDto.
+                var result = ParseAndAggregateCoberturaXml(coverageFiles, coverageGaps);
                 ProgressHelper.Report(progress, 1, 1);
                 return SerializeWithDeprecation(result, deprecation);
             }
@@ -208,17 +293,30 @@ public static class TestCoverageTools
             branchCoveragePercent = result.BranchCoveragePercent,
             modules = result.Modules,
             failureEnvelope = result.FailureEnvelope,
+            coverageGaps = result.CoverageGaps,
             deprecation,
         }, JsonDefaults.Indented);
     }
 
     /// <summary>
-    /// test-coverage-vague-error-when-coverlet-missing: walk the test projects in scope and
-    /// return the names of those that don't reference <c>coverlet.collector</c>. The XML
-    /// inspection is cheap enough to run before launching `dotnet test`, so we fail fast with
-    /// a structured error instead of waiting for `dotnet test` to succeed-with-no-coverage.
+    /// test-coverage-fail-fast-on-missing-coverlet: result of bucketing the in-scope test
+    /// projects by whether they reference <c>coverlet.collector</c>. The mixed case
+    /// (<c>WithCoverlet</c> non-empty AND <c>WithoutCoverlet</c> non-empty) is the new
+    /// partial-coverage path; the all-without-coverlet case still fail-fasts; the
+    /// all-with-coverlet case is the classic single-`dotnet test` invocation.
     /// </summary>
-    private static IReadOnlyList<string> FindTestProjectsWithoutCoverlet(WorkspaceStatusDto status, string? projectName)
+    private sealed record TestProjectPartition(
+        IReadOnlyList<ProjectStatusDto> WithCoverlet,
+        IReadOnlyList<string> WithoutCoverlet);
+
+    /// <summary>
+    /// test-coverage-fail-fast-on-missing-coverlet (formerly
+    /// <c>FindTestProjectsWithoutCoverlet</c>): split the in-scope test projects into those
+    /// that reference <c>coverlet.collector</c> and those that do not. Replaces the previous
+    /// helper that only returned the missing-coverlet names; the caller now needs both halves
+    /// to make the fail-fast-vs-partial decision.
+    /// </summary>
+    private static TestProjectPartition PartitionTestProjectsByCoverlet(WorkspaceStatusDto status, string? projectName)
     {
         var candidates = status.Projects.Where(p =>
         {
@@ -227,55 +325,112 @@ public static class TestCoverageTools
             return string.Equals(p.Name, projectName, StringComparison.OrdinalIgnoreCase);
         }).ToList();
 
-        var missing = new List<string>();
+        var withCoverlet = new List<ProjectStatusDto>();
+        var withoutCoverlet = new List<string>();
         foreach (var project in candidates)
         {
             if (string.IsNullOrWhiteSpace(project.FilePath) || !File.Exists(project.FilePath))
                 continue;
 
             var text = File.ReadAllText(project.FilePath);
-            if (!text.Contains("coverlet.collector", StringComparison.OrdinalIgnoreCase))
-            {
-                missing.Add(project.Name);
-            }
+            if (text.Contains("coverlet.collector", StringComparison.OrdinalIgnoreCase))
+                withCoverlet.Add(project);
+            else
+                withoutCoverlet.Add(project.Name);
         }
 
-        return missing;
+        return new TestProjectPartition(withCoverlet, withoutCoverlet);
     }
 
-    private static TestCoverageResultDto ParseCoberturaXml(string path)
+    /// <summary>
+    /// test-coverage-fail-fast-on-missing-coverlet: parse one or more Cobertura XML files and
+    /// produce a single aggregated <see cref="TestCoverageResultDto"/>. With a single file the
+    /// rolled-up rates are read from the document root; with multiple files (the partial-
+    /// coverage per-project path) we sum lines across all modules and recompute the rolled-up
+    /// rates from the line totals so the aggregate stays consistent with the per-module data.
+    /// Branch coverage is averaged across files (weighted by lines), matching how Cobertura
+    /// reporters typically treat multi-run merges.
+    /// </summary>
+    private static TestCoverageResultDto ParseAndAggregateCoberturaXml(IReadOnlyList<string> paths, IReadOnlyList<string>? coverageGaps)
     {
-        var doc = XDocument.Load(path);
-        var coverage = doc.Root!;
-        var lineRate = double.TryParse(coverage.Attribute("line-rate")?.Value, out var lr) ? lr * 100 : (double?)null;
-        var branchRate = double.TryParse(coverage.Attribute("branch-rate")?.Value, out var br) ? br * 100 : (double?)null;
-
         var modules = new List<ModuleCoverageDto>();
-        foreach (var package in coverage.Descendants("package"))
-        {
-            var moduleName = package.Attribute("name")?.Value ?? "unknown";
-            var moduleLineRate = double.TryParse(package.Attribute("line-rate")?.Value, out var mlr) ? mlr * 100 : 0.0;
+        var perFileLineRates = new List<(double rate, int lines)>();
+        var perFileBranchRates = new List<(double rate, int lines)>();
 
-            var classes = new List<ClassCoverageDto>();
-            foreach (var cls in package.Descendants("class"))
+        foreach (var path in paths.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+        {
+            var doc = XDocument.Load(path);
+            var coverage = doc.Root!;
+            var fileLineRate = double.TryParse(coverage.Attribute("line-rate")?.Value, out var lr) ? lr : (double?)null;
+            var fileBranchRate = double.TryParse(coverage.Attribute("branch-rate")?.Value, out var br) ? br : (double?)null;
+
+            foreach (var package in coverage.Descendants("package"))
             {
-                var className = cls.Attribute("name")?.Value ?? "unknown";
-                var clsLineRate = double.TryParse(cls.Attribute("line-rate")?.Value, out var clr) ? clr * 100 : 0.0;
-                var lines = cls.Descendants("line").ToList();
-                var linesCovered = lines.Count(l => int.TryParse(l.Attribute("hits")?.Value, out var h) && h > 0);
-                classes.Add(new ClassCoverageDto(className, Math.Round(clsLineRate, 1), linesCovered, lines.Count));
+                var moduleName = package.Attribute("name")?.Value ?? "unknown";
+                var moduleLineRate = double.TryParse(package.Attribute("line-rate")?.Value, out var mlr) ? mlr * 100 : 0.0;
+
+                var classes = new List<ClassCoverageDto>();
+                foreach (var cls in package.Descendants("class"))
+                {
+                    var className = cls.Attribute("name")?.Value ?? "unknown";
+                    var clsLineRate = double.TryParse(cls.Attribute("line-rate")?.Value, out var clr) ? clr * 100 : 0.0;
+                    var lines = cls.Descendants("line").ToList();
+                    var linesCovered = lines.Count(l => int.TryParse(l.Attribute("hits")?.Value, out var h) && h > 0);
+                    classes.Add(new ClassCoverageDto(className, Math.Round(clsLineRate, 1), linesCovered, lines.Count));
+                }
+
+                var totalLines = classes.Sum(c => c.LinesTotal);
+                var totalCovered = classes.Sum(c => c.LinesCovered);
+                modules.Add(new ModuleCoverageDto(moduleName, Math.Round(moduleLineRate, 1), totalCovered, totalLines, classes));
             }
 
-            var totalLines = classes.Sum(c => c.LinesTotal);
-            var totalCovered = classes.Sum(c => c.LinesCovered);
-            modules.Add(new ModuleCoverageDto(moduleName, Math.Round(moduleLineRate, 1), totalCovered, totalLines, classes));
+            // Record per-file rates with a line-count weight so the rolled-up rate respects
+            // module size when aggregating across multiple Cobertura outputs.
+            var fileTotalLines = coverage.Descendants("class").SelectMany(c => c.Descendants("line")).Count();
+            if (fileLineRate.HasValue)
+                perFileLineRates.Add((fileLineRate.Value, fileTotalLines));
+            if (fileBranchRate.HasValue)
+                perFileBranchRates.Add((fileBranchRate.Value, fileTotalLines));
+        }
+
+        // Compute the rolled-up rates. With one file we just lift the root attributes; with
+        // multiple we weight by line count so a tiny test-project run can't unfairly skew the
+        // aggregate against a much larger one.
+        double? rolledLineRate;
+        double? rolledBranchRate;
+        if (paths.Count == 1)
+        {
+            var doc = XDocument.Load(paths[0]);
+            var coverage = doc.Root!;
+            rolledLineRate = double.TryParse(coverage.Attribute("line-rate")?.Value, out var lr) ? lr * 100 : (double?)null;
+            rolledBranchRate = double.TryParse(coverage.Attribute("branch-rate")?.Value, out var br) ? br * 100 : (double?)null;
+        }
+        else
+        {
+            rolledLineRate = WeightedAverage(perFileLineRates) is { } lr ? lr * 100 : (double?)null;
+            rolledBranchRate = WeightedAverage(perFileBranchRates) is { } br ? br * 100 : (double?)null;
         }
 
         return new TestCoverageResultDto(
             Success: true,
             Error: null,
-            LineCoveragePercent: lineRate.HasValue ? Math.Round(lineRate.Value, 1) : null,
-            BranchCoveragePercent: branchRate.HasValue ? Math.Round(branchRate.Value, 1) : null,
-            Modules: modules);
+            LineCoveragePercent: rolledLineRate.HasValue ? Math.Round(rolledLineRate.Value, 1) : null,
+            BranchCoveragePercent: rolledBranchRate.HasValue ? Math.Round(rolledBranchRate.Value, 1) : null,
+            Modules: modules,
+            FailureEnvelope: null,
+            CoverageGaps: coverageGaps);
+    }
+
+    private static double? WeightedAverage(List<(double rate, int lines)> samples)
+    {
+        if (samples.Count == 0) return null;
+        var totalLines = samples.Sum(s => s.lines);
+        if (totalLines == 0)
+        {
+            // Fall back to a straight average when no line counts are available so we still
+            // return a meaningful number instead of null on degenerate empty-class files.
+            return samples.Average(s => s.rate);
+        }
+        return samples.Sum(s => s.rate * s.lines) / totalLines;
     }
 }
