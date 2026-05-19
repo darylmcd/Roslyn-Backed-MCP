@@ -47,21 +47,34 @@ public sealed class DiRegistrationService : IDiRegistrationService
     {
         private IReadOnlyList<DiRegistrationOverrideChainDto>? _overrideChains;
 
-        public ScanSnapshot(IReadOnlyList<DiRegistrationDto> raw, IReadOnlyList<DiRegistrationDto> legacyView)
+        public ScanSnapshot(
+            IReadOnlyList<DiRegistrationDto> raw,
+            IReadOnlyList<DiRegistrationDto> legacyView,
+            IReadOnlySet<string> enumerableConsumedServiceTypes)
         {
             Raw = raw;
             LegacyView = legacyView;
+            EnumerableConsumedServiceTypes = enumerableConsumedServiceTypes;
         }
 
         public IReadOnlyList<DiRegistrationDto> Raw { get; }
 
         public IReadOnlyList<DiRegistrationDto> LegacyView { get; }
 
+        /// <summary>
+        /// get-di-registrations-multi-registration-overcounting: service types injected into
+        /// consumers as <c>IEnumerable&lt;T&gt;</c>, <c>IReadOnlyList&lt;T&gt;</c>,
+        /// <c>IList&lt;T&gt;</c>, or <c>T[]</c>. MS.DI's <c>GetServices&lt;T&gt;()</c> returns all
+        /// registrations for these consumers, so multi-registration is intentional rather than
+        /// dead. <see cref="BuildOverrideChains"/> skips chain emission for these service types.
+        /// </summary>
+        public IReadOnlySet<string> EnumerableConsumedServiceTypes { get; }
+
         public IReadOnlyList<DiRegistrationOverrideChainDto> GetOrBuildOverrideChains()
         {
             // Volatile single-writer read/write — worst case is two threads each compute once,
             // both write the same deterministic result, and the last writer wins.
-            return _overrideChains ??= BuildOverrideChains(Raw);
+            return _overrideChains ??= BuildOverrideChains(Raw, EnumerableConsumedServiceTypes);
         }
     }
 
@@ -117,14 +130,14 @@ public sealed class DiRegistrationService : IDiRegistrationService
         }
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var raw = await ScanProjectsAsync(workspaceId, solution, projectFilter, ct).ConfigureAwait(false);
+        var scan = await ScanProjectsAsync(workspaceId, solution, projectFilter, ct).ConfigureAwait(false);
         // di-lifetime-mismatch-detection: derive the legacy view once at cache-population time
         // so every repeat call returns the same reference (preserves the Top10V2Regression
         // GetDiRegistrations_RepeatCallSameVersion_ReturnsCachedReference contract).
-        var legacyView = raw.Count == 0
+        var legacyView = scan.Registrations.Count == 0
             ? (IReadOnlyList<DiRegistrationDto>)Array.Empty<DiRegistrationDto>()
-            : raw.Where(r => !IsTryAddMethod(r.RegistrationMethod)).ToList();
-        var snapshot = new ScanSnapshot(raw, legacyView);
+            : scan.Registrations.Where(r => !IsTryAddMethod(r.RegistrationMethod)).ToList();
+        var snapshot = new ScanSnapshot(scan.Registrations, legacyView, scan.EnumerableConsumedServiceTypes);
 
         if (entry.ByFilter.Count >= MaxFilterEntriesPerWorkspace)
         {
@@ -135,10 +148,27 @@ public sealed class DiRegistrationService : IDiRegistrationService
         return snapshot;
     }
 
-    private async Task<IReadOnlyList<DiRegistrationDto>> ScanProjectsAsync(
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting: bundles the raw registrations with
+    /// the set of service types that are consumed via <c>IEnumerable&lt;T&gt;</c> /
+    /// <c>IReadOnlyList&lt;T&gt;</c> / <c>IList&lt;T&gt;</c> / <c>T[]</c> in constructor or
+    /// property injection, so the override-chain analysis can suppress dead-registration counts
+    /// for intentional multi-registration patterns.
+    /// </summary>
+    private sealed record ScanResult(
+        IReadOnlyList<DiRegistrationDto> Registrations,
+        IReadOnlySet<string> EnumerableConsumedServiceTypes);
+
+    private async Task<ScanResult> ScanProjectsAsync(
         string workspaceId, Solution solution, string? projectFilter, CancellationToken ct)
     {
         var results = new List<DiRegistrationDto>();
+        // get-di-registrations-multi-registration-overcounting: collect every service type that
+        // appears as the type-argument of IEnumerable<T>/IReadOnlyList<T>/IList<T> or as the
+        // element type of T[] in a ctor parameter or property declaration. These are the
+        // "intentional multi-registration" consumers — BuildOverrideChains must not flag earlier
+        // registrations of these service types as dead.
+        var enumerableConsumed = new HashSet<string>(StringComparer.Ordinal);
         var projects = ProjectFilterHelper.FilterProjects(solution, projectFilter);
 
         foreach (var project in projects)
@@ -172,10 +202,78 @@ public sealed class DiRegistrationService : IDiRegistrationService
                     if (TryCreateDiRegistration(invocation, semanticModel, ct, out var dto))
                         results.Add(dto);
                 }
+
+                // get-di-registrations-multi-registration-overcounting: same syntax walk
+                // collects IEnumerable<T>/IReadOnlyList<T>/IList<T>/T[] consumption sites for
+                // ctor parameters and property declarations. Inline during the scan to avoid a
+                // second pass over the syntax trees.
+                CollectEnumerableConsumedServiceTypes(root, semanticModel, ct, enumerableConsumed);
             }
         }
 
-        return results;
+        return new ScanResult(results, enumerableConsumed);
+    }
+
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting: walk a syntax tree's parameter
+    /// and property declarations, recording the element type of any <c>IEnumerable&lt;T&gt;</c>,
+    /// <c>IReadOnlyList&lt;T&gt;</c>, <c>IList&lt;T&gt;</c>, or <c>T[]</c> annotation. Types
+    /// are resolved through the semantic model so the collected display strings match the
+    /// <see cref="DiRegistrationDto.ServiceType"/> column produced by
+    /// <see cref="TryCreateDiRegistration"/>.
+    /// </summary>
+    private static void CollectEnumerableConsumedServiceTypes(
+        SyntaxNode root,
+        SemanticModel semanticModel,
+        CancellationToken ct,
+        HashSet<string> destination)
+    {
+        foreach (var parameter in root.DescendantNodes().OfType<ParameterSyntax>())
+        {
+            if (ct.IsCancellationRequested) return;
+            if (parameter.Type is null) continue;
+            TryRecordEnumerableElementType(parameter.Type, semanticModel, ct, destination);
+        }
+
+        foreach (var property in root.DescendantNodes().OfType<PropertyDeclarationSyntax>())
+        {
+            if (ct.IsCancellationRequested) return;
+            TryRecordEnumerableElementType(property.Type, semanticModel, ct, destination);
+        }
+    }
+
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting: if <paramref name="typeSyntax"/>
+    /// resolves to <c>IEnumerable&lt;T&gt;</c>, <c>IReadOnlyList&lt;T&gt;</c>,
+    /// <c>IList&lt;T&gt;</c>, or <c>T[]</c>, append <c>T</c>'s display string to
+    /// <paramref name="destination"/>.
+    /// </summary>
+    private static void TryRecordEnumerableElementType(
+        TypeSyntax typeSyntax,
+        SemanticModel semanticModel,
+        CancellationToken ct,
+        HashSet<string> destination)
+    {
+        var typeSymbol = semanticModel.GetTypeInfo(typeSyntax, ct).Type;
+        if (typeSymbol is null || typeSymbol is IErrorTypeSymbol) return;
+
+        // Array element type: collect T from T[].
+        if (typeSymbol is IArrayTypeSymbol arrayType)
+        {
+            destination.Add(arrayType.ElementType.ToDisplayString());
+            return;
+        }
+
+        // Generic collection element type: collect T from IEnumerable<T>, IReadOnlyList<T>,
+        // IList<T>, IReadOnlyCollection<T>, ICollection<T>, and List<T>.
+        if (typeSymbol is INamedTypeSymbol named && named.IsGenericType && named.TypeArguments.Length == 1)
+        {
+            var openName = named.ConstructedFrom.Name;
+            if (openName is "IEnumerable" or "IReadOnlyList" or "IList" or "IReadOnlyCollection" or "ICollection" or "List")
+            {
+                destination.Add(named.TypeArguments[0].ToDisplayString());
+            }
+        }
     }
 
     private static bool TryCreateDiRegistration(
@@ -219,7 +317,13 @@ public sealed class DiRegistrationService : IDiRegistrationService
             if (args.Count > 0 &&
                 args[0].Expression is AnonymousFunctionExpressionSyntax or LambdaExpressionSyntax)
             {
-                implType = "factory";
+                // get-di-registrations-multi-registration-overcounting: when the lambda body
+                // forwards to GetRequiredService<T>() / GetService<T>(), resolve T as the
+                // implementation type. e.g. AddSingleton<ISnapshotReader>(sp =>
+                // sp.GetRequiredService<FileSnapshotReader>()) reports FileSnapshotReader as the
+                // winning impl rather than the opaque "factory" sentinel. Falls back to
+                // "factory" when no recognizable forwarding call is present.
+                implType = TryResolveLambdaReturnType(args[0].Expression, semanticModel, ct) ?? "factory";
             }
             else if (args.Count > 0)
             {
@@ -358,6 +462,45 @@ public sealed class DiRegistrationService : IDiRegistrationService
     }
 
     /// <summary>
+    /// get-di-registrations-multi-registration-overcounting: when a single-type-arg
+    /// <c>AddSingleton/AddScoped/AddTransient&lt;TService&gt;</c> overload receives a factory
+    /// lambda whose body forwards to <c>GetRequiredService&lt;T&gt;()</c> or
+    /// <c>GetService&lt;T&gt;()</c>, return <c>T</c>'s display string as the resolved
+    /// implementation type. The walk inspects every invocation inside the lambda's body, so
+    /// expressions that wrap the resolution (e.g. <c>() =&gt; new Foo(sp.GetRequiredService&lt;Bar&gt;())</c>)
+    /// still resolve to the implementation. Returns <c>null</c> when no recognizable
+    /// service-locator call is present so the caller can fall back to <c>"factory"</c>.
+    /// </summary>
+    private static string? TryResolveLambdaReturnType(
+        ExpressionSyntax lambdaExpression, SemanticModel semanticModel, CancellationToken ct)
+    {
+        // Walk every invocation in the lambda body. The lambda may be a single-expression body
+        // (`sp => sp.GetRequiredService<T>()`) or a block body. Either way, DescendantNodes
+        // over the entire lambda subtree surfaces nested service-locator calls.
+        foreach (var invocation in lambdaExpression.DescendantNodes().OfType<InvocationExpressionSyntax>())
+        {
+            if (ct.IsCancellationRequested) return null;
+
+            if (semanticModel.GetSymbolInfo(invocation, ct).Symbol is not IMethodSymbol method)
+                continue;
+
+            if (method.Name is not ("GetRequiredService" or "GetService"))
+                continue;
+
+            if (method.TypeArguments.Length != 1)
+                continue;
+
+            var resolved = method.TypeArguments[0];
+            if (resolved is IErrorTypeSymbol)
+                continue;
+
+            return resolved.ToDisplayString();
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// di-lifetime-mismatch-detection: project the raw scan into per-service-type override
     /// chains. Models MS.DI's descriptor resolution semantics:
     /// <list type="bullet">
@@ -373,16 +516,23 @@ public sealed class DiRegistrationService : IDiRegistrationService
     ///   that did not push a descriptor are <c>shadowed</c>.</description></item>
     ///   <item><description><c>unknown</c> service types (could not resolve generic argument)
     ///   are skipped — they would group spuriously and produce noise.</description></item>
+    ///   <item><description>get-di-registrations-multi-registration-overcounting: service
+    ///   types consumed via <c>IEnumerable&lt;T&gt;</c> / <c>IReadOnlyList&lt;T&gt;</c> /
+    ///   <c>IList&lt;T&gt;</c> / <c>T[]</c> are excluded from the chain output entirely. MS.DI
+    ///   returns every registration for these consumers via <c>GetServices&lt;T&gt;()</c>, so
+    ///   multi-registration is intentional rather than dead.</description></item>
     /// </list>
     /// Service types with only one registration are also skipped from the chain output
     /// (no override, nothing to flag).
     /// </summary>
     private static IReadOnlyList<DiRegistrationOverrideChainDto> BuildOverrideChains(
-        IReadOnlyList<DiRegistrationDto> rawRegistrations)
+        IReadOnlyList<DiRegistrationDto> rawRegistrations,
+        IReadOnlySet<string> enumerableConsumedServiceTypes)
     {
         var chains = new List<DiRegistrationOverrideChainDto>();
         var groups = rawRegistrations
             .Where(r => !string.Equals(r.ServiceType, "unknown", StringComparison.Ordinal))
+            .Where(r => !enumerableConsumedServiceTypes.Contains(r.ServiceType))
             .GroupBy(r => r.ServiceType, StringComparer.Ordinal);
 
         foreach (var group in groups)

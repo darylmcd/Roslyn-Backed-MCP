@@ -141,6 +141,215 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
             "A service registered exactly once is not an override and must be omitted from the chain output.");
     }
 
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting Bug 1 (a): when a service type is
+    /// consumed via <c>IEnumerable&lt;T&gt;</c> ctor injection, multi-registration is
+    /// intentional — <c>GetServices&lt;T&gt;()</c> returns all entries. The override-chain
+    /// emission must suppress the chain for that service type so the dead-registration count
+    /// is not inflated.
+    /// </summary>
+    [TestMethod]
+    public async Task IEnumerable_T_Consumer_Suppresses_Override_Chain_For_Service_Type()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+
+        // Three Add* registrations of IAnalyzer — all intentional because
+        // AnalyzerEnumerableConsumer consumes IEnumerable<IAnalyzer>.
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services)\n    {\n        services.AddSingleton<IAnalyzer, AnalyzerA>();\n        services.AddSingleton<IAnalyzer, AnalyzerB>();\n        services.AddSingleton<IAnalyzer, AnalyzerC>();\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var scan = await DiRegistrationService.GetDiRegistrationsWithOverridesAsync(
+            workspace.WorkspaceId, projectFilter: "SampleLib", CancellationToken.None);
+
+        Assert.IsFalse(
+            scan.OverrideChains.Any(c => c.ServiceType.EndsWith("IAnalyzer", StringComparison.Ordinal)),
+            "Service types consumed via IEnumerable<T> must be excluded from the override-chain output.");
+    }
+
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting Bug 1 (b): <c>IReadOnlyList&lt;T&gt;</c>
+    /// and <c>T[]</c> consumers must also suppress the override chain. MS.DI resolves both
+    /// shapes from the same descriptor list as <c>IEnumerable&lt;T&gt;</c>.
+    /// </summary>
+    [TestMethod]
+    public async Task IReadOnlyList_And_Array_Consumers_Suppress_Override_Chains()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services)\n    {\n        services.AddSingleton<IValidator, ValidatorA>();\n        services.AddSingleton<IValidator, ValidatorB>();\n        services.AddSingleton<IRule, RuleA>();\n        services.AddSingleton<IRule, RuleB>();\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var scan = await DiRegistrationService.GetDiRegistrationsWithOverridesAsync(
+            workspace.WorkspaceId, projectFilter: "SampleLib", CancellationToken.None);
+
+        Assert.IsFalse(
+            scan.OverrideChains.Any(c => c.ServiceType.EndsWith("IValidator", StringComparison.Ordinal)),
+            "Service types consumed via IReadOnlyList<T> must be excluded from the override-chain output.");
+        Assert.IsFalse(
+            scan.OverrideChains.Any(c => c.ServiceType.EndsWith("IRule", StringComparison.Ordinal)),
+            "Service types consumed via T[] must be excluded from the override-chain output.");
+    }
+
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting Bug 1 (negative): a service type
+    /// that has NO IEnumerable/IReadOnlyList/array consumer must still produce the override
+    /// chain. This guards against the suppression being applied too aggressively.
+    /// </summary>
+    [TestMethod]
+    public async Task Multi_Registration_Without_Enumerable_Consumer_Still_Reports_Override_Chain()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+
+        // Two Add* registrations of IFoo, but NO IEnumerable<IFoo>/IReadOnlyList<IFoo>/IFoo[]
+        // ctor or property exists in the shim or in the registration file. The chain must
+        // still surface so the consumer sees the second registration overriding the first.
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services)\n    {\n        services.AddSingleton<IFoo, FooSingleton>();\n        services.AddSingleton<IFoo, FooScoped>();\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var scan = await DiRegistrationService.GetDiRegistrationsWithOverridesAsync(
+            workspace.WorkspaceId, projectFilter: "SampleLib", CancellationToken.None);
+
+        var chain = scan.OverrideChains.SingleOrDefault(c => c.ServiceType.EndsWith("IFoo", StringComparison.Ordinal));
+        Assert.IsNotNull(chain,
+            "Multi-registration without an IEnumerable consumer must still report an override chain.");
+        Assert.AreEqual(1, chain.DeadRegistrationCount,
+            "Earlier registration is dead when no IEnumerable consumer exists.");
+    }
+
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting Bug 2 (a): factory lambda whose
+    /// body forwards to <c>GetRequiredService&lt;T&gt;()</c> resolves T as the winning
+    /// implementation type, not the opaque "factory" sentinel.
+    /// </summary>
+    [TestMethod]
+    public async Task Factory_Lambda_With_GetRequiredService_Resolves_Implementation_Type()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+
+        // First registration: concrete FileSnapshotReader. Second registration: factory lambda
+        // forwarding ISnapshotReader to FileSnapshotReader via sp.GetRequiredService.
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services)\n    {\n        services.AddSingleton<FileSnapshotReader, FileSnapshotReader>();\n        services.AddSingleton<ISnapshotReader>(sp => sp.GetRequiredService<FileSnapshotReader>());\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var legacy = await DiRegistrationService.GetDiRegistrationsAsync(
+            workspace.WorkspaceId, projectFilter: "SampleLib", CancellationToken.None);
+
+        var iSnapshotEntry = legacy.SingleOrDefault(r => r.ServiceType.EndsWith("ISnapshotReader", StringComparison.Ordinal));
+        Assert.IsNotNull(iSnapshotEntry, "Expected a registration entry for ISnapshotReader.");
+        Assert.AreEqual("FileSnapshotReader", ImplementationLeaf(iSnapshotEntry.ImplementationType),
+            "Lambda body GetRequiredService<FileSnapshotReader>() must surface FileSnapshotReader as the impl type.");
+    }
+
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting Bug 2 (b): factory lambda using
+    /// <c>GetService&lt;T&gt;</c> (nullable variant) also resolves T.
+    /// </summary>
+    [TestMethod]
+    public async Task Factory_Lambda_With_GetService_Resolves_Implementation_Type()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services)\n    {\n        services.AddSingleton<FileSnapshotReader, FileSnapshotReader>();\n        services.AddSingleton<ISnapshotReader>(sp => sp.GetService<FileSnapshotReader>()!);\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var legacy = await DiRegistrationService.GetDiRegistrationsAsync(
+            workspace.WorkspaceId, projectFilter: "SampleLib", CancellationToken.None);
+
+        var iSnapshotEntry = legacy.SingleOrDefault(r => r.ServiceType.EndsWith("ISnapshotReader", StringComparison.Ordinal));
+        Assert.IsNotNull(iSnapshotEntry, "Expected a registration entry for ISnapshotReader.");
+        Assert.AreEqual("FileSnapshotReader", ImplementationLeaf(iSnapshotEntry.ImplementationType),
+            "Lambda body GetService<FileSnapshotReader>() must surface FileSnapshotReader as the impl type.");
+    }
+
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting Bug 2 (c): lambda body using BOTH
+    /// <c>GetRequiredService&lt;T&gt;</c> and <c>GetService&lt;T&gt;</c> still resolves to a
+    /// real implementation type (the first recognized service-locator call wins). The walk
+    /// must terminate cleanly without exception when multiple calls are present.
+    /// </summary>
+    [TestMethod]
+    public async Task Factory_Lambda_With_Mixed_GetRequiredService_And_GetService_Resolves()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+
+        // Lambda constructs CompositeWrapper from an inner CompositeImpl pulled via
+        // GetRequiredService, plus a side-channel GetService<ISnapshotReader>() that is
+        // ignored. The resolved impl should be one of CompositeImpl/ISnapshotReader — the
+        // assertion is "non-factory string is returned", not the precise selection.
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services)\n    {\n        services.AddSingleton<CompositeImpl, CompositeImpl>();\n        services.AddSingleton<ISnapshotReader, FileSnapshotReader>();\n        services.AddSingleton<IComposite>(sp => new CompositeWrapper(sp.GetRequiredService<CompositeImpl>()));\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var legacy = await DiRegistrationService.GetDiRegistrationsAsync(
+            workspace.WorkspaceId, projectFilter: "SampleLib", CancellationToken.None);
+
+        var iCompositeEntry = legacy.SingleOrDefault(r => r.ServiceType.EndsWith("IComposite", StringComparison.Ordinal));
+        Assert.IsNotNull(iCompositeEntry, "Expected a registration entry for IComposite.");
+        Assert.AreNotEqual("factory", iCompositeEntry.ImplementationType,
+            "Lambda body containing GetRequiredService<T> must resolve T even when other calls are present.");
+        Assert.AreEqual("CompositeImpl", ImplementationLeaf(iCompositeEntry.ImplementationType),
+            "First recognized service-locator call (GetRequiredService<CompositeImpl>) supplies the resolved impl type.");
+    }
+
+    /// <summary>
+    /// get-di-registrations-multi-registration-overcounting Bug 2 (d): lambda whose body has
+    /// NO recognizable <c>GetRequiredService&lt;T&gt;</c> / <c>GetService&lt;T&gt;</c> call
+    /// falls back to <c>"factory"</c> rather than throwing.
+    /// </summary>
+    [TestMethod]
+    public async Task Factory_Lambda_Without_Service_Locator_Falls_Back_To_Factory_String()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        await WriteServiceCollectionShimAsync(workspace, CancellationToken.None);
+
+        // Lambda body constructs a new OpaqueImpl directly — no GetRequiredService/GetService
+        // call. The resolved impl must fall back to "factory" rather than throw or return a
+        // bogus type name.
+        await WriteRegistrationFileAsync(
+            workspace,
+            "RegistrationsAlpha.cs",
+            "namespace SampleLib;\n\npublic static class RegistrationsAlpha\n{\n    public static void Configure(IServiceCollection services)\n    {\n        services.AddSingleton<IOpaque>(sp => new OpaqueImpl());\n    }\n}\n",
+            CancellationToken.None);
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var legacy = await DiRegistrationService.GetDiRegistrationsAsync(
+            workspace.WorkspaceId, projectFilter: "SampleLib", CancellationToken.None);
+
+        var iOpaqueEntry = legacy.SingleOrDefault(r => r.ServiceType.EndsWith("IOpaque", StringComparison.Ordinal));
+        Assert.IsNotNull(iOpaqueEntry, "Expected a registration entry for IOpaque.");
+        Assert.AreEqual("factory", iOpaqueEntry.ImplementationType,
+            "Lambdas without a GetRequiredService/GetService forwarding call must fall back to the \"factory\" sentinel.");
+    }
+
     [TestMethod]
     public async Task Summary_Mode_Returns_Compact_Counts_And_Paged_Override_Chains()
     {
@@ -293,12 +502,18 @@ public sealed class DiLifetimeOverrideTests : IsolatedWorkspaceTestBase
     /// </summary>
     private static async Task WriteServiceCollectionShimAsync(IsolatedWorkspaceScope workspace, CancellationToken ct)
     {
+        // get-di-registrations-multi-registration-overcounting: shim extended with the
+        // single-type-arg factory overload, an IServiceProvider stub with GetRequiredService /
+        // GetService extensions, and additional types/interfaces that the new tests register
+        // multiple times via IEnumerable<T>/IReadOnlyList<T>/T[] consumption.
         var shim = """
 namespace SampleLib;
 
 public interface IServiceCollection { }
 
 public sealed class FakeServiceCollection : IServiceCollection { }
+
+public interface IServiceProvider { }
 
 public static class ServiceCollectionExtensions
 {
@@ -308,12 +523,21 @@ public static class ServiceCollectionExtensions
         where TImpl : TService => services;
     public static IServiceCollection AddTransient<TService, TImpl>(this IServiceCollection services)
         where TImpl : TService => services;
+    public static IServiceCollection AddSingleton<TService>(this IServiceCollection services, System.Func<IServiceProvider, TService> factory) => services;
+    public static IServiceCollection AddScoped<TService>(this IServiceCollection services, System.Func<IServiceProvider, TService> factory) => services;
+    public static IServiceCollection AddTransient<TService>(this IServiceCollection services, System.Func<IServiceProvider, TService> factory) => services;
     public static IServiceCollection TryAddSingleton<TService, TImpl>(this IServiceCollection services)
         where TImpl : TService => services;
     public static IServiceCollection TryAddScoped<TService, TImpl>(this IServiceCollection services)
         where TImpl : TService => services;
     public static IServiceCollection TryAddTransient<TService, TImpl>(this IServiceCollection services)
         where TImpl : TService => services;
+}
+
+public static class ServiceProviderExtensions
+{
+    public static T GetRequiredService<T>(this IServiceProvider provider) => default!;
+    public static T? GetService<T>(this IServiceProvider provider) => default;
 }
 
 public interface IFoo { }
@@ -326,6 +550,50 @@ public sealed class BarSecond : IBar { }
 
 public interface IBaz { }
 public sealed class BazOnly : IBaz { }
+
+// get-di-registrations-multi-registration-overcounting: types and consumers used by the
+// IEnumerable<T> / IReadOnlyList<T> / T[] suppression tests.
+public interface IAnalyzer { }
+public sealed class AnalyzerA : IAnalyzer { }
+public sealed class AnalyzerB : IAnalyzer { }
+public sealed class AnalyzerC : IAnalyzer { }
+
+public interface IValidator { }
+public sealed class ValidatorA : IValidator { }
+public sealed class ValidatorB : IValidator { }
+
+public interface IRule { }
+public sealed class RuleA : IRule { }
+public sealed class RuleB : IRule { }
+
+public sealed class AnalyzerEnumerableConsumer
+{
+    public AnalyzerEnumerableConsumer(System.Collections.Generic.IEnumerable<IAnalyzer> analyzers) { }
+}
+
+public sealed class ValidatorListConsumer
+{
+    public ValidatorListConsumer(System.Collections.Generic.IReadOnlyList<IValidator> validators) { }
+}
+
+public sealed class RuleArrayConsumer
+{
+    public RuleArrayConsumer(IRule[] rules) { }
+}
+
+// get-di-registrations-multi-registration-overcounting: lambda-resolution test types.
+public interface ISnapshotReader { }
+public sealed class FileSnapshotReader : ISnapshotReader { }
+
+public interface IComposite { }
+public sealed class CompositeImpl : IComposite { }
+public sealed class CompositeWrapper : IComposite
+{
+    public CompositeWrapper(CompositeImpl inner) { }
+}
+
+public interface IOpaque { }
+public sealed class OpaqueImpl : IOpaque { }
 """;
         await File.WriteAllTextAsync(workspace.GetPath("SampleLib", "DiShim.cs"), shim, ct).ConfigureAwait(false);
     }
