@@ -249,6 +249,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             UnknownFilePaths: unknownFiles,
             CompileResult: compile,
             ErrorDiagnostics: emittedErrors,
+            // validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics:
+            // ErrorCount mirrors the always-populated WarningCount field below. Counted off
+            // allErrors (the full merged set), NOT emittedErrors, so summary=true callers
+            // still see the count that drove the OverallStatus verdict.
+            ErrorCount: allErrors.Length,
             WarningCount: compile.WarningCount,
             DiscoveredTests: emittedTests,
             DotnetTestFilter: string.IsNullOrWhiteSpace(related.DotnetTestFilter) ? null : related.DotnetTestFilter,
@@ -680,6 +685,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
                 ElapsedMs: (long)timeout.Timeout.TotalMilliseconds,
                 Cancelled: true),
             ErrorDiagnostics: Array.Empty<DiagnosticDto>(),
+            ErrorCount: 0,
             WarningCount: 0,
             DiscoveredTests: Array.Empty<RelatedTestCaseDto>(),
             DotnetTestFilter: null,

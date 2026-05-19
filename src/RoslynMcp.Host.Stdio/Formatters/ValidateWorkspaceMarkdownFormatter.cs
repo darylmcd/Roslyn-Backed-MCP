@@ -72,7 +72,10 @@ internal static class ValidateWorkspaceMarkdownFormatter
         AppendRow(sb, "Overall status", dto.OverallStatus);
         AppendRow(sb, "Compile errors", dto.CompileResult.ErrorCount.ToString(CultureInfo.InvariantCulture));
         AppendRow(sb, "Compile warnings", dto.CompileResult.WarningCount.ToString(CultureInfo.InvariantCulture));
-        AppendRow(sb, "Analyzer/compile error diagnostics", dto.ErrorDiagnostics.Count.ToString(CultureInfo.InvariantCulture));
+        // validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics:
+        // read ErrorCount (always populated) instead of ErrorDiagnostics.Count — the latter
+        // reports 0 when summary=true suppressed the list, which contradicted overallStatus.
+        AppendRow(sb, "Analyzer/compile error diagnostics", dto.ErrorCount.ToString(CultureInfo.InvariantCulture));
         AppendRow(sb, "Warning diagnostics", dto.WarningCount.ToString(CultureInfo.InvariantCulture));
         AppendRow(sb, "Changed file paths (resolved)", dto.ChangedFilePaths.Count.ToString(CultureInfo.InvariantCulture));
         AppendRow(sb, "Unknown file paths", dto.UnknownFilePaths.Count.ToString(CultureInfo.InvariantCulture));

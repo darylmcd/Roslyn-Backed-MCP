@@ -60,7 +60,20 @@ public interface IWorkspaceValidationService
 /// tracker supplied the path set (in which case they are guaranteed to exist).
 /// </param>
 /// <param name="CompileResult">Result of the compile-check stage.</param>
-/// <param name="ErrorDiagnostics">All compiler/analyzer diagnostics with severity <c>Error</c> across the validated scope.</param>
+/// <param name="ErrorDiagnostics">
+/// All compiler/analyzer diagnostics with severity <c>Error</c> across the validated scope.
+/// validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics: when
+/// <c>summary=true</c> on <see cref="IWorkspaceValidationService.ValidateAsync"/> this list is
+/// dropped to keep the response under the MCP cap — use <see cref="ErrorCount"/> to recover
+/// the number of errors that drove the verdict.
+/// </param>
+/// <param name="ErrorCount">
+/// validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics: count of
+/// error-severity compiler/analyzer diagnostics in scope. Always populated (mirrors the
+/// existing <see cref="WarningCount"/> pattern) so callers can see how many errors drove
+/// the <see cref="OverallStatus"/> verdict even when <c>summary=true</c> suppressed
+/// <see cref="ErrorDiagnostics"/>.
+/// </param>
 /// <param name="WarningCount">Count of warning-severity diagnostics in scope (not surfaced individually to keep response size bounded).</param>
 /// <param name="DiscoveredTests">Test cases discovered for the changed files; empty list when no related tests were found.</param>
 /// <param name="DotnetTestFilter">The combined <c>dotnet test --filter</c> expression to re-run just the related tests; <see langword="null"/> when none.</param>
@@ -78,6 +91,7 @@ public sealed record WorkspaceValidationDto(
     IReadOnlyList<string> UnknownFilePaths,
     CompileCheckDto CompileResult,
     IReadOnlyList<DiagnosticDto> ErrorDiagnostics,
+    int ErrorCount,
     int WarningCount,
     IReadOnlyList<RelatedTestCaseDto> DiscoveredTests,
     string? DotnetTestFilter,

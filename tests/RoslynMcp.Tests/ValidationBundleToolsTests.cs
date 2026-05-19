@@ -83,6 +83,7 @@ public sealed class ValidationBundleToolsTests
                 Diagnostics: Array.Empty<DiagnosticDto>(),
                 ElapsedMs: 0),
             ErrorDiagnostics: Array.Empty<DiagnosticDto>(),
+            ErrorCount: 0,
             WarningCount: 0,
             DiscoveredTests: Array.Empty<RelatedTestCaseDto>(),
             DotnetTestFilter: null,
