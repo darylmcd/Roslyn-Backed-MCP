@@ -104,6 +104,52 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task Migrate_Package_Preview_Throws_When_Source_Package_Absent()
+    {
+        // migrate-package-preview-no-op-silent-mutation regression (gh #768 §13.17):
+        // Pre-fix, `migrate_package_preview` ran `BuildCentralVersionEditAsync` unconditionally
+        // whenever the loaded workspace had CPM enabled — even when ZERO projects referenced
+        // `oldPackageId`. Inside, `UpsertCentralPackageVersion` upserts the replacement
+        // `<PackageVersion>` entry, which counted as one mutation and bypassed the
+        // `mutations.Count == 0` no-op guard. The result: a silent edit to `Directory.Packages.props`
+        // adding a manifest entry for a package nothing referenced.
+        //
+        // Post-fix, the CPM update block is gated on `mutations.Count > 0`, so the per-project
+        // loop is the single source of truth for whether anything got migrated. When zero projects
+        // matched, the existing `InvalidOperationException("No project references to '...'")`
+        // fires before any manifest write, leaving `Directory.Packages.props` untouched.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var packagesPropsPath = workspace.GetPath("Directory.Packages.props");
+        Assert.IsTrue(File.Exists(packagesPropsPath),
+            "Test fixture must copy the repository's Directory.Packages.props (CPM enabled).");
+        var originalPropsContent = await File.ReadAllTextAsync(packagesPropsPath, CancellationToken.None);
+
+        // Note: no `InjectPackageReference` calls — no project carries a reference to
+        // `Legacy.NotPresent`. CPM is enabled via the copied Directory.Packages.props but no
+        // `<PackageVersion Include="Legacy.NotPresent">` entry exists either.
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+            PackageMigrationOrchestrator.PreviewMigratePackageAsync(
+                workspace.WorkspaceId,
+                "Legacy.NotPresent",
+                "Modern.NotPresent",
+                "2.5.0",
+                CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "No project references to 'Legacy.NotPresent'",
+            $"Rejection message must name the missing source package. Actual: {ex.Message}");
+
+        // The manifest must be byte-identical to the pre-call snapshot. Pre-fix, this assertion
+        // would catch the silently-appended `<PackageVersion Include="Modern.NotPresent" ...>`.
+        var postCallPropsContent = await File.ReadAllTextAsync(packagesPropsPath, CancellationToken.None);
+        Assert.AreEqual(originalPropsContent, postCallPropsContent,
+            $"migrate-package-preview-no-op-silent-mutation regression: Directory.Packages.props must be unmodified when no project references the source package. Pre-call length: {originalPropsContent.Length}, post-call length: {postCallPropsContent.Length}.");
+        Assert.IsFalse(postCallPropsContent.Contains("Modern.NotPresent", StringComparison.Ordinal),
+            $"migrate-package-preview-no-op-silent-mutation regression: replacement package id must not appear in Directory.Packages.props after a no-op call. File:\n{postCallPropsContent}");
+    }
+
+    [TestMethod]
     public async Task FORMAT_BUG_003_Migrate_Package_Preview_Emits_MultiLine_ItemGroup_With_Matching_Indent()
     {
         // FORMAT-BUG-003 regression (dr-9-4-format-bug-003-produces-inline-itemgroup-xml):
