@@ -17,12 +17,26 @@ namespace RoslynMcp.Core.Models;
 /// </param>
 /// <param name="LineCount">Body line span of the first method in the group (for quick triage).</param>
 /// <param name="Methods">The member locations that cluster together.</param>
+/// <param name="ClusterKind">
+/// Optional discriminator that classifies the bucket beyond raw structural similarity.
+/// <see langword="null"/> when the cluster is a plain copy-paste duplicate (the default
+/// before any classifier ran). Currently emitted values:
+/// <list type="bullet">
+///   <item><description><c>"round-trip-mapper"</c> — exactly two members whose names form a strict
+///     <c>To*</c>/<c>From*</c> complementary pair with the same stem. These are typically symmetric
+///     mapper pairs (e.g. <c>ToDto</c>/<c>FromDto</c>) that share an AST shape by design; their
+///     <see cref="Similarity"/> is downranked so they don't dominate the dedup ranking.</description></item>
+/// </list>
+/// Additive/non-breaking — callers that do an exhaustive switch should add a default arm and treat
+/// unknown values as plain duplicates.
+/// </param>
 public sealed record DuplicatedMethodGroupDto(
     string NormalizedHash,
     int MemberCount,
     double Similarity,
     int LineCount,
-    IReadOnlyList<DuplicatedMethodMemberDto> Methods);
+    IReadOnlyList<DuplicatedMethodMemberDto> Methods,
+    string? ClusterKind = null);
 
 /// <summary>
 /// One method-body occurrence inside a <see cref="DuplicatedMethodGroupDto"/>.

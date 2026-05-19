@@ -351,6 +351,230 @@ public sealed class DuplicateMethodDetectorTests
     }
 
     [TestMethod]
+    public async Task FindDuplicatedMethods_SymmetricMapperPair_IsDownrankedAndTagged()
+    {
+        // Two methods with identical bodies whose names form a strict To*/From* complementary
+        // pair (ToDto/FromDto). The bodies are by-design symmetric for the same data shape,
+        // so clustering them as "duplicates" is a false positive. The detector should still
+        // emit the cluster (so it remains visible) but downrank similarity and tag it with
+        // ClusterKind = "round-trip-mapper" so threshold-based callers can skip it.
+        var source = """
+            namespace Sample;
+            public sealed record UserDto(string Name, int Age);
+            public sealed class User
+            {
+                public string Name { get; set; } = string.Empty;
+                public int Age { get; set; }
+
+                public UserDto ToDto(User user)
+                {
+                    var name = user.Name;
+                    var age = user.Age;
+                    var dto = new UserDto(name, age);
+                    var verified = dto;
+                    var copy = verified;
+                    return copy;
+                }
+
+                public UserDto FromDto(User user)
+                {
+                    var name = user.Name;
+                    var age = user.Age;
+                    var dto = new UserDto(name, age);
+                    var verified = dto;
+                    var copy = verified;
+                    return copy;
+                }
+            }
+            """;
+
+        var service = BuildServiceWithSource(source, out _);
+
+        var groups = await service.FindDuplicatedMethodsAsync(
+            WorkspaceId,
+            new DuplicateMethodAnalysisOptions { MinLines = 6, Limit = 50 },
+            default);
+
+        Assert.AreEqual(1, groups.Count, "Mapper pair should still be emitted (just downranked).");
+        Assert.AreEqual(2, groups[0].MemberCount);
+        Assert.AreEqual("round-trip-mapper", groups[0].ClusterKind,
+            "Symmetric To*/From* pair must be tagged as round-trip-mapper.");
+        Assert.IsTrue(groups[0].Similarity < 1.0,
+            $"Similarity must be downranked from 1.0 for mapper pairs. Got {groups[0].Similarity}.");
+        CollectionAssert.AreEquivalent(
+            new[] { "ToDto", "FromDto" },
+            groups[0].Methods.Select(m => m.MethodName).ToArray());
+    }
+
+    [TestMethod]
+    public async Task FindDuplicatedMethods_TheoryMethods_AreExcluded()
+    {
+        // xUnit [Theory] test methods share an identical dispatch shape (assert against every
+        // [InlineData] row) and would otherwise bucket together. The detector must filter them
+        // out by attribute-name suffix regardless of whether the source uses the bare [Theory]
+        // form or the fully-qualified [TheoryAttribute] form. Pure syntactic check — no xUnit
+        // reference is required for the test source (the attribute names just need to parse).
+        var source = """
+            namespace Sample;
+
+            public sealed class TheoryAttribute : System.Attribute { }
+            public sealed class InlineDataAttribute : System.Attribute
+            {
+                public InlineDataAttribute(params object[] data) { _ = data; }
+            }
+
+            public class TheoryFixtures
+            {
+                [Theory]
+                [InlineData(1, 2)]
+                [InlineData(3, 4)]
+                public void AssertSumBareTheory(int a, int b)
+                {
+                    var sum = a + b;
+                    var inverted = -sum;
+                    var doubled = inverted * 2;
+                    var halved = doubled / 2;
+                    var final = halved + 0;
+                    System.Diagnostics.Debug.Assert(final == -sum);
+                }
+
+                [TheoryAttribute]
+                [InlineData(5, 6)]
+                public void AssertSumFullName(int a, int b)
+                {
+                    var sum = a + b;
+                    var inverted = -sum;
+                    var doubled = inverted * 2;
+                    var halved = doubled / 2;
+                    var final = halved + 0;
+                    System.Diagnostics.Debug.Assert(final == -sum);
+                }
+            }
+            """;
+
+        var service = BuildServiceWithSource(source, out _);
+
+        var groups = await service.FindDuplicatedMethodsAsync(
+            WorkspaceId,
+            new DuplicateMethodAnalysisOptions { MinLines = 6, Limit = 50 },
+            default);
+
+        Assert.AreEqual(0, groups.Count,
+            "[Theory]-annotated methods must be excluded from clustering (both bare and full-name forms).");
+    }
+
+    [TestMethod]
+    public async Task FindDuplicatedMethods_ToFromWithThreeMembers_IsNotDownranked()
+    {
+        // The mapper-pair classifier is intentionally strict: only exactly-two members trip
+        // it. A bucket of three (e.g. ToDto + FromDto + a coincidental third helper with the
+        // same body shape) is structural duplication that happens to include a mapper — not
+        // a designed symmetric pair — and should NOT be downranked.
+        var source = """
+            namespace Sample;
+            public sealed record UserDto(string Name, int Age);
+            public sealed class User
+            {
+                public string Name { get; set; } = string.Empty;
+                public int Age { get; set; }
+
+                public UserDto ToDto(User user)
+                {
+                    var name = user.Name;
+                    var age = user.Age;
+                    var dto = new UserDto(name, age);
+                    var verified = dto;
+                    var copy = verified;
+                    return copy;
+                }
+
+                public UserDto FromDto(User user)
+                {
+                    var name = user.Name;
+                    var age = user.Age;
+                    var dto = new UserDto(name, age);
+                    var verified = dto;
+                    var copy = verified;
+                    return copy;
+                }
+
+                public UserDto Snapshot(User user)
+                {
+                    var name = user.Name;
+                    var age = user.Age;
+                    var dto = new UserDto(name, age);
+                    var verified = dto;
+                    var copy = verified;
+                    return copy;
+                }
+            }
+            """;
+
+        var service = BuildServiceWithSource(source, out _);
+
+        var groups = await service.FindDuplicatedMethodsAsync(
+            WorkspaceId,
+            new DuplicateMethodAnalysisOptions { MinLines = 6, Limit = 50 },
+            default);
+
+        Assert.AreEqual(1, groups.Count);
+        Assert.AreEqual(3, groups[0].MemberCount);
+        Assert.IsNull(groups[0].ClusterKind,
+            "Three-member bucket must not be tagged as round-trip-mapper.");
+        Assert.AreEqual(1.0, groups[0].Similarity,
+            "Three-member bucket retains full similarity (not a designed pair).");
+    }
+
+    [TestMethod]
+    public async Task FindDuplicatedMethods_ToFromWithMismatchedStems_IsNotDownranked()
+    {
+        // ToFoo and FromBar share an AST shape coincidentally — the stems don't match, so the
+        // structural collision is genuine duplication, not a designed mapper pair. The
+        // classifier must reject the downrank.
+        var source = """
+            namespace Sample;
+            public sealed class Helpers
+            {
+                public int ToFoo(int value)
+                {
+                    var tally = value;
+                    tally += 1;
+                    tally += 1;
+                    tally += 1;
+                    tally += 1;
+                    tally += 1;
+                    return tally;
+                }
+
+                public int FromBar(int value)
+                {
+                    var tally = value;
+                    tally += 1;
+                    tally += 1;
+                    tally += 1;
+                    tally += 1;
+                    tally += 1;
+                    return tally;
+                }
+            }
+            """;
+
+        var service = BuildServiceWithSource(source, out _);
+
+        var groups = await service.FindDuplicatedMethodsAsync(
+            WorkspaceId,
+            new DuplicateMethodAnalysisOptions { MinLines = 6, Limit = 50 },
+            default);
+
+        Assert.AreEqual(1, groups.Count);
+        Assert.AreEqual(2, groups[0].MemberCount);
+        Assert.IsNull(groups[0].ClusterKind,
+            "Mismatched stems (ToFoo/FromBar) must not be tagged as round-trip-mapper.");
+        Assert.AreEqual(1.0, groups[0].Similarity,
+            "Mismatched-stem bucket retains full similarity.");
+    }
+
+    [TestMethod]
     public async Task FindDuplicatedMethods_ProjectFilter_ScopesScanToProject()
     {
         // Load two projects: the structurally-matching methods sit in different projects.
