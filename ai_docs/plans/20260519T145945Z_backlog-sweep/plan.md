@@ -39,6 +39,18 @@ All 6 selected rows are P3-priority single-bug fixes from the 2026-05-16 self-au
 | CHANGELOG entry (draft) | Fixed `workspace_changes` splitting an atomic `apply_multi_file_edit` two-file batch into separate ledger entries: the multi-file apply path now records one consolidated change-tracker entry covering all affected files (matching the `apply_composite_preview` behavior), so `revert_apply_by_sequence` and callers reading `workspace_changes` see the batch as a single atomic unit. Fixes gh #740. |
 | Backlog sync | Close rows: [`workspace-changes-atomic-batch-split-without-batchid`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs:82-83` — `var distinctFiles = appliedFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList(); _changeTracker?.RecordChange(workspaceId, $"Composite operation ({distinctFiles.Count} files)", distinctFiles, "apply_composite_preview");` placed after the per-file loop. Apply the same shape in `ApplyMultiFileTextEditsAsync` between line 184 (end of foreach) and line 186 (`VerifyOutcomeDto? verification = null;`), using `results.Select(r => r.FilePath)` for the affected-files list.
+- **Suppression seam:** add `bool suppressChangeTrackerRecord = false` as the last parameter on private `ApplyTextEditsCoreAsync` (`EditService.cs:540-549`) and gate the existing `_changeTracker?.RecordChange(...)` at `EditService.cs:577-579` on `!suppressChangeTrackerRecord`. The single-file caller at `EditService.cs:90` keeps the default; the multi-file call at `EditService.cs:178-179` passes `suppressChangeTrackerRecord: true`.
+- **Test target:** add `ApplyMultiFileEdit_TwoFileBatch_ProducesOneChangeTrackerEntry` to `tests/RoslynMcp.Tests/ChangeTrackerTests.cs` (existing class at line 14); mirror `ApplyTextEdit_RecordsApplyTextEditToolName` at line 72-91 for the `ChangeTracker.Clear` + `EditService` + `GetChanges` assertion shape. Use a 2-element `FileEditsDto[]` (e.g. `Dog.cs` + `Cat.cs` from the sample workspace) and call `EditService.ApplyMultiFileTextEditsAsync(wsId, fileEdits, "apply_multi_file_edit", CancellationToken.None)`. Assert `changes.Count == 1`, `changes[0].AffectedFiles.Count == 2`, `changes[0].ToolName == "apply_multi_file_edit"`. Do NOT create a new test file.
+- **Negative space:** do NOT modify `ApplyTextEditsAsync` (`EditService.cs:36-109`) — single-file path must still emit one entry per call via the default `suppressChangeTrackerRecord: false`. Do NOT touch `ChangeTracker.cs` or `IChangeTracker.cs`; the fix is consumer-side only. Do NOT alter `_undoService?.CaptureBeforeApply` at `EditService.cs:152-156` — its batch-level snapshot is already correct.
+
+</details>
+
 ### 2. validate-workspace-changetracker-no-disk-reconcile-after-git-checkout
 
 | Field | Content |
@@ -57,6 +69,19 @@ All 6 selected rows are P3-priority single-bug fixes from the 2026-05-16 self-au
 | CHANGELOG entry (draft) | Fixed `validate_workspace(changedFilePaths=null)` returning stale file paths in `changedFilePaths` after an out-of-band revert (e.g. `git checkout -- <file>`). The ChangeTracker auto-scope list is now reconciled against `git status` before being used as the validation scope; reverted files are excluded. Fixes gh #738. |
 | Backlog sync | Close rows: [`validate-workspace-changetracker-no-disk-reconcile-after-git-checkout`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `WorkspaceValidationService.cs:104-144` (`ValidateRecentGitChangesAsync`) — it already calls `CollectGitChangedFilesAsync` (line 111) and branches on `gitWarnings.Count == 0` vs non-empty for the fallback. Reuse `_gitStatusTimeout` (already a field).
+- **Async-propagation decision (judgmentHeavy):** keep `ResolveChangedFiles` (line 291) SYNCHRONOUS — it is pure path partitioning. Lift the async git call to `ValidateInternalAsync` (line 146, already async): after `ResolveChangedFiles` returns at line 154, when the caller passed `null` AND the change-tracker fallback branch fired (lines 344-352 ran), `await CollectGitChangedFilesAsync(ResolveSolutionDirectory(workspaceId), _gitStatusTimeout, ct)` and intersect. Detect "fallback fired" by checking `changedFilePaths is null or { Count: 0 }`. Do NOT add `async` to `ResolveChangedFiles`.
+- **Test target:** create `tests/RoslynMcp.Tests/ValidateWorkspaceChangeTrackerReconcileTests.cs` inheriting `IsolatedWorkspaceTestBase` (mirrors `ChangeTrackerTests.cs:14` — `CreateIsolatedWorkspaceAsync` pattern at line 28-30 of that file). `IsolatedWorkspaceScope` copies a sample solution to a temp dir that is NOT a git repo by default — the executor must `git init` + initial commit inside `workspace.RootPath` so `CollectGitChangedFilesAsync` doesn't hit the `IsInsideGitRepository` warning fallback (line 426-432) and silently widen scope, masking the test. Construct `WorkspaceValidationService` the same way `ValidateWorkspaceSummaryTests.cs:24-30` does.
+- **Edge cases to cover:** (1) git-available + file actually reverted to HEAD → reverted file absent from `ChangedFilePaths`; (2) git-available + file still dirty → file present (no false suppression); (3) non-git directory / git-on-PATH absent → fallback to unfiltered change-tracker list (preserves existing `ValidateAsync_NullChangedFilePaths_NoUnknownSurfaced` behavior at `ValidateWorkspaceSummaryTests.cs:117`); (4) caller-supplied non-null `changedFilePaths` — reconciliation MUST NOT fire (callers passed explicit scope).
+- **Negative space:** do NOT modify `ChangeTracker.cs` / `IChangeTracker.cs` — the append-only log is correct for undo/revert history consumers; reconciliation belongs in the consumer. Do NOT modify the `ValidateRecentGitChangesAsync` path — it already enforces git-dirty authoritatively. Do NOT add new fields to `WorkspaceValidationDto` — fix is pure logic in the existing flow.
+
+</details>
+
 ### 3. find-type-mutations-single-scope-misses-compound-io
 
 | Field | Content |
@@ -74,6 +99,19 @@ All 6 selected rows are P3-priority single-bug fixes from the 2026-05-16 self-au
 | CHANGELOG category | Changed — BREAKING |
 | CHANGELOG entry (draft) | `find_type_mutations`: `MutatingMemberDto.MutationScope` (string, single highest-severity scope) is replaced by `MutationScopes` (`string[]`, all detected scopes). Methods performing compound mutations — e.g. both IO and CollectionWrite — now report every applicable scope rather than only the highest severity. Callers must update from `member.MutationScope == "IO"` to `member.MutationScopes.Contains("IO")`. Fixes gh #741. |
 | Backlog sync | Close rows: [`find-type-mutations-single-scope-misses-compound-io`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `src/RoslynMcp.Roslyn/Helpers/SideEffectClassifier.cs:36-70` — accumulator pattern (`string? best = HigherSeverity(best, scope)` per invocation/object-creation walk); apply the same shape in `ClassifyMethodMutationScope` but collect into `List<string>` across the three dimensions (`TryClassifyMethodSideEffects`, `HasInstanceFieldAssignment`, `HasMutatingCollectionCall`) instead of returning at the first hit.
+- **Hotspot seams:** (1) DTO record at `src/RoslynMcp.Core/Models/TypeMutationDto.cs:12-19` — drop the `string MutationScope = "FieldWrite"` default-parameter (positional record can't default a list cleanly; make it required `IReadOnlyList<string> MutationScopes`). (2) Private `MutationCandidate` record at `MutationAnalysisService.cs:547` — change `string? Scope` to `IReadOnlyList<string>? Scopes`. (3) `GetMutationCandidates` at `MutationAnalysisService.cs:371-375` and `BuildMutatingMemberAsync` at `MutationAnalysisService.cs:441-448` propagate the field through; rewrite the LINQ chain and constructor argument together. (4) Rewrite `ClassifyMethodMutationScope` at `MutationAnalysisService.cs:713-746` to accumulate; also revisit `ClassifyMutationScope` at line 679 and `TryClassifyPropertyMutationScope` at line 698 so their return types align (single-element list, not bare string).
+- **Test target:** update `MutationAnalysisSideEffectsTests.cs:148` AND `:153` (both currently `Assert.AreEqual(SideEffectClassifier.Scopes.IO, writeManifest.MutationScope)`) to `CollectionAssert.Contains(writeManifest.MutationScopes.ToList(), SideEffectClassifier.Scopes.IO)`. Add new `[TestMethod] FindTypeMutations_CompoundIOAndCollectionWrite_ReportsBothScopes` to the same class — mirror `FindTypeMutations_LifecycleManagerSample_FlagsAsyncCollectionMutators` at line 158 for shape. You will likely need a new fixture under `tests/RoslynMcp.Tests.SampleLib/` (e.g. `CompoundMutationSample.cs`) with a method doing both `_dict.TryAdd(k, v)` and `File.OpenRead(path)`; verify the existing fixture project pattern before adding.
+- **Fanout surface (Rule 5b — reviewer-flagged):** handoff-prep verified ONE additional fanout point the reviewer's spot check missed — `src/RoslynMcp.Host.Stdio/README.md:95` references `MutationScope` in the user-facing tool catalog. Update that line to `MutationScopes` for accuracy. **Total fanout: 4 files** (DTO, service, test, README) — all in-repo, no external consumers.
+- **Negative space:** do NOT touch `SideEffectClassifier.cs:36-70` (`ClassifyMethodSideEffects`) — its highest-severity-wins single-string return is correct for the IO/Network/Process/Database catalog (severity ordering is the contract). The compound behavior lives one layer up in `ClassifyMethodMutationScope`, which orthogonally combines side-effect scope + FieldWrite + CollectionWrite. Do NOT touch `MutationCallerDto` (`TypeMutationDto.cs:24`) — different DTO, different concern. Do NOT add a backward-compat overload retaining the old `MutationScope` string field; project policy is correctness over compat shims and the CHANGELOG is already categorized BREAKING.
+
+</details>
 
 ### 4. analyze-control-flow-partial-slice-warning-on-full-method
 
@@ -111,6 +149,19 @@ All 6 selected rows are P3-priority single-bug fixes from the 2026-05-16 self-au
 | CHANGELOG entry (draft) | `format_document_preview` now returns `changes: []` for a no-op format pass (already-formatted document). Previously `DiffGenerator` emitted a header-only unified diff string (`--- a/…` / `+++ b/…` with no `@@` hunks) when the formatted document text was identical to the original, causing callers that check `changes.length > 0` to misidentify the result as pending changes. Fixes gh #739. |
 | Backlog sync | Close rows: [`format-document-preview-empty-diff-instead-of-noop`]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** `DiffGenerator.cs:33-104` — `GenerateUnifiedDiff`. Insert the early-return at line 103 (immediately before `return sb.ToString();`), guarded by `hunksWritten == 0 && !truncated` (both locals are already declared at lines 44-45). The two header `AppendLine`s at lines 39-40 stay — they only execute on the non-empty path post-fix.
+- **Pre-existing test conflict (must update):** `DiffGeneratorTests.cs:9-15` `Identical_Texts_Returns_Header_Only` asserts the OLD broken behavior (`StringAssert.Contains(result, "--- a/test.cs")`). Replace its body to assert `Assert.AreEqual(string.Empty, result)` — do NOT leave it untouched; it will fail post-fix.
+- **Test target:** add the two new `[TestMethod]`s to `DiffGeneratorTests.cs` (existing `[TestClass]` at line 6); mirror the shape of `Truncation_At_MaxChars_Produces_Flag6A_Marker` at line 41. Do NOT create a new test file.
+- **SolutionDiffHelper seam:** the belt-and-suspenders filter goes inside the `TryAdd` lambda at `SolutionDiffHelper.cs:46-56` — add `if (string.IsNullOrEmpty(change.UnifiedDiff)) return false;` as the first line. This sits before the `totalChars + ... > DefaultMaxTotalChars` check so empty diffs never count against the cap or land in `truncatedFiles`.
+- **Negative space:** the truncation-sentinel `FileChangeDto` is constructed at `SolutionDiffHelper.cs:117-122` with body starting `# FLAG-6A:` (never empty) and is added via `changes.Add(...)` directly — NOT via `TryAdd`. The new `TryAdd` empty-check therefore cannot suppress it. Do NOT touch the `oldText == newText` guard at lines 71-74; the new filter complements it (different-SourceText-identity case) rather than replacing it.
+
+</details>
+
 ### 6. callers-callees-previewtext-asymmetry
 
 | Field | Content |
@@ -128,6 +179,19 @@ All 6 selected rows are P3-priority single-bug fixes from the 2026-05-16 self-au
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `callers_callees` returning `null` `previewText` on all callee entries while populating it correctly for callers; callees now use the same per-location source-extract path as callers. Fixes gh #742. |
 | Backlog sync | Close rows: [`callers-callees-previewtext-asymmetry`]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `SymbolRelationshipService.cs:320-322` (the `CollectCallersAsync` body that calls `SymbolResolver.GetPreviewTextAsync(refLocation.Document, refLocation.Location, ct)` and passes the result as the 3rd arg to `SymbolMapper.ToLocationDto`). `SymbolMapper.ToLocationDto` signature at `SymbolMapper.cs:123` is `(Location, ISymbol? containingSymbol = null, string? previewText = null, string? classification = null)` — pass `previewText` positionally.
+- **Edit seam:** modification lands inside the inner `foreach (var invocation ...)` loop at `SymbolRelationshipService.cs:347-359`, between lines 356 (dedupe `Add` check) and 358 (the `callees.Add` call). Compute `calleeDoc` and `previewText` after the dedupe passes (avoid wasted preview reads on duplicates).
+- **Document resolution:** `invokedLoc` at line 352 is `invokedSymbol.Locations.FirstOrDefault(l => l.IsInSource) ?? invocation.GetLocation()`. For the in-source branch, resolve via `solution.GetDocument(invokedLoc.SourceTree)` — but `SourceTree` may be null and `GetDocument` may return null (external-symbol metadata locations). Guard with `var calleeDoc = invokedLoc.SourceTree is { } tree ? solution.GetDocument(tree) : doc;` then `var previewText = calleeDoc is not null ? await SymbolResolver.GetPreviewTextAsync(calleeDoc, invokedLoc, ct).ConfigureAwait(false) : null;` — matches the `doc is not null ? ... : null` pattern used at `SymbolRelationshipService.cs:185`, `ReferenceService.cs:104`, and `SymbolNavigationService.cs:36`.
+- **Test target:** add `[TestMethod] GetCallersCallees_Callees_Populate_PreviewText` to `ServiceCoverageTests.cs` immediately after the existing `GetCallersCallees_Finds_Speak_Callers` fixture at line 161 (mirror its `WorkspaceId` / `FindDocumentPath("AnimalService.cs")` / `SymbolLocator.BySource(animalServicePath, 16, 17)` shape). Assert `result.Callees.Count > 0` then `Assert.IsTrue(result.Callees.All(c => !string.IsNullOrEmpty(c.PreviewText)))` — but scope the assertion to in-source callees only if any callee is external (Console.WriteLine etc. may yield null PreviewText, which is the correct behavior per Risks #1).
+- **Negative space:** do NOT modify `SymbolMapper.cs` (the optional `previewText` parameter already exists); do NOT modify `CollectCallersAsync` at line 308 (already correct — it is the pattern source); do NOT touch the `GetSignatureHelpAsync` path at line 185 (different code path, already populates preview).
+
+</details>
 
 ## Conflict graph
 
