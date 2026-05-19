@@ -19,7 +19,12 @@ public sealed class ProjectMutationService : IProjectMutationService
         "Nullable",
         "LangVersion",
         "ImplicitUsings",
-        "TargetFramework"
+        "TargetFramework",
+        "DefineConstants",
+        "Optimize",
+        "DebugType",
+        "NoWarn",
+        "TreatWarningsAsErrors"
     };
 
     private readonly IWorkspaceManager _workspace;
