@@ -39,6 +39,20 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 | CHANGELOG entry (draft) | Fixed `find_consumers` and `symbol_impact_sweep` returning empty results for static extension-host classes whose members are consumed exclusively via extension-method syntax (e.g. `app.MapImportEndpoints()`). `find_consumers` now aggregates member-level consumers as a fallback; `symbol_impact_sweep` emits a `suggestedTasks` hint pointing to `callers_callees`. Fixes gh #768 §13.3. |
 | Backlog sync | Close rows: [`find-references-static-extension-host-blind-spot`]. Parent tracker gh #768 §13.3 — do NOT auto-close. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates (member-union fallback):** `ConsumerAnalysisService.cs:27` is the `SymbolFinder.FindReferencesAsync` call producing 0 hits for static extension-host types. Insert the fallback between line 28 (`refLocations` materialized) and the `projectFilter` block at lines 32-38 — gate on `refLocations.Count == 0 && symbol is INamedTypeSymbol { IsStatic: true } host && host.GetMembers().OfType<IMethodSymbol>().Any(m => m.IsExtensionMethod)`, iterate `host.GetMembers().OfType<IMethodSymbol>()` (filter `DeclaredAccessibility == Accessibility.Public`), call `FindReferencesAsync` per member, and union into `refLocations` BEFORE the project filter runs. Dedupe by `(loc.Document?.FilePath, loc.Location.SourceSpan)`.
+- **SuggestedTasks hint coordinates:** `ImpactSweepService.BuildSuggestedTasks` at `ImpactSweepService.cs:301-315`. The zero-impact branch is the `if (tasks.Count == 0)` at line 312. Plumb the resolved symbol (or a precomputed `isStaticExtensionHost` bool) into `BuildSuggestedTasks` — change signature or compute the flag at the call site (line 84). The hint emits ABOVE the `"No impact detected"` fallback, not instead of it.
+- **Test target:** extend `ConsumerAnalysisTests.cs` — add `FindConsumers_ExtensionHostClass_AggregatesToMemberConsumers` mirroring `FindConsumers_StaticClass_ClassifiesAsStaticMemberAccess` at lines 63-84 (same `SymbolLocator.ByMetadataName` shape, same `SharedWorkspaceTestBase` setup).
+- **Fixture wiring (correction):** plan's `app.MapRoutes()` example assumes ASP.NET, but SampleApp is a plain console app — DO NOT add `Microsoft.AspNetCore.App` to keep the fixture hermetic. Use an extension-method receiver of a stable type (e.g. `IAnimal` or `string`). Add a consumer line to `samples/SampleSolution/SampleApp/Program.cs` (after line 35) using extension-call syntax — `animals.First().<NewExtension>()`. Existing `AnimalExtensions.cs` is already consumed via `.Describe()` at `Program.cs:12` — assert on the NEW host's metadata name, not on `AnimalExtensions`.
+- **Edge cases:** (1) public-only member iteration; (2) dedupe by `(FilePath, SourceSpan)`; (3) zero-extension-member static class must stay a no-op; (4) `projectFilter` must still apply to the unioned set.
+- **Negative space:** do NOT modify `TypeConsumersService.cs:53` or `MutationAnalysisService.FindTypeUsagesAsync` at `MutationAnalysisService.cs:290` — same root cause, explicitly deferred for Rule 3 cap. Do NOT touch `ReferenceService.cs:30` (`find_references`) — type-token semantics by design; fix scope is `find_consumers` + `symbol_impact_sweep` only.
+
+</details>
+
 ### 2. code-fix-preview-vs-fix-all-preview-shape-inconsistency
 
 | Field | Content |
@@ -56,6 +70,19 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `code_fix_preview` returning an unhandled `InvalidOperationException` when no code fix provider is registered for the requested diagnostic ID. The tool now returns a structured envelope with empty `previewToken` and a `guidanceMessage`, consistent with `fix_all_preview`. Fixes gh #768 §13.9. |
 | Backlog sync | Close rows: [`code-fix-preview-vs-fix-all-preview-shape-inconsistency`]. Parent tracker gh #768 §13.9 — do NOT auto-close. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `src/RoslynMcp.Roslyn/Services/FixAllService.cs:78-87` — the `provider is null` branch returns `new FixAllPreviewDto(PreviewToken: "", ..., GuidanceMessage: BuildNoProviderGuidance(diagnosticId))`. `BuildNoProviderGuidance` is defined at `FixAllService.cs:622-632` (`internal static`); reuse it directly via `FixAllService.BuildNoProviderGuidance(diagnosticId)` rather than duplicating the string.
+- **DTO addition:** append `string? GuidanceMessage = null` as a positional default-valued record parameter to `RefactoringPreviewDto` (last position after `CallsiteUpdates`, `src/RoslynMcp.Core/Models/RefactoringPreviewDto.cs:14-19`). Do NOT reorder existing params.
+- **Fix-site shape:** at `RefactoringService.cs:611-613`, replace the throw with `return new RefactoringPreviewDto(string.Empty, $"No code fix provider for '{diagnosticId}'.", Array.Empty<FileChangeDto>(), null, GuidanceMessage: FixAllService.BuildNoProviderGuidance(diagnosticId));`. The CS8019 fallback at lines 599-609 returns *before* this line — keep untouched.
+- **Test target:** mirror `FixAllServiceGuidanceTests.cs:147-163` (`PreviewFixAll_NoProviderRegistered_ReturnsGuidance`); add `CodeFixPreview_NoProviderRegistered_ReturnsGuidance` to `DiagnosticFixIntegrationTests.cs`. Use diagnosticId `"ZZZ_NO_PROVIDER_REGISTERED_FOR_THIS_ID"`; assert `PreviewToken == string.Empty`, `Changes.Count == 0`, `GuidanceMessage` contains the diagnosticId.
+- **Negative space:** do NOT modify `PreviewRemoveUnusedUsingFallbackAsync` (`RefactoringService.cs:616+`) — internal throws at line 627 are unreachable-edge guards, not the no-provider path. Do NOT change `FixAllPreviewDto` shape.
+
+</details>
 
 ### 3. suggest-refactorings-facade-extraction-false-positive
 
@@ -75,6 +102,18 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 | CHANGELOG entry (draft) | Fixed `suggest_refactorings` false-positive: facade/adapter types (zero instance fields, all methods delegate to an injected interface) no longer surface a top-severity "Split" recommendation. `CohesionAnalysisService` now detects the `"facade"` lifecycle pattern and `RefactoringSuggestionService` suppresses cohesion suggestions for any type bearing a `LifecyclePattern` value. Fixes gh #768 §13.10. |
 | Backlog sync | Close rows: [`suggest-refactorings-facade-extraction-false-positive`]. Parent tracker gh #768 §13.10 — do NOT auto-close. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `CohesionAnalysisService.cs:196-223` (existing `DetectLifecyclePattern` `"action-triad"` branch) — add a `"facade"` arm below the suffix check; also mirror `BuildRecommendation` at `:230-234` (add a `"facade"` case). The signature change must pass `instanceFields.Count` from the call site at `:95` — the field-list is built one line earlier at `:90` (`CollectInstanceFieldsAndProperties`).
+- **Expression-body detection:** use `IMethodSymbol.DeclaringSyntaxReferences` and downcast to `MethodDeclarationSyntax` — check `m.ExpressionBody is not null` OR a `Body` containing exactly one `ReturnStatementSyntax`. Reference pattern at `CodeMetricsService.cs:160-177`. Do NOT rely on `FieldCount==0` alone.
+- **Test target (correction):** extend `CohesionAnalysisTests.cs` (existing class line 7, `IsolatedWorkspaceTestBase`); mirror `GetCohesionMetrics_ActionTriadPattern_...` at `:263-317`. For `RefactoringSuggestionTests.cs` (`SharedWorkspaceTestBase`, line 5): add a workspace-fixture-based test that writes a real facade type — DO NOT invent a "synthetic DTO" injection path; `TestServiceContainer.cs:275-279` wires the service with concrete deps only.
+- **Negative space:** facade detection must require ALL THREE conditions in conjunction (zero instance fields AND `Interfaces.Length > 0` AND all-public-methods expression-bodied/single-return). Do NOT match static utility classes (zero fields but no interfaces).
+
+</details>
+
 ### 4. find-duplicated-methods-symmetric-mapper-false-positives
 
 | Field | Content |
@@ -92,6 +131,18 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `find_duplicated_methods` clustering xUnit `[Theory]` test methods (now excluded) and symmetric `To*`/`From*` round-trip mapper pairs as copy-paste duplicates. Mapper pairs are now emitted with `clusterKind: "round-trip-mapper"` and a downranked similarity score. Fixes gh #768 §13.11. |
 | Backlog sync | Close rows: [`find-duplicated-methods-symmetric-mapper-false-positives`]. Parent tracker gh #768 §13.11 — do NOT auto-close. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** `[Theory]` exclusion goes inside `BucketDocumentMethods` at `DuplicateMethodDetectorService.cs:109-120` — add the attribute-name check after the `body is null` guard (line 114) and before the `MinLines` gate (line 120). Mapper-pair downrank goes inside `EmitGroupsFromBuckets` at `DuplicateMethodDetectorService.cs:148-175` — after `members.Count < 2` continue (line 158), before DTO emission (line 161), detect `members.Count == 2 && To*/From*` complementary stems and set local `similarity`/`clusterKind` variables.
+- **Test target:** extend `DuplicateMethodDetectorTests.cs` (NO new file) — add two new `[TestMethod]` methods mirroring `FindDuplicatedMethods_OverloadsWithIdenticalBodies_Cluster` at line 115. The class uses MSTest (`[TestMethod]`), but the `[Theory]` exclusion fixture must embed the xUnit attribute inside the test source-string (syntactic check — no xUnit reference needed). Use existing `BuildServiceWithSource` helper at line 384.
+- **Edge cases:** (1) `[TheoryAttribute]` (fully-qualified form) — both endings must match; (2) `To`/`From` with 3+ members in same bucket — must NOT downrank (exactly-2-only heuristic); (3) `ToX`/`FromY` with mismatched stems — must NOT downrank.
+- **Negative space:** do NOT touch `Canonicalize` (lines 231-277) or `RankGroups` (line 182). `DuplicatedMethodMemberDto` stays unchanged — only the group-level DTO grows `ClusterKind`.
+
+</details>
 
 ### 5. test-coverage-fail-fast-on-missing-coverlet
 
@@ -111,6 +162,18 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 | CHANGELOG entry (draft) | Fixed `test_coverage` failing the entire call when some test projects lack `coverlet.collector`. Projects without the collector are now skipped and listed in a new `coverageGaps` field; partial coverage is returned with `success=true`. Fixes gh #768 §13.12. |
 | Backlog sync | Close rows: [`test-coverage-fail-fast-on-missing-coverlet`]. Parent tracker gh #768 §13.12 — do NOT auto-close. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** the existing fail-fast emit point is `TestCoverageTools.cs:65-81` (the `testProjectsLackingCoverlet.Count > 0` branch — keep for the all-projects-lacking case). The single serializer is `SerializeWithDeprecation` at `TestCoverageTools.cs:201-213` — add `coverageGaps = result.CoverageGaps` to the anonymous envelope there or the new field will not reach JSON. `FindTestProjectsWithoutCoverlet` at `TestCoverageTools.cs:221-244` already returns the project-name list you need to partition; refactor in place rather than adding a parallel helper.
+- **Test doubles (correction):** create new file `tests/RoslynMcp.Tests/TestCoveragePartialCoverletTests.cs` (do NOT extend `TestCoverageFailureEnvelopeTests.cs`). The test doubles (`PassthroughGate`, `FakeWorkspaceManager`, `StaticDotnetCommandRunner`) at `TestCoverageFailureEnvelopeTests.cs:150-258` are `private sealed` nested classes — NOT shared infrastructure. Duplicate them as nested classes in the new file. Override `FakeWorkspaceManager.BuildStatus` to return `Projects` with mixed `IsTestProject=true` entries pointing at on-disk temp `.csproj` files (some containing the literal `coverlet.collector`, some not) — `FindTestProjectsWithoutCoverlet` at line 233-237 reads from disk.
+- **Edge cases:** (1) mixed coverlet → `success=true`, `coverageGaps` populated, fail-fast NOT triggered; (2) all-projects-lack-coverlet regression → still fails with `CoverletMissing` envelope (existing path preserved); (3) `coverageGaps` field present in JSON via `JsonDocument` parse.
+- **Negative space:** do NOT touch `FailureEnvelope.MissingPackages` (in `TestCoverageDto.cs:30`) — that field is the fail-fast surface for the all-missing case; `CoverageGaps` is the new top-level success-with-skips surface and must NOT live inside the failure envelope. Do NOT modify the OCE/Exception catch blocks (`TestCoverageTools.cs:133-166`) — owned by `test-coverage-timeout-failure-envelope` initiative.
+
+</details>
+
 ### 6. set-conditional-property-preview-allowlist-narrowness
 
 | Field | Content |
@@ -129,6 +192,18 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 | CHANGELOG entry (draft) | Fixed `set_conditional_property_preview` and `set_project_property_preview` rejecting common per-config properties (`DefineConstants`, `Optimize`, `DebugType`, `NoWarn`, `TreatWarningsAsErrors`) with "not in allowlist". Tool descriptions updated to reflect the expanded set. Fixes gh #768 §13.13. |
 | Backlog sync | Close rows: [`set-conditional-property-preview-allowlist-narrowness`]. Parent tracker gh #768 §13.13 — do NOT auto-close. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** `AllowedProperties` HashSet at `src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs:17-23` (currently `Nullable`, `LangVersion`, `ImplicitUsings`, `TargetFramework`). Add the 5 new entries here; the shared `ValidateAllowedProperty` at line 640 needs no change. Tool description strings to update: `src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs:115` (`PreviewSetProjectProperty.propertyName`) and `:176` (`PreviewSetConditionalProperty.propertyName`).
+- **Test target:** add a single `[TestMethod]` to `tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs`; mirror `Set_Conditional_Property_Preview_And_Apply_Adds_Conditional_Property_Group` at line 324. Do NOT create a new test file.
+- **Wave-conflict note (#6 ↔ #12):** shares `ProjectMutationService.cs` with initiative #12. The two edits are in disjoint regions (lines 17-23 here vs. lines 109/165/330/354/370/465 in #12) but the executor MUST schedule #6 and #12 in different parallel waves to avoid merge serialization friction.
+- **Negative space:** do NOT touch lines 109/165/330/354/370/465 in `ProjectMutationService.cs` — those are #12's absent-item throws. Do NOT alter `ValidateAllowedProperty` body at line 640 or `SupportedConditionPattern` at line 13 — expansion is HashSet-only.
+
+</details>
+
 ### 7. get-completions-filtertext-doesnt-promote-in-scope-members
 
 | Field | Content |
@@ -146,6 +221,20 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `get_completions` in-scope member ranking at member-access positions: added optional `triggerCharacter` parameter that, when set to `'.'`, passes `CompletionTrigger.TriggerOnInsertion('.')` to Roslyn so method-tier candidates (locals, parameters, members) are included and ranked before namespace-qualified external types. Tool description updated to document the member-access requirement. Fixes gh #768 §13.14. |
 | Backlog sync | Close rows: [`get-completions-filtertext-doesnt-promote-in-scope-members`]. Parent tracker gh #768 §13.14 — do NOT auto-close. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **CRITICAL — Roslyn API correction:** the plan cites `CompletionTrigger.TriggerOnInsertion(char)` — that overload does **NOT exist** in the referenced Roslyn package. Use `Microsoft.CodeAnalysis.Completion.CompletionTrigger.CreateInsertionTrigger(triggerCharacter.Value)` at `CompletionService.cs:53`. Adjacent factories: `CreateDeletionTrigger(char)`, `CompletionTrigger.Invoke`, `CompletionTrigger.Default`.
+- **Verified fanout (Rule 5b probe — addressing reviewer warn):** `ICompletionService.GetCompletionsAsync` has exactly **1 production call site (`SymbolTools.cs:767`) + 1 implementation (`CompletionService.cs:9`) + 2 test call sites in `ServiceCoverageTests.cs:220` and `:237`** that also need the new `triggerCharacter` argument threaded through. DI registration at `ServiceCollectionExtensions.cs:68` unaffected.
+- **Pattern coordinates:** the tool wrapper edit lands in `SymbolTools.cs:749-770` — the `GetCompletions` `[McpServerTool]` definition. Insert the new `[Description] char? triggerCharacter = null` parameter between `maxItems` (line 761) and `CancellationToken ct` (line 762), then thread it into the call at line 767.
+- **Test target:** extend `ServiceCoverageTests.cs` (existing class, line 212 region `// ── CompletionService ──`). Mirror the existing fixture `GetCompletions_Ranking_BoostsInScopeBeforeExternalTypes` at lines 227-269 — same `AnimalService.cs` fixture, same column 30, but pass `triggerCharacter: '.'`. Update the two existing call sites at lines 220-221 and 237-238 to pass `triggerCharacter: null`.
+- **Hotspot seam:** `SymbolTools.cs` is 901 LOC. The edit is bounded to the `GetCompletions` method at lines 749-770 only; do NOT touch sibling tools `GoToTypeDefinition` (lines 726-747) or `ParseProjectFilter` (line 780).
+- **Negative space:** do NOT modify `CompletionService.cs:37` (`Microsoft.CodeAnalysis.Completion.CompletionService.GetService(document)` — that's the Roslyn factory, not the project's `ICompletionService`). Do NOT add a non-nullable overload "for safety" — the nullable `char?` with conditional pass-through is the correct single path.
+
+</details>
 
 ### 8. semantic-grep-dotted-identifiers-tokenization-docs-gap
 
@@ -182,6 +271,20 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `get_di_registrations` reporting false dead-registration counts for intentional multi-registration patterns (`IEnumerable<T>` consumers): service types injected as `IEnumerable<T>` are now excluded from the dead-count. Also fixed factory-lambda implementation-type resolution: `AddSingleton<IFoo>(sp => sp.GetRequiredService<FooImpl>())` now reports `FooImpl` as winning impl type. Fixes gh #768 §13.16. |
 | Backlog sync | Close rows: [`get-di-registrations-multi-registration-overcounting`]. Parent tracker gh #768 §13.16 — do NOT auto-close. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates (Bug 2 lambda resolution):** mirror the existing `ResolveInstanceArgumentType` helper at `DiRegistrationService.cs:345-351` — same signature shape (`ExpressionSyntax`, `SemanticModel`, `CancellationToken`) and same `semanticModel.GetTypeInfo(...).Type.ToDisplayString()` pattern. Insert the new `TryResolveLambdaReturnType` call at line 222 inside the existing `args[0].Expression is AnonymousFunctionExpressionSyntax or LambdaExpressionSyntax` branch; fall back to `"factory"` only when resolution misses.
+- **Hotspot seam (Bug 1 enumerable consumption):** `BuildOverrideChains` is `private static` (`DiRegistrationService.cs:380-460`) and has NO access to the solution — you must thread the `IEnumerable<T>`-consumed set through `ScanProjectsAsync` (line 138) → `ScanSnapshot` constructor (line 50) and feed it into `BuildOverrideChains` (change signature). Skip-classification belongs at line 388 (before the `groups` loop) or line 395 (per-group early-`continue`).
+- **Cache contract (load-bearing):** `ScanSnapshot` (line 46) and `GetOrLoadSnapshotAsync` (line 98) must continue to return the same `LegacyView` reference on repeat calls — do NOT rebuild `LegacyView` per call. The enumerable-consumed set should live on the snapshot alongside `Raw`/`LegacyView`, computed once at line 124-127.
+- **Test target:** extend `DiLifetimeOverrideTests.cs` (existing class, line 16). Mirror `Last_Wins_Add_Then_Add_Marks_Earlier_Singleton_As_Overridden_With_Scoped_Winner` at line 53. Test shim is the `WriteServiceCollectionShimAsync` helper at line 294 — add the single-type-arg factory overload `AddSingleton<TService>(this IServiceCollection, Func<IServiceProvider, TService>)` and a `Func<,>`/`IServiceProvider` stub to the shim block (lines 296-329).
+- **Edge cases:** (1) `IEnumerable<T>` consumed via ctor injection; (2) `IReadOnlyList<T>` and `T[]` variants; (3) lambda body using BOTH `GetRequiredService<T>()` AND `GetService<T>()`; (4) lambda whose body has no recognizable `GetRequiredService<T>` call → fall back to `"factory"`, not throw.
+- **Negative space:** do NOT touch `MapDiLifetime` (line 256), `IsTryAddMethod` (line 275), or `TryGetDiTypesFromTypeOfArguments` (line 284) — those are the FLAG-11A typeof-resolution and TryAdd-classification paths, separate from the two bugs in scope. Do NOT modify `GetDiRegistrationsAsync` (line 84) — returns the cached `LegacyView` directly and the cache contract must remain reference-equal.
+
+</details>
 
 ### 10. migrate-package-preview-no-op-silent-mutation
 
@@ -254,6 +357,19 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `symbol_info` returning `kind="Class"` for positional record types where `document_symbols` correctly returned `kind="Record"`. Both tools now use `"Record"` for record classes and `"RecordStruct"` for record structs. Fixes gh #769 §13.20. |
 | Backlog sync | Close rows: [`document-symbols-vs-symbol-info-record-kind-disagreement`]. Parent tracker gh #769 §13.20 — do NOT auto-close. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror `src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs:311` — the top-level `CollectSymbols` switch uses `RecordDeclarationSyntax r => r.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword) ? "RecordStruct" : "Record"`. The nested `CollectMembers` block at `SymbolSearchService.cs:402-410` currently has the buggy `RecordDeclarationSyntax => "Record"` arm — replace with the same `ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword) ? "RecordStruct" : "Record"` expression, binding the syntax node (`RecordDeclarationSyntax r =>`).
+- **SymbolMapper edit:** `src/RoslynMcp.Roslyn/Helpers/SymbolMapper.cs:245-250` — extend the `INamedTypeSymbol` arm into a nested switch on `IsRecord` + `TypeKind` (record class → `"Record"`, record struct → `"RecordStruct"`, else `namedType.TypeKind.ToString()`).
+- **Test target (correction):** add 2 `[TestMethod]` fixtures to existing `tests/RoslynMcp.Tests/SymbolMapperTests.cs` class (line 13); do NOT create a new file. Plan says "AdhocWorkspace" but existing siblings (`ToDto_Interface_MapsKindAndFqName` line 28, `ToDto_Class_MapsKindAndHierarchy` line 42) use `SharedWorkspaceTestBase` + `SampleLib` metadata names — prefer that pattern (add `record` types to `samples/SampleSolution/SampleLib`) unless hermetic isolation is required (then `AdhocWorkspace` is acceptable).
+- **Edge cases:** (1) positional record class → `"Record"`; (2) `record struct` → `"RecordStruct"`; (3) confirm `document_symbols` and `symbol_info` agree on identical source for both shapes.
+- **Negative space:** do NOT touch `SymbolSearchService.cs:305-313` (top-level `CollectSymbols` switch — already correct). Do NOT modify `symbol_search.kind` filter logic (already two-level).
+
+</details>
 
 ### 14. get-msbuild-properties-vs-workspace-reload-outputtype-mismatch
 
