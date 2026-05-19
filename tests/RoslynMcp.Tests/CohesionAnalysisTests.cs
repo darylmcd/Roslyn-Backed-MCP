@@ -367,6 +367,140 @@ public class NotATriadAction
     }
 
     [TestMethod]
+    public async Task GetCohesionMetrics_FacadePattern_ClassifiesAsFacade_AndSoftensRecommendation()
+    {
+        // suggest-refactorings-facade-extraction-false-positive: A zero-field facade/adapter
+        // type implementing one or more interfaces with all-delegating public methods (either
+        // expression-bodied OR single-return) is a structural facade whose LCOM4 is undefined.
+        // The detector must classify it as LifecyclePattern="facade" with a softened
+        // Recommendation so the aggregator can suppress the false-positive "Split" suggestion.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var filePath = workspace.GetPath("SampleLib", "FacadeSubject.cs");
+        await File.WriteAllTextAsync(filePath, """
+namespace SampleLib;
+
+public interface IFacadeContract
+{
+    string ReadOne();
+    string ReadTwo();
+    int ReadThree();
+}
+
+public class FacadeSubject : IFacadeContract
+{
+    public string ReadOne() => "one";
+
+    public string ReadTwo() => "two";
+
+    public int ReadThree()
+    {
+        return 3;
+    }
+}
+""", CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            workspace.WorkspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+            includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+
+        var facade = metrics.FirstOrDefault(m => m.TypeName == "FacadeSubject");
+        Assert.IsNotNull(facade, "FacadeSubject should appear in cohesion metrics.");
+        Assert.AreEqual("facade", facade.LifecyclePattern,
+            "Zero-field type implementing an interface with all-delegating public methods should be classified as facade.");
+        Assert.IsNotNull(facade.Recommendation,
+            "Recommendation should be populated for a detected lifecycle pattern.");
+        StringAssert.Contains(facade.Recommendation, "Facade/adapter",
+            "Recommendation should mention Facade/adapter so callers can downgrade the split suggestion.");
+        Assert.AreEqual(0, facade.FieldCount,
+            "Facade subject should have FieldCount=0 by construction.");
+    }
+
+    [TestMethod]
+    public async Task GetCohesionMetrics_StaticUtilityWithZeroFields_DoesNotClassifyAsFacade()
+    {
+        // suggest-refactorings-facade-extraction-false-positive: A static utility class also
+        // has zero instance fields by definition. The facade detector must reject it via the
+        // `Interfaces.Length > 0` conjunction — static classes cannot implement interfaces, so
+        // the AND-gate keeps the detector conservative. (CohesionAnalysisService also skips
+        // static types in its instance-method enumeration, but this guard exists belt-and-braces
+        // in case the upstream filter ever changes.)
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var filePath = workspace.GetPath("SampleLib", "ZeroFieldHelper.cs");
+        await File.WriteAllTextAsync(filePath, """
+namespace SampleLib;
+
+public sealed class ZeroFieldHelper
+{
+    public string ReadOne() => "one";
+
+    public string ReadTwo() => "two";
+
+    public int ReadThree() => 3;
+}
+""", CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            workspace.WorkspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+            includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+
+        var helper = metrics.FirstOrDefault(m => m.TypeName == "ZeroFieldHelper");
+        Assert.IsNotNull(helper, "ZeroFieldHelper should appear in cohesion metrics.");
+        Assert.IsNull(helper.LifecyclePattern,
+            "Zero-field type that does NOT implement an interface must NOT be classified as facade.");
+        Assert.IsNull(helper.Recommendation,
+            "Recommendation must be null when no lifecycle pattern applies, leaving the default split suggestion intact.");
+    }
+
+    [TestMethod]
+    public async Task GetCohesionMetrics_FacadeWithMultiStatementMethod_DoesNotClassifyAsFacade()
+    {
+        // suggest-refactorings-facade-extraction-false-positive: The detector must require ALL
+        // public methods to be expression-bodied OR single-return. A type with a multi-statement
+        // body (even one local variable + return) cannot be classified as a facade because real
+        // work is happening in that body. This protects against over-classification.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var filePath = workspace.GetPath("SampleLib", "NotAFacade.cs");
+        await File.WriteAllTextAsync(filePath, """
+namespace SampleLib;
+
+public interface INotAFacadeContract
+{
+    string ReadOne();
+    string ReadTwo();
+}
+
+public class NotAFacade : INotAFacadeContract
+{
+    public string ReadOne() => "one";
+
+    public string ReadTwo()
+    {
+        var raw = "two";
+        return raw.ToUpperInvariant();
+    }
+}
+""", CancellationToken.None);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var metrics = await CohesionAnalysisService.GetCohesionMetricsAsync(
+            workspace.WorkspaceId, filePath, projectFilter: null, minMethods: 2, limit: 50,
+            includeInterfaces: false, excludeTestProjects: false, CancellationToken.None);
+
+        var notFacade = metrics.FirstOrDefault(m => m.TypeName == "NotAFacade");
+        Assert.IsNotNull(notFacade, "NotAFacade should appear in cohesion metrics.");
+        Assert.IsNull(notFacade.LifecyclePattern,
+            "Type with a multi-statement public method body must NOT be classified as facade.");
+    }
+
+    [TestMethod]
     public async Task FindSharedMembers_Supports_StaticClasses()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
