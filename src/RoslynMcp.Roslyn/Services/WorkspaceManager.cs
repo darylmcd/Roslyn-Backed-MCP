@@ -433,44 +433,30 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     {
         var session = GetRequiredSession(workspaceId);
 
-        // Acquire LoadLock to avoid reading partially-updated session state
-        // during a concurrent LoadIntoSessionAsync.
-        if (!session.LoadLock.Wait(TimeSpan.FromSeconds(5)))
-        {
-            _logger.LogWarning("GetStatus timed out waiting for LoadLock on {WorkspaceId}", workspaceId);
-            throw new TimeoutException(
-                $"Workspace '{workspaceId}' is currently loading. Try again shortly.");
-        }
-
-        try
-        {
-            return BuildStatus(session);
-        }
-        finally
-        {
-            session.LoadLock.Release();
-        }
+        // workspace-status-verbose-5s-timeout-race-on-ready-workspace: do NOT acquire LoadLock here.
+        // BuildStatus only reads thread-safe fields: ProjectStatuses is an ImmutableArray (atomic
+        // reference replacement), WorkspaceDiagnostics is a ConcurrentQueue (concurrent-read safe),
+        // and the remaining scalar reads (LoadedPath, Workspace, Version, LoadedAtUtc, RestoreRequired)
+        // are individual reference/value reads that the field types and Volatile.Read on Version
+        // already make safe. Any cross-field "snapshot consistency" the lock might have preserved
+        // is illusory — other callers of BuildStatus (LoadAsync's race-winner path, fresh-load return,
+        // ReloadAsync return, ListWorkspaces enumeration) already invoke it WITHOUT the lock, and the
+        // outer gate.RunReadAsync at the tool layer already serializes against concurrent writes via
+        // the per-workspace reader/writer lock. Pre-fix, this Wait(5s) raced an in-flight
+        // LoadIntoSessionAsync (which holds LoadLock for the entire MSBuild load — 30+ seconds on
+        // medium solutions) and timed out on a workspace that workspace_status had just reported
+        // isReady=true moments earlier.
+        return BuildStatus(session);
     }
 
-    public async Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default)
+    public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default)
     {
         var session = GetRequiredSession(workspaceId);
 
-        if (!await session.LoadLock.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken).ConfigureAwait(false))
-        {
-            _logger.LogWarning("GetStatus timed out waiting for LoadLock on {WorkspaceId}", workspaceId);
-            throw new TimeoutException(
-                $"Workspace '{workspaceId}' is currently loading. Try again shortly.");
-        }
-
-        try
-        {
-            return BuildStatus(session);
-        }
-        finally
-        {
-            session.LoadLock.Release();
-        }
+        // See GetStatus above: BuildStatus reads only thread-safe fields, so no LoadLock is required.
+        // The outer gate.RunReadAsync already serializes against concurrent writes.
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(BuildStatus(session));
     }
 
     public ProjectGraphDto GetProjectGraph(string workspaceId)

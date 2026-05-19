@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.Helpers;
@@ -259,6 +261,84 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
                 "ffffffffffffffffffffffffffffffff",
                 _ => Task.FromResult("x"),
                 CancellationToken.None));
+    }
+
+    // workspace-status-verbose-5s-timeout-race-on-ready-workspace: regression test for gh #761.
+    // Pre-fix, `workspace_status(verbose=true)` acquired the per-session `LoadLock` (SemaphoreSlim)
+    // with a 5-second hard timeout before calling `BuildStatus`. When a concurrent
+    // `LoadIntoSessionAsync` held the lock for the duration of an MSBuild workspace load (30+ s on
+    // medium solutions), the verbose-status call timed out and threw `TimeoutException` — even
+    // though the workspace had reported `isReady=true` to a `verbose=false` call moments earlier.
+    // The fix removes the lock acquire entirely: `BuildStatus` reads only thread-safe fields
+    // (ImmutableArray, ConcurrentQueue, scalar refs) and the outer `gate.RunReadAsync` already
+    // serializes against concurrent writes. This test simulates the contention by holding the
+    // session's LoadLock via reflection and asserting the verbose-status call completes in well
+    // under the pre-fix 5-second timeout window.
+    [TestMethod]
+    public async Task WorkspaceTools_GetWorkspaceStatus_Verbose_DoesNotBlockOnConcurrentLoadLock()
+    {
+        var session = GetWorkspaceSession(WorkspaceManager, WorkspaceId);
+        var loadLock = GetLoadLock(session);
+
+        // Hold the LoadLock to simulate an in-flight LoadIntoSessionAsync. Pre-fix, the verbose
+        // status path would wait 5 s on this semaphore and then throw TimeoutException.
+        await loadLock.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            var stopwatch = Stopwatch.StartNew();
+            var json = await WorkspaceTools.GetWorkspaceStatus(
+                WorkspaceExecutionGate,
+                WorkspaceManager,
+                WorkspaceId,
+                verbose: true,
+                CancellationToken.None);
+            stopwatch.Stop();
+
+            // Generous upper bound: BuildStatus itself is sub-millisecond, but the outer gate
+            // (rate-limit, throttle, per-workspace reader lock, staleness check) adds overhead.
+            // 1000 ms is two orders of magnitude below the pre-fix 5005 ms ceiling and still well
+            // clear of any realistic gate overhead on a healthy workspace.
+            Assert.IsTrue(
+                stopwatch.ElapsedMilliseconds < 1000,
+                $"workspace_status(verbose=true) should not block on a held LoadLock; took {stopwatch.ElapsedMilliseconds} ms.");
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.TryGetProperty("projects", out var projects),
+                "Verbose mode must include the per-project tree.");
+            Assert.IsTrue(projects.GetArrayLength() >= 1);
+        }
+        finally
+        {
+            loadLock.Release();
+        }
+    }
+
+    private static object GetWorkspaceSession(object workspaceManager, string workspaceId)
+    {
+        // WorkspaceSession is a private nested type; access via the `_sessions` field on
+        // WorkspaceManager. We deliberately use reflection to drive the precise race condition
+        // (LoadLock held while a status call runs) — production code never reaches into the
+        // session directly.
+        var sessionsField = workspaceManager.GetType().GetField(
+            "_sessions", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.IsNotNull(sessionsField, "WorkspaceManager._sessions field must exist.");
+        var sessions = sessionsField.GetValue(workspaceManager);
+        Assert.IsNotNull(sessions, "WorkspaceManager._sessions must be initialised.");
+        var indexer = sessions.GetType().GetProperty("Item", new[] { typeof(string) });
+        Assert.IsNotNull(indexer, "ConcurrentDictionary indexer must be discoverable via reflection.");
+        var session = indexer.GetValue(sessions, new object[] { workspaceId });
+        Assert.IsNotNull(session, $"Workspace session for '{workspaceId}' must be present.");
+        return session;
+    }
+
+    private static SemaphoreSlim GetLoadLock(object session)
+    {
+        var loadLockProperty = session.GetType().GetProperty(
+            "LoadLock", BindingFlags.Public | BindingFlags.Instance);
+        Assert.IsNotNull(loadLockProperty, "WorkspaceSession.LoadLock property must exist.");
+        var loadLock = loadLockProperty.GetValue(session) as SemaphoreSlim;
+        Assert.IsNotNull(loadLock, "WorkspaceSession.LoadLock must be a SemaphoreSlim instance.");
+        return loadLock;
     }
 
     private static string FindProgramPath()
