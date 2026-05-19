@@ -51,7 +51,24 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
         // source file) as the authoritative using list.
         var requiredNamespaces = CollectReferencedNamespaces(candidateMembers, typeSymbol.ContainingNamespace);
 
-        await ValidateNoConflictsAsync(solution, typeSymbol, interfaceName, ct).ConfigureAwait(false);
+        // Compute alreadyImplements BEFORE the conflict check so we can short-circuit
+        // when the target type already implements a covering interface of the same name.
+        // Bug fix (extract-interface-preview-duplicate-interface-when-already-implements):
+        // previously the document-add path and the base-list rewrite were gated
+        // independently — the document-add was unconditional, producing a duplicate
+        // IFoo.cs even when the type's base list already contained IFoo (from a
+        // sibling namespace). When alreadyImplements==true, return a no-op preview
+        // with a warning so callers see why no changes were produced.
+        var alreadyImplements = typeSymbol.AllInterfaces.Any(i =>
+            string.Equals(i.Name, interfaceName, StringComparison.Ordinal));
+
+        // Short-circuit ONLY when alreadyImplements==true. Otherwise still run the
+        // conflict check so a same-name-but-different-namespace collision is reported
+        // before we synthesize a new file.
+        if (!alreadyImplements)
+        {
+            await ValidateNoConflictsAsync(solution, typeSymbol, interfaceName, ct).ConfigureAwait(false);
+        }
 
         // BUG-003: Match the interface accessibility to the source type so an internal class
         // does not produce a public interface that escapes its assembly boundary.
@@ -61,11 +78,6 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             .WithMembers(SyntaxFactory.List(interfaceMembers));
 
         var interfaceFileRoot = BuildInterfaceFile(interfaceDecl, typeDecl, sourceRoot, requiredNamespaces);
-
-        // Add interface to type's base list only if the type does not already implement it.
-        // Skipping this guard produced CS0528 (duplicate interface in base list).
-        var alreadyImplements = typeSymbol.AllInterfaces.Any(i =>
-            string.Equals(i.Name, interfaceName, StringComparison.Ordinal));
 
         TypeDeclarationSyntax updatedTypeDecl;
         if (alreadyImplements)
@@ -130,26 +142,41 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
 
         var newSolution = solution.WithDocumentSyntaxRoot(sourceDocument.Id, updatedSourceRoot);
 
-        // Add interface document. Item #1 — pass folders so MSBuildWorkspace's
-        // TryApplyChanges resolves the disk path consistently with our explicit write.
-        var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
-        var interfaceFilePath = Path.Combine(sourceDir, $"{interfaceName}.cs");
-        var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
-        var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
-        var interfaceDoc = targetProject.AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), folders: folders, filePath: interfaceFilePath);
-        newSolution = interfaceDoc.Project.Solution;
-
-        if (replaceUsages)
+        var warnings = new List<string>();
+        if (!alreadyImplements)
         {
-            newSolution = await ReplaceConcreteUsagesAsync(
-                newSolution, sourceDocument.Project.Id, typeSymbol, interfaceName, ct).ConfigureAwait(false);
+            // Add interface document. Item #1 — pass folders so MSBuildWorkspace's
+            // TryApplyChanges resolves the disk path consistently with our explicit write.
+            var sourceDir = Path.GetDirectoryName(sourceDocument.FilePath!)!;
+            var interfaceFilePath = Path.Combine(sourceDir, $"{interfaceName}.cs");
+            var targetProject = newSolution.GetProject(sourceDocument.Project.Id)!;
+            var folders = ProjectMetadataParser.ComputeDocumentFolders(targetProject.FilePath, interfaceFilePath);
+            var interfaceDoc = targetProject.AddDocument($"{interfaceName}.cs", interfaceFileRoot.ToFullString(), folders: folders, filePath: interfaceFilePath);
+            newSolution = interfaceDoc.Project.Solution;
+
+            if (replaceUsages)
+            {
+                newSolution = await ReplaceConcreteUsagesAsync(
+                    newSolution, sourceDocument.Project.Id, typeSymbol, interfaceName, ct).ConfigureAwait(false);
+            }
+        }
+        else
+        {
+            // No-op preview: the type already implements an interface of this name.
+            // Surface a warning so callers see why no changes were produced. The base-list
+            // rewrite, document-add, and usage-replacement paths are all skipped — the
+            // computed newSolution is byte-identical to the input solution.
+            warnings.Add(
+                $"Type '{typeName}' already implements an interface named '{interfaceName}'. " +
+                $"No file changes were produced. " +
+                $"If you intended to extract a cross-project interface contract, use extract_interface_cross_project_preview instead.");
         }
 
         var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Extract interface '{interfaceName}' from '{typeName}' with {candidateMembers.Count} member(s)";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description, changes);
 
-        return new RefactoringPreviewDto(token, description, changes, null);
+        return new RefactoringPreviewDto(token, description, changes, warnings.Count > 0 ? warnings : null);
     }
 
     private static async Task<(Document SourceDocument, CompilationUnitSyntax SourceRoot, TypeDeclarationSyntax TypeDecl, INamedTypeSymbol TypeSymbol)>

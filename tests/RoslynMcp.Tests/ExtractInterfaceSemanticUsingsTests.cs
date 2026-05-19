@@ -405,6 +405,86 @@ public sealed class ExtractInterfaceSemanticUsingsTests : TestBase
         }
     }
 
+    [TestMethod]
+    public async Task ExtractInterface_Preview_NoOp_When_Type_Already_Implements_SameNamed_Interface()
+    {
+        // Regression for extract-interface-preview-duplicate-interface-when-already-implements (gh #748).
+        // Repro: a class already implements IFoo (defined in a sibling namespace). Calling
+        // PreviewExtractInterfaceAsync with interfaceName: "IFoo" should produce a no-op
+        // preview — zero file changes and zero base-list mutations — with a warning surfaced
+        // via RefactoringPreviewDto.Warnings explaining the no-op. Pre-fix: the base-list
+        // rewrite was correctly skipped, but the document-add path was unconditional, producing
+        // a duplicate IFoo.cs even though the type's base list already contained IFoo.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var contractsDir = Path.Combine(sampleLibDir, "Contracts");
+        Directory.CreateDirectory(contractsDir);
+
+        // The sibling-namespace interface the type already implements.
+        await File.WriteAllTextAsync(Path.Combine(contractsDir, "IItem748Service.cs"),
+            """
+            namespace SampleLib.Contracts;
+
+            public interface IItem748Service
+            {
+                int Compute();
+            }
+            """);
+
+        // The type that already implements IItem748Service from the sibling namespace.
+        var servicePath = Path.Combine(sampleLibDir, "Item748Service.cs");
+        await File.WriteAllTextAsync(servicePath,
+            """
+            using SampleLib.Contracts;
+
+            namespace SampleLib;
+
+            public class Item748Service : IItem748Service
+            {
+                public int Compute() => 42;
+            }
+            """);
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var workspaceId = loadResult.WorkspaceId;
+
+        try
+        {
+            var previewDto = await InterfaceExtractionService.PreviewExtractInterfaceAsync(
+                workspaceId,
+                servicePath,
+                typeName: "Item748Service",
+                interfaceName: "IItem748Service",
+                memberNames: null,
+                replaceUsages: false,
+                CancellationToken.None);
+
+            // (1) Preview MUST contain zero file changes — no new IItem748Service.cs document,
+            // no base-list mutation on Item748Service.cs.
+            Assert.AreEqual(
+                0,
+                previewDto.Changes.Count,
+                $"Preview must produce zero file changes when the type already implements the named interface. " +
+                $"Actual changes: {string.Join("; ", previewDto.Changes.Select(c => c.FilePath))}");
+
+            // (2) Warnings MUST surface the no-op so callers see why no changes were produced.
+            Assert.IsNotNull(
+                previewDto.Warnings,
+                "Warnings must be populated on the no-op path.");
+            Assert.IsTrue(
+                previewDto.Warnings!.Any(w => w.Contains("already implements", StringComparison.Ordinal)
+                    && w.Contains("IItem748Service", StringComparison.Ordinal)),
+                $"Warning must explain that the type already implements the named interface. " +
+                $"Actual warnings: {string.Join(" | ", previewDto.Warnings)}");
+        }
+        finally
+        {
+            WorkspaceManager.Close(workspaceId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
+
     private static void TryDeleteDirectory(string path)
     {
         try
