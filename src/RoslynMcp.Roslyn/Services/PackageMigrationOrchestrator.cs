@@ -82,6 +82,24 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
             return;
         }
 
+        // migrate-package-preview-misses-analyzer-only-references: capture asset-isolation
+        // metadata from the FIRST matching PackageReference (e.g. PrivateAssets, IncludeAssets,
+        // ExcludeAssets, VersionOverride — both child-element and attribute-form) so the
+        // replacement carries the same constraints. Pre-fix, an analyzer-only reference carrying
+        // `<PrivateAssets>all</PrivateAssets>` + `<IncludeAssets>analyzers; build</IncludeAssets>`
+        // was rewritten as a bare runtime dependency, silently dropping asset isolation.
+        var firstReference = packageReferences[0];
+        var preservedAttributes = firstReference.Attributes()
+            .Where(attr => !string.Equals(attr.Name.LocalName, "Include", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(attr.Name.LocalName, "Version", StringComparison.OrdinalIgnoreCase))
+            .Select(attr => new XAttribute(attr))
+            .ToArray();
+        var preservedChildElements = firstReference.Elements()
+            .Select(child => new XElement(child))
+            .ToArray();
+        var hasVersionOverrideChild = preservedChildElements.Any(child =>
+            string.Equals(child.Name.LocalName, "VersionOverride", StringComparison.OrdinalIgnoreCase));
+
         foreach (var packageReference in packageReferences)
         {
             OrchestrationMsBuildXml.RemoveElementCleanly(packageReference);
@@ -95,9 +113,21 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
         else
         {
             var replacement = new XElement("PackageReference", new XAttribute("Include", newPackageId));
-            if (!usesCentralPackageManagement)
+            // Non-CPM path adds Version directly; CPM path leaves the version to Directory.Packages.props.
+            // VersionOverride (CPM-only) is preserved as a child element below; do not add bare Version
+            // when the original carried VersionOverride so callers do not get conflicting versions.
+            if (!usesCentralPackageManagement && !hasVersionOverrideChild)
             {
                 replacement.Add(new XAttribute("Version", newVersion));
+            }
+
+            foreach (var attribute in preservedAttributes)
+            {
+                replacement.Add(attribute);
+            }
+            foreach (var child in preservedChildElements)
+            {
+                replacement.Add(child);
             }
 
             var itemGroup = OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "PackageReference");

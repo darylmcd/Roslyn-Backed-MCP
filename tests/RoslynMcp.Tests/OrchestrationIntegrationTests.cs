@@ -51,6 +51,59 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task Migrate_Package_Preview_Preserves_Analyzer_Only_Metadata_On_Replacement()
+    {
+        // migrate-package-preview-misses-analyzer-only-references regression (gh #753):
+        // Pre-fix, the replacement PackageReference was always built as a bare
+        // `<PackageReference Include="..." Version="..." />` and the original reference's
+        // asset-isolation children (`<PrivateAssets>`, `<IncludeAssets>`, `<ExcludeAssets>`,
+        // `<VersionOverride>`) plus attribute-form metadata (e.g. `ExcludeAssets="runtime"`)
+        // were silently dropped. An analyzer-only reference was rewritten as a full runtime
+        // dependency. Post-fix, child elements and non-Include/Version attributes from the
+        // first matched reference are copied onto the replacement.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        var sampleLibProject = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        InjectAnalyzerOnlyPackageReference(sampleLibProject, "Legacy.Analyzer");
+        InjectCentralPackageVersion(workspace.GetPath("Directory.Packages.props"), "Legacy.Analyzer", "1.0.0");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await PackageMigrationOrchestrator.PreviewMigratePackageAsync(
+            workspace.WorkspaceId,
+            "Legacy.Analyzer",
+            "Modern.Analyzer",
+            "2.5.0",
+            CancellationToken.None);
+
+        var applyResult = await CompositeApplyOrchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var libXml = XDocument.Load(sampleLibProject);
+        var modernReference = libXml.Descendants("PackageReference").SingleOrDefault(element =>
+            string.Equals((string?)element.Attribute("Include"), "Modern.Analyzer", StringComparison.OrdinalIgnoreCase))
+            ?? throw new AssertFailedException(
+                $"Modern.Analyzer PackageReference not found in migrated csproj. File:\n{await File.ReadAllTextAsync(sampleLibProject, CancellationToken.None)}");
+
+        // Child-element metadata from the original must be preserved on the replacement.
+        var privateAssetsChild = modernReference.Element("PrivateAssets");
+        Assert.IsNotNull(privateAssetsChild,
+            $"migrate-package-preview-misses-analyzer-only-references regression: <PrivateAssets> child must be preserved on replacement. Element:\n{modernReference}");
+        Assert.AreEqual("all", privateAssetsChild.Value,
+            "migrate-package-preview-misses-analyzer-only-references regression: <PrivateAssets> value must be copied verbatim.");
+
+        var includeAssetsChild = modernReference.Element("IncludeAssets");
+        Assert.IsNotNull(includeAssetsChild,
+            $"migrate-package-preview-misses-analyzer-only-references regression: <IncludeAssets> child must be preserved on replacement. Element:\n{modernReference}");
+        Assert.AreEqual("runtime; build; native; contentfiles; analyzers; buildtransitive", includeAssetsChild.Value,
+            "migrate-package-preview-misses-analyzer-only-references regression: <IncludeAssets> value must be copied verbatim.");
+
+        // CPM scenario: replacement must NOT carry a bare Version attribute — the version lives
+        // in Directory.Packages.props. Pre-fix, when the original reference had VersionOverride
+        // semantics they could conflict with the central version.
+        Assert.IsNull(modernReference.Attribute("Version"),
+            $"CPM-managed analyzer reference must not get a bare Version attribute on replacement. Element:\n{modernReference}");
+    }
+
+    [TestMethod]
     public async Task FORMAT_BUG_003_Migrate_Package_Preview_Emits_MultiLine_ItemGroup_With_Matching_Indent()
     {
         // FORMAT-BUG-003 regression (dr-9-4-format-bug-003-produces-inline-itemgroup-xml):
@@ -421,6 +474,29 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
         }
 
         itemGroup.Add(new XElement("PackageReference", new XAttribute("Include", packageId)));
+        projectXml.Save(projectFilePath, SaveOptions.DisableFormatting);
+    }
+
+    private static void InjectAnalyzerOnlyPackageReference(string projectFilePath, string packageId)
+    {
+        // migrate-package-preview-misses-analyzer-only-references: an analyzer-only PackageReference
+        // carries asset-isolation children — `<PrivateAssets>all</PrivateAssets>` so the assets do
+        // not flow transitively to consumers, and `<IncludeAssets>` enumerating the asset kinds
+        // (including `analyzers`) that the reference participates in. The replacement built by
+        // `migrate_package_preview` must preserve both child elements verbatim.
+        var projectXml = XDocument.Load(projectFilePath, LoadOptions.PreserveWhitespace);
+        var itemGroup = projectXml.Root?.Elements("ItemGroup").FirstOrDefault(element => element.Elements("PackageReference").Any())
+            ?? new XElement("ItemGroup");
+        if (itemGroup.Parent is null)
+        {
+            projectXml.Root?.Add(itemGroup);
+        }
+
+        itemGroup.Add(new XElement(
+            "PackageReference",
+            new XAttribute("Include", packageId),
+            new XElement("PrivateAssets", "all"),
+            new XElement("IncludeAssets", "runtime; build; native; contentfiles; analyzers; buildtransitive")));
         projectXml.Save(projectFilePath, SaveOptions.DisableFormatting);
     }
 
