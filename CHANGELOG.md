@@ -16,6 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [2.1.0] - 2026-05-19
+
+### Fixed
+
+- **Fixed:** `analyze_control_flow` no longer emits a spurious "partial-slice" warning when the supplied line range covers an entire method body and the analysis succeeds with zero explicit control-flow exits (void method or complete block with no returns). The warning is now suppressed when `Succeeded = true` and entry/exit/return counts are all zero. Fixes gh #743.
+- **Fixed:** `callers_callees` no longer returns `null` `previewText` on every callee entry while populating it correctly for callers. Callees now use the same per-location source-extract path as callers, with the callee document resolved via `solution.GetDocument(invokedLoc.SourceTree)` and falling back to the caller's document for the invocation-site fallback path. Fixes gh #742.
+- **Fixed:** `format_document_preview` now returns `changes: []` for a no-op format pass (already-formatted document). Previously `DiffGenerator` emitted a header-only unified diff string (`--- a/...` / `+++ b/...` with no `@@` hunks) when the formatted document text was identical to the original, causing callers that check `changes.length > 0` to misidentify the result as pending changes. Fixes gh #739.
+- **Fixed:** `validate_workspace(changedFilePaths=null)` returning stale file paths in `changedFilePaths` after an out-of-band revert (e.g. `git checkout -- <file>`). The ChangeTracker auto-scope list is now reconciled against `git status` before being used as the validation scope; reverted files are excluded. Fixes gh #738.
+- **Fixed:** `workspace_changes` splitting an atomic `apply_multi_file_edit` two-file batch into separate ledger entries: the multi-file apply path now records one consolidated change-tracker entry covering all affected files (matching the `apply_composite_preview` behavior), so `revert_apply_by_sequence` and callers reading `workspace_changes` see the batch as a single atomic unit. Fixes gh #740.
+
+### Changed — BREAKING
+
+- **Changed — BREAKING:** `find_type_mutations`: `MutatingMemberDto.MutationScope` (string, single highest-severity scope) is replaced by `MutationScopes` (`IReadOnlyList<string>`, all detected scopes). Methods performing compound mutations — e.g. both `IO` and `CollectionWrite` — now report every applicable scope rather than only the highest severity. Callers must update from `member.MutationScope == "IO"` to `member.MutationScopes.Contains("IO")`. Fixes gh #741.
+
 ## [2.0.0] - 2026-05-19
 
 ### Fixed
