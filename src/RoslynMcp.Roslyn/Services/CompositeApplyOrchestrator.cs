@@ -36,6 +36,20 @@ public sealed class CompositeApplyOrchestrator : ICompositeApplyOrchestrator
         // workspace was reloaded or closed, the composite store's lifecycle hook has
         // already dropped the entry and Retrieve above returned null.
 
+        // symbol-refactor-preview-empty-appliedfiles-on-success (gh #750, BREAKING):
+        // Pre-fix, an empty `mutations` list silently returned `{success: true, appliedFiles: []}`
+        // because the foreach below never executed. That looked like "apply succeeded" while
+        // doing nothing. Now we surface the no-op explicitly so callers can distinguish a
+        // genuine no-op preview from a successful apply. `ReloadAsync` and `Invalidate` are
+        // skipped so the token remains valid for caller inspection.
+        if (mutations.Count == 0)
+        {
+            return new ApplyResultDto(
+                false,
+                [],
+                "Preview token yielded no file mutations — the composite preview produced no file-level changes. Re-issue the preview with a different operation set.");
+        }
+
         var appliedFiles = new List<string>();
 
         try
