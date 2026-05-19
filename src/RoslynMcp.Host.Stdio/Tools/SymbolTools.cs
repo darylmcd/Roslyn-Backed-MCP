@@ -9,6 +9,7 @@ using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Middleware;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Host.Stdio.Tools;
 
@@ -372,11 +373,12 @@ public static class SymbolTools
             ct);
     }
 
-    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find true virtual/abstract overrides for a member — only symbols actually marked `override` of a virtual or abstract declaration. Sibling interface implementations (e.g. independent IDisposable.Dispose impls across a solution) are NOT included here; query member_hierarchy and read the siblingInterfaceImplementations bucket for that. Response shape: { count, items }; each item is a SymbolDto (Name, FullyQualifiedName, FilePath, StartLine, etc.). Auto-promotes to the virtual/interface root: override chains, explicit interface implementations, and implicit interface implementations are normalized before the search so callers can anchor at the implementation or declaration site and get the same result set. Metadata-boundary members (e.g. IEquatable<T>.Equals) surface with FilePath=null so the count matches member_hierarchy.overrides.")]
+    [McpServerTool(Name = "find_overrides", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find true virtual/abstract overrides for a member — only symbols actually marked `override` of a virtual or abstract declaration. Sibling interface implementations (e.g. independent IDisposable.Dispose impls across a solution) are NOT included here; query member_hierarchy and read the siblingInterfaceImplementations bucket for that. Response shape: { count, items } in the normal path, or { count: 0, items: [], hint } when the post-promotion symbol is a corlib virtual (System.Object.ToString / Equals / GetHashCode, System.IDisposable.Dispose, etc.) — the unbounded solution-wide enumeration is suppressed and the hint explains why. Each item is a SymbolDto (Name, FullyQualifiedName, FilePath, StartLine, etc.). Auto-promotes to the virtual/interface root: override chains, explicit interface implementations, and implicit interface implementations are normalized before the search so callers can anchor at the implementation or declaration site and get the same result set. Metadata-boundary members (e.g. IEquatable<T>.Equals) surface with FilePath=null so the count matches member_hierarchy.overrides.")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Find overrides of a virtual or abstract member.")]
     public static Task<string> FindOverrides(
         IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspaceManager,
         IReferenceService referenceService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
@@ -389,6 +391,30 @@ public static class SymbolTools
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+
+            // find-overrides-payload-overflow-on-corlib-virtual (gh #754): resolve and promote
+            // the symbol up-front so that callers anchored on a corlib virtual (or on an
+            // override site whose root is a corlib virtual) get an explanatory hint instead of
+            // a silently-empty response. The service-side guard in ReferenceService.FindOverridesAsync
+            // also returns empty for the corlib case (defense-in-depth for member_hierarchy.overrides),
+            // but the service surface returns IReadOnlyList<SymbolDto> with no hint channel, so the
+            // wrapper layer is where the explanatory text lives.
+            var solution = workspaceManager.GetCurrentSolution(workspaceId);
+            var resolved = await SymbolResolver.ResolveAsync(solution, locator, c).ConfigureAwait(false);
+            if (resolved is not null && ReferenceService.IsCorlibVirtualMember(ReferenceService.PromoteToVirtualRoot(resolved)))
+            {
+                var hint =
+                    "Resolved to a corlib virtual member (e.g. System.Object.ToString / Equals / " +
+                    "GetHashCode, System.IDisposable.Dispose) — overrides list suppressed to avoid " +
+                    "an unbounded solution-wide enumeration. To enumerate concrete overrides, use " +
+                    "symbol_search to locate the specific subclass first and then call find_overrides " +
+                    "on a non-corlib virtual in your own hierarchy, or call semantic_grep for the " +
+                    "method signature you need.";
+                return JsonSerializer.Serialize(
+                    new { count = 0, items = Array.Empty<SymbolDto>(), hint },
+                    JsonDefaults.Indented);
+            }
+
             var results = await referenceService.FindOverridesAsync(workspaceId, locator, c);
             return JsonSerializer.Serialize(new { count = results.Count, items = results }, JsonDefaults.Indented);
         }, ct);

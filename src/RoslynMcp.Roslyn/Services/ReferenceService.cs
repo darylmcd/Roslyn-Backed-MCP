@@ -155,6 +155,20 @@ public sealed class ReferenceService : IReferenceService
         // yield the same (complete) result set.
         var promoted = PromoteToVirtualRoot(symbol);
 
+        // find-overrides-payload-overflow-on-corlib-virtual (gh #754): once promotion lands on
+        // a corlib virtual (System.Object.ToString / Equals / GetHashCode, IDisposable.Dispose,
+        // etc.), SymbolFinder.FindOverridesAsync enumerates every concrete override across the
+        // solution — potentially hundreds of unrelated types, producing an unbounded payload.
+        // Mirror the suppression pattern in SymbolRelationshipService.GetSymbolRelationshipsAsync
+        // (gh #757): return an empty list immediately when the promoted symbol's containing type
+        // is a builtin SpecialType. This is defense-in-depth — the find_overrides wrapper also
+        // emits an explanatory hint at the tool layer. member_hierarchy.overrides (which routes
+        // through this method) silently benefits from the same guard.
+        if (IsCorlibVirtualMember(promoted))
+        {
+            return [];
+        }
+
         // member-hierarchy-overrides-mislabels-sibling-interface-impls (gh #736, gh #737):
         // FindOverridesAsync now returns ONLY true virtual/abstract overrides — symbols
         // actually marked `override` of a virtual/abstract declaration. Sibling interface
@@ -263,7 +277,13 @@ public sealed class ReferenceService : IReferenceService
     /// that <see cref="SymbolFinder.FindOverridesAsync"/> sees the full override chain. Returns
     /// the input symbol unchanged if it is not itself an override.
     /// </summary>
-    private static ISymbol PromoteToVirtualRoot(ISymbol symbol)
+    /// <remarks>
+    /// Exposed for the <c>find_overrides</c> tool wrapper so it can detect corlib-virtual
+    /// suppression (gh #754) and emit an explanatory hint without re-deriving the promotion
+    /// logic. Service-internal callers in this class also use it before invoking
+    /// <see cref="SymbolFinder.FindOverridesAsync"/>.
+    /// </remarks>
+    public static ISymbol PromoteToVirtualRoot(ISymbol symbol)
     {
         switch (symbol)
         {
@@ -318,6 +338,29 @@ public sealed class ReferenceService : IReferenceService
             default:
                 return symbol;
         }
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="symbol"/> is a member (method/property/event) whose
+    /// containing type is a builtin corlib <see cref="SpecialType"/> — i.e.
+    /// <c>System.Object.ToString</c> / <c>Equals</c> / <c>GetHashCode</c>, <c>System.IDisposable.Dispose</c>,
+    /// etc. Used to short-circuit <see cref="SymbolFinder.FindOverridesAsync"/> on the corlib path
+    /// (gh #754), where the unbounded enumeration would otherwise return every concrete override
+    /// across the solution and overflow the MCP response cap.
+    /// </summary>
+    /// <remarks>
+    /// Pass the post-<see cref="PromoteToVirtualRoot"/> symbol — promotion is what walks an
+    /// override site (e.g. <c>MyClass.ToString</c>) up to the corlib virtual root the guard
+    /// is meant to suppress.
+    /// </remarks>
+    public static bool IsCorlibVirtualMember(ISymbol symbol)
+    {
+        if (symbol is not (IMethodSymbol or IPropertySymbol or IEventSymbol))
+        {
+            return false;
+        }
+
+        return symbol.ContainingType is { SpecialType: not SpecialType.None };
     }
 
     private static IMethodSymbol? TryFindImplicitlyImplementedInterfaceMember(IMethodSymbol method)

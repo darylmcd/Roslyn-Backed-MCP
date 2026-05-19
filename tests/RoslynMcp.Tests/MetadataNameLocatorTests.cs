@@ -63,6 +63,7 @@ public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
     {
         var json = await SymbolTools.FindOverrides(
             WorkspaceExecutionGate,
+            WorkspaceManager,
             ReferenceService,
             WorkspaceId,
             metadataName: "SampleLib.IAnimal.Speak",
