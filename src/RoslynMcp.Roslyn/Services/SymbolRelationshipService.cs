@@ -226,6 +226,19 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         _logger.LogDebug("SymbolRelationshipService.GetSignatureHelpAsync: workspaceId={WorkspaceId} locator={Locator} preferDeclaringMember={PreferDeclaringMember}", workspaceId, locator, preferDeclaringMember);
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
+
+        // `symbol-signature-help-returns-bare-null-for-resolvable-method-metadata` (gh #747):
+        // mirrors the gh #616 fallback for `callers_callees`. When the caller supplies a fully
+        // qualified method signature like `Ns.Type.Method(Ns.ParamType, System.Threading.CancellationToken)`,
+        // `SymbolResolver.ResolveByMetadataNameAsync` returns null because it splits on the LAST dot —
+        // which lands inside the parenthesized parameter list (`System.Threading.CancellationToken`),
+        // producing a bogus containing-type name. The qualified-signature fallback strips the parameter
+        // list, retries the resolve, and picks the matching overload.
+        if (symbol is null && locator.HasMetadataName)
+        {
+            symbol = await TryResolveByQualifiedSignatureAsync(solution, locator.MetadataName!, ct).ConfigureAwait(false);
+        }
+
         if (symbol is null)
         {
             return null;

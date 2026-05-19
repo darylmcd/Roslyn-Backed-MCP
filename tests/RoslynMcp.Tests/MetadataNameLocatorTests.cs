@@ -159,6 +159,52 @@ public sealed class MetadataNameLocatorTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task SignatureHelp_Accepts_Fully_Qualified_Method_Signature_With_Parameter_Types()
+    {
+        // gh #747 / `symbol-signature-help-returns-bare-null-for-resolvable-method-metadata`:
+        // identical failure mode to gh #616 but on a sibling tool. `symbol_signature_help`
+        // returned bare `null` when the supplied `metadataName` contained a parenthesized
+        // parameter list because `ResolveByMetadataNameAsync` splits on the LAST dot —
+        // which lands inside the parameter list — producing a bogus containing-type name.
+        // The qualified-signature fallback mirrors the fix applied to `callers_callees`.
+        var json = await SymbolTools.GetSignatureHelp(
+            WorkspaceExecutionGate,
+            SymbolRelationshipService,
+            WorkspaceId,
+            metadataName: "SampleLib.AnimalService.CountAnimals(System.Collections.Generic.List<SampleLib.IAnimal>)",
+            ct: CancellationToken.None);
+
+        // Critical regression guard: before the fix, `symbol_signature_help` returned bare
+        // `null` (serialized as the literal JSON token `null`) rather than a structured
+        // SignatureHelpDto. Assert the payload is a JSON object first.
+        Assert.AreNotEqual("null", json.Trim(), "symbol_signature_help returned bare null for a resolvable metadataName (regression of gh #747).");
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(JsonValueKind.Object, doc.RootElement.ValueKind,
+            $"symbol_signature_help with a fully-qualified signature should return a SignatureHelpDto object. Got: {json}");
+        Assert.IsFalse(
+            doc.RootElement.TryGetProperty("error", out _),
+            $"symbol_signature_help should accept a fully-qualified signature. Got: {json}");
+
+        // Validate the resolved overload's shape — proves signature matching picked the
+        // `List<IAnimal>` overload, not the `IEnumerable<IAnimal>` sibling.
+        Assert.IsTrue(doc.RootElement.TryGetProperty("displaySignature", out var displaySignature),
+            "Expected `displaySignature` field in SignatureHelpDto response.");
+        var displayText = displaySignature.GetString() ?? string.Empty;
+        Assert.IsTrue(displayText.Contains("CountAnimals", StringComparison.Ordinal),
+            $"Expected displaySignature to reference CountAnimals. Got: '{displayText}'.");
+        Assert.IsTrue(doc.RootElement.TryGetProperty("returnType", out _),
+            "Expected `returnType` field in SignatureHelpDto response.");
+        Assert.IsTrue(doc.RootElement.TryGetProperty("parameters", out var parameters),
+            "Expected `parameters` field in SignatureHelpDto response.");
+        Assert.AreEqual(1, parameters.GetArrayLength(),
+            "Expected exactly one parameter on the resolved overload.");
+        var firstParam = parameters[0].GetString() ?? string.Empty;
+        Assert.IsTrue(firstParam.Contains("List", StringComparison.Ordinal),
+            $"Expected resolved overload's parameter to be a List<IAnimal>. Got: '{firstParam}'.");
+    }
+
+    [TestMethod]
     public async Task FindReferences_Error_When_No_Locator_Provided()
     {
         // Preserve the legacy "no locator at all" error path. The factory's message now
