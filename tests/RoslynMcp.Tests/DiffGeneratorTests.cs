@@ -8,10 +8,40 @@ public class DiffGeneratorTests
     [TestMethod]
     public void Identical_Texts_Returns_Header_Only()
     {
+        // format-document-preview-empty-diff-instead-of-noop (gh #739): identical inputs now
+        // produce string.Empty rather than a header-only string. This aligns the impl with the
+        // <returns> docstring ("or an empty string if there are no differences") and prevents
+        // callers (e.g. SolutionDiffHelper.TryAdd) from misreading no-op formatter passes as
+        // pending changes. Pre-fix this test asserted the broken header-only behavior.
         var result = DiffGenerator.GenerateUnifiedDiff("hello\n", "hello\n", "test.cs");
-        StringAssert.Contains(result, "--- a/test.cs");
-        StringAssert.Contains(result, "+++ b/test.cs");
-        Assert.IsFalse(result.Contains("@@") && result.Contains("-hello"), "No diff hunks expected for identical text");
+        Assert.AreEqual(string.Empty, result);
+    }
+
+    [TestMethod]
+    public void GenerateUnifiedDiff_IdenticalContent_ReturnsEmptyString()
+    {
+        // format-document-preview-empty-diff-instead-of-noop (gh #739): explicit assertion
+        // that the empty-string contract is honored across line endings and multi-line inputs.
+        var result = DiffGenerator.GenerateUnifiedDiff("line one\nline two\nline three\n", "line one\nline two\nline three\n", "file.cs");
+        Assert.AreEqual(string.Empty, result);
+    }
+
+    [TestMethod]
+    public void GenerateUnifiedDiff_NoOpFormat_ProducesNoChangesEntry()
+    {
+        // format-document-preview-empty-diff-instead-of-noop (gh #739) repro: a Roslyn-formatted
+        // pass where the formatted text is identical to the input still produces distinct
+        // SourceText instances; SolutionDiffHelper.ComputeChangesAsync extracts strings and
+        // calls DiffGenerator. Even if the upstream `oldText == newText` guard misses (e.g.
+        // due to SourceText-level identity differences that materialize as identical strings
+        // here), DiffGenerator now returns string.Empty so the resulting FileChangeDto never
+        // makes it past SolutionDiffHelper.TryAdd's IsNullOrEmpty guard. Callers see
+        // `changes: []` for no-op format passes.
+        const string text = "namespace N { class C { void M() { } } }\n";
+        var result = DiffGenerator.GenerateUnifiedDiff(text, text, "C.cs");
+        Assert.AreEqual(string.Empty, result);
+        Assert.IsFalse(result.Contains("--- a/"), "Header lines must not appear when there are no differences.");
+        Assert.IsFalse(result.Contains("+++ b/"), "Header lines must not appear when there are no differences.");
     }
 
     [TestMethod]
