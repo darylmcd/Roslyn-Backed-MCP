@@ -92,7 +92,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
         var (methodFieldMap, methodCallMap) = BuildMethodAccessMaps(instanceMethods, typeSymbol, typeDecl, semanticModel, ct);
         var clusters = ComputeClusters(methodFieldMap, methodCallMap);
 
-        var lifecyclePattern = DetectLifecyclePattern(typeSymbol);
+        var lifecyclePattern = DetectLifecyclePattern(typeSymbol, instanceFields.Count, ct);
         var recommendation = BuildRecommendation(lifecyclePattern);
 
         return new CohesionMetricsDto(
@@ -190,10 +190,41 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     ///   <item><description>Has at least one public method whose name is <c>Validate</c> or starts with <c>Validate</c>.</description></item>
     ///   <item><description>Has at least one public method whose name is <c>Execute</c> or starts with <c>Execute</c>.</description></item>
     /// </list>
+    ///
+    /// Returns <c>"facade"</c> when ALL of the following hold (conservative, strict AND — must
+    /// avoid false-positives on static utility classes that happen to have zero instance fields):
+    /// <list type="bullet">
+    ///   <item><description>The type has zero instance fields/properties (<paramref name="instanceFieldCount"/> == 0).</description></item>
+    ///   <item><description>The type implements at least one interface (<c>Interfaces.Length &gt; 0</c>).</description></item>
+    ///   <item><description>Every public ordinary method is expression-bodied OR has a body containing exactly one <c>ReturnStatementSyntax</c> (delegation shape).</description></item>
+    /// </list>
     /// Returns <c>null</c> otherwise. The conservative predicate avoids false-negatives where
     /// real low-cohesion types happen to loosely match a lifecycle-style naming.
     /// </summary>
-    private static string? DetectLifecyclePattern(INamedTypeSymbol typeSymbol)
+    private static string? DetectLifecyclePattern(INamedTypeSymbol typeSymbol, int instanceFieldCount, CancellationToken ct)
+    {
+        var publicMethods = typeSymbol.GetMembers()
+            .OfType<IMethodSymbol>()
+            .Where(m => m.MethodKind == MethodKind.Ordinary
+                        && m.DeclaredAccessibility == Accessibility.Public
+                        && !m.IsImplicitlyDeclared)
+            .ToList();
+
+        var actionTriad = DetectActionTriadPattern(typeSymbol, publicMethods);
+        if (actionTriad is not null) return actionTriad;
+
+        var facade = DetectFacadePattern(typeSymbol, publicMethods, instanceFieldCount, ct);
+        if (facade is not null) return facade;
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns <c>"action-triad"</c> when the type matches the strict Describe/Validate*/Execute*
+    /// triad on a name-suffix-gated type. See <see cref="DetectLifecyclePattern"/> for the precise
+    /// AND-conjunction.
+    /// </summary>
+    private static string? DetectActionTriadPattern(INamedTypeSymbol typeSymbol, List<IMethodSymbol> publicMethods)
     {
         var name = typeSymbol.Name;
         var suffixMatch =
@@ -202,13 +233,6 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             name.EndsWith("Command", StringComparison.Ordinal) ||
             name.EndsWith("Stage", StringComparison.Ordinal);
         if (!suffixMatch) return null;
-
-        var publicMethods = typeSymbol.GetMembers()
-            .OfType<IMethodSymbol>()
-            .Where(m => m.MethodKind == MethodKind.Ordinary
-                        && m.DeclaredAccessibility == Accessibility.Public
-                        && !m.IsImplicitlyDeclared)
-            .ToList();
 
         var hasDescribe = publicMethods.Any(m => string.Equals(m.Name, "Describe", StringComparison.Ordinal));
         if (!hasDescribe) return null;
@@ -223,6 +247,56 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     }
 
     /// <summary>
+    /// Returns <c>"facade"</c> when the type is a zero-field facade/adapter implementing one or
+    /// more interfaces with all-delegating public methods (expression-bodied OR single-return).
+    /// The conjunction with <c>Interfaces.Length &gt; 0</c> excludes static utility classes that
+    /// also happen to have zero instance fields. The single-return shape is detected via
+    /// <see cref="IMethodSymbol.DeclaringSyntaxReferences"/> + downcast to
+    /// <see cref="MethodDeclarationSyntax"/>; methods with no syntax (no source) disqualify the
+    /// type.
+    /// </summary>
+    private static string? DetectFacadePattern(
+        INamedTypeSymbol typeSymbol,
+        List<IMethodSymbol> publicMethods,
+        int instanceFieldCount,
+        CancellationToken ct)
+    {
+        if (instanceFieldCount != 0) return null;
+        if (typeSymbol.Interfaces.Length == 0) return null;
+        if (publicMethods.Count == 0) return null;
+
+        foreach (var method in publicMethods)
+        {
+            if (!IsExpressionBodiedOrSingleReturn(method, ct)) return null;
+        }
+
+        return "facade";
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when EVERY in-source declaration of the method has either an
+    /// <see cref="MethodDeclarationSyntax.ExpressionBody"/> OR a <see cref="MethodDeclarationSyntax.Body"/>
+    /// whose statements collapse to a single <see cref="ReturnStatementSyntax"/>. Returns <c>false</c>
+    /// when the method has no syntax (e.g., metadata-only) or any declaration has a multi-statement body.
+    /// Mirrors the body-vs-expression-body pattern at <c>CodeMetricsService.cs:160-177</c>.
+    /// </summary>
+    private static bool IsExpressionBodiedOrSingleReturn(IMethodSymbol method, CancellationToken ct)
+    {
+        if (method.DeclaringSyntaxReferences.Length == 0) return false;
+
+        foreach (var syntaxRef in method.DeclaringSyntaxReferences)
+        {
+            if (syntaxRef.GetSyntax(ct) is not MethodDeclarationSyntax decl) return false;
+            if (decl.ExpressionBody is not null) continue;
+            if (decl.Body is null) return false;
+            var statements = decl.Body.Statements;
+            if (statements.Count != 1) return false;
+            if (statements[0] is not ReturnStatementSyntax) return false;
+        }
+        return true;
+    }
+
+    /// <summary>
     /// Builds the softened LCOM4 recommendation text for a detected lifecycle pattern. Returns
     /// <c>null</c> when no pattern applies, leaving consumers free to emit their default
     /// "split into cohesive types" guidance.
@@ -230,6 +304,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     private static string? BuildRecommendation(string? lifecyclePattern) => lifecyclePattern switch
     {
         "action-triad" => "Lifecycle pattern: action-triad — LCOM4 is expected to be high by design because Describe/Validate*/Execute* are orthogonal on fields. Do not split.",
+        "facade" => "Lifecycle pattern: facade — Facade/adapter type with zero instance fields delegating to an injected interface. LCOM4 is structurally undefined here. Do not split.",
         _ => null,
     };
 

@@ -93,8 +93,11 @@ public sealed class RefactoringSuggestionService : IRefactoringSuggestionService
                 RecommendedTools: ["extract_type_preview", "extract_type_apply", "compile_check"]));
         }
 
-        // Low cohesion (LCOM4 >= 2) → extract type or split class
-        foreach (var c in cohesionResults.Where(c => c.Lcom4Score >= 2 && c.FilePath is not null))
+        // Low cohesion (LCOM4 >= 2) → extract type or split class.
+        // Suppress for any type carrying a LifecyclePattern: those patterns are expected to have
+        // high LCOM4 by design (e.g., "action-triad", "facade"), so the split suggestion would be
+        // a false-positive. Tracks suggest-refactorings-facade-extraction-false-positive.
+        foreach (var c in cohesionResults.Where(c => c.Lcom4Score >= 2 && c.FilePath is not null && c.LifecyclePattern is null))
         {
             suggestions.Add(new RefactoringSuggestionDto(
                 Severity: c.Lcom4Score >= 3 ? "high" : "medium",

@@ -20,8 +20,12 @@ public sealed record CohesionMetricsDto(
     /// Well-known lifecycle pattern detected on the type, or <c>null</c> if none.
     /// Types matching a known lifecycle pattern are expected to have high LCOM4 by design
     /// (their public methods are orthogonal on fields), so the split recommendation is downgraded.
-    /// Current values: <c>"action-triad"</c> (type name ending in Action/Handler/Command/Stage
-    /// with a Describe + Validate* + Execute* method triad). Reserved for future patterns.
+    /// Current values:
+    /// <list type="bullet">
+    ///   <item><description><c>"action-triad"</c> — type name ending in Action/Handler/Command/Stage with a Describe + Validate* + Execute* method triad.</description></item>
+    ///   <item><description><c>"facade"</c> — zero-field facade/adapter implementing one or more interfaces, where every public method is expression-bodied or a single return.</description></item>
+    /// </list>
+    /// Reserved for future patterns.
     /// </summary>
     public string? LifecyclePattern { get; init; }
 
