@@ -148,7 +148,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #857, 2026-05-19) |
 | Backlog rows closed | `test-coverage-fail-fast-on-missing-coverlet` |
 | Diagnosis | **Stale anchor:** backlog cited `src/RoslynMcp.Roslyn/Services/TestCoverageService.cs` — does not exist. Actual implementation: `src/RoslynMcp.Host.Stdio/Tools/TestCoverageTools.cs`. Root cause: `RunTestCoverageCore` calls `FindTestProjectsWithoutCoverlet` (line 64); line 65 checks `if (testProjectsLackingCoverlet.Count > 0)` and fails the whole call with `CoverletMissing`. `TestCoverageResultDto` (`src/RoslynMcp.Core/Models/TestCoverageDto.cs`) currently has no `CoverageGaps` field. |
 | Approach | 1. Add `IReadOnlyList<string>? CoverageGaps = null` parameter to `TestCoverageResultDto` (after `FailureEnvelope`). 2. Refactor `RunTestCoverageCore` to split projects into `withCoverlet` and `withoutCoverlet`; only fail-fast when `withCoverlet.Count == 0`. Otherwise run per-project sequential coverage on `withCoverlet`, aggregate Cobertura results, set `CoverageGaps = withoutCoverlet.Select(p => p.Name)`. 3. Update `SerializeWithDeprecation` to include `coverageGaps`. 4. New test class `TestCoveragePartialCoverletTests.cs` using `FakeWorkspaceManager` + `StaticDotnetCommandRunner` for mixed-coverlet scenarios. |
