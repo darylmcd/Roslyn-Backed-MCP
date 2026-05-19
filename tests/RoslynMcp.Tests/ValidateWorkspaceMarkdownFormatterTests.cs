@@ -201,6 +201,7 @@ public sealed class ValidateWorkspaceMarkdownFormatterTests
         string overallStatus = "clean",
         CompileCheckDto? compile = null,
         IReadOnlyList<DiagnosticDto>? errorDiagnostics = null,
+        int? errorCount = null,
         int warningCount = 0,
         IReadOnlyList<RelatedTestCaseDto>? discoveredTests = null,
         string? dotnetTestFilter = null,
@@ -219,12 +220,20 @@ public sealed class ValidateWorkspaceMarkdownFormatterTests
             Diagnostics: Array.Empty<DiagnosticDto>(),
             ElapsedMs: 1);
 
+        var diagnostics = errorDiagnostics ?? Array.Empty<DiagnosticDto>();
+
         return new WorkspaceValidationDto(
             OverallStatus: overallStatus,
             ChangedFilePaths: Array.Empty<string>(),
             UnknownFilePaths: Array.Empty<string>(),
             CompileResult: compile,
-            ErrorDiagnostics: errorDiagnostics ?? Array.Empty<DiagnosticDto>(),
+            ErrorDiagnostics: diagnostics,
+            // validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics:
+            // ErrorCount defaults to the supplied diagnostics list length so existing test
+            // cases that exercise the full-detail shape continue to render the same row;
+            // tests that need to repro the summary-mode mismatch can pass errorCount
+            // explicitly (typically alongside an empty errorDiagnostics list).
+            ErrorCount: errorCount ?? diagnostics.Count,
             WarningCount: warningCount,
             DiscoveredTests: discoveredTests ?? Array.Empty<RelatedTestCaseDto>(),
             DotnetTestFilter: dotnetTestFilter,

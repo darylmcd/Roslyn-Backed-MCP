@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -208,6 +209,60 @@ public sealed class WorkspaceValidationOverallStatusTests
             "test-zero-run",
             status,
             "runTests=true with Total=0 must surface 'test-zero-run' — not 'clean' — so callers don't silently treat a filter-resolution failure as a pass.");
+    }
+
+    /// <summary>
+    /// validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics (gh #751):
+    /// when <c>summary=true</c> the service drops the per-diagnostic <see cref="WorkspaceValidationDto.ErrorDiagnostics"/>
+    /// list but the verdict was already computed from the full error set, so the caller saw
+    /// <c>overallStatus=analyzer-error</c> with an empty list and no count — leaving them
+    /// unable to tell <em>how many</em> errors drove the verdict. The new <see cref="WorkspaceValidationDto.ErrorCount"/>
+    /// field always carries the count (mirrors <see cref="WorkspaceValidationDto.WarningCount"/>)
+    /// so summary callers can see the magnitude of the analyzer-error verdict without re-running
+    /// with <c>summary=false</c>.
+    ///
+    /// This test pins the DTO-shape contract directly: a record constructed with
+    /// <c>OverallStatus="analyzer-error"</c>, <c>ErrorCount=1</c>, and an empty
+    /// <c>ErrorDiagnostics</c> list (exactly the summary-mode wire shape) MUST round-trip those
+    /// three fields independently.
+    /// </summary>
+    [TestMethod]
+    public void WorkspaceValidationDto_AnalyzerError_SummaryMode_ErrorCountNonZero_ErrorDiagnosticsEmpty()
+    {
+        var compileClean = new CompileCheckDto(
+            Success: true,
+            ErrorCount: 0,
+            WarningCount: 0,
+            TotalDiagnostics: 0,
+            ReturnedDiagnostics: 0,
+            Offset: 0,
+            Limit: 200,
+            HasMore: false,
+            Diagnostics: Array.Empty<DiagnosticDto>(),
+            ElapsedMs: 0,
+            Cancelled: false,
+            CompletedProjects: 1,
+            TotalProjects: 1);
+
+        // Construct the DTO directly with the summary-mode wire shape: ErrorCount > 0 alongside
+        // an empty ErrorDiagnostics list. Pre-fix this combination was unrepresentable because
+        // the only count came from ErrorDiagnostics.Count (always 0 in summary mode).
+        var dto = new WorkspaceValidationDto(
+            OverallStatus: "analyzer-error",
+            ChangedFilePaths: Array.Empty<string>(),
+            UnknownFilePaths: Array.Empty<string>(),
+            CompileResult: compileClean,
+            ErrorDiagnostics: Array.Empty<DiagnosticDto>(),
+            ErrorCount: 1,
+            WarningCount: 0,
+            DiscoveredTests: Array.Empty<RelatedTestCaseDto>(),
+            DotnetTestFilter: null,
+            TestRunResult: null,
+            Warnings: Array.Empty<string>());
+
+        Assert.AreEqual("analyzer-error", dto.OverallStatus, "verdict must surface even when the list is suppressed");
+        Assert.AreEqual(1, dto.ErrorCount, "ErrorCount must carry the count that drove the verdict");
+        Assert.AreEqual(0, dto.ErrorDiagnostics.Count, "ErrorDiagnostics is empty in the summary-mode wire shape");
     }
 
     /// <summary>
