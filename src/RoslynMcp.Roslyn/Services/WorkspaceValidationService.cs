@@ -153,6 +153,52 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     {
         var (changedFiles, unknownFiles) = ResolveChangedFiles(workspaceId, changedFilePaths);
 
+        // validate-workspace-changetracker-no-disk-reconcile-after-git-checkout (gh #738):
+        // when the caller omits changedFilePaths we fall back to the ChangeTracker's
+        // append-only log. The tracker has no mechanism to drop entries for files that
+        // were subsequently reverted out-of-band (e.g. `git checkout -- foo.cs`), so the
+        // raw fallback list can include files that are now clean on disk. Reconcile the
+        // tracker-derived list against `git status` and keep only files git still reports
+        // as dirty. On git-unavailable / non-git-repo conditions we degrade gracefully:
+        // the unfiltered tracker list is used as before so the no-git path keeps its
+        // existing semantics.
+        if (changedFilePaths is null or { Count: 0 } && changedFiles.Count > 0)
+        {
+            string? solutionDir;
+            try
+            {
+                solutionDir = ResolveSolutionDirectory(workspaceId);
+            }
+            catch
+            {
+                solutionDir = null;
+            }
+
+            if (solutionDir is not null)
+            {
+                var (gitFiles, gitWarnings) = await CollectGitChangedFilesAsync(solutionDir, _gitStatusTimeout, ct)
+                    .ConfigureAwait(false);
+
+                if (gitWarnings.Count == 0)
+                {
+                    // Build the dirty set with case-insensitive normalized paths so the
+                    // intersection survives platform path-separator + casing differences.
+                    var dirty = new HashSet<string>(
+                        gitFiles.Select(NormalizePathForReconcile),
+                        StringComparer.OrdinalIgnoreCase);
+                    var reconciled = changedFiles
+                        .Where(p => dirty.Contains(NormalizePathForReconcile(p)))
+                        .ToArray();
+                    changedFiles = reconciled;
+                }
+                // else: git unavailable / repo not found / git error — preserve existing
+                // unfiltered behavior (do NOT add a warning here; this branch is the
+                // default validate_workspace path, not validate_recent_git_changes; the
+                // git-status reconcile is a best-effort precision improvement, not a
+                // mandatory step).
+            }
+        }
+
         // Stage 1: in-memory compile check across the whole workspace.
         var compile = await RunValidationPhaseAsync(
             "compile_check",
@@ -620,6 +666,30 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             || normalized.Contains("/bin/", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("obj/", StringComparison.OrdinalIgnoreCase)
             || normalized.StartsWith("bin/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// validate-workspace-changetracker-no-disk-reconcile-after-git-checkout (gh #738):
+    /// path normalization for ChangeTracker reconciliation. Both sides (tracker list
+    /// and git-derived list) come back as absolute paths via different code paths; the
+    /// tracker stores whatever the writer passed in (e.g. <c>Path.GetFullPath</c>'d
+    /// during apply), while git emits forward-slash relative paths that we
+    /// <c>Path.GetFullPath(Path.Combine(...))</c> into absolute form. On Windows the
+    /// resulting strings can disagree on (1) path separator style and (2) intermediate
+    /// dot-segments. Normalize via <c>GetFullPath</c> so segments collapse, then replace
+    /// backslashes with forward slashes; case is handled by the caller's
+    /// <see cref="StringComparer.OrdinalIgnoreCase"/> HashSet.
+    /// </summary>
+    private static string NormalizePathForReconcile(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path).Replace('\\', '/');
+        }
+        catch
+        {
+            return path.Replace('\\', '/');
+        }
     }
 
     private static bool HasValidationRelevantExtension(string path)
