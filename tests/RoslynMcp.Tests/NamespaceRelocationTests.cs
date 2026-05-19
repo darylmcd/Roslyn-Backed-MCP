@@ -123,6 +123,69 @@ public sealed class NamespaceRelocationTests : IsolatedWorkspaceTestBase
             "ChildConsumer.cs should need no changes — ambient-namespace resolution covers the new location.");
     }
 
+    /// <summary>
+    /// Regression: a consumer file whose namespace is an <em>ancestor</em> of the destination
+    /// namespace (e.g. consumer in <c>A.B</c>, type moved into <c>A.B.Child</c>) is NOT covered
+    /// by ambient resolution — C# lookup climbs ancestors, it does not descend. The preview must
+    /// add <c>using A.B.Child;</c> on that consumer file. Closes gh #749.
+    /// </summary>
+    [TestMethod]
+    public async Task Preview_Adds_Using_On_Ancestor_Consumer_When_Type_Moves_Into_Descendant_Namespace()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var libDir = workspace.GetPath("SampleLib");
+        var fixtureDir = Path.Combine(libDir, "AncestorAmbientFixture");
+        Directory.CreateDirectory(fixtureDir);
+
+        // Type lives in A.B.Sub initially and will move to A.B.Child.
+        var typePath = Path.Combine(fixtureDir, "TypeX.cs");
+        await File.WriteAllTextAsync(typePath,
+            "namespace A.B.Sub;\n\n" +
+            "public sealed class TypeX\n" +
+            "{\n" +
+            "    public string Name { get; set; } = \"\";\n" +
+            "}\n",
+            CancellationToken.None);
+
+        // Consumer file is in A.B — an ANCESTOR of the destination A.B.Child. C# ambient lookup
+        // only climbs ancestors, so A.B cannot resolve A.B.Child symbols without a using. The
+        // preview must add `using A.B.Child;` here.
+        var consumerPath = Path.Combine(fixtureDir, "AncestorConsumer.cs");
+        await File.WriteAllTextAsync(consumerPath,
+            "using A.B.Sub;\n\n" +
+            "namespace A.B;\n\n" +
+            "public sealed class AncestorConsumer\n" +
+            "{\n" +
+            "    public TypeX? Value { get; set; }\n" +
+            "}\n",
+            CancellationToken.None);
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var service = CreateService();
+        var preview = await service.PreviewChangeTypeNamespaceAsync(
+            wsId,
+            typeName: "TypeX",
+            fromNamespace: "A.B.Sub",
+            toNamespace: "A.B.Child",
+            newFilePath: null,
+            CancellationToken.None);
+
+        Assert.IsNotNull(preview);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken));
+
+        var consumerChange = preview.Changes.FirstOrDefault(c =>
+            c.FilePath.EndsWith("AncestorConsumer.cs", StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(
+            consumerChange,
+            "AncestorConsumer.cs MUST appear in the preview — the ancestor consumer needs `using A.B.Child;`.");
+        StringAssert.Contains(
+            consumerChange!.UnifiedDiff,
+            "+using A.B.Child;",
+            $"Expected `+using A.B.Child;` in consumer diff (regression: ancestor-consumer ambient mis-classification). Diff:\n{consumerChange.UnifiedDiff}");
+    }
+
     [TestMethod]
     public async Task Preview_Rejects_Mismatched_Namespaces()
     {

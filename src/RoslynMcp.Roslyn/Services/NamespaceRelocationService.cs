@@ -13,8 +13,8 @@ namespace RoslynMcp.Roslyn.Services;
 /// Provides preview operations for relocating a type between namespaces inside the same
 /// project. Rewrites the type's <c>namespace</c> declaration, optionally moves the file to a
 /// new path inside the project, and adjusts consumer <c>using</c> directives respecting
-/// ambient-namespace resolution (consumers in an ancestor/descendant of the source or target
-/// namespace may need no <c>using</c> change at all).
+/// ambient-namespace resolution (consumers whose own namespace equals or is a descendant of the
+/// source or target namespace may need no <c>using</c> change at all).
 /// </summary>
 /// <remarks>
 /// Pairs with <c>get_namespace_dependencies</c> to close circular namespace dependencies.
@@ -493,7 +493,7 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     /// <summary>
     /// Ambient-resolution-aware using rewrite. Rules:
     /// <list type="bullet">
-    ///   <item><description>If the consumer's namespace is an ancestor/descendant of <paramref name="toNamespace"/> (ambient resolution covers the new location), no <c>using toNamespace</c> is needed.</description></item>
+    ///   <item><description>If the consumer's namespace equals or is a descendant of <paramref name="toNamespace"/> (ambient resolution covers the new location), no <c>using toNamespace</c> is needed. Ancestor consumers (e.g. consumer in <c>A.B</c>, target <c>A.B.C</c>) DO need the using — C# lookup climbs ancestors only.</description></item>
     ///   <item><description>Otherwise: add <c>using toNamespace</c> if missing.</description></item>
     ///   <item><description>Remove <c>using fromNamespace</c> ONLY if no sibling types remain in that namespace and the consumer's own namespace is NOT ambient to <paramref name="fromNamespace"/> (avoids flagging a using that was already redundant before the move).</description></item>
     ///   <item><description>When in doubt, keep the <c>using</c> — band-aid removals risk breaking compile.</description></item>
@@ -568,9 +568,10 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
     /// <summary>
     /// C# ambient-namespace resolution: a file whose namespace is <c>A.B.C</c> can resolve
     /// symbols declared in <c>A.B.C</c>, <c>A.B</c>, <c>A</c>, and the global namespace without
-    /// any <c>using</c>. We also treat descendant namespaces as ambient when they contain the
-    /// target (for example <c>A.B.C.D</c> is visible from <c>A.B.C</c>) — a conservative
-    /// extension that matches the plan's "when in doubt keep the using" rule.
+    /// any <c>using</c>. Lookup climbs ancestors only — a file in <c>A.B</c> cannot resolve
+    /// <c>A.B.C</c> symbols ambiently and still requires <c>using A.B.C;</c>. Returns
+    /// <see langword="true"/> only when the consumer's namespace equals the target or is a
+    /// strict descendant of it.
     /// </summary>
     private static bool IsAmbientTo(string consumerNamespace, string targetNamespace)
     {
@@ -582,13 +583,11 @@ public sealed class NamespaceRelocationService : INamespaceRelocationService
         {
             return true;
         }
-        // Consumer's namespace is an ancestor of the target.
+        // Consumer's namespace is a strict descendant of the target (e.g. consumer A.B.C sees A.B).
+        // Note: a consumer that is an ANCESTOR of the target (e.g. consumer A.B referencing a type
+        // in A.B.C) is NOT ambient — C# lookup climbs ancestors, it does not descend — so the
+        // consumer still needs `using A.B.C;`.
         if (consumerNamespace.StartsWith(targetNamespace + ".", StringComparison.Ordinal))
-        {
-            return true;
-        }
-        // Consumer's namespace is a descendant of the target (e.g. consumer A.B.C.D sees A.B.C).
-        if (targetNamespace.StartsWith(consumerNamespace + ".", StringComparison.Ordinal))
         {
             return true;
         }
