@@ -69,13 +69,30 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         _validationPhaseTimeout = validationPhaseTimeout > TimeSpan.Zero ? validationPhaseTimeout : DefaultValidationPhaseTimeout;
     }
 
-    public Task<WorkspaceValidationDto> ValidateAsync(
+    public async Task<WorkspaceValidationDto> ValidateAsync(
         string workspaceId,
         IReadOnlyList<string>? changedFilePaths,
         bool runTests,
         CancellationToken ct,
         bool summary = false)
-        => ValidateInternalAsync(workspaceId, changedFilePaths, runTests, ct, summary, warnings: Array.Empty<string>());
+    {
+        // validate-workspace-25s-internalvalidationtimeoutexception-on-medium-solution (gh #759):
+        // a validation phase that exceeds the 25-second internal timeout throws the private
+        // InternalValidationTimeoutException. Pre-fix the exception escaped here as an unhandled
+        // throw and surfaced as a bare SDK error string at the MCP transport. Mirror the catch
+        // already present in ValidateRecentGitChangesAsync so both entry points return the
+        // structured timeout DTO. OperationCanceledException is intentionally NOT caught — that
+        // is the cooperative-cancellation signal and must propagate to the caller.
+        try
+        {
+            return await ValidateInternalAsync(workspaceId, changedFilePaths, runTests, ct, summary, warnings: Array.Empty<string>())
+                .ConfigureAwait(false);
+        }
+        catch (InternalValidationTimeoutException ex)
+        {
+            return CreateTimeoutResult(ex, changedFilePaths ?? Array.Empty<string>(), Array.Empty<string>());
+        }
+    }
 
     /// <summary>
     /// post-edit-validate-workspace-scoped-to-touched-files: auto-derives the changed-file set
@@ -641,11 +658,17 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         IReadOnlyList<string> changedFiles,
         IReadOnlyList<string> priorWarnings)
     {
+        // validate-workspace-25s-internalvalidationtimeoutexception-on-medium-solution (gh #759):
+        // shared by both ValidateAsync and ValidateRecentGitChangesAsync. The original warning
+        // text referenced "git-derived scope", which is misleading when ValidateAsync supplies
+        // an explicit changedFilePaths list (or when the change-tracker fallback path supplied
+        // it). Use neutral phrasing — the changedFiles list is whatever scope the caller
+        // landed on at the time of the timeout.
         var warning = $"validation phase '{timeout.Phase}' exceeded the internal timeout of "
-            + $"{timeout.Timeout.TotalSeconds:F0} second(s); retryable=true; changedFilePaths contains the git-derived scope.";
+            + $"{timeout.Timeout.TotalSeconds:F0} second(s); retryable=true; changedFilePaths reflects the scope that was being validated.";
         var warnings = priorWarnings.Concat(new[] { warning }).ToArray();
         var command = new CommandExecutionDto(
-            Command: "validate_recent_git_changes",
+            Command: "validate_workspace",
             Arguments: [timeout.Phase],
             WorkingDirectory: string.Empty,
             TargetPath: string.Empty,
@@ -693,8 +716,13 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             Warnings: warnings);
     }
 
+    // validate-workspace-25s-internalvalidationtimeoutexception-on-medium-solution (gh #759):
+    // both ValidateAsync and ValidateRecentGitChangesAsync catch this and convert it to a
+    // structured timeout DTO. Neutral phrasing in the exception message — pre-fix it
+    // hard-coded "validate_recent_git_changes" which was inaccurate for the validate_workspace
+    // call path.
     private sealed class InternalValidationTimeoutException(string phase, TimeSpan timeout) : Exception(
-        $"validate_recent_git_changes phase '{phase}' exceeded the internal timeout of {timeout.TotalSeconds:F0} second(s).")
+        $"validation phase '{phase}' exceeded the internal timeout of {timeout.TotalSeconds:F0} second(s).")
     {
         public string Phase { get; } = phase;
         public TimeSpan Timeout { get; } = timeout;
