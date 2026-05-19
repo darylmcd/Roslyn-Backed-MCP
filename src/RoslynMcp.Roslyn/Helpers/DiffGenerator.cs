@@ -100,6 +100,16 @@ public static class DiffGenerator
             sb.AppendLine($"# Re-read the full file with the Read tool or rerun with a smaller scope.");
         }
 
+        // format-document-preview-empty-diff-instead-of-noop (gh #739): when both texts are
+        // identical (or yielded only Unchanged lines), return string.Empty rather than the
+        // header-only string. This honors the docstring contract ("or an empty string if
+        // there are no differences") and lets callers — including SolutionDiffHelper.TryAdd
+        // and downstream `changes.length` checks — treat no-op formatter passes as no-ops.
+        if (hunksWritten == 0 && !truncated)
+        {
+            return string.Empty;
+        }
+
         return sb.ToString();
     }
 

@@ -45,6 +45,15 @@ internal static class SolutionDiffHelper
 
         bool TryAdd(FileChangeDto change)
         {
+            // format-document-preview-empty-diff-instead-of-noop (gh #739): belt-and-suspenders
+            // guard — if DiffGenerator returned string.Empty (no net changes after a no-op
+            // formatter pass, despite distinct SourceText instances that bypassed the
+            // oldText == newText guard above), skip the entry so callers see an empty
+            // changes[] rather than a header-only diff with no hunks.
+            if (string.IsNullOrEmpty(change.UnifiedDiff))
+            {
+                return false;
+            }
             if (totalChars + change.UnifiedDiff.Length > DefaultMaxTotalChars)
             {
                 truncatedFiles.Add(change.FilePath);
