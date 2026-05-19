@@ -173,6 +173,42 @@ public class ServiceCoverageTests : SharedWorkspaceTestBase
             "MakeThemSpeak should have callers or callees");
     }
 
+    [TestMethod]
+    public async Task GetCallersCallees_Callees_Populate_PreviewText()
+    {
+        // Regression guard for gh #742 (callers-callees-previewtext-asymmetry):
+        // before the fix, CollectCalleesAsync passed no previewText argument to
+        // SymbolMapper.ToLocationDto, so every callee entry had PreviewText == null
+        // while callers had it populated. Post-fix, in-source callees (e.g. IAnimal.Speak
+        // resolved by MakeThemSpeak) must surface a non-empty PreviewText extracted
+        // from the callee's declaration site.
+        var animalServicePath = FindDocumentPath("AnimalService.cs");
+
+        // Line 16 column 17 is MakeThemSpeak declaration; MakeThemSpeak invokes
+        // animal.Speak() (in-source IAnimal.Speak) and Console.WriteLine (external).
+        var result = await SymbolRelationshipService.GetCallersCalleesAsync(
+            WorkspaceId,
+            SymbolLocator.BySource(animalServicePath, 16, 17),
+            CancellationToken.None);
+
+        Assert.IsNotNull(result, "CallerCallee result should not be null");
+        Assert.IsTrue(result.Callees.Count > 0, "MakeThemSpeak should have at least one callee");
+
+        // Scope the assertion to in-source callees only — external callees (Console.WriteLine
+        // resolved via the invocation-site fallback) may legitimately yield a preview, but
+        // metadata-only edge cases are not in scope. The asymmetry repro is the in-source
+        // case: at least one callee whose FilePath points at a workspace document must
+        // have a non-empty PreviewText.
+        var inSourceCallees = result.Callees
+            .Where(c => !string.IsNullOrEmpty(c.FilePath) && File.Exists(c.FilePath))
+            .ToList();
+        Assert.IsTrue(inSourceCallees.Count > 0,
+            "Expected at least one in-source callee for MakeThemSpeak (IAnimal.Speak).");
+        Assert.IsTrue(inSourceCallees.All(c => !string.IsNullOrEmpty(c.PreviewText)),
+            $"Every in-source callee must have a non-empty PreviewText. " +
+            $"Null callees: [{string.Join(", ", inSourceCallees.Where(c => string.IsNullOrEmpty(c.PreviewText)).Select(c => c.ContainingMember))}]");
+    }
+
     // ── CompletionService ────────────────────────────────────────────
 
     [TestMethod]
