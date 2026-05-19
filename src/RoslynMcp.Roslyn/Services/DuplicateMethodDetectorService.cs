@@ -113,6 +113,13 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
             var body = (SyntaxNode?)method.Body ?? method.ExpressionBody;
             if (body is null) continue; // abstract, partial-no-body, interface declarations
 
+            // xUnit [Theory] test methods share an identical dispatch shape (assert against
+            // every [InlineData]/[MemberData] row) so they bucket together even though they
+            // exercise different business logic. Exclude them by attribute-name suffix —
+            // both `[Theory]` and the fully-qualified `[TheoryAttribute]` form match. Pure
+            // syntactic check; no xUnit reference needed.
+            if (HasTheoryAttribute(method)) continue;
+
             var lineSpan = method.GetLocation().GetLineSpan();
             var startLine = lineSpan.StartLinePosition.Line + 1;
             var endLine = lineSpan.EndLinePosition.Line + 1;
@@ -158,10 +165,25 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
             if (members.Count < 2) continue;
             if (options.SimilarityThreshold > 1.0) continue;
 
+            // Default emission: exact-structural duplicate, similarity 1.0, no discriminator.
+            // The symmetric-mapper classifier below downranks the score and tags the cluster
+            // when the bucket is exactly a strict To*/From* complementary pair so callers can
+            // skip these designed-symmetric pairs without losing the signal entirely.
+            var similarity = 1.0;
+            string? clusterKind = null;
+            if (IsSymmetricMapperPair(members))
+            {
+                // Pair shares an AST shape because the mapper is symmetric by design — the
+                // copy-paste signal is weak. Downrank to the mid-band; threshold-filtering
+                // callers can drop these by raising the similarity floor.
+                similarity = 0.5;
+                clusterKind = "round-trip-mapper";
+            }
+
             results.Add(new DuplicatedMethodGroupDto(
                 NormalizedHash: ShortHash(canonical),
                 MemberCount: members.Count,
-                Similarity: 1.0,
+                Similarity: similarity,
                 LineCount: members[0].LineCount,
                 Methods: members.Select(m => new DuplicatedMethodMemberDto(
                     FilePath: m.FilePath,
@@ -169,9 +191,85 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
                     EndLine: m.EndLine,
                     MethodName: m.MethodName,
                     ContainingType: m.ContainingType,
-                    ProjectName: m.ProjectName)).ToList()));
+                    ProjectName: m.ProjectName)).ToList(),
+                ClusterKind: clusterKind));
         }
         return results;
+    }
+
+    /// <summary>
+    /// True when the bucket is exactly two members whose names are complementary
+    /// <c>To*</c>/<c>From*</c> forms sharing the same stem — e.g. <c>ToDto</c>/<c>FromDto</c>,
+    /// <c>ToWire</c>/<c>FromWire</c>. The heuristic is intentionally strict: three or more
+    /// members never trip it (a 3+ bucket is structural duplication that happens to include
+    /// a mapper, not a designed pair), and mismatched stems (<c>ToX</c>/<c>FromY</c>) are
+    /// rejected because the structural collision is then coincidental, not designed.
+    /// </summary>
+    private static bool IsSymmetricMapperPair(IReadOnlyList<MethodCandidate> members)
+    {
+        if (members.Count != 2) return false;
+
+        var first = members[0].MethodName;
+        var second = members[1].MethodName;
+
+        // Identify which member starts with "To" and which with "From"; reject when both
+        // share the same prefix (e.g. two ToFoo overloads) or when neither does.
+        var firstStem = ExtractMapperStem(first);
+        var secondStem = ExtractMapperStem(second);
+        if (firstStem is null || secondStem is null) return false;
+
+        // Stems must agree AND prefixes must be complementary (one To, one From).
+        return firstStem.Value.Stem == secondStem.Value.Stem
+            && firstStem.Value.Prefix != secondStem.Value.Prefix;
+    }
+
+    /// <summary>
+    /// Decompose a method name into its mapper-prefix (<c>"To"</c>|<c>"From"</c>) and the
+    /// remaining stem when the name starts with one of those prefixes followed by an
+    /// uppercase letter. Returns <see langword="null"/> when the name is neither.
+    /// The uppercase-follows requirement avoids matching names like <c>Toggle</c> or
+    /// <c>Format</c> where "To"/"From" are merely a coincidental letter run.
+    /// </summary>
+    private static (string Prefix, string Stem)? ExtractMapperStem(string name)
+    {
+        if (name.Length > 2 && name.StartsWith("To", StringComparison.Ordinal) && char.IsUpper(name[2]))
+        {
+            return ("To", name[2..]);
+        }
+        if (name.Length > 4 && name.StartsWith("From", StringComparison.Ordinal) && char.IsUpper(name[4]))
+        {
+            return ("From", name[4..]);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Syntactic check for an <c>[xUnit.Theory]</c> attribute on a method declaration —
+    /// matches both the short <c>[Theory]</c> form and the fully-qualified
+    /// <c>[TheoryAttribute]</c> form. Uses the last name segment of qualified-name attributes
+    /// (so <c>[Xunit.TheoryAttribute]</c> matches too). No semantic-model lookup.
+    /// </summary>
+    private static bool HasTheoryAttribute(MethodDeclarationSyntax method)
+    {
+        foreach (var list in method.AttributeLists)
+        {
+            foreach (var attribute in list.Attributes)
+            {
+                var name = attribute.Name switch
+                {
+                    QualifiedNameSyntax qualified => qualified.Right.Identifier.ValueText,
+                    SimpleNameSyntax simple => simple.Identifier.ValueText,
+                    _ => string.Empty,
+                };
+                if (string.IsNullOrEmpty(name)) continue;
+                if (name.Equals("Theory", StringComparison.Ordinal)
+                    || name.Equals("TheoryAttribute", StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /// <summary>
