@@ -26,7 +26,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #824, 2026-05-19) |
 | Backlog rows closed | `project-diagnostics-totaldiagnostics-collapses-under-severity-filter` |
 | Source | gh #746 |
 | Diagnosis | Root cause is in `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs` at lines 98 and 113. The `totalDiagnostics` field in both the summary and non-summary response branches is computed as `allDiagnostics.Count`, where `allDiagnostics` is assembled from `results.WorkspaceDiagnostics`, `results.CompilerDiagnostics`, and `results.AnalyzerDiagnostics`. These three arrays are the *severity-filtered* outputs from `DiagnosticService.GetDiagnosticsAsync`. When `severity=Error` is passed, those arrays contain only Error-level items, so `allDiagnostics.Count` collapses to the error count, not the true diagnostic total. The service already computes severity-filter-invariant totals (`results.TotalErrors`, `results.TotalWarnings`, `results.TotalInfo`) that ignore the severity filter — confirmed by the BUG-fix comment at `DiagnosticService.cs:122-125` and the corresponding test `DiagnosticServiceFilterTotalsTests.GetDiagnosticsAsync_TotalsAreInvariantUnderSeverityFilter`. The tool description on line 24 already documents the invariant ("Totals totalErrors/totalWarnings/totalInfo count the full queried scope and ignore the severity filter") but `totalDiagnostics` contradicts it. **Anchor stale:** backlog row cites `src/RoslynMcp.Roslyn/Services/ProjectDiagnosticsService.cs` which does not exist. Bug is in tool-surface layer `AnalysisTools.cs`. |
@@ -45,7 +45,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #823, 2026-05-19) |
 | Backlog rows closed | `symbol-signature-help-returns-bare-null-for-resolvable-method-metadata` |
 | Source | gh #747 |
 | Diagnosis | `GetSignatureHelpAsync` in `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs:224-248` returns `null` whenever `SymbolResolver.ResolveAsync` returns null for a `metadataName` locator whose method name contains a parenthesized parameter list (e.g. `SampleLib.AnimalService.CountAnimals(System.Collections.Generic.List<SampleLib.IAnimal>)`). Root cause: `SymbolResolver.ResolveByMetadataNameAsync` splits on the last `.` — when that `.` sits inside the parameter list (e.g. `System.Threading.CancellationToken`), the split produces a bogus containing-type name and returns null. The sibling method `GetCallersCalleesAsync` (line 250) has an identical failure mode and was fixed in gh #616 by adding a `TryResolveByQualifiedSignatureAsync` fallback at lines 265-268; `GetSignatureHelpAsync` never received that fallback. **Anchor stale:** backlog row cites `src/NetworkDocumentation.Core/...:57` (sibling-repo); in-repo anchors verified at `SymbolRelationshipService.cs:265-268` (pattern to mirror) and `tests/RoslynMcp.Tests/MetadataNameLocatorTests.cs:130-159` (test pattern). |
@@ -64,7 +64,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #826, 2026-05-19) |
 | Backlog rows closed | `extract-interface-preview-duplicate-interface-when-already-implements` |
 | Source | gh #748 |
 | Diagnosis | Root cause in `src/RoslynMcp.Roslyn/Services/InterfaceExtractionService.cs`. In `PreviewExtractInterfaceAsync`, the `alreadyImplements` guard at line 67-68 (`typeSymbol.AllInterfaces.Any(...)`) correctly gates the base-list modification (lines 71-117) but does NOT gate the interface document addition at lines 133-140. When the type already implements a covering interface (defined externally — e.g. in a Contracts project), `alreadyImplements==true`, the base-list rewrite is skipped correctly, but `targetProject.AddDocument(...)` at line 139 is still executed unconditionally. Result: the preview diff includes a freshly generated `IFoo.cs` even though the type already has `IFoo` in its base list. **Anchor stale:** backlog row cites `NetworkDocumentation.Core/DeviceClassifier/DeviceClassifierService.cs:11` (sibling-repo); real anchor `InterfaceExtractionService.cs:133-140`. A parallel guard exists in `ExtractAndWireOrchestrator` (tested in `OrchestrationIntegrationTests.cs:368`) but `InterfaceExtractionService` lacks the equivalent guard on its document-add path. |
@@ -96,7 +96,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #825, 2026-05-19) |
 | Backlog rows closed | `change-type-namespace-preview-omits-consumer-using-additions` |
 | Source | gh #749 |
 | Diagnosis | Root cause at `src/RoslynMcp.Roslyn/Services/NamespaceRelocationService.cs:591-594`. `IsAmbientTo(consumerNamespace, targetNamespace)` contains a third condition — `targetNamespace.StartsWith(consumerNamespace + ".", StringComparison.Ordinal)` — that returns `true` when the consumer's namespace is an **ancestor** of the target namespace (e.g., consumer in `A.B`, target namespace `A.B.C`). This is incorrect C# ambient-resolution semantics: ambient lookup only climbs (ancestors), not descends. A file in `A.B` cannot resolve `A.B.C` symbols without `using A.B.C;`. The mis-classification causes `AdjustUsings` (line 525) to skip the `using toNamespace;` addition for any consumer whose namespace is an ancestor of `toNamespace`. **Anchor stale:** backlog row cites sibling-repo `NxosVersionParser.cs`; real anchor `NamespaceRelocationService.cs:591-594` + `tests/RoslynMcp.Tests/NamespaceRelocationTests.cs:33`. The `consumerCoversOldByAmbient` path uses the same function: returning `true` there is at least safe (keeps the old using); damage is asymmetric — only new-using omission is the correctness bug. |
@@ -115,7 +115,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #827, 2026-05-19) |
 | Backlog rows closed | `symbol-refactor-preview-empty-appliedfiles-on-success` |
 | Source | gh #750 |
 | Diagnosis | Root cause in two cooperating locations. First: `src/RoslynMcp.Roslyn/Services/SymbolRefactorService.cs:200-239` — `BuildCompositeMutationsAsync` calls `finalSolution.GetChanges(initialSolution)` and iterates `GetProjectChanges() → GetChangedDocuments()/GetAddedDocuments()/GetRemovedDocuments()`. When Roslyn's solution-change walk returns no document-set changes for an op (edge case with certain rename targets or restructure outcomes updating only project-level metadata), the returned `IReadOnlyList<CompositeFileMutation>` is empty. Second: `src/RoslynMcp.Roslyn/Services/CompositeApplyOrchestrator.cs:39-70` — `ApplyCompositeAsync` builds `appliedFiles` by appending `mutation.FilePath` inside `foreach (var mutation in mutations)`. When `mutations` is empty the loop never executes, `distinctFiles` is empty, and `return new ApplyResultDto(true, distinctFiles, null)` silently returns success=true with empty `appliedFiles` even though files may have been mutated. The existing test at `tests/RoslynMcp.Tests/SymbolRefactorPreviewTests.cs:218` asserts `Success` but NOT `AppliedFiles.Count > 0`, so the empty-list case passes the suite undetected. |
@@ -134,7 +134,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #829, 2026-05-19) |
 | Backlog rows closed | `validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics` |
 | Source | gh #751 |
 | Diagnosis | Root cause at `src/RoslynMcp.Core/Services/IWorkspaceValidationService.cs:75-85` and `src/RoslynMcp.Roslyn/Services/WorkspaceValidationService.cs:243`. `WorkspaceValidationDto` is a positional record with `ErrorDiagnostics` (the full per-item list) but no companion `ErrorCount` field. In `ValidateInternalAsync` line 243 the summary-mode branch suppresses the list: `var emittedErrors = summary ? Array.Empty<DiagnosticDto>() : allErrors`. `ComputeOverallStatus` at lines 353-356 correctly classifies the verdict from `allErrors` (always the full set). The mismatch: when `summary=true`, the caller receives `overallStatus=analyzer-error` (computed from N analyzer errors) but `errorDiagnostics: []` (list suppressed) with no count field to explain the discrepancy. `ValidateWorkspaceMarkdownFormatter.cs:75` metrics row reads `dto.ErrorDiagnostics.Count` directly, so the markdown format has the identical gap. **Bundle with #13 REJECTED:** different code paths (`ComputeOverallStatus`/summary branch vs `RunValidationPhaseAsync`/timeout propagation). |
@@ -153,7 +153,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #828, 2026-05-19) |
 | Backlog rows closed | `test-run-fqdn-drift-vs-test-discover` |
 | Source | gh #752 |
 | Diagnosis | Root cause confirmed at `src/RoslynMcp.Roslyn/Services/TestDiscoveryService.cs:76`. The FQDN is synthesized as `$"{project.Name}.{containingType}.{method.Identifier.Text}"` — it prefixes with the MSBuild project name rather than the test class's actual declared namespace. When a test class lives in a folder-scoped sub-namespace (e.g. `SampleLib.Tests.Unit.AnimalServiceTests`) but the project name is `SampleLib.Tests`, the emitted FQDN is `SampleLib.Tests.AnimalServiceTests.CountAnimals` while xunit/MSTest registers the test under `SampleLib.Tests.Unit.AnimalServiceTests.CountAnimals`. Passing a `FullyQualifiedName~<discover-fqdn>` filter to `dotnet test --filter` produces zero matches — silent zero-hits. The namespace infix (`Unit`) is present in the syntax tree but the current code never inspects it. The `SampleLib.Tests` fixture in `SampleLib.Tests/AnimalServiceTests.cs` masks this because project name and namespace happen to be identical there. The `SynthesizeDotnetTestFilter` helper at line 164 is otherwise correct — bug is upstream in FQDN construction. |

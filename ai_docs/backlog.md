@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-18T03:09:14Z**
+**updated_at: 2026-05-19T01:44:24Z**
 
 ## Agent contract
 
@@ -51,13 +51,6 @@
 
 | id | pri | deps | do |
 |----|-----|------|-----|
-| `project-diagnostics-totaldiagnostics-collapses-under-severity-filter` | Medium | none | [gh #746](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/746): project_diagnostics totalDiagnostics collapses to filtered count under severityFilter Anchors: - src/RoslynMcp.Roslyn/Services/ProjectDiagnosticsService.cs (likely) Regression test shape: 1 fixture covering the repro scenario from gh #746. Evidence: gh #746. |
-| `symbol-signature-help-returns-bare-null-for-resolvable-method-metadata` | Medium | none | [gh #747](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/747): symbol_signature_help returns bare JSON null for resolvable method metadataName Anchors: - src/NetworkDocumentation.Core/NetworkDocumentation.Core/Snapshots/SnapshotStore.cs:57 Regression test shape: 1 fixture covering the repro scenario from gh #747. Evidence: gh #747. |
-| `extract-interface-preview-duplicate-interface-when-already-implements` | Medium | none | [gh #748](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/748): extract_interface_preview emits duplicate interface when type already implements a covering one Anchors: - src/NetworkDocumentation.Core/NetworkDocumentation.Core/DeviceClassifier/DeviceClassifierService.cs:11 Regression test shape: 1 fixture covering the repro scenario from gh #748. Evidence: gh #748. |
-| `change-type-namespace-preview-omits-consumer-using-additions` | Medium | none | [gh #749](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/749): change_type_namespace_preview omits consumer-side using-directive additions Anchors: - src/NetworkDocumentation.Parsers/NetworkDocumentation.Parsers/Commands/NxosVersionParser.cs Regression test shape: 1 fixture covering the repro scenario from gh #749. Evidence: gh #749. |
-| `symbol-refactor-preview-empty-appliedfiles-on-success` | Medium | none | [gh #750](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/750): symbol_refactor_preview apply returns success=true with empty appliedFiles despite real mutation Anchors: - preview_multi_file_edit_apply response shape Regression test shape: 1 fixture covering the repro scenario from gh #750. Evidence: gh #750. |
-| `validate-workspace-overallstatus-analyzer-error-with-empty-errordiagnostics` | Medium | none | [gh #751](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/751): validate_workspace returns overallStatus=analyzer-error with empty errorDiagnostics and compile success Anchors: - validate_workspace + validate_recent_git_changes response shape Regression test shape: 1 fixture covering the repro scenario from gh #751. Evidence: gh #751. |
-| `test-run-fqdn-drift-vs-test-discover` | Medium | none | [gh #752](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/752): test_run filter from test_discover FQDN produces silent zero-hits due to folder-infix drift Anchors: - test_discover output vs xunit assembly testcase fqdns Regression test shape: 1 fixture covering the repro scenario from gh #752. Evidence: gh #752. |
 | `migrate-package-preview-misses-analyzer-only-references` | Medium | none | [gh #753](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/753): migrate_package_preview misses analyzer-only PackageReference entries Anchors: - migrate_package_preview PackageReference walker Regression test shape: 1 fixture covering the repro scenario from gh #753. Evidence: gh #753. |
 | `find-overrides-payload-overflow-on-corlib-virtual` | Medium | none | [gh #754](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/754): find_overrides payload overflow on corlib virtuals (System.Object.ToString/Equals/GetHashCode) Anchors: - find_overrides auto-promotion behavior Regression test shape: 1 fixture covering the repro scenario from gh #754. Evidence: gh #754. |
 | `analyze-dependencies-prompt-payload-overflow` | Medium | none | [gh #755](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/755): analyze_dependencies prompt payload overflow (63 KB) on small 9-project workspace Anchors: - analyze_dependencies prompt rendering Regression test shape: 1 fixture covering the repro scenario from gh #755. Evidence: gh #755. |
