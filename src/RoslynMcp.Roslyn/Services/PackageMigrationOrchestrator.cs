@@ -43,7 +43,14 @@ public sealed class PackageMigrationOrchestrator : IPackageMigrationOrchestrator
                 usesCentralPackageManagement, mutations, changes, warnings, ct).ConfigureAwait(false);
         }
 
-        if (usesCentralPackageManagement && packagesPropsPath is not null && File.Exists(packagesPropsPath))
+        // migrate-package-preview-no-op-silent-mutation: only touch Directory.Packages.props when
+        // at least one project actually referenced oldPackageId. Pre-fix, BuildCentralVersionEditAsync
+        // was invoked unconditionally whenever CPM was enabled — even with zero project hits — and
+        // its UpsertCentralPackageVersion call would add a <PackageVersion> entry for newPackageId,
+        // contributing a mutation that bypassed the no-op guard below and silently mutated the
+        // manifest. Gating on mutations.Count > 0 ensures the InvalidOperationException at line 52
+        // fires for the no-op case (the correct failure mode).
+        if (mutations.Count > 0 && usesCentralPackageManagement && packagesPropsPath is not null && File.Exists(packagesPropsPath))
         {
             await BuildCentralVersionEditAsync(
                 packagesPropsPath, oldPackageId, newPackageId, newVersion, mutations, changes, ct).ConfigureAwait(false);
