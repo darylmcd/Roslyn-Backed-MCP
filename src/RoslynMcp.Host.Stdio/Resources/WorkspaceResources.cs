@@ -225,12 +225,12 @@ public static class WorkspaceResources
     // marker-prefixed source slice; on failure clients get an actionable error document with
     // the resource URI template as the `tool` field.
     [McpServerResource(UriTemplate = "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}", Name = "source_file_lines", MimeType = "text/x-csharp")]
-    [Description("Read a 1-based inclusive line range from a file in the loaded workspace. filePath must be URL-encoded. lineRange is \"startLine-endLine\" (e.g. /lines/100-200). The response is prefixed with a comment marker noting the slice. For the whole file, use the sibling template without /lines/. Invalid ranges (e.g. non-numeric, endLine < startLine, or startLine past EOF) return a structured JSON error envelope — not the C# MIME success shape.")]
+    [Description("Read a 1-based inclusive line range from a file in the loaded workspace. filePath accepts URL-encoded form (recommended for cross-client portability — Windows absolute paths contain `:` and `\\` which are reserved in URI grammar) or a raw absolute path; both are normalized server-side. Forward slashes are converted to the platform separator. lineRange is \"startLine-endLine\" (e.g. /lines/100-200). The response is prefixed with a comment marker noting the slice. For the whole file, use the sibling template without /lines/. Invalid ranges (e.g. non-numeric, endLine < startLine, or startLine past EOF) return a structured JSON error envelope — not the C# MIME success shape.")]
     public static Task<string> GetSourceFileLines(
         IWorkspaceExecutionGate gate,
         IWorkspaceManager workspace,
         [Description("The workspace session identifier")] string workspaceId,
-        [Description("Absolute path to the source file (URL-encoded)")] string filePath,
+        [Description("Absolute path to the source file. URL-encoded preferred (e.g. C%3A%5CUsers%5Cfoo) — Windows raw paths contain `:` and `\\` which are reserved per RFC 3986 and may be rejected by some MCP clients before reaching the server.")] string filePath,
         [Description("Line range as \"startLine-endLine\" (1-based, inclusive). E.g. \"100-200\".")] string lineRange,
         CancellationToken ct = default)
     {
