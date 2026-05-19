@@ -96,6 +96,46 @@ public sealed class WindowsPathResourceTests : SharedWorkspaceTestBase
         StringAssert.Contains(text, "// roslyn://workspace/");
     }
 
+    [TestMethod]
+    public async Task GetSourceFileLines_UnencodedWindowsPath_Resolves()
+    {
+        // source-file-resource-requires-url-encoded-absolute-path-undocumented:
+        // Mirror GetSourceFile_UnencodedWindowsPath_Resolves — both resources share
+        // NormalizeFilePathForResource, so raw absolute paths must be accepted by
+        // the /lines variant as well.
+        var path = FindAnimalServicePath();
+        var text = await WorkspaceResources.GetSourceFileLines(
+            WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, path, "1-3", CancellationToken.None);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(text));
+        StringAssert.Contains(text, "// roslyn://workspace/");
+    }
+
+    [TestMethod]
+    public async Task GetSourceFileLines_ForwardSlashOnly_Resolves()
+    {
+        // Mirror GetSourceFile_ForwardSlashOnly_Resolves — separator normalization
+        // happens inside the shared NormalizeFilePathForResource helper.
+        var path = FindAnimalServicePath();
+        var forward = path.Replace('\\', '/');
+        var text = await WorkspaceResources.GetSourceFileLines(
+            WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, forward, "1-3", CancellationToken.None);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(text));
+        StringAssert.Contains(text, "// roslyn://workspace/");
+    }
+
+    [TestMethod]
+    public async Task GetSourceFileLines_EncodedSeparatorsOnly_Resolves()
+    {
+        // Mirror GetSourceFile_EncodedSeparatorsOnly_Resolves — some clients only
+        // encode the URI-reserved characters (`\\` and `:`) but not other segments.
+        var path = FindAnimalServicePath();
+        var partiallyEncoded = path.Replace(":", "%3A").Replace("\\", "%5C");
+        var text = await WorkspaceResources.GetSourceFileLines(
+            WorkspaceExecutionGate, WorkspaceManager, WorkspaceId, partiallyEncoded, "1-3", CancellationToken.None);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(text));
+        StringAssert.Contains(text, "// roslyn://workspace/");
+    }
+
     private static string FindAnimalServicePath()
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
