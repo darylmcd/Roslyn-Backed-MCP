@@ -201,6 +201,50 @@ public class DiagnosticFixIntegrationTests : SharedWorkspaceTestBase
         }
     }
 
+    /// <summary>
+    /// code-fix-preview-vs-fix-all-preview-shape-inconsistency: when no <c>CodeFixProvider</c>
+    /// is registered for the requested diagnostic id, <c>code_fix_preview</c> must return a
+    /// structured envelope (empty <c>PreviewToken</c> + empty <c>Changes</c> +
+    /// <c>GuidanceMessage</c>) rather than throwing <c>InvalidOperationException</c>. Mirrors
+    /// the shape <see cref="RoslynMcp.Roslyn.Services.FixAllService.PreviewFixAllAsync"/>
+    /// already emits in the same condition (see
+    /// <c>FixAllServiceGuidanceTests.PreviewFixAll_NoProviderRegistered_ReturnsGuidance</c>).
+    ///
+    /// <para>
+    /// To exercise this branch we use CS8019 + a non-default fixId. The static
+    /// <c>CodeFixProviderRegistry</c> does not ship a CS8019 provider (covered by the CS8019
+    /// diagnostic_details test above), so the registry path returns null. With fixId set to
+    /// something other than "remove_unused_using", the legacy CS8019 fallback condition fails
+    /// and control falls through to the new structured-return branch.
+    /// </para>
+    /// </summary>
+    [TestMethod]
+    public async Task CodeFixPreview_NoProviderRegistered_ReturnsGuidance()
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var animalServiceFile = solution.Projects
+            .SelectMany(project => project.Documents)
+            .First(document => document.Name == "AnimalService.cs");
+
+        var preview = await RefactoringService.PreviewCodeFixAsync(
+            WorkspaceId,
+            diagnosticId: "CS8019",
+            filePath: animalServiceFile.FilePath!,
+            line: 1,
+            column: 1,
+            fixId: "non_default_fix_id_to_skip_fallback",
+            CancellationToken.None);
+
+        Assert.AreEqual(string.Empty, preview.PreviewToken,
+            "When no provider is registered, PreviewToken must be empty so callers do not try to apply.");
+        Assert.AreEqual(0, preview.Changes.Count,
+            "When no provider is registered, Changes must be empty.");
+        Assert.IsNotNull(preview.GuidanceMessage,
+            "When no provider is registered, GuidanceMessage must be set — mirrors fix_all_preview.");
+        StringAssert.Contains(preview.GuidanceMessage!, "No code fix provider is loaded");
+        StringAssert.Contains(preview.GuidanceMessage!, "CS8019");
+    }
+
     [TestMethod]
     public async Task Code_Fix_Preview_And_Apply_Removes_Unused_Using_In_Isolated_Copy()
     {

@@ -608,9 +608,20 @@ public sealed class RefactoringService : IRefactoringService
                 .ConfigureAwait(false);
         }
 
-        throw new InvalidOperationException(
-            $"No code fix provider is loaded for diagnostic '{diagnosticId}'. " +
-            "Run list_analyzers to see which analyzers are loaded, or restore analyzer NuGet packages.");
+        // code-fix-preview-vs-fix-all-preview-shape-inconsistency — mirror FixAllService:78-87's
+        // structured empty envelope when no provider is registered. Previously this branch threw
+        // InvalidOperationException, forcing callers to catch a generic exception to discover the
+        // same "no provider loaded" condition that fix_all_preview returns as data. Returning an
+        // envelope with empty PreviewToken/Changes + a non-null GuidanceMessage keeps the two
+        // tools' shape consistent. Reuses FixAllService.BuildNoProviderGuidance so the guidance
+        // text (suppression / severity-bump hints + id-specific tool pointers) stays unified.
+        return new RefactoringPreviewDto(
+            PreviewToken: string.Empty,
+            Description: $"No code fix provider for '{diagnosticId}'.",
+            Changes: Array.Empty<FileChangeDto>(),
+            Warnings: null,
+            CallsiteUpdates: null,
+            GuidanceMessage: FixAllService.BuildNoProviderGuidance(diagnosticId));
     }
 
     private async Task<RefactoringPreviewDto> PreviewRemoveUnusedUsingFallbackAsync(
