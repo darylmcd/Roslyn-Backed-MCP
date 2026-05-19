@@ -355,7 +355,12 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
                     $"{invokedSymbol.ToDisplayString()}|{lineSpan.Path}|{lineSpan.StartLinePosition.Line}|{lineSpan.StartLinePosition.Character}";
                 if (!seenCalleeKeys.Add(dedupeKey)) continue;
 
-                callees.Add(SymbolMapper.ToLocationDto(invokedLoc, invokedSymbol));
+                var calleeDoc = invokedLoc.SourceTree is { } calleeTree ? solution.GetDocument(calleeTree) : doc;
+                var previewText = calleeDoc is not null
+                    ? await SymbolResolver.GetPreviewTextAsync(calleeDoc, invokedLoc, ct).ConfigureAwait(false)
+                    : null;
+
+                callees.Add(SymbolMapper.ToLocationDto(invokedLoc, invokedSymbol, previewText));
             }
         }
         return callees;
