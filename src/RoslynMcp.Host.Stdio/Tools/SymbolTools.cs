@@ -650,16 +650,30 @@ public static class SymbolTools
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var (results, resolvedKind) = await mutationAnalysisService.FindPropertyWritesWithMetadataAsync(workspaceId, locator, c);
-            // FLAG-3C: when the position resolves to a field or other non-property symbol,
-            // return a structured disambiguation hint instead of a silent empty array.
+            // FLAG-3C: when the resolve target turns out to be a field or other non-property
+            // symbol, return a structured disambiguation hint instead of a silent empty array.
+            // find-property-writes-metadataname-hint-mismatches-input-shape (gh #758): the hint
+            // wording must reflect the locator mode the caller actually supplied — pre-fix the
+            // strings hardcoded "Position" / "column" even when the caller passed only
+            // metadataName or symbolHandle, pointing the agent at a non-existent source position
+            // to debug. Mirrors the locator-aware branching in
+            // SymbolLocatorFactory.FormatSymbolNotFoundMessage.
             string? hint = null;
             if (results.Count == 0 && resolvedKind is not null && resolvedKind != "Property")
             {
-                hint = $"Position resolved to a {resolvedKind}, not a property. Use find_references for fields and other symbol kinds.";
+                hint = locator.HasMetadataName
+                    ? $"metadataName resolved to a {resolvedKind}, not a property. Use find_references for fields and other symbol kinds."
+                    : locator.HasHandle
+                        ? $"Symbol handle resolved to a {resolvedKind}, not a property. Use find_references for fields and other symbol kinds."
+                        : $"Position resolved to a {resolvedKind}, not a property. Use find_references for fields and other symbol kinds.";
             }
             else if (results.Count == 0 && resolvedKind is null)
             {
-                hint = "No symbol resolved at the given position. Verify the column points at the symbol identifier.";
+                hint = locator.HasMetadataName
+                    ? "No symbol resolved for the given metadataName. Verify the fully qualified name (e.g. Namespace.TypeName.PropertyName) and that the containing type is loaded in this workspace."
+                    : locator.HasHandle
+                        ? "No symbol resolved for the given symbol handle. Re-acquire the handle from a current semantic tool call — handles may stale after a workspace reload."
+                        : "No symbol resolved at the given position. Verify the column points at the symbol identifier.";
             }
             return JsonSerializer.Serialize(new { count = results.Count, resolvedSymbolKind = resolvedKind, hint, writes = results }, JsonDefaults.Indented);
         }, ct);
