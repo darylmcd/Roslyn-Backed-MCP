@@ -66,14 +66,9 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                         }
 
                         var lineSpan = method.Identifier.GetLocation().GetLineSpan();
-                        var containingType = method.Parent switch
-                        {
-                            ClassDeclarationSyntax cls => cls.Identifier.Text,
-                            _ => "Unknown"
-                        };
                         tests.Add(new TestCaseDto(
                             DisplayName: method.Identifier.Text,
-                            FullyQualifiedName: $"{project.Name}.{containingType}.{method.Identifier.Text}",
+                            FullyQualifiedName: BuildFullyQualifiedTestName(project.Name, method),
                             FilePath: document.FilePath,
                             Line: lineSpan.StartLinePosition.Line + 1));
                     }
@@ -900,5 +895,58 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// test-run-fqdn-drift-vs-test-discover: build the fully-qualified test name using the
+    /// method's actual declared namespace (read from the syntax tree) rather than the
+    /// MSBuild project name. Test runners (xunit / MSTest / NUnit) register tests under
+    /// <c>{declared-namespace}.{containing-type}.{method}</c>; using the project name as the
+    /// prefix produced silent zero-hits when a test class lived in a sub-namespace (e.g.
+    /// <c>SampleLib.Tests.Unit.AnimalServiceTests</c> in a project named
+    /// <c>SampleLib.Tests</c>) because <c>--filter "FullyQualifiedName~..."</c> never matched.
+    /// Falls back to <paramref name="projectName"/> when no enclosing namespace is found
+    /// (test class declared in the global namespace).
+    /// </summary>
+    internal static string BuildFullyQualifiedTestName(string projectName, MethodDeclarationSyntax method)
+    {
+        var containingType = method.Parent switch
+        {
+            ClassDeclarationSyntax cls => cls.Identifier.Text,
+            _ => "Unknown"
+        };
+        var namespacePrefix = GetEnclosingNamespace(method) ?? projectName;
+        return $"{namespacePrefix}.{containingType}.{method.Identifier.Text}";
+    }
+
+    /// <summary>
+    /// Walks ancestors of <paramref name="node"/> to find every enclosing
+    /// <see cref="BaseNamespaceDeclarationSyntax"/> (covers both classic
+    /// <see cref="NamespaceDeclarationSyntax"/> and
+    /// <see cref="FileScopedNamespaceDeclarationSyntax"/>) and concatenates their names
+    /// outer-to-inner. Returns <see langword="null"/> when no enclosing namespace exists
+    /// (declaration in the global namespace).
+    /// </summary>
+    internal static string? GetEnclosingNamespace(SyntaxNode node)
+    {
+        var parts = new List<string>();
+        // Walk from the node upward; collect every namespace declaration so nested namespace
+        // declarations like `namespace A { namespace B { class C { } } }` produce "A.B".
+        for (var current = node.Parent; current is not null; current = current.Parent)
+        {
+            if (current is BaseNamespaceDeclarationSyntax ns)
+            {
+                parts.Add(ns.Name.ToString());
+            }
+        }
+
+        if (parts.Count == 0)
+        {
+            return null;
+        }
+
+        // Ancestor walk produces inner-to-outer; reverse for outer-to-inner concatenation.
+        parts.Reverse();
+        return string.Join(".", parts);
     }
 }
