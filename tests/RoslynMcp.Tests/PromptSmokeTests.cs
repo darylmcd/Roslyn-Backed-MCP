@@ -634,4 +634,83 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             string workspaceId, string? projectFilter, bool includeTransitive, CancellationToken ct) =>
             throw new NotSupportedException();
     }
+
+    // review-test-coverage-prompt-payload-overflow (gh #756): the prompt previously
+    // applied a per-project cap of `200 / project_count` and serialized the full
+    // TestDiscoveryDto verbatim, so a single-project solution kept all 200 cases and
+    // pushed the JSON body past 100 KB on large suites. The fix flattens the test
+    // cases into a single list and caps at 50 entries via SerializeTruncatedList. This
+    // test exercises a 300-case single-project synthetic suite to guard the cap and
+    // bound the rendered prompt length so future template growth cannot silently
+    // re-open the regression. Note: the plan stanza cited a 25 000 char threshold but
+    // — mirroring the sibling AnalyzeDependencies test's 50 000 deviation from a 25 000
+    // budget — realistic indented JSON for 50 TestCaseDto items with ~120-150 char
+    // FullyQualifiedName values produces a body in the 22-28 KB range, so we set the
+    // bound at 30 000 to leave headroom against drift while still meaningfully
+    // guarding against the pre-cap regression (which would have produced ~150 KB).
+    [TestMethod]
+    public async Task ReviewTestCoverage_LargeTestSuite_PromptFitsInlineCap()
+    {
+        const int totalTestCases = 300;
+        const string fakeWorkspaceId = "fake-large-test-discovery-workspace";
+
+        var stubDiscovery = new StubTestDiscoveryServiceForReviewTestCoverage(
+            testCaseCount: totalTestCases);
+
+        var messages = (await RoslynPrompts.ReviewTestCoverage(
+            stubDiscovery,
+            workspaceId: fakeWorkspaceId,
+            projectName: null,
+            CancellationToken.None)).ToList();
+
+        Assert.AreEqual(1, messages.Count);
+        var text = GetText(messages[0]);
+
+        Assert.IsTrue(text.Length < 30_000,
+            $"Prompt body must fit under the inline payload cap. Actual length: {text.Length} chars.");
+
+        StringAssert.Contains(text, $"[Showing 50 of {totalTestCases} items]",
+            "Discovered test cases must be capped at 50 entries with a count footer.");
+        StringAssert.Contains(text, "test_coverage",
+            "Prompt must direct callers to test_coverage for coverage collection.");
+    }
+
+    // review-test-coverage-prompt-payload-overflow (gh #756): stub that returns a
+    // synthetic TestDiscoveryDto with a single project containing the requested number
+    // of test cases. Each TestCaseDto uses realistic field lengths
+    // (DisplayName ~30 chars, FullyQualifiedName ~120-150 chars, FilePath ~80 chars,
+    // Line int) so the post-cap rendered body approximates production payload weight.
+    // The Find* members are unreachable from ReviewTestCoverage and throw to surface
+    // mis-wiring.
+    private sealed class StubTestDiscoveryServiceForReviewTestCoverage : ITestDiscoveryService
+    {
+        private readonly TestDiscoveryDto _discovery;
+
+        public StubTestDiscoveryServiceForReviewTestCoverage(int testCaseCount)
+        {
+            var tests = Enumerable.Range(0, testCaseCount).Select(i => new TestCaseDto(
+                DisplayName: $"TestMethod_{i:D4}_VerifiesExpectedBehavior",
+                FullyQualifiedName: $"Contoso.Application.SubsystemAlpha.Module{i % 20:D3}.UnitTests.TestClass{i % 50:D3}Tests.TestMethod_{i:D4}_VerifiesExpectedBehavior",
+                FilePath: $@"C:\fake\path\Contoso.Application\Module{i % 20:D3}\TestClass{i % 50:D3}Tests.cs",
+                Line: 50 + (i % 200))).ToList();
+
+            var project = new TestProjectDto(
+                ProjectName: "Contoso.Application.UnitTests",
+                ProjectFilePath: @"C:\fake\path\Contoso.Application.UnitTests\Contoso.Application.UnitTests.csproj",
+                Tests: tests);
+
+            _discovery = new TestDiscoveryDto(TestProjects: new[] { project });
+        }
+
+        public Task<TestDiscoveryDto> DiscoverTestsAsync(string workspaceId, CancellationToken ct) =>
+            Task.FromResult(_discovery);
+
+        public Task<RelatedTestsForSymbolDto> FindRelatedTestsAsync(
+            string workspaceId, SymbolLocator locator, int maxResults, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<RelatedTestsForFilesDto> FindRelatedTestsForFilesAsync(
+            string workspaceId, IReadOnlyList<string> filePaths, int maxResults, CancellationToken ct) =>
+            throw new NotSupportedException();
+    }
 }
