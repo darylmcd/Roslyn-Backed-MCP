@@ -293,8 +293,31 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 ## Conflict graph
 
-_Pending — Phase C computes after Phase B merge._
+**1 edge:** (#6, #12) on `src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs`.
+
+- #6 (`set-conditional-property-preview-allowlist-narrowness`) edits the `AllowedProperties` HashSet (~lines 17-23) and the `ValidateAllowedProperty` reference.
+- #12 (`remove-preview-family-invalidoperation-for-missing-items`) converts 4 absent-item throws to empty-preview returns in `PreviewRemovePackageReferenceAsync` (line 109), `PreviewRemoveProjectReferenceAsync` (line 165), `PreviewRemoveTargetFrameworkAsync` (lines 330/354/370 — three branches), `PreviewRemoveCentralPackageVersionAsync` (line 465).
+
+The edits are in **disjoint methods/regions** within the same file; they would not produce a Git merge conflict but the executor SHOULD schedule them in different parallel waves to avoid serialization friction during the merge.
+
+**Zero-degree initiatives (13 of 15):** [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13, 14, 15] — safely parallelizable.
+
+**Hotspot adjacency check:** None of the 15 initiatives touch the addenda-listed hotspots (`ServerSurfaceCatalog.cs`, `ServiceCollectionExtensions.cs`, `WorkspaceManager.cs`). The wave rule (≤1 hotspot per wave) does not bind.
+
+**Suggested wave plan** (parallel mode, 4 inits/wave):
+- Wave 1: 1, 2, 3, 4
+- Wave 2: 5, 6, 7, 8 (includes #6 ProjectMutationService.cs touch)
+- Wave 3: 9, 10, 11, 12 (includes #12 ProjectMutationService.cs touch — separated from #6 by one wave)
+- Wave 4: 13, 14, 15
+
+Or compact 5/5/5 split keeping #6 and #12 in different waves.
 
 ## Review
 
-_Pending — Phase D runs after Phase C._
+**Cycle 0 outcome: passed-with-warnings** (0 block, 1 warn, 0 info). See `review-cycle-0.md` (or `review.md`) for the full reviewer artifact.
+
+Key signal:
+- **Warn (Rule 5b):** Initiative #7 (`get-completions-filtertext-doesnt-promote-in-scope-members`) — `ICompletionService` interface signature change with `fanoutEstimate: null`. Reviewer-verified the actual fanout is bounded (1 impl + 1 call site, matching the plan's `productionFilesTouched: 3`). Non-blocking; executor should re-verify the impl count before applying.
+- No info findings.
+
+No remediation cycle required (`block: 0`).

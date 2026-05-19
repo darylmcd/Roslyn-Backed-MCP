@@ -3,17 +3,29 @@
   "generatedAt": "2026-05-19T19:36:50Z",
   "backlogSnapshot": "2026-05-19T19:31:17Z",
   "addendaLoaded": true,
-  "phase": "deepening-done",
+  "phase": "review-cycle-0-done",
   "cycleCount": 0,
   "maxCycles": 2,
-  "reviewStatus": "pending",
+  "reviewStatus": "passed-with-warnings",
   "readyForExecute": false,
   "handoffPolicy": "auto",
   "anchorVerification": "performed",
+  "reviewFindings": {
+    "block": 0,
+    "warn": 1,
+    "info": 0
+  },
   "conflictGraph": {
-    "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "edges": [
+      { "a": 6, "b": 12, "sharedFiles": ["src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs"] }
+    ],
+    "degrees": {
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0,
+      "6": 1, "7": 0, "8": 0, "9": 0, "10": 0,
+      "11": 0, "12": 1, "13": 0, "14": 0, "15": 0
+    },
+    "zeroDegreeInitiatives": [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13, 14, 15],
+    "notes": "Single conflict edge (6,12) on ProjectMutationService.cs: #6 expands AllowedProperties HashSet (lines 17-23) and ValidateAllowedProperty call sites; #12 converts 4 absent-item throws to empty-preview returns (lines 109, 165, 330/354/370, 465). Both are in the same file but in disjoint methods/regions — executor MUST schedule them in different parallel waves OR run them serially within a wave to avoid rebase friction. 13 of 15 initiatives are zero-degree. No hotspot files (ServerSurfaceCatalog.cs / ServiceCollectionExtensions.cs / WorkspaceManager.cs) touched."
   },
   "selectionNotes": "count=15 cap; 23 sweep-actionable rows available (11 P2 + 12 P3). Selected all 11 P2 + 4 P3 picked for correctness/blast-radius/feasibility ranking. Excluded: 8 P3 rows (deferred for next sweep), 4 Reserved good-first-issue rows, 1 track-only weak-evidence row, 6 Defer rows. All 23 sweep-actionable rows are child splits from gh #768 (P2) and gh #769 (P3) — the 2026-05-16 firewallanalyzer audit. Parent trackers reference is plain-text (no [gh #NNN]) so initiative-executor will NOT auto-close them on child PR merge — that is intentional; parent trackers close manually when ALL children ship.",
   "deepenerSummary": {
