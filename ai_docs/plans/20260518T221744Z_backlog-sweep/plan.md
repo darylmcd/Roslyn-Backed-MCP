@@ -172,7 +172,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #831, 2026-05-19) |
 | Backlog rows closed | `migrate-package-preview-misses-analyzer-only-references` |
 | Source | gh #753 |
 | Diagnosis | Root cause in `src/RoslynMcp.Roslyn/Services/PackageMigrationOrchestrator.cs`, `BuildPackageReferenceEditAsync` (lines 85-112). The LINQ filter at line 77 correctly locates `PackageReference` elements by `Include` attribute — including analyzer-only references. However, the replacement element at lines 96-100 is always built as a bare `new XElement("PackageReference", new XAttribute("Include", newPackageId))` with an optional `Version` attribute. Child-element metadata on the original reference — `<PrivateAssets>all</PrivateAssets>`, `<IncludeAssets>...analyzers...</IncludeAssets>`, `<ExcludeAssets>runtime</ExcludeAssets>`, `<VersionOverride>` — is silently discarded. After apply, an analyzer-only package that should carry `PrivateAssets=all` is rewritten as a full runtime dependency; asset-isolation semantics lost. Existing test helper `InjectPackageReference` (line 413 of `OrchestrationIntegrationTests.cs`) only injects bare elements, so no existing test covers this path. |
@@ -191,7 +191,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #834, 2026-05-19) |
 | Backlog rows closed | `find-overrides-payload-overflow-on-corlib-virtual` |
 | Source | gh #754 |
 | Diagnosis | Root cause in `src/RoslynMcp.Roslyn/Services/ReferenceService.cs:164`. `FindOverridesAsync` calls `PromoteToVirtualRoot(symbol)` at line 156 which correctly walks the override chain up to the virtual declaration site. When the user anchors on a type like `MyClass.ToString` or supplies `metadataName="System.Object.ToString"`, `PromoteToVirtualRoot` returns `System.Object.ToString` (a corlib virtual). The subsequent `SymbolFinder.FindOverridesAsync(promoted, solution)` at line 164 enumerates every class in the entire solution that overrides `ToString`/`Equals`/`GetHashCode` — potentially hundreds — producing unbounded payload. The same pattern has a precedent fix in `src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs:165` (PR #815, shipped), where `GetSymbolRelationshipsAsync` guards `SpecialType != SpecialType.None` and returns suppressed empty envelope with `Hint`. The corlib guard is absent from `ReferenceService.FindOverridesAsync`, leaving `find_overrides` AND `member_hierarchy` (which delegates to it via `SymbolRelationshipService.cs:133`) unprotected. The fix in `ReferenceService` also closes the overflow for `member_hierarchy.overrides`. |
@@ -210,7 +210,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #832, 2026-05-19) |
 | Backlog rows closed | `analyze-dependencies-prompt-payload-overflow` |
 | Source | gh #755 |
 | Diagnosis | Root cause in `AnalyzeDependencies` at `src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.cs:252-303`. The method builds three JSON blocks and concatenates them: (1) project graph capped at 50 nodes via `SerializeTruncatedList`, (2) namespace dependency graph where nodes/edges are each capped at 100 via `with` expression but `CircularDependencies` is NOT capped at all, (3) NuGet packages capped at 50 via `SerializeTruncatedList`. On a 9-project workspace with heavily-namespaced code, the namespace block alone produces 15-25 KB (namespace strings 60-100 chars each); combined with project graph + NuGet entries (with `UsedByProjects` lists), aggregate prompt body reaches 63 KB — beyond MCP inline payload cap. The `guided_extract_interface` prompt hit the same class of overflow before PR #790 (gh #776) fixed it by lowering caps + adding regression test in `PromptSmokeTests.cs`. No equivalent guard exists for `analyze_dependencies`. **Bundle with #11 REJECTED:** different methods in different files; conditions 1+2 fail. |
@@ -229,7 +229,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #835, 2026-05-19) |
 | Backlog rows closed | `review-test-coverage-prompt-payload-overflow` |
 | Source | gh #756 |
 | Diagnosis | `RoslynPrompts.AnalysisWorkflows.cs:210-261` — `ReviewTestCoverage` fetches `TestDiscoveryDto` via `ITestDiscoveryService.DiscoverTestsAsync` and applies a per-project cap of `200 / project_count` test cases (line 220). For a single-project solution this keeps all 200 cases; each `TestCaseDto` serializes four fields including `FullyQualifiedName` (100-200 chars in large suites), producing 100+ KB of JSON inline in the prompt message. The existing truncation guard at line 224 appends a footer only when `totalTests > 200` but does not reduce the JSON body size. **Bundle with #10 REJECTED:** `AnalyzeDependencies` lives in `RoslynPrompts.cs:245`, `ReviewTestCoverage` in `RoslynPrompts.AnalysisWorkflows.cs:210` — different files and methods; SPLIT confirmed. |
@@ -248,7 +248,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #837, 2026-05-19) |
 | Backlog rows closed | `find-property-writes-metadataname-hint-mismatches-input-shape` |
 | Source | gh #758 |
 | Diagnosis | Root cause in `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs:629-637`, inside the `FindPropertyWrites` tool wrapper. After calling `mutationAnalysisService.FindPropertyWritesWithMetadataAsync`, the code builds a `hint` string via two branches: (1) when `results.Count == 0 && resolvedKind != "Property"` (line 632): `"Position resolved to a {resolvedKind}, not a property..."` — hardcodes "Position" even when caller used `metadataName`. (2) when `results.Count == 0 && resolvedKind is null` (line 636): `"No symbol resolved at the given position. Verify the column points..."` — hardcodes "position" and "column" even when caller passed only `metadataName`. The `SymbolLocator` record (`SymbolLocator.cs:34-45`) exposes `HasSourceLocation`/`HasHandle`/`HasMetadataName` predicates specifically for this branching. `SymbolLocatorFactory.FormatSymbolNotFoundMessage` (`SymbolLocatorFactory.cs:100-125`) demonstrates the correct locator-aware branching for thrown errors; `FindPropertyWrites` applies the same concept for soft hints but ignores locator mode. **Anchor stale:** backlog row cites sibling-repo `src/TradeWise.Domain/Alerts/AlertRule.cs`; real anchor `SymbolTools.cs:629-637`. |
@@ -267,7 +267,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #833, 2026-05-19) |
 | Backlog rows closed | `validate-workspace-25s-internalvalidationtimeoutexception-on-medium-solution` |
 | Source | gh #759 |
 | Diagnosis | Root cause at `src/RoslynMcp.Roslyn/Services/WorkspaceValidationService.cs:72-78`. The public `ValidateAsync` method delegates unconditionally to `ValidateInternalAsync`, which calls `RunValidationPhaseAsync` (line 617-632). When a validation phase exceeds the 25-second internal timeout, `RunValidationPhaseAsync` throws the private nested `InternalValidationTimeoutException` (line 690). `ValidateAsync` has no try/catch for this exception, so it escapes as an unhandled exception and surfaces as a bare MCP error string instead of a graceful `FailureEnvelope`. By contrast, `ValidateRecentGitChangesAsync` (lines 87-127) already catches `InternalValidationTimeoutException` at both code paths (lines 109-111, 123-125) and calls `CreateTimeoutResult` to return a structured DTO with `OverallStatus: "timeout"`. The `validate_workspace` tool calls `validationService.ValidateAsync(...)` and would receive the structured DTO on success — but on timeout the exception propagates through `gate.RunReadAsync` and up to the SDK transport. **Bundle with #6 REJECTED:** peer's bug is in `ComputeOverallStatus` (static classifier), an entirely different code path from the timeout-propagation in `ValidateAsync`. Rule 1 condition 2 fails. |
@@ -286,7 +286,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #838, 2026-05-19) |
 | Backlog rows closed | `workspace-status-verbose-5s-timeout-race-on-ready-workspace` |
 | Source | gh #761 |
 | Diagnosis | `WorkspaceManager.GetStatus` (line 432) and `GetStatusAsync` (line 455) both acquire `session.LoadLock` (a `SemaphoreSlim(1,1)`) with a 5-second hard timeout before calling `BuildStatus`. `LoadIntoSessionAsync` (line 1146) also acquires `LoadLock` at line 1152 and holds it for the entire MSBuild workspace load — which can run 30+ seconds. When `workspace_status(verbose=true)` is called on a workspace that just returned `isReady=true` from `workspace_status(verbose=false)` moments earlier, the prior call may have released `LoadLock` but an in-progress background reload triggered by staleness auto-reload (line 376 in `WorkspaceExecutionGate.cs`) is still holding it. The 5s `WaitAsync` inside `GetStatusAsync` then times out and throws `TimeoutException`. The resource sibling `roslyn://workspace/{id}/status/verbose` (`WorkspaceResources.cs:60-65`) takes the identical code path. `BuildStatus` only reads `session.ProjectStatuses` (`ImmutableArray`, set atomically), `session.WorkspaceDiagnostics` (`ConcurrentQueue`, concurrent-read safe), and simple scalar reads (`LoadedPath`, `Version`, `LoadedAtUtc`, `RestoreRequired`). None require holding `LoadLock`; the lock was added defensively but provides no safety the field types don't already guarantee. |
@@ -305,7 +305,7 @@ Two pairs flagged as bundle candidates — the deepener will verify or split:
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #836, 2026-05-19) |
 | Backlog rows closed | `source-file-resource-requires-url-encoded-absolute-path-undocumented` |
 | Source | gh #762 |
 | Diagnosis | The doc gap is confirmed but narrower than the backlog row implies. `GetSourceFile` (`source_file` resource, `WorkspaceResources.cs:162`) already carries accurate description: "filePath accepts URL-encoded form (recommended) or raw absolute path; both normalized server-side." `NormalizeFilePathForResource` at `WorkspaceResources.cs:205-211` applies `Uri.UnescapeDataString` (idempotent) + separator normalization to both resources. However the sibling `GetSourceFileLines` method (`WorkspaceResources.cs:228`) still says "filePath must be URL-encoded" in its `[Description]` attribute and its `filePath` parameter description (line 233) also says "URL-encoded" only — implying raw paths are rejected, which is false. Both resources share the same normalizer. `WindowsPathResourceTests` covers all encoding shapes for `GetSourceFile` but its single `source_file_lines` test only exercises encoded form. **Anchor stale:** backlog row cites sibling-repo `src/TradeWise.Domain/Alerts/AlertRuleType.cs`; real anchor `WorkspaceResources.cs:228+233`. |
