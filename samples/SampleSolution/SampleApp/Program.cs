@@ -33,3 +33,11 @@ var formatted = AnimalFormatter.Format(animals.First());
 Console.WriteLine(formatted);
 var allFormatted = AnimalFormatter.FormatAll(animals);
 Console.WriteLine(allFormatted);
+
+// Extension-method invocation against IAnimalNamingExtensions — the type-name token is
+// ABSENT at these call sites, exercising the find-references-static-extension-host-blind-spot
+// fallback in ConsumerAnalysisService.FindConsumersAsync.
+var loud = animals.First().LoudName();
+Console.WriteLine(loud);
+var quiet = animals.First().QuietName();
+Console.WriteLine(quiet);

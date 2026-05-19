@@ -82,4 +82,29 @@ public sealed class ConsumerAnalysisTests : SharedWorkspaceTestBase
         CollectionAssert.DoesNotContain(allKinds, "Other",
             $"'Other' kind must not appear for static-class consumers. Actual kinds: [{string.Join(", ", allKinds)}]");
     }
+
+    [TestMethod]
+    public async Task FindConsumers_ExtensionHostClass_AggregatesToMemberConsumers()
+    {
+        // find-references-static-extension-host-blind-spot: when every call site to a static
+        // extension-host class binds via `obj.ExtensionMethod()` syntax, the type-level
+        // reference index is BLIND — Roslyn records syntactic sites where the *type-name
+        // token* appears, and at extension-method call sites the token is absent. Without
+        // a fallback, FindConsumersAsync returns zero consumers even though the type IS
+        // consumed.
+        //
+        // SampleApp/Program.cs calls `animals.First().LoudName()` and `.QuietName()` —
+        // both bind to members of SampleLib.IAnimalNamingExtensions but never name the
+        // host class at the call site. The fallback in ConsumerAnalysisService unions
+        // per-member references so the consumer (Program.cs's compiler-generated host
+        // type) shows up here.
+        var locator = SymbolLocator.ByMetadataName("SampleLib.IAnimalNamingExtensions");
+        var result = await ConsumerAnalysisService.FindConsumersAsync(WorkspaceId, locator, CancellationToken.None);
+
+        Assert.IsNotNull(result);
+        Assert.IsTrue(result.Consumers.Count >= 1,
+            $"Expected at least 1 consumer of IAnimalNamingExtensions via the member-union " +
+            $"fallback, got {result.Consumers.Count}. The fallback should have unioned references " +
+            $"to LoudName/QuietName and surfaced the calling type.");
+    }
 }

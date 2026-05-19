@@ -96,6 +96,35 @@ public sealed class SymbolImpactSweepBudgetTests : SharedWorkspaceTestBase
     }
 
     /// <summary>
+    /// Regression for `find-references-static-extension-host-blind-spot`: when the swept
+    /// target is a static class whose members are exclusively consumed via extension-method
+    /// invocation syntax (e.g. `animal.LoudName()`), the type-level reference walk via
+    /// `ReferenceService.FindReferencesAsync` returns 0 hits because the type-name token is
+    /// absent from the call sites. Without the hint, reviewers would conclude the type is
+    /// dead and miss real consumers. The hint points them at `callers_callees(<member>)`
+    /// per public member so they can find the actual call sites.
+    /// </summary>
+    [TestMethod]
+    public async Task SweepAsync_StaticExtensionHost_EmitsCallersCalleesHint()
+    {
+        // IAnimalNamingExtensions is the dedicated fixture for this regression — its
+        // members LoudName/QuietName are called only via obj.Method() syntax in
+        // SampleApp/Program.cs, so the type-level reference index is blind to them.
+        var locator = SymbolLocator.ByMetadataName("SampleLib.IAnimalNamingExtensions");
+        var result = await _impactSweepService.SweepAsync(WorkspaceId, locator, CancellationToken.None);
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(0, result.References.Count,
+            "guard: type-level reference walk must report 0 refs for a static extension-host whose call sites use obj.Method() syntax — otherwise the hint path is not exercised.");
+
+        var hint = result.SuggestedTasks.FirstOrDefault(t => t.Contains("callers_callees", StringComparison.Ordinal));
+        Assert.IsNotNull(hint,
+            $"Expected a callers_callees(<MemberName>) hint in SuggestedTasks for a static extension-host class with zero detected impact. Actual tasks: [{string.Join(" | ", result.SuggestedTasks)}]");
+        StringAssert.Contains(hint, "Static extension-host class",
+            "hint must label the symbol as a static extension-host class so reviewers understand WHY the index returned 0.");
+    }
+
+    /// <summary>
     /// Regression for `symbol-impact-sweep-suggested-tasks-count-drift` (P4): the
     /// suggested-tasks string was previously built from the truncated list length
     /// (`references.Count` after `Take(cap)`), so a 193-ref symbol capped at 10 reported

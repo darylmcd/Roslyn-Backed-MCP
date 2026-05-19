@@ -54,8 +54,18 @@ public sealed class ImpactSweepService : IImpactSweepService
         // or enclosing type name contains a mapper suffix.
         var mapperCallsites = FilterMapperCallsites(references);
 
-        // Resolve the symbol display name for the response header.
-        var symbolDisplay = await ResolveSymbolDisplayAsync(workspaceId, locator, ct).ConfigureAwait(false);
+        // Resolve the symbol once for the response header AND the static-extension-host
+        // detection — saves a second SymbolResolver.ResolveAsync round-trip for the hint.
+        var resolvedSymbol = await ResolveSymbolAsync(workspaceId, locator, ct).ConfigureAwait(false);
+        var symbolDisplay = resolvedSymbol?.ToDisplayString() ?? "<unresolved>";
+
+        // find-references-static-extension-host-blind-spot: when the target is a static class
+        // whose only consumption pattern is `obj.ExtensionMethod()` syntax, the type-level
+        // reference index returns 0 hits even though every extension call binds to a member
+        // of the host. Surface this as an explicit `callers_callees` hint in the suggested
+        // tasks so reviewers don't conclude the type is dead.
+        var isStaticExtensionHost = resolvedSymbol is INamedTypeSymbol { IsStatic: true } host &&
+            host.GetMembers().OfType<IMethodSymbol>().Any(m => m.IsExtensionMethod);
 
         // Item 10: when the swept symbol is a property carrying a JSON/DataMember attribute,
         // surface paired-DTO mapper findings (To*/From* asymmetry).
@@ -81,7 +91,8 @@ public sealed class ImpactSweepService : IImpactSweepService
             diagnostics = diagnostics.Take(cap).ToList();
         }
 
-        var tasks = BuildSuggestedTasks(totalReferenceCount, totalDiagnosticCount, totalMapperCount, persistenceFindings.Count);
+        var tasks = BuildSuggestedTasks(
+            totalReferenceCount, totalDiagnosticCount, totalMapperCount, persistenceFindings.Count, isStaticExtensionHost);
 
         return new SymbolImpactSweepDto(
             SymbolDisplay: symbolDisplay,
@@ -290,15 +301,15 @@ public sealed class ImpactSweepService : IImpactSweepService
         return mapperHits;
     }
 
-    private async Task<string> ResolveSymbolDisplayAsync(
+    private async Task<ISymbol?> ResolveSymbolAsync(
         string workspaceId, SymbolLocator locator, CancellationToken ct)
     {
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
-        return symbol?.ToDisplayString() ?? "<unresolved>";
+        return await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
     }
 
-    private static IReadOnlyList<string> BuildSuggestedTasks(int refCount, int switchCount, int mapperCount, int persistenceCount)
+    private static IReadOnlyList<string> BuildSuggestedTasks(
+        int refCount, int switchCount, int mapperCount, int persistenceCount, bool isStaticExtensionHost)
     {
         var tasks = new List<string>();
         if (refCount > 0)
@@ -310,7 +321,24 @@ public sealed class ImpactSweepService : IImpactSweepService
         if (persistenceCount > 0)
             tasks.Add($"Resolve {persistenceCount} persistence-layer asymmetry finding(s): a paired DTO mapper omits one direction (To*/From*).");
         if (tasks.Count == 0)
-            tasks.Add("No impact detected. Consider running project_diagnostics to confirm.");
+        {
+            // find-references-static-extension-host-blind-spot: when the target is a static
+            // extension-host class with zero detected impact, the most likely explanation is
+            // that every consumer binds via `obj.ExtensionMethod()` syntax — which the
+            // type-level reference index does NOT capture. Point reviewers at
+            // `callers_callees` per member so they don't conclude the type is unused.
+            if (isStaticExtensionHost)
+            {
+                tasks.Add(
+                    "Static extension-host class — type-level reference index is blind to " +
+                    "extension-method call sites. Use callers_callees(<MemberName>) on each " +
+                    "public member to find consumers.");
+            }
+            else
+            {
+                tasks.Add("No impact detected. Consider running project_diagnostics to confirm.");
+            }
+        }
         return tasks;
     }
 }
