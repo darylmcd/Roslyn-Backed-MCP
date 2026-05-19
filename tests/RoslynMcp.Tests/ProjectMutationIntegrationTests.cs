@@ -345,6 +345,50 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task Set_Conditional_Property_Preview_Accepts_Expanded_Allowlist_Properties()
+    {
+        // set-conditional-property-preview-allowlist-narrowness: pre-fix, the AllowedProperties
+        // HashSet contained only {Nullable, LangVersion, ImplicitUsings, TargetFramework} so common
+        // per-config properties (DefineConstants, Optimize, NoWarn, DebugType, TreatWarningsAsErrors)
+        // were rejected with "not in allowlist". Post-fix, all five additions are accepted by the
+        // shared ValidateAllowedProperty gate that fronts both set_conditional_property_preview
+        // and set_project_property_preview.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var projectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        const string condition = "'$(Configuration)'=='Release'";
+
+        var defineConstantsPreview = await ProjectMutationService.PreviewSetConditionalPropertyAsync(
+            workspace.WorkspaceId,
+            new SetConditionalPropertyDto("SampleLib", "DefineConstants", "RELEASE;FEATURE_X", condition),
+            CancellationToken.None);
+        var defineConstantsApply = await ProjectMutationService.ApplyProjectMutationAsync(defineConstantsPreview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(defineConstantsApply.Success, defineConstantsApply.Error);
+
+        var optimizePreview = await ProjectMutationService.PreviewSetConditionalPropertyAsync(
+            workspace.WorkspaceId,
+            new SetConditionalPropertyDto("SampleLib", "Optimize", "true", condition),
+            CancellationToken.None);
+        var optimizeApply = await ProjectMutationService.ApplyProjectMutationAsync(optimizePreview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(optimizeApply.Success, optimizeApply.Error);
+
+        var noWarnPreview = await ProjectMutationService.PreviewSetConditionalPropertyAsync(
+            workspace.WorkspaceId,
+            new SetConditionalPropertyDto("SampleLib", "NoWarn", "CS1591;CS0168", condition),
+            CancellationToken.None);
+        var noWarnApply = await ProjectMutationService.ApplyProjectMutationAsync(noWarnPreview.PreviewToken, CancellationToken.None);
+        Assert.IsTrue(noWarnApply.Success, noWarnApply.Error);
+
+        var projectXml = XDocument.Load(projectFilePath);
+        var propertyGroup = projectXml.Root?.Elements("PropertyGroup")
+            .FirstOrDefault(element => string.Equals((string?)element.Attribute("Condition"), condition, StringComparison.Ordinal));
+
+        Assert.IsNotNull(propertyGroup);
+        Assert.AreEqual("RELEASE;FEATURE_X", propertyGroup.Element("DefineConstants")?.Value);
+        Assert.AreEqual("true", propertyGroup.Element("Optimize")?.Value);
+        Assert.AreEqual("CS1591;CS0168", propertyGroup.Element("NoWarn")?.Value);
+    }
+
+    [TestMethod]
     public async Task Add_And_Remove_Central_Package_Version_Preview_And_Apply_Updates_Directory_Packages_Props()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);

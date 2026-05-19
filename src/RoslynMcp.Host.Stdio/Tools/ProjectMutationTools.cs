@@ -112,7 +112,7 @@ public static class ProjectMutationTools
         IProjectMutationService projectMutationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Project name or project file path within the loaded workspace")] string projectName,
-        [Description("Allowlisted property name (Nullable, LangVersion, ImplicitUsings, TargetFramework)")] string propertyName,
+        [Description("Allowlisted property name (Nullable, LangVersion, ImplicitUsings, TargetFramework, DefineConstants, Optimize, DebugType, NoWarn, TreatWarningsAsErrors)")] string propertyName,
         [Description("Property value to set")] string value,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(
@@ -173,7 +173,7 @@ public static class ProjectMutationTools
         IProjectMutationService projectMutationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Project name or project file path within the loaded workspace")] string projectName,
-        [Description("Allowlisted property name (Nullable, LangVersion, ImplicitUsings, TargetFramework)")] string propertyName,
+        [Description("Allowlisted property name (Nullable, LangVersion, ImplicitUsings, TargetFramework, DefineConstants, Optimize, DebugType, NoWarn, TreatWarningsAsErrors)")] string propertyName,
         [Description("Property value to set")] string value,
         [Description("Condition expression using $(Configuration), $(TargetFramework), or $(Platform)")] string condition,
         CancellationToken ct = default)
