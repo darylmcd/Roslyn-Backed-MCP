@@ -217,6 +217,15 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
 
         Assert.IsTrue(applyResult.Success, $"Composite apply must succeed; error={applyResult.Error}");
 
+        // symbol-refactor-preview-empty-appliedfiles-on-success (gh #750): a successful apply
+        // must return at least one entry in AppliedFiles. Pre-fix, this assertion would have
+        // passed (the foreach DID execute here because two ops produced mutations), but the
+        // sibling new-test below catches the empty-mutations path that silently returned
+        // success=true with appliedFiles=[]. Pinning both shapes guards against regression on
+        // either side of the empty-mutations guard.
+        Assert.IsTrue(applyResult.AppliedFiles.Count > 0,
+            $"A successful composite apply must surface at least one entry in AppliedFiles; got count={applyResult.AppliedFiles.Count}.");
+
         // Both edits must be on disk now.
         var finalContent = await File.ReadAllTextAsync(dogFilePath, CancellationToken.None);
         Assert.IsTrue(finalContent.Contains("class Puppy", StringComparison.Ordinal),
@@ -233,6 +242,94 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
             $"Exactly one ledger entry expected after composite redeem; got [{string.Join(", ", changes.Select(c => c.ToolName))}].");
         Assert.AreEqual("apply_composite_preview", changes[0].ToolName,
             "The single ledger entry must be attributed to apply_composite_preview, not the inner sub-op tool name.");
+    }
+
+    /// <summary>
+    /// Regression for <c>symbol-refactor-preview-empty-appliedfiles-on-success</c> (gh #750).
+    /// Pre-fix, <see cref="CompositeApplyOrchestrator.ApplyCompositeAsync"/> returned
+    /// <c>{success: true, appliedFiles: []}</c> when the composite preview produced
+    /// non-empty mutations OR empty mutations alike — empty was a silent success that
+    /// masked the no-op. This test pins the happy path: a single-op preview that DOES
+    /// produce mutations must surface them in <c>AppliedFiles</c> with the target file
+    /// path present. The sibling empty-mutations path is tested separately below.
+    /// </summary>
+    [TestMethod]
+    public async Task SingleRenameOp_ApplyComposite_AppliedFilesIsNonEmpty()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var wsId = workspace.WorkspaceId;
+
+        var dogFile = WorkspaceManager.GetCurrentSolution(wsId)
+            .Projects.SelectMany(p => p.Documents)
+            .First(d => d.Name == "Dog.cs");
+        var dogFilePath = dogFile.FilePath!;
+
+        ChangeTracker.Clear(wsId);
+
+        var compositeStore = new CompositePreviewStore();
+        var service = CreateSymbolRefactorService(compositeStore);
+
+        var preview = await service.PreviewAsync(
+            wsId,
+            new[]
+            {
+                new SymbolRefactorOperation(
+                    Kind: "rename",
+                    MetadataName: "SampleLib.Dog",
+                    NewName: "Puppy"),
+            },
+            CancellationToken.None);
+
+        var orchestrator = new CompositeApplyOrchestrator(WorkspaceManager, compositeStore, ChangeTracker);
+        var applyResult = await orchestrator.ApplyCompositeAsync(preview.PreviewToken, CancellationToken.None);
+
+        Assert.IsTrue(applyResult.Success,
+            $"Single-rename composite apply must succeed; error={applyResult.Error}");
+        Assert.IsTrue(applyResult.AppliedFiles.Count >= 1,
+            $"AppliedFiles must contain at least one entry for the renamed file; got count={applyResult.AppliedFiles.Count}.");
+        Assert.IsTrue(
+            applyResult.AppliedFiles.Any(p => string.Equals(p, dogFilePath, StringComparison.OrdinalIgnoreCase)),
+            $"AppliedFiles must include the rename target path '{dogFilePath}'; got [{string.Join(", ", applyResult.AppliedFiles)}].");
+    }
+
+    /// <summary>
+    /// Regression for the breaking-change leg of <c>symbol-refactor-preview-empty-appliedfiles-on-success</c>
+    /// (gh #750). When a composite preview produces an empty mutation list (e.g. a no-op
+    /// solution-change walk), the orchestrator MUST surface an explicit failure instead of
+    /// silently returning <c>{success: true, appliedFiles: []}</c>. This pins the new
+    /// guard added at the top of <see cref="CompositeApplyOrchestrator.ApplyCompositeAsync"/>.
+    /// </summary>
+    [TestMethod]
+    public async Task EmptyMutations_ApplyComposite_ReturnsFailureWithExplicitError()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync();
+        var wsId = workspace.WorkspaceId;
+
+        // Manually stage a composite-preview entry with an empty mutation list so we can
+        // exercise the guard without depending on a Roslyn op that happens to no-op.
+        var compositeStore = new CompositePreviewStore();
+        var emptyToken = compositeStore.Store(
+            wsId,
+            workspaceVersion: WorkspaceManager.GetCurrentVersion(wsId),
+            description: "empty-mutations regression fixture",
+            mutations: Array.Empty<CompositeFileMutation>());
+
+        var orchestrator = new CompositeApplyOrchestrator(WorkspaceManager, compositeStore, ChangeTracker);
+        var applyResult = await orchestrator.ApplyCompositeAsync(emptyToken, CancellationToken.None);
+
+        Assert.IsFalse(applyResult.Success,
+            "Empty-mutations composite apply must NOT silently return success=true; the pre-fix behavior is the regression.");
+        Assert.AreEqual(0, applyResult.AppliedFiles.Count,
+            "An empty-mutations apply must return an empty AppliedFiles list (no files were touched).");
+        Assert.IsNotNull(applyResult.Error,
+            "An empty-mutations apply must surface an explicit error string so callers can disambiguate from a real apply.");
+        Assert.IsTrue(
+            applyResult.Error!.Contains("no file mutations", StringComparison.OrdinalIgnoreCase),
+            $"Error string must reference the no-mutations cause; got '{applyResult.Error}'.");
+
+        // Token must remain valid for caller inspection (Invalidate is skipped on this path).
+        Assert.IsNotNull(compositeStore.Retrieve(emptyToken),
+            "The empty-mutations guard must NOT invalidate the token; callers should still be able to inspect it.");
     }
 
     private static SymbolRefactorService CreateSymbolRefactorService(CompositePreviewStore compositeStore)
