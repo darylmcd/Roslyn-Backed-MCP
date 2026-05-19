@@ -349,6 +349,67 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             "Project graph (Projects) must be capped at 20 entries with a count footer.");
     }
 
+    // analyze-dependencies-prompt-payload-overflow (gh #755): the prompt previously capped
+    // namespace nodes and edges at 100 each but left CircularDependencies uncapped, and the
+    // node-count footer was missing. On a 9-project workspace with heavily-namespaced code,
+    // the aggregate prompt body reached ~63 KB and overflowed the MCP inline payload cap.
+    // The fix lowered the namespace-node/edge caps to 50 each, added a 20-cap for
+    // CircularDependencies, and emits truncation footers for every list. This test guards
+    // all three caps and bounds the rendered prompt length so future template growth cannot
+    // silently re-open the regression.
+    [TestMethod]
+    public async Task AnalyzeDependencies_LargeWorkspace_PromptFitsInlineCap()
+    {
+        const int projectCount = 60;
+        const int namespaceNodeCount = 120;
+        const int namespaceEdgeCount = 120;
+        const int circularDependencyCount = 30;
+        const int nuGetPackageCount = 60;
+        const string fakeWorkspaceId = "fake-large-analyze-deps-workspace";
+
+        var stubWorkspace = new StubWorkspaceManagerForAnalyzeDeps(
+            workspaceId: fakeWorkspaceId,
+            projectCount: projectCount);
+        var stubNamespaceDeps = new StubNamespaceDependencyServiceForAnalyzeDeps(
+            nodeCount: namespaceNodeCount,
+            edgeCount: namespaceEdgeCount,
+            circularCount: circularDependencyCount);
+        var stubNuGetDeps = new StubNuGetDependencyServiceForAnalyzeDeps(
+            packageCount: nuGetPackageCount);
+
+        var messages = (await RoslynPrompts.AnalyzeDependencies(
+            stubWorkspace,
+            stubNamespaceDeps,
+            stubNuGetDeps,
+            workspaceId: fakeWorkspaceId,
+            CancellationToken.None)).ToList();
+
+        Assert.AreEqual(1, messages.Count);
+        var text = GetText(messages[0]);
+
+        // The pre-cap rendering on a 60-project / 120-namespace / 30-cycle / 60-package
+        // workspace embedded the full serialized lists (uncapped CircularDependencies, 100-cap
+        // on nodes/edges) and would have produced ~80-100 KB of indented JSON, well above the
+        // MCP inline payload cap. Bound the post-cap length to 50 000 characters; the
+        // truncated body — even with realistic ~40 char namespace names and 3 used-by
+        // projects per NuGet package — fits comfortably under that.
+        Assert.IsTrue(text.Length < 50_000,
+            $"Prompt body must fit under the inline payload cap. Actual length: {text.Length} chars.");
+
+        StringAssert.Contains(text, $"[Showing 50 of {projectCount} items]",
+            "Project graph (Projects) must be capped at 50 entries with a count footer.");
+        StringAssert.Contains(text, $"[Showing 50 of {namespaceNodeCount} nodes]",
+            "Namespace nodes must be capped at 50 entries with a count footer.");
+        StringAssert.Contains(text, $"[Showing 50 of {namespaceEdgeCount} edges]",
+            "Namespace edges must be capped at 50 entries with a count footer.");
+        StringAssert.Contains(text, $"[Showing 20 of {circularDependencyCount} circular dependencies]",
+            "Circular dependencies must be capped at 20 entries with a count footer.");
+        StringAssert.Contains(text, $"[Showing 50 of {nuGetPackageCount} items]",
+            "NuGet packages must be capped at 50 entries with a count footer.");
+        StringAssert.Contains(text, "get_namespace_dependencies",
+            "Prompt must direct callers to get_namespace_dependencies for full graph inspection.");
+    }
+
     private static string GetText(PromptMessage message) =>
         (message.Content as TextContentBlock)?.Text
         ?? throw new AssertFailedException("Expected text content.");
@@ -446,6 +507,131 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             Task.FromResult(_symbols);
 
         public Task<IReadOnlyList<DocumentSymbolDto>> GetDocumentSymbolsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct) =>
+            throw new NotSupportedException();
+    }
+
+    // analyze-dependencies-prompt-payload-overflow (gh #755): minimal stub for the analyze
+    // dependencies prompt. Returns a ProjectGraphDto with the requested number of project
+    // nodes from GetProjectGraph. Every other IWorkspaceManager member throws — the prompt
+    // only touches GetProjectGraph.
+    private sealed class StubWorkspaceManagerForAnalyzeDeps : IWorkspaceManager
+    {
+        private readonly string _workspaceId;
+        private readonly ProjectGraphDto _graph;
+
+        public StubWorkspaceManagerForAnalyzeDeps(string workspaceId, int projectCount)
+        {
+            _workspaceId = workspaceId;
+            var projects = Enumerable.Range(0, projectCount).Select(i => new ProjectGraphNodeDto(
+                ProjectName: $"FakeProject{i}",
+                FilePath: $@"C:\fake\path\FakeProject{i}\FakeProject{i}.csproj",
+                AssemblyName: $"FakeProject{i}",
+                IsTestProject: false,
+                OutputType: "Library",
+                TargetFrameworks: new[] { "net10.0" },
+                ProjectReferences: Array.Empty<string>())).ToList();
+            _graph = new ProjectGraphDto(workspaceId, projects);
+        }
+
+        public event Action<string>? WorkspaceClosed { add { } remove { } }
+        public event Action<string>? WorkspaceReloaded { add { } remove { } }
+
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) => throw new NotSupportedException();
+        public bool ContainsWorkspace(string workspaceId) => string.Equals(workspaceId, _workspaceId, StringComparison.Ordinal);
+        public bool IsStale(string workspaceId) => false;
+        public bool Close(string workspaceId) => throw new NotSupportedException();
+        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => Array.Empty<WorkspaceStatusDto>();
+        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public ProjectGraphDto GetProjectGraph(string workspaceId) =>
+            string.Equals(workspaceId, _workspaceId, StringComparison.Ordinal)
+                ? _graph
+                : throw new KeyNotFoundException(workspaceId);
+
+        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) => throw new NotSupportedException();
+
+        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) => throw new NotSupportedException();
+
+        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
+        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
+        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+    }
+
+    // analyze-dependencies-prompt-payload-overflow (gh #755): stub returning a synthetic
+    // NamespaceDependencyGraphDto with the requested number of nodes, edges, and circular
+    // dependencies. Used to exercise the truncation caps under the inline-payload regression
+    // test.
+    private sealed class StubNamespaceDependencyServiceForAnalyzeDeps : INamespaceDependencyService
+    {
+        private readonly NamespaceDependencyGraphDto _graph;
+
+        public StubNamespaceDependencyServiceForAnalyzeDeps(int nodeCount, int edgeCount, int circularCount)
+        {
+            // Synthesize namespace names of realistic median length (~40 chars). Real
+            // enterprise namespaces span 20-100 chars; this models the upper end of typical
+            // .NET solutions (Roslyn-Backed-MCP, Jellyfin, etc.) without modeling pathological
+            // edge cases that would skew the regression bound.
+            var nodes = Enumerable.Range(0, nodeCount).Select(i => new NamespaceNodeDto(
+                Namespace: $"Contoso.SubsystemAlpha.Module{i:D3}.Internal",
+                TypeCount: 5 + (i % 10),
+                Project: $"FakeProject{i % 20}")).ToList();
+
+            var edges = Enumerable.Range(0, edgeCount).Select(i => new NamespaceEdgeDto(
+                FromNamespace: $"Contoso.SubsystemAlpha.Module{i:D3}.Internal",
+                ToNamespace: $"Contoso.SubsystemBeta.Module{(i + 1):D3}.Public",
+                ReferenceCount: 1 + (i % 7))).ToList();
+
+            var circles = Enumerable.Range(0, circularCount).Select(i => new CircularDependencyDto(
+                Cycle: new[]
+                {
+                    $"Contoso.SubsystemAlpha.Module{i:D3}.Internal",
+                    $"Contoso.SubsystemBeta.Module{i:D3}.Public",
+                    $"Contoso.SubsystemAlpha.Module{i:D3}.Internal",
+                })).ToList();
+
+            _graph = new NamespaceDependencyGraphDto(
+                Nodes: nodes,
+                Edges: edges,
+                CircularDependencies: circles,
+                AnalyzedProjectCount: 60,
+                TotalNamespacesScanned: nodeCount);
+        }
+
+        public Task<NamespaceDependencyGraphDto> GetNamespaceDependenciesAsync(
+            string workspaceId, string? projectFilter, CancellationToken ct) =>
+            Task.FromResult(_graph);
+    }
+
+    // analyze-dependencies-prompt-payload-overflow (gh #755): stub returning a synthetic
+    // NuGetDependencyResultDto with the requested number of packages. UsedByProjects lists
+    // are sized to approximate production payload weight on multi-project workspaces.
+    private sealed class StubNuGetDependencyServiceForAnalyzeDeps : INuGetDependencyService
+    {
+        private readonly NuGetDependencyResultDto _result;
+
+        public StubNuGetDependencyServiceForAnalyzeDeps(int packageCount)
+        {
+            var packages = Enumerable.Range(0, packageCount).Select(i => new NuGetPackageDto(
+                PackageId: $"Contoso.Package{i:D3}",
+                Version: $"1.2.{i}",
+                UsedByProjects: Enumerable.Range(0, 3).Select(j => $"FakeProject{(i + j) % 20}").ToList())).ToList();
+
+            _result = new NuGetDependencyResultDto(
+                Packages: packages,
+                Projects: Array.Empty<NuGetProjectDto>(),
+                Summaries: null);
+        }
+
+        public Task<NuGetDependencyResultDto> GetNuGetDependenciesAsync(
+            string workspaceId, CancellationToken ct, bool summary = false) =>
+            Task.FromResult(_result);
+
+        public Task<NuGetVulnerabilityScanResultDto> ScanNuGetVulnerabilitiesAsync(
+            string workspaceId, string? projectFilter, bool includeTransitive, CancellationToken ct) =>
             throw new NotSupportedException();
     }
 }

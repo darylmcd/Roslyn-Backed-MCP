@@ -251,18 +251,33 @@ public static partial class RoslynPrompts
     {
         try
         {
+            // analyze-dependencies-prompt-payload-overflow (gh #755): aggregate prompt body
+            // overflowed the MCP inline payload cap (~63 KB) on 9+ project workspaces with
+            // heavily-namespaced code. Lower namespace-node and namespace-edge caps from 100
+            // to 50, add an explicit cap on CircularDependencies (20), and emit count footers
+            // for every truncated list so callers can re-run targeted tools when they need
+            // the full picture. Mirrors the pattern from guided_extract_interface (gh #776).
+            const int NamespaceNodeCap = 50;
+            const int NamespaceEdgeCap = 50;
+            const int CircularDependencyCap = 20;
+
             var graph = workspace.GetProjectGraph(workspaceId);
             var graphJson = PromptMessageBuilder.SerializeTruncatedList(graph.Projects, 50, JsonDefaults.Indented);
 
             var namespaceDeps = await namespaceDependencyService.GetNamespaceDependenciesAsync(workspaceId, null, ct).ConfigureAwait(false);
             var truncatedNamespaceDeps = namespaceDeps with
             {
-                Nodes = namespaceDeps.Nodes.Take(100).ToList(),
-                Edges = namespaceDeps.Edges.Take(100).ToList(),
+                Nodes = namespaceDeps.Nodes.Take(NamespaceNodeCap).ToList(),
+                Edges = namespaceDeps.Edges.Take(NamespaceEdgeCap).ToList(),
+                CircularDependencies = namespaceDeps.CircularDependencies.Take(CircularDependencyCap).ToList(),
             };
             var namespaceDepsJson = JsonSerializer.Serialize(truncatedNamespaceDeps, JsonDefaults.Indented);
-            if (namespaceDeps.Edges.Count > 100)
-                namespaceDepsJson += $"\n[Showing 100 of {namespaceDeps.Edges.Count} edges]";
+            if (namespaceDeps.Nodes.Count > NamespaceNodeCap)
+                namespaceDepsJson += $"\n[Showing {NamespaceNodeCap} of {namespaceDeps.Nodes.Count} nodes]";
+            if (namespaceDeps.Edges.Count > NamespaceEdgeCap)
+                namespaceDepsJson += $"\n[Showing {NamespaceEdgeCap} of {namespaceDeps.Edges.Count} edges]";
+            if (namespaceDeps.CircularDependencies.Count > CircularDependencyCap)
+                namespaceDepsJson += $"\n[Showing {CircularDependencyCap} of {namespaceDeps.CircularDependencies.Count} circular dependencies]";
 
             var nugetDeps = await nuGetDependencyService.GetNuGetDependenciesAsync(workspaceId, ct).ConfigureAwait(false);
             var nugetDepsJson = PromptMessageBuilder.SerializeTruncatedList(nugetDeps.Packages, 50, JsonDefaults.Indented);
@@ -281,6 +296,10 @@ public static partial class RoslynPrompts
                     ```json
                     {namespaceDepsJson}
                     ```
+
+                    *Note:* nodes, edges, and circular dependencies are capped above. Call
+                    `get_namespace_dependencies` (optionally with a project filter) to inspect
+                    the full graph or to drill into a specific namespace cluster.
 
                     **NuGet Dependencies:**
                     ```json
