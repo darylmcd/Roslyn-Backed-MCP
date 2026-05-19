@@ -366,12 +366,11 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
     {
         // Filter to mutating members up front so we can fan out the expensive
         // SymbolFinder.FindReferencesAsync calls in parallel while preserving declaration order.
-        // Each candidate carries its computed scope so we don't recompute it inside the parallel
+        // Each candidate carries its computed scope list so we don't recompute it inside the parallel
         // member tasks.
         return namedType.GetMembers()
-            .Select(member => new MutationCandidate(member, ClassifyMutationScope(member, namedType, compilation)))
-            .Where(candidate => candidate.Scope is not null)
-            .Select(candidate => candidate with { Scope = candidate.Scope! })
+            .Select(member => new MutationCandidate(member, ClassifyMutationScopes(member, namedType, compilation)))
+            .Where(candidate => candidate.Scopes is not null && candidate.Scopes.Count > 0)
             .ToArray();
     }
 
@@ -445,7 +444,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
                 FilePath: memberLoc?.GetLineSpan().Path,
                 Line: memberLoc?.GetLineSpan().StartLinePosition.Line + 1,
                 ExternalCallers: callers,
-                MutationScope: candidate.Scope!);
+                MutationScopes: candidate.Scopes!);
         }
         finally
         {
@@ -544,7 +543,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
 
     private sealed record MethodMutationAnalysisContext(SyntaxTree SourceTree, SyntaxNode MethodNode);
 
-    private sealed record MutationCandidate(ISymbol Member, string? Scope);
+    private sealed record MutationCandidate(ISymbol Member, IReadOnlyList<string>? Scopes);
 
     /// <summary>
     /// Classifies a property reference as a write and returns the bucket name, or
@@ -666,24 +665,25 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
     }
 
     /// <summary>
-    /// Classifies a member as mutating and returns the highest-severity scope of the mutation.
-    /// Returns <see langword="null"/> if the member does not mutate at all. The scope follows
+    /// Classifies a member as mutating and returns the full list of detected mutation scopes.
+    /// Returns <see langword="null"/> if the member does not mutate at all. Each scope follows
     /// <see cref="SideEffectClassifier.Scopes"/>: FieldWrite (settable property or instance-field
     /// reassignment), CollectionWrite (Add/Remove/Clear-style call), IO/Network/Process/Database
-    /// (calls into the catalogued side-effect APIs).
+    /// (calls into the catalogued side-effect APIs). A method performing compound mutations
+    /// (e.g. both <c>IO</c> and <c>CollectionWrite</c>) returns every applicable scope.
     ///
     /// Side-effect detection requires a <see cref="SemanticModel"/> for the method body. When
     /// none is available (e.g. method has no source location), only the field-write and
     /// collection-write heuristics run.
     /// </summary>
-    private static string? ClassifyMutationScope(ISymbol member, INamedTypeSymbol containingType, Compilation? compilation)
+    private static IReadOnlyList<string>? ClassifyMutationScopes(ISymbol member, INamedTypeSymbol containingType, Compilation? compilation)
     {
         if (member.IsStatic) return null;
         if (member.DeclaredAccessibility == Accessibility.Private) return null;
 
-        if (TryClassifyPropertyMutationScope(member, out var propertyScope))
+        if (TryClassifyPropertyMutationScopes(member, out var propertyScopes))
         {
-            return propertyScope;
+            return propertyScopes;
         }
 
         if (member is not IMethodSymbol method ||
@@ -692,12 +692,12 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             return null;
         }
 
-        return ClassifyMethodMutationScope(method, containingType, compilation);
+        return ClassifyMethodMutationScopes(method, containingType, compilation);
     }
 
-    private static bool TryClassifyPropertyMutationScope(ISymbol member, out string? scope)
+    private static bool TryClassifyPropertyMutationScopes(ISymbol member, out IReadOnlyList<string>? scopes)
     {
-        scope = null;
+        scopes = null;
         if (member is not IPropertySymbol property ||
             property.SetMethod is null ||
             property.SetMethod.IsInitOnly ||
@@ -706,11 +706,11 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
             return false;
         }
 
-        scope = SideEffectClassifier.Scopes.FieldWrite;
+        scopes = new[] { SideEffectClassifier.Scopes.FieldWrite };
         return true;
     }
 
-    private static string? ClassifyMethodMutationScope(
+    private static IReadOnlyList<string>? ClassifyMethodMutationScopes(
         IMethodSymbol method,
         INamedTypeSymbol containingType,
         Compilation? compilation)
@@ -720,29 +720,40 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var analysisContext = TryCreateMethodMutationAnalysisContext(method);
         if (analysisContext is null)
         {
-            return byName ? SideEffectClassifier.Scopes.FieldWrite : null;
+            return byName ? new[] { SideEffectClassifier.Scopes.FieldWrite } : null;
         }
 
-        // Side-effect detection: highest severity wins. Requires the right SemanticModel
-        // for the syntax tree containing the method body — fall back to the field/collection
-        // heuristics when one is not available.
+        // Accumulate every applicable scope across the three independent dimensions:
+        //   1. Side-effect APIs (IO/Network/Process/Database) — highest-severity-wins inside
+        //      SideEffectClassifier, but here it sits alongside the field/collection signals.
+        //   2. Instance field assignment (FieldWrite).
+        //   3. Mutating collection call / indexer-write (CollectionWrite).
+        // Pre-fix this method returned at the first hit, masking compound mutations such as
+        // a method that performs both `_dict.TryAdd(...)` and `File.WriteAllText(...)`.
+        var scopes = new List<string>();
+
         var sideEffectScope = TryClassifyMethodSideEffects(compilation, analysisContext.SourceTree, analysisContext.MethodNode);
         if (sideEffectScope is not null)
         {
-            return sideEffectScope;
+            scopes.Add(sideEffectScope);
         }
 
         if (HasInstanceFieldAssignment(analysisContext.MethodNode, containingType))
         {
-            return SideEffectClassifier.Scopes.FieldWrite;
+            scopes.Add(SideEffectClassifier.Scopes.FieldWrite);
         }
 
         if (HasMutatingCollectionCall(analysisContext.MethodNode))
         {
-            return SideEffectClassifier.Scopes.CollectionWrite;
+            scopes.Add(SideEffectClassifier.Scopes.CollectionWrite);
         }
 
-        return byName ? SideEffectClassifier.Scopes.FieldWrite : null;
+        if (scopes.Count == 0)
+        {
+            return byName ? new[] { SideEffectClassifier.Scopes.FieldWrite } : null;
+        }
+
+        return scopes;
     }
 
     private static MethodMutationAnalysisContext? TryCreateMethodMutationAnalysisContext(IMethodSymbol method)
