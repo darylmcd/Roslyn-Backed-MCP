@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 3,
+  "generatedAt": "2026-05-19T14:59:46Z",
+  "backlogSnapshot": "2026-05-19T13:48:28Z",
+  "addendaLoaded": true,
+  "phase": "complete",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "passed-with-warnings",
+  "readyForExecute": true,
+  "finalizedAt": "2026-05-19T15:00:00Z",
+  "handoffPolicy": "auto",
+  "handoffSpawned": 5,
+  "handoffSkipped": 1,
+  "handoffNotes": "Spawned handoff-prep for initiatives 1, 2, 3, 5, 6 (5 of 6 had judgmentHeavy=true; init 3 also triggered via Rule 5b warn). Skipped init 4 (analyze-control-flow) — judgmentHeavy=false, no warn-rule trigger, context <35K. Init 3's handoff-prep found 1 additional fanout point the reviewer's spot check missed: src/RoslynMcp.Host.Stdio/README.md:95. Init 5's handoff-prep flagged pre-existing DiffGeneratorTests.cs:9-15 Identical_Texts_Returns_Header_Only that locks in the broken behavior — executor must update, not just add new tests.",
+  "anchorVerification": "performed",
+  "reviewFindings": {
+    "block": 0,
+    "warn": 1,
+    "info": 6
+  },
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {
+      "1": 0, "2": 0, "3": 0, "4": 0, "5": 0, "6": 0
+    },
+    "zeroDegreeInitiatives": [1, 2, 3, 4, 5, 6],
+    "notes": "No production-file overlaps across the 6 initiatives. No hotspot files (ServerSurfaceCatalog.cs / ServiceCollectionExtensions.cs / WorkspaceManager.cs) touched, so the wave rule (≤1 hotspot per wave) does not bind. All 6 are safely parallelizable."
+  },
+  "selectionNotes": "count=15 cap requested; 6 concrete rows eligible after excluding 2 aggregator rows (need pre-planning split per backlog rule), 1 track-only weak-evidence row, 4 Reserved good-first-issue rows, 6 Defer rows. No Rule 1 bundle candidates — distinct code paths.",
+  "deepenerSummary": {
+    "ok": 6,
+    "error": 0,
+    "anchorStaleCount": 5,
+    "judgmentHeavyCount": 5,
+    "fanoutOversizeCount": 0
+  },
+  "initiatives": [
+    {
+      "id": "workspace-changes-atomic-batch-split-without-batchid",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": ["workspace-changes-atomic-batch-split-without-batchid"],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "productionFiles": ["src/RoslynMcp.Roslyn/Services/EditService.cs"],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "anchorStale: backlog row cited WorkspaceChangeLedger.cs (does not exist); real fix site is EditService.cs (per-file RecordChange loop). judgmentHeavy: chose option (a) merge-into-one-entry over option (b) batchId — option (a) matches CompositeApplyOrchestrator pattern, no new DTO field."
+    },
+    {
+      "id": "validate-workspace-changetracker-no-disk-reconcile-after-git-checkout",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": ["validate-workspace-changetracker-no-disk-reconcile-after-git-checkout"],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "productionFiles": ["src/RoslynMcp.Roslyn/Services/WorkspaceValidationService.cs"],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "judgmentHeavy: async-propagation concern (ResolveChangedFiles is sync; CollectGitChangedFilesAsync is async). Stanza describes lift-to-call-site approach but executor may pick async-helper instead."
+    },
+    {
+      "id": "find-type-mutations-single-scope-misses-compound-io",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": ["find-type-mutations-single-scope-misses-compound-io"],
+      "productionFilesTouched": 2,
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": 4,
+      "fanoutOversize": false,
+      "fanoutEstimateSource": "handoff-prep (Phase F backfill; reviewer Rule 5b warn surfaced planner missed this; handoff-prep verified DTO + service + test + README:95)",
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "productionFiles": [
+        "src/RoslynMcp.Core/Models/TypeMutationDto.cs",
+        "src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "BREAKING change: MutatingMemberDto.MutationScope (string) → MutationScopes (IReadOnlyList<string>). Backlog's [Flags] enum framing rejected (no enum exists; SideEffectClassifier.Scopes holds string constants). anchorStale: line 87 of MutationAnalysisService.cs is unrelated string interpolation, true entry is ClassifyMethodMutationScope at line 713."
+    },
+    {
+      "id": "analyze-control-flow-partial-slice-warning-on-full-method",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": ["analyze-control-flow-partial-slice-warning-on-full-method"],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 1,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "productionFiles": ["src/RoslynMcp.Roslyn/Services/FlowAnalysisService.cs"],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "Surgical fix; cleanest of the six. No stale anchors; no judgment-heavy concerns; no peer bundle."
+    },
+    {
+      "id": "format-document-preview-empty-diff-instead-of-noop",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": ["format-document-preview-empty-diff-instead-of-noop"],
+      "productionFilesTouched": 2,
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Helpers/DiffGenerator.cs",
+        "src/RoslynMcp.Roslyn/Helpers/SolutionDiffHelper.cs"
+      ],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "anchorStale: backlog cited FormatService.cs (does not exist); real fix sites are DiffGenerator.cs (early-return empty when no hunks) + SolutionDiffHelper.cs (belt-and-suspenders filter)."
+    },
+    {
+      "id": "callers-callees-previewtext-asymmetry",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": ["callers-callees-previewtext-asymmetry"],
+      "productionFilesTouched": 1,
+      "testFilesAdded": 0,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "ok",
+      "deepenerFlags": {
+        "judgmentHeavy": true,
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
+      },
+      "productionFiles": ["src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs"],
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": "anchorStale: backlog cited CallersCalleesService.cs (consolidated into SymbolRelationshipService.cs). judgmentHeavy: stale anchor required inferring fix site."
+    }
+  ]
+}
