@@ -52,6 +52,82 @@ public sealed class SymbolMapperTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task ToDto_PositionalRecordClass_MapsKindAsRecord()
+    {
+        // Regression cover for the historical bug where SymbolMapper.GetKind returned
+        // "Class" for record classes (TypeKind.Class.ToString()), disagreeing with
+        // document_symbols' syntax-side "Record" label. After the fix the symbol_info
+        // surface returns "Record", matching the document_symbols surface.
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(
+            solution,
+            SymbolLocator.ByMetadataName("SampleLib.AnimalRecord"),
+            CancellationToken.None).ConfigureAwait(false);
+        var dto = SymbolMapper.ToDto(symbol, solution);
+        Assert.AreEqual("Record", dto.Kind);
+        StringAssert.Contains(dto.FullyQualifiedName ?? "", "AnimalRecord");
+    }
+
+    [TestMethod]
+    public async Task ToDto_RecordStruct_MapsKindAsRecordStruct()
+    {
+        // Regression cover: record struct previously surfaced as "Struct" via
+        // TypeKind.Struct.ToString(). After the fix it maps to "RecordStruct",
+        // disambiguating it from a plain struct AND from a record class.
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+        var symbol = await SymbolResolver.ResolveOrThrowAsync(
+            solution,
+            SymbolLocator.ByMetadataName("SampleLib.AnimalCoord"),
+            CancellationToken.None).ConfigureAwait(false);
+        var dto = SymbolMapper.ToDto(symbol, solution);
+        Assert.AreEqual("RecordStruct", dto.Kind);
+        StringAssert.Contains(dto.FullyQualifiedName ?? "", "AnimalCoord");
+    }
+
+    [TestMethod]
+    public async Task SymbolInfo_And_DocumentSymbols_Agree_On_RecordKinds()
+    {
+        // Cross-surface agreement: prior to the fix, symbol_info.kind on a record class
+        // returned "Class" (semantic-side TypeKind.ToString()) while document_symbols.kind
+        // returned "Record" (syntax-side RecordDeclarationSyntax check). After the fix both
+        // surfaces must report the same label for the same source. The same agreement must
+        // hold for record struct ("RecordStruct"). Reading from the shared sample workspace
+        // exercises the same code path a real symbol_info / document_symbols MCP call uses.
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+
+        // symbol_info side via SymbolMapper.ToDto.
+        var animalRecordSymbol = await SymbolResolver.ResolveOrThrowAsync(
+            solution,
+            SymbolLocator.ByMetadataName("SampleLib.AnimalRecord"),
+            CancellationToken.None).ConfigureAwait(false);
+        var animalCoordSymbol = await SymbolResolver.ResolveOrThrowAsync(
+            solution,
+            SymbolLocator.ByMetadataName("SampleLib.AnimalCoord"),
+            CancellationToken.None).ConfigureAwait(false);
+        var animalRecordInfo = SymbolMapper.ToDto(animalRecordSymbol, solution);
+        var animalCoordInfo = SymbolMapper.ToDto(animalCoordSymbol, solution);
+
+        // document_symbols side via SymbolSearchService.GetDocumentSymbolsAsync.
+        var sourcePath = animalRecordSymbol.Locations.First(l => l.IsInSource).GetLineSpan().Path;
+        var docSymbols = await SymbolSearchService.GetDocumentSymbolsAsync(
+            WorkspaceId, sourcePath, CancellationToken.None).ConfigureAwait(false);
+
+        // AnimalRecords.cs uses file-scoped namespace, so CollectSymbols hoists the
+        // types to the top level — no children-flattening required.
+        var animalRecordDoc = docSymbols.Single(s => s.Name == "AnimalRecord");
+        var animalCoordDoc = docSymbols.Single(s => s.Name == "AnimalCoord");
+
+        Assert.AreEqual(animalRecordDoc.Kind, animalRecordInfo.Kind,
+            $"symbol_info and document_symbols disagree on AnimalRecord: " +
+            $"document_symbols='{animalRecordDoc.Kind}' symbol_info='{animalRecordInfo.Kind}'");
+        Assert.AreEqual(animalCoordDoc.Kind, animalCoordInfo.Kind,
+            $"symbol_info and document_symbols disagree on AnimalCoord: " +
+            $"document_symbols='{animalCoordDoc.Kind}' symbol_info='{animalCoordInfo.Kind}'");
+        Assert.AreEqual("Record", animalRecordInfo.Kind);
+        Assert.AreEqual("RecordStruct", animalCoordInfo.Kind);
+    }
+
+    [TestMethod]
     public async Task ToDto_Method_MapsReturnTypeAndParameters()
     {
         var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
