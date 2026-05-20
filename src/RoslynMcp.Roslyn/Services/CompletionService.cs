@@ -22,6 +22,7 @@ public sealed class CompletionService : ICompletionService
         int column,
         string? filterText,
         int maxItems,
+        char? triggerCharacter,
         CancellationToken ct)
     {
         if (maxItems <= 0)
@@ -50,7 +51,16 @@ public sealed class CompletionService : ICompletionService
 
         var position = text.Lines[line - 1].Start + (column - 1);
 
-        var completions = await completionService.GetCompletionsAsync(document, position, cancellationToken: ct).ConfigureAwait(false);
+        // get-completions-filtertext-doesnt-promote-in-scope-members: when a triggerCharacter
+        // is supplied (typically '.'), pass an explicit CompletionTrigger.CreateInsertionTrigger
+        // so Roslyn returns the member-access candidate set (instance members on the receiver
+        // expression) in addition to the global accessible-type set. Without a trigger Roslyn
+        // returns only the position's general candidate set, which at a member-access boundary
+        // omits the very method/property candidates the caller expects InScopeRank to promote.
+        var trigger = triggerCharacter.HasValue
+            ? CompletionTrigger.CreateInsertionTrigger(triggerCharacter.Value)
+            : CompletionTrigger.Invoke;
+        var completions = await completionService.GetCompletionsAsync(document, position, trigger, cancellationToken: ct).ConfigureAwait(false);
         if (completions is null)
         {
             return new CompletionResultDto([], false);

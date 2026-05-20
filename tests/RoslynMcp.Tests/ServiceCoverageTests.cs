@@ -218,7 +218,7 @@ public class ServiceCoverageTests : SharedWorkspaceTestBase
 
         // Line 20 column 30 is inside method body where completions are available
         var result = await CompletionService.GetCompletionsAsync(
-            WorkspaceId, animalServicePath, 20, 30, filterText: null, maxItems: 100, CancellationToken.None);
+            WorkspaceId, animalServicePath, 20, 30, filterText: null, maxItems: 100, triggerCharacter: null, CancellationToken.None);
 
         Assert.IsTrue(result.Items.Count > 0,
             "Expected completion items at a valid position in AnimalService.cs");
@@ -235,7 +235,7 @@ public class ServiceCoverageTests : SharedWorkspaceTestBase
         var animalServicePath = FindDocumentPath("AnimalService.cs");
 
         var result = await CompletionService.GetCompletionsAsync(
-            WorkspaceId, animalServicePath, 20, 30, filterText: "To", maxItems: 100, CancellationToken.None);
+            WorkspaceId, animalServicePath, 20, 30, filterText: "To", maxItems: 100, triggerCharacter: null, CancellationToken.None);
 
         Assert.IsTrue(result.Items.Count >= 2,
             "Expected at least two completion candidates starting with 'To'.");
@@ -264,6 +264,63 @@ public class ServiceCoverageTests : SharedWorkspaceTestBase
                     Assert.IsTrue(toStringIndex < i,
                         $"In-scope ToString (rank=method) should appear before type-tier candidate '{item.DisplayText}' (rank=type).");
                 }
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task GetCompletions_WithDotTrigger_AtMemberAccess_PromotesInstanceMembersBeforeExternalTypes()
+    {
+        // BUG fix (get-completions-filtertext-doesnt-promote-in-scope-members): at a member-
+        // access position (right after a '.'), the CompletionService must pass an explicit
+        // CompletionTrigger.CreateInsertionTrigger('.') to Roslyn — otherwise Roslyn returns
+        // only the global accessible-type set and the InScopeRank sort has no method-tier
+        // candidates to promote. With triggerCharacter='.', instance members on the receiver
+        // (e.g. animal.ToString from System.Object) must be ranked before namespace-qualified
+        // external types like System.Security.Cryptography.ToBase64Transform.
+        var animalServicePath = FindDocumentPath("AnimalService.cs");
+
+        // Line 20: "            var sound = animal.Speak();"
+        // Column 32 is the position immediately after the '.' between 'animal' and 'Speak()'.
+        var result = await CompletionService.GetCompletionsAsync(
+            WorkspaceId, animalServicePath, 20, 32, filterText: "To", maxItems: 100, triggerCharacter: '.', CancellationToken.None);
+
+        Assert.IsTrue(result.Items.Count >= 1,
+            "Expected at least one completion candidate starting with 'To' at a member-access position.");
+
+        // Method-tier rank (rank=1 per InScopeRank): Tags contain Method/Property/Field/Event/ExtensionMethod.
+        var firstMethodTierIndex = -1;
+        for (var i = 0; i < result.Items.Count; i++)
+        {
+            var item = result.Items[i];
+            var isMethodTier = item.Tags is not null && (item.Tags.Contains("Method") || item.Tags.Contains("Property")
+                || item.Tags.Contains("Field") || item.Tags.Contains("Event") || item.Tags.Contains("ExtensionMethod"));
+            if (isMethodTier)
+            {
+                firstMethodTierIndex = i;
+                break;
+            }
+        }
+
+        Assert.IsTrue(firstMethodTierIndex >= 0,
+            "Expected at least one method-tier candidate (Method/Property/Field/Event/ExtensionMethod) " +
+            "with triggerCharacter='.' — without the explicit insertion trigger Roslyn omits instance " +
+            "members and the in-scope ranking has nothing to promote.");
+
+        // For each type-tier candidate (Class/Struct/Interface/Enum/Delegate) in the result,
+        // the first method-tier candidate must appear before it. This is the contract the
+        // bug fix restores: with the '.' trigger, Roslyn emits instance methods on the
+        // receiver AND InScopeRank then orders them ahead of namespace-qualified externals.
+        for (var i = 0; i < result.Items.Count; i++)
+        {
+            var item = result.Items[i];
+            var isType = item.Tags is not null && (item.Tags.Contains("Class") || item.Tags.Contains("Structure")
+                || item.Tags.Contains("Interface") || item.Tags.Contains("Enum") || item.Tags.Contains("Delegate"));
+            if (isType)
+            {
+                Assert.IsTrue(firstMethodTierIndex < i,
+                    $"First method-tier candidate (index {firstMethodTierIndex}) should appear before " +
+                    $"type-tier candidate '{item.DisplayText}' (index {i}).");
             }
         }
     }
