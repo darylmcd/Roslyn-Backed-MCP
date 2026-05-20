@@ -128,6 +128,74 @@ public sealed class ProjectOutputTypeTests : TestBase
         Assert.IsNull(result, "A non-existent project path must return null, not throw or return a default value.");
     }
 
+    [TestMethod]
+    public async Task BothSurfaces_SdkWebProject_AgreeOnOutputType_Exe()
+    {
+        // get-msbuild-properties-vs-workspace-reload-outputtype-mismatch: cross-surface
+        // regression guard. The production fix for SDK.Web/SDK.Worker OutputType reporting
+        // landed in project-graph-output-type-misreports-sdk-defaulted-exe — both surfaces
+        // now flow through MSBuild evaluation (ProjectCollection.LoadProject), so they
+        // must report identical values. This test asserts that contract for a
+        // Microsoft.NET.Sdk.Web project that omits <OutputType> from its XML:
+        //
+        //   Surface 1 — workspace_reload  (WorkspaceManager.GetStatusAsync → ProjectStatusDto.OutputType)
+        //              uses ProjectMetadataParser.GetOutputType(project, projectDoc, logger)
+        //              which delegates to GetEvaluatedOutputType.
+        //   Surface 2 — get_msbuild_properties (MsBuildEvaluationService.GetEvaluatedPropertiesAsync)
+        //              uses ProjectCollection.LoadProject directly.
+        //
+        // Both must return "Exe" for SDK.Web projects. Divergence (e.g. "Library" vs "Exe")
+        // would mean one surface regressed back to the pre-fix XML-only path.
+        using var fixture = CreateProjectFixture(
+            "SdkWebCrossSurface.csproj",
+            """
+            <Project Sdk="Microsoft.NET.Sdk.Web">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        var loadStatus = await WorkspaceManager.LoadAsync(fixture.ProjectPath, CancellationToken.None);
+        try
+        {
+            // Surface 1: workspace_reload result. The single project in the loaded csproj
+            // surfaces via WorkspaceStatusDto.Projects with its evaluated OutputType.
+            var status = await WorkspaceManager.GetStatusAsync(loadStatus.WorkspaceId, CancellationToken.None);
+            Assert.AreEqual(1, status.Projects.Count, "Loading a single .csproj must surface exactly one project.");
+            var workspaceReloadOutputType = status.Projects[0].OutputType;
+            var projectName = status.Projects[0].Name;
+
+            // Surface 2: get_msbuild_properties result. Filtering by includedNames=["OutputType"]
+            // narrows the dump to just the property we care about, mirroring the typical caller
+            // pattern (small allowlist, not a full ~600-property dump).
+            var propertiesDump = await MsBuildEvaluationService.GetEvaluatedPropertiesAsync(
+                loadStatus.WorkspaceId,
+                projectName,
+                propertyNameFilter: null,
+                includedNames: new[] { "OutputType" },
+                CancellationToken.None);
+
+            Assert.IsTrue(
+                propertiesDump.Properties.TryGetValue("OutputType", out var msbuildOutputType),
+                "get_msbuild_properties must include OutputType when the caller's allowlist requests it.");
+
+            // Cross-surface assertion: both surfaces must agree, and the agreed-upon value
+            // must be "Exe" (the SDK-defaulted value for Microsoft.NET.Sdk.Web).
+            Assert.AreEqual("Exe", workspaceReloadOutputType,
+                "workspace_reload surface must report OutputType=Exe for Microsoft.NET.Sdk.Web projects (SDK-defaulted value).");
+            Assert.AreEqual("Exe", msbuildOutputType,
+                "get_msbuild_properties surface must report OutputType=Exe for Microsoft.NET.Sdk.Web projects (SDK-defaulted value).");
+            Assert.AreEqual(workspaceReloadOutputType, msbuildOutputType,
+                $"Cross-surface mismatch: workspace_reload reported '{workspaceReloadOutputType}' but get_msbuild_properties reported '{msbuildOutputType}'. " +
+                "Both surfaces draw from MSBuild evaluation and must agree — divergence indicates a regression in ProjectMetadataParser.GetOutputType or MsBuildEvaluationService.");
+        }
+        finally
+        {
+            WorkspaceManager.Close(loadStatus.WorkspaceId);
+        }
+    }
+
     private static ProjectFixture CreateProjectFixture(string fileName, string content)
     {
         var tempRoot = Path.Combine(
