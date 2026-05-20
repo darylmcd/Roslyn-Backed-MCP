@@ -326,7 +326,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #871, 2026-05-20) |
 | Backlog rows closed | `remove-preview-family-invalidoperation-for-missing-items` |
 | Diagnosis | All 4 absent-item throws are in `src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs`: line 109 (`PreviewRemovePackageReferenceAsync`), line 165 (`PreviewRemoveProjectReferenceAsync`), lines 330/354/370 (`PreviewRemoveTargetFrameworkAsync` — 3 branches), line 465 (`PreviewRemoveCentralPackageVersionAsync`). The "not found" check is inside the mutator lambda; when it throws, `PreviewXmlFileMutationAsync` propagates the exception. Correct LSP-aligned shape is empty preview (`Changes = []`, `PreviewToken = string.Empty`) — pattern already established by `src/RoslynMcp.Roslyn/Services/StringLiteralReplaceService.cs:94-106`. |
 | Approach | All changes in `ProjectMutationService.cs`. For each of the 4 remove methods, change absent-item `throw InvalidOperationException` branches to return early with `RefactoringPreviewDto(string.Empty, "No changes — '<item>' was not found.", Array.Empty<FileChangeDto>(), null)` mirroring `StringLiteralReplaceService.cs:94-106`. For `PreviewRemoveTargetFrameworkAsync` the 3 branches all need treatment; promote the not-found guard before the inner `PreviewProjectMutationAsync` call. 4 new test methods in `tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs` (one per tool). |
@@ -344,7 +344,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #870, 2026-05-20, BREAKING) |
 | Backlog rows closed | `document-symbols-vs-symbol-info-record-kind-disagreement` |
 | Diagnosis | Root cause: `src/RoslynMcp.Roslyn/Helpers/SymbolMapper.cs:245-250` (`GetKind`). For an `INamedTypeSymbol`, returns `namedType.TypeKind.ToString()`. For a positional record class, `TypeKind == TypeKind.Class` so `ToString()` yields `"Class"`. Meanwhile `document_symbols` uses `CollectSymbols` in `src/RoslynMcp.Roslyn/Services/SymbolSearchService.cs:311` which checks `RecordDeclarationSyntax` and emits `"Record"`. **Stale anchors:** backlog cited `SymbolInfoService.cs` and `DocumentSymbolsService.cs` — neither exists; actual implementations are `SymbolSearchService.cs` and `SymbolMapper.cs`. |
 | Approach | 1. In `SymbolMapper.cs` `GetKind` (~lines 245-250): three-arm switch: `IsRecord && TypeKind.Class → "Record"`, `IsRecord && TypeKind.Struct → "RecordStruct"`, else `TypeKind.ToString()`. 2. In `SymbolSearchService.cs` `CollectMembers` (lines 403-409): add `ClassOrStructKeyword` check to nested `RecordDeclarationSyntax` matching the pattern in `CollectSymbols` at line 311. 3. Extend `tests/RoslynMcp.Tests/SymbolMapperTests.cs` with 2 new methods using `AdhocWorkspace` (record class → `"Record"`, record struct → `"RecordStruct"`). |
@@ -375,7 +375,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #869, 2026-05-20, test-only) |
 | Backlog rows closed | `get-msbuild-properties-vs-workspace-reload-outputtype-mismatch` |
 | Diagnosis | The production-side mismatch has already been resolved by a prior `project-graph-output-type-misreports-sdk-defaulted-exe` initiative. `WorkspaceManager.cs:2120` calls `ProjectMetadataParser.GetOutputType` (the MSBuild-evaluated overload) which returns `Exe` for SDK.Web projects. `MsBuildEvaluationService.GetEvaluatedPropertiesAsync` (~line 82) independently runs `ProjectCollection.LoadProject` — also returns `Exe`. Both surfaces draw from the same evaluation path. **Gap:** no test asserts cross-surface consistency. **Stale anchor:** backlog cited `MsBuildPropertyService.cs` — does not exist; correct file is `MsBuildEvaluationService.cs`. |
 | Approach | **Test-only initiative.** Add `BothSurfaces_SdkWebProject_AgreeonOutputType_Exe` to `tests/RoslynMcp.Tests/ProjectOutputTypeTests.cs`: create a `Microsoft.NET.Sdk.Web` `.csproj` fixture, load via `WorkspaceManager.LoadIntoSessionAsync`, read `ProjectStatusDto.OutputType`, also call `MsBuildEvaluationService.GetEvaluatedPropertiesAsync` with `includedNames: ["OutputType"]`, assert both return `"Exe"`. No production-file changes. |
@@ -393,7 +393,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #868, 2026-05-20) |
 | Backlog rows closed | `source-file-lines-off-by-one-marker-count` |
 | Diagnosis | Root cause: `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:285`. `GetSourceText` computes `totalLineCount` as `text.Count(ch => ch == '\n') + 1` — does NOT apply the trailing-newline correction. For files ending with `\n` this returns N+1. The `source_file_lines` resource at `src/RoslynMcp.Host.Stdio/Resources/WorkspaceResources.cs:255` correctly delegates to `RoslynMcp.Roslyn.Helpers.SourceTextSlicer.CountLines(text)` (which subtracts 1 when last char is `\n`). **Stale anchors:** backlog cited `SourceFileLinesResource.cs` and `SourceTextService.cs` — neither exists; actual files are `WorkspaceResources.cs` and `WorkspaceTools.cs`. |
 | Approach | One-line replacement at `src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs:285`: replace `var totalLineCount = text.Count(ch => ch == '\n') + 1;` with `var totalLineCount = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.CountLines(text);`. Extend `tests/RoslynMcp.Tests/WorkspaceToolsIntegrationTests.cs` with `WorkspaceTools_GetSourceText_TotalLineCount_MatchesResourceMarker`. |
