@@ -234,4 +234,62 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
         Assert.AreNotEqual(firstItem0, secondItem0,
             "offset=0 and offset=Limit windows must surface different first items (deterministic file/line/column sort).");
     }
+
+    // ----- Tokenization-rule regression tests (semantic-grep-dotted-identifiers-tokenization-docs-gap, gh #768 §13.15) -----
+    //
+    // The `identifiers` scope walks SyntaxKind.IdentifierToken one token at a time, so a dotted
+    // member-access expression like `Console.WriteLine` is THREE tokens — `Console`, `.`, `WriteLine`
+    // — and no single identifier token's text contains both halves. A regex pattern that spans
+    // the dot will therefore match 0 results under `scope="identifiers"`, regardless of how many
+    // times the call site appears in source. The tool description now documents this explicitly;
+    // these tests pin the behaviour so a future "fix" that changes the tokenization semantics
+    // breaks loudly instead of silently shifting hit counts. The recoverable-path test exercises
+    // the documented two-identifier-call + line-intersection workaround.
+
+    /// <summary>
+    /// Tokenization gap: `pattern="Console\.WriteLine"` against the `identifiers` scope must
+    /// return 0 hits even though `Console.WriteLine($"...")` appears multiple times in the
+    /// sample workspace's Program.cs / AnimalService.cs. The dot is a punctuation token; the
+    /// two identifiers either side of it are separate IdentifierToken instances.
+    /// </summary>
+    [TestMethod]
+    public async Task SemanticGrep_DottedPattern_IdentifierScope_ReturnsZero()
+    {
+        var hits = await SemanticGrepService.SearchAsync(
+            WorkspaceId, @"Console\.WriteLine", "identifiers", projectFilter: null, limit: 500, CancellationToken.None);
+
+        Assert.AreEqual(0, hits.Count,
+            $"Dotted pattern under scope=\"identifiers\" must match 0 — identifier tokens never span the dot. " +
+            $"Got {hits.Count} hits: {string.Join(", ", hits.Select(h => $"{h.FilePath}:{h.Line}:{h.Column}"))}.");
+    }
+
+    /// <summary>
+    /// Documented recoverable path: split the dotted query into two independent identifier-scope
+    /// calls (`^Console$`, `^WriteLine$`) and intersect the hits client-side by (filePath, line).
+    /// The shared sample workspace's Program.cs has `Console.WriteLine(...)` on multiple lines,
+    /// so the intersection must contain at least one (file, line) pair. This is the workaround
+    /// users are pointed at by the updated tool description.
+    /// </summary>
+    [TestMethod]
+    public async Task SemanticGrep_DottedPattern_TwoIdentifierCallsIntersected_RecoversDottedCallSites()
+    {
+        var consoleHits = await SemanticGrepService.SearchAsync(
+            WorkspaceId, @"^Console$", "identifiers", projectFilter: null, limit: 500, CancellationToken.None);
+        var writeLineHits = await SemanticGrepService.SearchAsync(
+            WorkspaceId, @"^WriteLine$", "identifiers", projectFilter: null, limit: 500, CancellationToken.None);
+
+        Assert.IsTrue(consoleHits.Count >= 1,
+            $"Sanity: identifier scope must find `Console` in the sample workspace. Got {consoleHits.Count}.");
+        Assert.IsTrue(writeLineHits.Count >= 1,
+            $"Sanity: identifier scope must find `WriteLine` in the sample workspace. Got {writeLineHits.Count}.");
+
+        // Intersect by (filePath, line) — the documented client-side recovery for dotted call sites.
+        var consoleLines = consoleHits.Select(h => (h.FilePath, h.Line)).ToHashSet();
+        var sharedLines = writeLineHits.Where(h => consoleLines.Contains((h.FilePath, h.Line))).ToList();
+
+        Assert.IsTrue(sharedLines.Count >= 1,
+            $"Documented recovery (`^Console$` ∩ `^WriteLine$` by (filePath, line)) must surface at least one " +
+            $"`Console.WriteLine` call site. Console hits: {consoleHits.Count}, WriteLine hits: {writeLineHits.Count}, " +
+            $"intersection: {sharedLines.Count}.");
+    }
 }
