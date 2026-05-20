@@ -395,6 +395,14 @@ public sealed partial class ScaffoldingService
     /// project and (b) has a project name ending in <c>.Tests</c> — the canonical convention
     /// used across this repo and most .NET solutions. Throws when no candidate is found.
     /// </summary>
+    /// <remarks>
+    /// When more than one candidate matches (a domain library referenced by several test
+    /// projects), we apply a single conservative tiebreaker: prefer the candidate whose name
+    /// is exactly <c>&lt;SourceProjectName&gt;.Tests</c> (case-sensitive). Variants like
+    /// <c>MyLib.UnitTests</c> or <c>MyLib.IntegrationTests</c> are intentionally NOT matched —
+    /// callers in those topologies still need to pass <c>testProjectName</c> explicitly. See
+    /// initiative <c>scaffold-first-test-file-preview-single-target-heuristic</c>.
+    /// </remarks>
     private ProjectStatusDto ResolveDestinationTestProject(string workspaceId, string? requestedName, Project sourceProject)
     {
         if (!string.IsNullOrWhiteSpace(requestedName))
@@ -416,14 +424,36 @@ public sealed partial class ScaffoldingService
                 "No project ending in '.Tests' references this project. Pass testProjectName explicitly.");
         }
 
+        Project picked;
         if (candidates.Count > 1)
         {
-            var names = string.Join(", ", candidates.Select(c => c.Name));
-            throw new InvalidOperationException(
-                $"Multiple test projects reference '{sourceProject.Name}': {names}. Pass testProjectName explicitly.");
+            // Suffix tiebreaker: when several test projects reference the same library, prefer
+            // the one whose name follows the canonical `<Library>.Tests` convention. This
+            // resolves the common topology where a domain library is referenced both by its
+            // own unit-test project AND by a higher-level integration-test project — only the
+            // unit-test project will follow the convention, so picking it is unambiguous.
+            var expectedName = sourceProject.Name + ".Tests";
+            var suffixMatches = candidates
+                .Where(c => string.Equals(c.Name, expectedName, StringComparison.Ordinal))
+                .ToList();
+
+            if (suffixMatches.Count == 1)
+            {
+                picked = suffixMatches[0];
+            }
+            else
+            {
+                var names = string.Join(", ", candidates.Select(c => c.Name));
+                throw new InvalidOperationException(
+                    $"Multiple test projects reference '{sourceProject.Name}': {names}. " +
+                    $"Pass testProjectName explicitly, or rename a candidate to '{expectedName}' to leverage the suffix tiebreaker.");
+            }
+        }
+        else
+        {
+            picked = candidates[0];
         }
 
-        var picked = candidates[0];
         return status.Projects.FirstOrDefault(p => string.Equals(p.Name, picked.Name, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"Inferred test project '{picked.Name}' is not in workspace status — cannot resolve file path.");
     }
