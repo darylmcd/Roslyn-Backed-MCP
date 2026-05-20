@@ -628,4 +628,92 @@ public sealed class ProjectMutationIntegrationTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(diff.Contains("Nullable", StringComparison.OrdinalIgnoreCase),
             "Diff must reference the Nullable property.");
     }
+
+    [TestMethod]
+    public async Task remove_preview_family_invalidoperation_for_missing_items_RemovePackageReference_AbsentPackage_ReturnsEmptyPreview()
+    {
+        // remove-preview-family-invalidoperation-for-missing-items: removing a package reference
+        // that is not present must return a structured empty preview (empty token, empty changes,
+        // descriptive Description) rather than throwing InvalidOperationException. Mirrors
+        // StringLiteralReplaceService.cs:94-106 — shape-probing callers can detect no-ops without
+        // exception-handling overhead. Fixes gh #769 §13.29.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewRemovePackageReferenceAsync(
+            workspace.WorkspaceId,
+            new RemovePackageReferenceDto("SampleLib", "Definitely.Not.Installed.Package"),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, preview.Changes.Count, "Empty preview must have zero changes.");
+        Assert.AreEqual(string.Empty, preview.PreviewToken, "Empty preview must have an empty token.");
+        StringAssert.Contains(preview.Description, "No changes",
+            $"Description must signal a no-op outcome. Actual: {preview.Description}");
+        StringAssert.Contains(preview.Description, "Definitely.Not.Installed.Package",
+            $"Description must name the absent package. Actual: {preview.Description}");
+    }
+
+    [TestMethod]
+    public async Task remove_preview_family_invalidoperation_for_missing_items_RemoveProjectReference_AbsentReference_ReturnsEmptyPreview()
+    {
+        // remove-preview-family-invalidoperation-for-missing-items: removing a project reference
+        // that is not present must return a structured empty preview rather than throwing.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        // SampleApp references SampleLib but NOT SampleLib.Tests. Probing for the absent edge
+        // must short-circuit with an empty preview.
+        var preview = await ProjectMutationService.PreviewRemoveProjectReferenceAsync(
+            workspace.WorkspaceId,
+            new RemoveProjectReferenceDto("SampleApp", "SampleLib.Tests"),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, preview.Changes.Count, "Empty preview must have zero changes.");
+        Assert.AreEqual(string.Empty, preview.PreviewToken, "Empty preview must have an empty token.");
+        StringAssert.Contains(preview.Description, "No changes",
+            $"Description must signal a no-op outcome. Actual: {preview.Description}");
+        StringAssert.Contains(preview.Description, "SampleLib.Tests",
+            $"Description must name the absent project reference. Actual: {preview.Description}");
+    }
+
+    [TestMethod]
+    public async Task remove_preview_family_invalidoperation_for_missing_items_RemoveTargetFramework_AbsentFramework_ReturnsEmptyPreview()
+    {
+        // remove-preview-family-invalidoperation-for-missing-items: removing a target framework
+        // that is not present must return a structured empty preview rather than throwing.
+        // SampleLib has only net10.0 — probing for net8.0 in the single <TargetFramework> branch
+        // hits the not-found path and must short-circuit before the "cannot remove the only"
+        // guard fires.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewRemoveTargetFrameworkAsync(
+            workspace.WorkspaceId,
+            new RemoveTargetFrameworkDto("SampleLib", "net8.0"),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, preview.Changes.Count, "Empty preview must have zero changes.");
+        Assert.AreEqual(string.Empty, preview.PreviewToken, "Empty preview must have an empty token.");
+        StringAssert.Contains(preview.Description, "No changes",
+            $"Description must signal a no-op outcome. Actual: {preview.Description}");
+        StringAssert.Contains(preview.Description, "net8.0",
+            $"Description must name the absent target framework. Actual: {preview.Description}");
+    }
+
+    [TestMethod]
+    public async Task remove_preview_family_invalidoperation_for_missing_items_RemoveCentralPackageVersion_AbsentPackage_ReturnsEmptyPreview()
+    {
+        // remove-preview-family-invalidoperation-for-missing-items: removing a central package
+        // version that is not present must return a structured empty preview rather than throwing.
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+
+        var preview = await ProjectMutationService.PreviewRemoveCentralPackageVersionAsync(
+            workspace.WorkspaceId,
+            new RemoveCentralPackageVersionDto("Definitely.Not.Installed.Package"),
+            CancellationToken.None);
+
+        Assert.AreEqual(0, preview.Changes.Count, "Empty preview must have zero changes.");
+        Assert.AreEqual(string.Empty, preview.PreviewToken, "Empty preview must have an empty token.");
+        StringAssert.Contains(preview.Description, "No changes",
+            $"Description must signal a no-op outcome. Actual: {preview.Description}");
+        StringAssert.Contains(preview.Description, "Definitely.Not.Installed.Package",
+            $"Description must name the absent central package version. Actual: {preview.Description}");
+    }
 }
