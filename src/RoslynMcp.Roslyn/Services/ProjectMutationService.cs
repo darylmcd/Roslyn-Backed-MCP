@@ -103,19 +103,24 @@ public sealed class ProjectMutationService : IProjectMutationService
         }, $"Add package reference '{request.PackageId}'", ct, warnings).ConfigureAwait(false);
     }
 
-    public Task<RefactoringPreviewDto> PreviewRemovePackageReferenceAsync(string workspaceId, RemovePackageReferenceDto request, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewRemovePackageReferenceAsync(string workspaceId, RemovePackageReferenceDto request, CancellationToken ct)
     {
-        return PreviewProjectMutationAsync(workspaceId, request.ProjectName, document =>
+        // remove-preview-family-invalidoperation-for-missing-items: pre-check absent item upfront
+        // and return a structured empty preview instead of throwing InvalidOperationException from
+        // the mutator. Mirrors StringLiteralReplaceService.cs:94-106 — empty token, empty changes,
+        // descriptive Description. Shape-probing callers can detect no-ops without exception handling.
+        var project = ResolveProject(workspaceId, request.ProjectName);
+        if (!await ProjectXmlContainsElementAsync(project, "PackageReference", "Include", request.PackageId, ct).ConfigureAwait(false))
         {
-            var element = document.Descendants("PackageReference").FirstOrDefault(candidate =>
-                string.Equals((string?)candidate.Attribute("Include"), request.PackageId, StringComparison.OrdinalIgnoreCase));
-            if (element is null)
-            {
-                throw new InvalidOperationException($"Package reference '{request.PackageId}' was not found.");
-            }
+            return EmptyPreview($"No changes — package reference '{request.PackageId}' was not found.");
+        }
 
+        return await PreviewProjectMutationAsync(workspaceId, project, document =>
+        {
+            var element = document.Descendants("PackageReference").First(candidate =>
+                string.Equals((string?)candidate.Attribute("Include"), request.PackageId, StringComparison.OrdinalIgnoreCase));
             OrchestrationMsBuildXml.RemoveElementCleanly(element);
-        }, $"Remove package reference '{request.PackageId}'", ct);
+        }, $"Remove package reference '{request.PackageId}'", ct).ConfigureAwait(false);
     }
 
     public Task<RefactoringPreviewDto> PreviewAddProjectReferenceAsync(string workspaceId, AddProjectReferenceDto request, CancellationToken ct)
@@ -151,27 +156,37 @@ public sealed class ProjectMutationService : IProjectMutationService
         }, $"Add project reference '{request.ReferencedProjectName}'", ct);
     }
 
-    public Task<RefactoringPreviewDto> PreviewRemoveProjectReferenceAsync(string workspaceId, RemoveProjectReferenceDto request, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewRemoveProjectReferenceAsync(string workspaceId, RemoveProjectReferenceDto request, CancellationToken ct)
     {
-        return PreviewProjectMutationAsync(workspaceId, request.ProjectName, document =>
-        {
-            var referencedProject = ResolveProject(workspaceId, request.ReferencedProjectName);
-            var targetFileName = Path.GetFileName(referencedProject.FilePath);
+        // remove-preview-family-invalidoperation-for-missing-items: pre-check absent item upfront
+        // and return a structured empty preview instead of throwing.
+        var project = ResolveProject(workspaceId, request.ProjectName);
+        var referencedProject = ResolveProject(workspaceId, request.ReferencedProjectName);
+        var targetFileName = Path.GetFileName(referencedProject.FilePath);
 
-            var element = document.Descendants("ProjectReference").FirstOrDefault(candidate =>
+        var probeDoc = await LoadProjectDocumentAsync(project, ct).ConfigureAwait(false);
+        var hasReference = probeDoc.Descendants("ProjectReference").Any(candidate =>
+        {
+            var include = (string?)candidate.Attribute("Include");
+            return !string.IsNullOrWhiteSpace(include) &&
+                   string.Equals(Path.GetFileName(include), targetFileName, StringComparison.OrdinalIgnoreCase);
+        });
+        if (!hasReference)
+        {
+            return EmptyPreview($"No changes — project reference '{request.ReferencedProjectName}' was not found.");
+        }
+
+        return await PreviewProjectMutationAsync(workspaceId, project, document =>
+        {
+            var element = document.Descendants("ProjectReference").First(candidate =>
             {
                 var include = (string?)candidate.Attribute("Include");
                 return !string.IsNullOrWhiteSpace(include) &&
                        string.Equals(Path.GetFileName(include), targetFileName, StringComparison.OrdinalIgnoreCase);
             });
 
-            if (element is null)
-            {
-                throw new InvalidOperationException($"Project reference '{request.ReferencedProjectName}' was not found.");
-            }
-
             OrchestrationMsBuildXml.RemoveElementCleanly(element);
-        }, $"Remove project reference '{request.ReferencedProjectName}'", ct);
+        }, $"Remove project reference '{request.ReferencedProjectName}'", ct).ConfigureAwait(false);
     }
 
     public async Task<RefactoringPreviewDto> PreviewSetProjectPropertyAsync(string workspaceId, SetProjectPropertyDto request, CancellationToken ct)
@@ -323,17 +338,54 @@ public sealed class ProjectMutationService : IProjectMutationService
             evalTfs = (await _msbuildEvaluation.EvaluatePropertyAsync(workspaceId, request.ProjectName, "TargetFrameworks", ct).ConfigureAwait(false)).EvaluatedValue;
         }
 
+        // remove-preview-family-invalidoperation-for-missing-items: pre-check absent target framework
+        // across all three resolution paths (explicit <TargetFrameworks>, explicit <TargetFramework>,
+        // and MSBuild-imported baseline) and short-circuit with a structured empty preview. The
+        // remaining throws inside the mutator below cover invalid-operation cases (would-leave-empty),
+        // not absent-item cases. Mirrors StringLiteralReplaceService.cs:94-106.
+        var sniffFrameworksElement = sniffDoc.Descendants("TargetFrameworks").FirstOrDefault();
+        if (sniffFrameworksElement is not null)
+        {
+            var frameworks = ParseTargetFrameworks(sniffFrameworksElement.Value);
+            if (!frameworks.Contains(request.TargetFramework, StringComparer.OrdinalIgnoreCase))
+            {
+                return EmptyPreview($"No changes — target framework '{request.TargetFramework}' was not found.");
+            }
+        }
+        else
+        {
+            var sniffSingleElement = sniffDoc.Descendants("TargetFramework").FirstOrDefault();
+            if (sniffSingleElement is not null)
+            {
+                if (!string.Equals(sniffSingleElement.Value, request.TargetFramework, StringComparison.OrdinalIgnoreCase))
+                {
+                    return EmptyPreview($"No changes — target framework '{request.TargetFramework}' was not found.");
+                }
+                // matches — the mutator will throw "Cannot remove the only target framework" (invalid op, not absent)
+            }
+            else
+            {
+                // No explicit TF in the csproj — resolve via the MSBuild-evaluated baseline.
+                var baseline = !string.IsNullOrWhiteSpace(evalTfs) ? evalTfs : evalTf;
+                if (!string.IsNullOrWhiteSpace(baseline))
+                {
+                    var baselineList = ParseTargetFrameworks(baseline);
+                    if (!baselineList.Contains(request.TargetFramework, StringComparer.OrdinalIgnoreCase))
+                    {
+                        return EmptyPreview($"No changes — target framework '{request.TargetFramework}' was not found.");
+                    }
+                }
+                // baseline empty -> mutator throws "Project file does not declare ..." (invalid op, not absent)
+            }
+        }
+
         return await PreviewProjectMutationAsync(workspaceId, project, document =>
         {
             var frameworksElement = document.Descendants("TargetFrameworks").FirstOrDefault();
             if (frameworksElement is not null)
             {
                 var frameworks = ParseTargetFrameworks(frameworksElement.Value);
-                var removed = frameworks.RemoveAll(value => string.Equals(value, request.TargetFramework, StringComparison.OrdinalIgnoreCase));
-                if (removed == 0)
-                {
-                    throw new InvalidOperationException($"Target framework '{request.TargetFramework}' was not found.");
-                }
+                frameworks.RemoveAll(value => string.Equals(value, request.TargetFramework, StringComparison.OrdinalIgnoreCase));
 
                 if (frameworks.Count == 0)
                 {
@@ -354,11 +406,6 @@ public sealed class ProjectMutationService : IProjectMutationService
             var targetFrameworkElement = document.Descendants("TargetFramework").FirstOrDefault();
             if (targetFrameworkElement is not null)
             {
-                if (!string.Equals(targetFrameworkElement.Value, request.TargetFramework, StringComparison.OrdinalIgnoreCase))
-                {
-                    throw new InvalidOperationException($"Target framework '{request.TargetFramework}' was not found.");
-                }
-
                 throw new InvalidOperationException("Cannot remove the only target framework from a project.");
             }
 
@@ -370,11 +417,7 @@ public sealed class ProjectMutationService : IProjectMutationService
             }
 
             var list = ParseTargetFrameworks(baseline);
-            var removedImplicit = list.RemoveAll(value => string.Equals(value, request.TargetFramework, StringComparison.OrdinalIgnoreCase));
-            if (removedImplicit == 0)
-            {
-                throw new InvalidOperationException($"Target framework '{request.TargetFramework}' was not found.");
-            }
+            list.RemoveAll(value => string.Equals(value, request.TargetFramework, StringComparison.OrdinalIgnoreCase));
 
             if (list.Count == 0)
             {
@@ -450,7 +493,7 @@ public sealed class ProjectMutationService : IProjectMutationService
         }, $"Add central package version '{request.PackageId}'", ct);
     }
 
-    public Task<RefactoringPreviewDto> PreviewRemoveCentralPackageVersionAsync(string workspaceId, RemoveCentralPackageVersionDto request, CancellationToken ct)
+    public async Task<RefactoringPreviewDto> PreviewRemoveCentralPackageVersionAsync(string workspaceId, RemoveCentralPackageVersionDto request, CancellationToken ct)
     {
         var packagesPropsPath = ResolveDirectoryPackagesPropsPath(workspaceId)
             ?? throw new FileNotFoundException(
@@ -459,19 +502,26 @@ public sealed class ProjectMutationService : IProjectMutationService
                 "To use central package management, create a Directory.Packages.props file at the solution root " +
                 "with <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>.");
 
-        return PreviewXmlFileMutationAsync(workspaceId, packagesPropsPath, document =>
+        // remove-preview-family-invalidoperation-for-missing-items: pre-check absent item upfront
+        // and return a structured empty preview instead of throwing.
+        EnsureCentralPackageManagementEnabled(packagesPropsPath);
+        var probeContent = await File.ReadAllTextAsync(packagesPropsPath, ct).ConfigureAwait(false);
+        var probeDoc = XDocument.Parse(probeContent, LoadOptions.PreserveWhitespace);
+        var hasPackageVersion = probeDoc.Descendants("PackageVersion").Any(candidate =>
+            string.Equals((string?)candidate.Attribute("Include"), request.PackageId, StringComparison.OrdinalIgnoreCase));
+        if (!hasPackageVersion)
+        {
+            return EmptyPreview($"No changes — central package version '{request.PackageId}' was not found.");
+        }
+
+        return await PreviewXmlFileMutationAsync(workspaceId, packagesPropsPath, document =>
         {
             EnsureCentralPackageManagementEnabled(packagesPropsPath);
 
-            var element = document.Descendants("PackageVersion").FirstOrDefault(candidate =>
+            var element = document.Descendants("PackageVersion").First(candidate =>
                 string.Equals((string?)candidate.Attribute("Include"), request.PackageId, StringComparison.OrdinalIgnoreCase));
-            if (element is null)
-            {
-                throw new InvalidOperationException($"Central package version '{request.PackageId}' was not found.");
-            }
-
             OrchestrationMsBuildXml.RemoveElementCleanly(element);
-        }, $"Remove central package version '{request.PackageId}'", ct);
+        }, $"Remove central package version '{request.PackageId}'", ct).ConfigureAwait(false);
     }
 
     public async Task<ApplyResultDto> ApplyProjectMutationAsync(string previewToken, CancellationToken ct)
@@ -691,5 +741,40 @@ public sealed class ProjectMutationService : IProjectMutationService
     {
         return value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToList();
+    }
+
+    // remove-preview-family-invalidoperation-for-missing-items: helpers for the structured
+    // empty-preview pattern shared by all four `*_remove_*_preview` tools. Mirrors
+    // StringLiteralReplaceService.cs:94-106 — empty token + empty changes + descriptive Description.
+    private static RefactoringPreviewDto EmptyPreview(string description)
+    {
+        return new RefactoringPreviewDto(
+            PreviewToken: string.Empty,
+            Description: description,
+            Changes: Array.Empty<FileChangeDto>(),
+            Warnings: null);
+    }
+
+    private static async Task<XDocument> LoadProjectDocumentAsync(ProjectStatusDto project, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(project.FilePath) || !File.Exists(project.FilePath))
+        {
+            throw new InvalidOperationException($"Project file was not found for '{project.Name}'.");
+        }
+
+        var content = await File.ReadAllTextAsync(project.FilePath, ct).ConfigureAwait(false);
+        return XDocument.Parse(content, LoadOptions.PreserveWhitespace);
+    }
+
+    private static async Task<bool> ProjectXmlContainsElementAsync(
+        ProjectStatusDto project,
+        string elementName,
+        string attributeName,
+        string attributeValue,
+        CancellationToken ct)
+    {
+        var document = await LoadProjectDocumentAsync(project, ct).ConfigureAwait(false);
+        return document.Descendants(elementName).Any(element =>
+            string.Equals((string?)element.Attribute(attributeName), attributeValue, StringComparison.OrdinalIgnoreCase));
     }
 }
