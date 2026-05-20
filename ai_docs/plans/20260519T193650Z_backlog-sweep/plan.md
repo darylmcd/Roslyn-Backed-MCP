@@ -178,7 +178,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #862, 2026-05-19) |
 | Backlog rows closed | `set-conditional-property-preview-allowlist-narrowness` |
 | Diagnosis | Confirmed in `src/RoslynMcp.Roslyn/Services/ProjectMutationService.cs:17-23`: `AllowedProperties` `HashSet<string>` contains exactly `{"Nullable", "LangVersion", "ImplicitUsings", "TargetFramework"}`. Both `PreviewSetProjectPropertyAsync` (line 172) and `PreviewSetConditionalPropertyAsync` (line 393) call `ValidateAllowedProperty` (line 640) which throws for any name absent from this set. Five common per-config properties (`DefineConstants`, `Optimize`, `DebugType`, `NoWarn`, `TreatWarningsAsErrors`) are all rejected. Tool description strings at `src/RoslynMcp.Host.Stdio/Tools/ProjectMutationTools.cs:115,176` also hard-code the narrow allowlist. |
 | Approach | 1. Expand `AllowedProperties` `HashSet` initializer (lines 17-23) to add the 5 new entries. 2. Update `[Description]` attributes on `propertyName` parameter for both tools (lines 115, 176). 3. Add 1 new `[TestMethod]` to `tests/RoslynMcp.Tests/ProjectMutationIntegrationTests.cs` covering DefineConstants + Optimize + NoWarn (mirror `Set_Conditional_Property_Preview_And_Apply_Adds_Conditional_Property_Group` at line 324). |
@@ -208,7 +208,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #864, 2026-05-20) |
 | Backlog rows closed | `get-completions-filtertext-doesnt-promote-in-scope-members` |
 | Diagnosis | Root cause: `src/RoslynMcp.Roslyn/Services/CompletionService.cs:53` calls Roslyn's `CompletionService.GetCompletionsAsync(document, position, cancellationToken: ct)` with NO `CompletionTrigger`. At a general statement position (no preceding `.`), Roslyn returns the global accessible-type set but does NOT include instance-member completions because there is no receiver expression. The `InScopeRank` sort at lines 77-80 correctly promotes Methods over Classes but cannot promote items Roslyn never emitted. The existing test `GetCompletions_Ranking_BoostsInScopeBeforeExternalTypes` exercises a member-access position (post-`.`), not a general statement position. |
 | Approach | 1. `src/RoslynMcp.Core/Services/ICompletionService.cs`: add `char? triggerCharacter` parameter. 2. `src/RoslynMcp.Roslyn/Services/CompletionService.cs`: at line 53, when `triggerCharacter` is non-null pass `CompletionTrigger.TriggerOnInsertion(triggerCharacter.Value)`. 3. `src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs`: add optional `[Description] char? triggerCharacter = null` parameter to `GetCompletions`; update tool description to document the member-access constraint. New test in `ServiceCoverageTests.cs` (general position + `triggerCharacter='.'`). |
@@ -240,7 +240,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #863, 2026-05-20) |
 | Backlog rows closed | `semantic-grep-dotted-identifiers-tokenization-docs-gap` |
 | Diagnosis | The `semantic_grep` tool description at `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs:430` hints at per-token matching but never explains the consequence for dotted member-access expressions. Root cause in `src/RoslynMcp.Roslyn/Services/SemanticGrepService.cs:154`: `scope="identifiers"` walks `SyntaxKind.IdentifierToken` one at a time — `Task.Run` tokenizes as `Task`/`./`/`Run` so `pattern="Task.Run"` matches 0. Backlog anchor `src/RoslynMcp.Host.Stdio/Tools/SemanticGrepTools.cs` is stale — actual host file is `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs`. |
 | Approach | Edit the `[Description]` attribute on `AnalysisTools.SemanticGrep` (~line 430) — append a tokenization-rule paragraph: (1) name the `identifiers` scope's one-token-per-match semantic, (2) give concrete failing example (`pattern="Task.Run"` matches 0), (3) recommend `scope="all"` for prose-style queries or two separate calls + line intersection. Optional `dottedIdentifier=true` mode deferred. Extend `SemanticGrepServiceTests.cs` with `SemanticGrep_DottedPattern_IdentifierScope_ReturnsZero` and a companion `scope="all"` assertion. |
@@ -258,7 +258,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #861, 2026-05-19) |
 | Backlog rows closed | `get-di-registrations-multi-registration-overcounting` |
 | Diagnosis | Two bugs in `src/RoslynMcp.Roslyn/Services/DiRegistrationService.cs`. **Bug 1:** `BuildOverrideChains` (line 380) groups all registrations for a service type and marks all-but-last as `overridden` — no `IEnumerable<T>` consumption awareness. 8× `AddSingleton<IAnalyzer,...>` reports `deadRegistrationCount: 7` though MS.DI's `GetServices<T>()` returns all. **Bug 2:** `TryCreateDiRegistration` (lines 217-224) detects lambda registration and unconditionally returns `implType = "factory"` — for `AddSingleton<ISnapshotReader>(sp => sp.GetRequiredService<FileSnapshotReader>())` the returned impl type falls back to the interface itself (line 234). |
 | Approach | All changes in `DiRegistrationService.cs`. **Bug 1 fix:** extend `ScanProjectsAsync` to collect `IEnumerable<T>`/`IReadOnlyList<T>`/`IList<T>`/`T[]` constructor/property injection patterns. Thread the resulting "enumerable-consumed" set through `ScanSnapshot` (preserving reference-equality caching contract). In `BuildOverrideChains`, skip override-classification for service types in that set. **Bug 2 fix:** add `TryResolveLambdaReturnType` helper that walks the lambda body for `GetRequiredService<T>()` / `GetService<T>()` invocations and resolves the generic type via `semanticModel.GetTypeInfo`; fall back to `"factory"` if not found. Extend `tests/RoslynMcp.Tests/DiLifetimeOverrideTests.cs` (+ test-shim update) with 2 new methods. |
@@ -290,7 +290,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #860, 2026-05-19) |
 | Backlog rows closed | `migrate-package-preview-no-op-silent-mutation` |
 | Diagnosis | Root cause in `src/RoslynMcp.Roslyn/Services/PackageMigrationOrchestrator.cs`. `BuildCentralVersionEditAsync` (called at lines 46-50 of `PreviewMigratePackageAsync`) is invoked unconditionally whenever CPM is enabled — regardless of whether any project actually referenced `oldPackageId`. Inside, `UpsertCentralPackageVersion` (lines 174-191) always upserts the new CPM entry. When zero projects reference `oldPackageId`, the per-project loop contributes 0 mutations but `BuildCentralVersionEditAsync` adds 1 mutation; the `mutations.Count == 0` guard at line 52 passes (count is 1) and silently mutates the package manifest. **Stale anchor:** backlog cited `MigratePackageService.cs` — does not exist; actual file is `PackageMigrationOrchestrator.cs`. |
 | Approach | Single guard: in `PreviewMigratePackageAsync`, gate the CPM update block (lines 46-50) on `mutations.Count > 0` — only invoke `BuildCentralVersionEditAsync` when at least one project was migrated. The existing `InvalidOperationException` at line 52 (count == 0) then fires for the no-op case, which is the correct failure mode. No interface or DTO changes. New test in `tests/RoslynMcp.Tests/OrchestrationIntegrationTests.cs`: `Migrate_Package_Preview_Throws_When_Source_Package_Absent`. |
@@ -308,7 +308,7 @@ count=15 cap requested; 23 sweep-actionable rows available after the gh #768 + g
 
 | Field | Content |
 |---|---|
-| Status | pending |
+| Status | merged (PR #865, 2026-05-20) |
 | Backlog rows closed | `scaffold-first-test-file-preview-single-target-heuristic` |
 | Diagnosis | Root cause: `src/RoslynMcp.Roslyn/Services/ScaffoldingService.TestBatchAndFirstTestPreview.cs:406-428` (`ResolveDestinationTestProject`). When `candidates.Count > 1` it immediately throws — no name-suffix tiebreaker. **Stale anchor:** backlog cited `ScaffoldFirstTestFileService.cs` — does not exist; code lives in the partial class `ScaffoldingService.TestBatchAndFirstTestPreview.cs`. `ResolveDestinationTestProject` is called once (line 250 same file) — fully self-contained. |
 | Approach | In `ResolveDestinationTestProject` (lines 418-423), after the `candidates.Count > 1` branch: filter to names equal to `sourceProject.Name + ".Tests"` (`StringComparison.Ordinal`). If filtered set has exactly 1 member, treat as winner; otherwise fall through to existing error (updated to suggest explicit `testProjectName`). Extend `tests/RoslynMcp.Tests/ScaffoldingFirstTestFileTests.cs` with `FirstTestFile_InfersSuffix_When_MultipleTestProjects_Reference_Same_Library`. |
