@@ -405,7 +405,9 @@ public sealed class SymbolSearchService : ISymbolSearchService
                         ClassDeclarationSyntax => "Class",
                         InterfaceDeclarationSyntax => "Interface",
                         StructDeclarationSyntax => "Struct",
-                        RecordDeclarationSyntax => "Record",
+                        // Mirror the top-level CollectSymbols switch so a nested `record struct`
+                        // surfaces as "RecordStruct" instead of being collapsed to "Record".
+                        RecordDeclarationSyntax r => r.ClassOrStructKeyword.IsKind(SyntaxKind.StructKeyword) ? "RecordStruct" : "Record",
                         _ => "Type"
                     };
                     members.Add(new DocumentSymbolDto(

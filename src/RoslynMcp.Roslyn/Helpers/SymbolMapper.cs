@@ -245,6 +245,11 @@ public static class SymbolMapper
     private static string GetKind(ISymbol symbol) =>
         symbol switch
         {
+            // Records masquerade as Class/Struct in TypeKind; check IsRecord first so the
+            // record_class → "Record" and record_struct → "RecordStruct" labels agree with
+            // document_symbols' syntax-side switch (see SymbolSearchService.CollectSymbols).
+            INamedTypeSymbol { IsRecord: true, TypeKind: TypeKind.Struct } => "RecordStruct",
+            INamedTypeSymbol { IsRecord: true, TypeKind: TypeKind.Class } => "Record",
             INamedTypeSymbol namedType => namedType.TypeKind.ToString(),
             _ => symbol.Kind.ToString()
         };
