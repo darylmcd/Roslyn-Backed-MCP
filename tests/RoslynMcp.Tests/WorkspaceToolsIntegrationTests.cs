@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.Helpers;
 
@@ -194,6 +196,53 @@ public sealed class WorkspaceToolsIntegrationTests : SharedWorkspaceTestBase
         var returnedEnd = doc.RootElement.GetProperty("returnedEndLine").GetInt32();
         Assert.AreEqual(total, returnedEnd, "endLine should clamp to total line count, not error.");
         Assert.AreEqual(99999, doc.RootElement.GetProperty("requestedEndLine").GetInt32());
+    }
+
+    // source-file-lines-off-by-one-marker-count: regression for gh #769 §13.26.
+    // Pre-fix, `WorkspaceTools.GetSourceText` computed `totalLineCount` inline as
+    // `text.Count('\n') + 1`, which over-counted files ending with a trailing newline
+    // by one line. The `source_file_lines` resource correctly used
+    // `SourceTextSlicer.CountLines(text)` (which subtracts 1 when the last char is '\n').
+    // The two surfaces therefore disagreed on N for newline-terminated files — e.g. on
+    // Program.cs (43 lines per `wc -l`, ends with '\n'), `get_source_text.totalLineCount`
+    // returned 44 while the resource marker printed `of 43`. The fix routes both through
+    // `SourceTextSlicer.CountLines` so the counts agree.
+    [TestMethod]
+    public async Task WorkspaceTools_GetSourceText_TotalLineCount_MatchesResourceMarker()
+    {
+        var programPath = FindProgramPath();
+
+        // Tool: read the JSON envelope and grab totalLineCount.
+        var toolJson = await WorkspaceTools.GetSourceText(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            programPath,
+            startLine: null,
+            endLine: null,
+            ct: CancellationToken.None);
+        using var doc = JsonDocument.Parse(toolJson);
+        var toolTotal = doc.RootElement.GetProperty("totalLineCount").GetInt32();
+
+        // Resource: read the marker-prefixed body and parse the `of N` suffix on the marker line.
+        // Marker shape (see WorkspaceResources.GetSourceFileLines):
+        //   // roslyn://workspace/{workspaceId}/file/.../lines/{startLine}-{clampedEnd} of {totalLineCount}
+        var resourceBody = await WorkspaceResources.GetSourceFileLines(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            WorkspaceId,
+            programPath,
+            "1-1",
+            CancellationToken.None);
+        var match = Regex.Match(resourceBody, @"of (?<n>\d+)");
+        Assert.IsTrue(match.Success, $"Resource marker must include 'of N'; got: {resourceBody}");
+        var resourceTotal = int.Parse(match.Groups["n"].Value);
+
+        Assert.AreEqual(
+            resourceTotal,
+            toolTotal,
+            $"get_source_text.totalLineCount must match the source_file_lines resource marker " +
+            $"(file: {programPath}). Tool reported {toolTotal}, resource reported {resourceTotal}.");
     }
 
     [TestMethod]

@@ -282,7 +282,7 @@ public static class WorkspaceTools
             var text = await workspace.GetSourceTextAsync(workspaceId, filePath, c);
             if (text is null) throw new KeyNotFoundException($"Document not found: {filePath}");
 
-            var totalLineCount = text.Count(ch => ch == '\n') + 1;
+            var totalLineCount = RoslynMcp.Roslyn.Helpers.SourceTextSlicer.CountLines(text);
             var requestedStart = startLine ?? 1;
             var requestedEnd = endLine ?? totalLineCount;
 
