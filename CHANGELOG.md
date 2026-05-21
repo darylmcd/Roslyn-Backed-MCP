@@ -16,6 +16,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [2.2.2] - 2026-05-21
+
+### Fixed
+
+- **Fixed:** `find_duplicate_helpers` now filters common framework glue wrappers for Serilog hosting, CORS service registration, and HTTP resilience extension APIs while still reporting true local duplicate helpers. Closes `find-duplicate-helpers-framework-wrapper-filter-leak`.
+- **Fixed:** Metadata-name NotFound responses can now include structured `closestMatches` suggestions so near-miss `symbol_info` and shared resolver paths point agents at likely symbols instead of forcing a separate search round trip. Closes `symbol-search-nearest-fuzzy-fallback`.
+- **Fixed:** Hardened test runner failure envelopes, added `recommend_workflow`, refreshed fast-path prompt guidance, ranked direct `test_related_files` references first, and exposed resource server-name hints. Closes `test-run-bare-exception-envelope`, `agent-workflow-router-first-hop`, `discover-capabilities-quick-path-steering`, `test-related-files-direct-reference-ranking`, and `mcp-resource-server-name-aliasing`.
+
+### Added
+
+- **Added:** `/mcp-server-surface-test` now documents `--cleanup-only` crash recovery and a per-phase checkpoint/resume contract for full audits, reducing manual recovery after interrupted surface-test runs. Closes `surface-test-resumability-cleanup-skill`.
+
+### Maintenance
+
+- **Maintenance:** Added the `plugin-package-files-allowlist` design note, verified the Claude Code plugin schema has no package `files` allowlist field, and split the release-side allowlist enforcement follow-up row.
+- **Maintenance:** Added the `workspace-fork-apply-primitive` design note and split the concrete `workspace-fork-apply-tool` implementation row, covering forked apply/validate tool shape, retention semantics, cleanup, and restart recovery.
+
 ## [2.2.1] - 2026-05-21
 
 ### Fixed
