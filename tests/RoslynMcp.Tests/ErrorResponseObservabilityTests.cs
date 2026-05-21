@@ -71,6 +71,29 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task SymbolInfo_WithNearMissMetadataName_ReturnsClosestMatches()
+    {
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "symbol_info",
+            () => SymbolTools.GetSymbolInfo(
+                WorkspaceExecutionGate,
+                SymbolSearchService,
+                WorkspaceId,
+                metadataName: "SampleLib.AnimalServicex",
+                ct: CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.GetProperty("error").GetBoolean());
+        Assert.AreEqual("NotFound", doc.RootElement.GetProperty("category").GetString());
+        Assert.IsTrue(doc.RootElement.TryGetProperty("closestMatches", out var closestMatches),
+            $"Near-miss metadataName failures must carry closestMatches. Envelope: {json}");
+        Assert.IsTrue(
+            closestMatches.EnumerateArray().Take(3).Any(match =>
+                string.Equals(match.GetProperty("metadataName").GetString(), "SampleLib.AnimalService", StringComparison.Ordinal)),
+            $"Expected SampleLib.AnimalService in the top closest matches. Envelope: {json}");
+    }
+
+    [TestMethod]
     public async Task Resource_GetWorkspaceStatus_WithUnknownWorkspaceId_ReturnsErrorEnvelopeWithSourceUri()
     {
         // Pre-fix: a resource exception bubbled to the framework which labelled it

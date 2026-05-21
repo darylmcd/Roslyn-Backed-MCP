@@ -773,12 +773,17 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
     }
 
     /// <summary>
-    /// Thin forwarders to ASP.NET Core HTTP and System.Net.Http API entry points are
-    /// usually intentional (minimal APIs, test extensions), not reinvented primitive helpers.
+    /// Thin forwarders to framework hosting/HTTP extension entry points are usually intentional
+    /// composition glue (minimal APIs, service registration, test extensions), not reinvented
+    /// primitive helpers.
     /// </summary>
     private static bool IsFrameworkGlueWrapperTarget(IMethodSymbol targetSymbol, bool excludeFrameworkWrappers)
     {
         if (!excludeFrameworkWrappers) return false;
+
+        var targetAssemblyName = targetSymbol.ContainingAssembly?.Name;
+        if (IsFrameworkGlueNamespaceOrAssembly(targetAssemblyName))
+            return true;
 
         for (var ns = targetSymbol.ContainingNamespace;
              ns is { IsGlobalNamespace: false };
@@ -788,16 +793,28 @@ public sealed class UnusedCodeAnalyzer : IUnusedCodeAnalyzer
             if (display.StartsWith("global::", StringComparison.Ordinal))
                 display = display["global::".Length..];
 
-            if (display.StartsWith("Microsoft.AspNetCore.", StringComparison.Ordinal)
-                || string.Equals(display, "Microsoft.AspNetCore", StringComparison.Ordinal))
-                return true;
-
-            // System.Net.Http, System.Net.Http.Headers, System.Net.Http.Json, etc.
-            if (display.StartsWith("System.Net.Http", StringComparison.Ordinal))
+            if (IsFrameworkGlueNamespaceOrAssembly(display))
                 return true;
         }
 
         return false;
+    }
+
+    private static bool IsFrameworkGlueNamespaceOrAssembly(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+
+        return string.Equals(name, "Microsoft.AspNetCore", StringComparison.Ordinal)
+            || name.StartsWith("Microsoft.AspNetCore.", StringComparison.Ordinal)
+            || string.Equals(name, "System.Net.Http", StringComparison.Ordinal)
+            || name.StartsWith("System.Net.Http.", StringComparison.Ordinal)
+            || string.Equals(name, "Serilog.Extensions.Hosting", StringComparison.Ordinal)
+            || name.StartsWith("Serilog.Extensions.Hosting.", StringComparison.Ordinal)
+            || string.Equals(name, "Microsoft.Extensions.DependencyInjection", StringComparison.Ordinal)
+            || name.StartsWith("Microsoft.Extensions.DependencyInjection.", StringComparison.Ordinal)
+            || string.Equals(name, "Microsoft.Extensions.Http.Resilience", StringComparison.Ordinal)
+            || name.StartsWith("Microsoft.Extensions.Http.Resilience.", StringComparison.Ordinal);
     }
 
     /// <summary>

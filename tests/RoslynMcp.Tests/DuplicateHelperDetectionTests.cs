@@ -285,6 +285,71 @@ public sealed class DuplicateHelperDetectionTests
     }
 
     [TestMethod]
+    public async Task FindDuplicateHelpers_FrameworkExtensionForwarders_AreNotDetected_ByDefault()
+    {
+        var frameworkReference = CreateMetadataReference("""
+            namespace Serilog
+            {
+                public interface ILogger { }
+            }
+
+            namespace Serilog.Extensions.Hosting
+            {
+                public static class LoggerConfigurationExtensions
+                {
+                    public static void UseSerilog(object host, global::Serilog.ILogger logger) { }
+                }
+            }
+
+            namespace Microsoft.Extensions.DependencyInjection
+            {
+                public sealed class CorsOptions { }
+                public static class CorsServiceCollectionExtensions
+                {
+                    public static void AddCors(object services) { }
+                }
+            }
+
+            namespace Microsoft.Extensions.Http.Resilience
+            {
+                public static class ResilienceHttpClientBuilderExtensions
+                {
+                    public static void AddStandardResilienceHandler(object builder) { }
+                }
+            }
+            """);
+
+        const string source = """
+            using Microsoft.Extensions.DependencyInjection;
+            using Microsoft.Extensions.Http.Resilience;
+            using Serilog;
+            using Serilog.Extensions.Hosting;
+
+            namespace Sample;
+            internal static class ApiHostBuilder
+            {
+                public static void ConfigureSerilog(object host, ILogger logger) => LoggerConfigurationExtensions.UseSerilog(host, logger);
+                public static void ConfigureCors(object services) => CorsServiceCollectionExtensions.AddCors(services);
+                public static void ConfigureResilience(object builder) => ResilienceHttpClientBuilderExtensions.AddStandardResilienceHandler(builder);
+                public static bool IsBlank(string value) => string.IsNullOrWhiteSpace(value);
+            }
+            """;
+
+        var compileErrors = await GetCompilationErrorsAsync(source, frameworkReference);
+        Assert.AreEqual(string.Empty, compileErrors, "Framework-wrapper fixture must compile before duplicate-helper analysis runs.");
+
+        var analyzer = BuildAnalyzerWithSource(source, frameworkReference);
+
+        var hits = await analyzer.FindDuplicateHelpersAsync(
+            WorkspaceId,
+            new DuplicateHelperAnalysisOptions(),
+            default);
+
+        Assert.AreEqual(1, hits.Count, "Only the real BCL helper should remain after framework glue wrappers are filtered.");
+        Assert.AreEqual("IsBlank", hits[0].SymbolName);
+    }
+
+    [TestMethod]
     public async Task FindDuplicateHelpers_LimitCapsResults()
     {
         // Confirm the `Limit` option clamps the result count even when more hits exist.
@@ -388,6 +453,33 @@ public sealed class DuplicateHelperDetectionTests
         var compilation = await project.GetCompilationAsync().ConfigureAwait(false);
         var errors = compilation!.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
         return errors.Length == 0 ? string.Empty : string.Join(Environment.NewLine, errors.Select(d => d.ToString()));
+    }
+
+    private static MetadataReference CreateMetadataReference(string source, string assemblyName = "ExternalFramework")
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText(source);
+        var coreDir = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        var references = new[]
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(Path.Combine(coreDir, "System.Runtime.dll")),
+        };
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            [syntaxTree],
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        using var stream = new MemoryStream();
+        var emitResult = compilation.Emit(stream);
+        if (!emitResult.Success)
+        {
+            var errors = string.Join(Environment.NewLine, emitResult.Diagnostics.Select(d => d.ToString()));
+            Assert.Fail("External framework fixture failed to compile: " + errors);
+        }
+
+        return MetadataReference.CreateFromImage(stream.ToArray());
     }
 
     /// <summary>

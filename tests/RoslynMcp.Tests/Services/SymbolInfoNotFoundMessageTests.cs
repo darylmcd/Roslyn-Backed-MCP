@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Tests.Helpers;
 
@@ -38,7 +39,7 @@ public sealed class SymbolInfoNotFoundMessageTests : SharedWorkspaceTestBase
     {
         const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExceptionAsync<SymbolNotFoundException>(async () =>
             await SymbolTools.GetSymbolInfo(
                 WorkspaceExecutionGate,
                 SymbolSearchService,
@@ -151,7 +152,7 @@ public sealed class SymbolInfoNotFoundMessageTests : SharedWorkspaceTestBase
         // input but MUST contain a leading prefix and the truncation marker.
         var hugeName = "SampleLib.Bogus_" + new string('X', 2000);
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExceptionAsync<SymbolNotFoundException>(async () =>
             await SymbolTools.GetSymbolInfo(
                 WorkspaceExecutionGate,
                 SymbolSearchService,
