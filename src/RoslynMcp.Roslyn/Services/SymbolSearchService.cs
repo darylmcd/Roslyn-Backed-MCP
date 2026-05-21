@@ -230,6 +230,9 @@ public sealed class SymbolSearchService : ISymbolSearchService
         // when the caller has NOT opted into adjacent-token walking. Default false preserves
         // the stricter contract against silent whitespace drift.
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct, strict: !allowAdjacent).ConfigureAwait(false);
+        if (symbol is null && locator.HasMetadataName)
+            throw await SymbolResolver.CreateSymbolNotFoundExceptionAsync(solution, locator, ct).ConfigureAwait(false);
+
         return symbol is not null ? SymbolMapper.ToDto(symbol, solution) : null;
     }
 

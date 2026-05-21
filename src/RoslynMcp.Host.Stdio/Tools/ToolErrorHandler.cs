@@ -459,6 +459,20 @@ internal static class ToolErrorHandler
         }
         else
         {
+            if (ex is SymbolNotFoundException { ClosestMatches.Count: > 0 } symbolNotFound)
+            {
+                var error = new
+                {
+                    error = true,
+                    category = info.Category,
+                    tool = toolName,
+                    message = info.Message,
+                    exceptionType = ex.GetType().Name,
+                    closestMatches = symbolNotFound.ClosestMatches,
+                };
+                return JsonSerializer.Serialize(error, JsonDefaults.Indented);
+            }
+
             // inv-arg-envelope-schema-hint: attach a one-line schema hint for InvalidArgument
             // envelopes so cold-context callers can re-call without round-tripping through
             // server_info. Hint is omitted (rather than emitted as null) when the failing

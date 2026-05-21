@@ -3,7 +3,7 @@ name: mcp-server-surface-test
 installed_as: roslyn-mcp:mcp-server-surface-test
 description: "Consumer-facing audit of the Roslyn MCP server's live surface against a loaded C# repo. Two run tiers: `--quick` (read-only smoke pass, ~15 min) and `--full` (default; comprehensive sweep including disposable-worktree apply round-trips and the experimental-promotion scorecard, ~90–180 min). Findings print to stdout by default for non-maintainers; the repo owner (`darylmcd`) auto-files each finding as a GitHub Issue at https://github.com/darylmcd/Roslyn-Backed-MCP. Pass `--auto-file` to force-enable or `--no-auto-file` to force-disable. Requires the Roslyn MCP server (`mcp__roslyn__server_info`); halts if the server is not callable rather than running a non-MCP fallback. Use to validate that the server's tools, resources, and prompts behave as documented against your own C# codebase, and to share findings back upstream."
 user-invocable: true
-argument-hint: "[<target-repo-path>] [--quick | --full] [--output-mode=findings | fragments] [--auto-file | --no-auto-file] [--no-worktree] [--single-agent]"
+argument-hint: "[<target-repo-path>] [--quick | --full | --cleanup-only] [--output-mode=findings | fragments] [--auto-file | --no-auto-file] [--no-worktree] [--single-agent]"
 ---
 
 # /mcp-server-surface-test $ARGUMENTS
@@ -44,7 +44,9 @@ Resolution rules:
 - *(no flag, default)* — `--full` is the default. Read `prompts/full.md` and run it phase by phase.
 - `--quick` — read-only smoke pass. Read `prompts/quick.md` instead. Target runtime ≤15 minutes vs `--full`'s 90–180 minutes. No apply-mode mutations, no disposable worktree, no test runs, no `nuget_vulnerability_scan` (network-dependent).
 - `--full` — explicit form of the default; routes to `prompts/full.md`.
+- `--cleanup-only` — recovery mode for an interrupted full run. Resolve the target repo, perform the disposable-worktree cleanup from Step 3, report any persisted checkpoint summary you find, then stop without running audit phases or emitting findings. This mode is intended for crash recovery before a fresh `--full` rerun.
 - **Conflict:** `--quick` and `--full` together → stop and report; pick one.
+- **Conflict:** `--cleanup-only` with `--quick` or `--full` together → stop and report; cleanup mode is a standalone operation.
 
 ### `--single-agent` (full tier only)
 
@@ -87,7 +89,7 @@ Dot-source `${CLAUDE_PLUGIN_ROOT}/skills/mcp-server-surface-test/lib/render-find
 
 ### Reject
 
-Reject any token that is neither a valid target path, `--target=<path>`, `--quick`, `--full`, `--output-mode=findings`, `--output-mode=fragments`, `--no-worktree`, `--single-agent`, `--auto-file`, nor `--no-auto-file`. One-line message; ask the user to fix or drop the offending token. **Conflict:** `--auto-file` or `--no-auto-file` combined with `--output-mode=fragments` → emit a one-line warning explaining that the auto-file flag is ignored under fragments mode, then proceed with fragments mode.
+Reject any token that is neither a valid target path, `--target=<path>`, `--quick`, `--full`, `--cleanup-only`, `--output-mode=findings`, `--output-mode=fragments`, `--no-worktree`, `--single-agent`, `--auto-file`, nor `--no-auto-file`. One-line message; ask the user to fix or drop the offending token. **Conflict:** `--auto-file` or `--no-auto-file` combined with `--output-mode=fragments` → emit a one-line warning explaining that the auto-file flag is ignored under fragments mode, then proceed with fragments mode.
 
 ## Step 3 — Mutation safety: disposable worktree (full tier, default mode)
 
@@ -99,6 +101,8 @@ The audit is **read-only against the audited repository's `main` branch**. Phase
 4. The audited repo's `main` branch is **never** directly mutated. No PR is opened from the audit run. No commits land in the audited repo's history.
 
 The `--no-worktree` flag opts into a degraded mode where the disposable worktree is skipped — see Step 2 for the contract and the report-header record requirement. The `--quick` tier always skips the disposable worktree (no apply-mode phases run at all).
+
+For `--cleanup-only`, run only the teardown half of this step against residual surface-test worktrees and branches. Do not delete arbitrary worktrees: restrict candidates to the surface-test naming pattern recorded in the audit prompt, verify the path is under the target repo's worktree area before removal, run `dotnet build-server shutdown`, then remove the worktree and delete matching local branches that are not checked out. Leave the primary checkout clean or report the exact remaining paths.
 
 ## Step 4 — Execute the chosen prompt
 

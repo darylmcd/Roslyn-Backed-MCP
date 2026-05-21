@@ -62,6 +62,9 @@ public sealed class McpServerSurfaceTestSkillTests
         Assert.IsTrue(
             argumentHint.Contains("--auto-file", StringComparison.Ordinal),
             $"mcp-server-surface-test argument-hint must advertise the `--auto-file` opt-in. Actual: {argumentHint}");
+        Assert.IsTrue(
+            argumentHint.Contains("--cleanup-only", StringComparison.Ordinal),
+            $"mcp-server-surface-test argument-hint must advertise the crash-recovery cleanup mode. Actual: {argumentHint}");
     }
 
     [TestMethod]
@@ -89,6 +92,10 @@ public sealed class McpServerSurfaceTestSkillTests
             contents.Contains("P0", StringComparison.Ordinal) && contents.Contains("security", StringComparison.Ordinal),
             "mcp-server-surface-test SKILL.md must document the P0 / security refusal contract for `--auto-file`. " +
             "Without it, the skill could file a vulnerability to a public Issue before the fix lands.");
+
+        Assert.IsTrue(
+            contents.Contains("--cleanup-only", StringComparison.Ordinal) && contents.Contains("crash recovery", StringComparison.Ordinal),
+            "mcp-server-surface-test SKILL.md must document the cleanup-only recovery mode for interrupted full runs.");
     }
 
     [TestMethod]
@@ -121,6 +128,19 @@ public sealed class McpServerSurfaceTestSkillTests
             StringAssert.Contains(contents, "match an alias exactly");
             StringAssert.Contains(contents, "Do not hand-convert `plugin:roslyn-mcp:roslyn` into an underscore name");
         }
+    }
+
+    [TestMethod]
+    public void FullPrompt_DocumentsCheckpointResumeContract()
+    {
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var fullPath = Path.Combine(repoRoot, "skills", SkillName, "prompts", "full.md");
+        var contents = File.ReadAllText(fullPath);
+
+        StringAssert.Contains(contents, ".audit-state.json");
+        StringAssert.Contains(contents, "nextPhase");
+        StringAssert.Contains(contents, "resume");
+        StringAssert.Contains(contents, "cleanup path");
     }
 
     [TestMethod]

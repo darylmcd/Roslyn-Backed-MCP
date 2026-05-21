@@ -1,4 +1,5 @@
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -12,6 +13,16 @@ namespace RoslynMcp.Roslyn.Helpers;
 /// </summary>
 public static class SymbolResolver
 {
+    private const int MetadataNameMessageMaxLength = 200;
+    private const int NearestQueryMaxLength = 256;
+
+    private static readonly SymbolDisplayFormat QualifiedNameOnlyFormat = new(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
+        genericsOptions: SymbolDisplayGenericsOptions.None,
+        memberOptions: SymbolDisplayMemberOptions.IncludeContainingType,
+        miscellaneousOptions: SymbolDisplayMiscellaneousOptions.None);
+
     /// <summary>
     /// Resolves a symbol from the given <paramref name="locator"/> using whichever identification
     /// strategy is set (handle, metadata name, or source position).
@@ -61,6 +72,11 @@ public static class SymbolResolver
         var symbol = await ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not null) return symbol;
 
+        if (locator.HasMetadataName)
+        {
+            throw await CreateSymbolNotFoundExceptionAsync(solution, locator, ct).ConfigureAwait(false);
+        }
+
         var detail = locator.HasHandle
             ? "the supplied symbol handle"
             : locator.HasMetadataName
@@ -70,6 +86,68 @@ public static class SymbolResolver
         throw new KeyNotFoundException(
             $"No symbol could be resolved for {detail}. The handle may be from a previous workspace " +
             "version, the symbol may have been removed, or the position may not contain a symbol identifier.");
+    }
+
+    public static async Task<SymbolNotFoundException> CreateSymbolNotFoundExceptionAsync(
+        Solution solution,
+        SymbolLocator locator,
+        CancellationToken ct)
+    {
+        var metadataName = locator.MetadataName ?? string.Empty;
+        var truncatedName = TruncateForMessage(metadataName, MetadataNameMessageMaxLength);
+        var closestMatches = locator.HasMetadataName
+            ? await FindClosestMatchesAsync(solution, metadataName, maxResults: 5, ct).ConfigureAwait(false)
+            : Array.Empty<SymbolClosestMatchDto>();
+
+        var message = $"No symbol could be resolved for metadata name '{truncatedName}'. " +
+            "The metadata name may be misspelled, from a previous workspace version, or removed from the current solution.";
+
+        return new SymbolNotFoundException(message, closestMatches);
+    }
+
+    public static async Task<IReadOnlyList<SymbolClosestMatchDto>> FindClosestMatchesAsync(
+        Solution solution,
+        string query,
+        int maxResults,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(query) || maxResults <= 0)
+            return Array.Empty<SymbolClosestMatchDto>();
+
+        var normalizedQuery = NormalizeForDistance(query);
+        var matches = new List<(int Score, string MetadataName, string Kind, string? LocationHint)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var project in solution.Projects)
+        {
+            if (ct.IsCancellationRequested) break;
+
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null) continue;
+
+            foreach (var symbol in EnumerateNamedTypesAndMembers(compilation.GlobalNamespace))
+            {
+                if (ct.IsCancellationRequested) break;
+                if (symbol.IsImplicitlyDeclared) continue;
+
+                var metadataName = symbol.ToDisplayString(QualifiedNameOnlyFormat);
+                if (string.IsNullOrWhiteSpace(metadataName) || !seen.Add(metadataName))
+                    continue;
+
+                var score = ScoreCandidate(normalizedQuery, metadataName, symbol.Name);
+                if (score >= 90)
+                    continue;
+
+                matches.Add((score, metadataName, GetSymbolKind(symbol), FormatLocationHint(symbol)));
+            }
+        }
+
+        return matches
+            .OrderBy(m => m.Score)
+            .ThenBy(m => m.MetadataName, StringComparer.Ordinal)
+            .Take(maxResults)
+            .Select(m => new SymbolClosestMatchDto(m.MetadataName, m.Kind, m.LocationHint))
+            .ToList();
     }
 
     /// <summary>
@@ -235,6 +313,125 @@ public static class SymbolResolver
         }
 
         return null;
+    }
+
+    private static IEnumerable<ISymbol> EnumerateNamedTypesAndMembers(INamespaceSymbol ns)
+    {
+        foreach (var member in ns.GetMembers())
+        {
+            if (member is INamespaceSymbol child)
+            {
+                foreach (var nested in EnumerateNamedTypesAndMembers(child))
+                    yield return nested;
+            }
+            else if (member is INamedTypeSymbol type)
+            {
+                foreach (var symbol in EnumerateTypeAndMembers(type))
+                    yield return symbol;
+            }
+        }
+    }
+
+    private static IEnumerable<ISymbol> EnumerateTypeAndMembers(INamedTypeSymbol type)
+    {
+        yield return type;
+
+        foreach (var nested in type.GetTypeMembers())
+        {
+            foreach (var symbol in EnumerateTypeAndMembers(nested))
+                yield return symbol;
+        }
+
+        foreach (var member in type.GetMembers())
+        {
+            if (!member.IsImplicitlyDeclared)
+                yield return member;
+        }
+    }
+
+    private static int ScoreCandidate(string normalizedQuery, string metadataName, string simpleName)
+    {
+        var normalizedMetadataName = NormalizeForDistance(metadataName);
+        var normalizedSimpleName = NormalizeForDistance(simpleName);
+
+        if (string.Equals(normalizedMetadataName, normalizedQuery, StringComparison.Ordinal))
+            return 0;
+        if (normalizedMetadataName.Contains(normalizedQuery, StringComparison.Ordinal))
+            return 1;
+        if (normalizedQuery.Contains(normalizedMetadataName, StringComparison.Ordinal))
+            return 2;
+        if (normalizedSimpleName.Contains(normalizedQuery, StringComparison.Ordinal)
+            || normalizedQuery.Contains(normalizedSimpleName, StringComparison.Ordinal))
+            return 3;
+
+        return Math.Min(
+            BoundedLevenshtein(normalizedQuery, normalizedMetadataName),
+            BoundedLevenshtein(normalizedQuery, normalizedSimpleName) + 10);
+    }
+
+    private static int BoundedLevenshtein(string left, string right)
+    {
+        if (left.Length == 0) return right.Length;
+        if (right.Length == 0) return left.Length;
+
+        var previous = new int[right.Length + 1];
+        var current = new int[right.Length + 1];
+
+        for (var j = 0; j <= right.Length; j++)
+            previous[j] = j;
+
+        for (var i = 1; i <= left.Length; i++)
+        {
+            current[0] = i;
+            var rowBest = current[0];
+
+            for (var j = 1; j <= right.Length; j++)
+            {
+                var cost = left[i - 1] == right[j - 1] ? 0 : 1;
+                current[j] = Math.Min(
+                    Math.Min(current[j - 1] + 1, previous[j] + 1),
+                    previous[j - 1] + cost);
+                rowBest = Math.Min(rowBest, current[j]);
+            }
+
+            if (rowBest > 90)
+                return rowBest;
+
+            (previous, current) = (current, previous);
+        }
+
+        return previous[right.Length];
+    }
+
+    private static string NormalizeForDistance(string value)
+    {
+        var normalized = value.Length <= NearestQueryMaxLength
+            ? value
+            : value[..NearestQueryMaxLength];
+        return normalized.ToUpperInvariant();
+    }
+
+    private static string GetSymbolKind(ISymbol symbol)
+    {
+        if (symbol is INamedTypeSymbol namedType)
+            return namedType.TypeKind.ToString();
+        return symbol.Kind.ToString();
+    }
+
+    private static string? FormatLocationHint(ISymbol symbol)
+    {
+        var sourceLocation = symbol.Locations.FirstOrDefault(location => location.IsInSource);
+        if (sourceLocation is null) return null;
+
+        var span = sourceLocation.GetLineSpan();
+        return $"{span.Path}:{span.StartLinePosition.Line + 1}:{span.StartLinePosition.Character + 1}";
+    }
+
+    private static string TruncateForMessage(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return value ?? string.Empty;
+        if (value.Length <= maxLength) return value;
+        return value[..maxLength] + "...";
     }
 
     /// <summary>

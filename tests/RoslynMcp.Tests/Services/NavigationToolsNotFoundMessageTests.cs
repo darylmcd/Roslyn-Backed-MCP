@@ -1,3 +1,4 @@
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests.Services;
@@ -67,7 +68,7 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
     {
         const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExceptionAsync<SymbolNotFoundException>(async () =>
             await AnalysisTools.AnalyzeImpact(
                 WorkspaceExecutionGate,
                 MutationAnalysisService,
@@ -97,7 +98,7 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
     {
         const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
 
-        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+        var ex = await Assert.ThrowsExceptionAsync<SymbolNotFoundException>(async () =>
             await ConsumerAnalysisTools.FindConsumers(
                 WorkspaceExecutionGate,
                 ConsumerAnalysisService,
