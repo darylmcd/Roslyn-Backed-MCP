@@ -354,7 +354,8 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             .SelectMany(p => p.Tests.Select(t => (Project: p.ProjectName, Test: t)))
             .ToList();
 
-        var matchState = await CollectPrimaryFileMatchesAsync(filePaths, solution, allTests, ct)
+        var testFilePaths = BuildTestFilePathSet(allTests);
+        var matchState = await CollectPrimaryFileMatchesAsync(filePaths, solution, allTests, testFilePaths, ct)
             .ConfigureAwait(false);
 
         // test-related-files-service-refactor-underreporting: when the file-affinity pass
@@ -379,6 +380,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         IReadOnlyList<string> filePaths,
         Solution solution,
         IReadOnlyList<(string Project, TestCaseDto Test)> allTests,
+        HashSet<string> testFilePaths,
         CancellationToken ct)
     {
         var state = new RelatedFileMatchState();
@@ -402,9 +404,19 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             state.AnyDocumentResolved = true;
             state.ResolvedDocuments.Add((filePath, document, root));
 
+            await AddDirectReferenceMatchesAsync(
+                state,
+                filePath,
+                document,
+                root,
+                solution,
+                allTests,
+                testFilePaths,
+                ct).ConfigureAwait(false);
+
             var searchTerms = BuildFileSearchTerms(filePath, root);
             var perFileMatchCount = AddNameAffinityMatches(
-                state.TestToTriggers,
+                state,
                 filePath,
                 searchTerms,
                 allTests);
@@ -432,6 +444,106 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                 string.Equals(Path.GetFullPath(d.FilePath), fullFilePath, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static async Task AddDirectReferenceMatchesAsync(
+        RelatedFileMatchState state,
+        string filePath,
+        Document document,
+        SyntaxNode root,
+        Solution solution,
+        IReadOnlyList<(string Project, TestCaseDto Test)> allTests,
+        HashSet<string> testFilePaths,
+        CancellationToken ct)
+    {
+        try
+        {
+            var semanticModel = await document.GetSemanticModelAsync(ct).ConfigureAwait(false);
+            if (semanticModel is null)
+            {
+                return;
+            }
+
+            var declaredSymbols = CollectDeclaredReferenceableSymbols(root, semanticModel, ct);
+            if (declaredSymbols.Count == 0)
+            {
+                return;
+            }
+
+            state.DirectReferenceAttempted = true;
+            foreach (var symbol in declaredSymbols)
+            {
+                ct.ThrowIfCancellationRequested();
+                var referencedTestFiles = await CollectReferencedTestFilesAsync(symbol, solution, testFilePaths, ct)
+                    .ConfigureAwait(false);
+                foreach (var (_, test) in allTests)
+                {
+                    if (!string.IsNullOrWhiteSpace(test.FilePath) &&
+                        referencedTestFiles.Contains(Path.GetFullPath(test.FilePath)))
+                    {
+                        AddTrigger(state, test.FullyQualifiedName, filePath, RelatedTestMatchRank.DirectReference);
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            // Direct-reference ranking is best-effort. Preserve the older name/fallback
+            // behavior if a semantic reference sweep cannot complete for this file.
+        }
+    }
+
+    private const int DirectReferenceSymbolCap = 32;
+
+    private static List<ISymbol> CollectDeclaredReferenceableSymbols(
+        SyntaxNode root,
+        SemanticModel semanticModel,
+        CancellationToken ct)
+    {
+        var symbols = new List<ISymbol>();
+
+        foreach (var node in root.DescendantNodes())
+        {
+            ct.ThrowIfCancellationRequested();
+            ISymbol? symbol = node switch
+            {
+                TypeDeclarationSyntax typeDeclaration => semanticModel.GetDeclaredSymbol(typeDeclaration, ct),
+                MethodDeclarationSyntax methodDeclaration => semanticModel.GetDeclaredSymbol(methodDeclaration, ct),
+                PropertyDeclarationSyntax propertyDeclaration => semanticModel.GetDeclaredSymbol(propertyDeclaration, ct),
+                EventDeclarationSyntax eventDeclaration => semanticModel.GetDeclaredSymbol(eventDeclaration, ct),
+                _ => null,
+            };
+
+            if (symbol is not null)
+            {
+                symbols.Add(symbol);
+                if (symbols.Count >= DirectReferenceSymbolCap)
+                {
+                    return symbols;
+                }
+            }
+
+            if (node is FieldDeclarationSyntax fieldDeclaration)
+            {
+                foreach (var variable in fieldDeclaration.Declaration.Variables)
+                {
+                    if (semanticModel.GetDeclaredSymbol(variable, ct) is IFieldSymbol fieldSymbol)
+                    {
+                        symbols.Add(fieldSymbol);
+                        if (symbols.Count >= DirectReferenceSymbolCap)
+                        {
+                            return symbols;
+                        }
+                    }
+                }
+            }
+        }
+
+        return symbols;
+    }
+
     private static HashSet<string> BuildFileSearchTerms(string filePath, SyntaxNode root)
     {
         var searchTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -444,7 +556,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     }
 
     private static int AddNameAffinityMatches(
-        Dictionary<string, List<string>> testToTriggers,
+        RelatedFileMatchState state,
         string filePath,
         HashSet<string> searchTerms,
         IReadOnlyList<(string Project, TestCaseDto Test)> allTests)
@@ -457,7 +569,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                 continue;
             }
 
-            AddTrigger(testToTriggers, test.FullyQualifiedName, filePath);
+            AddTrigger(state, test.FullyQualifiedName, filePath, RelatedTestMatchRank.NameAffinity);
             perFileMatchCount++;
         }
         return perFileMatchCount;
@@ -475,7 +587,7 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
         IReadOnlyList<(string Project, TestCaseDto Test)> allTests,
         CancellationToken ct)
     {
-        if (state.TestToTriggers.Count > 0 || state.ResolvedDocuments.Count == 0 || allTests.Count == 0)
+        if (state.Matches.Count > 0 || state.ResolvedDocuments.Count == 0 || allTests.Count == 0)
         {
             return;
         }
@@ -489,20 +601,20 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
         foreach (var (filePath, test) in referenceMatches)
         {
-            AddTrigger(state.TestToTriggers, test.FullyQualifiedName, filePath);
+            AddTrigger(state, test.FullyQualifiedName, filePath, RelatedTestMatchRank.InboundReference);
         }
         foreach (var (filePath, test) in neighborMatches)
         {
-            AddTrigger(state.TestToTriggers, test.FullyQualifiedName, filePath);
+            AddTrigger(state, test.FullyQualifiedName, filePath, RelatedTestMatchRank.NamespaceNeighbor);
         }
 
-        if (state.TestToTriggers.Count > 0)
+        if (state.Matches.Count > 0)
         {
             // Broadening recovered tests that the primary heuristic missed — emit a
             // single explanatory miss-reason rather than leaving the per-file
             // "no name matched" reasons as the only signal.
             state.MissReasons.Add(
-                $"primary type-name/file-name affinity matched zero tests; fallback broadening (heuristics: [{string.Join(", ", state.FallbackHeuristicsAttempted)}]) recovered {state.TestToTriggers.Count} candidate test(s)");
+                $"primary type-name/file-name affinity matched zero tests; fallback broadening (heuristics: [{string.Join(", ", state.FallbackHeuristicsAttempted)}]) recovered {state.Matches.Count} candidate test(s)");
         }
     }
 
@@ -519,8 +631,10 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
             .SelectMany(p => p.Tests)
             .ToDictionary(t => t.FullyQualifiedName, StringComparer.Ordinal);
 
-        var total = state.TestToTriggers.Count;
-        var results = state.TestToTriggers
+        var total = state.Matches.Count;
+        var results = state.Matches
+            .OrderBy(kv => kv.Value.Rank)
+            .ThenBy(kv => kv.Value.Sequence)
             .Take(maxResults)
             .Select(kv =>
             {
@@ -532,14 +646,21 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
                     ProjectName: projectName,
                     FilePath: test?.FilePath,
                     Line: test?.Line,
-                    TriggeredByFiles: kv.Value.Distinct().ToList());
+                    TriggeredByFiles: kv.Value.TriggeredByFiles.Distinct().ToList());
             })
             .ToList();
 
         var dotnetFilter = SynthesizeDotnetTestFilter(results.Select(t => t.FullyQualifiedName));
-        var heuristicsAttempted = state.AnyDocumentResolved
-            ? new List<string> { "type-name", "file-name" }
-            : new List<string>();
+        var heuristicsAttempted = new List<string>();
+        if (state.DirectReferenceAttempted)
+        {
+            heuristicsAttempted.Add("direct-reference");
+        }
+        if (state.AnyDocumentResolved)
+        {
+            heuristicsAttempted.Add("type-name");
+            heuristicsAttempted.Add("file-name");
+        }
         heuristicsAttempted.AddRange(state.FallbackHeuristicsAttempted);
         var diagnostics = new RelatedTestsDiagnosticsDto(
             ScannedTestProjects: discovery.TestProjects.Count,
@@ -554,23 +675,55 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
 
     private sealed class RelatedFileMatchState
     {
-        public Dictionary<string, List<string>> TestToTriggers { get; } = new(StringComparer.Ordinal);
+        public Dictionary<string, RelatedFileTestMatch> Matches { get; } = new(StringComparer.Ordinal);
         public List<string> MissReasons { get; } = [];
         public bool AnyDocumentResolved { get; set; }
+        public bool DirectReferenceAttempted { get; set; }
+        public int NextSequence { get; set; }
         public List<(string FilePath, Document Document, SyntaxNode Root)> ResolvedDocuments { get; } = [];
         public List<string> FallbackHeuristicsAttempted { get; } = [];
     }
 
-    private static void AddTrigger(Dictionary<string, List<string>> testToTriggers, string fqn, string filePath)
+    private sealed class RelatedFileTestMatch
     {
-        if (!testToTriggers.TryGetValue(fqn, out var triggers))
+        public RelatedFileTestMatch(RelatedTestMatchRank rank, int sequence)
         {
-            triggers = new List<string>();
-            testToTriggers[fqn] = triggers;
+            Rank = rank;
+            Sequence = sequence;
         }
-        if (!triggers.Contains(filePath, StringComparer.OrdinalIgnoreCase))
+
+        public RelatedTestMatchRank Rank { get; set; }
+        public int Sequence { get; }
+        public List<string> TriggeredByFiles { get; } = [];
+    }
+
+    private enum RelatedTestMatchRank
+    {
+        DirectReference = 0,
+        NameAffinity = 1,
+        InboundReference = 2,
+        NamespaceNeighbor = 3,
+    }
+
+    private static void AddTrigger(
+        RelatedFileMatchState state,
+        string fqn,
+        string filePath,
+        RelatedTestMatchRank rank)
+    {
+        if (!state.Matches.TryGetValue(fqn, out var match))
         {
-            triggers.Add(filePath);
+            match = new RelatedFileTestMatch(rank, state.NextSequence++);
+            state.Matches[fqn] = match;
+        }
+        else if (rank < match.Rank)
+        {
+            match.Rank = rank;
+        }
+
+        if (!match.TriggeredByFiles.Contains(filePath, StringComparer.OrdinalIgnoreCase))
+        {
+            match.TriggeredByFiles.Add(filePath);
         }
     }
 
@@ -733,13 +886,13 @@ public sealed class TestDiscoveryService : ITestDiscoveryService
     }
 
     private static async Task<HashSet<string>> CollectReferencedTestFilesAsync(
-        INamedTypeSymbol typeSymbol,
+        ISymbol symbol,
         Solution solution,
         HashSet<string> testFilePaths,
         CancellationToken ct)
     {
         var referencedTestFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var references = await SymbolFinder.FindReferencesAsync(typeSymbol, solution, ct).ConfigureAwait(false);
+        var references = await SymbolFinder.FindReferencesAsync(symbol, solution, ct).ConfigureAwait(false);
         foreach (var refSet in references)
         {
             foreach (var location in refSet.Locations)

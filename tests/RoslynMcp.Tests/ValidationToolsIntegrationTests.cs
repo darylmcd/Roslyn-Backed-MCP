@@ -312,11 +312,13 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
     // test-related-files-service-refactor-underreporting: pre-fix, the file-affinity heuristic
     // returned empty for inputs whose declared type names did not textually appear in any
     // test method/class/file path — even though the inputs are referenced by tests via
-    // semantic dispatch. The cited 2026-04-23 sweep misses were
+    // semantic dispatch. The direct-reference pass now recovers these before the older
+    // fallback broadening path has to run. The cited 2026-04-23 sweep misses were
     // (`MutationAnalysisService` + `ScaffoldingService`) and
     // (`CodePatternAnalyzer` + `TestDiscoveryService`); both pairs ship related tests whose
-    // class names do not contain the input service names. Post-fix, when the primary pass
-    // produces zero candidates, the service broadens via an inbound-reference sweep
+    // class names do not contain the input service names. Post-fix, symbolic recovery uses
+    // direct references first; when the primary pass still produces zero candidates, the
+    // service broadens via an inbound-reference sweep
     // (SymbolFinder.FindReferencesAsync) and a 1-hop namespace-neighbor expansion. Either
     // expansion alone is sufficient to recover the test.
     //
@@ -327,7 +329,7 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
     // Namespace-neighbor expansion also recovers it via `AnimalService` (a sibling type in
     // namespace `SampleLib`) which IS textually contained in `AnimalServiceTests`.
     [TestMethod]
-    public async Task FindRelatedTestsForFiles_NameAffinityMissButReferencedByTests_FallbackRecovers()
+    public async Task FindRelatedTestsForFiles_NameAffinityMissButReferencedByTests_SymbolicRecoverySurfaces()
     {
         var iAnimalPath = FindDocumentPath("IAnimal.cs");
 
@@ -353,20 +355,19 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             $"Expected AnimalServiceTests.cs to surface via fallback broadening; got: " +
             $"[{string.Join(", ", result.Tests.Select(t => t.FilePath))}]");
 
-        // Heuristics envelope must report that the fallback heuristics were attempted, so
-        // callers can see why the test surfaced (and distinguish "primary hit" from
-        // "fallback recovery").
+        // Heuristics envelope must report which symbolic recovery path ran, so callers can
+        // see why the test surfaced (and distinguish "primary hit" from broad fallback).
         Assert.IsTrue(
+            result.Diagnostics.HeuristicsAttempted.Contains("direct-reference") ||
             result.Diagnostics.HeuristicsAttempted.Contains("inbound-reference") ||
             result.Diagnostics.HeuristicsAttempted.Contains("namespace-neighbor"),
-            $"At least one fallback heuristic should be reported as attempted; got: " +
+            $"At least one symbolic recovery heuristic should be reported as attempted; got: " +
             $"[{string.Join(",", result.Diagnostics.HeuristicsAttempted)}]");
 
-        // Performance guard. Reference sweep + namespace walk on a fixture-sized workspace
-        // (5 projects, ~533 docs) must finish well under 30s. Sample workspace runs with no
-        // contention here typically complete in 1-3s; the cap leaves generous headroom for
-        // CI variance without papering over a regression. The fallback path runs only on
-        // empty-primary-result, so this cost is bounded by definition.
+        // Performance guard. Reference sweeps on a fixture-sized workspace (5 projects,
+        // ~533 docs) must finish well under 30s. Sample workspace runs with no contention
+        // here typically complete in 1-3s; the cap leaves generous headroom for CI variance
+        // without papering over a regression.
         Assert.IsTrue(stopwatch.ElapsedMilliseconds < 30_000,
             $"Fallback broadening took {stopwatch.ElapsedMilliseconds}ms which exceeds the 30s perf budget.");
     }
@@ -407,6 +408,44 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
                 t.FilePath?.EndsWith("AnimalServiceTests.cs", StringComparison.OrdinalIgnoreCase) == true),
             $"Expected AnimalServiceTests.cs to surface via multi-file fallback broadening; got: " +
             $"[{string.Join(", ", result.Tests.Select(t => t.FilePath))}]");
+    }
+
+    // test-related-files-direct-reference-ranking: direct semantic test consumers should
+    // outrank broad name-only matches. WidgetTarget.cs has one test that actually references
+    // the changed symbol (OpaqueConsumerTests) and one test whose name merely contains the
+    // target token (WidgetTargetNameOnlyTests). The semantic consumer must lead the filter.
+    [TestMethod]
+    public async Task FindRelatedTestsForFiles_DirectReferencesRankBeforeNameOnlyMatches()
+    {
+        var widgetTargetPath = FindDocumentPath("WidgetTarget.cs");
+
+        var result = await TestDiscoveryService.FindRelatedTestsForFilesAsync(
+            WorkspaceId,
+            new[] { widgetTargetPath },
+            maxResults: 100,
+            CancellationToken.None);
+
+        Assert.IsTrue(
+            result.Diagnostics.HeuristicsAttempted.Contains("direct-reference"),
+            $"Expected direct-reference heuristic to be reported; got: " +
+            $"[{string.Join(",", result.Diagnostics.HeuristicsAttempted)}]");
+        Assert.IsTrue(result.Tests.Count >= 2,
+            $"Expected both direct and name-only matches; got: " +
+            $"[{string.Join(", ", result.Tests.Select(t => t.FullyQualifiedName))}]");
+
+        Assert.IsTrue(
+            result.Tests[0].FilePath?.EndsWith("OpaqueConsumerTests.cs", StringComparison.OrdinalIgnoreCase) == true,
+            $"The direct semantic consumer should be first; got: " +
+            $"{result.Tests[0].FullyQualifiedName} ({result.Tests[0].FilePath}).");
+        Assert.IsTrue(
+            result.Tests.Any(t => t.FilePath?.EndsWith("WidgetTargetNameOnlyTests.cs", StringComparison.OrdinalIgnoreCase) == true),
+            $"Expected the looser name-only match to remain present after the direct reference; got: " +
+            $"[{string.Join(", ", result.Tests.Select(t => t.FilePath))}]");
+
+        StringAssert.StartsWith(
+            result.DotnetTestFilter,
+            $"FullyQualifiedName~{result.Tests[0].FullyQualifiedName}",
+            $"The suggested filter should preserve ranked result order. Actual: {result.DotnetTestFilter}");
     }
 
     private static string FindDocumentPath(string name)

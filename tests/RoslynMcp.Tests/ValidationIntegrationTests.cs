@@ -144,10 +144,10 @@ public class ValidationIntegrationTests : SharedWorkspaceTestBase
             CancellationToken.None);
 
         Assert.IsTrue(result.Execution.Succeeded, result.Execution.StdErr);
-        // Total includes AnimalServiceTests (2) + AnimalFormatterTests (2, added by
-        // find-consumers-static-class-classification to exercise static-class invocation).
-        Assert.AreEqual(4, result.Total);
-        Assert.AreEqual(4, result.Passed);
+        // Total includes AnimalServiceTests (2), AnimalFormatterTests (2), and the
+        // test-related-files direct-reference ranking fixture (2).
+        Assert.AreEqual(6, result.Total);
+        Assert.AreEqual(6, result.Passed);
         Assert.AreEqual(0, result.Failed);
     }
 

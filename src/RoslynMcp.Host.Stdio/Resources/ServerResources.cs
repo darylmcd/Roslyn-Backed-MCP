@@ -26,7 +26,7 @@ public static class ServerResources
     }
 
     [McpServerResource(UriTemplate = "roslyn://server/catalog/full", Name = "server_catalog_full", MimeType = "application/json")]
-    [Description("Unpaginated full server catalog including every tool and prompt entry. Large payload (~80 KB on a 168-tool surface) — may exceed the MCP tool-result cap on some clients; prefer the paginated siblings when that happens.")]
+    [Description("Unpaginated full server catalog including every tool and prompt entry. Large payload (~80 KB on a 170-tool surface) — may exceed the MCP tool-result cap on some clients; prefer the paginated siblings when that happens.")]
     public static string GetServerCatalogFull()
     {
         return JsonSerializer.Serialize(ServerSurfaceCatalog.CreateDocument(), JsonDefaults.Indented);

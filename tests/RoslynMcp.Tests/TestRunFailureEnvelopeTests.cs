@@ -1,11 +1,14 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Covers the structured failure envelope for <c>test_run</c> — backlog row
-/// <c>test-run-failure-envelope</c> (P2). When <c>dotnet test</c> exits without
+/// <c>test-run-bare-exception-envelope</c>. When <c>dotnet test</c> exits without
 /// TRX output (MSBuild file locks, build failures, timeouts) the parser must
 /// emit a typed envelope instead of letting a bare invocation error escape to
 /// ToolErrorHandler.
@@ -159,5 +162,66 @@ public sealed class TestRunFailureEnvelopeTests
         Assert.IsFalse(result.FailureEnvelope.IsRetryable);
         StringAssert.Contains(result.FailureEnvelope.Summary, "timeout");
         Assert.AreEqual(1, result.Failed);
+    }
+
+    [TestMethod]
+    public async Task RunTests_ToolRunnerThrows_ReturnsStructuredEnvelopeWithSchemaHint()
+    {
+        var json = await ValidationTools.RunTests(
+            new PassthroughGate(),
+            new ThrowingTestRunnerService(new InvalidOperationException("no test projects matched filter")),
+            workspaceId: "ws-test-run-envelope",
+            projectName: "Missing.Tests",
+            filter: "FullyQualifiedName~Nothing",
+            progress: null,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.IsTrue(root.GetProperty("error").GetBoolean());
+        Assert.AreEqual("InvalidOperation", root.GetProperty("category").GetString());
+        Assert.AreEqual("test_run", root.GetProperty("tool").GetString());
+        Assert.AreEqual(nameof(InvalidOperationException), root.GetProperty("exceptionType").GetString());
+        StringAssert.Contains(root.GetProperty("message").GetString() ?? string.Empty, "no test projects matched filter");
+        Assert.IsTrue(root.TryGetProperty("schemaHint", out var schemaHint),
+            $"test_run exception envelope must carry schemaHint. Envelope: {json}");
+        StringAssert.Contains(schemaHint.GetString() ?? string.Empty, "test_run(");
+        StringAssert.Contains(schemaHint.GetString() ?? string.Empty, "workspaceId");
+    }
+
+    private sealed class PassthroughGate : IWorkspaceExecutionGate
+    {
+        public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
+            action(ct);
+
+        public Task<T> RunWriteAsync<T>(
+            string workspaceId,
+            Func<CancellationToken, Task<T>> action,
+            CancellationToken ct,
+            bool applyStalenessPolicy = true) =>
+            action(ct);
+
+        public Task<T> RunLoadGateAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct) =>
+            action(ct);
+
+        public void RemoveGate(string workspaceId) { }
+    }
+
+    private sealed class ThrowingTestRunnerService : ITestRunnerService
+    {
+        private readonly Exception _exception;
+
+        public ThrowingTestRunnerService(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        public Task<TestRunResultDto> RunTestsAsync(
+            string workspaceId,
+            string? projectName,
+            string? filter,
+            CancellationToken ct) =>
+            throw _exception;
     }
 }

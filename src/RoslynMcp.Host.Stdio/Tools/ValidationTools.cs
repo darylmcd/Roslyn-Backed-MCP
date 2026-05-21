@@ -163,11 +163,24 @@ public static class ValidationTools
         // remarks for the label-naming contract.
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ProgressHelper.ReportStage(progress, 0, 3, "discovering-tests");
-            ProgressHelper.ReportStage(progress, 1, 3, "running-tests");
-            var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
-            ProgressHelper.ReportStage(progress, 3, 3, "done");
-            return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            try
+            {
+                ProgressHelper.ReportStage(progress, 0, 3, "discovering-tests");
+                ProgressHelper.ReportStage(progress, 1, 3, "running-tests");
+                var result = await testRunnerService.RunTestsAsync(workspaceId, projectName, filter, c);
+                ProgressHelper.ReportStage(progress, 3, 3, "done");
+                return JsonSerializer.Serialize(result, JsonDefaults.Indented);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                ProgressHelper.ReportStage(progress, 3, 3, "done");
+                var envelope = ToolErrorHandler.ClassifyAndFormat(ex, "test_run");
+                return ToolErrorHandler.InjectSchemaHintIfPossible(envelope, "test_run");
+            }
         }, ct);
     }
 
