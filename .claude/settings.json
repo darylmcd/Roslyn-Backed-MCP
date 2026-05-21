@@ -1,0 +1,59 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet test *)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet run *)",
+      "Bash(just pack)",
+      "Bash(just tool-install-local)",
+      "mcp__roslyn__server_info",
+      "mcp__roslyn__server_heartbeat",
+      "mcp__roslyn__workspace_list",
+      "mcp__roslyn__workspace_load",
+      "mcp__roslyn__symbol_search",
+      "mcp__roslyn__symbol_info",
+      "mcp__roslyn__find_references",
+      "mcp__roslyn__find_unused_symbols",
+      "mcp__roslyn__find_dead_fields",
+      "mcp__roslyn__compile_check",
+      "mcp__roslyn__project_diagnostics",
+      "mcp__roslyn__diagnostic_details",
+      "mcp__roslyn__list_analyzers",
+      "mcp__roslyn__semantic_search",
+      "mcp__roslyn__get_source_text",
+      "mcp__roslyn__get_prompt_text",
+      "mcp__plugin_roslyn-mcp_roslyn__go_to_definition",
+      "mcp__plugin_roslyn-mcp_roslyn__symbol_info",
+      "mcp__plugin_roslyn-mcp_roslyn__symbol_search",
+      "mcp__plugin_roslyn-mcp_roslyn__find_references",
+      "mcp__plugin_roslyn-mcp_roslyn__enclosing_symbol",
+      "mcp__plugin_roslyn-mcp_roslyn__compile_check"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -NonInteractive -File ${CLAUDE_PROJECT_DIR}/eng/guard-release-managed-files.ps1",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -NonInteractive -File ${CLAUDE_PROJECT_DIR}/eng/verify-skills-on-edit.ps1",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

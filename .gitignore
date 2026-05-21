@@ -507,16 +507,23 @@ $RECYCLE.BIN/
 .nfs*
 
 # Local AI/MCP client configuration (developer machine specific).
-# .claude/skills/ and .claude/agents/ are exceptions — they hold repo-only
-# maintainer skills and subagent definitions that Claude Code auto-discovers
-# in this checkout. They're tracked so collaborators see them (and so the
-# shipped prompts under ai_docs/prompts/ can reference subagent paths
-# accurately); they're not bundled with the marketplace plugin.
+# .claude/skills/, .claude/agents/, and .claude/settings.json are exceptions —
+# .claude/skills/ and .claude/agents/ hold repo-only maintainer skills and
+# subagent definitions that Claude Code auto-discovers in this checkout;
+# they're tracked so collaborators see them (and so the shipped prompts under
+# ai_docs/prompts/ can reference subagent paths accurately) but are not
+# bundled with the marketplace plugin.
+# .claude/settings.json holds the shared maintainer-only PreToolUse/PostToolUse
+# hooks (release-managed-file guard + verify-skills-on-edit) that fire only
+# when CWD is this repo; tracked so the guards persist across clones and
+# machines. .claude/settings.local.json stays ignored as the per-machine
+# override target.
 .claude/*
 !.claude/skills/
 !.claude/skills/**
 !.claude/agents/
 !.claude/agents/**
+!.claude/settings.json
 .worktrees/
 
 # Cursor IDE configuration (developer machine specific).
