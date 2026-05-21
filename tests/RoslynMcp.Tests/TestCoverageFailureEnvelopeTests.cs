@@ -140,6 +140,43 @@ public sealed class TestCoverageFailureEnvelopeTests
             "TestFailure is retryable once the test is fixed.");
     }
 
+    [TestMethod]
+    public async Task RunTestCoverageCore_StatusThrows_EmitsUnknownEnvelope()
+    {
+        var gate = new PassthroughGate();
+        var workspace = new ThrowingStatusWorkspaceManager(new InvalidOperationException("workspace status unavailable"));
+        var runner = new StaticDotnetCommandRunner(new CommandExecutionDto(
+            Command: "dotnet",
+            Arguments: ["test"],
+            WorkingDirectory: "C:/fake/workdir",
+            TargetPath: "C:/fake/workdir/sample.csproj",
+            ExitCode: 0,
+            Succeeded: true,
+            DurationMs: 1,
+            StdOut: string.Empty,
+            StdErr: string.Empty));
+
+        var json = await TestCoverageTools.RunTestCoverageCore(
+            gate,
+            workspace,
+            runner,
+            workspaceId: "ws-coverage-status-throws",
+            projectName: null,
+            deprecation: null,
+            progress: null,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.IsFalse(root.GetProperty("success").GetBoolean());
+        StringAssert.Contains(root.GetProperty("error").GetString() ?? string.Empty, "workspace status unavailable");
+
+        var envelope = root.GetProperty("failureEnvelope");
+        Assert.AreEqual("Unknown", envelope.GetProperty("errorKind").GetString());
+        StringAssert.Contains(envelope.GetProperty("summary").GetString() ?? string.Empty, "workspace status unavailable");
+    }
+
     // ── Test doubles ────────────────────────────────────────────────────────
 
     /// <summary>
@@ -211,6 +248,41 @@ public sealed class TestCoverageFailureEnvelopeTests
                 IsLoaded: true,
                 IsStale: false,
                 WorkspaceDiagnostics: []);
+    }
+
+    private sealed class ThrowingStatusWorkspaceManager : IWorkspaceManager
+    {
+        private readonly Exception _exception;
+
+        public ThrowingStatusWorkspaceManager(Exception exception)
+        {
+            _exception = exception;
+        }
+
+        public event Action<string>? WorkspaceClosed { add { } remove { } }
+        public event Action<string>? WorkspaceReloaded { add { } remove { } }
+
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public bool ContainsWorkspace(string workspaceId) => true;
+        public bool IsStale(string workspaceId) => false;
+        public bool Close(string workspaceId) => throw new NotSupportedException();
+        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => [];
+        public WorkspaceStatusDto GetStatus(string workspaceId) => throw _exception;
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+            throw _exception;
+        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
+        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(string workspaceId, string? projectName, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public int GetCurrentVersion(string workspaceId) => 1;
+        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
+        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+        public Project? GetProject(string workspaceId, string projectNameOrPath) => null;
     }
 
     /// <summary>

@@ -361,6 +361,33 @@ internal static class ToolErrorHandler
     }
 
     /// <summary>
+    /// Adds a catalog-backed <c>schemaHint</c> field to an existing JSON error envelope when
+    /// a tool-specific catch path wants retry-shape guidance without changing the global
+    /// classifier contract. Unknown tools and non-object payloads are returned unchanged.
+    /// </summary>
+    internal static string InjectSchemaHintIfPossible(string json, string toolName, string? paramName = null)
+    {
+        var schemaHint = BuildSchemaHint(toolName, paramName);
+        if (schemaHint is null) return json;
+
+        try
+        {
+            var node = JsonNode.Parse(json);
+            if (node is not JsonObject obj)
+            {
+                return json;
+            }
+
+            obj["schemaHint"] = schemaHint;
+            return obj.ToJsonString(JsonDefaults.Indented);
+        }
+        catch
+        {
+            return json;
+        }
+    }
+
+    /// <summary>
     /// Returns true when the exception type indicates a generic SDK/reflection invocation
     /// wrapper that hides the real cause in InnerException. Used by the parameter-binding
     /// detector to scope its inner-exception check to legitimate wrappers (and avoid

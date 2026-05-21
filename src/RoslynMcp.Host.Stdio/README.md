@@ -83,7 +83,7 @@ Any stdio-capable MCP client uses the same command:
 
 ## What's in the box
 
-Catalog `2026.04` ships **162 tools** (108 stable / 54 experimental), **9 resources**, and **20 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
+Catalog `2026.04` ships **170 tools** (111 stable / 59 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
 
 | Family | Highlights |
 |---|---|

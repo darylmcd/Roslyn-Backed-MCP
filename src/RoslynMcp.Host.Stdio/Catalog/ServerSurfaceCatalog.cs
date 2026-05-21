@@ -28,13 +28,13 @@ public static partial class ServerSurfaceCatalog
     public static IReadOnlyList<WorkflowHint> WorkflowHints { get; } =
     [
         new("Preview/Apply", ["rename_preview", "rename_apply"], "Most write operations use a two-step pattern: call *_preview to inspect the diff, then *_apply with the preview token."),
-        new("Diagnostic Fix", ["project_diagnostics", "diagnostic_details", "code_fix_preview", "code_fix_apply"], "Identify diagnostics, inspect details, preview a fix, then apply it."),
+        new("Diagnostic Fix", ["compile_check", "project_diagnostics", "diagnostic_details", "code_fix_preview", "code_fix_apply"], "Start with fast compile_check, inspect diagnostics, preview a fix, then apply it."),
         new("Code Action", ["get_code_actions", "preview_code_action", "apply_code_action"], "List available Roslyn refactorings/fixes at a location, preview, then apply."),
         new("Security Audit", ["security_analyzer_status", "security_diagnostics", "diagnostic_details", "code_fix_preview", "code_fix_apply"], "Check analyzer coverage, get security findings, then fix them."),
-        new("Build and Test", ["build_workspace", "test_run"], "Validate compilation then run tests after any code change."),
-        new("Change Validation", ["test_related_files", "test_run"], "Find tests related to changed files, then run them."),
+        new("Compile Sanity", ["compile_check"], "Use in-memory compilation for routine compile sanity; reserve build_workspace/build_project for CI-parity or project-system validation."),
+        new("Change Validation", ["validate_recent_git_changes", "test_related_files", "test_run"], "Use the auto-scoped validation bundle or find tests related to changed files, then run the filtered test slice."),
         new("Post-edit Verify (auto-scoped)", ["validate_recent_git_changes"], "Preferred post-edit bundle: derives changedFilePaths from git status --porcelain and runs compile_check + project_diagnostics + test_related_files scoped to the touched-file set. Falls back to validate_workspace scope with a warning when git is unavailable."),
-        new("Dead Code Cleanup", ["find_unused_symbols", "remove_dead_code_preview", "remove_dead_code_apply", "build_workspace"], "Find unused symbols, preview removal, apply, then verify build."),
+        new("Dead Code Cleanup", ["find_unused_symbols", "remove_dead_code_preview", "remove_dead_code_apply", "compile_check"], "Find unused symbols, preview removal, apply, then verify with compile_check."),
         new("Package Migration", ["migrate_package_preview", "apply_composite_preview", "build_workspace"], "Preview migrating a package across projects, apply, then verify."),
         new("Coverage Analysis", ["test_discover", "test_coverage", "scaffold_test_preview", "scaffold_test_apply"], "Discover tests, run coverage, scaffold new tests for gaps."),
         new("SRP Analysis & Type Extraction", ["get_cohesion_metrics", "find_shared_members", "extract_type_preview", "extract_type_apply", "build_workspace"], "Identify types with multiple responsibilities via LCOM4 metrics, find shared private members that complicate extraction, preview and apply the extraction, then verify the build."),
@@ -43,7 +43,7 @@ public static partial class ServerSurfaceCatalog
         new("Type Organization", ["move_type_to_file_preview", "move_type_to_file_apply", "build_workspace"], "Move types from multi-type files into their own dedicated files for better code organization."),
         new("Batch Diagnostic Fix", ["list_analyzers", "project_diagnostics", "fix_all_preview", "fix_all_apply", "build_workspace"], "List available analyzers and rules, identify diagnostics, batch-fix all occurrences across the solution, then verify the build."),
         new("Flow Analysis for Refactoring", ["analyze_data_flow", "analyze_control_flow", "extract_type_preview", "extract_type_apply"], "Analyze data and control flow to understand variable dependencies and reachability before extracting code into new types or methods."),
-        new("Quick Validation", ["compile_check", "analyze_snippet", "evaluate_csharp"], "Use in-memory compilation, snippet analysis, or script evaluation for rapid feedback without full builds."),
+        new("Quick Validation", ["compile_check", "validate_workspace", "analyze_snippet", "evaluate_csharp"], "Use in-memory compilation, scoped validation, snippet analysis, or script evaluation for rapid feedback without full builds."),
         new("Selection-Range Refactoring", ["get_code_actions", "preview_code_action", "apply_code_action", "compile_check"], "Pass startLine/startColumn/endLine/endColumn to get_code_actions for selection-based refactorings: introduce parameter (expression → method parameter with call-site updates) and inline temporary variable. Preview, apply, then verify compilation.")
     ];
 
@@ -77,7 +77,7 @@ public static partial class ServerSurfaceCatalog
     /// <summary>
     /// dr-9-11-payload-exceeds-mcp-tool-result-cap: cap-safe summary document served by
     /// <c>roslyn://server/catalog</c>. Tools and prompts dominate the full payload (~80 KB on
-    /// a 168-tool solution); this shape drops both lists and replaces them with pagination
+    /// a 170-tool solution); this shape drops both lists and replaces them with pagination
     /// pointers and totals. Resources stay inline (10 entries, fits easily). Callers that
     /// need tool/prompt rows fetch the paginated siblings.
     /// </summary>

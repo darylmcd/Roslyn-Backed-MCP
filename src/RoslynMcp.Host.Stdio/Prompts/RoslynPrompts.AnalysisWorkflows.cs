@@ -130,7 +130,8 @@ public static partial class RoslynPrompts
 
                     **Key Patterns:**
                     - **Preview/Apply**: Most write operations use a two-step preview-then-apply pattern. Call the `*_preview` tool first, inspect the diff, then call the corresponding `*_apply` tool with the preview token.
-                    - **Validation**: After any code change, call `build_workspace` or `build_project` to verify compilation, then `test_run` or `test_related_files` if tests may be affected.
+                    - **Fast validation**: After routine code edits, call `compile_check` first. For changed-file verification use `validate_recent_git_changes` or `validate_workspace`; for tests use `test_related_files` to get a focused filter, then pass that filter to `test_run`. Reserve `build_workspace` / `build_project` for CI-parity or project-system changes.
+                    - **Navigation**: Prefer `document_symbols` for file outlines and `find_references` for callers/usage tracing instead of scanning files manually.
                     - **Workspace Gate**: All tools require a `workspaceId` from `workspace_load`. The workspace serializes concurrent requests.
 
                     Use the `server_catalog` resource at `roslyn://server/catalog` for the complete machine-readable inventory.
@@ -416,4 +417,3 @@ public static partial class RoslynPrompts
         }
     }
 }
-

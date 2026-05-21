@@ -105,6 +105,25 @@ public sealed class McpServerSurfaceTestSkillTests
     }
 
     [TestMethod]
+    public void PromptFiles_UseServerInfoResourceServerNameHints()
+    {
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var promptFiles = new[]
+        {
+            Path.Combine(repoRoot, "skills", SkillName, "prompts", "quick.md"),
+            Path.Combine(repoRoot, "skills", SkillName, "prompts", "phases", "setup-and-analysis.md"),
+        };
+
+        foreach (var promptFile in promptFiles)
+        {
+            var contents = File.ReadAllText(promptFile);
+            StringAssert.Contains(contents, "resourceServerNames");
+            StringAssert.Contains(contents, "match an alias exactly");
+            StringAssert.Contains(contents, "Do not hand-convert `plugin:roslyn-mcp:roslyn` into an underscore name");
+        }
+    }
+
+    [TestMethod]
     public void Skill_Body_ContainsNoBannedRepoMarkers()
     {
         // Mirror of `eng/verify-skills-are-generic.ps1`. The gate is the canonical check; this is a

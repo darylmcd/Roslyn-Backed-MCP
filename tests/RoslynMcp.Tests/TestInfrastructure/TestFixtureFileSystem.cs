@@ -41,8 +41,21 @@ internal static class TestFixtureFileSystem
         // file first so the recursive delete succeeds. Equivalent to PowerShell's
         // `Remove-Item -Recurse -Force`. Tests that run `git init` inside an
         // `IsolatedWorkspaceScope` rely on this behavior at scope-dispose time.
-        ClearReadOnlyAttributes(path);
-        Directory.Delete(path, recursive: true);
+        const int maxAttempts = 5;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                ClearReadOnlyAttributes(path);
+                Directory.Delete(path, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (attempt < maxAttempts &&
+                                       (ex is IOException || ex is UnauthorizedAccessException))
+            {
+                Thread.Sleep(100 * attempt);
+            }
+        }
     }
 
     private static void ClearReadOnlyAttributes(string path)

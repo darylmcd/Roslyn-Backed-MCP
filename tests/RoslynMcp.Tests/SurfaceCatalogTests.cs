@@ -144,6 +144,27 @@ public sealed class SurfaceCatalogTests
         Assert.IsTrue(tools.TryGetProperty("experimental", out _));
     }
 
+    [TestMethod]
+    public async Task ServerInfo_IncludesResourceServerNameHints()
+    {
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new NuGetVersionChecker(new HttpClient()));
+        using var doc = JsonDocument.Parse(json);
+
+        Assert.IsTrue(doc.RootElement.TryGetProperty("resourceServerNames", out var hints));
+        Assert.AreEqual("roslyn", hints.GetProperty("canonical").GetString());
+
+        var aliases = hints.GetProperty("aliases")
+            .EnumerateArray()
+            .Select(alias => alias.GetString())
+            .ToArray();
+        CollectionAssert.Contains(aliases, "roslyn");
+        CollectionAssert.Contains(aliases, "plugin:roslyn-mcp:roslyn");
+        CollectionAssert.Contains(aliases, "plugin_roslyn-mcp_roslyn");
+
+        var guidance = hints.GetProperty("probeGuidance").GetString() ?? string.Empty;
+        StringAssert.Contains(guidance, "do not synthesize underscore variants");
+    }
+
     // get-prompt-text-publish-parameter-schema: catalog prompt entries must publish a
     // parameters[] array per prompt so callers can build parametersJson for get_prompt_text
     // without a 2-roundtrip learn-then-invoke loop. The 3-param `debug_test_failure` (1 required

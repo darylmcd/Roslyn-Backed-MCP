@@ -39,8 +39,8 @@ If any phase below would require an apply or a worktree, mark it `skipped-safety
 ### Phase -1: MCP server precondition (MUST run first, hard gate)
 
 1. **Check the tool list.** Verify `mcp__roslyn__server_info` appears in your current tool surface. If it does not, STOP and tell the user the skill requires the Roslyn MCP server to be started.
-2. **Call `server_info`.** Capture `version`, `catalogVersion`, `runtime`, `os`, `connection.state`, `surface.{tools,resources,prompts}.{stable,experimental}` counts, and `surface.registered.parityOk`. Halt if `connection.state != ready` or `parityOk == false`.
-3. **Sanity-check the catalog resource.** Read `roslyn://server/catalog` and confirm per-category counts match `server_info.surface`.
+2. **Call `server_info`.** Capture `version`, `catalogVersion`, `runtime`, `os`, `connection.state`, `surface.{tools,resources,prompts}.{stable,experimental}` counts, `surface.registered.parityOk`, and `resourceServerNames.{canonical,aliases,probeGuidance}`. Halt if `connection.state != ready` or `parityOk == false`.
+3. **Sanity-check the catalog resource.** Read `roslyn://server/catalog` using the live resource server handle selected from `server_info.resourceServerNames` when your client requires one; prefer `roslyn` when present and otherwise match an alias exactly. Do not hand-convert `plugin:roslyn-mcp:roslyn` into an underscore name unless that exact alias is listed. Confirm per-category counts match `server_info.surface`.
 4. **Workspace health probe (post-load).** After Phase 0 loads a workspace, call `workspace_health(workspaceId)` once. A non-`healthy` status before any further call is a P1 finding.
 
 **Hard-gate checkpoint:** Is `server_info` callable? Is `connection.state == ready`? Is `parityOk == true`? Did the catalog-resource counts match `server_info`? Did `workspace_health` return `healthy`? Any `no` is a halt-or-escalate.
@@ -50,7 +50,7 @@ If any phase below would require an apply or a worktree, mark it `skipped-safety
 ### Phase 0: Setup, live surface baseline, and repo shape
 
 1. Pick the entrypoint: `.sln` / `.slnx` / `.csproj`. (Quick tier never creates a disposable worktree — Phase 6 is forbidden.)
-2. Read `roslyn://server/resource-templates` to capture all resource URI templates.
+2. Read `roslyn://server/resource-templates` using the same live resource server handle selected from `server_info.resourceServerNames` to capture all resource URI templates.
 3. Call `workspace_load` (lean summary default).
 4. Call `workspace_list` to confirm the session; `workspace_status` to confirm clean load.
 5. Call `workspace_warm(workspaceId)` (optional but recommended for stable timings).

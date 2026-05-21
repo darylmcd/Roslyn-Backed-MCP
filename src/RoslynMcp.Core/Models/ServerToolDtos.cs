@@ -29,6 +29,7 @@ public sealed record ServerInfoDto(
     ConnectionStateDto Connection,
     string CatalogVersion,
     ServerSurfaceCountsDto Surface,
+    ResourceServerNameHintsDto ResourceServerNames,
     IReadOnlyList<string> ProductBoundaries,
     ServerCapabilitiesDto Capabilities,
     ServerUpdateInfoDto? Update);
@@ -55,6 +56,16 @@ public sealed record SurfaceTierCountsDto(int Stable, int Experimental);
 /// surface agree on counts.
 /// </summary>
 public sealed record SurfaceRegisteredCountsDto(int Tools, int Resources, int Prompts, bool ParityOk);
+
+/// <summary>
+/// Client-facing resource server-name guidance. MCP resource URIs stay <c>roslyn://...</c>,
+/// but some hosts require a separate server handle when reading resources. This hint gives
+/// agents the canonical handle and known aliases instead of forcing them to guess.
+/// </summary>
+public sealed record ResourceServerNameHintsDto(
+    string Canonical,
+    IReadOnlyList<string> Aliases,
+    string ProbeGuidance);
 
 /// <summary>
 /// MCP capability flags advertised by the server's <c>initialize</c> response, echoed on

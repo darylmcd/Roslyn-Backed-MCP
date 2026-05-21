@@ -46,45 +46,44 @@ public static class TestCoverageTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
-            ProgressHelper.Report(progress, 0, 1);
-            var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
-            var loadedPath = status.LoadedPath ?? throw new InvalidOperationException("Workspace has no loaded path.");
-
-            var coverageDir = Path.Combine(Path.GetTempPath(), "roslyn-mcp-coverage", Guid.NewGuid().ToString("N"));
-
-            // test-coverage-fail-fast-on-missing-coverlet: partition the in-scope test projects
-            // into those with and without coverlet.collector. Pre-fix the tool fail-fasted on
-            // the first missing collector and abandoned the whole call; now we run partial
-            // coverage on the projects that DO have the collector and list the skipped ones in
-            // the response's `coverageGaps` field. Fail-fast remains for the all-projects-lack
-            // case (no useful work to do).
-            var partition = PartitionTestProjectsByCoverlet(status, projectName);
-            if (partition.WithCoverlet.Count == 0 && partition.WithoutCoverlet.Count > 0)
-            {
-                ProgressHelper.Report(progress, 1, 1);
-                var summary = $"Coverlet missing: {partition.WithoutCoverlet.Count} test project(s) don't reference coverlet.collector. " +
-                    $"Install via `dotnet add package coverlet.collector` in: {string.Join(", ", partition.WithoutCoverlet)}.";
-                return SerializeWithDeprecation(new TestCoverageResultDto(
-                    Success: false,
-                    Error: summary,
-                    LineCoveragePercent: null,
-                    BranchCoveragePercent: null,
-                    Modules: [],
-                    FailureEnvelope: new TestCoverageFailureEnvelopeDto(
-                        ErrorKind: "CoverletMissing",
-                        IsRetryable: false,
-                        Summary: summary,
-                        MissingPackages: partition.WithoutCoverlet)), deprecation);
-            }
-
             // test-coverage-timeout-failure-envelope: wrap the runner invocation and the
-            // downstream coverage-file scan so that cancellation (MCP timeout, caller cancel)
-            // or an unexpected runner exception is reported as a structured failureEnvelope
-            // rather than escaping the gate lambda as a bare invocation error. Mirrors the
-            // WorkspaceValidationService pattern at lines 185-208 (OCE-then-Exception order)
-            // and the TestRunnerService timeout-envelope shape at lines 98-127.
+            // downstream coverage-file scan so that cancellation (MCP timeout, caller cancel),
+            // status/partition failures, or an unexpected runner exception is reported as a
+            // structured failureEnvelope rather than escaping the gate lambda as a bare
+            // invocation error.
             try
             {
+                ProgressHelper.Report(progress, 0, 1);
+                var status = await workspace.GetStatusAsync(workspaceId, c).ConfigureAwait(false);
+                var loadedPath = status.LoadedPath ?? throw new InvalidOperationException("Workspace has no loaded path.");
+
+                var coverageDir = Path.Combine(Path.GetTempPath(), "roslyn-mcp-coverage", Guid.NewGuid().ToString("N"));
+
+                // test-coverage-fail-fast-on-missing-coverlet: partition the in-scope test projects
+                // into those with and without coverlet.collector. Pre-fix the tool fail-fasted on
+                // the first missing collector and abandoned the whole call; now we run partial
+                // coverage on the projects that DO have the collector and list the skipped ones in
+                // the response's `coverageGaps` field. Fail-fast remains for the all-projects-lack
+                // case (no useful work to do).
+                var partition = PartitionTestProjectsByCoverlet(status, projectName);
+                if (partition.WithCoverlet.Count == 0 && partition.WithoutCoverlet.Count > 0)
+                {
+                    ProgressHelper.Report(progress, 1, 1);
+                    var summary = $"Coverlet missing: {partition.WithoutCoverlet.Count} test project(s) don't reference coverlet.collector. " +
+                        $"Install via `dotnet add package coverlet.collector` in: {string.Join(", ", partition.WithoutCoverlet)}.";
+                    return SerializeWithDeprecation(new TestCoverageResultDto(
+                        Success: false,
+                        Error: summary,
+                        LineCoveragePercent: null,
+                        BranchCoveragePercent: null,
+                        Modules: [],
+                        FailureEnvelope: new TestCoverageFailureEnvelopeDto(
+                            ErrorKind: "CoverletMissing",
+                            IsRetryable: false,
+                            Summary: summary,
+                            MissingPackages: partition.WithoutCoverlet)), deprecation);
+                }
+
                 // test-coverage-fail-fast-on-missing-coverlet: choose between the
                 // single-target (whole-solution or single-project) classic path and the
                 // partial-coverage per-project path. The latter triggers only when the

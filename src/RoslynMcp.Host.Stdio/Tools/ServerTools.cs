@@ -151,6 +151,16 @@ public static class ServerTools
                     Resources: registeredSnapshot.ResourcesRegistered,
                     Prompts: registeredSnapshot.PromptsRegistered,
                     ParityOk: registeredSnapshot.AllParityOk)),
+            ResourceServerNames: new ResourceServerNameHintsDto(
+                Canonical: "roslyn",
+                Aliases:
+                [
+                    "roslyn",
+                    "plugin:roslyn-mcp:roslyn",
+                    "plugin_roslyn-mcp_roslyn",
+                    "roslyn-mcp"
+                ],
+                ProbeGuidance: "Use the server name exposed by your MCP host when reading roslyn:// resources. Prefer 'roslyn' when present; otherwise match one of the aliases exactly and do not synthesize underscore variants from colon-delimited names."),
             ProductBoundaries:
             [
                 "Stable support targets the local stdio host on a developer workstation.",

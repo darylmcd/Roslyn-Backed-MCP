@@ -5,6 +5,7 @@ public static partial class ServerSurfaceCatalog
     private static readonly SurfaceEntry[] OrchestrationTools =
     [
         Tool("get_prompt_text", "prompts", "experimental", true, false, "Render any registered MCP prompt as plain text. Pass the prompt name plus a JSON object of the prompt's parameters; returns { messages: [{role, text}], promptName, parameterCount }."),
+        Tool("recommend_workflow", "orchestration", "experimental", true, false, "Recommend first-hop Roslyn MCP tools for a natural-language task."),
         Tool("add_package_reference_preview", "project-mutation", "stable", true, false, "Preview adding a PackageReference to a project file."),
         Tool("remove_package_reference_preview", "project-mutation", "stable", true, false, "Preview removing a PackageReference from a project file."),
         Tool("add_project_reference_preview", "project-mutation", "stable", true, false, "Preview adding a ProjectReference to a project file."),

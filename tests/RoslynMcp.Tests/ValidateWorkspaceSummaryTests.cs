@@ -60,18 +60,20 @@ public sealed class ValidateWorkspaceSummaryTests : SharedWorkspaceTestBase
     [TestMethod]
     public async Task ValidateAsync_SummaryMode_ResponseSmallerThanFullMode()
     {
+        var realPath = FindDocumentPath("AnimalService.cs");
+
         var fullResult = await _validationService.ValidateAsync(
-            WorkspaceId, changedFilePaths: null, runTests: false, CancellationToken.None, summary: false);
+            WorkspaceId, changedFilePaths: [realPath], runTests: false, CancellationToken.None, summary: false);
         var summaryResult = await _validationService.ValidateAsync(
-            WorkspaceId, changedFilePaths: null, runTests: false, CancellationToken.None, summary: true);
+            WorkspaceId, changedFilePaths: [realPath], runTests: false, CancellationToken.None, summary: true);
 
         var fullJson = System.Text.Json.JsonSerializer.Serialize(fullResult);
         var summaryJson = System.Text.Json.JsonSerializer.Serialize(summaryResult);
 
-        // summary <= full (strict less-than only when there's actual content to drop;
-        // SampleSolution may be small enough that the difference is in the noise).
-        Assert.IsTrue(summaryJson.Length <= fullJson.Length,
-            $"summary JSON must not exceed full JSON; summary={summaryJson.Length}, full={fullJson.Length}");
+        Assert.IsTrue(fullResult.DiscoveredTests.Count > 0,
+            "The fixture must produce discovered related tests so summary mode has actual content to drop.");
+        Assert.IsTrue(summaryJson.Length < fullJson.Length,
+            $"summary JSON must be smaller when full mode carries discovered tests; summary={summaryJson.Length}, full={fullJson.Length}");
     }
 
     // dr-9-8-bug-validate-fabricated-accepts-fabricated-silen: fabricated / nonexistent paths

@@ -55,6 +55,28 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
         StringAssert.Contains(text, "server");
     }
 
+    [DataTestMethod]
+    [DataRow("navigation")]
+    [DataRow("refactoring")]
+    [DataRow("testing")]
+    [DataRow("all")]
+    public async Task DiscoverCapabilities_SteersToFastFirstHopTools(string category)
+    {
+        var messages = (await RoslynPrompts.DiscoverCapabilities(category)).ToList();
+
+        Assert.AreEqual(1, messages.Count);
+        var text = GetText(messages[0]);
+
+        StringAssert.Contains(text, "compile_check",
+            "discover_capabilities must name compile_check as the routine compile-sanity first hop.");
+        StringAssert.Contains(text, "validate_recent_git_changes",
+            "discover_capabilities must surface the auto-scoped post-edit validation bundle.");
+        StringAssert.Contains(text, "test_related_files",
+            "discover_capabilities must steer test validation through related-test discovery.");
+        Assert.IsFalse(text.Contains("After any code change, call `build_workspace` or `build_project`", StringComparison.Ordinal),
+            "discover_capabilities must not present build_workspace/build_project as the routine default after every code edit.");
+    }
+
     // dr-9-14-drift-001-param-name-mismatch-vs-experimental-p: guard against doc↔impl drift.
     // The `discover_capabilities` prompt's sole user-facing parameter must be named
     // `taskCategory` so callers following Phase 16 of

@@ -171,15 +171,15 @@ internal static class PromptMessageBuilder
         category switch
         {
             "refactoring" => """
-                - **Code Action Flow**: `get_code_actions` → `preview_code_action` → `apply_code_action` → `build_workspace`
-                - **Rename Flow**: `rename_preview` → `rename_apply` → `build_workspace` → `test_run`
-                - **Curated Fix Flow**: `diagnostic_details` → `code_fix_preview` → `code_fix_apply` → `build_workspace`
+                - **Code Action Flow**: `get_code_actions` → `preview_code_action` → `apply_code_action` → `compile_check`
+                - **Rename Flow**: `rename_preview` → `rename_apply` → `compile_check` → `test_related_files` → filtered `test_run`
+                - **Curated Fix Flow**: `diagnostic_details` → `code_fix_preview` → `code_fix_apply` → `compile_check`
                 - **Extract Interface**: `extract_interface_preview` → `extract_interface_apply` → `bulk_replace_type_preview` → `bulk_replace_type_apply`
                 - **Extract Type (SRP)**: `get_cohesion_metrics` → `find_shared_members` → `extract_type_preview` → `extract_type_apply`
                 - **Move Type to File**: `move_type_to_file_preview` → `move_type_to_file_apply`
                 """,
             "analysis" => """
-                - **Diagnostic Analysis**: `project_diagnostics` → `diagnostic_details` → `code_fix_preview`
+                - **Diagnostic Analysis**: `compile_check` → `project_diagnostics` → `diagnostic_details` → `code_fix_preview`
                 - **Architecture Review**: `project_graph` + `get_namespace_dependencies` + `get_nuget_dependencies`
                 - **Complexity Review**: `get_complexity_metrics` → identify hotspots → `get_code_actions`
                 - **Impact Assessment**: `impact_analysis` → `find_references` → `callers_callees`
@@ -193,11 +193,11 @@ internal static class PromptMessageBuilder
             "testing" => """
                 - **Test Discovery**: `test_discover` → `test_run` → `debug_test_failure` (if failures)
                 - **Coverage Analysis**: `test_coverage` → identify gaps → `scaffold_test_preview` → `scaffold_test_apply`
-                - **Change Validation**: `test_related_files` → `test_run` (filtered)
+                - **Change Validation**: `validate_recent_git_changes` or `test_related_files` → `test_run` (filtered)
                 """,
             "editing" => """
-                - **Single File Edit**: `apply_text_edit` → `build_project`
-                - **Multi-File Edit**: `apply_multi_file_edit` → `build_workspace`
+                - **Single File Edit**: `apply_text_edit` → `compile_check`
+                - **Multi-File Edit**: `apply_multi_file_edit` → `validate_recent_git_changes`
                 - **File Operations**: `create_file_preview` → `create_file_apply`, `move_file_preview` → `move_file_apply`
                 """,
             "navigation" => """
@@ -212,13 +212,13 @@ internal static class PromptMessageBuilder
                 - **Central Versioning**: `add_central_package_version_preview` → `apply_project_mutation`
                 """,
             "scaffolding" => """
-                - **New Type**: `scaffold_type_preview` → `scaffold_type_apply` → `build_project`
-                - **New Test**: `scaffold_test_preview` → `scaffold_test_apply` → `test_run`
-                - **Dead Code Cleanup**: `find_unused_symbols` → `remove_dead_code_preview` → `remove_dead_code_apply` → `build_workspace`
+                - **New Type**: `scaffold_type_preview` → `scaffold_type_apply` → `compile_check`
+                - **New Test**: `scaffold_test_preview` → `scaffold_test_apply` → filtered `test_run`
+                - **Dead Code Cleanup**: `find_unused_symbols` → `remove_dead_code_preview` → `remove_dead_code_apply` → `compile_check`
                 """,
             _ => """
                 - **Preview/Apply Pattern**: Most write tools follow `*_preview` → inspect diff → `*_apply` → validate
-                - **Validation**: `build_workspace` or `build_project` after any code change, then `test_run` if tests may be affected
+                - **Validation**: `compile_check` after routine code changes; `validate_recent_git_changes` or `test_related_files` → filtered `test_run` when tests may be affected
                 - **Diagnostics Flow**: `project_diagnostics` → `diagnostic_details` → `code_fix_preview` → `code_fix_apply`
                 - **Security Flow**: `security_analyzer_status` → `security_diagnostics` → triage → fix
                 """
