@@ -45,7 +45,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
             return;
 
-        var entry = new WatcherEntry();
+        var entry = new WatcherEntry(directory);
         _watchers[workspaceId] = entry;
 
         // Watch .cs source files
@@ -131,7 +131,7 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
 
     private static void MarkStaleIfRelevant(WatcherEntry entry, string fullPath)
     {
-        if (ShouldIgnorePath(fullPath))
+        if (ShouldIgnorePath(fullPath, entry.RootDirectory))
         {
             return;
         }
@@ -144,20 +144,31 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         entry.MarkStaleWithReason(StaleReasons.ExternalEdit);
     }
 
-    private static bool ShouldIgnorePath(string fullPath)
+    private static bool ShouldIgnorePath(string fullPath, string rootDirectory)
     {
         return fullPath.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
                fullPath.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
                fullPath.Contains($"{Path.DirectorySeparatorChar}.git{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ||
+               (!ContainsPathSegment(rootDirectory, ".roslynmcp") &&
+                fullPath.Contains($"{Path.DirectorySeparatorChar}.roslynmcp{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)) ||
                fullPath.Contains($"{Path.DirectorySeparatorChar}.worktrees{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
     }
 
-    private sealed class WatcherEntry : IDisposable
+    private static bool ContainsPathSegment(string path, string segment)
+    {
+        return path
+            .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries)
+            .Any(part => string.Equals(part, segment, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class WatcherEntry(string rootDirectory) : IDisposable
     {
         private volatile bool _isStale;
         private string? _staleReason;
         private readonly object _reasonLock = new();
         private readonly List<FileSystemWatcher> _watchers = [];
+
+        public string RootDirectory { get; } = rootDirectory;
 
         public bool IsStale => _isStale;
 

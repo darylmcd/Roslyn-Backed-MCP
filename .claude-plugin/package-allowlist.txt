@@ -1,0 +1,14 @@
+# Consumer-facing files allowed in the Claude Code plugin cache.
+.claude-plugin/plugin.json
+.claude-plugin/marketplace.json
+.claude-plugin/mcp.json
+.claude-plugin/server.json
+skills/**
+hooks/hooks.json
+LICENSE
+README.md
+THIRD-PARTY-NOTICES.md
+docs/setup.md
+docs/reinstall.md
+docs/compatibility.md
+manifest.json

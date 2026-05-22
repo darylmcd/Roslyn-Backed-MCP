@@ -133,7 +133,10 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
             FieldCount: 0,
             Lcom4Score: methodCount,
             Clusters: [])
-        { TypeKind = "Interface" };
+        {
+            TypeKind = "Interface",
+            Recommendation = "Interface cohesion is structural: methods do not access instance state. Review member groups for contract size and caller ergonomics rather than applying class split guidance directly.",
+        };
     }
 
     /// <summary>
@@ -305,7 +308,7 @@ public sealed class CohesionAnalysisService : ICohesionAnalysisService
     {
         "action-triad" => "Lifecycle pattern: action-triad — LCOM4 is expected to be high by design because Describe/Validate*/Execute* are orthogonal on fields. Do not split.",
         "facade" => "Lifecycle pattern: facade — Facade/adapter type with zero instance fields delegating to an injected interface. LCOM4 is structurally undefined here. Do not split.",
-        _ => null,
+        _ => "No known lifecycle pattern detected. Review the reported method clusters and shared fields; consider splitting only when the clusters represent separate responsibilities rather than intentional orchestration.",
     };
 
     /// <summary>

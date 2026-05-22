@@ -38,6 +38,10 @@ if (-not $NoCoverage) {
 # references in ./skills/ (repo-only skills belong in .claude/skills/).
 & (Join-Path $PSScriptRoot 'verify-skills-are-generic.ps1')
 
+# Plugin package allowlist check — ensures the Claude Code plugin cache sync
+# cannot ship repo-internal source, tests, ai_docs, or release infrastructure.
+& (Join-Path $PSScriptRoot 'verify-plugin-package-files.ps1')
+
 # Changelog fragment format check — catches malformed changelog.d/*.md files
 # at PR time rather than at release-cut time (where they block /bump).
 & (Join-Path $PSScriptRoot 'verify-changelog-fragments.ps1')

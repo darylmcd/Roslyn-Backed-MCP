@@ -70,4 +70,29 @@ public sealed class NuGetDependencySummaryTests : SharedWorkspaceTestBase
         Assert.IsTrue(summaryJson.Length < fullJson.Length,
             $"summary JSON must be strictly smaller than full JSON; summary={summaryJson.Length}, full={fullJson.Length}");
     }
+
+    [TestMethod]
+    public async Task GetNuGetDependencies_SummaryMode_ResolvesCentralPackageVersions()
+    {
+        var fullResult = await NuGetDependencyService.GetNuGetDependenciesAsync(
+            WorkspaceId, CancellationToken.None, summary: false);
+        var centralReference = fullResult.Projects
+            .SelectMany(project => project.PackageReferences)
+            .FirstOrDefault(package =>
+                string.Equals(package.Version, "centrally-managed", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(package.ResolvedCentralVersion));
+
+        Assert.IsNotNull(centralReference,
+            "SampleSolution should include at least one centrally-managed PackageReference with a resolved central version.");
+
+        var summaryResult = await NuGetDependencyService.GetNuGetDependenciesAsync(
+            WorkspaceId, CancellationToken.None, summary: true);
+        var summary = summaryResult.Summaries?.FirstOrDefault(package =>
+            string.Equals(package.PackageId, centralReference.PackageId, StringComparison.OrdinalIgnoreCase));
+
+        Assert.IsNotNull(summary, $"Expected summary entry for {centralReference.PackageId}.");
+        Assert.AreEqual(centralReference.ResolvedCentralVersion, summary.Version,
+            "summary=true should report the effective central package version, not the literal 'centrally-managed'.");
+        Assert.IsFalse(string.Equals(summary.Version, "centrally-managed", StringComparison.OrdinalIgnoreCase));
+    }
 }

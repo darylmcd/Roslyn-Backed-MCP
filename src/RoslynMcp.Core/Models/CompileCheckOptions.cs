@@ -10,4 +10,5 @@ public sealed record CompileCheckOptions(
     string? SeverityFilter = null,
     string? FileFilter = null,
     int Offset = 0,
-    int Limit = 50);
+    int Limit = 50,
+    IReadOnlyList<string>? FileFilters = null);
