@@ -140,6 +140,20 @@ public static class PromptShimTools
                 throw new ArgumentException("parametersJson must be a JSON object.", nameof(parametersJson));
 
             var parameters = method.GetParameters();
+            var missingRequired = parameters
+                .Where(p => p.ParameterType != typeof(CancellationToken))
+                .Where(p => !IsServiceType(p.ParameterType))
+                .Where(p => !p.HasDefaultValue)
+                .Where(p => !rootObj.TryGetProperty(p.Name!, out _))
+                .Select(p => p.Name!)
+                .ToArray();
+            if (missingRequired.Length > 0)
+            {
+                throw new ArgumentException(
+                    $"Prompt '{method.Name}' is missing required parameters in parametersJson: {string.Join(", ", missingRequired)}.",
+                    nameof(parametersJson));
+            }
+
             var values = new object?[parameters.Length];
             for (var i = 0; i < parameters.Length; i++)
             {

@@ -1,6 +1,7 @@
 using System.Text.Json;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -94,6 +95,36 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
         Assert.IsTrue(
             root.TryGetProperty("success", out _),
             "Expected Success in JSON output.");
+    }
+
+    [TestMethod]
+    public async Task CompileCheck_Tool_WithUnknownProject_ReturnsInvalidArgumentEnvelope()
+    {
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "compile_check",
+            () => CompileCheckTools.CompileCheck(
+                WorkspaceExecutionGate,
+                CompileCheckService,
+                WorkspaceId,
+                projectName: "DoesNotExist",
+                emitValidation: false,
+                severity: null,
+                file: null,
+                files: null,
+                offset: 0,
+                limit: 50,
+                ct: CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.IsTrue(root.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", root.GetProperty("category").GetString());
+        Assert.AreEqual("compile_check", root.GetProperty("tool").GetString());
+        var message = root.GetProperty("message").GetString() ?? string.Empty;
+        StringAssert.Contains(message, "projectName");
+        StringAssert.Contains(message, "DoesNotExist");
     }
 
     [TestMethod]
