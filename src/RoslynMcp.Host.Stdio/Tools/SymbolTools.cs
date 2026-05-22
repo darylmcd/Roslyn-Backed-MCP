@@ -201,9 +201,37 @@ public static class SymbolTools
             }
 
             var results = await symbolNavigationService.GoToDefinitionAsync(workspaceId, locator, c);
-            if (results.Count == 0) throw new KeyNotFoundException("No definition found for the symbol at the specified location");
+            if (results.Count == 0)
+            {
+                var message = await FormatGoToDefinitionNotFoundMessageAsync(
+                    symbolNavigationService, workspaceId, locator, c).ConfigureAwait(false);
+                throw new KeyNotFoundException(message);
+            }
             return JsonSerializer.Serialize(new { count = results.Count, locations = results }, JsonDefaults.Indented);
         }, ct);
+    }
+
+    private static async Task<string> FormatGoToDefinitionNotFoundMessageAsync(
+        ISymbolNavigationService symbolNavigationService,
+        string workspaceId,
+        SymbolLocator locator,
+        CancellationToken ct)
+    {
+        if (locator.HasSourceLocation)
+        {
+            var probe = await symbolNavigationService.ProbePositionAsync(
+                workspaceId,
+                locator.FilePath!,
+                locator.Line!.Value,
+                locator.Column!.Value,
+                ct).ConfigureAwait(false);
+            if (probe is not null && !string.Equals(probe.TokenKind, "Identifier", StringComparison.Ordinal))
+            {
+                return "No identifier at this position; cursor must be on a symbol token.";
+            }
+        }
+
+        return "No definition found for the symbol at the specified location";
     }
 
     [McpServerTool(Name = "find_references", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find all references to a symbol at the given position across the entire solution. Response shape: { count, totalCount, hasMore, offset, limit, items } where items is the paged LocationDto list. Pass `summary=true` to drop per-ref preview text — useful for high-fan-out symbols where the default payload exceeds the MCP cap (Jellyfin's IUserManager: 154 KB on 233 refs). Optional `projectFilter` (case-sensitive Project.Name; comma-separated for multi) restricts the result to references hosted in the listed project(s) — matches semantic_grep's filter semantics.")]

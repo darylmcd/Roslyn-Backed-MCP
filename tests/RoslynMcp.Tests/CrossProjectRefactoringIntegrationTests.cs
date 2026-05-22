@@ -141,6 +141,57 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
     }
 
     [TestMethod]
+    public async Task Dependency_Inversion_Preview_Appends_Interface_WithTrailingCommaFormatting()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var sourceFilePath = workspace.GetPath("SampleLib", "JobQueue.cs");
+        File.WriteAllText(
+            sourceFilePath,
+            """
+            namespace SampleLib;
+
+            public sealed record JobRequest(string Name);
+
+            public interface IJobQueue<T>
+            {
+                void Enqueue(T request);
+            }
+
+            public class JobQueue : IJobQueue<JobRequest>
+            {
+                public void Enqueue(JobRequest request)
+                {
+                }
+            }
+            """);
+
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewDependencyInversionAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "JobQueue",
+            "IJobQueueInverted",
+            "Contracts",
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var sourceContents = await File.ReadAllTextAsync(sourceFilePath, CancellationToken.None);
+        var normalized = sourceContents.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.IsFalse(
+            normalized.Contains("IJobQueue<JobRequest>\n, IJobQueueInverted", StringComparison.Ordinal),
+            $"Existing base-list append must not put the comma at the start of the new line.\nFile contents:\n{sourceContents}");
+        StringAssert.Contains(
+            normalized,
+            "public class JobQueue : IJobQueue<JobRequest>,\n    IJobQueueInverted",
+            $"Interface list should use comma-trailing formatting.\nFile contents:\n{sourceContents}");
+    }
+
+    [TestMethod]
     public async Task Extract_Interface_Preview_Generates_Formatted_Interface_File_Across_Projects()
     {
         // Regression for dr-9-2-format-bug-001-cross-project-interface-extractio.

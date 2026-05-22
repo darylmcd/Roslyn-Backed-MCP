@@ -664,9 +664,10 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         }
         else
         {
-            // Append to existing base list via AddTypes so Roslyn manages comma separators and
-            // preserves the enclosing trivia of the existing list.
-            updated = declaration.WithBaseList(declaration.BaseList.AddTypes(interfaceType));
+            // Append to an existing base list with comma-trailing formatting. AddTypes preserves
+            // the old last type's newline trivia before it creates the comma, which renders
+            // `BaseType\n, INew`. Rebuild only the separator around the appended type.
+            updated = declaration.WithBaseList(AppendBaseTypeWithTrailingComma(declaration.BaseList, interfaceType));
         }
 
         // FORMAT-BUG-001: ensure `{` is on its own line if it isn't already (e.g., same-line brace
@@ -674,6 +675,31 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         // relocated the identifier's trailing EOL to the brace, so this is a no-op in that case.
         updated = EnsureOpeningBraceOnOwnLine(updated);
         return updated;
+    }
+
+    private static BaseListSyntax AppendBaseTypeWithTrailingComma(BaseListSyntax baseList, BaseTypeSyntax interfaceType)
+    {
+        var items = new List<SyntaxNodeOrToken>();
+        for (var i = 0; i < baseList.Types.Count; i++)
+        {
+            var type = baseList.Types[i];
+            if (i == baseList.Types.Count - 1)
+            {
+                type = type.WithTrailingTrivia();
+            }
+
+            items.Add(type);
+            if (i < baseList.Types.SeparatorCount)
+            {
+                items.Add(baseList.Types.GetSeparator(i));
+            }
+        }
+
+        items.Add(SyntaxFactory.Token(SyntaxKind.CommaToken)
+            .WithTrailingTrivia(SyntaxFactory.EndOfLine(Environment.NewLine), SyntaxFactory.Whitespace("    ")));
+        items.Add(interfaceType.WithLeadingTrivia());
+
+        return baseList.WithTypes(SyntaxFactory.SeparatedList<BaseTypeSyntax>(items));
     }
 
     /// <summary>

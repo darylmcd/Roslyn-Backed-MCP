@@ -67,6 +67,69 @@ public sealed class SuppressionServiceTests
         StringAssert.StartsWith(captured.NewText, "#pragma warning disable CS0219");
     }
 
+    [TestMethod]
+    public async Task AddPragmaWarningDisableAsync_UsesLf_WhenTargetFileUsesLf()
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), "suppression-lf-" + Guid.NewGuid().ToString("N") + ".cs");
+        await File.WriteAllTextAsync(filePath, "class C\n{\n}\n", CancellationToken.None).ConfigureAwait(false);
+
+        try
+        {
+            TextEditDto? captured = null;
+            var edits = new StubEditService
+            {
+                OnApply = (_, _, editsToApply, _, _, _) =>
+                {
+                    captured = editsToApply.Single();
+                    return Task.FromResult(new TextEditResultDto(true, filePath, 1, []));
+                }
+            };
+            var sut = new SuppressionService(new StubEditorConfig(), edits);
+
+            await sut.AddPragmaWarningDisableAsync("ws", filePath, 1, "CA1305", CancellationToken.None).ConfigureAwait(false);
+
+            Assert.IsNotNull(captured);
+            Assert.IsTrue(captured.NewText.EndsWith("\n", StringComparison.Ordinal));
+            Assert.IsFalse(captured.NewText.Contains("\r\n", StringComparison.Ordinal),
+                $"LF file must receive an LF pragma edit, not CRLF. NewText: {captured.NewText.Replace("\r", "\\r").Replace("\n", "\\n")}");
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [TestMethod]
+    public async Task AddPragmaWarningDisableAsync_UsesCrLf_WhenTargetFileUsesCrLf()
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), "suppression-crlf-" + Guid.NewGuid().ToString("N") + ".cs");
+        await File.WriteAllTextAsync(filePath, "class C\r\n{\r\n}\r\n", CancellationToken.None).ConfigureAwait(false);
+
+        try
+        {
+            TextEditDto? captured = null;
+            var edits = new StubEditService
+            {
+                OnApply = (_, _, editsToApply, _, _, _) =>
+                {
+                    captured = editsToApply.Single();
+                    return Task.FromResult(new TextEditResultDto(true, filePath, 1, []));
+                }
+            };
+            var sut = new SuppressionService(new StubEditorConfig(), edits);
+
+            await sut.AddPragmaWarningDisableAsync("ws", filePath, 1, "CA1305", CancellationToken.None).ConfigureAwait(false);
+
+            Assert.IsNotNull(captured);
+            Assert.IsTrue(captured.NewText.EndsWith("\r\n", StringComparison.Ordinal),
+                $"CRLF file must receive a CRLF pragma edit. NewText: {captured.NewText.Replace("\r", "\\r").Replace("\n", "\\n")}");
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
     private sealed class StubEditorConfig : IEditorConfigService
     {
         public Func<string, string, string, string, string, CancellationToken, Task<EditorConfigWriteResultDto>>? OnSetOption { get; init; }

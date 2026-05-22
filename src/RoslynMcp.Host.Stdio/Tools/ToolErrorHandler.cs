@@ -53,8 +53,7 @@ internal static class ToolErrorHandler
             "If the workspace was recently reloaded, the file may have been removed."),
         [typeof(DirectoryNotFoundException)] = (ex, _) => new("DirectoryNotFound",
             $"Directory not found: {ex.Message}. Verify the directory path is absolute and exists on disk."),
-        [typeof(KeyNotFoundException)] = (ex, _) => new("NotFound",
-            $"Not found: {ex.Message}. Ensure the workspace is loaded (workspace_load) and the identifier is correct."),
+        [typeof(KeyNotFoundException)] = (ex, _) => new("NotFound", FormatNotFoundMessage(ex.Message)),
         [typeof(ArgumentException)] = (ex, _) => new("InvalidArgument",
             $"Invalid argument: {ex.Message}. Check parameter types and values match the tool schema."),
         [typeof(TimeoutException)] = (ex, _) => new("Timeout",
@@ -100,6 +99,16 @@ internal static class ToolErrorHandler
                         : $"Invalid operation: {ex.Message}.");
         },
     };
+
+    private static string FormatNotFoundMessage(string message)
+    {
+        if (message.StartsWith("No identifier at this position", StringComparison.Ordinal))
+        {
+            return $"Not found: {message}";
+        }
+
+        return $"Not found: {message}. Ensure the workspace is loaded (workspace_load) and the identifier is correct.";
+    }
 
     /// <summary>
     /// Wraps a synchronous resource action with structured error handling, returning the same
