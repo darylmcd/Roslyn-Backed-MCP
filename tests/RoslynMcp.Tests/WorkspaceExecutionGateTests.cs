@@ -556,6 +556,36 @@ public class WorkspaceExecutionGateTests
             "Successful retry after auto-reload must stamp retriedAfterReload=true so callers can correlate the recovered call.");
     }
 
+    [TestMethod]
+    public async Task StalenessPolicy_AutoReload_ActionFailsWithDocumentNotFoundWithoutMetrics_RetriesOnceAndSucceeds()
+    {
+        var manager = new FakeGateWorkspaceManager();
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions { OnStale = StalenessPolicy.AutoReload },
+            manager);
+
+        Assert.IsNull(AmbientGateMetrics.Current);
+
+        var attempts = 0;
+        var result = await gate.RunReadAsync(WorkspaceA, _ =>
+        {
+            attempts++;
+            if (attempts == 1)
+            {
+                throw new InvalidOperationException("Document not found: C:/path/to/File.cs");
+            }
+
+            return Task.FromResult(42);
+        }, CancellationToken.None);
+
+        Assert.AreEqual(42, result);
+        Assert.AreEqual(2, attempts, "Action must retry once after an auto-reload even when no metrics scope exists.");
+        Assert.AreEqual(1, manager.ReloadCount, "Retry should reuse the completed reload, not reload again.");
+        Assert.IsNull(AmbientGateMetrics.Current);
+    }
+
     /// <summary>
     /// auto-reload-retry-inside-call: cap the retry at 1. If the second attempt also fails
     /// with the same transient error, the original exception propagates. The retry flag stays
@@ -729,6 +759,41 @@ public class WorkspaceExecutionGateTests
         var metrics = AmbientGateMetrics.Current;
         Assert.IsNotNull(metrics);
         Assert.AreEqual("auto-reloaded", metrics!.StaleAction);
+    }
+
+    [TestMethod]
+    public async Task AutoReload_ResetsTimeoutBudgetWithoutAmbientMetrics_ToolActionGetsFullBudget()
+    {
+        // The timeout reset is part of the gate contract, not a side effect of telemetry.
+        // Without an ambient metrics scope, this test spends enough of the original budget
+        // on reload that reload+action would exceed it. The timeout is intentionally wider
+        // than the reload itself so full-suite CPU contention does not cancel before the
+        // reset point.
+        var reloadDelay = TimeSpan.FromMilliseconds(500);
+        var toolTimeout = TimeSpan.FromSeconds(2);
+
+        var manager = new FakeGateWorkspaceManager(reloadDelayMs: (int)reloadDelay.TotalMilliseconds);
+        manager.MarkStale(WorkspaceA);
+
+        var gate = new WorkspaceExecutionGate(
+            new ExecutionGateOptions
+            {
+                RequestTimeout = toolTimeout,
+                OnStale = StalenessPolicy.AutoReload,
+            },
+            manager);
+
+        Assert.IsNull(AmbientGateMetrics.Current);
+
+        var result = await gate.RunReadAsync(WorkspaceA, async ct =>
+        {
+            await Task.Delay(1600, ct);
+            return 99;
+        }, CancellationToken.None);
+
+        Assert.AreEqual(99, result, "Tool action must receive a fresh timeout budget after auto-reload even when no metrics scope exists.");
+        Assert.AreEqual(1, manager.ReloadCount, "Auto-reload should fire exactly once.");
+        Assert.IsNull(AmbientGateMetrics.Current);
     }
 
     /// <summary>

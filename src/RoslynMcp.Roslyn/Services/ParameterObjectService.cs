@@ -56,7 +56,7 @@ public sealed class ParameterObjectService : IParameterObjectService
         var (dtoProject, dtoVisibilityIsPublic) = ResolveDtoProject(solution, method, request);
 
         var callerLocations = await CollectCallerSpansAsync(solution, method, ct).ConfigureAwait(false);
-        var methodProject = solution.GetProject(method.ContainingAssembly)!;
+        var methodProject = solution.GetProject(method.ContainingAssembly, ct)!;
         EnforceCrossProjectReferences(solution, methodProject, dtoProject, callerLocations);
 
         var defaultValueWarnings = await CollectDefaultValueWarningsAsync(
