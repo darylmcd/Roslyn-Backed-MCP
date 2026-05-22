@@ -167,9 +167,10 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         // workspace_reload calls — the reload's own write-locking is handled by WorkspaceManager.
         // workspace_close skips this: reloading requires the on-disk solution, which may already
         // be deleted while the in-memory session is still registered (F21 / missing worktree).
+        var autoReloaded = false;
         if (applyStalenessPolicy)
         {
-            await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
+            autoReloaded = await ApplyStalenessPolicyAsync(workspaceId, linked).ConfigureAwait(false);
 
             // parallel-fanout-auto-reload-timeout-floor: when an auto-reload just completed,
             // the timeout CTS has consumed some (possibly all) of the _requestTimeout budget
@@ -178,13 +179,12 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             // reads from hitting the 5-second floor when the reload finishes in <2s but the
             // remaining budget is already exhausted.
             //
-            // The extension fires only when StaleAction == "auto-reloaded" (i.e. the reload
-            // succeeded). A reload that threw KeyNotFoundException leaves StaleAction unset
-            // and the original deadline stands. The token must not already be cancelled
-            // (e.g. the caller cancelled, or the reload itself used all budget) — in that case
-            // we let the existing OperationCanceledException propagate unchanged.
-            if (AmbientGateMetrics.Current?.StaleAction == "auto-reloaded" &&
-                !linked.IsCancellationRequested)
+            // The extension fires only when ApplyStalenessPolicyAsync reports a successful
+            // reload. A reload that threw KeyNotFoundException leaves autoReloaded=false and
+            // the original deadline stands. The token must not already be cancelled (e.g. the
+            // caller cancelled, or the reload itself used all budget) — in that case we let the
+            // existing OperationCanceledException propagate unchanged.
+            if (autoReloaded && !linked.IsCancellationRequested)
             {
                 timeoutCts.CancelAfter(_requestTimeout);
             }
@@ -198,14 +198,14 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 using (await rwLock.WriterLockAsync(linked).ConfigureAwait(false))
                 {
                     EnsureWorkspaceStillExists(workspaceId);
-                    return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked)).ConfigureAwait(false);
+                    return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked, autoReloaded)).ConfigureAwait(false);
                 }
             }
 
             using (await rwLock.ReaderLockAsync(linked).ConfigureAwait(false))
             {
                 EnsureWorkspaceStillExists(workspaceId);
-                return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked)).ConfigureAwait(false);
+                return await RunWithMetricsAsync("rw-lock", queueStopwatch, () => RunActionWithPostReloadRetryAsync(action, linked, autoReloaded)).ConfigureAwait(false);
             }
         }, linked).ConfigureAwait(false);
     }
@@ -243,13 +243,14 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     /// </remarks>
     private static async Task<T> RunActionWithPostReloadRetryAsync<T>(
         Func<CancellationToken, Task<T>> action,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool autoReloaded)
     {
         try
         {
             return await action(ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ShouldRetryAfterAutoReload(ex))
+        catch (Exception ex) when (ShouldRetryAfterAutoReload(ex, autoReloaded))
         {
             // Stamp the retry flag BEFORE the second attempt so the response envelope shows
             // retriedAfterReload=true on both the success path AND the eventual-failure path.
@@ -303,9 +304,9 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     /// error <i>and</i> the current request just auto-reloaded the workspace. The intersection
     /// is deliberately narrow: any one condition alone is not enough to justify a retry.
     /// </summary>
-    private static bool ShouldRetryAfterAutoReload(Exception ex)
+    private static bool ShouldRetryAfterAutoReload(Exception ex, bool autoReloaded)
     {
-        if (AmbientGateMetrics.Current?.StaleAction != "auto-reloaded")
+        if (!autoReloaded)
         {
             return false;
         }
@@ -340,16 +341,16 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     /// leaves the snapshot alone but stamps <see cref="AmbientGateMetrics"/> so the response
     /// envelope surfaces a structured signal, Off is a no-op.
     /// </summary>
-    private async Task ApplyStalenessPolicyAsync(string workspaceId, CancellationToken ct)
+    private async Task<bool> ApplyStalenessPolicyAsync(string workspaceId, CancellationToken ct)
     {
         if (_onStale == StalenessPolicy.Off)
         {
-            return;
+            return false;
         }
 
         if (!_workspaceManager.IsStale(workspaceId))
         {
-            return;
+            return false;
         }
 
         var metrics = AmbientGateMetrics.Current;
@@ -360,7 +361,7 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
             {
                 metrics.StaleAction = "warn";
             }
-            return;
+            return false;
         }
 
         // AutoReload: reload under the existing load-gate path so writes can't race with us.
@@ -391,6 +392,8 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 metrics.StaleReloadMs = reloadStopwatch.ElapsedMilliseconds;
             }
         }
+
+        return reloaded;
     }
 
     /// <summary>
