@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-22T07:35:36Z**
+**updated_at: 2026-05-22T19:06:35Z**
 
 ## Agent contract
 
@@ -57,8 +57,6 @@
 | id | pri | deps | do |
 |----|-----|------|-----|
 | `tool-surface-pagination-or-tool-sets` | Low | none | 171 tools is approaching small-model discovery saturation, but current evidence points to a routing/steering problem more than a raw-count problem. Now that `recommend_workflow` exists, wait for fresh post-router evidence before adding tool-set catalog resources (for example `roslyn://server/catalog/tool-sets` and `roslyn://server/catalog/tools/{toolSet}/{offset}/{limit}`) that expose bounded subsets such as `navigation`, `refactoring`, `validation`, and `analysis` without hiding tools from clients that can handle the full surface. Do not change MCP tool registration or default `tools/list` visibility in this row unless the implementation note proves the client supports that safely. Anchors: `src/RoslynMcp.Host.Stdio/Catalog/ServerSurfaceCatalog.cs`, `src/RoslynMcp.Host.Stdio/Resources/ServerResources.cs`, `tests/RoslynMcp.Tests/SurfaceCatalogTests.cs`. Regression test shape: catalog summary advertises the tool-set resource; each named set returns only matching categories with offset/limit/hasMore metadata; unknown set returns structured `InvalidArgument`; existing full and paginated catalog resources remain unchanged. Evidence: surface count drift across recent versions (`server_info.surface.registered.tools` 151 -> 171 since v1.27); MCP spec tools/list pagination; 2026-05-20 no-context subagent probe showed correctly steered agents chose Roslyn primitives without needing a full catalog dump. **Weaker evidence - N until small-model discovery friction is reported after the router lands externally.** Source: 2026-05-05 MCP-best-practices comparison §3 rec J plus 2026-05-20 agent-view review. |
-| `workspace-cache-coordinator-extraction` | Low | none | Extract workspace-cache probe/writeback policy from `WorkspaceManager` into an internal `WorkspaceCacheCoordinator` without changing public workspace or cache-store contracts. Anchors: `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs`, new `src/RoslynMcp.Roslyn/Services/WorkspaceCacheCoordinator.cs`, `src/RoslynMcp.Roslyn/Services/WorkspaceCacheStore.cs`, `src/RoslynMcp.Core/Services/IWorkspaceCacheStore.cs`, `tests/RoslynMcp.Tests/Workspace/WorkspaceLoadCacheFastPathTests.cs`, `tests/RoslynMcp.Tests/Services/WorkspaceCacheStoreInvalidationTests.cs`. Regression/output shape: existing warm/cold cache fast-path tests still pass; add focused coordinator tests for cache miss, stale metadata-reference rejection, matching graph hit, graph mismatch writeback, and fail-soft store exceptions. Evidence: `ai_docs/items/workspace-manager-cache-store-extraction-design.md`. |
-| `initiative-executor-roslyn-tool-discovery-experiment` | Low | none | Measure whether refactoring initiative executors still bypass Roslyn semantic first-hop tools after `recommend_workflow`; only then edit the executor brief. Anchors: `.claude/agents/initiative-executor.md`, `ai_docs/reports/20260521T043918Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md`, `src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.GuidedWorkflows.cs`, `skills/refactor/SKILL.md`, `skills/semantic-find/SKILL.md`. Regression/output shape: create a measurement note with sample source, semantic-first-hop counts, generic `Read`/`Grep`/`Edit` counts, workspace_reload counts, and a go/no-go decision; if go, add one follow-on implementation row to inject the Roslyn-first stanza and validate it with a controlled refactor rerun. Evidence: `ai_docs/items/initiative-executor-roslyn-tool-discovery-brief.md`. |
 
 ## Defer
 
@@ -90,3 +88,4 @@
 | `ai_docs/plans/20260518T221744Z_backlog-sweep/plan.md` | Shipped 15 initiatives, 15 PRs (#823–#838), 15 rows closed |
 | `ai_docs/plans/20260519T145945Z_backlog-sweep/plan.md` | Shipped 6 initiatives, 6 PRs (#842–#847), 6 rows closed |
 | `ai_docs/plans/20260519T193650Z_backlog-sweep/plan.md` | Shipped 15 initiatives, 15 PRs (#852–#871), 15 rows closed |
+| `ai_docs/plans/20260522T132800Z_top5-remediation/plan.md` | Shipped 1 code initiative and closed 1 measurement no-go |
