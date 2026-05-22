@@ -49,88 +49,88 @@ public static class AnalysisTools
             var results = await diagnosticService.GetDiagnosticsAsync(workspaceId, projectName, file, severity, diagnosticId, c);
             ProgressHelper.Report(progress, 1, 1);
 
-                var allDiagnostics = results.WorkspaceDiagnostics
-                    .Select(diagnostic => (Bucket: DiagnosticBucket.Workspace, Diagnostic: diagnostic))
-                    .Concat(results.CompilerDiagnostics.Select(diagnostic => (Bucket: DiagnosticBucket.Compiler, Diagnostic: diagnostic)))
-                    .Concat(results.AnalyzerDiagnostics.Select(diagnostic => (Bucket: DiagnosticBucket.Analyzer, Diagnostic: diagnostic)))
-                    .ToList();
+            var allDiagnostics = results.WorkspaceDiagnostics
+                .Select(diagnostic => (Bucket: DiagnosticBucket.Workspace, Diagnostic: diagnostic))
+                .Concat(results.CompilerDiagnostics.Select(diagnostic => (Bucket: DiagnosticBucket.Compiler, Diagnostic: diagnostic)))
+                .Concat(results.AnalyzerDiagnostics.Select(diagnostic => (Bucket: DiagnosticBucket.Analyzer, Diagnostic: diagnostic)))
+                .ToList();
 
-                var pagedDiagnostics = allDiagnostics
-                    .Skip(offset)
-                    .Take(limit)
-                    .ToList();
+            var pagedDiagnostics = allDiagnostics
+                .Skip(offset)
+                .Take(limit)
+                .ToList();
 
-                var hasMore = offset + pagedDiagnostics.Count < allDiagnostics.Count;
+            var hasMore = offset + pagedDiagnostics.Count < allDiagnostics.Count;
 
-                var restoreHint = allDiagnostics.Any(entry =>
-                    entry.Bucket == DiagnosticBucket.Compiler &&
-                    (entry.Diagnostic.Id == "CS0234" ||
-                     (entry.Diagnostic.Message?.Contains("could not be found", StringComparison.OrdinalIgnoreCase) == true) ||
-                     (entry.Diagnostic.Message?.Contains("does not exist in the namespace", StringComparison.OrdinalIgnoreCase) == true)));
+            var restoreHint = allDiagnostics.Any(entry =>
+                entry.Bucket == DiagnosticBucket.Compiler &&
+                (entry.Diagnostic.Id == "CS0234" ||
+                 (entry.Diagnostic.Message?.Contains("could not be found", StringComparison.OrdinalIgnoreCase) == true) ||
+                 (entry.Diagnostic.Message?.Contains("does not exist in the namespace", StringComparison.OrdinalIgnoreCase) == true)));
 
-                var restoreHintText = restoreHint
-                    ? "Many missing-type errors often mean NuGet restore has not been run. Run `dotnet restore` on the solution, then `workspace_reload`."
-                    : (string?)null;
+            var restoreHintText = restoreHint
+                ? "Many missing-type errors often mean NuGet restore has not been run. Run `dotnet restore` on the solution, then `workspace_reload`."
+                : (string?)null;
 
-                // Summary mode: counts by diagnostic ID, no individual diagnostic rows.
-                // 10-100x smaller payload for large solutions.
-                if (summary)
-                {
-                    var diagnosticGroups = allDiagnostics
-                        .GroupBy(entry => entry.Diagnostic.Id)
-                        .Select(group => new
-                        {
-                            id = group.Key,
-                            count = group.Count(),
-                            severity = group.First().Diagnostic.Severity,
-                            category = group.First().Diagnostic.Category,
-                        })
-                        .OrderByDescending(g => g.severity == "Error" ? 0 : g.severity == "Warning" ? 1 : 2)
-                        .ThenByDescending(g => g.count)
-                        .ToList();
-
-                    return JsonSerializer.Serialize(new
+            // Summary mode: counts by diagnostic ID, no individual diagnostic rows.
+            // 10-100x smaller payload for large solutions.
+            if (summary)
+            {
+                var diagnosticGroups = allDiagnostics
+                    .GroupBy(entry => entry.Diagnostic.Id)
+                    .Select(group => new
                     {
-                        summary = true,
-                        totalErrors = results.TotalErrors,
-                        totalWarnings = results.TotalWarnings,
-                        totalInfo = results.TotalInfo,
-                        totalDiagnostics = results.TotalErrors + results.TotalWarnings + results.TotalInfo,
-                        distinctDiagnosticIds = diagnosticGroups.Count,
-                        restoreHint = restoreHintText,
-                        diagnosticGroups,
-                    }, JsonDefaults.Indented);
-                }
+                        id = group.Key,
+                        count = group.Count(),
+                        severity = group.First().Diagnostic.Severity,
+                        category = group.First().Diagnostic.Category,
+                    })
+                    .OrderByDescending(g => g.severity == "Error" ? 0 : g.severity == "Warning" ? 1 : 2)
+                    .ThenByDescending(g => g.count)
+                    .ToList();
 
                 return JsonSerializer.Serialize(new
                 {
+                    summary = true,
                     totalErrors = results.TotalErrors,
                     totalWarnings = results.TotalWarnings,
                     totalInfo = results.TotalInfo,
-                    compilerErrors = results.CompilerErrors,
-                    analyzerErrors = results.AnalyzerErrors,
-                    workspaceErrors = results.WorkspaceErrors,
                     totalDiagnostics = results.TotalErrors + results.TotalWarnings + results.TotalInfo,
-                    offset,
-                    limit,
-                    returnedDiagnostics = pagedDiagnostics.Count,
-                    hasMore,
-                    paginationNote = hasMore
-                        ? "More diagnostics exist in this scope; increase offset, raise limit, or narrow project/file/diagnosticId filters."
-                        : null,
+                    distinctDiagnosticIds = diagnosticGroups.Count,
                     restoreHint = restoreHintText,
-                    workspaceDiagnostics = pagedDiagnostics
-                        .Where(entry => entry.Bucket == DiagnosticBucket.Workspace)
-                        .Select(entry => entry.Diagnostic)
-                        .ToList(),
-                    compilerDiagnostics = pagedDiagnostics
-                        .Where(entry => entry.Bucket == DiagnosticBucket.Compiler)
-                        .Select(entry => entry.Diagnostic)
-                        .ToList(),
-                analyzerDiagnostics = pagedDiagnostics
-                    .Where(entry => entry.Bucket == DiagnosticBucket.Analyzer)
+                    diagnosticGroups,
+                }, JsonDefaults.Indented);
+            }
+
+            return JsonSerializer.Serialize(new
+            {
+                totalErrors = results.TotalErrors,
+                totalWarnings = results.TotalWarnings,
+                totalInfo = results.TotalInfo,
+                compilerErrors = results.CompilerErrors,
+                analyzerErrors = results.AnalyzerErrors,
+                workspaceErrors = results.WorkspaceErrors,
+                totalDiagnostics = results.TotalErrors + results.TotalWarnings + results.TotalInfo,
+                offset,
+                limit,
+                returnedDiagnostics = pagedDiagnostics.Count,
+                hasMore,
+                paginationNote = hasMore
+                    ? "More diagnostics exist in this scope; increase offset, raise limit, or narrow project/file/diagnosticId filters."
+                    : null,
+                restoreHint = restoreHintText,
+                workspaceDiagnostics = pagedDiagnostics
+                    .Where(entry => entry.Bucket == DiagnosticBucket.Workspace)
                     .Select(entry => entry.Diagnostic)
                     .ToList(),
+                compilerDiagnostics = pagedDiagnostics
+                    .Where(entry => entry.Bucket == DiagnosticBucket.Compiler)
+                    .Select(entry => entry.Diagnostic)
+                    .ToList(),
+                analyzerDiagnostics = pagedDiagnostics
+                .Where(entry => entry.Bucket == DiagnosticBucket.Analyzer)
+                .Select(entry => entry.Diagnostic)
+                .ToList(),
             }, JsonDefaults.Indented);
         }, ct);
     }
