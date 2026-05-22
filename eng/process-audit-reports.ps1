@@ -19,7 +19,12 @@
          for `_latest-promotion-scorecard.json` per repo, applies the quorum
          rule, writes the consolidated JSON to `audit-reports/_aggregated-promotion-scorecard.json`.
 
-      3. Prints the next step — invoke `/backlog-intake` (or `/backlog-intake --publish`)
+      3. eng/propose-promotion-scorecard-backlog-rows.ps1
+         Reads the consolidated scorecard and proposes stable backlog row ids for
+         `promote: blocked` and `needs-more-evidence` entries so those findings do
+         not silently disappear from release prep.
+
+      4. Prints the next step — invoke `/backlog-intake` (or `/backlog-intake --publish`)
          to triage `review-inbox/` into `ai_docs/backlog.md` rows and (optionally)
          file Issues via the shared renderer. The intake skill archives processed
          files into `review-inbox/archive/<batch-id>/` automatically.
@@ -75,9 +80,11 @@ $ErrorActionPreference = 'Stop'
 $repoRoot   = Split-Path -Parent $PSScriptRoot
 $stageScript    = Join-Path $PSScriptRoot 'stage-review-inbox.ps1'
 $aggregateScript = Join-Path $PSScriptRoot 'aggregate-promotion-scorecards.ps1'
+$proposalScript  = Join-Path $PSScriptRoot 'propose-promotion-scorecard-backlog-rows.ps1'
 
 if (-not (Test-Path -LiteralPath $stageScript))     { throw "Missing dependency: $stageScript" }
 if (-not (Test-Path -LiteralPath $aggregateScript)) { throw "Missing dependency: $aggregateScript" }
+if (-not (Test-Path -LiteralPath $proposalScript))  { throw "Missing dependency: $proposalScript" }
 
 # ---------- Step 1: stage ----------
 if (-not $SkipStage) {
@@ -120,6 +127,9 @@ if (-not $SkipAggregate) {
     Write-Host "  Verdict counts: promoteReady=$($summary.promoteReady) promoteBlocked=$($summary.promoteBlocked) needsMoreEvidence=$($summary.needsMoreEvidence)"
     if (-not $DryRun) {
         Write-Host "  Wrote: $aggregatedFile" -ForegroundColor Green
+        $proposalJson = & $proposalScript -AggregatedScorecardPath $aggregatedFile
+        $proposal = $proposalJson | ConvertFrom-Json
+        Write-Host "  Backlog proposals: $($proposal.summary.proposed) non-ready entries (skipped: $($proposal.summary.skipped))"
     }
     Write-Host ""
 } else {

@@ -135,6 +135,12 @@ If `label-drift > 0`, emit: `"{k} rows claim 'good first issue' but the Issue no
 
 If the report is entirely `ok` + `failed-lookups == 0`, emit: `"Backlog ↔ GH Issues are reconciled — no action."`.
 
+Promotion-scorecard drift is outside this skill's GitHub-Issue reconciliation
+scope. If `audit-reports/_aggregated-promotion-scorecard.json` exists, mention
+that `/backlog-intake` now consumes `eng/propose-promotion-scorecard-backlog-rows.ps1`
+proposals for `promote: blocked` and `needs-more-evidence` entries; do not try
+to infer those rows from GitHub Issue state here.
+
 ## Refusal cases (explicit)
 
 - **`ai_docs/backlog.md` missing** → refuse per Precondition 1.

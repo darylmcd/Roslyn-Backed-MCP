@@ -84,6 +84,37 @@ For each configured sibling repo (and this repo) with a `backlog.d/` directory:
 
 The existing prose-report ingestion flow (Phases 1–6) continues unchanged for `review-inbox/*.md` artifacts. Fragments and prose reports coexist; they are not mutually exclusive.
 
+### Phase 0.6 — Consume aggregated promotion scorecard proposals
+
+If `audit-reports/_aggregated-promotion-scorecard.json` exists, run:
+
+```bash
+pwsh -NoProfile -File eng/propose-promotion-scorecard-backlog-rows.ps1
+```
+
+This script is read-only: it emits stable backlog-row proposals for aggregated
+promotion-scorecard entries whose verdict is `promote: blocked` or
+`needs-more-evidence`, and it lists `promote: ready` entries as skipped so they
+continue through `/promote-tier`.
+
+For each proposal:
+
+1. If `action == "add-new"`, append the row to the matching priority band using
+   the emitted `id`, `pri`, `deps`, and `do` fields.
+2. If `action == "update-existing"`, update the existing row's `do` cell only
+   when the proposal contains new blockers, source repos, or rationale that the
+   row does not already mention.
+3. Preserve idempotency: rerunning the script after a row is represented must
+   produce `update-existing`, not a duplicate row.
+4. If you intentionally skip a proposal, add a maintainer-readable note to the
+   final summary explaining why it was skipped. Do not silently drop blocked or
+   needs-more-evidence scorecard entries.
+
+The generated `do` cell cites
+`audit-reports/_aggregated-promotion-scorecard.json`; keep that anchor unless
+you move the scorecard into a different durable location as part of the same
+batch.
+
 ### Phase 1 — Extract actionable items (subagent)
 
 Invoke the dedicated `backlog-intake-extractor` subagent:

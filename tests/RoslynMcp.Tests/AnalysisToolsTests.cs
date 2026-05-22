@@ -1,5 +1,8 @@
 using System.Text.Json;
+using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -318,5 +321,69 @@ public sealed class AnalysisToolsTests : SharedWorkspaceTestBase
                 declarationsLimit: 0,
                 ct: CancellationToken.None);
         });
+    }
+
+    [TestMethod]
+    public async Task FindTypeMutations_UnresolvedSymbolHandle_UsesCanonicalMessage()
+    {
+        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(() =>
+            AnalysisTools.FindTypeMutations(
+                gate: WorkspaceExecutionGate,
+                mutationAnalysisService: new NullMutationAnalysisService(),
+                workspaceId: WorkspaceId,
+                symbolHandle: "stale-symbol-handle",
+                ct: CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "No symbol could be resolved for the supplied symbol handle");
+    }
+
+    [TestMethod]
+    public async Task GoToDefinition_CaretOnWhitespace_ReportsPositionSpecificMessage()
+    {
+        var animalServicePath = Path.Combine(Path.GetDirectoryName(SampleSolutionPath)!, "SampleLib", "AnimalService.cs");
+
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "go_to_definition",
+            () =>
+            SymbolTools.GoToDefinition(
+                server: null!,
+                workspaceManager: WorkspaceManager,
+                gate: WorkspaceExecutionGate,
+                symbolNavigationService: SymbolNavigationService,
+                workspaceId: WorkspaceId,
+                filePath: animalServicePath,
+                line: 1,
+                column: 24,
+                ct: CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        var message = doc.RootElement.GetProperty("message").GetString()!;
+
+        StringAssert.Contains(message, "No identifier at this position");
+        Assert.IsFalse(message.Contains("workspace", StringComparison.OrdinalIgnoreCase),
+            $"Whitespace-specific go_to_definition message must not blame workspace loading. Actual: {message}");
+    }
+
+    private sealed class NullMutationAnalysisService : IMutationAnalysisService
+    {
+        public Task<ImpactAnalysisDto?> AnalyzeImpactAsync(
+            string workspaceId, SymbolLocator locator, ImpactAnalysisPaging paging, CancellationToken ct) =>
+            Task.FromResult<ImpactAnalysisDto?>(null);
+
+        public Task<IReadOnlyList<PropertyWriteDto>> FindPropertyWritesAsync(
+            string workspaceId, SymbolLocator locator, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<PropertyWriteDto>>([]);
+
+        public Task<(IReadOnlyList<PropertyWriteDto> Writes, string? ResolvedSymbolKind)> FindPropertyWritesWithMetadataAsync(
+            string workspaceId, SymbolLocator locator, CancellationToken ct) =>
+            Task.FromResult<(IReadOnlyList<PropertyWriteDto>, string?)>(([], null));
+
+        public Task<IReadOnlyList<TypeUsageDto>> FindTypeUsagesAsync(
+            string workspaceId, SymbolLocator locator, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<TypeUsageDto>>([]);
+
+        public Task<TypeMutationDto?> FindTypeMutationsAsync(
+            string workspaceId, SymbolLocator locator, CancellationToken ct) =>
+            Task.FromResult<TypeMutationDto?>(null);
     }
 }

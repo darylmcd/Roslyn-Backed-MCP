@@ -50,7 +50,7 @@ public sealed class SuppressionService : ISuppressionService
         return _editorConfig.SetOptionAsync(workspaceId, sourceFilePath, key, severity.Trim(), "set_diagnostic_severity", ct);
     }
 
-    public Task<TextEditResultDto> AddPragmaWarningDisableAsync(
+    public async Task<TextEditResultDto> AddPragmaWarningDisableAsync(
         string workspaceId, string filePath, int line, string diagnosticId, CancellationToken ct)
     {
         if (line < 1)
@@ -63,9 +63,11 @@ public sealed class SuppressionService : ISuppressionService
             throw new ArgumentException("Diagnostic id is required.", nameof(diagnosticId));
         }
 
-        var pragma = $"#pragma warning disable {diagnosticId.Trim()}{Environment.NewLine}";
+        var newline = await DetectLineEndingAsync(filePath, ct).ConfigureAwait(false);
+        var pragma = $"#pragma warning disable {diagnosticId.Trim()}{newline}";
         var edit = new TextEditDto(line, 1, line, 1, pragma);
-        return _editService.ApplyTextEditsAsync(workspaceId, filePath, [edit], "add_pragma_suppression", ct);
+        return await _editService.ApplyTextEditsAsync(workspaceId, filePath, [edit], "add_pragma_suppression", ct)
+            .ConfigureAwait(false);
     }
 
     public async Task<PragmaVerifyResultDto> VerifyPragmaSuppressesAsync(
@@ -270,6 +272,37 @@ public sealed class SuppressionService : ISuppressionService
 
     private static Task<string> ReadSourceTextAsync(string filePath, CancellationToken ct) =>
         File.ReadAllTextAsync(filePath, ct);
+
+    private static async Task<string> DetectLineEndingAsync(string filePath, CancellationToken ct)
+    {
+        string text;
+        try
+        {
+            text = await ReadSourceTextAsync(filePath, ct).ConfigureAwait(false);
+        }
+        catch (IOException)
+        {
+            return Environment.NewLine;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Environment.NewLine;
+        }
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '\n')
+            {
+                return i > 0 && text[i - 1] == '\r' ? "\r\n" : "\n";
+            }
+            if (text[i] == '\r')
+            {
+                return i + 1 < text.Length && text[i + 1] == '\n' ? "\r\n" : "\r";
+            }
+        }
+
+        return Environment.NewLine;
+    }
 
     /// <summary>
     /// Walks the directive trivia list for the file, collects all <c>#pragma warning</c>

@@ -150,10 +150,113 @@ public sealed class AggregatePromotionScorecardsScriptTests
         Assert.AreEqual(0, summary.GetProperty("promoteBlocked").GetInt32());
     }
 
+    [TestMethod]
+    public void BacklogProposal_BlockedAndNeedsMoreEvidenceEntriesProduceStableRows()
+    {
+        var aggregatedPath = Path.Combine(_siblingParent, "_aggregated-promotion-scorecard.json");
+        var aggregatedJson = """
+            {
+              "schemaVersion": 1,
+              "generatedAt": "2026-05-22T00:00:00Z",
+              "entries": [
+                {
+                  "kind": "tool",
+                  "name": "split_class_preview",
+                  "category": "refactoring",
+                  "currentTier": "experimental",
+                  "verdict": "promote: blocked",
+                  "promoteVotes": 1,
+                  "keepExperimentalVotes": 1,
+                  "deprecateVotes": 0,
+                  "needsMoreEvidenceVotes": 0,
+                  "sourceRepos": {
+                    "promote": [ "repo-a" ],
+                    "keep-experimental": [ "repo-b" ],
+                    "needs-more-evidence": [],
+                    "deprecate": []
+                  },
+                  "blockers": [ "repo-b: source edit preview produced a stale token" ]
+                },
+                {
+                  "kind": "prompt",
+                  "name": "get_prompt_text",
+                  "category": "prompts",
+                  "currentTier": "experimental",
+                  "verdict": "needs-more-evidence",
+                  "promoteVotes": 1,
+                  "keepExperimentalVotes": 0,
+                  "deprecateVotes": 0,
+                  "needsMoreEvidenceVotes": 1,
+                  "sourceRepos": {
+                    "promote": [ "repo-a" ],
+                    "keep-experimental": [],
+                    "needs-more-evidence": [ "repo-c" ],
+                    "deprecate": []
+                  },
+                  "blockers": []
+                },
+                {
+                  "kind": "tool",
+                  "name": "semantic_grep",
+                  "category": "analysis",
+                  "currentTier": "experimental",
+                  "verdict": "promote: ready",
+                  "promoteVotes": 2,
+                  "keepExperimentalVotes": 0,
+                  "deprecateVotes": 0,
+                  "needsMoreEvidenceVotes": 0,
+                  "sourceRepos": {
+                    "promote": [ "repo-a", "repo-b" ],
+                    "keep-experimental": [],
+                    "needs-more-evidence": [],
+                    "deprecate": []
+                  },
+                  "blockers": []
+                }
+              ],
+              "summary": {
+                "promoteReady": 1,
+                "promoteBlocked": 1,
+                "needsMoreEvidence": 1,
+                "noScorecardsAvailable": false
+              }
+            }
+            """;
+        File.WriteAllText(aggregatedPath, aggregatedJson);
+
+        var result = RunBacklogProposalScript(aggregatedPath);
+        Assert.AreEqual(0, result.ExitCode, $"Proposal script failed: stdout={result.StdOut} stderr={result.StdErr}");
+
+        using var doc = JsonDocument.Parse(result.StdOut);
+        var proposals = doc.RootElement.GetProperty("proposals").EnumerateArray().ToArray();
+        Assert.AreEqual(2, proposals.Length, $"Expected only blocked/needs-more-evidence proposals. JSON: {result.StdOut}");
+
+        var ids = proposals.Select(p => p.GetProperty("id").GetString()).ToArray();
+        CollectionAssert.Contains(ids, "promotion-scorecard-tool-split-class-preview-blocked");
+        CollectionAssert.Contains(ids, "promotion-scorecard-prompt-get-prompt-text-needs-more-evidence");
+
+        var blocked = proposals.Single(p => p.GetProperty("id").GetString() == "promotion-scorecard-tool-split-class-preview-blocked");
+        StringAssert.Contains(blocked.GetProperty("do").GetString()!, "repo-b: source edit preview produced a stale token");
+        StringAssert.Contains(blocked.GetProperty("do").GetString()!, "`promote: blocked`");
+        Assert.IsFalse(blocked.GetProperty("do").GetString()!.Contains("$verdict", StringComparison.Ordinal));
+        StringAssert.Contains(blocked.GetProperty("do").GetString()!, "audit-reports/_aggregated-promotion-scorecard.json");
+
+        var skipped = doc.RootElement.GetProperty("skipped").EnumerateArray().ToArray();
+        Assert.AreEqual(1, skipped.Length);
+        Assert.AreEqual("semantic_grep", skipped[0].GetProperty("name").GetString());
+        Assert.AreEqual("promote-ready", skipped[0].GetProperty("reason").GetString());
+    }
+
     private static string ResolveScriptPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
         return Path.Combine(repoRoot, "eng", "aggregate-promotion-scorecards.ps1");
+    }
+
+    private static string ResolveBacklogProposalScriptPath()
+    {
+        var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        return Path.Combine(repoRoot, "eng", "propose-promotion-scorecard-backlog-rows.ps1");
     }
 
     /// <summary>
@@ -226,6 +329,49 @@ public sealed class AggregatePromotionScorecardsScriptTests
         {
             proc.Kill(entireProcessTree: true);
             throw new TimeoutException("pwsh aggregate-promotion-scorecards.ps1 invocation timed out after 60s.");
+        }
+
+        return new PwshResult(proc.ExitCode, stdout, stderr);
+    }
+
+    private static PwshResult RunBacklogProposalScript(string aggregatedPath)
+    {
+        var scriptPath = ResolveBacklogProposalScriptPath();
+        Assert.IsTrue(
+            File.Exists(scriptPath),
+            $"propose-promotion-scorecard-backlog-rows.ps1 was not found at the documented path '{scriptPath}'.");
+
+        var args = new List<string>
+        {
+            "-NoProfile",
+            "-NonInteractive",
+            "-File", scriptPath,
+            "-AggregatedScorecardPath", aggregatedPath
+        };
+
+        var pwshExecutable = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = pwshExecutable,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        foreach (var a in args)
+        {
+            psi.ArgumentList.Add(a);
+        }
+
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException($"Failed to start '{pwshExecutable}'.");
+        var stdout = proc.StandardOutput.ReadToEnd();
+        var stderr = proc.StandardError.ReadToEnd();
+        if (!proc.WaitForExit(milliseconds: 60_000))
+        {
+            proc.Kill(entireProcessTree: true);
+            throw new TimeoutException("pwsh propose-promotion-scorecard-backlog-rows.ps1 invocation timed out after 60s.");
         }
 
         return new PwshResult(proc.ExitCode, stdout, stderr);

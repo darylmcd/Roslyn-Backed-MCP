@@ -363,7 +363,7 @@ public static class AnalysisTools
             ParameterValidation.ValidatePagination(0, limit);
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await mutationAnalysisService.FindTypeMutationsAsync(workspaceId, locator, c);
-            if (result is null) throw new KeyNotFoundException("No named type found at the specified location");
+            if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolCouldNotBeResolvedMessage(locator));
 
             var mutatingMembers = result.MutatingMembers.Take(limit).ToList();
             var hasMore = result.MutatingMembers.Count > mutatingMembers.Count;

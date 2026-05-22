@@ -124,6 +124,33 @@ internal static class SymbolLocatorFactory
         return "No symbol found at the specified location";
     }
 
+    public static string FormatSymbolCouldNotBeResolvedMessage(SymbolLocator locator)
+    {
+        ArgumentNullException.ThrowIfNull(locator);
+
+        string detail;
+        if (locator.HasHandle)
+        {
+            detail = "the supplied symbol handle";
+        }
+        else if (locator.HasMetadataName)
+        {
+            var truncatedName = TruncateForMessage(locator.MetadataName, MetadataNameMessageMaxLength);
+            detail = $"metadata name '{truncatedName}'";
+        }
+        else if (locator.HasSourceLocation)
+        {
+            detail = $"position {locator.FilePath}:{locator.Line}:{locator.Column}";
+        }
+        else
+        {
+            detail = "the supplied locator";
+        }
+
+        return $"No symbol could be resolved for {detail}. The handle may be from a previous workspace " +
+               "version, the symbol may have been removed, or the position may not contain a symbol identifier.";
+    }
+
     /// <summary>
     /// Trims an echoed locator value to <paramref name="maxLength"/> characters, appending an
     /// ellipsis when truncation occurred. Null/empty inputs are passed through verbatim — callers
