@@ -117,7 +117,7 @@ public sealed class PerformanceBaselineTests : SharedWorkspaceTestBase
     public async Task UnusedSymbolScan_Completes_Within_Budget()
     {
         var sw = Stopwatch.StartNew();
-        var results = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
+        _ = await UnusedCodeAnalyzer.FindUnusedSymbolsAsync(
             WorkspaceId,
             new UnusedSymbolsAnalysisOptions { ProjectFilter = null, IncludePublic = true, Limit = 50 },
             CancellationToken.None);

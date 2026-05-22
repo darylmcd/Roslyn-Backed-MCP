@@ -226,7 +226,7 @@ public sealed class P4BehavioralBundleTests : SharedWorkspaceTestBase
         // prefix so downstream tooling can parse it. A simple substring probe on the
         // const is enough — the implementation change lives in SolutionDiffHelper.cs
         // and is asserted end-to-end by the format check below.
-        var method = typeof(SolutionDiffHelper)
+        _ = typeof(SolutionDiffHelper)
             .GetMethod("ComputeChangesAsync", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
             ?? throw new AssertFailedException("ComputeChangesAsync not found");
 

@@ -264,7 +264,6 @@ public sealed class FixAllService : IFixAllService
             var sampleDiag = diagnostics.FirstOrDefault(d => d.Id == diagnosticId);
             if (sampleDiag is null) continue;
 
-            var text = await doc.GetTextAsync(ct).ConfigureAwait(false);
             string? capturedKey = null;
 
             var context = new CodeFixContext(doc, sampleDiag, (action, _) =>
