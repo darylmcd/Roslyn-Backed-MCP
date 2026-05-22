@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-22T19:06:35Z**
+**updated_at: 2026-05-22T19:37:39Z**
 
 ## Agent contract
 
@@ -80,12 +80,4 @@
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Intake procedure for future audit batches |
 | `review-inbox/` | Staging folder for the NEXT audit batch (flat directory; `/backlog-intake` reads here) |
 | `review-inbox/archive/<batch-ts>/` | Processed audit/retro/promotion batches; delete after all actionable items are shipped, rejected, or summarized |
-| `ai_docs/plans/20260513T140000Z_backlog-sweep/plan.md` | Shipped 1 initiative, 1 PR, 2 rows closed |
-| `ai_docs/plans/20260513T010000Z_backlog-sweep/plan.md` | Shipped 10 initiatives, 10 PRs (#716–#726), 10 rows closed |
-| `ai_docs/plans/20260516T200033Z_backlog-sweep/plan.md` | Shipped 15 initiatives, 15 PRs (#779–#798), 15 rows closed |
-| `ai_docs/plans/20260517T025647Z_backlog-sweep/plan.md` | Shipped 3 initiatives, 3 PRs (#803–#805), 3 rows closed |
-| `ai_docs/plans/20260517T235058Z_backlog-sweep/plan.md` | Shipped 10 initiatives, 10 PRs (#810–#819), 11 rows closed |
-| `ai_docs/plans/20260518T221744Z_backlog-sweep/plan.md` | Shipped 15 initiatives, 15 PRs (#823–#838), 15 rows closed |
-| `ai_docs/plans/20260519T145945Z_backlog-sweep/plan.md` | Shipped 6 initiatives, 6 PRs (#842–#847), 6 rows closed |
-| `ai_docs/plans/20260519T193650Z_backlog-sweep/plan.md` | Shipped 15 initiatives, 15 PRs (#852–#871), 15 rows closed |
 | `ai_docs/plans/20260522T132800Z_top5-remediation/plan.md` | Shipped 1 code initiative and closed 1 measurement no-go |
