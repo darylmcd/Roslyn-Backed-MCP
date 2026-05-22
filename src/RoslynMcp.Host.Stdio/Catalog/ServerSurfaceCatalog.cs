@@ -9,7 +9,7 @@ public static partial class ServerSurfaceCatalog
     public const string CatalogVersion = "2026.04";
 
     private static readonly Lazy<IReadOnlyList<SurfaceEntry>> s_allTools = new(
-        static () => [..WorkspaceTools!, ..SymbolTools!, ..AnalysisTools!, ..RefactoringTools!, ..EditingTools!, ..OrchestrationTools!]);
+        static () => [.. WorkspaceTools!, .. SymbolTools!, .. AnalysisTools!, .. RefactoringTools!, .. EditingTools!, .. OrchestrationTools!]);
 
     public static IReadOnlyList<SurfaceEntry> Tools => s_allTools.Value;
 
