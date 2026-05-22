@@ -28,7 +28,6 @@ public sealed class PostApplySymbolRotationTests : SharedWorkspaceTestBase
 
         try
         {
-            var animalServicePath = Path.Combine(solutionDir, "SampleLib", "AnimalService.cs");
             var locator = SymbolLocator.ByMetadataName("SampleLib.AnimalService.GetAllAnimals");
 
             var preview = await RefactoringService.PreviewRenameAsync(

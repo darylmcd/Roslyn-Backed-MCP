@@ -476,7 +476,6 @@ public sealed class OrchestrationIntegrationTests : IsolatedWorkspaceTestBase
 
         // Create a Contracts project that already declares IAnimalService.
         AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
-        var contractsProjectFile = workspace.GetPath("Contracts", "Contracts.csproj");
         var existingInterfaceFile = workspace.GetPath("Contracts", "IAnimalService.cs");
         File.WriteAllText(
             existingInterfaceFile,

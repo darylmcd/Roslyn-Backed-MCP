@@ -43,63 +43,6 @@ internal static class PromptMessageBuilder
             }
         };
 
-    // file-lock-aware-prompt-validation-guidance: when validation surfaces a FileLock envelope
-    // (MSB3027/MSB3021 — another process holds the test assembly), the standard
-    // diagnose-and-retry framing wastes the operator's time because re-running validation
-    // in the same workspace re-acquires the lock. Render an infrastructure-class bypass
-    // instead so the operator pivots to read-side evidence and process cleanup.
-    internal static PromptMessage CreateFileLockBypassGuidance(
-        string promptName,
-        TestRunFailureEnvelopeDto envelope)
-    {
-        var stdOutTail = string.IsNullOrWhiteSpace(envelope.StdOutTail)
-            ? "(empty)"
-            : envelope.StdOutTail;
-        var stdErrTail = string.IsNullOrWhiteSpace(envelope.StdErrTail)
-            ? "(empty)"
-            : envelope.StdErrTail;
-        return CreatePromptMessage($"""
-            **`{promptName}`: infrastructure failure — not a test-authoring problem.**
-
-            The validation step failed with `errorKind: FileLock` (MSB3027/MSB3021). Another
-            process — testhost.exe from a prior run, an IDE test runner, a background build,
-            or the analyzer-DLL self-host — is still holding the test assembly or an analyzer
-            reference. **Do not modify test code or production code in response to this
-            failure.** Re-running `test_run` against the same loaded workspace will re-acquire
-            the lock and reproduce the same envelope.
-
-            **Envelope summary:** {envelope.Summary}
-            **Retryable:** {envelope.IsRetryable}
-
-            **StdOut tail:**
-            ```
-            {stdOutTail}
-            ```
-
-            **StdErr tail:**
-            ```
-            {stdErrTail}
-            ```
-
-            **Recommended bypass (in order):**
-            1. Use `compile_check` (or `project_diagnostics` / `diagnostic_details`) for
-               read-side evidence of compile correctness while the lock persists. Read-side
-               tools do not load test hosts and so will not collide with the holder.
-            2. Close any IDE or sidecar process still running tests against this solution
-               (Visual Studio Test Explorer, JetBrains Rider runner, a stale `dotnet watch`),
-               then call `workspace_reload` and retry the original validation. The reload
-               releases the analyzer-DLL handles inside the MCP server's own workspace.
-            3. If the holder is unclear, run `dotnet build-server shutdown` from a shell
-               outside this MCP server, then re-issue the validation from an isolated
-               process (a fresh terminal or a new `dotnet test` invocation), bypassing any
-               daemon that is holding the assembly mid-process.
-
-            **Only after the bypass succeeds** — i.e., the same invocation now produces a
-            structured pass/fail result instead of a FileLock envelope — return to the
-            usual diagnose-fix-revalidate loop.
-            """);
-    }
-
     internal static string FormatSourceContext(string sourceText, int startLine, int? endLine)
     {
         var lines = sourceText.Split('\n');
