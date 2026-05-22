@@ -87,10 +87,10 @@ public sealed class SymbolNavigationService : ISymbolNavigationService
             return results;
         }
 
-        // Provide descriptive message when nothing in the type's hierarchy has a source location
-        // (built-in/primitive types, BCL generics whose arguments are also in metadata, etc.).
-        throw new InvalidOperationException(
-            $"Cannot navigate to type definition for '{typeSymbol.ToDisplayString()}' — " +
+        // Metadata-only types are a normal "not found in source" outcome, not an invalid
+        // operation. Use KeyNotFoundException so the tool layer returns category=NotFound.
+        throw new KeyNotFoundException(
+            $"Cannot navigate to type definition for metadata-only type '{typeSymbol.ToDisplayString()}': " +
             "neither the type nor any of its type arguments are defined in source. " +
             "This typically means the type is defined in the .NET runtime or an external assembly.");
     }

@@ -1,4 +1,7 @@
+using System.Text.Json;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Tests.Helpers;
 
 namespace RoslynMcp.Tests;
 
@@ -44,16 +47,41 @@ public sealed class GoToTypeDefinitionTests : SharedWorkspaceTestBase
     }
 
     [TestMethod]
-    public async Task GoToTypeDefinition_BclPrimitive_ThrowsWithDescriptiveMessage()
+    public async Task GoToTypeDefinition_BclPrimitive_ThrowsNotFound()
     {
         // AnimalService.cs line 21: `Console.WriteLine($"{animal.Name} says {sound}");`
         // Cursor on `sound` (line 20 col 13 declared as `var sound = animal.Speak();` returning string).
         var locator = SymbolLocator.BySource(_animalServicePath, line: 20, column: 17);
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(() =>
+        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(() =>
             SymbolNavigationService.GoToTypeDefinitionAsync(
                 _workspaceId, locator, CancellationToken.None));
 
-        StringAssert.Contains(ex.Message, "Cannot navigate to type definition");
+        StringAssert.Contains(ex.Message, "metadata-only");
+    }
+
+    [TestMethod]
+    public async Task GoToTypeDefinition_Tool_BclPrimitive_ReturnsNotFoundEnvelope()
+    {
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "goto_type_definition",
+            () => SymbolTools.GoToTypeDefinition(
+                WorkspaceExecutionGate,
+                SymbolNavigationService,
+                _workspaceId,
+                filePath: _animalServicePath,
+                line: 20,
+                column: 17,
+                symbolHandle: null,
+                metadataName: null,
+                ct: CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("NotFound", doc.RootElement.GetProperty("category").GetString());
+        var message = doc.RootElement.GetProperty("message").GetString() ?? string.Empty;
+        StringAssert.Contains(message, "metadata-only");
     }
 }

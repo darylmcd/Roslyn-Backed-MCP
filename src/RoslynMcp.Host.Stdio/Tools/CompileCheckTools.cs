@@ -38,10 +38,22 @@ public static class CompileCheckTools
         return ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
-            c => compileCheckService.CheckAsync(
-                workspaceId,
-                new CompileCheckOptions(projectName, emitValidation, severity, file, offset, limit, files),
-                c),
+            async c =>
+            {
+                var result = await compileCheckService.CheckAsync(
+                    workspaceId,
+                    new CompileCheckOptions(projectName, emitValidation, severity, file, offset, limit, files),
+                    c).ConfigureAwait(false);
+
+                if (!string.IsNullOrWhiteSpace(projectName) && result.TotalProjects == 0)
+                {
+                    throw new ArgumentException(
+                        $"projectName '{projectName}' matched 0 projects. Omit projectName or use workspace_status to inspect available project names.",
+                        nameof(projectName));
+                }
+
+                return result;
+            },
             ct);
     }
 }

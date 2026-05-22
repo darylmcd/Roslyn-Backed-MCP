@@ -25,6 +25,12 @@ public sealed record DuplicateMethodAnalysisOptions
     /// </summary>
     public string? ProjectFilter { get; init; }
 
+    /// <summary>
+    /// When true, skip [McpServerTool]-attributed methods whose body is a single
+    /// delegation. These are intentional protocol wrapper shims, not copy-paste debt.
+    /// </summary>
+    public bool ExcludeMcpToolWrappers { get; init; } = true;
+
     /// <summary>Maximum number of groups to return. Defaults to 50.</summary>
     public int Limit { get; init; } = 50;
 }

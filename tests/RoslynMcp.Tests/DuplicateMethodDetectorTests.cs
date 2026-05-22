@@ -112,6 +112,117 @@ public sealed class DuplicateMethodDetectorTests
     }
 
     [TestMethod]
+    public async Task FindDuplicatedMethods_McpToolWrappers_AreExcludedByDefault()
+    {
+        var source = """
+            namespace ModelContextProtocol.Server
+            {
+                public sealed class McpServerToolAttribute : System.Attribute
+                {
+                    public string? Name { get; set; }
+                }
+            }
+
+            namespace Sample
+            {
+                using ModelContextProtocol.Server;
+
+                public interface IToolSink
+                {
+                    string Dispatch(string workspaceId);
+                }
+
+                public static class ToolWrappers
+                {
+                    [McpServerTool(Name = "tool_a")]
+                    public static string ToolA(IToolSink sink, string workspaceId)
+                    {
+                        return sink.Dispatch(workspaceId);
+                    }
+
+                    [McpServerTool(Name = "tool_b")]
+                    public static string ToolB(IToolSink sink, string workspaceId)
+                    {
+                        return sink.Dispatch(workspaceId);
+                    }
+
+                    [McpServerTool(Name = "tool_c")]
+                    public static string ToolC(IToolSink sink, string workspaceId)
+                    {
+                        return sink.Dispatch(workspaceId);
+                    }
+                }
+            }
+            """;
+
+        var service = BuildServiceWithSource(source, out _);
+
+        var groups = await service.FindDuplicatedMethodsAsync(
+            WorkspaceId,
+            new DuplicateMethodAnalysisOptions { MinLines = 1, Limit = 50 },
+            default);
+
+        Assert.IsFalse(
+            groups.SelectMany(g => g.Methods).Any(m => m.ContainingType == "ToolWrappers"),
+            "MCP tool wrapper shims are intentionally repetitive and should be excluded by default.");
+    }
+
+    [TestMethod]
+    public async Task FindDuplicatedMethods_McpToolWrappers_CanBeIncluded()
+    {
+        var source = """
+            namespace ModelContextProtocol.Server
+            {
+                public sealed class McpServerToolAttribute : System.Attribute
+                {
+                    public string? Name { get; set; }
+                }
+            }
+
+            namespace Sample
+            {
+                using ModelContextProtocol.Server;
+
+                public interface IToolSink
+                {
+                    string Dispatch(string workspaceId);
+                }
+
+                public static class ToolWrappers
+                {
+                    [McpServerTool(Name = "tool_a")]
+                    public static string ToolA(IToolSink sink, string workspaceId)
+                    {
+                        return sink.Dispatch(workspaceId);
+                    }
+
+                    [McpServerTool(Name = "tool_b")]
+                    public static string ToolB(IToolSink sink, string workspaceId)
+                    {
+                        return sink.Dispatch(workspaceId);
+                    }
+                }
+            }
+            """;
+
+        var service = BuildServiceWithSource(source, out _);
+
+        var groups = await service.FindDuplicatedMethodsAsync(
+            WorkspaceId,
+            new DuplicateMethodAnalysisOptions
+            {
+                MinLines = 1,
+                Limit = 50,
+                ExcludeMcpToolWrappers = false
+            },
+            default);
+
+        Assert.IsTrue(
+            groups.SelectMany(g => g.Methods).Any(m => m.ContainingType == "ToolWrappers"),
+            "Callers can opt back into wrapper clusters when they explicitly want raw structural duplicates.");
+    }
+
+    [TestMethod]
     public async Task FindDuplicatedMethods_OverloadsWithIdenticalBodies_Cluster()
     {
         // Overload-handling invariant: bucketing is by body shape, not method name —

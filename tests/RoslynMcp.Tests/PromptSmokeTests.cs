@@ -227,6 +227,36 @@ public sealed class PromptSmokeTests : SharedWorkspaceTestBase
             "could not be deserialized");
     }
 
+    [TestMethod]
+    public async Task GetPromptText_MissingRequiredParameters_ReturnsAllMissingNames()
+    {
+        using var services = new ServiceCollection()
+            .AddSingleton<IDiagnosticService>(DiagnosticService)
+            .AddSingleton<IWorkspaceManager>(WorkspaceManager)
+            .BuildServiceProvider();
+
+        var json = await ToolExecutionTestHarness.RunAsync(
+            "get_prompt_text",
+            () => PromptShimTools.GetPromptText(
+                services,
+                promptName: "explain_error",
+                parametersJson: "{}",
+                CancellationToken.None));
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.TryGetProperty("error", out var errorProp),
+            $"Expected structured error envelope. Actual: {json}");
+        Assert.IsTrue(errorProp.GetBoolean());
+        Assert.AreEqual("InvalidArgument", doc.RootElement.GetProperty("category").GetString());
+
+        var message = doc.RootElement.GetProperty("message").GetString() ?? string.Empty;
+        foreach (var requiredName in new[] { "workspaceId", "diagnosticId", "filePath", "line", "column" })
+        {
+            StringAssert.Contains(message, requiredName,
+                $"Missing-parameter message should enumerate every missing required prompt parameter. Actual: {message}");
+        }
+    }
+
     // file-lock-aware-prompt-validation-guidance + get-prompt-text-side-effects-in-rendering:
     // the FileLock-bypass guidance is now baked into the static template. The prompt no longer
     // takes a TestRunnerService parameter and never invokes RunTestsAsync — the caller runs

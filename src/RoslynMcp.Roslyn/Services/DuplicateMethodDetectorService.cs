@@ -119,6 +119,7 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
             // both `[Theory]` and the fully-qualified `[TheoryAttribute]` form match. Pure
             // syntactic check; no xUnit reference needed.
             if (HasTheoryAttribute(method)) continue;
+            if (options.ExcludeMcpToolWrappers && IsMcpToolWrapper(method)) continue;
 
             var lineSpan = method.GetLocation().GetLineSpan();
             var startLine = lineSpan.StartLinePosition.Line + 1;
@@ -198,6 +199,39 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
     }
 
     /// <summary>
+    /// MCP tool wrappers are intentionally repetitive single-delegation shims: the
+    /// protocol attribute requires one method per exported tool name, so a duplicate
+    /// cluster here is noise rather than refactoring signal.
+    /// </summary>
+    private static bool IsMcpToolWrapper(MethodDeclarationSyntax method)
+    {
+        if (!HasAttributeNamed(method, "McpServerTool")) return false;
+
+        if (method.ExpressionBody?.Expression is { } expression)
+            return IsDelegationExpression(expression);
+
+        if (method.Body?.Statements is not { Count: 1 } statements)
+            return false;
+
+        return statements[0] switch
+        {
+            ReturnStatementSyntax { Expression: { } returnExpression } => IsDelegationExpression(returnExpression),
+            ExpressionStatementSyntax { Expression: { } statementExpression } => IsDelegationExpression(statementExpression),
+            _ => false
+        };
+    }
+
+    private static bool IsDelegationExpression(ExpressionSyntax expression)
+    {
+        if (expression is AwaitExpressionSyntax awaitExpression)
+        {
+            expression = awaitExpression.Expression;
+        }
+
+        return expression is InvocationExpressionSyntax;
+    }
+
+    /// <summary>
     /// True when the bucket is exactly two members whose names are complementary
     /// <c>To*</c>/<c>From*</c> forms sharing the same stem — e.g. <c>ToDto</c>/<c>FromDto</c>,
     /// <c>ToWire</c>/<c>FromWire</c>. The heuristic is intentionally strict: three or more
@@ -250,6 +284,9 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
     /// (so <c>[Xunit.TheoryAttribute]</c> matches too). No semantic-model lookup.
     /// </summary>
     private static bool HasTheoryAttribute(MethodDeclarationSyntax method)
+        => HasAttributeNamed(method, "Theory");
+
+    private static bool HasAttributeNamed(MethodDeclarationSyntax method, string attributeName)
     {
         foreach (var list in method.AttributeLists)
         {
@@ -262,8 +299,8 @@ public sealed class DuplicateMethodDetectorService : IDuplicateMethodDetectorSer
                     _ => string.Empty,
                 };
                 if (string.IsNullOrEmpty(name)) continue;
-                if (name.Equals("Theory", StringComparison.Ordinal)
-                    || name.Equals("TheoryAttribute", StringComparison.Ordinal))
+                if (name.Equals(attributeName, StringComparison.Ordinal)
+                    || name.Equals(attributeName + "Attribute", StringComparison.Ordinal))
                 {
                     return true;
                 }
