@@ -83,6 +83,8 @@ public sealed class CohesionAnalysisTests : IsolatedWorkspaceTestBase
         Assert.IsTrue(interfaces.Count > 0, "Expected at least one interface when includeInterfaces=true.");
         Assert.IsTrue(interfaces.All(i => i.Lcom4Score == i.MethodCount),
             "Interface metrics should use trivial LCOM4 equal to method count.");
+        Assert.IsTrue(interfaces.All(i => !string.IsNullOrWhiteSpace(i.Recommendation)),
+            "Every cohesion result, including interfaces, should carry deterministic recommendation text.");
     }
 
     [TestMethod]
@@ -360,8 +362,10 @@ public class NotATriadAction
         Assert.IsNotNull(notTriad, "NotATriadAction should appear in cohesion metrics.");
         Assert.IsNull(notTriad.LifecyclePattern,
             "LifecyclePattern must be null when the Describe/Validate/Execute triad is incomplete (only Describe + Foo + Bar).");
-        Assert.IsNull(notTriad.Recommendation,
-            "Recommendation must be null when no lifecycle pattern applies, so callers fall back to the default split suggestion.");
+        Assert.IsNotNull(notTriad.Recommendation,
+            "Unclassified types should still carry generic recommendation text.");
+        StringAssert.Contains(notTriad.Recommendation, "No known lifecycle pattern detected",
+            "Unclassified recommendations should distinguish the generic path from pattern-specific guidance.");
         Assert.AreEqual(3, notTriad.Lcom4Score,
             "Three orthogonal methods with no shared fields should yield Lcom4Score=3 (default message applies).");
     }
@@ -453,8 +457,8 @@ public sealed class ZeroFieldHelper
         Assert.IsNotNull(helper, "ZeroFieldHelper should appear in cohesion metrics.");
         Assert.IsNull(helper.LifecyclePattern,
             "Zero-field type that does NOT implement an interface must NOT be classified as facade.");
-        Assert.IsNull(helper.Recommendation,
-            "Recommendation must be null when no lifecycle pattern applies, leaving the default split suggestion intact.");
+        Assert.IsNotNull(helper.Recommendation,
+            "Recommendation must be populated with generic guidance when no lifecycle pattern applies.");
     }
 
     [TestMethod]

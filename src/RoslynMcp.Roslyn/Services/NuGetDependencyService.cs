@@ -100,7 +100,8 @@ public sealed class NuGetDependencyService : INuGetDependencyService
 
                     packages.Add(new NuGetPackageReferenceDto(id, version, resolvedCentral));
 
-                    var key = (id, version);
+                    var displayVersion = GetDisplayVersion(version, resolvedCentral);
+                    var key = (id, displayVersion);
                     if (!packageMap.TryGetValue(key, out var users))
                     {
                         users = [];
@@ -119,22 +120,7 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         }
 
         var packageDtos = packageMap.Select(kvp =>
-        {
-            var displayVersion = kvp.Key.Version;
-            if (string.Equals(kvp.Key.Version, "centrally-managed", StringComparison.OrdinalIgnoreCase))
-            {
-                var resolved = projectDtos
-                    .SelectMany(p => p.PackageReferences)
-                    .Where(pr => string.Equals(pr.PackageId, kvp.Key.Id, StringComparison.OrdinalIgnoreCase) &&
-                                 string.Equals(pr.Version, "centrally-managed", StringComparison.OrdinalIgnoreCase))
-                    .Select(pr => pr.ResolvedCentralVersion)
-                    .FirstOrDefault(rv => !string.IsNullOrEmpty(rv));
-                if (resolved is not null)
-                    displayVersion = resolved;
-            }
-
-            return new NuGetPackageDto(kvp.Key.Id, displayVersion, kvp.Value);
-        }).ToList();
+            new NuGetPackageDto(kvp.Key.Id, kvp.Key.Version, kvp.Value)).ToList();
 
         if (summary)
         {
@@ -171,6 +157,14 @@ public sealed class NuGetDependencyService : INuGetDependencyService
         }
 
         return new NuGetDependencyResultDto(packageDtos, projectDtos);
+    }
+
+    private static string GetDisplayVersion(string version, string? resolvedCentralVersion)
+    {
+        return string.Equals(version, "centrally-managed", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(resolvedCentralVersion)
+            ? resolvedCentralVersion
+            : version;
     }
 
     public async Task<NuGetVulnerabilityScanResultDto> ScanNuGetVulnerabilitiesAsync(

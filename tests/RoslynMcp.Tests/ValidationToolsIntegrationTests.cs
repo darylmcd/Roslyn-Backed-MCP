@@ -85,9 +85,10 @@ public sealed class ValidationToolsIntegrationTests : SharedWorkspaceTestBase
             emitValidation: false,
             severity: null,
             file: null,
+            files: null,
             offset: 0,
             limit: 50,
-            CancellationToken.None);
+            ct: CancellationToken.None);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
         Assert.IsTrue(

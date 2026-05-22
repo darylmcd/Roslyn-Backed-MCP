@@ -51,6 +51,55 @@ function Write-Step([string] $Message) {
     Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
+function Normalize-PackagePath([string] $Path) {
+    $normalized = $Path.Trim().Replace('\', '/')
+    while ($normalized.StartsWith("./", [StringComparison]::Ordinal)) {
+        $normalized = $normalized.Substring(2)
+    }
+    return $normalized
+}
+
+function Read-PackageAllowlist([string] $Path) {
+    if (-not (Test-Path $Path)) {
+        throw "Package allowlist not found at $Path."
+    }
+
+    $patterns = [System.Collections.Generic.List[string]]::new()
+    foreach ($line in Get-Content $Path) {
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#", [StringComparison]::Ordinal)) {
+            continue
+        }
+        $patterns.Add((Normalize-PackagePath $trimmed))
+    }
+
+    if ($patterns.Count -eq 0) {
+        throw "Package allowlist is empty at $Path."
+    }
+
+    return $patterns.ToArray()
+}
+
+function Test-PackageAllowlistMatch([string] $Path, [string[]] $Patterns) {
+    $normalized = Normalize-PackagePath $Path
+    foreach ($pattern in $Patterns) {
+        if ($pattern.EndsWith("/**", [StringComparison]::Ordinal)) {
+            $prefix = $pattern.Substring(0, $pattern.Length - 2)
+            if ($normalized.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+            }
+        } elseif ($pattern.Contains("*")) {
+            if ($normalized -like $pattern) {
+                return $true
+            }
+        } elseif ($normalized.Equals($pattern, [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 $pluginsDir = Join-Path $ClaudeHome 'plugins'
 $marketplaceDir = Join-Path $pluginsDir "marketplaces/$MarketplaceName"
 $knownMarketplacesPath = Join-Path $pluginsDir 'known_marketplaces.json'
@@ -130,7 +179,9 @@ New-Item -ItemType Directory -Path $cacheDir | Out-Null
 
 Push-Location $marketplaceDir
 try {
-    $trackedFiles = git ls-files
+    $allowlistPath = Join-Path $marketplaceDir '.claude-plugin/package-allowlist.txt'
+    $allowlist = Read-PackageAllowlist $allowlistPath
+    $trackedFiles = @(git ls-files | Where-Object { Test-PackageAllowlistMatch $_ $allowlist })
     foreach ($relPath in $trackedFiles) {
         $src = Join-Path $marketplaceDir $relPath
         $dst = Join-Path $cacheDir $relPath
@@ -140,7 +191,7 @@ try {
         }
         Copy-Item $src $dst -Force
     }
-    Write-Host "    Copied $($trackedFiles.Count) files"
+    Write-Host "    Copied $($trackedFiles.Count) allowlisted files"
 }
 finally {
     Pop-Location

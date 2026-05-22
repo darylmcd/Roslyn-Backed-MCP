@@ -525,6 +525,7 @@ $RECYCLE.BIN/
 !.claude/agents/**
 !.claude/settings.json
 .worktrees/
+.roslynmcp/
 
 # Cursor IDE configuration (developer machine specific).
 # .cursor/mcp.json and .cursor/rules/ are tracked — they hold shared MCP-client

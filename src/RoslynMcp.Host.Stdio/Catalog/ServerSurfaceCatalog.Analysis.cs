@@ -33,6 +33,7 @@ public static partial class ServerSurfaceCatalog
         Tool("test_reference_map", "validation", "experimental", true, false, "Statically map source symbols to test references; returns covered/uncovered symbol lists and a coverage percentage. Supports offset/limit pagination and projectName scoping."),
         Tool("validate_workspace", "validation", "experimental", true, false, "Composite post-edit validation: compile_check + project_diagnostics (errors) + test_related_files (+ optional test_run)."),
         Tool("validate_recent_git_changes", "validation", "experimental", true, false, "post-edit-validate-workspace-scoped-to-touched-files: auto-scoped validation companion that derives changedFilePaths from git status --porcelain, falls back to full-workspace scope with a warning when git is unavailable or the solution is outside a git repo."),
+        Tool("workspace_fork_apply", "validation", "experimental", false, false, "Fork a loaded workspace, replay a preview token into the fork, validate it, and retain/drop the fork by policy."),
         Tool("test_coverage", "validation", "stable", false, false, "Run coverage collection for test execution."),
         Tool("find_consumers", "analysis", "stable", true, false, "Find all types that depend on a given type or interface, classified by dependency kind. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated)."),
         Tool("get_cohesion_metrics", "analysis", "stable", true, false, "Measure type cohesion via LCOM4 metrics, identifying independent method clusters."),

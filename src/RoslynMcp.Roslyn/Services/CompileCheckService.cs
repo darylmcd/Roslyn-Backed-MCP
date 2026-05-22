@@ -38,21 +38,19 @@ public sealed class CompileCheckService : ICompileCheckService
         CompileCheckOptions options,
         CancellationToken ct)
     {
-        var (projectFilter, emitValidation, severityFilter, fileFilter, offset, limit) = options;
+        var (projectFilter, emitValidation, severityFilter, fileFilter, offset, limit, fileFilters) = options;
         var sw = Stopwatch.StartNew();
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var projectList = ProjectFilterHelper.FilterProjects(solution, projectFilter).ToList();
 
         var minSeverity = ParseMinimumSeverity(severityFilter);
-        var normalizedFileFilter = string.IsNullOrWhiteSpace(fileFilter)
-            ? null
-            : Path.GetFullPath(fileFilter);
+        var normalizedFileFilters = NormalizeFileFilters(fileFilter, fileFilters);
+        var (projectList, fileScopeHint) = ResolveProjectScope(solution, projectFilter, normalizedFileFilters);
 
         var acc = new CompileCheckAccumulator();
 
         try
         {
-            await CollectDiagnosticsAsync(projectList, emitValidation, minSeverity, normalizedFileFilter, acc, ct)
+            await CollectDiagnosticsAsync(projectList, emitValidation, minSeverity, normalizedFileFilters, acc, ct)
                 .ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -66,7 +64,7 @@ public sealed class CompileCheckService : ICompileCheckService
         var pagedDiagnostics = acc.Diagnostics.Skip(offset).Take(limit).ToList();
         sw.Stop();
 
-        var hint = BuildHint(projectFilter, projectList.Count, acc);
+        var hint = BuildHint(projectFilter, projectList.Count, acc, fileScopeHint);
 
         return new CompileCheckDto(
             // A true Success requires that we actually evaluated at least one project.
@@ -100,7 +98,7 @@ public sealed class CompileCheckService : ICompileCheckService
         IReadOnlyList<Project> projectList,
         bool emitValidation,
         DiagnosticSeverity? minSeverity,
-        string? normalizedFileFilter,
+        IReadOnlySet<string>? normalizedFileFilters,
         CompileCheckAccumulator acc,
         CancellationToken ct)
     {
@@ -115,7 +113,7 @@ public sealed class CompileCheckService : ICompileCheckService
                 ? EmitAndGetDiagnostics(compilation, ct)
                 : compilation.GetDiagnostics(ct);
 
-            AppendFilteredDiagnostics(diagnostics, minSeverity, normalizedFileFilter, acc);
+            AppendFilteredDiagnostics(diagnostics, minSeverity, normalizedFileFilters, acc);
 
             acc.CompletedProjects++;
         }
@@ -144,13 +142,13 @@ public sealed class CompileCheckService : ICompileCheckService
     private static void AppendFilteredDiagnostics(
         IEnumerable<Diagnostic> diagnostics,
         DiagnosticSeverity? minSeverity,
-        string? normalizedFileFilter,
+        IReadOnlySet<string>? normalizedFileFilters,
         CompileCheckAccumulator acc)
     {
         foreach (var diag in diagnostics)
         {
             var lineSpan = diag.Location.GetMappedLineSpan();
-            if (!ShouldReportDiagnostic(diag, minSeverity, normalizedFileFilter, lineSpan)) continue;
+            if (!ShouldReportDiagnostic(diag, minSeverity, normalizedFileFilters, lineSpan)) continue;
 
             if (diag.Severity == DiagnosticSeverity.Error) acc.ErrorCount++;
             else if (diag.Severity == DiagnosticSeverity.Warning) acc.WarningCount++;
@@ -169,17 +167,17 @@ public sealed class CompileCheckService : ICompileCheckService
     private static bool ShouldReportDiagnostic(
         Diagnostic diag,
         DiagnosticSeverity? minSeverity,
-        string? normalizedFileFilter,
+        IReadOnlySet<string>? normalizedFileFilters,
         FileLinePositionSpan lineSpan)
     {
         if (diag.Severity == DiagnosticSeverity.Hidden) return false;
         if (minSeverity is not null && diag.Severity < minSeverity) return false;
 
-        if (normalizedFileFilter is null) return true;
+        if (normalizedFileFilters is null || normalizedFileFilters.Count == 0) return true;
 
         var diagPath = lineSpan.Path;
         if (string.IsNullOrEmpty(diagPath)) return false;
-        return Path.GetFullPath(diagPath).Equals(normalizedFileFilter, StringComparison.OrdinalIgnoreCase);
+        return normalizedFileFilters.Contains(Path.GetFullPath(diagPath));
     }
 
     /// <summary>
@@ -208,7 +206,11 @@ public sealed class CompileCheckService : ICompileCheckService
     /// first, space, then restore) to preserve the exact wire string that existing
     /// tests assert against.
     /// </summary>
-    private static string? BuildHint(string? projectFilter, int projectCount, CompileCheckAccumulator acc)
+    private static string? BuildHint(
+        string? projectFilter,
+        int projectCount,
+        CompileCheckAccumulator acc,
+        string? fileScopeHint)
     {
         // Heuristic: many CS0234 ("type or namespace not found") errors across the solution
         // usually indicate NuGet packages haven't been restored.
@@ -233,9 +235,84 @@ public sealed class CompileCheckService : ICompileCheckService
                 : $"compile_check evaluated 0 projects: projectFilter '{projectFilter}' did not match any project in the workspace. Project names are matched case-insensitively against Project.Name (e.g. 'MyProject', not 'MyProject.csproj'). Call workspace_status for the current project list.";
         }
 
-        return zeroProjectsHint is not null && restoreHint is not null
-            ? zeroProjectsHint + " " + restoreHint
-            : zeroProjectsHint ?? restoreHint;
+        return string.Join(" ", new[] { zeroProjectsHint, restoreHint, fileScopeHint }
+            .Where(static hint => !string.IsNullOrWhiteSpace(hint)));
+    }
+
+    private static IReadOnlySet<string>? NormalizeFileFilters(string? fileFilter, IReadOnlyList<string>? fileFilters)
+    {
+        var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddNormalized(fileFilter, normalized);
+        if (fileFilters is not null)
+        {
+            foreach (var file in fileFilters)
+            {
+                AddNormalized(file, normalized);
+            }
+        }
+
+        return normalized.Count == 0 ? null : normalized;
+    }
+
+    private static void AddNormalized(string? filePath, HashSet<string> normalized)
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        normalized.Add(Path.GetFullPath(filePath));
+    }
+
+    private static (IReadOnlyList<Project> Projects, string? ScopeHint) ResolveProjectScope(
+        Solution solution,
+        string? projectFilter,
+        IReadOnlySet<string>? normalizedFileFilters)
+    {
+        var filteredProjects = ProjectFilterHelper.FilterProjects(solution, projectFilter).ToList();
+        if (!string.IsNullOrWhiteSpace(projectFilter) || normalizedFileFilters is null || normalizedFileFilters.Count == 0)
+        {
+            return (filteredProjects, null);
+        }
+
+        var owningProjects = FindOwningProjects(solution, normalizedFileFilters);
+        if (owningProjects.Count == 1)
+        {
+            return ([owningProjects.Single()], null);
+        }
+
+        var reason = owningProjects.Count == 0
+            ? "did not resolve to any loaded workspace document"
+            : "resolved to multiple projects";
+        return (filteredProjects,
+            $"compile_check file filter fallback: supplied file scope {reason}; compiled the full project scope and filtered returned diagnostics by file path.");
+    }
+
+    private static HashSet<Project> FindOwningProjects(Solution solution, IReadOnlySet<string> normalizedFileFilters)
+    {
+        var owningProjects = new HashSet<Project>();
+        var unresolvedFiles = new HashSet<string>(normalizedFileFilters, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var project in solution.Projects)
+        {
+            foreach (var document in project.Documents)
+            {
+                if (document.FilePath is null)
+                {
+                    continue;
+                }
+
+                var documentPath = Path.GetFullPath(document.FilePath);
+                if (normalizedFileFilters.Contains(documentPath))
+                {
+                    owningProjects.Add(project);
+                    unresolvedFiles.Remove(documentPath);
+                }
+            }
+        }
+
+        return unresolvedFiles.Count == 0 ? owningProjects : [];
     }
 
     private static DiagnosticSeverity? ParseMinimumSeverity(string? severityFilter)
