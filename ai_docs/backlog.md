@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-26T04:00:00Z**
+**updated_at: 2026-05-26T05:00:00Z**
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 |----|-----|------|-----|
 | `release-cut-unreleased-fragments` | High | none | 8 changelog fragments staged in `changelog.d/` since v2.2.2 (workspace cache extraction PR #887, auto-reload decoupling #885, top-5 remediations #884/#883, dead-code cleanup, pragma-suppression fix, plan-dir cleanup, agent-prompt refresh). Cut **v2.3.0** (minor — includes WorkspaceCacheCoordinator extraction and dead-code removal, both behavior-preserving but architecturally meaningful) via `/release-cut minor`; consumes the 8 fragments and tags the release. Anchors: `changelog.d/*.md`, `CHANGELOG.md`, `Directory.Build.props`, `eng/version.json`, `.claude-plugin/server.json`. Regression test shape: `eng/verify-release.ps1` passes; post-tag `server_info` returns the new version. Evidence: `git log v2.2.2..HEAD --oneline` shows 9 unreleased commits; 8 fragments queued. Source: 2026-05-26 discovery-sweep work-search. |
 | `workspace-manager-loadintosession-split` | High | none | `WorkspaceManager.LoadIntoSessionAsync` is 217 LOC / CC 17 inside a 1791 LOC class — single monolith hosting MSBuild init, atomic swap, diagnostics queue, and cache hooks. Extract `WorkspaceSessionLoader` (MSBuild creation + global-properties wiring + swap-on-success) and `WorkspaceDiagnosticsSink` (workspace failed-event handler + bounded queue); keep `WorkspaceManager` as orchestration only. Anchors: `src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs:167,765-984`. Regression test shape: `WorkspaceManagerEvictionTests` + `AutoReloadCascadeHostCrashTests` + `WorkspaceLoadRestoreRaceTests` stay green; new unit covers loader-throws path leaving `session.Workspace` pointing at old non-disposed workspace (autoreload-cascade invariant preserved). Evidence: `mcp__roslyn__get_complexity_metrics` ranks 1-2 (LoadAsync CC 17/156 + LoadIntoSessionAsync CC 17/217); already partial-extracted by PR #887 (WorkspaceCacheCoordinator). Source: 2026-05-26 discovery-sweep refactor audit. |
-| `test-coverage-tools-runtestcoveragecore-split` | High | none | `TestCoverageTools.RunTestCoverageCore` is a 216 LOC / CC 20 / 8-param method bundling gating, dotnet invocation, cobertura parsing, and envelope shaping; `ParseAndAggregateCoberturaXml` is also CC 20. Move cobertura aggregation + envelope-with-deprecation construction into a `TestCoverageCoordinator` service under `RoslynMcp.Roslyn`, leaving the tool method as a ~30-line orchestrator. Anchors: `src/RoslynMcp.Host.Stdio/Tools/TestCoverageTools.cs:37-330,353-421`. Regression test shape: `TestCoveragePartialCoverletTests` + `Top10V2RegressionTests` stay green; new service unit covers cobertura aggregation independently from gate+runner orchestration. Evidence: `mcp__roslyn__get_complexity_metrics` rank #4 (CC 20, MI 25.54). Source: 2026-05-26 discovery-sweep refactor audit. |
 
 
 ## Medium
