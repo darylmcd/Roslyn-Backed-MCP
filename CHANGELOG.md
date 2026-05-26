@@ -16,6 +16,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [2.3.0] - 2026-05-26
+
+### Fixed
+
+- **Fixed:** Closed top-5 remediation rows for pragma line-ending preservation, canonical `find_type_mutations` unresolved-symbol errors, dependency-inversion interface-list comma formatting, off-identifier `go_to_definition` guidance, and promotion-scorecard blocked/evidence backlog proposals; also removed stale repo-local tests for the deleted `backlog-sweep-execute.md` prompt. Closes `add-pragma-suppression-crlf-in-lf-file`, `find-type-mutations-error-template-diverges-from-siblings`, `dependency-inversion-preview-newline-before-comma-formatting`, `go-to-definition-off-identifier-misleading-message`, and `scorecard-blocked-to-backlog-row`.
+- **Fixed:** Closed the top remediation batch by returning structured errors for zero-project `compile_check` filters, excluding single-delegation MCP tool wrappers from duplicate-method clusters by default, listing all missing `get_prompt_text` parameters in one response, mapping metadata-only `goto_type_definition` failures to `NotFound`, and recording the formatter check-mode baseline policy. Closes `compile-check-project-filter-miss-no-error-envelope`, `find-duplicated-methods-mcp-wrapper-false-positive`, `get-prompt-text-multi-step-required-param-errors`, `goto-type-definition-builtins-invalidoperation`, and `formatter-check-mode-baseline-policy`.
+- **Fixed:** `WorkspaceExecutionGate` no longer depends on ambient telemetry to reset post-reload timeout budgets or retry transient stale-snapshot errors after a successful auto-reload; also closed the remaining CA2016 cancellation-token propagation diagnostic in `ParameterObjectService`.
+
+### Added
+
+- **Added:** Experimental `workspace_fork_apply` validation-bundle tool, plugin package allowlist enforcement, compile-check file-scope narrowing, resolved CPM versions in NuGet summaries, and deterministic cohesion recommendations. Closes `workspace-fork-apply-tool`, `plugin-package-allowlist-enforcement`, `compile-check-file-filter-scope-narrowing-inconsistency`, `get-nuget-dependencies-summary-cpm-literal`, and `get-cohesion-metrics-recommendation-null-for-unclassified-types`.
+
+### Maintenance
+
+- **Maintenance:** Removed completed backlog-sweep plan directories and stale backlog references after verifying all initiatives were merged or explicitly deferred.
+- **Maintenance:** Extracted duplicated `WouldCreateProjectReferenceCycle` from `CrossProjectRefactoringService` and `ProjectMutationService` into a shared `ProjectGraphHelpers` helper. Closes `cycle-detection-helper-dedup` from the 2026-05-26 discovery-sweep refactor audit.
+- **Maintenance:** Extracted duplicated `AddType` namespace-walker from `CrossProjectRefactoringService` and `InterfaceExtractionService` into a shared `TypeNamespaceWalker.Collect` helper. Closes `namespace-addtype-helper-dedup` from the 2026-05-26 discovery-sweep refactor audit.
+- **Maintenance:** Removed stale prompt-helper and dead-local code surfaced by the codebase refactor audit, and recorded formatter check-mode policy follow-up in the backlog. Closes `remove-dead-code-cleanup`.
+- **Maintenance:** Extracted cobertura XML aggregation, test-project partitioning, and failure-envelope construction from `TestCoverageTools.RunTestCoverageCore` into a new `TestCoverageCoordinator` service under `RoslynMcp.Roslyn.Services`. The tool method is now a thin orchestrator over the coordinator + a private `RunCoveragePassAsync` helper for the classic/partial dotnet-test branches. Closes `test-coverage-tools-runtestcoveragecore-split` from the 2026-05-26 discovery-sweep refactor audit.
+- **Maintenance:** Extracted duplicated `RunGit` + `StageFixtureBaseline` test helpers from `ValidateRecentGitChangesTests` and `ValidateWorkspaceChangeTrackerReconcileTests` into a shared `GitFixtureRunner` static under `tests/RoslynMcp.Tests/Support/`. Closes `test-git-fixture-helper-dedup` from the 2026-05-26 discovery-sweep refactor audit.
+- **Maintenance:** Closed the 2026-05-22 top remediation batch by normalizing the first Host.Stdio formatter whitespace slice, retiring the obsolete locator preflight idea with post-schemaHint measurement, deciding the WorkspaceManager cache-policy extraction boundary, rejecting premature ScriptingService runtime-state extraction, and replacing the initiative-executor Roslyn-first brief with a measurement follow-up.
+- **Maintenance:** Extracted workspace cache probe/writeback policy into `WorkspaceCacheCoordinator`, added focused cache-coordinator regression coverage, and closed the initiative-executor post-router measurement with a no-go decision pending fresh evidence.
+
 ## [2.2.2] - 2026-05-21
 
 ### Fixed
