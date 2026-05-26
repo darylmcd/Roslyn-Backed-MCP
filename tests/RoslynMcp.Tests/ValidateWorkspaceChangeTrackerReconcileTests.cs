@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests;
 
@@ -53,7 +54,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         InitializeGitRepo(workspace.RootPath);
-        StageAndCommitAll(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
         var wsId = workspace.WorkspaceId;
@@ -114,7 +115,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         InitializeGitRepo(workspace.RootPath);
-        StageAndCommitAll(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
         var wsId = workspace.WorkspaceId;
@@ -200,7 +201,7 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         InitializeGitRepo(workspace.RootPath);
-        StageAndCommitAll(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
         var wsId = workspace.WorkspaceId;
@@ -258,97 +259,21 @@ public sealed class ValidateWorkspaceChangeTrackerReconcileTests : IsolatedWorks
     {
         // `-b main` forces an initial branch name — mirrors the helper in
         // ValidateRecentGitChangesTests; see comments there for rationale.
-        RunGit(directory, "init", "-q", "-b", "main");
+        GitFixtureRunner.RunGit(directory, "init", "-q", "-b", "main");
         if (!Directory.Exists(Path.Combine(directory, ".git")))
         {
             throw new InvalidOperationException(
                 $"git init appeared to succeed but '.git' is missing in '{directory}'.");
         }
         File.WriteAllText(Path.Combine(directory, ".gitignore"), "bin/\nobj/\n");
-        RunGit(directory, "config", "--local", "user.email", "ci@example.invalid");
-        RunGit(directory, "config", "--local", "user.name", "CI");
-        RunGit(directory, "config", "--local", "commit.gpgsign", "false");
-        RunGit(directory, "config", "--local", "core.autocrlf", "false");
-    }
-
-    private static void StageAndCommitAll(string directory)
-    {
-        StageFixtureBaseline(directory);
-        RunGit(directory, "commit", "-q", "-m", "seed");
-    }
-
-    private static void StageFixtureBaseline(string directory)
-    {
-        var pathspecs = new[]
-        {
-            ".gitignore",
-            "BannedSymbols.txt",
-            "Directory.Build.props",
-            "Directory.Packages.props",
-            "global.json",
-            "SampleSolution.sln",
-            "SampleSolution.slnx",
-            "SampleApp",
-            "SampleLib",
-            "SampleLib.Generators",
-            "SampleLib.Tests",
-        }
-            .Where(path => File.Exists(Path.Combine(directory, path)) || Directory.Exists(Path.Combine(directory, path)))
-            .ToArray();
-
-        if (pathspecs.Length == 0)
-        {
-            throw new InvalidOperationException($"No fixture paths were found to stage in '{directory}'.");
-        }
-
-        var arguments = new string[2 + pathspecs.Length];
-        arguments[0] = "add";
-        arguments[1] = "--";
-        Array.Copy(pathspecs, 0, arguments, 2, pathspecs.Length);
-        RunGit(directory, arguments);
-    }
-
-    private static void RunGit(string workingDirectory, params string[] arguments)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "git",
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        foreach (var argument in arguments)
-            startInfo.ArgumentList.Add(argument);
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start git {string.Join(' ', arguments)}.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(30_000))
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch
-            {
-                // Best effort. The timeout failure below is the actionable signal.
-            }
-
-            throw new TimeoutException($"git {string.Join(' ', arguments)} did not exit within 30 seconds.");
-        }
-        var stderr = stderrTask.GetAwaiter().GetResult();
-        var stdout = stdoutTask.GetAwaiter().GetResult();
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"git {string.Join(' ', arguments)} exited {process.ExitCode}. stdout=[{stdout}] stderr=[{stderr}]");
-        }
+        GitFixtureRunner.RunGit(directory, "config", "--local", "user.email", "ci@example.invalid");
+        GitFixtureRunner.RunGit(directory, "config", "--local", "user.name", "CI");
+        GitFixtureRunner.RunGit(directory, "config", "--local", "commit.gpgsign", "false");
+        GitFixtureRunner.RunGit(directory, "config", "--local", "core.autocrlf", "false");
     }
 
     /// <summary>
-    /// Capturing variant of <see cref="RunGit"/> — used for inspecting the porcelain
+    /// Capturing variant of <see cref="GitFixtureRunner.RunGit"/> — used for inspecting the porcelain
     /// output during sanity assertions ("is this file actually clean / dirty?").
     /// </summary>
     private static string RunGitCapture(string workingDirectory, params string[] arguments)
