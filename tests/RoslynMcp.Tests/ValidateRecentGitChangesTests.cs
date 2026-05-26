@@ -2,6 +2,7 @@ using System.Diagnostics;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
+using RoslynMcp.Tests.Support;
 
 namespace RoslynMcp.Tests;
 
@@ -49,7 +50,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         InitializeGitRepo(workspace.RootPath);
-        StageAndCommitAll(workspace.RootPath); // seed HEAD so only our edits appear as Modified
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath); // seed HEAD so only our edits appear as Modified
 
         // Edit three existing `.cs` files so porcelain reports them as Modified — the
         // initial `git add -A && commit` above ensures nothing else is pending.
@@ -105,7 +106,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         InitializeGitRepo(workspace.RootPath);
-        StageAndCommitAll(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         var touchedFile = workspace.GetPath("SampleLib", "AnimalService.cs");
         await File.AppendAllTextAsync(touchedFile, $"{Environment.NewLine}// timeout scope {Guid.NewGuid():N}{Environment.NewLine}");
@@ -187,7 +188,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
 
         await using var workspace = CreateIsolatedWorkspaceCopy();
         InitializeGitRepo(workspace.RootPath);
-        StageAndCommitAll(workspace.RootPath);
+        GitFixtureRunner.StageAndCommitAll(workspace.RootPath);
 
         await workspace.LoadAsync(CancellationToken.None);
 
@@ -233,7 +234,7 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         // `-b main` forces an initial branch name (avoids the "hint: Using 'master'" chatter
         // and the 'unborn HEAD' state that breaks `git config` on some git versions where
         // config discovery walks from HEAD rather than the worktree root).
-        RunGit(directory, "init", "-q", "-b", "main");
+        GitFixtureRunner.RunGit(directory, "init", "-q", "-b", "main");
         if (!Directory.Exists(Path.Combine(directory, ".git")))
         {
             throw new InvalidOperationException(
@@ -242,86 +243,10 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         File.WriteAllText(Path.Combine(directory, ".gitignore"), "bin/\nobj/\n");
         // `--local` targets the repo just initialized explicitly so git doesn't fall back
         // to searching an ancestor when CWD discovery is flaky.
-        RunGit(directory, "config", "--local", "user.email", "ci@example.invalid");
-        RunGit(directory, "config", "--local", "user.name", "CI");
-        RunGit(directory, "config", "--local", "commit.gpgsign", "false");
-        RunGit(directory, "config", "--local", "core.autocrlf", "false");
-    }
-
-    private static void StageAndCommitAll(string directory)
-    {
-        StageFixtureBaseline(directory);
-        RunGit(directory, "commit", "-q", "-m", "seed");
-    }
-
-    private static void StageFixtureBaseline(string directory)
-    {
-        var pathspecs = new[]
-        {
-            ".gitignore",
-            "BannedSymbols.txt",
-            "Directory.Build.props",
-            "Directory.Packages.props",
-            "global.json",
-            "SampleSolution.sln",
-            "SampleSolution.slnx",
-            "SampleApp",
-            "SampleLib",
-            "SampleLib.Generators",
-            "SampleLib.Tests",
-        }
-            .Where(path => File.Exists(Path.Combine(directory, path)) || Directory.Exists(Path.Combine(directory, path)))
-            .ToArray();
-
-        if (pathspecs.Length == 0)
-        {
-            throw new InvalidOperationException($"No fixture paths were found to stage in '{directory}'.");
-        }
-
-        var arguments = new string[2 + pathspecs.Length];
-        arguments[0] = "add";
-        arguments[1] = "--";
-        Array.Copy(pathspecs, 0, arguments, 2, pathspecs.Length);
-        RunGit(directory, arguments);
-    }
-
-    private static void RunGit(string workingDirectory, params string[] arguments)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "git",
-            WorkingDirectory = workingDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        foreach (var argument in arguments)
-            startInfo.ArgumentList.Add(argument);
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException($"Failed to start git {string.Join(' ', arguments)}.");
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(30_000))
-        {
-            try
-            {
-                process.Kill(entireProcessTree: true);
-            }
-            catch
-            {
-                // Best effort. The timeout failure below is the actionable signal.
-            }
-
-            throw new TimeoutException($"git {string.Join(' ', arguments)} did not exit within 30 seconds.");
-        }
-        var stderr = stderrTask.GetAwaiter().GetResult();
-        var stdout = stdoutTask.GetAwaiter().GetResult();
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"git {string.Join(' ', arguments)} exited {process.ExitCode}. stdout=[{stdout}] stderr=[{stderr}]");
-        }
+        GitFixtureRunner.RunGit(directory, "config", "--local", "user.email", "ci@example.invalid");
+        GitFixtureRunner.RunGit(directory, "config", "--local", "user.name", "CI");
+        GitFixtureRunner.RunGit(directory, "config", "--local", "commit.gpgsign", "false");
+        GitFixtureRunner.RunGit(directory, "config", "--local", "core.autocrlf", "false");
     }
 
     /// <summary>
