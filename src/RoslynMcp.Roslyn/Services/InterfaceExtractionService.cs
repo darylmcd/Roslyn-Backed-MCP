@@ -339,71 +339,29 @@ public sealed class InterfaceExtractionService : IInterfaceExtractionService
             switch (member)
             {
                 case IMethodSymbol method:
-                    AddType(namespaces, method.ReturnType, ownNamespace);
+                    TypeNamespaceWalker.Collect(namespaces,method.ReturnType, ownNamespace);
                     foreach (var parameter in method.Parameters)
                     {
-                        AddType(namespaces, parameter.Type, ownNamespace);
+                        TypeNamespaceWalker.Collect(namespaces,parameter.Type, ownNamespace);
                     }
                     foreach (var typeParameter in method.TypeParameters)
                     {
                         foreach (var constraint in typeParameter.ConstraintTypes)
                         {
-                            AddType(namespaces, constraint, ownNamespace);
+                            TypeNamespaceWalker.Collect(namespaces,constraint, ownNamespace);
                         }
                     }
                     break;
                 case IPropertySymbol property:
-                    AddType(namespaces, property.Type, ownNamespace);
+                    TypeNamespaceWalker.Collect(namespaces,property.Type, ownNamespace);
                     break;
                 case IEventSymbol evt:
-                    AddType(namespaces, evt.Type, ownNamespace);
+                    TypeNamespaceWalker.Collect(namespaces,evt.Type, ownNamespace);
                     break;
             }
         }
 
         return namespaces;
-    }
-
-    private static void AddType(HashSet<string> namespaces, ITypeSymbol type, string? ownNamespace)
-    {
-        if (type is null)
-        {
-            return;
-        }
-
-        // Type-parameter symbols have no containing namespace — skip them outright.
-        if (type is ITypeParameterSymbol)
-        {
-            return;
-        }
-
-        var typeNamespace = type.ContainingNamespace;
-        if (typeNamespace is { IsGlobalNamespace: false })
-        {
-            var nsName = typeNamespace.ToDisplayString();
-            if (!string.Equals(nsName, ownNamespace, StringComparison.Ordinal))
-            {
-                namespaces.Add(nsName);
-            }
-        }
-
-        // Walk generic type arguments recursively so Task<NetworkInventory>, List<Foo>,
-        // Dictionary<Foo, Bar>, IEnumerable<Item>, etc. all contribute their inner-type
-        // namespaces. Without this the Task is captured but the NetworkInventory isn't.
-        if (type is INamedTypeSymbol named && named.IsGenericType)
-        {
-            foreach (var argument in named.TypeArguments)
-            {
-                AddType(namespaces, argument, ownNamespace);
-            }
-        }
-
-        // Array element types and pointer element types also contribute. Rare for
-        // interfaces but handled for completeness.
-        if (type is IArrayTypeSymbol array)
-        {
-            AddType(namespaces, array.ElementType, ownNamespace);
-        }
     }
 
     /// <summary>
