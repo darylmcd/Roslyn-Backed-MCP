@@ -46,6 +46,12 @@ if (-not $NoCoverage) {
 # at PR time rather than at release-cut time (where they block /bump).
 & (Join-Path $PSScriptRoot 'verify-changelog-fragments.ps1')
 
+# Registry install-readiness scorecard — first slice of BRAIN-002.
+# Validates .claude-plugin/server.json against MCP-registry expectations,
+# cross-checks plugin.json + marketplace.json, and emits a structured
+# artifact at artifacts/registry-readiness.json that /publish-preflight reads.
+& (Join-Path $PSScriptRoot 'verify-registry-readiness.ps1') -Quiet
+
 dotnet restore $solutionPath --nologo
 Invoke-DotnetStep "dotnet restore (main solution)"
 
