@@ -165,6 +165,20 @@ The script emits a Markdown table of experimental entries whose `git blame` age 
 
 **Pass** always — the script always exits 0. Include the output (or a "no stale entries" note) in the summary report as an informational line.
 
+### Step 8.7: Registry Install-Readiness Scorecard (advisory, non-blocking)
+
+This step consumes the structured artifact emitted by `eng/verify-registry-readiness.ps1` (which `verify-release.ps1` produces in Step 3). The artifact lists every MCP-registry / plugin-manifest / marketplace-manifest cross-check, an overall verdict (`ready` or `not-ready`), and pass/fail/warn counts.
+
+Read `artifacts/registry-readiness.json` and report:
+
+- `summary.overall` (`ready` / `not-ready`)
+- `summary.pass` / `summary.fail` / `summary.warn` counts
+- Each entry in `checks[]` whose `status` is `fail` or `warn` — surface the `id` and `message`
+
+**Pass** when `summary.fail == 0` (warn-only is still pass). **Fail** when `summary.fail > 0`; report each FAIL row with its `id` and `message` so the maintainer knows which field to fix. If the artifact is absent, run `pwsh -NoProfile -File eng/verify-registry-readiness.ps1` directly and re-read.
+
+This gate is advisory — it does not block publish, but a `not-ready` verdict means the MCP registry submission would be rejected or the install instructions would surface drift to consumers.
+
 ## Summary Report
 
 After all steps, display a table:
@@ -180,6 +194,7 @@ Step 5: SECURITY Versions         ✓ PASS / ✗ FAIL
 Step 6: Doc-Audit                 ✓ PASS / ✗ FAIL
 Step 7: Package Build             ✓ PASS / ✗ FAIL
 Step 8: Promotion Scorecard Gate  ✓ PASS / ⚠ WARN / ℹ INFO  (N candidates surfaced, M accepted, K deferred)
+Step 8.7: Registry Readiness      ✓ PASS / ✗ FAIL (N pass / M fail / K warn)
 
 Overall: READY TO PUBLISH / NOT READY (N issues)
 ```

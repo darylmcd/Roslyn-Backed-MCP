@@ -57,6 +57,12 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// not wired, preserving legacy no-cache load behavior.
     /// </summary>
     private readonly WorkspaceCacheCoordinator? _cacheCoordinator;
+    /// <summary>
+    /// workspace-manager-loadintosession-split: per-load workspace construction (MSBuild
+    /// init + global-properties wiring + open + analyzer-reference retargeting). Injectable
+    /// for failure-path testing via <see cref="WorkspaceSessionLoader"/>'s virtual surface.
+    /// </summary>
+    private readonly WorkspaceSessionLoader _sessionLoader;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
     /// <summary>
     /// mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
@@ -85,12 +91,31 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         IFileWatcherService fileWatcher,
         WorkspaceManagerOptions? options = null,
         IWorkspaceCacheStore? cacheStore = null)
+        : this(logger, previewStore, fileWatcher, options, cacheStore, sessionLoader: null)
+    {
+    }
+
+    /// <summary>
+    /// Internal constructor used by <see cref="WorkspaceSessionLoaderFailureTests"/> to inject
+    /// a throwing <see cref="WorkspaceSessionLoader"/> double and verify that
+    /// <see cref="LoadIntoSessionAsync"/> preserves the autoreload-cascade invariant
+    /// (session.Workspace stays pointed at the prior non-disposed workspace on partial-load
+    /// failure).
+    /// </summary>
+    internal WorkspaceManager(
+        ILogger<WorkspaceManager> logger,
+        IPreviewStore previewStore,
+        IFileWatcherService fileWatcher,
+        WorkspaceManagerOptions? options,
+        IWorkspaceCacheStore? cacheStore,
+        WorkspaceSessionLoader? sessionLoader)
     {
         _logger = logger;
         _previewStore = previewStore;
         _fileWatcher = fileWatcher;
         _options = options ?? new WorkspaceManagerOptions();
         _cacheCoordinator = cacheStore is null ? null : new WorkspaceCacheCoordinator(cacheStore, logger);
+        _sessionLoader = sessionLoader ?? new WorkspaceSessionLoader();
         var max = _options.MaxConcurrentWorkspaces > 0 ? _options.MaxConcurrentWorkspaces : 8;
         _workspaceSlots = new SemaphoreSlim(max, max);
     }
@@ -782,62 +807,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         // success pattern, readers always see EITHER the prior loaded workspace OR the fully
         // initialized new workspace; the disposed object is never observable.
         MSBuildWorkspace? newWorkspace = null;
-        ConcurrentQueue<DiagnosticDto>? newDiagnostics = null;
-        MSBuildWorkspace? oldWorkspace = session.Workspace;
+        var diagnosticsSink = new WorkspaceDiagnosticsSink(MaxDiagnosticsPerWorkspace);
+        var oldWorkspace = session.Workspace;
+        var swapped = false;
         try
         {
-            MsBuildInitializer.EnsureInitialized();
-            // selfhosted-shadow-copy-analyzer-reference-test-fails: when caller passes MSBuild
-            // global properties (e.g. Configuration=Release), thread them into MSBuildWorkspace
-            // so ProjectReference OutputItemType="Analyzer" entries resolve against the right
-            // bin/<config>/ tree. Without this, the default Configuration=Debug evaluation
-            // drops analyzer references on Release-only checkouts (CI runners) because the
-            // Debug TargetPath does not exist on disk.
-            newWorkspace = (globalProperties is { Count: > 0 })
-                ? MSBuildWorkspace.Create(globalProperties)
-                : MSBuildWorkspace.Create();
-            if (globalProperties is { Count: > 0 })
-            {
-                _logger.LogInformation(
-                    "Workspace {WorkspaceId}: created MSBuildWorkspace with {Count} global property override(s): {Properties}",
-                    session.WorkspaceId,
-                    globalProperties.Count,
-                    string.Join(", ", globalProperties.Select(kv => $"{kv.Key}={kv.Value}")));
-            }
-            newDiagnostics = new ConcurrentQueue<DiagnosticDto>();
-            var fullPath = path;
-            var diagnosticsRef = newDiagnostics; // capture for the handler closure below
-
-            newWorkspace.RegisterWorkspaceFailedHandler(args =>
-            {
-                // Normalize at ingress so workspace_load, workspace_status, project_diagnostics,
-                // and the roslyn://workspaces resource all see the same severity. Previously
-                // only project_diagnostics applied the downgrade, leaving the other readers
-                // surfacing pruning-style informational messages as Error.
-                var severity = WorkspaceDiagnosticSeverityClassifier.Classify(
-                    args.Diagnostic.Kind, args.Diagnostic.Message);
-                var dto = new DiagnosticDto(
-                    Id: $"WORKSPACE_{args.Diagnostic.Kind}".ToUpperInvariant(),
-                    Message: args.Diagnostic.Message,
-                    Severity: severity,
-                    Category: "Workspace",
-                    FilePath: null,
-                    StartLine: null,
-                    StartColumn: null,
-                    EndLine: null,
-                    EndColumn: null);
-                diagnosticsRef.Enqueue(dto);
-                while (diagnosticsRef.Count > MaxDiagnosticsPerWorkspace)
-                {
-                    diagnosticsRef.TryDequeue(out _);
-                }
-
-                _logger.LogWarning(
-                    "Workspace {WorkspaceId} diagnostic: {Message}",
-                    session.WorkspaceId,
-                    args.Diagnostic.Message);
-            });
-
             // workspace-load-uses-cache-fast-path: probe the persistent cache before the
             // restore-race wait so a warm-cache hit can elide it. Computing the solution-content
             // hash + sdk-version (the first two key components) is cheap (one file read + an
@@ -853,7 +827,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // was captured under different globals.
             if (_cacheCoordinator is not null && globalProperties is not { Count: > 0 })
             {
-                cachedProbe = await _cacheCoordinator.TryProbeAsync(fullPath, ct).ConfigureAwait(false);
+                cachedProbe = await _cacheCoordinator.TryProbeAsync(path, ct).ConfigureAwait(false);
             }
 
             // dr-9-10-initial-does-not-wait-for-concurrent-to-finaliz: if a concurrent
@@ -876,41 +850,28 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             var skipRestoreRaceWait = cachedProbe is not null && cachedProbe.MetadataReferencesStillStable;
             if (!skipRestoreRaceWait)
             {
-                await WaitForStableRestoreArtifactsAsync(fullPath, ct).ConfigureAwait(false);
+                await WaitForStableRestoreArtifactsAsync(path, ct).ConfigureAwait(false);
             }
 
-            if (fullPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) ||
-                fullPath.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase))
-            {
-                await newWorkspace.OpenSolutionAsync(fullPath, cancellationToken: ct).ConfigureAwait(false);
-            }
-            else if (fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-            {
-                await newWorkspace.OpenProjectAsync(fullPath, cancellationToken: ct).ConfigureAwait(false);
-            }
-            else
-            {
-                throw new ArgumentException($"Path must end with .sln, .slnx, or .csproj: {path}");
-            }
-
-            var isolatedAnalyzerReferences = AnalyzerReferenceIsolation.RetargetFileReferencesToShadowLoader(
-                newWorkspace.CurrentSolution,
+            // workspace-manager-loadintosession-split: delegate MSBuild creation + global-
+            // properties wiring + Open + analyzer-reference retargeting to the loader. The
+            // loader self-disposes on failure before returning, so the manager only handles
+            // disposal of post-loader-success state (strip-analyzers, project-statuses,
+            // cache-write failures).
+            newWorkspace = await _sessionLoader.CreateAndOpenAsync(
                 session.WorkspaceId,
-                _logger);
-            if (isolatedAnalyzerReferences > 0)
-            {
-                _logger.LogInformation(
-                    "Workspace {WorkspaceId}: retargeted {Count} analyzer reference(s) to shadow-copy loaders.",
-                    session.WorkspaceId,
-                    isolatedAnalyzerReferences);
-            }
+                path,
+                globalProperties,
+                diagnosticsSink,
+                _logger,
+                ct).ConfigureAwait(false);
 
             // unresolved-analyzer-reference-crash: strip UnresolvedAnalyzerReference entries
             // from every project before any downstream caller can see them. SymbolFinder,
             // Compilation.GetDiagnostics, and Roslyn-internal switches over AnalyzerReference
             // subtypes throw "Unexpected value 'UnresolvedAnalyzerReference'" otherwise. The
             // earlier per-service guards in CompilationCache/FixAllService are now unnecessary.
-            await StripUnresolvedAnalyzerReferencesAsync(session.WorkspaceId, newWorkspace, newDiagnostics, ct).ConfigureAwait(false);
+            await StripUnresolvedAnalyzerReferencesAsync(session.WorkspaceId, newWorkspace, diagnosticsSink.Queue, ct).ConfigureAwait(false);
 
             // workspace-load-uses-cache-fast-path: capture the post-load project graph + per-
             // project metadata-reference list for cache write-back. Building the graph first
@@ -922,7 +883,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // the result to a cache miss and writes a fresh entry.
             var projectStatuses = BuildProjectStatuses(newWorkspace.CurrentSolution);
             var restoreRequired = DetectRestoreRequired(projectStatuses) ||
-                                  HasRestoreRequiredWorkspaceDiagnostics(newDiagnostics);
+                                  HasRestoreRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
 
             if (_cacheCoordinator is not null && cachedProbe is not null)
             {
@@ -932,7 +893,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             }
             else if (_cacheCoordinator is not null)
             {
-                var result = await _cacheCoordinator.WriteFreshEntryAsync(newWorkspace.CurrentSolution, fullPath, ct)
+                var result = await _cacheCoordinator.WriteFreshEntryAsync(newWorkspace.CurrentSolution, path, ct)
                     .ConfigureAwait(false);
                 StampCacheHitMetric(result);
             }
@@ -941,9 +902,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // the new workspace is fully loaded so concurrent readers never observe a mid-reload
             // session (disposed workspace, empty project list, or mismatched LoadedPath).
             session.Workspace = newWorkspace;
-            session.WorkspaceDiagnostics = newDiagnostics;
+            session.WorkspaceDiagnostics = diagnosticsSink.Queue;
             session.ProjectStatuses = projectStatuses;
-            session.LoadedPath = fullPath;
+            session.LoadedPath = path;
             session.RestoreRequired = restoreRequired;
             session.LoadedAtUtc = DateTimeOffset.UtcNow;
             session.IncrementVersion();
@@ -958,26 +919,25 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // so the post-reload `ProjectId`/`DocumentId` lineage divergence is handled.
             _previewStore.InvalidateOnVersionBump(session.WorkspaceId, session.Version);
 
-            // Transfer succeeded — dispose the prior workspace AFTER readers can no longer
-            // latch onto it through `session.Workspace`. Null out our local so the finally
-            // block doesn't re-dispose or dispose the now-live new workspace.
-            newWorkspace = null;
-            LogWorkspaceLoaded(_logger, session.WorkspaceId, fullPath, session.Version, null);
+            swapped = true;
+            LogWorkspaceLoaded(_logger, session.WorkspaceId, path, session.Version, null);
         }
         finally
         {
-            // If the load failed mid-way, dispose the half-initialized new workspace and leave
-            // the session's prior state untouched. Readers continue to see the previous valid
-            // workspace rather than a broken one (or null).
-            newWorkspace?.Dispose();
-            // Dispose the previous workspace now that the swap is visible (or keep it if we
-            // failed and never swapped — the finally's newWorkspace dispose above handles the
-            // failure case; oldWorkspace remains attached to the session).
-            if (newWorkspace is null)
+            if (swapped)
             {
                 // Successful swap: oldWorkspace was captured before the swap and is no longer
                 // referenced by the session. Safe to dispose.
                 oldWorkspace?.Dispose();
+            }
+            else
+            {
+                // Load failed mid-way after the loader returned: dispose the half-initialized
+                // new workspace and leave the session's prior state untouched. Readers
+                // continue to see the previous valid workspace rather than a broken one (or
+                // null). If the loader itself threw, it already disposed `newWorkspace` is
+                // null here so this is a no-op — the autoreload-cascade invariant holds.
+                newWorkspace?.Dispose();
             }
             session.LoadLock.Release();
         }

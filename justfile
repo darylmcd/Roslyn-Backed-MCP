@@ -52,6 +52,10 @@ verify-version-drift:
 verify-skills:
     ./eng/verify-skills-are-generic.ps1
 
+# MCP registry install-readiness scorecard (writes artifacts/registry-readiness.json)
+verify-registry-readiness:
+    ./eng/verify-registry-readiness.ps1
+
 # --- Run ---
 
 # Run the stdio host process locally
