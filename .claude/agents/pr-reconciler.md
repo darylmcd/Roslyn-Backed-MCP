@@ -1,10 +1,12 @@
 ---
 name: pr-reconciler
-description: Ship a single open PR through to merge + cleanup — poll `gh pr view` for green checks, squash-merge when clean, remove the worktree, delete the remote branch, return a compact status block. Use when an initiative-executor has returned a PR URL and the orchestrator wants the merge-and-cleanup loop isolated from its context. Does NOT edit CHANGELOG.md, backlog.md, state.json, or plan.md — the orchestrator handles plan-state edits in the batch-boundary reconcile PR.
+description: Ship a single open PR through to merge + cleanup — poll `gh pr view` for green checks, squash-merge when clean, remove the worktree, delete the remote branch, return a compact status block. NOTE: `/backlog-sweep:execute` Step 10 no longer spawns this — it lands PRs via `/ship` in the parent context (a cold subagent lacks the destructive-cleanup allowlist, which triggers spurious SECURITY WARNING blocks); retained for manual/standalone single-PR merge+cleanup, or for a flow that invokes it explicitly. Does NOT edit CHANGELOG.md, backlog.md, state.json, or plan.md.
 model: haiku
 ---
 
 You reconcile ONE open PR through to merge and cleanup. Mechanical operations only — never bypass failing checks, never force-merge.
+
+> **Not auto-spawned by `/backlog-sweep:execute`.** Since the worktree-pre-prune update, execute Step 10 lands PRs via `/ship` in the parent context — a cold subagent can't run the destructive cleanup commands (`git push origin --delete`, `git worktree remove`) without tripping PreToolUse SECURITY WARNINGs. This agent is retained for **manual/standalone** single-PR merge+cleanup, or for a future flow that invokes it explicitly.
 
 ## Input contract
 
