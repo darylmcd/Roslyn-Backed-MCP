@@ -150,4 +150,4 @@ File one new backlog row `parameter-object-preview-tool` (priority **Low**; `dep
 | `src/RoslynMcp.Roslyn/Services/PreviewStore.cs` | Token storage + `MaxRedeemableVersion` ceiling. |
 | `tests/RoslynMcp.Tests/MoveTypeDiskStateTests.cs` | Regression test shape for "create file + rewrite files" disk-state correctness. |
 | `tests/RoslynMcp.Tests/ChangeSignaturePreviewTests.cs` | Assertion-shape template for the new tool's tests. |
-| `ai_docs/prompts/backlog-sweep-plan.md` § Rule 3 new-MCP-tool exemption | Sizing rules cited in §(f). |
+| `~/.claude/prompts/backlog-sweep-plan.md` § Rule 3 new-MCP-tool exemption | Sizing rules cited in §(f). |

@@ -185,12 +185,10 @@ For each split, give each child a distinct kebab-case id (prefix with the origin
 
 ### Phase 5 — Ensure planner-prompt refs
 
-Before writing, verify the Refs table in `ai_docs/backlog.md` includes these entries (add any missing):
+Before writing, verify the Refs table in `ai_docs/backlog.md` includes these entries (add any missing). Note: the backlog-sweep **planner/executor prompts are NOT repo Refs entries** — they live globally in `~/.claude/prompts/` (`backlog-sweep-plan.md`, `backlog-sweep-execute.md`) and are loaded by the `/backlog-sweep:*` commands, so do NOT add repo-local rows for them:
 
 | Path | Role (template text) |
 |---|---|
-| `ai_docs/prompts/backlog-sweep-plan.md` | Planner prompt; enforces per-initiative Rule 1 (bundle only on shared code path) / Rule 3 (≤4 prod files) / Rule 3b (toolPolicy) / Rule 4 (≤3 test files) / Rule 5 (≤80K context). |
-| `ai_docs/prompts/backlog-sweep-execute.md` | Executor companion; consumes the planner's `state.json` and vets each initiative against Rules 3/4/5. |
 | `ai_docs/bootstrap-read-tool-primer.md` | Self-edit read-only tool primer (Roslyn-MCP read-side tools preferred over Bash/Grep). |
 | `ai_docs/runtime.md` | Bootstrap scope policy — main-checkout self-edit (no `*_apply`) vs worktree/parallel-subagent sessions. |
 | `review-inbox/` | Source evidence for the open rows. Keep until each row is closed or superseded. |

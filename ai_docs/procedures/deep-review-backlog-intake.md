@@ -20,7 +20,7 @@ The skill does end-to-end intake:
 3. **Deduplicates** semantically across files (not literal-text matching).
 4. **Verifies** each candidate against `CHANGELOG.md` [Unreleased] + last 3 versions + the newest backlog-sweep plan, dropping items that have already shipped.
 5. **Fixes anchors** — rewrites each row to cite real service-class filenames (under `src/RoslynMcp.Roslyn/Services/`) plus the tool registration (under `src/RoslynMcp.Host.Stdio/Tools/`).
-6. **Splits heroic rows** per `ai_docs/prompts/backlog-sweep-plan.md` Rule 1 (one code path, ≤4 prod files, ≤3 test files, one regression shape).
+6. **Splits heroic rows** per `~/.claude/prompts/backlog-sweep-plan.md` Rule 1 (one code path, ≤4 prod files, ≤3 test files, one regression shape).
 7. **Ranks** P2 / P3 / P4 using correctness-risk bands.
 8. **Commits** to a fresh branch off `main` (never pushed automatically).
 
@@ -54,4 +54,4 @@ If you just want files copied into `review-inbox/` without triage:
 - [`deep-review-program.md`](deep-review-program.md) — program context (coverage matrix, client lanes, cadence).
 - [`deep-review-command-reference.md`](deep-review-command-reference.md) — concrete commands.
 - [`../../skills/mcp-server-surface-test/prompts/full.md`](../../skills/mcp-server-surface-test/prompts/full.md) — canonical audit prompt run by both `/mcp-server-surface-test` (consumer) and `/mcp-server-stress` (maintainer alias for `--output-mode=fragments`); produces the artifacts this skill consumes.
-- [`../prompts/backlog-sweep-plan.md`](../prompts/backlog-sweep-plan.md) — planner prompt that consumes the backlog this skill produces.
+- `~/.claude/prompts/backlog-sweep-plan.md` (global) — planner prompt that consumes the backlog this skill produces.

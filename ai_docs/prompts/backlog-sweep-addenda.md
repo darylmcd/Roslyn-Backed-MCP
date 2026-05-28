@@ -146,12 +146,12 @@ See [ai_docs/runtime.md § Bootstrap scope](../runtime.md#bootstrap-scope--self-
 
 ```yaml
 initiative_executor: .claude/agents/initiative-executor.md  # use for Step 7 spawn
-pr_reconciler:       .claude/agents/pr-reconciler.md         # use for Step 10 merge+cleanup
+pr_reconciler:       .claude/agents/pr-reconciler.md         # retained for manual merge+cleanup — NOTE: execute Step 10 now lands via /ship directly (no reconciler spawn)
 backlog_anchor_auditor: .claude/agents/backlog-anchor-auditor.md  # pre-plan anchor scan
 backlog_intake_extractor: .claude/agents/backlog-intake-extractor.md  # Phase 1 of /backlog-intake
 ```
 
-When the global execute command's Step 7 or Step 10 mentions "if available", these are what's available.
+When the global execute command's Step 7 subagent briefing mentions "if available", these are what's available. (Step 10 lands PRs via `/ship` directly — it no longer spawns a reconciler subagent.)
 
 ## Skills wired to backlog-sweep workflow
 

@@ -77,7 +77,6 @@
 |------|------|
 | `ai_docs/planning_index.md` | Planning router and scope boundary |
 | `ai_docs/workflow.md` | Branch/PR workflow and backlog-closure rule |
-| `ai_docs/prompts/backlog-sweep-plan.md` | Planner prompt for batching backlog rows into shippable initiatives |
 | `ai_docs/bootstrap-read-tool-primer.md` | Self-edit session read-only tool primer (Roslyn-MCP read-side tools to prefer over Bash/Grep) |
 | `ai_docs/runtime.md` | Bootstrap scope policy — distinguishes main-checkout self-edit (no `*_apply`) from worktree/parallel-subagent sessions |
 | `docs/large-solution-profiling-baseline.md` | Evidence gate for daemon/process-pool performance work |
