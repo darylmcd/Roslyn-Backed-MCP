@@ -1,9 +1,9 @@
 ---
 name: reconcile-backlog-sweep-plan
 installed_as: reconcile-backlog-sweep-plan
-description: "Reconcile a backlog-sweep plan's state.json + plan.md against merged/closed PR reality. Use when: multiple backlog-sweep PRs have landed and the plan still shows them as in-review/in-progress, or before picking the next pending initiative to avoid re-shipping already-merged work. Queries `gh pr view` per initiative, applies merged/deferred transitions, mirrors status into plan.md's table, and commits on a short-lived branch + PR (main is branch-protected). Automates Step 1b of `ai_docs/prompts/backlog-sweep-execute.md`."
+description: "Reconcile a backlog-sweep plan's state.json + plan.md against merged/closed PR reality. Use when: multiple backlog-sweep PRs have landed and the plan still shows them as in-review/in-progress, or before picking the next pending initiative to avoid re-shipping already-merged work. Queries `gh pr view` per initiative, applies merged/deferred transitions, mirrors status into plan.md's table, and commits on a short-lived branch + PR (main is branch-protected). Automates the in-review reconcile (Step 2) of `~/.claude/prompts/backlog-sweep-execute.md`."
 user-invocable: true
-argument-hint: "[plan-dir path] — defaults to newest ai_docs/plans/*_backlog-sweep/"
+argument-hint: "[plan-dir path] — defaults to oldest non-terminal ai_docs/plans/*_backlog-sweep/ (FIFO drain; mirrors :execute Step 0b)"
 ---
 
 # Reconcile Backlog-Sweep Plan
@@ -18,13 +18,13 @@ This skill edits repository files and shells out to `gh` + `git`. Roslyn MCP **`
 
 ## Input
 
-`$ARGUMENTS` optionally names the plan directory (relative to repo root, e.g. `ai_docs/plans/20260417T120000Z_backlog-sweep`). If omitted, auto-select the newest directory matching `ai_docs/plans/*_backlog-sweep/` by timestamp-prefix sort descending.
+`$ARGUMENTS` optionally names the plan directory (relative to repo root, e.g. `ai_docs/plans/20260417T120000Z_backlog-sweep`). If omitted, enumerate `ai_docs/plans/*_backlog-sweep/`, classify each as terminal vs non-terminal (terminal = `completed: true` AND every initiative status in `{merged, obsolete, deferred, cancelled, done, completed}`), and select the **oldest non-terminal** plan (FIFO drain). This mirrors `:execute` Step 0b / `:status` — do NOT default to newest-by-name, which strands older non-terminal plans whose in-review PRs never get reconciled.
 
 ## Preconditions (HARD GATES — refuse if any fail)
 
 1. **`state.json` exists** at `{plan-dir}/state.json`. If missing, refuse: `"No state.json at {path}. Is this a backlog-sweep plan directory?"`.
 2. **`plan.md` exists** at `{plan-dir}/plan.md`. If missing, refuse.
-3. **`schemaVersion == 2`** in `state.json`. If older (or missing), refuse: `"Plan uses schemaVersion {n}; this skill supports 2 only. Re-run backlog-sweep-plan.md to regenerate."`.
+3. **`schemaVersion ∈ {2, 3}`** in `state.json` (2 = legacy `/backlog-sweep:plan`; 3 = `/backlog-sweep:prepare`-extended — both valid per the canonical field contract). If neither (or missing), refuse: `"Plan uses schemaVersion {n}; this skill supports 2 and 3. Re-run /backlog-sweep:plan or :prepare to regenerate."`.
 4. **`gh` CLI is on PATH** (`gh --version` exits 0). If not, refuse: `"gh CLI not available — cannot query PR state. Install gh or run Step 1b manually."`.
 5. **`git` CLI is on PATH** (`git --version` exits 0). If not, refuse.
 6. **Working tree is clean** (`git status --porcelain` is empty) OR the only dirty paths are the two files this skill will edit (`state.json` + `plan.md`). If dirtier, refuse: `"Working tree has unrelated changes — commit or stash before reconciling."`.
@@ -35,9 +35,9 @@ This skill edits repository files and shells out to `gh` + `git`. Roslyn MCP **`
 ### Step 1 — Locate plan and snapshot current state
 
 1. Resolve the plan directory per Input above.
-2. Read `{plan-dir}/state.json` into memory. Validate `schemaVersion == 2`.
+2. Read `{plan-dir}/state.json` into memory. Validate `schemaVersion ∈ {2, 3}`.
 3. Read `{plan-dir}/plan.md` into memory.
-4. Build the **reconciliation candidate list**: every initiative whose `status` is `in-review` or `in-progress` AND whose `prUrl` is non-null. Skip `pending`, `merged`, `obsolete`, `deferred`.
+4. Build the **reconciliation candidate list**: every initiative whose `status` is `in-review` or `in-progress` AND whose `prUrl` is non-null. Skip `pending`, `merged`, `obsolete`, `deferred`, and `paused-usage-limit` (the last is a mid-flight recovery state with no mergeable PR — resume it via `/backlog-sweep:execute initiative=<id>`, don't reconcile it here).
 5. If the candidate list is empty, report `"Nothing to reconcile — no in-review/in-progress initiatives with a PR URL."` and exit **without** creating a branch or PR.
 
 ### Step 2 — Query GitHub for each candidate
@@ -50,11 +50,11 @@ gh pr view <prUrl> --json number,state,mergedAt,mergeCommit,closedAt
 
 Parse the JSON. Tolerate a single-retry on transient `gh` failure (network / rate limit). If `gh pr view` fails twice, record the initiative id + error in a failure list; do NOT flip its status; continue with the rest.
 
-Compute the intended transition per the rules from `ai_docs/prompts/backlog-sweep-execute.md` § Step 1b:
+Compute the intended transition per the rules from `~/.claude/prompts/backlog-sweep-execute.md` § Step 2 (in-review reconcile) and the canonical field contract in `~/.claude/prompts/backlog-sweep-plan.md` § *Canonical state.json field contract*:
 
 | Observed `state` | `mergedAt` | New `status` | Notes field update |
 |---|---|---|---|
-| `MERGED` | non-null ISO | `merged`; `mergedAt = <ISO>` | unchanged |
+| `MERGED` | non-null ISO | `merged`; `mergedAt = <ISO>`; `prUrl` retained (stays non-null — required-when-merged) | unchanged |
 | `CLOSED` | null (not merged) | `deferred` | prepend `"PR #<n> closed without merge — manual triage required"` |
 | `OPEN` | null | **no change** — leave `in-review` / `in-progress` | unchanged |
 
@@ -97,9 +97,9 @@ For each in-flight transition:
 
 1. **Update state.json**:
    - Set `initiatives[i].status` to the new value.
-   - For `merged`: set `mergedAt` to the GitHub-reported ISO string (not "now").
+   - For `merged`: set `mergedAt` to the GitHub-reported ISO string (not "now"). Confirm `prUrl` is non-null — it must be (the Step 1.4 candidate filter requires it; per the canonical *required-when-merged* contract a `merged` record MUST carry both `prUrl` and `mergedAt`). If `prUrl` is somehow null, fetch it via `gh pr view <n> --json url` and set it before writing.
    - For `deferred`: append the "PR #<n> closed without merge — manual triage required" note to `notes` (separator `" | "` if notes already non-empty).
-   - Leave other fields (branch, worktreePath, prUrl, rowsClosedCount, …) untouched.
+   - Leave other fields (branch, worktreePath, rowsClosedCount, …) untouched — but NEVER null out `prUrl` on a `merged` record.
 
 2. **Update plan.md's Status row** for this initiative. The initiative's header block in `plan.md` looks like:
    ```
@@ -127,7 +127,7 @@ Commit with a descriptive message citing the transitions. Template:
 ```
 chore(plan): reconcile {plan-timestamp} state — {merged-count} merged, {deferred-count} deferred
 
-Step 1b reconciliation for backlog-sweep plan {plan-timestamp}.
+In-review reconciliation for backlog-sweep plan {plan-timestamp}.
 
 Transitions:
   - {id}: in-review → merged (PR #{n})
@@ -146,7 +146,7 @@ git push -u origin {branch-name}
 gh pr create --title "chore(plan): reconcile {plan-timestamp} state" \
              --body "$(cat <<'EOF'
 ## Summary
-- Step 1b reconciliation for `ai_docs/plans/{plan-dir}/`.
+- In-review reconciliation for `ai_docs/plans/{plan-dir}/`.
 - {merged-count} initiatives transitioned to `merged`, {deferred-count} to `deferred`.
 - Source of truth: `gh pr view` per PR at reconciliation time.
 
@@ -154,7 +154,7 @@ gh pr create --title "chore(plan): reconcile {plan-timestamp} state" \
 {bulleted list of id: old → new (PR #n, timestamp)}
 
 ## Test plan
-- [x] `state.json` `schemaVersion` still 2
+- [x] `state.json` `schemaVersion` unchanged (2 or 3)
 - [x] Only status / mergedAt / notes fields changed per initiative
 - [x] `plan.md` Status rows mirror state.json
 - [x] No unrelated files modified
@@ -195,14 +195,14 @@ Reconciliation complete.
   Post-reconciliation status buckets: {pending-count} pending, {in-review-count} in-review, {merged-count} merged, {obsolete-count} obsolete, {deferred-count} deferred.
 ```
 
-If all initiatives are now terminal (`merged` / `obsolete` / `deferred`), additionally note: `"Plan fully shipped — run backlog-sweep-execute.md Step 1b completion branch (marks completed: true + adds Refs entry) or prompt the user."` — do NOT do that completion step yourself; that is the executor's job.
+If all initiatives are now terminal (`merged` / `obsolete` / `deferred`), additionally note: `"Plan fully shipped — run /backlog-sweep:execute Step 2 completion (marks completed: true + adds Refs entry) or prompt the user."` — do NOT do that completion step yourself; that is the executor's job.
 
 **Worktree teardown discipline (Windows).** After this skill completes, the orchestrator typically removes worktrees for merged initiatives via `git worktree remove --force .worktrees/<id>`. On Windows, `VBCSCompiler.exe` and `MSBuild.exe` build-server processes hold file-system locks on the worktree's bin/obj directories — `git worktree remove` will fail with `Permission denied` until those locks are released. The fix: call `workspace_close(workspaceId: <id>, drainProcesses: true)` for each loaded workspace BEFORE calling `git worktree remove`. The `drainProcesses: true` flag runs `dotnet build-server shutdown` after session disposal, which releases all out-of-process build-server locks. This step is a no-op when no build-server is running, so it is always safe to prepend.
 
 ## Refusal cases (explicit)
 
 - **Plan directory missing / wrong shape** → refuse per Preconditions 1-2.
-- **`schemaVersion != 2`** → refuse per Precondition 3 with re-plan instruction.
+- **`schemaVersion ∉ {2, 3}`** → refuse per Precondition 3 with re-plan instruction.
 - **`gh` / `git` missing** → refuse per Preconditions 4-5.
 - **Dirty working tree with unrelated paths** → refuse per Precondition 6.
 - **`main` diverged in a way that requires manual merge** during Step 8 rebase and the rebase surfaces conflicts outside `state.json` / `plan.md` → stop and hand off to the user; do not force-push away another contributor's edits.
@@ -236,5 +236,5 @@ The executor prompt historically said "commit both edits on main". This repo has
 ## Distinct from related skills
 
 - **`/ship`**: ships the working branch's PR-scope changes. This skill runs on main after `/ship`-style PRs have merged, to mirror GitHub-observed state back into the plan files. Do not confuse: `/ship` runs per initiative; `/reconcile-backlog-sweep-plan` runs between initiative waves.
-- **`backlog-sweep-execute.md` Step 1b**: the prompt that this skill automates. If the user says "run Step 1b" they want this skill.
-- **`backlog-sweep-execute.md` completion branch (mark `completed: true`, add Refs row)**: deliberately NOT automated here — that edit also touches `ai_docs/backlog.md`'s Refs table, which is an executor concern, not a reconciliation concern.
+- **`~/.claude/prompts/backlog-sweep-execute.md` Step 2 (in-review reconcile)**: the prompt logic this skill automates. If the user says "run the in-review reconcile" (legacy name: "Step 1b") they want this skill.
+- **`:execute` Step 2 completion (mark `completed: true`, add Refs row)**: deliberately NOT automated here — that edit also touches `ai_docs/backlog.md`'s Refs table, which is an executor concern, not a reconciliation concern.

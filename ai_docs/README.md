@@ -43,7 +43,6 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Reference procedure for merging deep-review findings back into `backlog.md` |
 | `ai_docs/procedures/deep-review-command-reference.md` | Shell commands for import, rollup, compare, and batch review workflows |
 | `ai_docs/procedures/audit-21-implementation-plan.md` | In-repo implementation plan for AUDIT-21 |
-| `ai_docs/prompts/backlog-sweep-plan.md` | Planner prompt for batching backlog rows into shippable initiatives |
 | `ai_docs/prompts/profile-large-solution.md` | Runbook for collecting 50+ project Roslyn MCP profiling evidence |
 | `ai_docs/prompts/standardize-documentation.md` | Cross-repo prompt for doc-audit-driven documentation cleanup |
 | `ai_docs/prompts/standardize-backlog-hygiene.md` | Reference prompt for backlog/workflow hygiene alignment |

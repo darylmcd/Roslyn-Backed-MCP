@@ -57,7 +57,7 @@ Both new files get:
 
 - Grep for files that may hard-code `ai_docs/backlog.md` for `P3` / `P4` references and update routing where needed:
   - `ai_docs/planning_index.md` — router; update to mention split files.
-  - `ai_docs/prompts/backlog-sweep-plan.md` + `backlog-sweep-execute.md` — planner/executor prompts. Make sure they read all three files.
+  - `~/.claude/prompts/backlog-sweep-plan.md` + `backlog-sweep-execute.md` (global planner/executor prompts) — make sure they read all three backlog files.
   - `.claude/skills/close-backlog-rows/SKILL.md` — row-closer must resolve ids across all three files.
   - `AGENTS.md` — if it names `backlog.md` specifically, confirm the pointer is still accurate (pointing to the root file is correct post-split).
 
