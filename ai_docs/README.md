@@ -30,6 +30,7 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | File | Purpose |
 |------|---------|
 | `ai_docs/references/testing.md` | Test patterns, commands, and coverage guidance |
+| `known-flakes.md` | Registry of known/quarantined test flakes (FS-watcher, timing) |
 | `ai_docs/references/tooling/dotnet.md` | dotnet CLI commands used in this repo |
 | `ai_docs/references/tooling/mcp-clients.md` | MCP client integration notes |
 | `ai_docs/references/mcp-server-best-practices.md` | MCP error-model, filter pipeline, and protocol hygiene guidance |
@@ -42,18 +43,18 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `ai_docs/procedures/deep-review-program.md` | Multi-repo deep-review matrix, raw-vs-rollup outputs, and backlog intake rules |
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Reference procedure for merging deep-review findings back into `backlog.md` |
 | `ai_docs/procedures/deep-review-command-reference.md` | Shell commands for import, rollup, compare, and batch review workflows |
-| `ai_docs/procedures/audit-21-implementation-plan.md` | In-repo implementation plan for AUDIT-21 |
 | `ai_docs/prompts/profile-large-solution.md` | Runbook for collecting 50+ project Roslyn MCP profiling evidence |
 | `ai_docs/prompts/standardize-documentation.md` | Cross-repo prompt for doc-audit-driven documentation cleanup |
 | `ai_docs/prompts/standardize-backlog-hygiene.md` | Reference prompt for backlog/workflow hygiene alignment |
 | `ai_docs/prompts/stress-test-external-repo.md` | Performance and correctness stress-test protocol for large external solutions |
 | `ai_docs/prompts/roslyn-mcp-multisession-retro.md` | Cross-repo retrospective prompt that scans Claude Code session transcripts for Roslyn MCP issues, missing-tool gaps, and recommendations |
+| `ai_docs/prompts/backlog-sweep-addenda.md` | Repo-specific addenda for backlog-sweep planner/review prompts |
 
 ## Reports And Archive
 
 | File | Purpose |
 |------|---------|
-| `ai_docs/audit-reports/README.md` | Raw MCP audit outputs and `audit-reports/deep-review-session-checklist.md` |
+| `ai_docs/audit-reports/README.md` | Raw MCP audit outputs and `ai_docs/audit-reports/deep-review-session-checklist.md` |
 | `ai_docs/reports/README.md` | Synthesized rollups and cross-cutting audit reports |
 | `ai_docs/archive/README.md` | Archive policy |
 
