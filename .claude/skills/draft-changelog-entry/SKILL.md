@@ -28,10 +28,10 @@ Refuse and report cleanly — do NOT produce a partial fragment — if any of th
 
 | Condition | Message |
 |---|---|
-| Active `state.json` cannot be located OR `schemaVersion != 2` | `"Refusing: unsupported backlog-sweep state schema. This skill requires schemaVersion == 2. Found: <value> at <path>."` |
+| Active `state.json` cannot be located OR `schemaVersion` ∉ {2, 3, 4} | `"Refusing: unsupported backlog-sweep state schema. This skill requires schemaVersion ∈ {2, 3, 4}. Found: <value> at <path>."` |
 | `gh` CLI is not on PATH (`command -v gh` fails) | `"Refusing: the 'gh' CLI is required to read commit metadata but was not found on PATH."` |
 | A fragment file `changelog.d/<first-row-id>.md` already exists | `"Refusing: a fragment for row '<id>' already exists at changelog.d/<id>.md. This skill never clobbers existing fragments — edit the existing file by hand if it needs an update, or remove it first."` |
-| The initiative id is not found in `state.json` OR its `changelogCategory` is null | `"Refusing: initiative '<id>' not found in <state.json path>, or its changelogCategory is null. Backfill changelogCategory in state.json first."` |
+| The initiative id is not found in `state.json` OR no CHANGELOG category resolves from EITHER `state.json` (`changelogCategory`) OR the plan.md stanza (`\| CHANGELOG category \|` row) | `"Refusing: initiative '<id>' not found, or no CHANGELOG category in state.json or its plan.md stanza. Add a 'CHANGELOG category' row to the initiative's plan.md stanza (or set changelogCategory in state.json)."` |
 | The commit cannot be resolved (`git show <ref>` returns non-zero) | `"Refusing: cannot resolve commit / branch '<ref>'."` |
 | `changelog.d/` directory does not exist at the repo root | `"Refusing: changelog.d/ directory not found at repo root. See changelog.d/README.md for the expected layout; ensure the parallel-pr-changelog-append-friction initiative has shipped."` |
 
@@ -47,9 +47,9 @@ Find the most recent `ai_docs/plans/<timestamp>_backlog-sweep/state.json`:
 ls -t ai_docs/plans/*_backlog-sweep/state.json | head -1
 ```
 
-Read it. Confirm `schemaVersion == 2`. Locate the initiative whose `id` matches the first argument. Capture:
+Read it. Confirm `schemaVersion ∈ {2, 3, 4}` (matches the refusal table above). Locate the initiative whose `id` matches the first argument. Capture:
 
-- `changelogCategory` — one of `"Fixed"`, `"Added"`, `"Changed"`, `"Changed — BREAKING"`, `"Maintenance"`. Must exactly match one of the five values in `changelog.d/README.md` (including the em-dash in `Changed — BREAKING`).
+- `changelogCategory` — one of `"Fixed"`, `"Added"`, `"Changed"`, `"Changed — BREAKING"`, `"Maintenance"` (exact match, including the em-dash in `Changed — BREAKING`). **Source order:** use `state.json.initiatives[].changelogCategory` when present; otherwise **fall back to the plan.md stanza** — open `ai_docs/plans/<ts>_backlog-sweep/plan.md`, find this initiative's `### N. <id>` stanza, and read the cell after `| CHANGELOG category |`. The deepener always writes that stanza row, so v3/v4 plans (which omit the field from `state.json`) still resolve a category. Normalize to one of the five values.
 
 ### Step 2: Read the commit body
 
