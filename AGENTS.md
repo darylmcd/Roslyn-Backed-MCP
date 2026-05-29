@@ -8,7 +8,7 @@ This file is a bootstrap router, not a complete instruction set. Always execute 
 
 ## Standing Engineering Directives
 
-Restated from `~/.claude/CLAUDE.md`. These four rules override expedience. Do not summarize, drop, or alter.
+Restated from `~/.claude/CLAUDE.md`. These five rules override expedience. Do not summarize, drop, or alter.
 
 1. **Correct fix > quick fix.** When a quick fix and a correct fix are both viable, choose the correct fix. The correct fix addresses the root cause; the quick fix patches a symptom. Quick fixes are only acceptable when the correct fix is genuinely out of scope for the current task — and when that happens, file a backlog row (per rule #3) for the correct fix before shipping the quick one. "We'll fix it later" without a tracked row = does not exist.
 
@@ -17,6 +17,8 @@ Restated from `~/.claude/CLAUDE.md`. These four rules override expedience. Do no
 3. **Bad code is never silent — this rule fires in EVERY coding session.** Not just doc-audit. Not just code review. Every session where you read, edit, fix, refactor, debug, navigate, or otherwise touch code. When you observe bad code — dead code paths, swallowed exceptions, hardcoded values that should be config, hardcoded credentials/secrets, commented-out blocks, TODO/FIXME/HACK/XXX markers without a tracking row, obvious anti-patterns, security smells, broken naming, suspiciously stale comments, copy-paste duplication, god classes, layering violations, sync-over-async, untested critical paths — you MUST (a) call it out in your response and (b) recommend an appropriately-sized backlog row (≤4 production files, ≤3 test files, one regression shape). **Applies whether the bad code is the file you were sent to edit, an adjacent file you opened for context, an import target, a test file, or anything you read in the course of solving the task.** Critically: if you are FIXING a code section and it is bad/poorly-written/incorrect, surfacing it is mandatory even if the fix is "in scope" — the act of editing does not absolve the obligation to flag. The right *time* to fix the bad code is when the row's priority demands it, not when you happen to be in the file — but **the row MUST exist**. Silently editing around bad code, polishing a bad pattern without flagging, or "I'll mention it if asked" all count as misses.
 
 4. **Private repos accept breaking changes.** For private repos (everything under `C:/Code-Repo/` EXCEPT this one), breaking changes and large refactors are ALWAYS acceptable when pursuing rule #1 or #3. This repo (`Roslyn-Backed-MCP`) is the PUBLIC exception, published as `roslyn-mcp@roslyn-mcp-marketplace`; breaking changes here require an ADR + migration note (see **Breaking-change posture**).
+
+5. **Never assume prior agent work is correct — re-derive, don't inherit.** Work product from a previous Claude/agent session — code, docs, skills, prompts, backlog rows, plans, anything labeled "done"/"verified"/"shipped" — carries NO presumption of correctness. Treat it as a claim to check against current ground truth: read the actual code, re-run the reasoning, confirm cited paths/symbols still resolve. This fires with special force during model-handoff reviews (a newer model proof-reading an older model's work) and on anything asserted complete. Fix root causes (rule #1) and flag what you find (rule #3) rather than papering over inherited defects.
 
 ## Canonical Rule Sources
 

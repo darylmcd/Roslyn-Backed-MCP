@@ -9,6 +9,8 @@
 - **In-repo read order:** `backlog.md` first, then a named or directly relevant file under `ai_docs/plans/`.
 - **Cross-project scope:** if the user names another repo, adapter, or ecosystem, say that this repo has no local cross-project planning router and work only from the external context they provided.
 - **MUST:** every planning file carries a scope tag.
+- **MUST (v10):** every plan-bearing file (roadmaps, initiative plans, `plans/<initiative>/` entry points, phase/slice plans) also carries `<!-- artifact: -->` + `<!-- status: -->` markers immediately after the scope tag. `backlog.md` and this index are exempt.
+- **MUST (reachability, v10):** every `artifact: plan|roadmap` + `status: active` file is reachable from the routing table below; every directory under `ai_docs/plans/` is either a timestamped `*_backlog-sweep/` / `*_top5-remediation/` tree or registered in the routing table.
 - **MUST:** reference-scoped planning/support files carry the reference banner.
 - **MUST NOT:** duplicate roadmap or backlog content here.
 - **MUST NOT:** merge in-repo and cross-project recommendations into one answer.
@@ -23,7 +25,7 @@
 
 | Scope | If you are answering... | Open first | Then |
 |-------|--------------------------|------------|------|
-| `in-repo` | "What should I work on next in this repo?" or any unnamed next-step question | `backlog.md` | Relevant file under `ai_docs/plans/` if a row or initiative names it |
+| `in-repo` | "What should I work on next in this repo?" or any unnamed next-step question | `backlog.md` | Relevant file under `ai_docs/plans/` if a row or initiative names it. Registered active plan: `plans/audit-21-analyzers/plan.md` (AUDIT-21 analyzer gap — Draft, dormant). |
 | `cross-project` | User explicitly named another repo, adapter, ecosystem, or integration | No repo-local cross-project planner in this repo | Work only from the named external context; do not infer a local ecosystem file |
 | `reference` | You need planning context, not an actionable next step | `../docs/roadmap.md` or the relevant planning-support file | Return to `backlog.md` or the named plan before recommending work |
 

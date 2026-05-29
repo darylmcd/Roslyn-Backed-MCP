@@ -46,7 +46,7 @@ repo root:
 
     cd "$(git rev-parse --git-common-dir)/.." && gh pr merge <n> --squash --delete-branch
 
-See `prompts/backlog-sweep-execute.md` § Step 8 for the subagent-flow wording.
+See `~/.claude/prompts/backlog-sweep-execute.md` § Step 8 for the subagent-flow wording (global skill prompt; not in this repo).
 
 ## Release-managed file guard
 
