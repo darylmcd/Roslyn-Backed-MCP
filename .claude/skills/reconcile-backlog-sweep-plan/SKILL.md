@@ -35,7 +35,8 @@ This skill edits repository files and shells out to `gh` + `git`. Roslyn MCP **`
 ### Step 1 — Locate plan and snapshot current state
 
 1. Resolve the plan directory per Input above.
-2. Read `{plan-dir}/state.json` into memory. Validate `schemaVersion ∈ {2, 3}`.
+2. Read `{plan-dir}/state.json` into memory. Validate `schemaVersion ∈ {2, 3, 4}`.
+   - **v4 fast path:** if `schemaVersion == 4` AND `~/.claude/scripts/bsweep-state.mjs` exists, delegate the whole reconcile to `node ~/.claude/scripts/bsweep-state.mjs reconcile --plan {plan-dir}` (one batched `gh pr list`, the same MERGED→merged / CLOSED→deferred transitions, plan.md status-table regen), then go straight to Step 5 (commit + PR). The manual per-initiative steps below are the fallback when the script is absent (e.g. an external plugin consumer) or the plan is pre-v4.
 3. Read `{plan-dir}/plan.md` into memory.
 4. Build the **reconciliation candidate list**: every initiative whose `status` is `in-review` or `in-progress` AND whose `prUrl` is non-null. Skip `pending`, `merged`, `obsolete`, `deferred`, and `paused-usage-limit` (the last is a mid-flight recovery state with no mergeable PR — resume it via `/backlog-sweep:execute initiative=<id>`, don't reconcile it here).
 5. If the candidate list is empty, report `"Nothing to reconcile — no in-review/in-progress initiatives with a PR URL."` and exit **without** creating a branch or PR.

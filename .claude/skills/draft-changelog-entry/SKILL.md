@@ -28,7 +28,7 @@ Refuse and report cleanly — do NOT produce a partial fragment — if any of th
 
 | Condition | Message |
 |---|---|
-| Active `state.json` cannot be located OR `schemaVersion != 2` | `"Refusing: unsupported backlog-sweep state schema. This skill requires schemaVersion == 2. Found: <value> at <path>."` |
+| Active `state.json` cannot be located OR `schemaVersion` ∉ {2, 3, 4} | `"Refusing: unsupported backlog-sweep state schema. This skill requires schemaVersion ∈ {2, 3, 4}. Found: <value> at <path>."` |
 | `gh` CLI is not on PATH (`command -v gh` fails) | `"Refusing: the 'gh' CLI is required to read commit metadata but was not found on PATH."` |
 | A fragment file `changelog.d/<first-row-id>.md` already exists | `"Refusing: a fragment for row '<id>' already exists at changelog.d/<id>.md. This skill never clobbers existing fragments — edit the existing file by hand if it needs an update, or remove it first."` |
 | The initiative id is not found in `state.json` OR its `changelogCategory` is null | `"Refusing: initiative '<id>' not found in <state.json path>, or its changelogCategory is null. Backfill changelogCategory in state.json first."` |
