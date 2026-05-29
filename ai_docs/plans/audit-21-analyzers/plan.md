@@ -2,6 +2,8 @@
 
 <!-- purpose: Detailed implementation plan for closing AUDIT-21 — host-injected IDE/CA analyzers in MSBuildWorkspace. For review before work begins. -->
 <!-- scope: in-repo -->
+<!-- artifact: plan -->
+<!-- status: active -->
 
 | Field | Value |
 |-------|-------|

@@ -2,7 +2,7 @@
 
 <!-- purpose: Current design note for moving the audit-finding sharing path toward GitHub Issues while keeping the maintainer-local fragment workflow. -->
 <!-- scope: in-repo -->
-<!-- status: completed - rows 1-3 shipped (PRs #591, #592, #593) and released as v1.35.1 (PR #595); end-to-end verification passed 2026-05-10; row 4 deferred per design note -->
+<!-- shipped-note: rows 1-3 shipped (PRs #591, #592, #593), released v1.35.1 (PR #595); end-to-end verification passed 2026-05-10; row 4 deferred per design note. Items/ files are marker-exempt — this is an informational note, not a v10 status marker. -->
 
 **Created:** 2026-05-08  
 **Last reconciled:** 2026-05-09  
@@ -102,7 +102,7 @@ These are the only questions worth carrying into a future planning or sanity-che
 | `ai_docs/plans/20260507T182128Z_backlog-sweep/plan.md` | Sweep that introduced the maintainer-only audit redesign and fragment pattern. |
 | `ai_docs/plans/20260508T171439Z_backlog-sweep/plan.md` | Follow-up sweep that shipped the 2026-05-08 audit findings and changed priority context. |
 | `.claude/skills/mcp-server-stress/SKILL.md` | Current maintainer-only skill entry point. |
-| `.claude/skills/mcp-server-stress/prompts/maintainer-overlay.md` | Maintainer-only superset prompt (renamed from `prompts/prompt.md` when Row 1 shipped); retains repo-coupled phases the shipped consumer prompt does not have. |
+| `skills/mcp-server-surface-test/prompts/full.md` | Canonical audit prompt — the legacy `maintainer-overlay.md` was deleted and folded into this single prompt; `--output-mode=fragments` drives the maintainer intake path. |
 | `.claude/skills/backlog-intake/SKILL.md` | Maintainer intake flow that consumes `backlog.d/` fragments. |
 | `ai_docs/items/backlog-d-fragment-schema.md` | Canonical fragment schema; base for the shared finding envelope. |
 | `ai_docs/backlog.md` | Current open-work source of truth. |
