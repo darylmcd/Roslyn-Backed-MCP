@@ -27,11 +27,16 @@ public sealed class ExceptionFlowService : IExceptionFlowService
     public const int BodyExcerptLength = 200;
 
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<ExceptionFlowService> _logger;
 
-    public ExceptionFlowService(IWorkspaceManager workspace, ILogger<ExceptionFlowService> logger)
+    public ExceptionFlowService(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<ExceptionFlowService> logger)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -57,7 +62,7 @@ public sealed class ExceptionFlowService : IExceptionFlowService
         {
             if (ct.IsCancellationRequested || sites.Count >= cap) break;
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             // Resolve the target exception type from THIS compilation. A given metadata name
