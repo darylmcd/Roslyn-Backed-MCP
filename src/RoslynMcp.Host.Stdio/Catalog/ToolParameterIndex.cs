@@ -96,7 +96,7 @@ internal static class ToolParameterIndex
     private static ToolParameterSchema BuildSchema(ParameterInfo parameter)
     {
         var description = parameter.GetCustomAttribute<DescriptionAttribute>()?.Description;
-        var typeName = FormatTypeName(parameter.ParameterType);
+        var typeName = CatalogTypeNameFormatter.FormatTypeName(parameter.ParameterType);
         var required = !parameter.HasDefaultValue;
 
         return new ToolParameterSchema(
@@ -104,35 +104,6 @@ internal static class ToolParameterIndex
             Type: typeName,
             Required: required,
             Description: description);
-    }
-
-    private static string FormatTypeName(Type type)
-    {
-        var underlying = Nullable.GetUnderlyingType(type);
-        if (underlying is not null) return FormatTypeName(underlying) + "?";
-
-        if (type.IsGenericType)
-        {
-            var name = type.Name;
-            var tickIdx = name.IndexOf('`', StringComparison.Ordinal);
-            if (tickIdx >= 0) name = name[..tickIdx];
-            var args = type.GetGenericArguments().Select(FormatTypeName);
-            return $"{name}<{string.Join(", ", args)}>";
-        }
-
-        return type.FullName switch
-        {
-            "System.String" => "string",
-            "System.Int32" => "int",
-            "System.Int64" => "long",
-            "System.Boolean" => "bool",
-            "System.Double" => "double",
-            "System.Single" => "float",
-            "System.Decimal" => "decimal",
-            "System.Byte" => "byte",
-            "System.Object" => "object",
-            _ => type.Name,
-        };
     }
 }
 

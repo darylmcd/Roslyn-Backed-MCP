@@ -63,7 +63,7 @@ internal static class PromptParameterIndex
     private static PromptParameterEntry BuildEntry(ParameterInfo parameter)
     {
         var description = parameter.GetCustomAttribute<DescriptionAttribute>()?.Description;
-        var typeName = FormatTypeName(parameter.ParameterType);
+        var typeName = CatalogTypeNameFormatter.FormatTypeName(parameter.ParameterType);
         var required = !parameter.HasDefaultValue;
         var defaultValue = parameter.HasDefaultValue ? FormatDefaultValue(parameter.DefaultValue) : null;
 
@@ -73,42 +73,6 @@ internal static class PromptParameterIndex
             Required: required,
             DefaultValue: defaultValue,
             Description: description);
-    }
-
-    /// <summary>
-    /// Returns a stable, JSON-friendly type label. Nullable value types collapse to
-    /// <c>{type}?</c>; reference types (which are nullable in the C# 8+ annotation model but
-    /// which reflection cannot fully introspect for nullable-annotation context) keep the bare
-    /// name. Generic types format as <c>List&lt;string&gt;</c> rather than CLR backtick-arity.
-    /// </summary>
-    private static string FormatTypeName(Type type)
-    {
-        var underlying = Nullable.GetUnderlyingType(type);
-        if (underlying is not null) return FormatTypeName(underlying) + "?";
-
-        if (type.IsGenericType)
-        {
-            var name = type.Name;
-            var tickIdx = name.IndexOf('`', StringComparison.Ordinal);
-            if (tickIdx >= 0) name = name[..tickIdx];
-            var args = type.GetGenericArguments().Select(FormatTypeName);
-            return $"{name}<{string.Join(", ", args)}>";
-        }
-
-        // Map common primitives to their C# keyword form for readability.
-        return type.FullName switch
-        {
-            "System.String" => "string",
-            "System.Int32" => "int",
-            "System.Int64" => "long",
-            "System.Boolean" => "bool",
-            "System.Double" => "double",
-            "System.Single" => "float",
-            "System.Decimal" => "decimal",
-            "System.Byte" => "byte",
-            "System.Object" => "object",
-            _ => type.Name,
-        };
     }
 
     /// <summary>
