@@ -3,7 +3,7 @@
 <!-- purpose: Open work only; contract for agents syncing backlog on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at: 2026-05-29T06:12:10Z**
+**updated_at: 2026-05-30T16:53:21Z**
 
 ## Agent contract
 
@@ -93,4 +93,3 @@
 | `ai_docs/procedures/deep-review-backlog-intake.md` | Intake procedure for future audit batches |
 | `review-inbox/` | Staging folder for the NEXT audit batch (flat directory; `/backlog-intake` reads here) |
 | `review-inbox/archive/<batch-ts>/` | Processed audit/retro/promotion batches; delete after all actionable items are shipped, rejected, or summarized |
-| `ai_docs/plans/20260522T132800Z_top5-remediation/plan.md` | Shipped 1 code initiative and closed 1 measurement no-go |
