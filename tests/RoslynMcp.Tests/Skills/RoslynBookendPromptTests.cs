@@ -4,10 +4,10 @@ namespace RoslynMcp.Tests.Skills;
 
 /// <summary>
 /// Static contract tests confirming the Roslyn workspace-bookend prelude is present in
-/// the targeted repo-local routine-flow prompts and refactor skills.
+/// the targeted refactor skills.
 ///
 /// After the routine-flows-wrap-csharp-work-with-roslyn-bookends initiative,
-/// repo-local routine-flow instructions contain an auto-probe block that globs
+/// these skill instructions contain an auto-probe block that globs
 /// CWD for *.slnx / *.sln / *.csproj, loads the workspace on a positive hit,
 /// and surfaces the top 5 Roslyn semantic primitives as a recommended-tool
 /// block. Non-C# repos skip cleanly via the `applicable: false` path.
@@ -18,57 +18,6 @@ namespace RoslynMcp.Tests.Skills;
 [TestClass]
 public sealed class RoslynBookendPromptTests
 {
-    // -------------------------------------------------------------------------
-    // backlog-sweep-plan.md
-    // -------------------------------------------------------------------------
-
-    [TestMethod]
-    public void BacklogSweepPlan_HasWorkspaceBookendStep0()
-    {
-        var text = File.ReadAllText(ResolvePath("ai_docs", "prompts", "backlog-sweep-plan.md"));
-
-        StringAssert.Contains(text, "## Step 0 — Workspace bookend");
-    }
-
-    [TestMethod]
-    public void BacklogSweepPlan_BookendGlobsCwd()
-    {
-        var text = File.ReadAllText(ResolvePath("ai_docs", "prompts", "backlog-sweep-plan.md"));
-
-        StringAssert.Contains(text, "*.slnx");
-        StringAssert.Contains(text, "*.sln");
-        StringAssert.Contains(text, "*.csproj");
-    }
-
-    [TestMethod]
-    public void BacklogSweepPlan_BookendHasNonCSharpSkipPath()
-    {
-        var text = File.ReadAllText(ResolvePath("ai_docs", "prompts", "backlog-sweep-plan.md"));
-
-        StringAssert.Contains(text, "applicable: false");
-    }
-
-    [TestMethod]
-    public void BacklogSweepPlan_BookendSurfacesRecommendedToolBlock()
-    {
-        var text = File.ReadAllText(ResolvePath("ai_docs", "prompts", "backlog-sweep-plan.md"));
-
-        StringAssert.Contains(text, "find_references");
-        StringAssert.Contains(text, "find_consumers");
-        StringAssert.Contains(text, "find_implementations");
-        StringAssert.Contains(text, "compile_check");
-        StringAssert.Contains(text, "validate_workspace");
-    }
-
-    [TestMethod]
-    public void BacklogSweepPlan_BookendHasPostMutationExitGate()
-    {
-        var text = File.ReadAllText(ResolvePath("ai_docs", "prompts", "backlog-sweep-plan.md"));
-
-        StringAssert.Contains(text, "Post-mutation exit gate");
-        StringAssert.Contains(text, "validate_workspace");
-    }
-
     // -------------------------------------------------------------------------
     // skills/refactor/SKILL.md
     // -------------------------------------------------------------------------

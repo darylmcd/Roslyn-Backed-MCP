@@ -1,5 +1,0 @@
----
-category: Changed
----
-
-- **Changed:** `WorkspaceManager.LoadIntoSessionAsync` is now ~115 LOC of orchestration rather than 217 LOC of mixed MSBuild creation + workspace-failed-handler wiring + atomic swap. Extracted `WorkspaceSessionLoader` (MSBuild init + global-properties wiring + `OpenSolutionAsync`/`OpenProjectAsync` dispatch + analyzer-reference retargeting) and `WorkspaceDiagnosticsSink` (bounded queue + workspace-failed handler with severity normalization) as internal helpers. The autoreload-cascade invariant from `autoreload-cascade-stdio-host-crash` is preserved by the same `swapped` flag pattern in the `finally` block — readers always observe either the prior loaded workspace OR the fully initialized new workspace, never a half-initialized session. The loader's `CreateAndOpenAsync` is `virtual` and `WorkspaceManager` exposes an internal constructor overload that accepts a `WorkspaceSessionLoader?` so `WorkspaceSessionLoaderFailureTests` can inject a throwing double and verify that `session.Workspace` stays pointed at the prior non-disposed workspace on partial-load failure. Closes `workspace-manager-loadintosession-split`.
