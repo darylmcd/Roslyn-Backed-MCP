@@ -23,7 +23,7 @@ namespace RoslynMcp.Roslyn.Services;
 /// ops, which is documented in the operation kind table on <see cref="ISymbolRefactorService"/>.
 /// </para>
 /// </summary>
-public sealed class SymbolRefactorService : ISymbolRefactorService
+public sealed partial class SymbolRefactorService : ISymbolRefactorService
 {
     private const int MaxOperations = 25;
     private const int MaxFilesAffected = 500;
@@ -554,9 +554,7 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
             }
         }
 
-        var textualPattern = new Regex(
-            @"services\s*\.\s*Add(?<lifetime>Transient|Scoped|Singleton)\s*<\s*(?<generics>[^>]*?)\s*>\s*\(",
-            RegexOptions.CultureInvariant);
+        var textualPattern = ServiceRegistrationCallRegex();
 
         foreach (var candidate in candidateFiles)
         {
@@ -637,9 +635,7 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
         //   services.AddTransient<IFoo>(sp => new Foo(sp));
         // Each match is rewritten to the partition+facade block, preserving the original
         // statement's indentation so the diff stays local.
-        var pattern = new Regex(
-            @"^(?<indent>[ \t]*)services\s*\.\s*Add(?<lifetime>Transient|Scoped|Singleton)\s*<\s*(?<generics>[^>]*?)\s*>\s*\([^;]*\)\s*;",
-            RegexOptions.Multiline | RegexOptions.CultureInvariant);
+        var pattern = ServiceRegistrationStatementRegex();
 
         var rewritten = pattern.Replace(content, match =>
         {
@@ -1815,4 +1811,10 @@ public sealed class SymbolRefactorService : ISymbolRefactorService
         int EndLine,
         string ContainingTypeName,
         string FieldName);
+
+    [GeneratedRegex(@"services\s*\.\s*Add(?<lifetime>Transient|Scoped|Singleton)\s*<\s*(?<generics>[^>]*?)\s*>\s*\(", RegexOptions.CultureInvariant)]
+    private static partial Regex ServiceRegistrationCallRegex();
+
+    [GeneratedRegex(@"^(?<indent>[ \t]*)services\s*\.\s*Add(?<lifetime>Transient|Scoped|Singleton)\s*<\s*(?<generics>[^>]*?)\s*>\s*\([^;]*\)\s*;", RegexOptions.Multiline | RegexOptions.CultureInvariant)]
+    private static partial Regex ServiceRegistrationStatementRegex();
 }
