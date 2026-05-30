@@ -3,7 +3,7 @@
   "generatedAt": "2026-05-30T23:35:22Z",
   "backlogSnapshot": "2026-05-30T23:10:00Z",
   "addendaLoaded": true,
-  "phase": "review-cycle-0-done",
+  "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "passed-with-warnings",
@@ -12,7 +12,10 @@
     "warn": 1,
     "info": 1
   },
-  "readyForExecute": false,
+  "handoffPolicy": "auto",
+  "handoffAnnotated": 0,
+  "handoffSkipNote": "Initiative 1 met no auto trigger. Initiative 2's judgmentHeavy flag is planning-side (split decision, captured in stanza); implementation is a trivial doc/JSON deletion — handoff fan-out skipped as low-value per change-size-to-value.",
+  "readyForExecute": true,
   "initiatives": [
     {
       "id": "compilation-cache-adoption-read-side",
@@ -37,7 +40,8 @@
       "mergedAt": null,
       "notes": "Batch 2 of compilation-cache adoption: group (a) clean sites TypeConsumersService/CodePatternAnalyzer/SymbolSearchService. Re-derived line numbers (108/34+229/117). Group (c) forked-solution HAZARD sites and TestReferenceMapService/ReferenceService deferred to a later batch. WorkspaceWarmService:97 intentionally warms via direct call and must NOT be converted.",
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "53069d64e0c4fed135de768789a5ad0a4974f7b52a0fb57fdb0a61c7c3feb680"
+      "stanzaHash": "53069d64e0c4fed135de768789a5ad0a4974f7b52a0fb57fdb0a61c7c3feb680",
+      "reviewedStanzaHash": "53069d64e0c4fed135de768789a5ad0a4974f7b52a0fb57fdb0a61c7c3feb680"
     },
     {
       "id": "promotion-scorecard-execution-batch",
@@ -62,7 +66,8 @@
       "mergedAt": null,
       "notes": "Scoped to source-of-truth dedup ONLY (delete stale ai_docs/audit-reports/_latest-promotion-scorecard.json, repoint README). The tier-promotion execution (re-run scorecard vs v2.3.1 + /promote-tier batches, hotspot ServerSurfaceCatalog.*.cs) MUST be filed as a follow-on backlog row at execute-time Backlog sync — it does not fit Rule 3/5 in this initiative. judgmentHeavy: split decision.",
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "305a4f5176fda137af0101d5fdb9cd0c1cb7e1ec2aaed9aec5e1bd162d372fe2"
+      "stanzaHash": "305a4f5176fda137af0101d5fdb9cd0c1cb7e1ec2aaed9aec5e1bd162d372fe2",
+      "reviewedStanzaHash": "305a4f5176fda137af0101d5fdb9cd0c1cb7e1ec2aaed9aec5e1bd162d372fe2"
     }
   ],
   "anchorVerification": "performed",
@@ -80,5 +85,7 @@
   },
   "conflictGraphInputHash": "af60ab5be9ad4965eaa1059028902dc21b4b010385fbd5bfd03807f26e68aaf3",
   "planHash": "6df957f3ecdf3eb18d1a0972c99cb5b618ef949598b4ea21288816c74a590560",
-  "backlogSnapshotHash": "be58f64a9d880cf9669567e61ac7c052910738ee4a72b4c2f09da8e3c3828961"
+  "backlogSnapshotHash": "be58f64a9d880cf9669567e61ac7c052910738ee4a72b4c2f09da8e3c3828961",
+  "reviewedPlanHash": "6df957f3ecdf3eb18d1a0972c99cb5b618ef949598b4ea21288816c74a590560",
+  "reviewedBacklogSnapshotHash": "be58f64a9d880cf9669567e61ac7c052910738ee4a72b4c2f09da8e3c3828961"
 }
