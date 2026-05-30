@@ -982,9 +982,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             return;
         }
 
-        var rootDirectory = fullPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
-            ? Path.GetDirectoryName(fullPath)
-            : Path.GetDirectoryName(fullPath);
+        var rootDirectory = Path.GetDirectoryName(fullPath);
         if (string.IsNullOrWhiteSpace(rootDirectory) || !Directory.Exists(rootDirectory))
         {
             return;
