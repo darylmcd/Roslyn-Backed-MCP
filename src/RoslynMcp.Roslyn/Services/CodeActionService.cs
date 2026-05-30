@@ -139,7 +139,7 @@ public sealed class CodeActionService : ICodeActionService
             throw new InvalidOperationException($"Code action '{selectedAction.Title}' does not produce workspace changes.");
 
         var newSolution = applyOp.ChangedSolution;
-        var changes = await ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
+        var changes = await SolutionDiffHelper.ComputeChangesAsync(solution, newSolution, ct).ConfigureAwait(false);
         var description = $"Code action: {selectedAction.Title}";
         var token = _previewStore.Store(workspaceId, newSolution, _workspace.GetCurrentVersion(workspaceId), description);
 
@@ -304,33 +304,5 @@ public sealed class CodeActionService : ICodeActionService
             _logger.LogWarning(ex, "Failed to load code refactoring providers");
             return [];
         }
-    }
-
-    private static async Task<IReadOnlyList<FileChangeDto>> ComputeChangesAsync(
-        Solution oldSolution, Solution newSolution, CancellationToken ct)
-    {
-        var changes = new List<FileChangeDto>();
-        var solutionChanges = newSolution.GetChanges(oldSolution);
-
-        foreach (var projectChange in solutionChanges.GetProjectChanges())
-        {
-            foreach (var docId in projectChange.GetChangedDocuments())
-            {
-                var oldDoc = oldSolution.GetDocument(docId);
-                var newDoc = newSolution.GetDocument(docId);
-                if (oldDoc is null || newDoc is null) continue;
-
-                var oldText = (await oldDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-                var newText = (await newDoc.GetTextAsync(ct).ConfigureAwait(false)).ToString();
-
-                if (oldText == newText) continue;
-
-                var filePath = oldDoc.FilePath ?? oldDoc.Name;
-                var diff = DiffGenerator.GenerateUnifiedDiff(oldText, newText, filePath);
-                changes.Add(new FileChangeDto(filePath, diff));
-            }
-        }
-
-        return changes;
     }
 }
