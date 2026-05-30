@@ -54,96 +54,45 @@ internal static class SymbolServiceHelpers
     {
         return symbol switch
         {
-            IMethodSymbol method => EnumerateMethodBases(method),
-            IPropertySymbol property => EnumeratePropertyBases(property),
-            IEventSymbol eventSymbol => EnumerateEventBases(eventSymbol),
+            IMethodSymbol method => EnumerateOverrideBases(method, m => m.OverriddenMethod, method.ExplicitInterfaceImplementations),
+            IPropertySymbol property => EnumerateOverrideBases(property, p => p.OverriddenProperty, property.ExplicitInterfaceImplementations),
+            IEventSymbol eventSymbol => EnumerateOverrideBases(eventSymbol, e => e.OverriddenEvent, eventSymbol.ExplicitInterfaceImplementations),
             INamedTypeSymbol namedType => EnumerateTypeBases(namedType),
             _ => []
         };
     }
 
-    private static IEnumerable<ISymbol> EnumerateMethodBases(IMethodSymbol method)
+    // Walk override + interface-implementation bases for an overridable member (method, property,
+    // or event). C# exposes no common IOverridableSymbol, so the per-kind Overridden* accessor is
+    // passed as a selector and the kind-typed ExplicitInterfaceImplementations as a sequence.
+    private static IEnumerable<ISymbol> EnumerateOverrideBases<T>(
+        T symbol,
+        Func<T, T?> overriddenSelector,
+        IEnumerable<T> explicitImplementations)
+        where T : class, ISymbol
     {
-        var current = method.OverriddenMethod;
+        var current = overriddenSelector(symbol);
         while (current is not null)
         {
             yield return current;
-            current = current.OverriddenMethod;
+            current = overriddenSelector(current);
         }
 
-        foreach (var explicitImplementation in method.ExplicitInterfaceImplementations)
+        foreach (var explicitImplementation in explicitImplementations)
         {
             yield return explicitImplementation;
         }
 
-        // Implicit interface implementations: check if this method implements any interface member
-        if (method.ContainingType is not null)
+        // Implicit interface implementations: yield any interface member this symbol implements.
+        if (symbol.ContainingType is not null)
         {
-            foreach (var iface in method.ContainingType.AllInterfaces)
+            foreach (var iface in symbol.ContainingType.AllInterfaces)
             {
-                foreach (var member in iface.GetMembers().OfType<IMethodSymbol>())
+                foreach (var interfaceMember in iface.GetMembers().OfType<T>())
                 {
-                    var impl = method.ContainingType.FindImplementationForInterfaceMember(member);
-                    if (SymbolEqualityComparer.Default.Equals(impl, method))
-                        yield return member;
-                }
-            }
-        }
-    }
-
-    private static IEnumerable<ISymbol> EnumeratePropertyBases(IPropertySymbol property)
-    {
-        var current = property.OverriddenProperty;
-        while (current is not null)
-        {
-            yield return current;
-            current = current.OverriddenProperty;
-        }
-
-        foreach (var explicitImplementation in property.ExplicitInterfaceImplementations)
-        {
-            yield return explicitImplementation;
-        }
-
-        // Implicit interface implementations
-        if (property.ContainingType is not null)
-        {
-            foreach (var iface in property.ContainingType.AllInterfaces)
-            {
-                foreach (var member in iface.GetMembers().OfType<IPropertySymbol>())
-                {
-                    var impl = property.ContainingType.FindImplementationForInterfaceMember(member);
-                    if (SymbolEqualityComparer.Default.Equals(impl, property))
-                        yield return member;
-                }
-            }
-        }
-    }
-
-    private static IEnumerable<ISymbol> EnumerateEventBases(IEventSymbol eventSymbol)
-    {
-        var current = eventSymbol.OverriddenEvent;
-        while (current is not null)
-        {
-            yield return current;
-            current = current.OverriddenEvent;
-        }
-
-        foreach (var explicitImplementation in eventSymbol.ExplicitInterfaceImplementations)
-        {
-            yield return explicitImplementation;
-        }
-
-        // Implicit interface implementations
-        if (eventSymbol.ContainingType is not null)
-        {
-            foreach (var iface in eventSymbol.ContainingType.AllInterfaces)
-            {
-                foreach (var member in iface.GetMembers().OfType<IEventSymbol>())
-                {
-                    var impl = eventSymbol.ContainingType.FindImplementationForInterfaceMember(member);
-                    if (SymbolEqualityComparer.Default.Equals(impl, eventSymbol))
-                        yield return member;
+                    var impl = symbol.ContainingType.FindImplementationForInterfaceMember(interfaceMember);
+                    if (SymbolEqualityComparer.Default.Equals(impl, symbol))
+                        yield return interfaceMember;
                 }
             }
         }
