@@ -10,11 +10,16 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class AnalyzerInfoService : IAnalyzerInfoService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<AnalyzerInfoService> _logger;
 
-    public AnalyzerInfoService(IWorkspaceManager workspace, ILogger<AnalyzerInfoService> logger)
+    public AnalyzerInfoService(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<AnalyzerInfoService> logger)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -31,7 +36,7 @@ public sealed class AnalyzerInfoService : IAnalyzerInfoService
         {
             ct.ThrowIfCancellationRequested();
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             // Get analyzer references from the project

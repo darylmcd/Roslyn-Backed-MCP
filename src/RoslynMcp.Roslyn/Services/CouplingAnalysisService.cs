@@ -18,11 +18,16 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class CouplingAnalysisService : ICouplingAnalysisService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<CouplingAnalysisService> _logger;
 
-    public CouplingAnalysisService(IWorkspaceManager workspace, ILogger<CouplingAnalysisService> logger)
+    public CouplingAnalysisService(
+        IWorkspaceManager workspace,
+        ICompilationCache compilationCache,
+        ILogger<CouplingAnalysisService> logger)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -47,7 +52,7 @@ public sealed class CouplingAnalysisService : ICouplingAnalysisService
         foreach (var project in projects)
         {
             if (ct.IsCancellationRequested) break;
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var symbol in EnumerateDeclaredTypes(compilation.Assembly.GlobalNamespace))

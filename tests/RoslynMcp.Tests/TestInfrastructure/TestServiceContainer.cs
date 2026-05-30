@@ -234,6 +234,7 @@ internal sealed class TestServiceContainer
                 NullLogger<CohesionAnalysisService>.Instance),
             CouplingAnalysisService = new CouplingAnalysisService(
                 workspaceManager,
+                compilationCache,
                 NullLogger<CouplingAnalysisService>.Instance),
             RecordFieldAdditionService = new RecordFieldAdditionService(workspaceManager),
             ConsumerAnalysisService = new ConsumerAnalysisService(workspaceManager),
@@ -251,6 +252,7 @@ internal sealed class TestServiceContainer
             CompileCheckService = compileCheckService,
             AnalyzerInfoService = new AnalyzerInfoService(
                 workspaceManager,
+                compilationCache,
                 NullLogger<AnalyzerInfoService>.Instance),
             FixAllService = new FixAllService(
                 workspaceManager,
@@ -280,6 +282,7 @@ internal sealed class TestServiceContainer
             FormatVerifyService = new FormatVerifyService(workspaceManager, NullLogger<FormatVerifyService>.Instance),
             ExceptionFlowService = new ExceptionFlowService(
                 workspaceManager,
+                compilationCache,
                 NullLogger<ExceptionFlowService>.Instance),
             WorkspaceWarmService = new WorkspaceWarmService(
                 workspaceManager,
