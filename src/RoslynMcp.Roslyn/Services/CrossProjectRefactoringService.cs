@@ -539,9 +539,8 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
 
         // gh #765 — build the using list semantically. Drop the legacy text-grep filter
         // (`FilterUsingsForMember`) which silently dropped source-project usings whose last
-        // segment didn't match a `MinimallyQualifiedFormat` short name. Mirrors
-        // `InterfaceExtractionService.BuildUsingDirectives`.
-        var overrideUsings = BuildUsingDirectives(sourceRoot.Usings, requiredNamespaces);
+        // segment didn't match a `MinimallyQualifiedFormat` short name.
+        var overrideUsings = UsingDirectiveSynthesizer.BuildUsingDirectives(sourceRoot.Usings, requiredNamespaces);
 
         // FORMAT-BUG-001 (dr-9-2-format-bug-001-cross-project-interface-extractio): the
         // interface declaration and its members are built from raw SyntaxFactory nodes that
@@ -862,98 +861,5 @@ public sealed class CrossProjectRefactoringService : ICrossProjectRefactoringSer
         }
 
         return namespaces;
-    }
-
-    /// <summary>
-    /// gh #765 — merge the semantically-required namespaces with the source file's using
-    /// block. Keeps source-file aliases, static usings, and global usings (they cannot be
-    /// re-synthesized from symbols), and adds plain-<c>using</c> directives for every
-    /// required namespace. Drops plain source-file usings that the semantic walk determined
-    /// are unnecessary. Mirrors <c>InterfaceExtractionService.BuildUsingDirectives</c>.
-    /// </summary>
-    private static SyntaxList<UsingDirectiveSyntax> BuildUsingDirectives(
-        SyntaxList<UsingDirectiveSyntax> sourceUsings,
-        IReadOnlyCollection<string> requiredNamespaces)
-    {
-        var result = new List<UsingDirectiveSyntax>();
-        var alreadyAddedPlainNamespaces = new HashSet<string>(StringComparer.Ordinal);
-
-        PreserveSpecialAndRequiredSourceUsings(
-            sourceUsings,
-            requiredNamespaces,
-            result,
-            alreadyAddedPlainNamespaces);
-        AddMissingRequiredUsingDirectives(requiredNamespaces, alreadyAddedPlainNamespaces, result);
-        return SortUsingDirectives(result);
-    }
-
-    private static void PreserveSpecialAndRequiredSourceUsings(
-        SyntaxList<UsingDirectiveSyntax> sourceUsings,
-        IReadOnlyCollection<string> requiredNamespaces,
-        List<UsingDirectiveSyntax> result,
-        ISet<string> alreadyAddedPlainNamespaces)
-    {
-        foreach (var source in sourceUsings)
-        {
-            if (IsSpecialUsingDirective(source))
-            {
-                result.Add(source);
-                continue;
-            }
-
-            var name = GetUsingNamespace(source);
-            if (name is null || !requiredNamespaces.Contains(name))
-            {
-                continue;
-            }
-
-            result.Add(source);
-            alreadyAddedPlainNamespaces.Add(name);
-        }
-    }
-
-    private static void AddMissingRequiredUsingDirectives(
-        IReadOnlyCollection<string> requiredNamespaces,
-        ISet<string> alreadyAddedPlainNamespaces,
-        List<UsingDirectiveSyntax> result)
-    {
-        foreach (var ns in requiredNamespaces)
-        {
-            if (!alreadyAddedPlainNamespaces.Contains(ns))
-            {
-                result.Add(SyntaxFactory.UsingDirective(SyntaxFactory.ParseName(ns)));
-            }
-        }
-    }
-
-    private static SyntaxList<UsingDirectiveSyntax> SortUsingDirectives(List<UsingDirectiveSyntax> usings)
-    {
-        var systemUsings = usings
-            .Where(IsSystemUsingDirective)
-            .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
-        var otherPlain = usings
-            .Where(u => !IsSpecialUsingDirective(u) && !IsSystemUsingDirective(u))
-            .OrderBy(u => u.Name!.ToString(), StringComparer.Ordinal);
-        var specials = usings.Where(IsSpecialUsingDirective);
-        return SyntaxFactory.List(systemUsings.Concat(otherPlain).Concat(specials));
-    }
-
-    private static string? GetUsingNamespace(UsingDirectiveSyntax source)
-    {
-        var name = source.Name?.ToString();
-        return string.IsNullOrWhiteSpace(name) ? null : name;
-    }
-
-    private static bool IsSystemUsingDirective(UsingDirectiveSyntax usingDirective)
-    {
-        return !IsSpecialUsingDirective(usingDirective)
-            && (usingDirective.Name?.ToString().StartsWith("System", StringComparison.Ordinal) ?? false);
-    }
-
-    private static bool IsSpecialUsingDirective(UsingDirectiveSyntax usingDirective)
-    {
-        return usingDirective.Alias is not null
-            || usingDirective.StaticKeyword.IsKind(SyntaxKind.StaticKeyword)
-            || usingDirective.GlobalKeyword.IsKind(SyntaxKind.GlobalKeyword);
     }
 }
