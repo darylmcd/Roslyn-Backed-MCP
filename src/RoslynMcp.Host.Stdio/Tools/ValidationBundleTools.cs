@@ -352,7 +352,10 @@ public static class ValidationBundleTools
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            try { process.Kill(entireProcessTree: true); } catch { }
+            // Best-effort cleanup of the timed-out fork process tree. A Kill failure (e.g. the
+            // process already exited, or a race on the process handle) is not actionable here —
+            // we are already throwing TimeoutException — so the swallow is deliberate.
+            try { process.Kill(entireProcessTree: true); } catch { /* see comment above — non-actionable on the timeout path */ }
             throw new TimeoutException("dotnet restore for workspace fork exceeded the 2 minute timeout.");
         }
 
