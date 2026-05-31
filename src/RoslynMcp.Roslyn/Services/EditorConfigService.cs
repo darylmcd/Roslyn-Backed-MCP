@@ -347,7 +347,7 @@ public sealed class EditorConfigService : IEditorConfigService
         }
 
         const string csharpSection = "[*.{cs,csx,cake}]";
-        UpsertKeyInSection(lines, csharpSection, key.Trim(), value.Trim());
+        UpsertKeyAcrossCSharpSections(lines, csharpSection, key.Trim(), value.Trim());
 
         var directory = Path.GetDirectoryName(editorconfigPath);
         if (!string.IsNullOrEmpty(directory))
@@ -370,10 +370,76 @@ public sealed class EditorConfigService : IEditorConfigService
         return Task.FromResult(new EditorConfigWriteResultDto(editorconfigPath, key, value, created));
     }
 
-    private static void UpsertKeyInSection(List<string> lines, string sectionHeader, string key, string value)
+    /// <summary>
+    /// Upserts <paramref name="key"/> = <paramref name="value"/> into the .editorconfig
+    /// represented by <paramref name="lines"/>.
+    /// </summary>
+    /// <remarks>
+    /// set-editorconfig-option-cross-section-duplicate-key (gh #735 regression): the writer
+    /// MUST search every C#-applicable section for an existing key — not just the canonical
+    /// <paramref name="canonicalSection"/> — because the READER
+    /// (<see cref="ParseEditorconfigCsKeys"/> + <see cref="SectionMatchesCSharp"/>) enumerates
+    /// keys from ALL C#-applicable sections (<c>[*]</c>, <c>[*.cs]</c>,
+    /// <c>[*.{cs,csx,cake}]</c>, …). If a key already lives under <c>[*.cs]</c> and the writer
+    /// only looked inside <c>[*.{cs,csx,cake}]</c>, it would append a second copy — leaving the
+    /// key present twice while <c>get_editorconfig_options</c> reported a single (now stale)
+    /// value. The prior key matcher (split-on-first-'=', whitespace-insensitive) was correct
+    /// but scoped to the wrong section; this method keeps that matcher and widens the search to
+    /// the reader's section set. A genuinely-new key is appended to <paramref name="canonicalSection"/>,
+    /// creating that section if absent.
+    /// </remarks>
+    private static void UpsertKeyAcrossCSharpSections(
+        List<string> lines, string canonicalSection, string key, string value)
     {
         var assignment = $"{key} = {value}";
-        var sectionIndex = lines.FindIndex(l => l.Trim().Equals(sectionHeader, StringComparison.OrdinalIgnoreCase));
+
+        // First pass: walk the file section-by-section. Within any C#-applicable section,
+        // look for an existing entry for `key` and replace it in place.
+        var inApplicableSection = false;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (trimmed.Length == 0 || trimmed[0] == '#' || trimmed[0] == ';')
+            {
+                continue;
+            }
+
+            if (trimmed[0] == '[' && trimmed[^1] == ']')
+            {
+                inApplicableSection = SectionMatchesCSharp(trimmed);
+                continue;
+            }
+
+            if (!inApplicableSection)
+            {
+                continue;
+            }
+
+            // Split on the FIRST '=' and compare the trimmed key portion case-insensitively.
+            // Recognizes `key=value`, `key = value`, and `key=  value` (hand-edited / IDE
+            // variants), mirroring the ParseEditorconfigCsKeys idiom; safe when the value
+            // itself contains '='.
+            var eqIndex = trimmed.IndexOf('=');
+            if (eqIndex <= 0)
+            {
+                continue;
+            }
+
+            if (string.Equals(trimmed[..eqIndex].Trim(), key, StringComparison.OrdinalIgnoreCase))
+            {
+                lines[i] = assignment;
+                return;
+            }
+        }
+
+        // No existing entry in any C#-applicable section — append to the canonical section,
+        // creating it if necessary.
+        AppendKeyToCanonicalSection(lines, canonicalSection, assignment);
+    }
+
+    private static void AppendKeyToCanonicalSection(List<string> lines, string canonicalSection, string assignment)
+    {
+        var sectionIndex = lines.FindIndex(l => l.Trim().Equals(canonicalSection, StringComparison.OrdinalIgnoreCase));
         if (sectionIndex < 0)
         {
             if (lines.Count > 0 && lines[^1].Trim().Length > 0)
@@ -381,7 +447,7 @@ public sealed class EditorConfigService : IEditorConfigService
                 lines.Add(string.Empty);
             }
 
-            lines.Add(sectionHeader);
+            lines.Add(canonicalSection);
             lines.Add(assignment);
             return;
         }
@@ -394,37 +460,6 @@ public sealed class EditorConfigService : IEditorConfigService
             {
                 end = i;
                 break;
-            }
-        }
-
-        // set-editorconfig-option-duplicate-key-append: parse each non-comment, non-blank
-        // line by splitting on the FIRST '=' and case-insensitively comparing the trimmed
-        // key portion. This recognizes `key=value`, `key = value`, and `key=  value`
-        // variants (hand-edited or IDE-generated .editorconfig files often omit the space
-        // around `=`). Previously the matcher used `trimmed.StartsWith(key + " =", ...)`,
-        // which silently missed the no-space variant and fell through to `Insert`,
-        // appending a duplicate key line. Split-on-first '=' mirrors the existing
-        // ParseEditorconfigCsKeys idiom (line 129) and is safe even when the value
-        // happens to contain '=' (e.g. quoted strings).
-        for (var i = sectionIndex + 1; i < end; i++)
-        {
-            var trimmed = lines[i].Trim();
-            if (trimmed.StartsWith('#') || string.IsNullOrWhiteSpace(trimmed))
-            {
-                continue;
-            }
-
-            var eqIndex = trimmed.IndexOf('=');
-            if (eqIndex <= 0)
-            {
-                continue;
-            }
-
-            var existingKey = trimmed[..eqIndex].Trim();
-            if (string.Equals(existingKey, key, StringComparison.OrdinalIgnoreCase))
-            {
-                lines[i] = assignment;
-                return;
             }
         }
 
