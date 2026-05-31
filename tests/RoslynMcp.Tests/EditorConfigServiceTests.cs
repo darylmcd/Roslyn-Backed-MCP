@@ -204,6 +204,102 @@ public sealed class EditorConfigServiceTests : IsolatedWorkspaceTestBase
             $"No-space pre-existing entry must have been replaced with the new value. Actual: '{updatedValue}'.");
     }
 
+    /// <summary>
+    /// Regression test for <c>set-editorconfig-option-cross-section-duplicate-key</c>
+    /// (gh #735 regression). The exact operator repro: a key already present under a
+    /// DIFFERENT C#-applicable section (<c>[*.cs]</c>) must be updated IN PLACE, not
+    /// duplicated by an append under the writer's canonical <c>[*.{cs,csx,cake}]</c>
+    /// section. The pre-fix writer searched only the canonical section, so a key under
+    /// <c>[*.cs]</c> was never found and a second copy was appended — leaving the key
+    /// present twice (EditorConfig last-wins kept it functional but the file malformed,
+    /// and <c>get_editorconfig_options</c> reported the stale first value).
+    /// </summary>
+    [TestMethod]
+    public async Task SetOptionAsync_KeyInOtherCSharpSection_UpdatedInPlaceNotDuplicated()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        // Pre-seed the key under [*.cs] (NOT the writer's canonical [*.{cs,csx,cake}] section).
+        var editorconfigPath = Path.Combine(workspace.RootPath, ".editorconfig");
+        const string key = "dotnet_separate_import_directive_groups";
+        await File.WriteAllLinesAsync(editorconfigPath,
+            ["root = true", "", "[*.cs]", $"{key} = false"], CancellationToken.None);
+
+        // Flip the value. The existing [*.cs] entry must be edited in place.
+        var result = await EditorConfigService.SetOptionAsync(
+            workspaceId, dogFilePath, key, "true", "set_editorconfig_option", CancellationToken.None);
+        Assert.IsFalse(result.CreatedNewFile, "File already existed; CreatedNewFile must be false.");
+
+        var lines = await File.ReadAllLinesAsync(editorconfigPath, CancellationToken.None);
+        var matchingLines = lines.Where(l => LineKeyEquals(l, key)).ToList();
+        Assert.AreEqual(1, matchingLines.Count,
+            $"Key '{key}' present under [*.cs] must be updated in place, not duplicated under " +
+            $"[*.{{cs,csx,cake}}]. File content:\n{string.Join("\n", lines)}");
+
+        Assert.AreEqual("true", LineValue(matchingLines[0]),
+            "The in-place update must change the value to 'true'.");
+
+        // The reader must now report the single, current value (no stale duplicate shadowing it).
+        var options = await EditorConfigService.GetOptionsAsync(
+            workspaceId, dogFilePath, CancellationToken.None);
+        var entry = options.Options.FirstOrDefault(o =>
+            string.Equals(o.Key, key, StringComparison.OrdinalIgnoreCase));
+        Assert.IsNotNull(entry);
+        Assert.AreEqual("true", entry!.Value,
+            "get_editorconfig_options must surface the updated value, not the pre-update one.");
+    }
+
+    /// <summary>
+    /// Companion to the cross-section update test: a genuinely-new key (absent from every
+    /// C#-applicable section) must be appended exactly once, under the canonical
+    /// <c>[*.{cs,csx,cake}]</c> section.
+    /// </summary>
+    [TestMethod]
+    public async Task SetOptionAsync_NewKey_AppendedExactlyOnce()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var workspaceId = workspace.WorkspaceId;
+        var dogFilePath = workspace.GetPath("SampleLib", "Dog.cs");
+
+        // Pre-seed a file that has a C#-applicable section but NOT the target key.
+        var editorconfigPath = Path.Combine(workspace.RootPath, ".editorconfig");
+        const string existingKey = "indent_size";
+        const string newKey = "dotnet_separate_import_directive_groups";
+        await File.WriteAllLinesAsync(editorconfigPath,
+            ["[*.cs]", $"{existingKey} = 4"], CancellationToken.None);
+
+        await EditorConfigService.SetOptionAsync(
+            workspaceId, dogFilePath, newKey, "true", "set_editorconfig_option", CancellationToken.None);
+
+        var lines = await File.ReadAllLinesAsync(editorconfigPath, CancellationToken.None);
+        Assert.AreEqual(1, lines.Count(l => LineKeyEquals(l, newKey)),
+            $"New key '{newKey}' must be appended exactly once. File content:\n{string.Join("\n", lines)}");
+        Assert.AreEqual("true", LineValue(lines.First(l => LineKeyEquals(l, newKey))));
+
+        // The pre-existing unrelated key must be untouched (still present once).
+        Assert.AreEqual(1, lines.Count(l => LineKeyEquals(l, existingKey)),
+            "The append must not disturb the pre-existing unrelated key.");
+    }
+
+    private static bool LineKeyEquals(string line, string key)
+    {
+        var trimmed = line.Trim();
+        if (trimmed.Length == 0 || trimmed[0] == '#' || trimmed[0] == ';' || trimmed[0] == '[')
+            return false;
+        var eqIndex = trimmed.IndexOf('=');
+        if (eqIndex <= 0) return false;
+        return string.Equals(trimmed[..eqIndex].Trim(), key, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string LineValue(string line)
+    {
+        var trimmed = line.Trim();
+        var eqIndex = trimmed.IndexOf('=');
+        return trimmed[(eqIndex + 1)..].Trim();
+    }
+
     [TestMethod]
     public void SectionMatchesCSharp_RecognizesCommonGlobs()
     {
