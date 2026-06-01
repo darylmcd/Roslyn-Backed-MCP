@@ -98,6 +98,46 @@ public sealed class SelectionRangeCodeActionTests : SharedWorkspaceTestBase
     }
 
     /// <summary>
+    /// Verifies that an action index returned by <c>get_code_actions</c> is previewable
+    /// even when Roslyn originally produced the refactoring as a nested action group.
+    /// </summary>
+    [TestMethod]
+    public async Task PreviewCodeAction_WithNestedIntroduceParameterAction_DoesNotThrow()
+    {
+        var filePath = FindDocumentPath("RefactoringProbe.cs");
+
+        var result = await CodeActionService.GetCodeActionsAsync(
+            SampleWorkspaceId,
+            filePath,
+            startLine: 22,
+            startColumn: 16,
+            endLine: 22,
+            endColumn: 41,
+            CancellationToken.None);
+
+        var action = result.Actions.FirstOrDefault(a =>
+            a.Title.Contains("Introduce parameter", StringComparison.OrdinalIgnoreCase));
+
+        Assert.IsNotNull(action,
+            "Expected get_code_actions to surface a previewable 'Introduce parameter' leaf action.");
+
+        var preview = await CodeActionService.PreviewCodeActionAsync(
+            SampleWorkspaceId,
+            filePath,
+            startLine: 22,
+            startColumn: 16,
+            endLine: 22,
+            endColumn: 41,
+            action.Index,
+            CancellationToken.None);
+
+        Assert.IsFalse(string.IsNullOrWhiteSpace(preview.PreviewToken),
+            "A flattened nested action must produce a preview token for apply_code_action.");
+        Assert.IsTrue(preview.Changes.Count > 0,
+            "A flattened nested action preview must include the changed files.");
+    }
+
+    /// <summary>
     /// Verifies that "Inline temporary variable" refactoring surfaces when
     /// selecting a single-use variable declaration. This is a working
     /// selection-range refactoring in MSBuildWorkspace.

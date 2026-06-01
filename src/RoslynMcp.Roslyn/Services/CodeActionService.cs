@@ -58,23 +58,26 @@ public sealed class CodeActionService : ICodeActionService
         await CollectCodeFixesAsync(document, span, fixActions, ct).ConfigureAwait(false);
         await CollectRefactoringsAsync(document, span, refactoringActions, ct).ConfigureAwait(false);
 
-        var dtos = new List<CodeActionDto>(fixActions.Count + refactoringActions.Count);
+        var flattenedFixActions = FlattenActions(fixActions).ToList();
+        var flattenedRefactoringActions = FlattenActions(refactoringActions).ToList();
+
+        var dtos = new List<CodeActionDto>(flattenedFixActions.Count + flattenedRefactoringActions.Count);
         var index = 0;
-        foreach (var action in fixActions)
+        foreach (var action in flattenedFixActions)
         {
             dtos.Add(new CodeActionDto(
                 Index: index++,
                 Title: action.Title,
-                Kind: ResolveKind(action, defaultKind: "CodeFix"),
-                EquivalenceKey: action.EquivalenceKey));
+                Kind: ResolveKind(action.Action, defaultKind: "CodeFix"),
+                EquivalenceKey: action.Action.EquivalenceKey));
         }
-        foreach (var action in refactoringActions)
+        foreach (var action in flattenedRefactoringActions)
         {
             dtos.Add(new CodeActionDto(
                 Index: index++,
                 Title: action.Title,
-                Kind: ResolveKind(action, defaultKind: "Refactoring"),
-                EquivalenceKey: action.EquivalenceKey));
+                Kind: ResolveKind(action.Action, defaultKind: "Refactoring"),
+                EquivalenceKey: action.Action.EquivalenceKey));
         }
         return BuildResult(dtos);
     }
@@ -123,16 +126,21 @@ public sealed class CodeActionService : ICodeActionService
         var text = await document.GetTextAsync(ct).ConfigureAwait(false);
         var span = CreateSpan(text, startLine, startColumn, endLine, endColumn);
 
-        var actions = new List<CodeAction>();
+        var fixActions = new List<CodeAction>();
+        var refactoringActions = new List<CodeAction>();
 
-        await CollectCodeFixesAsync(document, span, actions, ct).ConfigureAwait(false);
-        await CollectRefactoringsAsync(document, span, actions, ct).ConfigureAwait(false);
+        await CollectCodeFixesAsync(document, span, fixActions, ct).ConfigureAwait(false);
+        await CollectRefactoringsAsync(document, span, refactoringActions, ct).ConfigureAwait(false);
+
+        var actions = FlattenActions(fixActions)
+            .Concat(FlattenActions(refactoringActions))
+            .ToList();
 
         if (actionIndex < 0 || actionIndex >= actions.Count)
             throw new ArgumentException($"Action index {actionIndex} is out of range. Available actions: {actions.Count}");
 
         var selectedAction = actions[actionIndex];
-        var operations = await selectedAction.GetOperationsAsync(ct).ConfigureAwait(false);
+        var operations = await selectedAction.Action.GetOperationsAsync(ct).ConfigureAwait(false);
         var applyOp = operations.OfType<ApplyChangesOperation>().FirstOrDefault();
 
         if (applyOp is null)
@@ -145,6 +153,28 @@ public sealed class CodeActionService : ICodeActionService
 
         return new RefactoringPreviewDto(token, description, changes, null);
     }
+
+    private static IEnumerable<ActionCandidate> FlattenActions(IEnumerable<CodeAction> actions, string? parentTitle = null)
+    {
+        foreach (var action in actions)
+        {
+            var title = parentTitle is null ? action.Title : $"{parentTitle}: {action.Title}";
+            var nestedActions = action.NestedActions;
+            if (!nestedActions.IsDefaultOrEmpty)
+            {
+                foreach (var nestedAction in FlattenActions(nestedActions, title))
+                {
+                    yield return nestedAction;
+                }
+
+                continue;
+            }
+
+            yield return new ActionCandidate(action, title);
+        }
+    }
+
+    private sealed record ActionCandidate(CodeAction Action, string Title);
 
     private async Task CollectCodeFixesAsync(Document document, TextSpan span, List<CodeAction> actions, CancellationToken ct)
     {
