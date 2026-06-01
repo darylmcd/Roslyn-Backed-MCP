@@ -340,7 +340,6 @@ public sealed class SymbolRefactorPreviewTests : IsolatedWorkspaceTestBase
         var restructureService = new RestructureService(WorkspaceManager, PreviewStore);
         return new SymbolRefactorService(
             WorkspaceManager,
-            PreviewStore,
             RefactoringService,
             EditService,
             restructureService,

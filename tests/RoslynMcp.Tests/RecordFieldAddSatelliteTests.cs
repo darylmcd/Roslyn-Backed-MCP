@@ -281,7 +281,6 @@ public sealed class RecordFieldAddSatelliteTests : IsolatedWorkspaceTestBase
         var restructureService = new RestructureService(WorkspaceManager, PreviewStore);
         return new SymbolRefactorService(
             WorkspaceManager,
-            PreviewStore,
             RefactoringService,
             EditService,
             restructureService,

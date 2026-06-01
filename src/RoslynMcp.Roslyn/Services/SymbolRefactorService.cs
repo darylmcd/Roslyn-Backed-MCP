@@ -14,8 +14,8 @@ namespace RoslynMcp.Roslyn.Services;
 
 /// <summary>
 /// Item 7 implementation. Walks the supplied operation list sequentially. Each operation
-/// produces a delta against the accumulating Solution; the final snapshot is stored once via
-/// <see cref="IPreviewStore"/> so a single token covers the whole batch.
+/// produces a delta against the accumulating Solution; the final file mutations are stored
+/// once via <see cref="ICompositePreviewStore"/> so a single token covers the whole batch.
 ///
 /// <para>
 /// Operations are atomic at preview time: the first op that fails aborts the entire preview
@@ -29,45 +29,29 @@ public sealed partial class SymbolRefactorService : ISymbolRefactorService
     private const int MaxFilesAffected = 500;
 
     private readonly IWorkspaceManager _workspace;
-    private readonly IPreviewStore _previewStore;
-    private readonly IRefactoringService _refactoringService;
-    private readonly IEditService _editService;
-    private readonly IRestructureService _restructureService;
     private readonly ICompositePreviewStore _compositePreviewStore;
     private readonly IDiRegistrationService _diRegistrationService;
 
-    // symbol-refactor-preview-auto-applies-without-explicit-apply-call: concrete-typed
-    // accessors for in-memory composite chaining. The interface fields above remain the
-    // canonical references for everything except PreviewAsync's per-step Solution
-    // threading; the DI registration only ever resolves to these concrete types
-    // (RoslynMcp.Roslyn/ServiceCollectionExtensions.cs:67-69 + 71-73 + 78-80), so the
-    // downcast cannot fail under production wiring. Tests wiring a mock would
-    // surface as InvalidCastException at construction — the right outcome, since the
-    // composite path relies on the in-process Solution-threading semantics that mocks
-    // cannot reproduce.
+    // symbol-refactor-preview-auto-applies-without-explicit-apply-call: in-memory
+    // composite chaining needs the concrete services' Solution-threading overloads.
     private readonly RefactoringService _refactoringServiceConcrete;
     private readonly EditService _editServiceConcrete;
     private readonly RestructureService _restructureServiceConcrete;
 
     public SymbolRefactorService(
         IWorkspaceManager workspace,
-        IPreviewStore previewStore,
-        IRefactoringService refactoringService,
-        IEditService editService,
-        IRestructureService restructureService,
+        RefactoringService refactoringService,
+        EditService editService,
+        RestructureService restructureService,
         ICompositePreviewStore compositePreviewStore,
         IDiRegistrationService diRegistrationService)
     {
         _workspace = workspace;
-        _previewStore = previewStore;
-        _refactoringService = refactoringService;
-        _editService = editService;
-        _restructureService = restructureService;
         _compositePreviewStore = compositePreviewStore;
         _diRegistrationService = diRegistrationService;
-        _refactoringServiceConcrete = (RefactoringService)refactoringService;
-        _editServiceConcrete = (EditService)editService;
-        _restructureServiceConcrete = (RestructureService)restructureService;
+        _refactoringServiceConcrete = refactoringService;
+        _editServiceConcrete = editService;
+        _restructureServiceConcrete = restructureService;
     }
 
     /// <summary>

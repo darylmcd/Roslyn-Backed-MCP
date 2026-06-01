@@ -64,7 +64,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IBuildService, BuildService>();
         services.AddSingleton<ITestRunnerService, TestRunnerService>();
         services.AddSingleton<ITestDiscoveryService, TestDiscoveryService>();
-        services.AddSingleton<IRefactoringService, RefactoringService>();
+        services.AddSingleton<RefactoringService>();
+        services.AddSingleton<IRefactoringService>(sp => sp.GetRequiredService<RefactoringService>());
         services.AddSingleton<ICompletionService, CompletionService>();
         services.AddSingleton<ICodeActionService, CodeActionService>();
         services.AddSingleton<IUnusedCodeAnalyzer, UnusedCodeAnalyzer>();
@@ -80,7 +81,8 @@ public static class ServiceCollectionExtensions
             sp.GetRequiredService<IWorkspaceManager>(),
             sp.GetRequiredService<ICompileCheckService>()));
         services.AddSingleton<ICodePatternAnalyzer, CodePatternAnalyzer>();
-        services.AddSingleton<IEditService, EditService>();
+        services.AddSingleton<EditService>();
+        services.AddSingleton<IEditService>(sp => sp.GetRequiredService<EditService>());
         services.AddSingleton<IFileOperationService, FileOperationService>();
         services.AddSingleton<IProjectMutationService, ProjectMutationService>();
         services.AddSingleton<ICrossProjectRefactoringService, CrossProjectRefactoringService>();
@@ -117,7 +119,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IExtractMethodService, ExtractMethodService>();
         services.AddSingleton<IChangeTracker, ChangeTracker>();
         services.AddSingleton<IRefactoringSuggestionService, RefactoringSuggestionService>();
-        services.AddSingleton<IRestructureService, RestructureService>();
+        services.AddSingleton<RestructureService>();
+        services.AddSingleton<IRestructureService>(sp => sp.GetRequiredService<RestructureService>());
         services.AddSingleton<IStringLiteralReplaceService, StringLiteralReplaceService>();
         services.AddSingleton<IImpactSweepService, ImpactSweepService>();
         services.AddSingleton<ITestReferenceMapService, TestReferenceMapService>();

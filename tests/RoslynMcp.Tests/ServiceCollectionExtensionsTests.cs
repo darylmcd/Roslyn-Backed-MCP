@@ -38,6 +38,30 @@ public sealed class ServiceCollectionExtensionsTests
         Assert.IsNotNull(sp.GetRequiredService<ICompositeApplyOrchestrator>());
     }
 
+    [TestMethod]
+    public void AddRoslynServices_ConcreteRefactorServices_BridgeToInterfaceSingletons()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.ClearProviders());
+        services.AddRoslynServices();
+
+        using var sp = services.BuildServiceProvider();
+
+        Assert.AreSame(
+            sp.GetRequiredService<RefactoringService>(),
+            sp.GetRequiredService<IRefactoringService>(),
+            "Refactoring interface and concrete registrations must share the same singleton.");
+        Assert.AreSame(
+            sp.GetRequiredService<EditService>(),
+            sp.GetRequiredService<IEditService>(),
+            "Edit interface and concrete registrations must share the same singleton.");
+        Assert.AreSame(
+            sp.GetRequiredService<RestructureService>(),
+            sp.GetRequiredService<IRestructureService>(),
+            "Restructure interface and concrete registrations must share the same singleton.");
+        Assert.IsNotNull(sp.GetRequiredService<ISymbolRefactorService>());
+    }
+
     /// <summary>
     /// di-graph-triple-registration-cleanup regression pin: each host-side option
     /// singleton + the NuGet version-checker pair must register exactly once. Prior
