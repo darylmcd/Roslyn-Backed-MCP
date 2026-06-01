@@ -242,7 +242,6 @@ public sealed class CompositeSplitServiceDiPreviewTests : IsolatedWorkspaceTestB
         var restructureService = new RestructureService(WorkspaceManager, PreviewStore);
         return new SymbolRefactorService(
             WorkspaceManager,
-            PreviewStore,
             RefactoringService,
             EditService,
             restructureService,
