@@ -48,6 +48,12 @@
     judgment work (extract, dedupe, classify, rank, anchor-verify, heroic-split)
     lives in the /backlog-intake skill.
 
+    Already-processed reports are skipped: any prose source whose basename already
+    exists under review-inbox/archive/<batch-ts>/ (written by a prior
+    /backlog-intake run) is reported as skipped, not re-staged. This is what keeps
+    the copy-from-self default idempotent — the canonical audit-reports/ source is
+    preserved on disk, but each report is staged into review-inbox/ at most once.
+
 .PARAMETER SiblingRepoParent
     Parent folder to scan for sibling repos. Defaults to the parent of this repo.
 
@@ -167,6 +173,19 @@ $staged = New-Object System.Collections.Generic.List[pscustomobject]
 $skipped = New-Object System.Collections.Generic.List[pscustomobject]
 $fragments = New-Object System.Collections.Generic.List[pscustomobject]
 
+# Already-processed guard: prose reports consumed by a prior /backlog-intake run
+# are archived under review-inbox/archive/<batch-ts>/. Because self-source files
+# are COPIED (the canonical audit-reports/ stays populated), a flat-inbox-only
+# check would re-discover and re-stage every already-processed report on each run.
+# Collect every archived basename so those sources are skipped here.
+$archiveRoot = Join-Path $inbox 'archive'
+$archivedNames = @{}
+if (Test-Path $archiveRoot) {
+    Get-ChildItem -Path $archiveRoot -Filter '*.md' -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        $archivedNames[$_.Name] = $true
+    }
+}
+
 foreach ($root in $roots) {
     # Per-source action: legacy -Move forces move everywhere; otherwise siblings move
     # (unless -CopyFromSiblings opts out), self always copies. Self-move would clear the
@@ -187,6 +206,8 @@ foreach ($root in $roots) {
                 $dest = Join-Path $inbox $_.Name
                 if (Test-Path $dest) {
                     $skipped.Add([pscustomobject]@{ Source = $_.FullName; Reason = 'already in review-inbox' })
+                } elseif ($archivedNames.ContainsKey($_.Name)) {
+                    $skipped.Add([pscustomobject]@{ Source = $_.FullName; Reason = 'already processed (review-inbox/archive/)' })
                 } else {
                     $staged.Add([pscustomobject]@{ Source = $_.FullName; Dest = $dest; Action = $action })
                 }
