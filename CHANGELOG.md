@@ -16,6 +16,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [2.3.2] - 2026-06-01
+
+### Fixed
+
+- **Fixed:** `set_editorconfig_option` no longer appends a duplicate key when the target key already exists under a different C#-applicable section. The writer previously searched only its canonical `[*.{cs,csx,cake}]` section, so a key living under `[*.cs]` (or `[*]`) was never matched and a second copy was appended — leaving the key present twice (EditorConfig last-wins kept it functional but the file malformed, and `get_editorconfig_options` could report the stale first value). The writer now searches every C#-applicable section the reader enumerates and updates the matching line in place, only appending genuinely-new keys to the canonical section.
+
+### Changed
+
+- **Changed:** `get_code_actions` / `apply_code_action` and `fix_all` previews now compute their solution diffs through the shared `SolutionDiffHelper.ComputeChangesAsync` instead of per-service copies. `CodeActionService` and `FixAllService` each carried a byte-identical 27-LOC `ComputeChangesAsync` (changed-documents only) that duplicated — and lagged — the canonical helper next to `DiffGenerator`. Consolidating onto `SolutionDiffHelper` removes the duplication and brings both preview paths up to the helper's behavior: added/removed documents now appear in previews, the 64 KB total-diff truncation cap (FLAG-6A) applies, and no-op (empty) diffs are skipped (gh #739). The existing code-action + fix-all preview tests stay green. Closes `solution-diff-projection-dedup`.
+
+### Maintenance
+
+- **Maintenance:** Extracted the duplicated `FormatTypeName` (Nullable-unwrap + generic-arity strip + primitive-to-C#-keyword map) into a shared `RoslynMcp.Host.Stdio.Catalog.CatalogTypeNameFormatter`. The 29-LOC method was byte-identical in `PromptParameterIndex` and `ToolParameterIndex` (same `Catalog/` folder); both now delegate to the helper. Behavior is unchanged. Closes `catalog-formattypename-dedup`.
+- **Maintenance:** Read-side analysis services `CouplingAnalysisService`, `ExceptionFlowService`, and `AnalyzerInfoService` now obtain project compilations through the shared version-keyed `ICompilationCache` instead of calling `project.GetCompilationAsync` directly, so they share warm compilations (plus analyzer-bound caching and in-flight dedup) with the rest of the read-side tools. First bounded batch of `compilation-cache-adoption-read-side` (3 of the ~24 call sites); the row is re-scoped to the remaining follow-on sites.
+- **Maintenance:** Documented the deliberate exception swallow on the workspace-fork restore timeout path. `RestoreForkAsync`'s best-effort `try { process.Kill(entireProcessTree: true); } catch { }` (killing a timed-out `dotnet restore` fork) now carries a boundary comment explaining the swallow is intentional — a Kill failure is non-actionable because a `TimeoutException` is already being thrown — matching the deliberate-boundary convention in `WorkspaceTools.cs`. Closes `swallow-fork-kill-empty-catch`.
+- **Maintenance:** Collapsed three near-identical base-enumeration methods in `SymbolServiceHelpers` — `EnumerateMethodBases` / `EnumeratePropertyBases` / `EnumerateEventBases` (~28 LOC each, differing only by symbol type and the `Overridden{Method,Property,Event}` accessor) — into one generic `EnumerateOverrideBases<T>` that takes the override accessor as a `Func<T, T?>` selector (C# exposes no common `IOverridableSymbol`, hence the delegate). Removes ~55 LOC of triplicated override + interface-implementation walking so the implicit-interface logic lives in one place. `EnumerateTypeBases` (a different shape) is unchanged; behavior is identical. Closes `symbol-base-enumeration-dedup`.
+- **Maintenance:** Converted the two compile-time-constant DI-registration regexes in `SymbolRefactorService` (the `split_service_with_di_preview` rewrite path) from per-call `new Regex(...)` to `[GeneratedRegex]` source-generated partials, resolving SYSLIB1045. Match behavior is unchanged (identical patterns and `RegexOptions`). Closes `symbolrefactor-static-regex-generatedregex`.
+- **Maintenance:** Extracted the duplicated using-directive synthesis cluster into a shared `RoslynMcp.Roslyn.Helpers.UsingDirectiveSynthesizer`. `BuildUsingDirectives` and its six helpers (`PreserveSpecialAndRequiredSourceUsings`, `AddMissingRequiredUsingDirectives`, `SortUsingDirectives`, `GetUsingNamespace`, `IsSystemUsingDirective`, `IsSpecialUsingDirective`) were byte-identical in `InterfaceExtractionService` and `CrossProjectRefactoringService` — the source doc-comment literally said "Mirrors `InterfaceExtractionService.BuildUsingDirectives`" — and the two copies could drift independently. Both services now delegate to the shared helper; behavior is unchanged. Closes `using-directive-synthesis-dedup`.
+- **Maintenance:** Collapsed a dead conditional in `WorkspaceManager.WaitForStableRestoreArtifactsAsync`. The `fullPath.EndsWith(".csproj") ? Path.GetDirectoryName(fullPath) : Path.GetDirectoryName(fullPath)` ternary had two identical branches, so the `.csproj` check never affected the result; reduced to a single `Path.GetDirectoryName(fullPath)`. Behavior unchanged. Closes `workspace-rootdir-vestigial-ternary`.
+
 ## [2.3.1] - 2026-05-29
 
 ### Changed
