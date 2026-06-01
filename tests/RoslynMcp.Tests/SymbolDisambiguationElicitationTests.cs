@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 using ModelContextProtocol.Protocol;
 using RoslynMcp.Host.Stdio.Middleware;
@@ -186,6 +187,41 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
         Assert.AreEqual("SharedSourceType", candidates[0].Name);
     }
 
+    [TestMethod]
+    public async Task FindAllByMetadataNameAsync_DedupesMetadataCandidatesBySymbolHandle()
+    {
+        // System.Xml.XmlException can surface through multiple metadata assemblies. The
+        // emitted handle intentionally omits assembly identity, so those candidates are
+        // indistinguishable to clients unless the disambiguation path collapses them first.
+        var references = new[]
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+        };
+        var xmlCarrierA = CreateXmlExceptionMetadataReference("XmlCarrierA", references);
+        var xmlCarrierB = CreateXmlExceptionMetadataReference("XmlCarrierB", references);
+
+        using var workspace = new AdhocWorkspace();
+        var solution = workspace.CurrentSolution;
+        solution = AddProjectWithMetadataReference(solution, "XmlConsumerA", xmlCarrierA);
+        solution = AddProjectWithMetadataReference(solution, "XmlConsumerB", xmlCarrierB);
+
+        var candidates = await SymbolHandleSerializer.FindAllByMetadataNameAsync(
+            solution,
+            "System.Xml.XmlException",
+            CancellationToken.None);
+
+        var handles = candidates
+            .Select(SymbolHandleSerializer.CreateHandle)
+            .ToList();
+
+        Assert.AreEqual(1, candidates.Count,
+            "Two metadata assemblies exposing the same handle must collapse to one candidate.");
+        Assert.AreEqual(
+            handles.Count,
+            handles.Distinct(StringComparer.Ordinal).Count(),
+            "Metadata-name candidates must be deduped by symbolHandle before returning an ambiguity envelope.");
+    }
+
     // ── (b) fallback when client lacks elicitation capability ───────────────
 
     [TestMethod]
@@ -248,5 +284,51 @@ public sealed class SymbolDisambiguationElicitationTests : IsolatedWorkspaceTest
         Assert.IsTrue(doc.RootElement.TryGetProperty("note", out var note));
         Assert.IsTrue(note.GetString()!.Contains("symbolHandle", StringComparison.OrdinalIgnoreCase),
             "Note must direct clients to re-call with the chosen symbolHandle.");
+    }
+
+    private static MetadataReference CreateXmlExceptionMetadataReference(
+        string assemblyName,
+        IReadOnlyList<MetadataReference> references)
+    {
+        var syntaxTree = CSharpSyntaxTree.ParseText("""
+            namespace System.Xml;
+
+            public sealed class XmlException
+            {
+            }
+            """);
+        var compilation = CSharpCompilation.Create(
+            assemblyName,
+            [syntaxTree],
+            references,
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        using var peStream = new MemoryStream();
+        var emit = compilation.Emit(peStream);
+        Assert.IsTrue(
+            emit.Success,
+            "Test metadata carrier must compile: " +
+            string.Join(Environment.NewLine, emit.Diagnostics.Select(d => d.ToString())));
+
+        return MetadataReference.CreateFromImage(peStream.ToArray());
+    }
+
+    private static Solution AddProjectWithMetadataReference(
+        Solution solution,
+        string projectName,
+        MetadataReference xmlExceptionReference)
+    {
+        var projectId = ProjectId.CreateNewId(projectName);
+        return solution.AddProject(ProjectInfo.Create(
+            projectId,
+            VersionStamp.Create(),
+            projectName,
+            projectName,
+            LanguageNames.CSharp,
+            metadataReferences:
+            [
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                xmlExceptionReference,
+            ]));
     }
 }
