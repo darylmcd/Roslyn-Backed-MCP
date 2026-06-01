@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
@@ -179,8 +178,9 @@ public static class SymbolHandleSerializer
     /// that match the given <paramref name="metadataName"/> — types via
     /// <see cref="Compilation.GetTypeByMetadataName"/> AND members via the trailing-dot split
     /// (each <c>GetMembers(name)</c> overload contributes every overload). Results are
-    /// deduped by a stable source-span key so the same source declaration from multiple
-    /// <c>Compilation</c>s collapses to one entry without collapsing real overloads.
+    /// deduped by the stable <c>symbolHandle</c> clients re-submit so the same symbol seen
+    /// through multiple <c>Compilation</c>s or assemblies does not produce an ambiguity the
+    /// caller cannot resolve.
     /// </summary>
     /// <remarks>
     /// This is the multi-result counterpart of
@@ -233,57 +233,9 @@ public static class SymbolHandleSerializer
 
     private static void AddCandidateIfNew(List<ISymbol> matches, HashSet<string> seen, ISymbol symbol)
     {
-        if (seen.Add(CreateCandidateDedupeKey(symbol)))
+        if (seen.Add(CreateHandle(symbol)))
         {
             matches.Add(symbol);
         }
-    }
-
-    private static string CreateCandidateDedupeKey(ISymbol symbol)
-    {
-        var display = symbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-        var sourceLocation = symbol.Locations.FirstOrDefault(location => location.IsInSource);
-        if (sourceLocation is not null)
-        {
-            var lineSpan = sourceLocation.GetLineSpan();
-            var span = sourceLocation.SourceSpan;
-            return string.Join(
-                '\u001f',
-                "source",
-                symbol.Kind.ToString(),
-                display,
-                NormalizeSourcePath(lineSpan.Path),
-                span.Start.ToString(CultureInfo.InvariantCulture),
-                span.Length.ToString(CultureInfo.InvariantCulture));
-        }
-
-        return string.Join(
-            '\u001f',
-            "metadata",
-            symbol.Kind.ToString(),
-            display,
-            symbol.ContainingAssembly?.Identity.GetDisplayName() ?? string.Empty,
-            symbol.MetadataName);
-    }
-
-    private static string NormalizeSourcePath(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return string.Empty;
-        }
-
-        try
-        {
-            path = Path.GetFullPath(path);
-        }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
-        {
-            // Keep Roslyn's original path if it is not a normal filesystem path.
-        }
-
-        return OperatingSystem.IsWindows()
-            ? path.Replace('/', '\\').ToUpperInvariant()
-            : path;
     }
 }
