@@ -38,6 +38,14 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     private readonly TimeSpan _rateLimitWindow;
     private readonly StalenessPolicy _onStale;
 
+    /// <summary>
+    /// Clock used to arm per-request timeout cancellation. Defaults to
+    /// <see cref="TimeProvider.System"/> in production; tests inject a fake provider so the
+    /// timeout-budget contract (including the post-auto-reload reset) is verified against a
+    /// virtual clock instead of racing real <c>Task.Delay</c> calls under CI CPU contention.
+    /// </summary>
+    private readonly TimeProvider _timeProvider;
+
     private readonly SemaphoreSlim _loadGate = new(1, 1);
     private readonly SemaphoreSlim _globalThrottle = new(MaxGlobalConcurrency, MaxGlobalConcurrency);
     private readonly AsyncReaderWriterLockRegistry _rwLocks = new();
@@ -53,13 +61,17 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
     /// <summary>Sliding window rate limiter — stores timestamps of recent requests.</summary>
     private readonly ConcurrentQueue<long> _requestTimestamps = new();
 
-    public WorkspaceExecutionGate(ExecutionGateOptions options, IWorkspaceManager workspaceManager)
+    public WorkspaceExecutionGate(
+        ExecutionGateOptions options,
+        IWorkspaceManager workspaceManager,
+        TimeProvider? timeProvider = null)
     {
         _workspaceManager = workspaceManager;
         _requestTimeout = options.RequestTimeout;
         _rateLimitMax = options.RateLimitMaxRequests;
         _rateLimitWindow = options.RateLimitWindow;
         _onStale = options.OnStale;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public Task<T> RunReadAsync<T>(string workspaceId, Func<CancellationToken, Task<T>> action, CancellationToken ct)
@@ -81,9 +93,13 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
         var queueStopwatch = Stopwatch.StartNew();
         EnforceRateLimit();
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(_requestTimeout);
-        var linked = timeoutCts.Token;
+        // Provider-backed timeout source so the deadline (and the post-auto-reload reset via
+        // CancelAfter below) is armed on _timeProvider's clock — TimeProvider.System in
+        // production, a fake clock under test. CreateLinkedTokenSource has no TimeProvider
+        // overload, so the linked token observes both the caller's ct and this timeout source.
+        using var timeoutCts = new CancellationTokenSource(_requestTimeout, _timeProvider);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        var linked = linkedCts.Token;
 
         return await WithGlobalThrottle(async () =>
         {
@@ -158,9 +174,13 @@ public sealed class WorkspaceExecutionGate : IWorkspaceExecutionGate, IDisposabl
                 $"Workspace '{workspaceId}' not found or has been closed. Active workspace IDs are listed by workspace_list.");
         }
 
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(_requestTimeout);
-        var linked = timeoutCts.Token;
+        // Provider-backed timeout source so the deadline (and the post-auto-reload reset via
+        // CancelAfter below) is armed on _timeProvider's clock — TimeProvider.System in
+        // production, a fake clock under test. CreateLinkedTokenSource has no TimeProvider
+        // overload, so the linked token observes both the caller's ct and this timeout source.
+        using var timeoutCts = new CancellationTokenSource(_requestTimeout, _timeProvider);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        var linked = linkedCts.Token;
 
         // Item 1: stale-gate policy. Checked once per call, before the per-workspace lock is
         // acquired, so an auto-reload path runs under the same load gate as explicit
