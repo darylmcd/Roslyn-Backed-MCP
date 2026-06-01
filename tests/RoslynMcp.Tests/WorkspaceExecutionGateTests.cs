@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Time.Testing;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
@@ -727,12 +728,14 @@ public class WorkspaceExecutionGateTests
     [TestMethod]
     public async Task AutoReload_ResetsTimeoutBudget_ToolActionGetsFullBudget()
     {
-        // Budget is tight enough that the reload itself would exhaust it, but generous enough
-        // for the action to run if the budget is correctly reset post-reload.
-        var reloadDelay = TimeSpan.FromMilliseconds(200);
-        var toolTimeout = TimeSpan.FromMilliseconds(250);
+        // Deterministic virtual clock (no wall-clock Task.Delay). The reload consumes 1500ms of
+        // the 2000ms budget; the action then consumes 1000ms — more than the 500ms that would
+        // remain WITHOUT a reset, but well within a fresh 2000ms budget. So the action's token is
+        // cancelled iff the budget was NOT reset after auto-reload.
+        var clock = new FakeTimeProvider();
+        var toolTimeout = TimeSpan.FromSeconds(2);
 
-        var manager = new FakeGateWorkspaceManager(reloadDelayMs: (int)reloadDelay.TotalMilliseconds);
+        var manager = new FakeGateWorkspaceManager(reloadClock: clock, reloadAdvanceMs: 1500);
         manager.MarkStale(WorkspaceA);
 
         var gate = new WorkspaceExecutionGate(
@@ -741,17 +744,16 @@ public class WorkspaceExecutionGateTests
                 RequestTimeout = toolTimeout,
                 OnStale = StalenessPolicy.AutoReload,
             },
-            manager);
+            manager,
+            clock);
 
         using var scope = AmbientGateMetrics.BeginRequest();
 
-        // The action itself is fast — only the reload is slow. Without the budget reset,
-        // the timeout would fire inside the tool action because ~200ms of the 250ms budget
-        // was consumed by the reload. With the fix the budget resets and the action succeeds.
-        var result = await gate.RunReadAsync(WorkspaceA, async ct =>
+        var result = await gate.RunReadAsync(WorkspaceA, ct =>
         {
-            await Task.Delay(50, ct); // fast tool work well within the fresh budget
-            return 99;
+            clock.Advance(TimeSpan.FromMilliseconds(1000));
+            ct.ThrowIfCancellationRequested(); // mirrors a real Task.Delay(..., ct) throwing on timeout
+            return Task.FromResult(99);
         }, CancellationToken.None);
 
         Assert.AreEqual(99, result, "Tool action must succeed — timeout budget must be reset after auto-reload.");
@@ -764,15 +766,14 @@ public class WorkspaceExecutionGateTests
     [TestMethod]
     public async Task AutoReload_ResetsTimeoutBudgetWithoutAmbientMetrics_ToolActionGetsFullBudget()
     {
-        // The timeout reset is part of the gate contract, not a side effect of telemetry.
-        // Without an ambient metrics scope, this test spends enough of the original budget
-        // on reload that reload+action would exceed it. The timeout is intentionally wider
-        // than the reload itself so full-suite CPU contention does not cancel before the
-        // reset point.
-        var reloadDelay = TimeSpan.FromMilliseconds(500);
+        // The timeout reset is part of the gate contract, not a side effect of telemetry. Same
+        // budget arithmetic as the metrics-scoped test, but with no AmbientGateMetrics scope.
+        // Deterministic virtual clock — this test previously flaked under CI CPU contention
+        // because it raced a real Task.Delay(1600) against a real 2s timeout.
+        var clock = new FakeTimeProvider();
         var toolTimeout = TimeSpan.FromSeconds(2);
 
-        var manager = new FakeGateWorkspaceManager(reloadDelayMs: (int)reloadDelay.TotalMilliseconds);
+        var manager = new FakeGateWorkspaceManager(reloadClock: clock, reloadAdvanceMs: 1500);
         manager.MarkStale(WorkspaceA);
 
         var gate = new WorkspaceExecutionGate(
@@ -781,14 +782,16 @@ public class WorkspaceExecutionGateTests
                 RequestTimeout = toolTimeout,
                 OnStale = StalenessPolicy.AutoReload,
             },
-            manager);
+            manager,
+            clock);
 
         Assert.IsNull(AmbientGateMetrics.Current);
 
-        var result = await gate.RunReadAsync(WorkspaceA, async ct =>
+        var result = await gate.RunReadAsync(WorkspaceA, ct =>
         {
-            await Task.Delay(1600, ct);
-            return 99;
+            clock.Advance(TimeSpan.FromMilliseconds(1000));
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(99);
         }, CancellationToken.None);
 
         Assert.AreEqual(99, result, "Tool action must receive a fresh timeout budget after auto-reload even when no metrics scope exists.");
@@ -798,38 +801,41 @@ public class WorkspaceExecutionGateTests
 
     /// <summary>
     /// parallel-fanout-auto-reload-timeout-floor: three concurrent reads against the same
-    /// stale workspace all succeed — none time out at the 5s floor while the reload is in
-    /// flight. This is the parallel fan-out scenario from the backlog row.
+    /// stale workspace all succeed — none time out while the reload is in flight. This is the
+    /// parallel fan-out scenario from the backlog row. Deterministic virtual clock: a generous
+    /// budget plus bounded reload advancement means no timer can fire regardless of how the
+    /// three readers interleave, so the test cannot flake on CI CPU contention.
     /// </summary>
     [TestMethod]
     public async Task AutoReload_ParallelFanout_AllReadersSucceedAfterReload()
     {
-        var reloadDelay = TimeSpan.FromMilliseconds(200);
-        var toolTimeout = TimeSpan.FromMilliseconds(500);
+        var clock = new FakeTimeProvider();
 
-        var manager = new FakeGateWorkspaceManager(reloadDelayMs: (int)reloadDelay.TotalMilliseconds);
+        // Each reload advances the virtual clock 200ms; even if all three readers race and each
+        // reloads, total advancement (600ms) stays far under the 10s budget — no spurious timeout.
+        var manager = new FakeGateWorkspaceManager(reloadClock: clock, reloadAdvanceMs: 200);
         manager.MarkStale(WorkspaceA);
 
         var gate = new WorkspaceExecutionGate(
             new ExecutionGateOptions
             {
-                RequestTimeout = toolTimeout,
+                RequestTimeout = TimeSpan.FromSeconds(10),
                 OnStale = StalenessPolicy.AutoReload,
             },
-            manager);
+            manager,
+            clock);
 
         // Launch three concurrent reads. All three hit ApplyStalenessPolicyAsync; the first
         // triggers the reload (and resets its budget), the others observe a fresh workspace
-        // (IsStale returns false after the first reload) so they never consume budget on a
-        // reload. All three should complete without timeout.
+        // (IsStale returns false after the first reload). All three should complete without timeout.
         var tasks = Enumerable.Range(0, 3).Select(i =>
-            gate.RunReadAsync(WorkspaceA, async ct =>
+            gate.RunReadAsync(WorkspaceA, ct =>
             {
-                await Task.Delay(30, ct);
-                return i;
+                ct.ThrowIfCancellationRequested();
+                return Task.FromResult(i);
             }, CancellationToken.None)).ToArray();
 
-        var results = await Task.WhenAll(tasks).WaitAsync(TimeSpan.FromSeconds(5));
+        var results = await Task.WhenAll(tasks);
         CollectionAssert.AreEquivalent(new[] { 0, 1, 2 }, results,
             "All three parallel readers must return their expected values without timing out.");
     }
@@ -855,6 +861,8 @@ public class WorkspaceExecutionGateTests
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _stale = new();
         private readonly bool _containsAny;
         private readonly int _reloadDelayMs;
+        private readonly FakeTimeProvider? _reloadClock;
+        private readonly int _reloadAdvanceMs;
 
         public int ReloadCount;
 
@@ -875,14 +883,26 @@ public class WorkspaceExecutionGateTests
 
         /// <param name="containsAny">When false, <see cref="ContainsWorkspace"/> always returns false.</param>
         /// <param name="reloadDelayMs">
-        /// Artificial delay injected into <see cref="ReloadAsync"/> to simulate a slow workspace
-        /// reload. Used by <c>parallel-fanout-auto-reload-timeout-floor</c> tests to verify that
-        /// the held-time budget is reset after the reload so tool actions are not unfairly starved.
+        /// Real <see cref="Task.Delay(int, CancellationToken)"/> injected into <see cref="ReloadAsync"/>
+        /// to simulate a slow workspace reload. Wall-clock based — prefer <paramref name="reloadClock"/>
+        /// + <paramref name="reloadAdvanceMs"/> for deterministic timeout-budget tests.
         /// </param>
-        public FakeGateWorkspaceManager(bool containsAny = true, int reloadDelayMs = 0)
+        /// <param name="reloadClock">
+        /// When supplied (with a positive <paramref name="reloadAdvanceMs"/>), <see cref="ReloadAsync"/>
+        /// advances this virtual clock instead of sleeping — letting timeout-budget tests verify the
+        /// post-reload deadline reset without racing real timers under CI CPU contention.
+        /// </param>
+        /// <param name="reloadAdvanceMs">Virtual-clock advance applied during reload when <paramref name="reloadClock"/> is set.</param>
+        public FakeGateWorkspaceManager(
+            bool containsAny = true,
+            int reloadDelayMs = 0,
+            FakeTimeProvider? reloadClock = null,
+            int reloadAdvanceMs = 0)
         {
             _containsAny = containsAny;
             _reloadDelayMs = reloadDelayMs;
+            _reloadClock = reloadClock;
+            _reloadAdvanceMs = reloadAdvanceMs;
         }
 
         public void RemoveWorkspace(string workspaceId) => _removed.TryAdd(workspaceId, 0);
@@ -911,7 +931,12 @@ public class WorkspaceExecutionGateTests
                     workspaceId);
             }
 
-            if (_reloadDelayMs > 0)
+            if (_reloadClock is not null && _reloadAdvanceMs > 0)
+            {
+                // Deterministic: consume reload "budget" on the virtual clock instead of real time.
+                _reloadClock.Advance(TimeSpan.FromMilliseconds(_reloadAdvanceMs));
+            }
+            else if (_reloadDelayMs > 0)
             {
                 await Task.Delay(_reloadDelayMs, ct).ConfigureAwait(false);
             }
