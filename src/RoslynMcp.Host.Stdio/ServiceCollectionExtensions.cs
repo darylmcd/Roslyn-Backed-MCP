@@ -74,8 +74,8 @@ public static class ServiceCollectionExtensions
 
         // workspace-cache-store-infrastructure: persistent on-disk cache for the heavy parts
         // of MSBuild evaluation (project graph + per-project metadata-reference list). Internal
-        // service; not exposed as an MCP tool. Will be consumed by WorkspaceManager in a
-        // follow-on PR (workspace-load-uses-cache-fast-path). Defaults to ~/.roslyn-mcp/cache/.
+        // service consumed by WorkspaceManager's live fast path; not exposed as an MCP tool.
+        // Defaults to ~/.roslyn-mcp/cache/.
         services.AddSingleton<IWorkspaceCacheStore>(
             sp => new WorkspaceCacheStore(sp.GetService<ILogger<WorkspaceCacheStore>>()));
 

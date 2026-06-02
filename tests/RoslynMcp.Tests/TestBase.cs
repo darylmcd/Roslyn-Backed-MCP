@@ -85,10 +85,10 @@ public abstract class TestBase
 
     /// <summary>
     /// On-disk workspace cache store rooted under the test temp tree. Internal infrastructure
-    /// added by <c>workspace-cache-store-infrastructure</c>; not consumed by any other service
-    /// yet (the consumer wiring lands in <c>workspace-load-uses-cache-fast-path</c>). Tests
-    /// that exercise the store directly still construct their own instance against an isolated
-    /// temp directory; this static is for fixtures that want the shared default.
+    /// added by <c>workspace-cache-store-infrastructure</c>. Production and isolated test
+    /// managers consume the store through the workspace-load cache fast path; tests that
+    /// exercise the store directly still construct their own instance against an isolated temp
+    /// directory. This static is for fixtures that want the shared default.
     /// </summary>
     protected static IWorkspaceCacheStore WorkspaceCacheStore { get; private set; } = null!;
 
