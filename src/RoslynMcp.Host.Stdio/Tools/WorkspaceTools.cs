@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using RoslynMcp.Core.Models;
@@ -15,6 +16,10 @@ namespace RoslynMcp.Host.Stdio.Tools;
 public static class WorkspaceTools
 {
     private const int AutoPrewarmProjectThreshold = 50;
+    private const int DefaultSupportBundleChangeCap = 20;
+    private const int MaxSupportBundleChangeCap = 50;
+    private const int DefaultSupportBundleDriftCap = 25;
+    private const int MaxSupportBundleDriftCap = 100;
 
     [McpServerTool(Name = "workspace_load", ReadOnly = false, Destructive = false, Idempotent = true, OpenWorld = false), Description("Load a .sln, .slnx, or .csproj file into the workspace for semantic analysis. Returns a lean summary by default — pass verbose=true for the full per-project tree (large solutions can produce ~30 KB or more). Idempotent by path: if the same solution/project file is already loaded in this host process, workspace_load returns the EXISTING WorkspaceId instead of creating a new one — no extra workspace slot is consumed. Set autoRestore=true to run dotnet restore and one follow-up reload when the loaded status reports restoreRequired=true. Set prewarm=true to immediately run the workspace_warm compilation/semantic-model prewarm after a successful load or auto-restore reload; set prewarm=false to opt out. When prewarm is omitted, workspace_load automatically prewarms solutions with more than 50 projects. The response includes a prewarm result block only when warming ran. DocumentCount note: the per-project DocumentCount often exceeds the <Compile> item count (from evaluate_msbuild_items) by about 3 because the SDK auto-generates implicit-usings, AssemblyInfo, and GlobalUsings files that Roslyn includes in the document set but MSBuild does not list as explicit <Compile> items. Sessions persist for the lifetime of the stdio host process — there is NO inactivity TTL. A workspace can become unreachable if (a) the host process restarts (Cursor/Claude Code may relaunch the MCP server transparently between conversations), (b) workspace_close is called, or (c) the concurrent-workspace cap (ROSLYNMCP_MAX_WORKSPACES, default 16) forced an eviction. When a previously valid workspaceId returns 'Workspace was not found', call workspace_load again rather than treating it as an error. Pass evictPolicy=lru to silently evict the least-recently-used idle workspace when the cap is reached instead of receiving a hard error.")]
     [McpToolMetadata("workspace", "stable", false, false,
@@ -222,6 +227,83 @@ public static class WorkspaceTools
         CancellationToken ct = default) =>
         GetWorkspaceStatus(gate, workspace, workspaceId, verbose: false, ct);
 
+    [McpServerTool(Name = "workspace_support_bundle", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description(
+        "Incident-diagnosis bundle for an existing workspace session, distinct from first-run readiness reporting. " +
+        "Composes loaded path, readiness summary, drift status, capped change ledger, workspace/surface version, diagnostics totals, and next-action hints. " +
+        "Does not include source snippets. If workspaceId is omitted and exactly one workspace is loaded, that workspace is used; if none or multiple are loaded, the response explains the next action.")]
+    [McpToolMetadata("workspace", "stable", true, false,
+        "Incident support bundle: readiness, drift, changes, versions, diagnostics totals, and recovery hints without source snippets.",
+        outputSchemaTypeRef: typeof(WorkspaceSupportBundleDto))]
+    public static Task<string> GetWorkspaceSupportBundle(
+        IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspace,
+        IWorkspaceDriftService driftService,
+        IChangeTracker changeTracker,
+        IDiagnosticService diagnosticService,
+        [Description("Optional workspace session identifier returned by workspace_load. Omit only when zero or one workspace is loaded; pass explicitly when multiple workspaces are active.")] string? workspaceId = null,
+        [Description("Maximum number of recent change-ledger entries to include. Clamped to 0..50. Default 20.")] int maxChangeEntries = DefaultSupportBundleChangeCap,
+        [Description("Maximum number of drifted file paths to include. Clamped to 0..100. Default 25.")] int maxDriftedFiles = DefaultSupportBundleDriftCap,
+        CancellationToken ct = default)
+    {
+        var loadedSummaries = workspace.ListWorkspaces()
+            .Select(WorkspaceStatusSummaryDto.From)
+            .ToArray();
+        var resolvedWorkspaceId = ResolveSupportBundleWorkspaceId(workspaceId, loadedSummaries);
+        if (resolvedWorkspaceId is null)
+        {
+            var status = loadedSummaries.Length == 0
+                ? "no-workspace-loaded"
+                : "workspace-id-required";
+            var bundle = CreateSupportBundleWithoutTarget(
+                status,
+                workspaceId,
+                loadedSummaries,
+                NormalizeCap(maxChangeEntries, MaxSupportBundleChangeCap),
+                NormalizeCap(maxDriftedFiles, MaxSupportBundleDriftCap));
+            return Task.FromResult(JsonSerializer.Serialize(bundle, JsonDefaults.Indented));
+        }
+
+        if (!workspace.ContainsWorkspace(resolvedWorkspaceId))
+        {
+            var bundle = CreateSupportBundleWithoutTarget(
+                "workspace-not-found",
+                resolvedWorkspaceId,
+                loadedSummaries,
+                NormalizeCap(maxChangeEntries, MaxSupportBundleChangeCap),
+                NormalizeCap(maxDriftedFiles, MaxSupportBundleDriftCap));
+            return Task.FromResult(JsonSerializer.Serialize(bundle, JsonDefaults.Indented));
+        }
+
+        var changeCap = NormalizeCap(maxChangeEntries, MaxSupportBundleChangeCap);
+        var driftCap = NormalizeCap(maxDriftedFiles, MaxSupportBundleDriftCap);
+        return gate.RunReadAsync(resolvedWorkspaceId, async c =>
+        {
+            var status = await workspace.GetStatusAsync(resolvedWorkspaceId, c).ConfigureAwait(false);
+            var readiness = WorkspaceStatusSummaryDto.From(status);
+            var drift = await driftService.CheckDriftAsync(resolvedWorkspaceId, c).ConfigureAwait(false);
+            var diagnostics = await diagnosticService.GetDiagnosticsAsync(
+                resolvedWorkspaceId,
+                projectFilter: null,
+                fileFilter: null,
+                severityFilter: "Warning",
+                diagnosticIdFilter: null,
+                c).ConfigureAwait(false);
+            var changes = changeTracker.GetChanges(resolvedWorkspaceId);
+
+            var bundle = CreateSupportBundle(
+                requestedWorkspaceId: workspaceId,
+                loadedWorkspaces: loadedSummaries,
+                readiness: readiness,
+                drift: drift,
+                diagnostics: diagnostics,
+                changes: changes,
+                changeCap: changeCap,
+                driftCap: driftCap);
+
+            return JsonSerializer.Serialize(bundle, JsonDefaults.Indented);
+        }, ct);
+    }
+
     [McpServerTool(Name = "project_graph", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get the project dependency graph and project metadata for a loaded workspace")]
     [McpToolMetadata("workspace", "stable", true, false,
         "Inspect project and dependency structure.")]
@@ -376,6 +458,213 @@ public static class WorkspaceTools
 
     private static bool ShouldPrewarmAfterLoad(bool? prewarm, WorkspaceStatusDto status) =>
         prewarm ?? status.ProjectCount > AutoPrewarmProjectThreshold;
+
+    private static string? ResolveSupportBundleWorkspaceId(
+        string? requestedWorkspaceId,
+        IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces)
+    {
+        if (!string.IsNullOrWhiteSpace(requestedWorkspaceId))
+        {
+            return requestedWorkspaceId;
+        }
+
+        return loadedWorkspaces.Count == 1 ? loadedWorkspaces[0].WorkspaceId : null;
+    }
+
+    private static WorkspaceSupportBundleDto CreateSupportBundle(
+        string? requestedWorkspaceId,
+        IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces,
+        WorkspaceStatusSummaryDto readiness,
+        WorkspaceDriftResult drift,
+        DiagnosticsResultDto diagnostics,
+        IReadOnlyList<WorkspaceChangeDto> changes,
+        int changeCap,
+        int driftCap)
+    {
+        var returnedChanges = TakeRecentChanges(changes, changeCap);
+        var returnedDriftedFiles = drift.FilesDrifted.Take(driftCap).ToArray();
+        var target = new WorkspaceSupportTargetDto(
+            WorkspaceId: readiness.WorkspaceId,
+            LoadedPath: readiness.LoadedPath,
+            ReadinessSummary: readiness,
+            Drift: new WorkspaceSupportDriftDto(
+                Stale: drift.Stale,
+                TotalDriftedFiles: drift.FilesDrifted.Count,
+                ReturnedDriftedFiles: returnedDriftedFiles.Length,
+                HasMore: drift.FilesDrifted.Count > returnedDriftedFiles.Length,
+                FilesDrifted: returnedDriftedFiles,
+                Recommended: drift.Recommended),
+            Version: new WorkspaceSupportVersionDto(
+                WorkspaceVersion: readiness.WorkspaceVersion,
+                SnapshotToken: readiness.SnapshotToken,
+                ServerVersion: ResolveServerVersion(),
+                CatalogVersion: ServerSurfaceCatalog.CatalogVersion));
+
+        var diagnosticTotals = new WorkspaceSupportDiagnosticsTotalsDto(
+            TotalErrors: diagnostics.TotalErrors,
+            TotalWarnings: diagnostics.TotalWarnings,
+            TotalInfo: diagnostics.TotalInfo,
+            CompilerErrors: diagnostics.CompilerErrors,
+            AnalyzerErrors: diagnostics.AnalyzerErrors,
+            WorkspaceErrors: diagnostics.WorkspaceErrors);
+
+        var ledger = new WorkspaceSupportChangeLedgerDto(
+            TotalChanges: changes.Count,
+            ReturnedChanges: returnedChanges.Count,
+            HasMore: changes.Count > returnedChanges.Count,
+            Changes: returnedChanges);
+
+        var nextActions = BuildSupportBundleNextActions(
+            readiness,
+            drift,
+            diagnosticTotals,
+            ledger);
+
+        return new WorkspaceSupportBundleDto(
+            BundleKind: "incident-support",
+            Status: ResolveSupportBundleStatus(readiness, drift, diagnosticTotals, ledger),
+            GeneratedAtUtc: DateTimeOffset.UtcNow,
+            RequestedWorkspaceId: requestedWorkspaceId,
+            LoadedWorkspaces: loadedWorkspaces,
+            Workspace: target,
+            DiagnosticsTotals: diagnosticTotals,
+            ChangeLedger: ledger,
+            Limits: new WorkspaceSupportLimitsDto(changeCap, driftCap, SourceSnippetsIncluded: false),
+            NextActions: nextActions);
+    }
+
+    private static WorkspaceSupportBundleDto CreateSupportBundleWithoutTarget(
+        string status,
+        string? requestedWorkspaceId,
+        IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces,
+        int changeCap,
+        int driftCap)
+    {
+        string[] nextActions = status switch
+        {
+            "no-workspace-loaded" =>
+            [
+                "Call workspace_load with a .sln, .slnx, or .csproj path before requesting a workspace support bundle."
+            ],
+            "workspace-id-required" =>
+            [
+                "Pass the workspaceId to workspace_support_bundle because multiple workspaces are loaded."
+            ],
+            "workspace-not-found" =>
+            [
+                "Call workspace_list to pick a current workspaceId, or call workspace_load again if the host restarted or the workspace was closed or evicted."
+            ],
+            _ => ["Retry workspace_support_bundle with a valid workspaceId."]
+        };
+
+        return new WorkspaceSupportBundleDto(
+            BundleKind: "incident-support",
+            Status: status,
+            GeneratedAtUtc: DateTimeOffset.UtcNow,
+            RequestedWorkspaceId: requestedWorkspaceId,
+            LoadedWorkspaces: loadedWorkspaces,
+            Workspace: null,
+            DiagnosticsTotals: null,
+            ChangeLedger: new WorkspaceSupportChangeLedgerDto(0, 0, HasMore: false, Changes: []),
+            Limits: new WorkspaceSupportLimitsDto(changeCap, driftCap, SourceSnippetsIncluded: false),
+            NextActions: nextActions);
+    }
+
+    private static IReadOnlyList<WorkspaceChangeDto> TakeRecentChanges(
+        IReadOnlyList<WorkspaceChangeDto> changes,
+        int cap)
+    {
+        if (cap == 0 || changes.Count == 0)
+        {
+            return [];
+        }
+
+        var skip = Math.Max(0, changes.Count - cap);
+        return changes.Skip(skip).ToArray();
+    }
+
+    private static IReadOnlyList<string> BuildSupportBundleNextActions(
+        WorkspaceStatusSummaryDto readiness,
+        WorkspaceDriftResult drift,
+        WorkspaceSupportDiagnosticsTotalsDto diagnostics,
+        WorkspaceSupportChangeLedgerDto ledger)
+    {
+        var actions = new List<string>();
+        if (drift.Stale || readiness.IsStale)
+        {
+            actions.Add($"Run workspace_reload for {readiness.WorkspaceId}; the workspace snapshot is stale or drifted from disk.");
+        }
+
+        if (readiness.RestoreRequired)
+        {
+            actions.Add("Run dotnet restore on the loaded solution or project, then workspace_reload.");
+        }
+
+        if (!readiness.AnalyzersReady)
+        {
+            actions.Add("Resolve analyzer-load warnings before trusting analyzer-driven tools such as project_diagnostics or find_unused_symbols.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(readiness.RestoreHint))
+        {
+            actions.Add(readiness.RestoreHint);
+        }
+
+        if (diagnostics.TotalErrors > 0)
+        {
+            actions.Add("Run compile_check or project_diagnostics to inspect the error diagnostics.");
+        }
+        else if (diagnostics.TotalWarnings > 0)
+        {
+            actions.Add("Run project_diagnostics with filters if warning details are needed.");
+        }
+        else if (diagnostics.TotalInfo > 0)
+        {
+            actions.Add("Run project_diagnostics with severity=\"Info\" if informational diagnostic details are needed.");
+        }
+
+        if (ledger.TotalChanges > 0)
+        {
+            actions.Add("Run validate_recent_git_changes before handing off or continuing after session mutations.");
+        }
+
+        if (actions.Count == 0)
+        {
+            actions.Add("Workspace support bundle is clean; proceed with read-side tools or the intended workflow.");
+        }
+
+        return actions.Distinct(StringComparer.Ordinal).ToArray();
+    }
+
+    private static string ResolveSupportBundleStatus(
+        WorkspaceStatusSummaryDto readiness,
+        WorkspaceDriftResult drift,
+        WorkspaceSupportDiagnosticsTotalsDto diagnostics,
+        WorkspaceSupportChangeLedgerDto ledger)
+    {
+        if (drift.Stale || readiness.IsStale)
+        {
+            return "stale";
+        }
+
+        if (!readiness.IsReady || diagnostics.TotalErrors > 0 || diagnostics.TotalWarnings > 0 || diagnostics.TotalInfo > 0)
+        {
+            return "attention-needed";
+        }
+
+        return ledger.TotalChanges > 0 ? "changed" : "clean";
+    }
+
+    private static int NormalizeCap(int requested, int max) =>
+        Math.Clamp(requested, 0, max);
+
+    private static string ResolveServerVersion()
+    {
+        var assembly = typeof(WorkspaceTools).Assembly;
+        return assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+               ?? assembly.GetName().Version?.ToString()
+               ?? "unknown";
+    }
 
     private static string BuildRestoreFailureMessage(string targetPath, CommandExecutionDto execution)
     {

@@ -65,7 +65,7 @@ Claude Code also supports installing this server as a **plugin** with curated sk
 
 No further configuration is required; the server starts with the defaults listed in [Configuration](#configuration). To tune any `ROSLYNMCP_*` value, drop a project-scope `.mcp.json` at your repo root with literal `env` values — see [`docs/mcp-json-examples/`](https://github.com/darylmcd/Roslyn-Backed-MCP/tree/main/docs/mcp-json-examples) for copy-ready templates.
 
-The plugin adds **31 bundled agent skills** — including `/roslyn-mcp:analyze`, `/roslyn-mcp:refactor`, `/roslyn-mcp:review`, `/roslyn-mcp:security`, `/roslyn-mcp:dead-code`, `/roslyn-mcp:test-coverage`, `/roslyn-mcp:migrate-package`, `/roslyn-mcp:explain-error`, `/roslyn-mcp:complexity`, `/roslyn-mcp:document`, `/roslyn-mcp:impact-assessment`, `/roslyn-mcp:refactor-loop`, `/roslyn-mcp:modernize`, `/roslyn-mcp:trace-flow`, `/roslyn-mcp:inheritance-explorer`, and more — plus pre-apply safety hooks that block `*_apply` calls without a matching `*_preview`. See the [GitHub README](https://github.com/darylmcd/Roslyn-Backed-MCP#claude-code-plugin-installation) for the full skill catalogue.
+The plugin adds **32 bundled agent skills** — including `/roslyn-mcp:analyze`, `/roslyn-mcp:refactor`, `/roslyn-mcp:review`, `/roslyn-mcp:security`, `/roslyn-mcp:dead-code`, `/roslyn-mcp:test-coverage`, `/roslyn-mcp:migrate-package`, `/roslyn-mcp:explain-error`, `/roslyn-mcp:complexity`, `/roslyn-mcp:document`, `/roslyn-mcp:impact-assessment`, `/roslyn-mcp:refactor-loop`, `/roslyn-mcp:modernize`, `/roslyn-mcp:trace-flow`, `/roslyn-mcp:inheritance-explorer`, and more — plus pre-apply safety hooks that block `*_apply` calls without a matching `*_preview`. See the [GitHub README](https://github.com/darylmcd/Roslyn-Backed-MCP#claude-code-plugin-installation) for the full skill catalogue.
 
 ### VS Code (and other stdio MCP clients)
 
@@ -83,7 +83,7 @@ Any stdio-capable MCP client uses the same command:
 
 ## What's in the box
 
-Catalog `2026.04` ships **170 tools** (111 stable / 59 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
+Catalog `2026.04` ships **172 tools** (112 stable / 60 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
 
 | Family | Highlights |
 |---|---|
