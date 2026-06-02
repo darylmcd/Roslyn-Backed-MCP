@@ -21,7 +21,7 @@ public static partial class ServerSurfaceCatalog
         Tool("probe_position", "symbols", "experimental", true, false, "Probe the raw lexical token and containing symbol at a source position."),
         Tool("enclosing_symbol", "symbols", "stable", true, false, "Return the enclosing symbol for a source position."),
         Tool("goto_type_definition", "symbols", "stable", true, false, "Navigate from a symbol usage to its type definition."),
-        Tool("get_completions", "symbols", "stable", true, false, "Return IntelliSense-style completion items at a position."),
+        Tool("get_completions", "symbols", "stable", true, false, "Return IntelliSense-style completion items at the member/token position, not the literal dot column; use probe_position when uncertain."),
         Tool("get_symbol_outline", "symbols", "stable", true, false, "Alias for document_symbols (cross-MCP-server name compatibility)."),
     ];
 }

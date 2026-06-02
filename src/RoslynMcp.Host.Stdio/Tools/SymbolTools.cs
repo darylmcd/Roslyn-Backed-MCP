@@ -774,9 +774,9 @@ public static class SymbolTools
         }, ct);
     }
 
-    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file. Use filterText for case-insensitive prefix narrowing and maxItems for paging (UX-007). To get instance-member candidates at a member-access position (e.g. right after typing `foo.`), pass triggerCharacter='.' — without it Roslyn returns only the position's general accessible-type set and method-tier candidates are NOT emitted, so the in-scope ranking has nothing to promote. The response IsIncomplete flag indicates that the filtered list is longer than maxItems — raise maxItems or refine filterText to see the rest. InlineDescription may be empty when Roslyn does not supply inline text for an item.")]
+    [McpServerTool(Name = "get_completions", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Get IntelliSense/code completion suggestions at a given position in a source file. Pass the member/token position where completions are expected, not the literal dot column; use probe_position first when uncertain. Use filterText for case-insensitive prefix narrowing and maxItems for paging (UX-007). To get instance-member candidates at a member-access position (e.g. right after typing `foo.`), pass triggerCharacter='.' — without it Roslyn returns only the position's general accessible-type set and method-tier candidates are NOT emitted, so the in-scope ranking has nothing to promote. The response IsIncomplete flag indicates that the filtered list is longer than maxItems — raise maxItems or refine filterText to see the rest. InlineDescription may be empty when Roslyn does not supply inline text for an item.")]
     [McpToolMetadata("symbols", "stable", true, false,
-        "Return IntelliSense-style completion items at a position.")]
+        "Return IntelliSense-style completion items at the member/token position, not the literal dot column; use probe_position when uncertain.")]
     public static Task<string> GetCompletions(
         McpServer server,
         IWorkspaceExecutionGate gate,

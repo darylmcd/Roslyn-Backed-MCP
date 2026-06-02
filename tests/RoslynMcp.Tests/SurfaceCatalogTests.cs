@@ -132,6 +132,26 @@ public sealed class SurfaceCatalogTests
     }
 
     [TestMethod]
+    public void GetCompletions_DescriptionAndCatalogGuideMemberAccessPositioning()
+    {
+        var method = typeof(SymbolTools).GetMethod(
+            nameof(SymbolTools.GetCompletions),
+            BindingFlags.Public | BindingFlags.Static);
+        Assert.IsNotNull(method, "SymbolTools.GetCompletions must exist.");
+
+        var description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>()?.Description ?? string.Empty;
+        StringAssert.Contains(description, "member/token position");
+        StringAssert.Contains(description, "not the literal dot column");
+        StringAssert.Contains(description, "probe_position");
+
+        var entry = ServerSurfaceCatalog.Tools.SingleOrDefault(t => t.Name == "get_completions");
+        Assert.IsNotNull(entry, "get_completions must be present in the tool catalog.");
+        StringAssert.Contains(entry.Summary, "member/token position");
+        StringAssert.Contains(entry.Summary, "not the literal dot column");
+        StringAssert.Contains(entry.Summary, "probe_position");
+    }
+
+    [TestMethod]
     public async Task ServerInfo_IncludesSurfaceSupportSummary()
     {
         var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new NuGetVersionChecker(new HttpClient()));
