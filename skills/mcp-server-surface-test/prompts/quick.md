@@ -83,7 +83,7 @@ If any phase below would require an apply or a worktree, mark it `skipped-safety
 
 1. `get_complexity_metrics` (no filters). Flag cyclomatic > 10 or nesting > 4.
 2. `get_cohesion_metrics(minMethods=3)` to find types with LCOM4 > 1.
-3. `get_coupling_metrics` if exposed; if it returns "No such tool" record the gap.
+3. `get_coupling_metrics`; verify Ca/Ce/I values are present and plausible.
 4. `find_unused_symbols(includePublic=false)`.
 5. `find_dead_locals` on a few chosen methods.
 6. `find_dead_fields`.

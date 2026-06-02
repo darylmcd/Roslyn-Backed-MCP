@@ -122,7 +122,7 @@ When the SKILL receives `--single-agent`, skip this dispatch plan and run all ph
 
 1. `get_complexity_metrics` (no filters). Flag cyclomatic > 10 or nesting > 4.
 2. `get_cohesion_metrics(minMethods=3)` to find types with LCOM4 > 1. v1.8+ ignores `[LoggerMessage]` / `[GeneratedRegex]` source-gen partials; `SharedFields` should contain only real field/property names.
-3. `get_coupling_metrics` if exposed — note if the tool returns "No such tool" (open backlog row `coupling-metrics-tool`).
+3. `get_coupling_metrics` — verify Ca/Ce/I values are present and plausible; spot-check the highest-coupled entries against actual dependencies.
 4. `find_unused_symbols(includePublic=false)`.
 5. `find_unused_symbols(includePublic=true)` — public APIs with zero internal references?
 6. `find_duplicated_methods` and `find_duplicate_helpers` — cross-check output against reads of the flagged locations; note any false positives (the BCL-wrapper false positive is tracked as `find-duplicate-helpers-framework-wrapper-false-positive`).
