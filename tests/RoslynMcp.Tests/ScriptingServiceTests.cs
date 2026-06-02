@@ -121,6 +121,89 @@ public sealed class ScriptingServiceTests
     }
 
     [TestMethod]
+    [Timeout(15_000)]
+    public async Task EvaluateAsync_AbandonedWorker_ReleasesCapacitySlotAndTracksCount()
+    {
+        var options = new ScriptingServiceOptions
+        {
+            MaxConcurrentEvaluations = 1,
+            WatchdogGraceSeconds = 1,
+            MaxAbandonedEvaluations = 2,
+        };
+        var service = new ScriptingService(NullLogger<ScriptingService>.Instance, options);
+
+        var abandoned = await service.EvaluateAsync(
+            "while(true){}",
+            imports: null,
+            CancellationToken.None,
+            onProgress: null,
+            timeoutSecondsOverride: 1).ConfigureAwait(false);
+
+        Assert.IsFalse(abandoned.Success);
+        StringAssert.Contains(abandoned.Error!, "forcibly abandoned");
+        Assert.AreEqual(1, service.AbandonedEvaluationCount, "The hard-deadline path should track the abandoned worker.");
+        Assert.AreEqual(0, service.ActiveEvaluationCount, "The completed request should release its capacity slot.");
+
+        var ok = await service.EvaluateAsync(
+            "10 + 5",
+            imports: null,
+            CancellationToken.None,
+            onProgress: null,
+            timeoutSecondsOverride: 5).ConfigureAwait(false);
+
+        Assert.IsTrue(ok.Success, ok.Error);
+        Assert.AreEqual("15", ok.ResultValue);
+        Assert.AreEqual(0, service.ActiveEvaluationCount, "Successful follow-up evaluation should also release the slot.");
+        Assert.AreEqual(1, service.AbandonedEvaluationCount, "The abandoned worker should remain accounted until it actually exits.");
+    }
+
+    [TestMethod]
+    [Timeout(10_000)]
+    public async Task ExecuteAsync_AbandonedWorkerThatLaterFinishes_DecrementsAbandonedCount()
+    {
+        var options = new ScriptingServiceOptions
+        {
+            MaxConcurrentEvaluations = 1,
+            WatchdogGraceSeconds = 0,
+            MaxAbandonedEvaluations = 2,
+            HeartbeatIntervalMs = 100,
+        };
+        var supervisor = new ScriptExecutionSupervisor(NullLogger<ScriptingService>.Instance, options);
+        using var workerEntered = new ManualResetEventSlim(false);
+        using var workerMayFinish = new ManualResetEventSlim(false);
+        var settings = new ScriptExecutionSupervisorSettings(
+            EffectiveTimeoutSeconds: 1,
+            GraceSeconds: 0,
+            HardDeadlineSeconds: 1,
+            HeartbeatInterval: TimeSpan.FromMilliseconds(100),
+            Budget: TimeSpan.FromMilliseconds(50));
+
+        var task = supervisor.ExecuteAsync(
+            _ =>
+            {
+                workerEntered.Set();
+                workerMayFinish.Wait();
+                return ScriptExecutionOutcome.Success(42);
+            },
+            onProgress: null,
+            settings,
+            CancellationToken.None);
+
+        Assert.IsTrue(workerEntered.Wait(TimeSpan.FromSeconds(2)), "The worker should start before the hard deadline fires.");
+
+        var result = await task.ConfigureAwait(false);
+        Assert.AreEqual(ScriptExecutionOutcomeKind.HardDeadline, result.Outcome.Kind);
+        Assert.AreEqual(1, supervisor.AbandonedEvaluationCount, "The hard-deadline path should count the abandoned worker.");
+        Assert.AreEqual(0, supervisor.ActiveEvaluationCount, "The abandoned request should release its capacity slot.");
+
+        workerMayFinish.Set();
+        Assert.IsTrue(
+            SpinWait.SpinUntil(() => supervisor.AbandonedEvaluationCount == 0, TimeSpan.FromSeconds(2)),
+            "A worker that returns after abandonment should decrement the abandoned count.");
+        Assert.AreEqual(0, supervisor.AbandonedEvaluationCount);
+    }
+
+    [TestMethod]
     [Timeout(10_000)]
     public async Task EvaluateAsync_LongRunningAsyncScript_ReportsHeartbeatProgress()
     {
