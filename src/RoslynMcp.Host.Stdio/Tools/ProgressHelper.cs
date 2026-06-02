@@ -17,9 +17,8 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// overload at coarse-grained stage boundaries — e.g. "evaluating-msbuild", "loading-workspace",
 /// "running-tests", "done" — so MCP clients can render an intermediate label instead of waiting
 /// silently while the tool runs. Stage labels are STAGE-LEVEL ("loading-workspace"), not
-/// per-project counts: emitting per-project N/M would require service-interface changes that
-/// are out of scope for the audit-coverage initiative. See
-/// <c>progress-emit-audit-coverage</c> in the backlog for the broader treatment.
+/// per-project counts: the shipped progress contract exposes stable coarse stages rather than
+/// service-specific item totals.
 /// </para>
 /// <para>
 /// <b>Picking stage labels.</b> Labels SHOULD be short (≤ 32 chars), kebab-case, and stable

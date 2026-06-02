@@ -5,11 +5,10 @@ using RoslynMcp.Host.Stdio.Tools;
 namespace RoslynMcp.Tests.Progress;
 
 /// <summary>
-/// Locks in the stage-fine progress emission contract added in
-/// <c>progress-emit-audit-coverage</c>. The four long-running tools (<c>workspace_load</c>,
-/// <c>workspace_warm</c>, <c>build_workspace</c>, <c>test_run</c>) MUST emit a documented
-/// sequence of stage labels (kebab-case, stable across releases) so MCP clients can render
-/// intermediate progress instead of waiting silently. Per
+/// Locks in the shipped stage-fine progress emission contract. The four long-running tools
+/// (<c>workspace_load</c>, <c>workspace_warm</c>, <c>build_workspace</c>, <c>test_run</c>)
+/// MUST emit a documented sequence of stage labels (kebab-case, stable across releases) so
+/// MCP clients can render intermediate progress instead of waiting silently. Per
 /// <see cref="ProgressHelper.ReportStage(System.IProgress{ModelContextProtocol.ProgressNotificationValue}?, float, float, string)"/>'s
 /// remarks, labels are part of the public surface — these tests are the regression guard.
 /// </summary>
