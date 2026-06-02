@@ -27,10 +27,9 @@ namespace RoslynMcp.Core.Services;
 /// </list>
 ///
 /// <para>
-/// This is internal infrastructure: not exposed as an MCP tool. Producers and consumers
-/// are <see cref="Roslyn.Services.WorkspaceManager"/> in a follow-on PR
-/// (<c>workspace-load-uses-cache-fast-path</c>); this row only ships the contract +
-/// on-disk implementation + DI registration.
+/// This is internal infrastructure: not exposed as an MCP tool. The live fast path
+/// is produced and consumed by <see cref="Roslyn.Services.WorkspaceManager"/>, with
+/// this service owning the contract and on-disk persistence boundary.
 /// </para>
 ///
 /// <para>
