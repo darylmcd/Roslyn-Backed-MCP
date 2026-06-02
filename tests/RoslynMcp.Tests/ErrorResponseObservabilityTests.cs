@@ -172,6 +172,30 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public void InvalidArgument_SchemaHint_FormatsNullableValueTypesWithSingleQuestionMark()
+    {
+        var knownParamJson = ToolErrorHandler.ClassifyAndFormat(
+            new ArgumentException("Bad prewarm.", paramName: "prewarm"),
+            "workspace_load");
+
+        using var knownParamDoc = JsonDocument.Parse(knownParamJson);
+        var knownParamHint = knownParamDoc.RootElement.GetProperty("schemaHint").GetString() ?? string.Empty;
+        StringAssert.Contains(knownParamHint, "prewarm: bool?");
+        Assert.IsFalse(knownParamHint.Contains("bool??", StringComparison.Ordinal),
+            $"Nullable bool parameter must not render a doubled marker. Got: {knownParamHint}");
+
+        var toolLevelJson = ToolErrorHandler.ClassifyAndFormat(
+            new JsonException("Unexpected token at line 1."),
+            "go_to_definition");
+
+        using var toolLevelDoc = JsonDocument.Parse(toolLevelJson);
+        var toolLevelHint = toolLevelDoc.RootElement.GetProperty("schemaHint").GetString() ?? string.Empty;
+        StringAssert.Contains(toolLevelHint, "line: int?");
+        Assert.IsFalse(toolLevelHint.Contains("int??", StringComparison.Ordinal),
+            $"Nullable int parameter must not render a doubled marker. Got: {toolLevelHint}");
+    }
+
+    [TestMethod]
     public void InvalidArgument_UnknownTool_OmitsSchemaHintRatherThanEmittingNull()
     {
         // Resource URIs and unknown tool names should NOT emit a stray schemaHint — the
