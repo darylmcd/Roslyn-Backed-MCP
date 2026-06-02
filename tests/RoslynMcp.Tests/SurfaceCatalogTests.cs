@@ -1,8 +1,10 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Resources;
 using RoslynMcp.Host.Stdio.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using Microsoft.CodeAnalysis;
@@ -77,6 +79,133 @@ public sealed class SurfaceCatalogTests
     {
         var page = ServerSurfaceCatalog.PageEntries(ServerSurfaceCatalog.Tools, offset: 0, limit: 99999, resourceName: "test");
         Assert.AreEqual(200, page.Limit, "Limit must clamp to the 200 ceiling.");
+    }
+
+    [TestMethod]
+    public void BuildVersionDiff_ClassifiesSyntheticCatalogChanges()
+    {
+        var prior = new CatalogSnapshotDocument(
+            Version: "v1",
+            CatalogVersion: "cat-1",
+            SourceKind: "test",
+            SourceRef: "prior",
+            SourceCommit: "prior",
+            Tools:
+            [
+                ToolEntry("removed_tool", "stable", summary: "removed"),
+                ToolEntry("promoted_tool", "experimental", summary: "same"),
+                ToolEntry("changed_tool", "stable", summary: "old", outputSchema: """{"type":"object","properties":{"old":{"type":"string"}}}""")
+            ],
+            Resources: [],
+            Prompts:
+            [
+                PromptEntry("changed_prompt", "experimental", [new("workspaceId", "string", true, null, "Old description")])
+            ]);
+
+        var current = new CatalogSnapshotDocument(
+            Version: "v2",
+            CatalogVersion: "cat-2",
+            SourceKind: "test",
+            SourceRef: "current",
+            SourceCommit: "current",
+            Tools:
+            [
+                ToolEntry("added_tool", "stable", summary: "added"),
+                ToolEntry("promoted_tool", "stable", summary: "same"),
+                ToolEntry("changed_tool", "stable", summary: "new", outputSchema: """{"type":"object","properties":{"new":{"type":"string"}}}""")
+            ],
+            Resources: [],
+            Prompts:
+            [
+                PromptEntry("changed_prompt", "experimental", [new("workspaceId", "string", true, null, "New description")])
+            ]);
+
+        var diff = ServerSurfaceCatalog.BuildVersionDiff(prior, current);
+
+        CollectionAssert.AreEqual(new[] { "added_tool" }, diff.Tools.Added.Select(entry => entry.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "removed_tool" }, diff.Tools.Removed.Select(entry => entry.Name).ToArray());
+        CollectionAssert.AreEqual(new[] { "promoted_tool" }, diff.Tools.Promoted.Select(entry => entry.Name).ToArray());
+
+        var changedTool = diff.Tools.Changed.Single(entry => entry.Name == "changed_tool");
+        CollectionAssert.AreEquivalent(
+            new[] { "summary", "outputSchema" },
+            changedTool.ChangedFields.Select(field => field.Field).ToArray());
+
+        var changedPrompt = diff.Prompts.Changed.Single(entry => entry.Name == "changed_prompt");
+        CollectionAssert.AreEqual(
+            new[] { "parameters" },
+            changedPrompt.ChangedFields.Select(field => field.Field).ToArray());
+
+        Assert.AreEqual(1, diff.Summary.Added);
+        Assert.AreEqual(1, diff.Summary.Removed);
+        Assert.AreEqual(1, diff.Summary.Promoted);
+        Assert.AreEqual(2, diff.Summary.Changed);
+    }
+
+    [TestMethod]
+    public void CreateVersionDiff_V231ToCurrent_UsesStoredReleaseSnapshot()
+    {
+        var diff = ServerSurfaceCatalog.CreateVersionDiff("v2.3.1", "latest");
+
+        Assert.AreEqual("2.3.1", diff.FromVersion);
+        Assert.AreEqual(ServerSurfaceCatalog.CurrentReleaseVersion, diff.ToVersion);
+        Assert.AreEqual("git-tag", diff.SnapshotSources.From.SourceKind);
+        Assert.AreEqual("v2.3.1", diff.SnapshotSources.From.SourceRef);
+        Assert.AreEqual("e147875", diff.SnapshotSources.From.SourceCommit);
+
+        CollectionAssert.AreEquivalent(
+            new[] { "workspace_readiness_report", "workspace_support_bundle" },
+            diff.Tools.Added.Select(entry => entry.Name).ToArray());
+        CollectionAssert.Contains(diff.Resources.Added.Select(entry => entry.Name).ToArray(), "server_catalog_version_diff");
+
+        var changedTool = diff.Tools.Changed.Single(entry => entry.Name == "get_completions");
+        CollectionAssert.AreEqual(new[] { "summary" }, changedTool.ChangedFields.Select(field => field.Field).ToArray());
+
+        Assert.AreEqual(3, diff.Summary.Added);
+        Assert.AreEqual(0, diff.Summary.Removed);
+        Assert.AreEqual(0, diff.Summary.Promoted);
+        Assert.AreEqual(1, diff.Summary.Changed);
+    }
+
+    [TestMethod]
+    public void ServerCatalogVersionDiffResource_PublishesCamelCasePayload()
+    {
+        var json = ServerResources.GetServerCatalogVersionDiff("2.3.1", "current");
+        using var document = JsonDocument.Parse(json);
+
+        Assert.IsTrue(document.RootElement.TryGetProperty("fromVersion", out var fromVersion));
+        Assert.AreEqual("2.3.1", fromVersion.GetString());
+        Assert.IsTrue(document.RootElement.TryGetProperty("summary", out var summary));
+        Assert.AreEqual(3, summary.GetProperty("added").GetInt32());
+        Assert.IsTrue(document.RootElement.TryGetProperty("tools", out var tools));
+        Assert.IsTrue(tools.TryGetProperty("changed", out var changed));
+        Assert.AreEqual("get_completions", changed.EnumerateArray().Single().GetProperty("name").GetString());
+    }
+
+    [TestMethod]
+    public void CreateVersionDiff_UnsupportedPair_ThrowsClearError()
+    {
+        var ex = Assert.ThrowsExactly<ArgumentException>(
+            () => ServerSurfaceCatalog.CreateVersionDiff("v2.3.0", "current"));
+
+        StringAssert.Contains(ex.Message, "Unsupported catalog diff 'v2.3.0' -> 'current'");
+        StringAssert.Contains(ex.Message, "v2.3.1");
+        StringAssert.Contains(ex.Message, "latest");
+    }
+
+    [TestMethod]
+    public void ServerCatalogVersionDiffResource_UnsupportedPair_ReturnsInvalidArgumentEnvelope()
+    {
+        var json = ServerResources.GetServerCatalogVersionDiff("v2.3.0", "current");
+        using var document = JsonDocument.Parse(json);
+
+        Assert.IsTrue(document.RootElement.GetProperty("error").GetBoolean());
+        Assert.AreEqual("InvalidArgument", document.RootElement.GetProperty("category").GetString());
+        Assert.AreEqual(
+            "roslyn://server/catalog-diff/{fromVersion}/{toVersion}",
+            document.RootElement.GetProperty("tool").GetString());
+        StringAssert.Contains(document.RootElement.GetProperty("message").GetString() ?? string.Empty, "Unsupported catalog diff");
+        StringAssert.Contains(document.RootElement.GetProperty("message").GetString() ?? string.Empty, "v2.3.1");
     }
 
     [TestMethod]
@@ -360,6 +489,39 @@ public sealed class SurfaceCatalogTests
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
     }
+
+    private static SurfaceEntry ToolEntry(
+        string name,
+        string supportTier,
+        string summary,
+        string? outputSchema = null) =>
+        new(
+            "tool",
+            name,
+            "test",
+            supportTier,
+            ReadOnly: true,
+            Destructive: false,
+            summary,
+            UriTemplate: null,
+            Parameters: null,
+            OutputSchema: outputSchema is null ? null : JsonNode.Parse(outputSchema));
+
+    private static SurfaceEntry PromptEntry(
+        string name,
+        string supportTier,
+        IReadOnlyList<PromptParameterEntry> parameters) =>
+        new(
+            "prompt",
+            name,
+            "test",
+            supportTier,
+            ReadOnly: true,
+            Destructive: false,
+            "prompt",
+            UriTemplate: null,
+            Parameters: parameters,
+            OutputSchema: null);
 
     private static string GetName<TAttribute>(TAttribute attribute)
         where TAttribute : Attribute

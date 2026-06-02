@@ -48,6 +48,10 @@
     <ProjectReference Include="..\RoslynMcp.Roslyn\RoslynMcp.Roslyn.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Catalog\Snapshots\catalog-v2.3.1.json" />
+  </ItemGroup>
+
   <!--
     ServerSurfaceCatalogAnalyzer emits build-time RMCP001/RMCP002 diagnostics when
     [McpServerTool] / [McpServerResource] / [McpServerPrompt] decorated methods drift

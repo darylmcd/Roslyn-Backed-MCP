@@ -74,7 +74,7 @@ This drift check is automated: `eng/verify-version-drift.ps1` runs at the top of
 1. Run `eng/verify-release.ps1`.
 2. Review the generated publish hash manifest under `artifacts/manifests/`.
 3. Review dependency audit output from CI.
-4. Confirm `server_info` and `server_catalog` reflect the intended support tiers.
+4. Confirm `server_info` and `server_catalog` reflect the intended support tiers; for supported prior release pairs, use `roslyn://server/catalog-diff/{fromVersion}/{toVersion}` as a machine-readable review aid.
 5. For material surface, preview/apply-behavior, or tiering changes, review the latest deep-review rollup under `ai_docs/reports/` and its raw evidence under `ai_docs/audit-reports/`.
 6. **Run the version-string drift check** from [Where To Bump The Version String](#where-to-bump-the-version-string). All six files must agree.
 7. Publish the host executable built from `src/RoslynMcp.Host.Stdio`.
