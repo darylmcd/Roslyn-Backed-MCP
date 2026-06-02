@@ -17,7 +17,7 @@ internal static class MetaSerializer
 
 internal static class ToolErrorHandler
 {
-    private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> ErrorHandlers = new()
+    private static readonly Dictionary<Type, Func<Exception, string, ErrorInfo>> _errorHandlers = new()
     {
         // autoreload-cascade-stdio-host-crash: wraps a state-read that raced with (or followed)
         // an auto-reload transition. Registered BEFORE the generic Exception handlers so the
@@ -288,7 +288,7 @@ internal static class ToolErrorHandler
         }
 
         // Walk the handler dictionary for exact or assignable type match
-        foreach (var (type, handler) in ErrorHandlers)
+        foreach (var (type, handler) in _errorHandlers)
         {
             if (type.IsAssignableFrom(ex.GetType()))
                 return handler(ex, toolName);
@@ -536,17 +536,26 @@ internal static class ToolErrorHandler
         var all = ToolParameterIndex.GetParameters(toolName);
         if (all.Count == 0) return null;
 
-        var formatted = string.Join(", ", all.Select(p => $"{p.Name}: {p.Type}{(p.Required ? string.Empty : "?")}"));
+        var formatted = string.Join(", ", all.Select(p => $"{p.Name}: {FormatTypeWithOptionalMarker(p)}"));
         return $"{toolName}({formatted})";
     }
 
     private static string FormatParameter(string toolName, ToolParameterSchema schema)
     {
-        var requiredMark = schema.Required ? string.Empty : "?";
         var description = string.IsNullOrEmpty(schema.Description)
             ? string.Empty
             : $" — {TrimToFirstSentence(schema.Description)}";
-        return $"{toolName}({schema.Name}: {schema.Type}{requiredMark}{description})";
+        return $"{toolName}({schema.Name}: {FormatTypeWithOptionalMarker(schema)}{description})";
+    }
+
+    private static string FormatTypeWithOptionalMarker(ToolParameterSchema schema)
+    {
+        if (schema.Required || schema.Type.EndsWith("?", StringComparison.Ordinal))
+        {
+            return schema.Type;
+        }
+
+        return schema.Type + "?";
     }
 
     private static string TrimToFirstSentence(string text)
