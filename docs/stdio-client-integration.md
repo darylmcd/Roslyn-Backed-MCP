@@ -83,6 +83,8 @@ send({
 print("load:", read_response(2))
 ```
 
+For first-run onboarding after `workspace_load`, call `workspace_readiness_report` with the returned `workspaceId`. It reports one compact verdict (`ready`, `restore-needed`, `build-needed`, or `analyzer-limited`), limitations, and next recommended workflows without running tests by default. Keep `workspace_support_bundle` for incident/recovery support on an already-running session.
+
 ## Minimal C# client
 
 ```csharp

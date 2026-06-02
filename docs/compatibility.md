@@ -36,6 +36,10 @@ The three install paths from the [README Quick Start](../README.md#quick-start) 
 - **`dnx` requires .NET 10 SDK Preview 6 or later**. Older SDKs do not ship the `dnx` command. Run `dotnet --list-sdks` to confirm.
 - **`--yes` is mandatory under MCP hosts**. Without it, `dnx` prompts for install consent on stdin, which the host cannot answer; the process appears to hang and never produces an MCP `initialize` response.
 
+## First Workspace Check
+
+After `workspace_load`, call `workspace_readiness_report` for onboarding/first-run status. It returns a compact verdict (`ready`, `restore-needed`, `build-needed`, or `analyzer-limited`), limitations, and next workflows without running tests by default. Use `workspace_support_bundle` separately for incident or recovery diagnostics.
+
 ## Reporting compatibility findings
 
 If you successfully wire up a client not listed here, or find a real incompatibility, file via the [Surface-test finding](https://github.com/darylmcd/Roslyn-Backed-MCP/issues/new?template=mcp-server-surface-test-finding.yml) issue template (or a regular bug report).
