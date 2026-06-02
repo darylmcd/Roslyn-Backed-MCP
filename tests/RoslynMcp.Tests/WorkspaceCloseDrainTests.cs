@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
@@ -110,6 +111,8 @@ public sealed class WorkspaceCloseDrainTests
         var fakeWorkspace = new FakeWorkspaceManagerForDrain(status: null);
         var gate = new PassthroughGate();
         var commandRunner = new RecordingDotnetCommandRunner();
+        var logger = new RecordingLogger();
+        var loggerFactory = new RecordingLoggerFactory(logger);
 
         var json = await WorkspaceTools.CloseWorkspace(
             server: null!,
@@ -118,6 +121,7 @@ public sealed class WorkspaceCloseDrainTests
             commandRunner: commandRunner,
             workspaceId: unknownId,
             drainProcesses: true,
+            loggerFactory: loggerFactory,
             ct: CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
@@ -128,6 +132,164 @@ public sealed class WorkspaceCloseDrainTests
         // The drain must have been skipped — no call to commandRunner.
         Assert.AreEqual(0, commandRunner.CallCount,
             "The drain must be skipped when GetStatus throws (unknown workspace).");
+
+        Assert.IsTrue(
+            logger.Entries.Any(e =>
+                e.Level == LogLevel.Debug &&
+                e.Exception is KeyNotFoundException &&
+                e.Message.Contains("skipped process drain because loaded path lookup failed", StringComparison.Ordinal)),
+            "Loaded-path lookup failures must produce a Debug log signal while preserving close success semantics.");
+    }
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainFailure_ReturnsSuccessAndLogsDebug()
+    {
+        const string expectedWorkspaceId = "test-ws-drain-fail";
+        var loadedPath = Path.Combine(Path.GetTempPath(), "repo", "FailingDrain.slnx");
+
+        var status = CreateStatus(expectedWorkspaceId, loadedPath);
+        var fakeWorkspace = new FakeWorkspaceManagerForDrain(status);
+        var gate = new PassthroughGate();
+        var commandRunner = new RecordingDotnetCommandRunner
+        {
+            ExceptionToThrow = new InvalidOperationException("simulated drain failure")
+        };
+        var logger = new RecordingLogger();
+        var loggerFactory = new RecordingLoggerFactory(logger);
+
+        var json = await WorkspaceTools.CloseWorkspace(
+            server: null!,
+            gate: gate,
+            workspace: fakeWorkspace,
+            commandRunner: commandRunner,
+            workspaceId: expectedWorkspaceId,
+            drainProcesses: true,
+            loggerFactory: loggerFactory,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
+            "Drain failures are non-fatal; workspace_close must still return the close result.");
+        Assert.AreEqual(1, commandRunner.CallCount,
+            "drainProcesses=true must still attempt the drain before logging the failure.");
+
+        Assert.IsTrue(
+            logger.Entries.Any(e =>
+                e.Level == LogLevel.Debug &&
+                e.Exception is InvalidOperationException &&
+                e.Message.Contains("process drain failed", StringComparison.Ordinal)),
+            "Drain exceptions must produce a Debug log signal while preserving close success semantics.");
+    }
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainCancellationAfterClose_ReturnsSuccessAndLogsDebug()
+    {
+        const string expectedWorkspaceId = "test-ws-drain-canceled";
+        var loadedPath = Path.Combine(Path.GetTempPath(), "repo", "CanceledDrain.slnx");
+
+        var status = CreateStatus(expectedWorkspaceId, loadedPath);
+        var fakeWorkspace = new FakeWorkspaceManagerForDrain(status);
+        var gate = new PassthroughGate();
+        var commandRunner = new RecordingDotnetCommandRunner
+        {
+            ExceptionToThrow = new OperationCanceledException("simulated drain cancellation")
+        };
+        var logger = new RecordingLogger();
+        var loggerFactory = new RecordingLoggerFactory(logger);
+
+        var json = await WorkspaceTools.CloseWorkspace(
+            server: null!,
+            gate: gate,
+            workspace: fakeWorkspace,
+            commandRunner: commandRunner,
+            workspaceId: expectedWorkspaceId,
+            drainProcesses: true,
+            loggerFactory: loggerFactory,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
+            "Post-close drain cancellation is non-fatal; workspace_close must still return the close result.");
+
+        Assert.IsTrue(
+            logger.Entries.Any(e =>
+                e.Level == LogLevel.Debug &&
+                e.Exception is OperationCanceledException &&
+                e.Message.Contains("process drain failed", StringComparison.Ordinal)),
+            "Post-close drain cancellation must produce a Debug log signal while preserving close success semantics.");
+    }
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainNonZeroExit_ReturnsSuccessAndLogsDebug()
+    {
+        const string expectedWorkspaceId = "test-ws-drain-nonzero";
+        var loadedPath = Path.Combine(Path.GetTempPath(), "repo", "NonZeroDrain.slnx");
+
+        var status = CreateStatus(expectedWorkspaceId, loadedPath);
+        var fakeWorkspace = new FakeWorkspaceManagerForDrain(status);
+        var gate = new PassthroughGate();
+        var commandRunner = new RecordingDotnetCommandRunner { ExitCode = 1 };
+        var logger = new RecordingLogger();
+        var loggerFactory = new RecordingLoggerFactory(logger);
+
+        var json = await WorkspaceTools.CloseWorkspace(
+            server: null!,
+            gate: gate,
+            workspace: fakeWorkspace,
+            commandRunner: commandRunner,
+            workspaceId: expectedWorkspaceId,
+            drainProcesses: true,
+            loggerFactory: loggerFactory,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
+            "Non-zero drain exits are non-fatal; workspace_close must still return the close result.");
+
+        Assert.IsTrue(
+            logger.Entries.Any(e =>
+                e.Level == LogLevel.Debug &&
+                e.Message.Contains("process drain exited with code 1", StringComparison.Ordinal)),
+            "Non-zero drain exits must produce a Debug log signal while preserving close success semantics.");
+    }
+
+    [TestMethod]
+    public async Task LoadWorkspace_NotificationFailure_ReturnsStatusAndLogsDebug()
+    {
+        const string expectedWorkspaceId = "test-ws-load-notify";
+        var loadedPath = Path.Combine(Path.GetTempPath(), "repo", "NotifyFailure.slnx");
+
+        var status = CreateStatus(expectedWorkspaceId, loadedPath);
+        var fakeWorkspace = new FakeWorkspaceManagerForDrain(status);
+        var gate = new PassthroughGate();
+        var commandRunner = new RecordingDotnetCommandRunner();
+        var logger = new RecordingLogger();
+        var loggerFactory = new RecordingLoggerFactory(logger);
+
+        var json = await WorkspaceTools.LoadWorkspace(
+            server: null!,
+            gate: gate,
+            workspace: fakeWorkspace,
+            warmService: new ThrowingWorkspaceWarmService(),
+            commandRunner: commandRunner,
+            path: loadedPath,
+            verbose: false,
+            autoRestore: false,
+            prewarm: false,
+            loggerFactory: loggerFactory,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual(expectedWorkspaceId, doc.RootElement.GetProperty("workspaceId").GetString(),
+            "Resource-list notification failures are non-fatal; workspace_load must still return its status payload.");
+
+        Assert.IsTrue(
+            SpinWait.SpinUntil(
+                () => logger.Entries.Any(e =>
+                    e.Level == LogLevel.Debug &&
+                    e.Message.Contains("workspace_load could not notify clients", StringComparison.Ordinal)),
+                TimeSpan.FromSeconds(2)),
+            "Resource-list notification failures must produce a Debug log signal while preserving load success semantics.");
     }
 
     // ---------------------------------------------------------------------------
@@ -165,6 +327,8 @@ public sealed class WorkspaceCloseDrainTests
         public int CallCount { get; private set; }
         public IReadOnlyList<string>? LastArguments { get; private set; }
         public string? LastWorkingDirectory { get; private set; }
+        public Exception? ExceptionToThrow { get; init; }
+        public int ExitCode { get; init; }
 
         public Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
@@ -175,18 +339,61 @@ public sealed class WorkspaceCloseDrainTests
             CallCount++;
             LastWorkingDirectory = workingDirectory;
             LastArguments = arguments;
+            if (ExceptionToThrow is not null)
+            {
+                throw ExceptionToThrow;
+            }
+
             return Task.FromResult(new CommandExecutionDto(
                 Command: "dotnet",
                 Arguments: arguments,
                 WorkingDirectory: workingDirectory,
                 TargetPath: targetPath,
-                ExitCode: 0,
-                Succeeded: true,
+                ExitCode: ExitCode,
+                Succeeded: ExitCode == 0,
                 DurationMs: 0,
                 StdOut: string.Empty,
                 StdErr: string.Empty));
         }
     }
+
+    private sealed class ThrowingWorkspaceWarmService : IWorkspaceWarmService
+    {
+        public Task<WorkspaceWarmResult> WarmAsync(string workspaceId, string[]? projects, CancellationToken ct) =>
+            throw new NotSupportedException("This test disables prewarm.");
+    }
+
+    private sealed class RecordingLoggerFactory(RecordingLogger logger) : ILoggerFactory
+    {
+        public ILogger CreateLogger(string categoryName) => logger;
+
+        public void AddProvider(ILoggerProvider provider) { }
+
+        public void Dispose() { }
+    }
+
+    private sealed class RecordingLogger : ILogger
+    {
+        private readonly List<LogEntry> _entries = [];
+
+        public IReadOnlyList<LogEntry> Entries => _entries;
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            _entries.Add(new LogEntry(logLevel, formatter(state, exception), exception));
+        }
+    }
+
+    private sealed record LogEntry(LogLevel Level, string Message, Exception? Exception);
 
     private sealed class PassthroughGate : IWorkspaceExecutionGate
     {

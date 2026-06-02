@@ -8,8 +8,8 @@ namespace RoslynMcp.Host.Stdio.Catalog;
 /// <summary>
 /// inv-arg-envelope-schema-hint: cached reflection over every
 /// <see cref="McpServerToolAttribute"/>-attributed method in the Host.Stdio assembly,
-/// projecting each tool's user-facing parameters (i.e. excluding DI services and
-/// <see cref="CancellationToken"/>) into a name → schema lookup.
+/// projecting each tool's user-facing parameters (marked with <see cref="DescriptionAttribute"/>
+/// and excluding <see cref="CancellationToken"/>) into a name → schema lookup.
 /// <para>
 /// <see cref="ToolErrorHandler"/> consults this index to attach a per-parameter
 /// <c>schemaHint</c> field to <c>InvalidArgument</c> envelopes so cold-context callers

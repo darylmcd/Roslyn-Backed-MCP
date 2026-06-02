@@ -96,6 +96,25 @@ public sealed class ToolDiResolutionTests
             "Interface and concrete registrations must share the same singleton so both see the same cached latest version.");
     }
 
+    [TestMethod]
+    public void WorkspaceLifecycleTools_DoNotExposeLoggerFactoryInMcpInputSchema()
+    {
+        using var provider = BuildHostServiceProvider(includeMcpTools: true);
+        var tools = provider.GetServices<McpServerTool>()
+            .ToDictionary(tool => tool.ProtocolTool.Name, StringComparer.Ordinal);
+
+        foreach (var toolName in new[] { "workspace_load", "workspace_reload", "workspace_close" })
+        {
+            Assert.IsTrue(tools.TryGetValue(toolName, out var tool),
+                $"{toolName} must be registered by WithToolsFromAssembly.");
+
+            var properties = tool.ProtocolTool.InputSchema.GetProperty("properties");
+            Assert.IsFalse(
+                properties.TryGetProperty("loggerFactory", out _),
+                $"{toolName} MCP input schema must not expose DI-only ILoggerFactory parameters. Schema: {tool.ProtocolTool.InputSchema}");
+        }
+    }
+
     /// <summary>
     /// Is this parameter type an interface declared by the application (an RoslynMcp service)
     /// rather than a BCL collection interface (IReadOnlyList&lt;T&gt;), an SDK-injected interface
@@ -124,7 +143,7 @@ public sealed class ToolDiResolutionTests
     /// a new host-side singleton in the extension lights it up here too
     /// (di-graph-triple-registration-cleanup).
     /// </summary>
-    private static ServiceProvider BuildHostServiceProvider()
+    private static ServiceProvider BuildHostServiceProvider(bool includeMcpTools = false)
     {
         var services = new ServiceCollection();
         services.AddLogging(b => b.ClearProviders());
@@ -136,6 +155,14 @@ public sealed class ToolDiResolutionTests
             new ExecutionGateOptions(),
             new SecurityOptions(),
             new ScriptingServiceOptions());
+
+        if (includeMcpTools)
+        {
+            var hostAssembly = typeof(McpLoggingProvider).Assembly;
+            services
+                .AddMcpServer()
+                .WithToolsFromAssembly(hostAssembly);
+        }
 
         return services.BuildServiceProvider();
     }
