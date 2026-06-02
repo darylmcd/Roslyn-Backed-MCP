@@ -25,10 +25,11 @@ namespace RoslynMcp.Tests.Progress;
 /// <b>Workspace load testing.</b> <c>workspace_load</c>'s tool surface takes an
 /// <see cref="McpServer"/> for client-roots validation. The validator handles
 /// <see langword="null"/> servers by skipping the roots check (path is allowed
-/// unconditionally), and <c>NotifyResourcesChangedAsync</c> swallows null-deref on the
-/// notify call. So the test passes <see langword="null!"/> for the server parameter and
-/// drives the existing dedup path: re-loading an already-loaded sample returns the cached
-/// session without re-running MSBuild. The full stage sequence is still emitted.
+/// unconditionally), and resource-list notification failures are intentionally non-fatal
+/// and logged at Debug when a logger is supplied. So the test passes <see langword="null!"/>
+/// for the server parameter and drives the existing dedup path: re-loading an already-loaded
+/// sample returns the cached session without re-running MSBuild. The full stage sequence is
+/// still emitted.
 /// </para>
 /// </remarks>
 [DoNotParallelize]
@@ -55,7 +56,7 @@ public sealed class ProgressEmissionTests : SharedWorkspaceTestBase
         // Re-loading the cached sample workspace exercises the dedup path; the tool still
         // emits every stage label because the emissions sit outside `workspace.LoadAsync`.
         // server: null! is safe — ClientRootPathValidator handles null servers explicitly
-        // and the fire-and-forget NotifyResourcesChangedAsync swallows the null-deref.
+        // and the fire-and-forget resource-list notification remains non-fatal.
         await WorkspaceTools.LoadWorkspace(
             server: null!,
             gate: WorkspaceExecutionGate,

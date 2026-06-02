@@ -196,6 +196,23 @@ public sealed class ErrorResponseObservabilityTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public void InvalidArgument_WorkspaceLifecycleSchemaHints_DoNotExposeLoggerFactory()
+    {
+        foreach (var toolName in new[] { "workspace_load", "workspace_reload", "workspace_close" })
+        {
+            var json = ToolErrorHandler.ClassifyAndFormat(
+                new JsonException("Unexpected token at line 1."),
+                toolName);
+
+            using var doc = JsonDocument.Parse(json);
+            var hint = doc.RootElement.GetProperty("schemaHint").GetString() ?? string.Empty;
+            Assert.IsFalse(
+                hint.Contains("loggerFactory", StringComparison.OrdinalIgnoreCase),
+                $"{toolName} schemaHint must not expose DI-only ILoggerFactory parameters. Got: {hint}");
+        }
+    }
+
+    [TestMethod]
     public void InvalidArgument_UnknownTool_OmitsSchemaHintRatherThanEmittingNull()
     {
         // Resource URIs and unknown tool names should NOT emit a stray schemaHint — the

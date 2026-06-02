@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Contracts;
@@ -41,8 +42,10 @@ public static class WorkspaceTools
         [Description("Operator-opt-in security flag (default false). When true, the client-sanctioned-root path validator additionally accepts paths under the immediate PARENT directory of each sanctioned root — enough to permit a sibling worktree at `../<name>` (e.g. mcp-server-surface-test's disposable audit worktree). Higher ancestors (grandparent etc.) are NOT widened. Pass true only from operator-controlled call sites; do not auto-enable on every request.")] bool expandSanctionedRoots = false,
         [Description("Controls cap-reached behaviour. 'Strict' (default) throws with activeWorkspaces and lruCandidate context for one-round-trip self-recovery. 'Lru' silently evicts the least-recently-used idle workspace to make room for the new load.")] EvictPolicy evictPolicy = EvictPolicy.Strict,
         IProgress<ProgressNotificationValue>? progress = null,
+        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
+        var logger = CreateLogger(loggerFactory);
         return gate.RunLoadGateAsync(async c =>
         {
             // workspace-load stage emissions: clients see "validating-path → opening-workspace
@@ -77,7 +80,7 @@ public static class WorkspaceTools
             }
 
             ProgressHelper.ReportStage(progress, resolvedTotalStages, resolvedTotalStages, "done");
-            _ = NotifyResourcesChangedAsync(server);
+            _ = NotifyResourcesChangedAsync(server, "workspace_load", logger);
             return SerializeWorkspaceLoadResult(status, verbose, prewarmResult);
         }, ct);
     }
@@ -92,8 +95,10 @@ public static class WorkspaceTools
         IDotnetCommandRunner commandRunner,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("When true and the reloaded status reports restoreRequired=true, run `dotnet restore` on the loaded target and reload once before returning.")] bool autoRestore = false,
+        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
+        var logger = CreateLogger(loggerFactory);
         // Reload acquires both the global load gate AND the per-workspace write lock so that
         // any in-flight readers on this workspace complete before the solution is replaced.
         return gate.RunLoadGateAsync(outerCt =>
@@ -101,7 +106,7 @@ public static class WorkspaceTools
             {
                 var status = await workspace.ReloadAsync(workspaceId, innerCt).ConfigureAwait(false);
                 status = await RestoreAndReloadIfRequiredAsync(commandRunner, workspace, status, autoRestore, innerCt).ConfigureAwait(false);
-                _ = NotifyResourcesChangedAsync(server);
+                _ = NotifyResourcesChangedAsync(server, "workspace_reload", logger);
                 return JsonSerializer.Serialize(status, JsonDefaults.Indented);
             }, outerCt), ct);
     }
@@ -116,8 +121,10 @@ public static class WorkspaceTools
         IDotnetCommandRunner commandRunner,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("When true, run `dotnet build-server shutdown` after session removal to release MSBuild out-of-process build-server locks. Default false. Set true before `git worktree remove` in sweep teardown.")] bool drainProcesses = false,
+        ILoggerFactory? loggerFactory = null,
         CancellationToken ct = default)
     {
+        var logger = CreateLogger(loggerFactory);
         // Close acquires both the global load gate AND the per-workspace write lock so that
         // no reader is in flight when the workspace's lock entry is dropped from the registry.
         // RemoveGate must run after RunWriteAsync completes so the per-workspace lock entry is
@@ -137,11 +144,17 @@ public static class WorkspaceTools
                     if (drainProcesses)
                     {
                         try { loadedPath = workspace.GetStatus(workspaceId).LoadedPath; }
-                        catch { /* session may already be gone — drain will be skipped */ }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            logger?.LogDebug(
+                                ex,
+                                "workspace_close skipped process drain because loaded path lookup failed for workspace {WorkspaceId}.",
+                                workspaceId);
+                        }
                     }
 
                     var closed = workspace.Close(workspaceId);
-                    _ = NotifyResourcesChangedAsync(server);
+                    _ = NotifyResourcesChangedAsync(server, "workspace_close", logger);
                     return JsonSerializer.Serialize(new { success = closed, workspaceId }, JsonDefaults.Indented);
                 },
                 outerCt,
@@ -155,16 +168,29 @@ public static class WorkspaceTools
                 {
                     try
                     {
-                        await commandRunner.RunAsync(
+                        var drain = await commandRunner.RunAsync(
                             workingDirectory,
                             string.Empty,
                             ["build-server", "shutdown"],
                             outerCt).ConfigureAwait(false);
+                        if (!drain.Succeeded)
+                        {
+                            logger?.LogDebug(
+                                "workspace_close process drain exited with code {ExitCode} for workspace {WorkspaceId} in {WorkingDirectory}.",
+                                drain.ExitCode,
+                                workspaceId,
+                                workingDirectory);
+                        }
                     }
-                    catch
+                    catch (Exception ex)
                     {
                         // Non-zero exit or exception from drain is a warning, not an error.
                         // The close itself has already succeeded; callers receive the original payload.
+                        logger?.LogDebug(
+                            ex,
+                            "workspace_close process drain failed for workspace {WorkspaceId} in {WorkingDirectory}.",
+                            workspaceId,
+                            workingDirectory);
                     }
                 }
             }
@@ -949,6 +975,9 @@ public static class WorkspaceTools
                ?? "unknown";
     }
 
+    private static ILogger? CreateLogger(ILoggerFactory? loggerFactory) =>
+        loggerFactory?.CreateLogger(typeof(WorkspaceTools).FullName ?? nameof(WorkspaceTools));
+
     private static string BuildRestoreFailureMessage(string targetPath, CommandExecutionDto execution)
     {
         static string TrimOutput(string? text)
@@ -970,15 +999,19 @@ public static class WorkspaceTools
     /// <summary>
     /// Fire-and-forget notification to clients that the resource list has changed.
     /// </summary>
-    private static async Task NotifyResourcesChangedAsync(McpServer server)
+    private static async Task NotifyResourcesChangedAsync(McpServer server, string sourceTool, ILogger? logger)
     {
         try
         {
             await server.SendNotificationAsync(NotificationMethods.ResourceListChangedNotification).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
             // Notification failure should not affect the tool result
+            logger?.LogDebug(
+                ex,
+                "{SourceTool} could not notify clients that the resource list changed.",
+                sourceTool);
         }
     }
 
