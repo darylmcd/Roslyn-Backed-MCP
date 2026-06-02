@@ -83,11 +83,11 @@ Any stdio-capable MCP client uses the same command:
 
 ## What's in the box
 
-Catalog `2026.04` ships **172 tools** (112 stable / 60 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
+Catalog `2026.04` ships **173 tools** (113 stable / 60 experimental), **13 resources** (9 stable / 4 experimental), and **20 prompts** (all experimental). Use `server_info` and `roslyn://server/catalog` for the authoritative live surface; the categories below are a quick orientation.
 
 | Family | Highlights |
 |---|---|
-| **Workspace** | `workspace_load`, `workspace_status`, `workspace_list`, `project_graph`, source-generated documents — workspace tools default to a lean **summary** payload (~500 bytes) and offer `verbose=true` opt-in for the full per-project tree. |
+| **Workspace** | `workspace_load`, `workspace_status`, `workspace_readiness_report`, `workspace_support_bundle`, `workspace_list`, `project_graph`, source-generated documents — workspace tools default to lean summary/readiness payloads and offer `verbose=true` opt-in on status/load for the full per-project tree. |
 | **Symbol navigation** | `find_references`, `find_implementations`, `find_overrides`, `goto_definition`, `symbol_search`, `find_consumers`, `find_type_usages`, `type_hierarchy`, `callers_callees`, `impact_analysis`. Major semantic tools accept a `symbolHandle` from prior search/info calls — pass it instead of file/line to disambiguate overloads and partial classes. |
 | **Diagnostics** | `project_diagnostics`, `compile_check` (in-memory, with optional emit validation), `diagnostic_details`, `security_diagnostics`, `nuget_vulnerability_scan`, `list_analyzers`. |
 | **Refactoring (preview / apply)** | `rename_*`, `extract_interface_*`, `extract_type_*`, `move_type_to_file_*`, `bulk_replace_type_*`, `code_fix_*`, `fix_all_*`, `format_document_*`, `organize_usings_*`, `split_class_*`, dead-code removal. |
