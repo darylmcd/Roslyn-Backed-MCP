@@ -68,16 +68,17 @@ Emit `applicable` and `detectedStack` as the **first two lines** of the output r
    - If `applicable: false`: suppress the "consider calling `workspace_load`" hint and instead emit: "CWD does not appear to be a C# repo (`detectedStack: unknown`). The workspace-health skill is most useful when a `.sln` or `.csproj` is present."
    - If `applicable: true`: retain the existing hint — emit "no workspaces loaded — consider calling `workspace_load` on a `.sln` / `.slnx` / `.csproj`".
 
-### Step 4: Per-Workspace Status
+### Step 4: Per-Workspace Support Bundle
 
 For each workspace in scope:
 
-1. Call `workspace_status` with the `workspaceId` — record state (ready / loading / degraded), load-time warnings, and any outstanding preview tokens if the response exposes them.
-2. Call `workspace_health` with the same `workspaceId` — record deeper metrics (project count, document count, last-activity timestamp, stale flags). If `workspace_health` is unavailable on this server build, note it and continue.
+1. Call `workspace_support_bundle` with the `workspaceId` — record `status`, loaded path, readiness summary, drift status, capped change ledger, workspace/surface version, diagnostics totals, and `nextActions`.
+2. Treat `workspace_support_bundle` as the preferred incident-diagnosis source. It is distinct from first-run readiness reporting and intentionally excludes source snippets.
+3. If `workspace_support_bundle` is unavailable on this server build, fall back to `workspace_status` and then `workspace_health` with the same `workspaceId`; note the fallback in the report.
 
 ### Step 5: Optional Deep Probe
 
-For any workspace flagged as *possibly stale* in Step 4 (or when the user asked for a single-workspace deep check):
+For any workspace whose support bundle reports `status` other than `clean` (or when the user asked for a single-workspace deep check):
 
 1. Call `validate_workspace` **without** `runTests` for a fast compile + analyzer snapshot.
 2. Record: build pass/fail, error count, warning count, analyzer execution time.
@@ -99,6 +100,10 @@ Combine the server-level signals (Steps 1-2) with the per-workspace signals (Ste
 | `workspace_status.state = "ready"` | Workspace usable | Proceed |
 | `workspace_status.state = "loading"` | Load in progress | Wait; re-probe |
 | `workspace_status.state = "degraded"` | Load completed with errors | Review load-time warnings; consider `workspace_reload` |
+| `workspace_support_bundle.status = "clean"` | Incident bundle found no stale/drift/diagnostic/change signal | Proceed |
+| `workspace_support_bundle.status = "changed"` | Session ledger has mutations | Run `validate_recent_git_changes` before handoff |
+| `workspace_support_bundle.status = "stale"` | Snapshot stale or drifted from disk | Run `workspace_reload` |
+| `workspace_support_bundle.status = "attention-needed"` | Readiness or diagnostics need inspection | Follow bundle `nextActions` |
 | Stale workspace (solution files changed on disk after load) | On-disk drift | Reload with `workspace_reload` |
 | Outstanding preview tokens | Unapplied preview sessions linger | Review the associated skill/flow; apply or discard |
 | `validate_workspace` reports errors | Compilation broken in memory | Hand off to `analyze` or `explain-error` skill |
@@ -127,7 +132,7 @@ For each workspace in scope:
 - **{id}** — {state}
   - Projects: {count}  Documents: {count}
   - Last activity: {timestamp}
-  - Stale: {yes/no + reason}
+  - Support bundle: {clean|changed|stale|attention-needed}; drift {reload|noop}; changes {returned}/{total}; diagnostics errors/warnings/info {counts}
   - Validation (if Step 5 ran): {build pass/fail}, {errors}, {warnings}
 
 ### Verdict

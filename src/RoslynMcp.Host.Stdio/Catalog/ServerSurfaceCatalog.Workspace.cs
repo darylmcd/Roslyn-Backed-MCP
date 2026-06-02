@@ -13,6 +13,7 @@ public static partial class ServerSurfaceCatalog
         Tool("workspace_list", "workspace", "stable", true, false, "List active workspace sessions."),
         Tool("workspace_status", "workspace", "stable", true, false, "Inspect status, diagnostics, and stale-state information for a workspace."),
         Tool("workspace_health", "workspace", "stable", true, false, "Lean workspace readiness summary (alias of workspace_status verbose=false)."),
+        Tool("workspace_support_bundle", "workspace", "stable", true, false, "Incident support bundle: readiness, drift, changes, versions, diagnostics totals, and recovery hints without source snippets."),
         Tool("project_graph", "workspace", "stable", true, false, "Inspect project and dependency structure."),
         Tool("source_generated_documents", "workspace", "stable", true, false, "List source-generated documents for a workspace or project."),
         Tool("get_source_text", "workspace", "stable", true, false, "Read source text as the Roslyn workspace currently sees it (may differ from disk if workspace hasn't been reloaded)."),
