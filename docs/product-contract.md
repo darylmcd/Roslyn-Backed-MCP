@@ -57,6 +57,7 @@ Experimental entries are intentionally discoverable but may evolve faster before
 Current experimental families:
 
 - advanced-analysis tools
+- machine-readable surface helpers beyond the stable summary, including `server_catalog_full`, paginated catalog slices, and `server_catalog_version_diff`
 - guided orchestration prompts
 - direct text-edit tools
 - workspace file operation tools
@@ -95,6 +96,7 @@ Install: `/plugin marketplace add darylmcd/Roslyn-Backed-MCP` then `/plugin inst
 - Prefer stable tools for navigation, diagnostics, validation, and preview-first refactoring flows.
 - Treat experimental tools as opt-in accelerators rather than required dependencies.
 - Read `server_info` and `server_catalog` at session start when you need to adapt automatically to support tiers.
+- Use `roslyn://server/catalog-diff/{fromVersion}/{toVersion}` when comparing supported release surfaces; the first supported pair is `v2.3.1` to the running `v2.3.2` server.
 
 ## Ownership Map By Change Type
 

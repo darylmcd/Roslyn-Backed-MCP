@@ -1,0 +1,3698 @@
+{
+  "catalogVersion": "2026.04",
+  "productShape": "local-first",
+  "supportPolicy": "Stable entries are covered by release documentation and compatibility expectations for the local stdio host. Experimental entries may evolve faster and can change with less notice before a remote host exists.",
+  "productBoundaries": [
+    "The production target is the local stdio server running on a developer workstation.",
+    "Workspace state comes from MSBuildWorkspace and on-disk files, not unsaved editor buffers.",
+    "Future HTTP/SSE hosting is intentionally a separate operational tier and not part of the current stable contract.",
+    "Write-capable tools require an already loaded workspace and are intentionally bounded by preview/apply or explicit edit requests."
+  ],
+  "tools": [
+    {
+      "kind": "tool",
+      "name": "server_info",
+      "category": "server",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect server capabilities, versions, and support tiers.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "productShape": {
+            "type": "string"
+          },
+          "runtime": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "roslynVersion": {
+            "type": "string"
+          },
+          "workspaceCount": {
+            "type": "integer"
+          },
+          "workspaceCountHint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connection": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string"
+              },
+              "loadedWorkspaceCount": {
+                "type": "integer"
+              },
+              "stdioPid": {
+                "type": "integer"
+              },
+              "serverStartedAt": {
+                "type": "string"
+              },
+              "previousStdioPid": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "default": null
+              },
+              "previousExitedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              },
+              "previousRecycleReason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "state",
+              "loadedWorkspaceCount",
+              "stdioPid",
+              "serverStartedAt"
+            ]
+          },
+          "catalogVersion": {
+            "type": "string"
+          },
+          "surface": {
+            "type": "object",
+            "properties": {
+              "tools": {
+                "type": "object",
+                "properties": {
+                  "stable": {
+                    "type": "integer"
+                  },
+                  "experimental": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "stable",
+                  "experimental"
+                ]
+              },
+              "resources": {
+                "type": "object",
+                "properties": {
+                  "stable": {
+                    "type": "integer"
+                  },
+                  "experimental": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "stable",
+                  "experimental"
+                ]
+              },
+              "prompts": {
+                "type": "object",
+                "properties": {
+                  "stable": {
+                    "type": "integer"
+                  },
+                  "experimental": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "stable",
+                  "experimental"
+                ]
+              },
+              "registered": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "tools": {
+                    "type": "integer"
+                  },
+                  "resources": {
+                    "type": "integer"
+                  },
+                  "prompts": {
+                    "type": "integer"
+                  },
+                  "parityOk": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "tools",
+                  "resources",
+                  "prompts",
+                  "parityOk"
+                ]
+              }
+            },
+            "required": [
+              "tools",
+              "resources",
+              "prompts",
+              "registered"
+            ]
+          },
+          "resourceServerNames": {
+            "type": "object",
+            "properties": {
+              "canonical": {
+                "type": "string"
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "probeGuidance": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "canonical",
+              "aliases",
+              "probeGuidance"
+            ]
+          },
+          "productBoundaries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "tools": {
+                "type": "boolean"
+              },
+              "resources": {
+                "type": "boolean"
+              },
+              "prompts": {
+                "type": "boolean"
+              },
+              "logging": {
+                "type": "boolean"
+              },
+              "progress": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "tools",
+              "resources",
+              "prompts",
+              "logging",
+              "progress"
+            ]
+          },
+          "update": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "current": {
+                "type": "string"
+              },
+              "latest": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "updateAvailable": {
+                "type": "boolean"
+              },
+              "command": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "current",
+              "latest",
+              "updateAvailable",
+              "command"
+            ]
+          }
+        },
+        "required": [
+          "server",
+          "version",
+          "productShape",
+          "runtime",
+          "os",
+          "roslynVersion",
+          "workspaceCount",
+          "workspaceCountHint",
+          "connection",
+          "catalogVersion",
+          "surface",
+          "resourceServerNames",
+          "productBoundaries",
+          "capabilities",
+          "update"
+        ]
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "server_heartbeat",
+      "category": "server",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Lightweight connection readiness probe \u2014 returns state/loadedWorkspaceCount/stdioPid/serverStartedAt without the full server_info payload.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "connection": {
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string"
+              },
+              "loadedWorkspaceCount": {
+                "type": "integer"
+              },
+              "stdioPid": {
+                "type": "integer"
+              },
+              "serverStartedAt": {
+                "type": "string"
+              },
+              "previousStdioPid": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "default": null
+              },
+              "previousExitedAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              },
+              "previousRecycleReason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "state",
+              "loadedWorkspaceCount",
+              "stdioPid",
+              "serverStartedAt"
+            ]
+          }
+        },
+        "required": [
+          "connection"
+        ]
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_load",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Load a .sln, .slnx, or .csproj into a named Roslyn workspace session.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_reload",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Reload an existing workspace session from disk.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_close",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Close a loaded workspace session and release resources.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_warm",
+      "category": "workspace",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Opt-in compilation prewarm: force GetCompilationAsync \u002B first-semantic-model resolution across the workspace to cut the cold-start penalty of the first read-side tool call.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_list",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List active workspace sessions.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "workspaceId": {
+                  "type": "string"
+                },
+                "loadedPath": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "workspaceVersion": {
+                  "type": "integer"
+                },
+                "snapshotToken": {
+                  "type": "string"
+                },
+                "loadedAtUtc": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "projectCount": {
+                  "type": "integer"
+                },
+                "documentCount": {
+                  "type": "integer"
+                },
+                "isLoaded": {
+                  "type": "boolean"
+                },
+                "isStale": {
+                  "type": "boolean"
+                },
+                "workspaceDiagnosticCount": {
+                  "type": "integer"
+                },
+                "workspaceErrorCount": {
+                  "type": "integer"
+                },
+                "workspaceWarningCount": {
+                  "type": "integer"
+                },
+                "isReady": {
+                  "type": "boolean"
+                },
+                "analyzersReady": {
+                  "type": "boolean"
+                },
+                "restoreRequired": {
+                  "type": "boolean"
+                },
+                "restoreHint": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "solutionFileName": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "workspaceId",
+                "loadedPath",
+                "workspaceVersion",
+                "snapshotToken",
+                "loadedAtUtc",
+                "projectCount",
+                "documentCount",
+                "isLoaded",
+                "isStale",
+                "workspaceDiagnosticCount",
+                "workspaceErrorCount",
+                "workspaceWarningCount",
+                "isReady",
+                "analyzersReady",
+                "restoreRequired",
+                "restoreHint",
+                "solutionFileName"
+              ]
+            }
+          }
+        },
+        "required": [
+          "count",
+          "workspaces"
+        ]
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_status",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect status, diagnostics, and stale-state information for a workspace.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "loadedPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspaceVersion": {
+            "type": "integer"
+          },
+          "snapshotToken": {
+            "type": "string"
+          },
+          "loadedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "projectCount": {
+            "type": "integer"
+          },
+          "documentCount": {
+            "type": "integer"
+          },
+          "isLoaded": {
+            "type": "boolean"
+          },
+          "isStale": {
+            "type": "boolean"
+          },
+          "workspaceDiagnosticCount": {
+            "type": "integer"
+          },
+          "workspaceErrorCount": {
+            "type": "integer"
+          },
+          "workspaceWarningCount": {
+            "type": "integer"
+          },
+          "isReady": {
+            "type": "boolean"
+          },
+          "analyzersReady": {
+            "type": "boolean"
+          },
+          "restoreRequired": {
+            "type": "boolean"
+          },
+          "restoreHint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "solutionFileName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "workspaceId",
+          "loadedPath",
+          "workspaceVersion",
+          "snapshotToken",
+          "loadedAtUtc",
+          "projectCount",
+          "documentCount",
+          "isLoaded",
+          "isStale",
+          "workspaceDiagnosticCount",
+          "workspaceErrorCount",
+          "workspaceWarningCount",
+          "isReady",
+          "analyzersReady",
+          "restoreRequired",
+          "restoreHint",
+          "solutionFileName"
+        ]
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_health",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Lean workspace readiness summary (alias of workspace_status verbose=false).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string"
+          },
+          "loadedPath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspaceVersion": {
+            "type": "integer"
+          },
+          "snapshotToken": {
+            "type": "string"
+          },
+          "loadedAtUtc": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "projectCount": {
+            "type": "integer"
+          },
+          "documentCount": {
+            "type": "integer"
+          },
+          "isLoaded": {
+            "type": "boolean"
+          },
+          "isStale": {
+            "type": "boolean"
+          },
+          "workspaceDiagnosticCount": {
+            "type": "integer"
+          },
+          "workspaceErrorCount": {
+            "type": "integer"
+          },
+          "workspaceWarningCount": {
+            "type": "integer"
+          },
+          "isReady": {
+            "type": "boolean"
+          },
+          "analyzersReady": {
+            "type": "boolean"
+          },
+          "restoreRequired": {
+            "type": "boolean"
+          },
+          "restoreHint": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "solutionFileName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "workspaceId",
+          "loadedPath",
+          "workspaceVersion",
+          "snapshotToken",
+          "loadedAtUtc",
+          "projectCount",
+          "documentCount",
+          "isLoaded",
+          "isStale",
+          "workspaceDiagnosticCount",
+          "workspaceErrorCount",
+          "workspaceWarningCount",
+          "isReady",
+          "analyzersReady",
+          "restoreRequired",
+          "restoreHint",
+          "solutionFileName"
+        ]
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "project_graph",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect project and dependency structure.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "source_generated_documents",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List source-generated documents for a workspace or project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_source_text",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Read source text as the Roslyn workspace currently sees it (may differ from disk if workspace hasn\u0027t been reloaded).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_changes",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List all mutations applied to a workspace during this session, with descriptions, affected files, tool names, and timestamps.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_drift_check",
+      "category": "workspace",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Compare the in-memory workspace snapshot against filesystem mtimes; return drift status, drifted file paths, and a reload/noop recommendation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "stale": {
+            "type": "boolean"
+          },
+          "filesDrifted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "recommended": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stale",
+          "filesDrifted",
+          "recommended"
+        ]
+      }
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_search",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Search symbols by name across the workspace.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_info",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect the symbol at a source location.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "go_to_definition",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Navigate to the symbol definition.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_references",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find references to a symbol. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_implementations",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find implementations of an interface or abstract member.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "document_symbols",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List declared symbols in a document.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_overrides",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find overrides of a virtual or abstract member.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_base_members",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find base or implemented members.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "member_hierarchy",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Summarize base, override, and sibling interface implementation relationships for a member.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_signature_help",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Return symbol signature and documentation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_relationships",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Combine definition, reference, base, and implementation relationships.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_references_bulk",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Resolve references for multiple symbols in one request.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_property_writes",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find property write sites and classify object-initializer writes.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_type_consumers",
+      "category": "symbols",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Roll up reference sites per file for a named type, classified by usage kind.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "probe_position",
+      "category": "symbols",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Probe the raw lexical token and containing symbol at a source position.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "enclosing_symbol",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Return the enclosing symbol for a source position.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "goto_type_definition",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Navigate from a symbol usage to its type definition.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_completions",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Return IntelliSense-style completion items at a position.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_symbol_outline",
+      "category": "symbols",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Alias for document_symbols (cross-MCP-server name compatibility).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "project_diagnostics",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Return compiler diagnostics for a workspace.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "diagnostic_details",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect one diagnostic occurrence in detail.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "type_hierarchy",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect type inheritance and interface relationships.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "callers_callees",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find direct callers and callees for a method.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "impact_analysis",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Estimate the impact of changing a symbol.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_type_mutations",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Identify mutating members of a type and who calls them.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_type_usages",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Classify usages of a type across the solution.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "build_workspace",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Run dotnet build for the loaded workspace.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "build_project",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Run dotnet build for a selected project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "test_discover",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Discover tests in the loaded workspace.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "test_run",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Run dotnet test for the workspace or a selected project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "test_related",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find tests related to a symbol.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "test_related_files",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find tests related to a set of changed files.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_unused_symbols",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find likely unused symbols.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_di_registrations",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect DI registration patterns in source.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_complexity_metrics",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Compute cyclomatic complexity and related metrics.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_reflection_usages",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find reflection-heavy call sites.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "trace_exception_flow",
+      "category": "advanced-analysis",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Trace catch clauses that handle a given exception type.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_namespace_dependencies",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Build namespace dependency graphs.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_nuget_dependencies",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect NuGet package references and versions.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "semantic_search",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Run semantic search over symbols and declarations.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_duplicated_methods",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find clusters of near-duplicate method bodies by AST-normalized hash.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_duplicate_helpers",
+      "category": "advanced-analysis",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Flag private/internal helper methods whose body duplicates a reachable BCL/NuGet symbol.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_dead_locals",
+      "category": "advanced-analysis",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find method-local variables whose only write is not followed by any read.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_dead_fields",
+      "category": "advanced-analysis",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find source-declared fields that are never read, never written, or never either.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_impact_sweep",
+      "category": "analysis",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Sweep downstream impact of a symbol change: references \u002B switch-exhaustiveness diagnostics \u002B mapper-suffix callsites.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "test_reference_map",
+      "category": "validation",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Statically map source symbols to test references; returns covered/uncovered symbol lists and a coverage percentage. Supports offset/limit pagination and projectName scoping.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "validate_workspace",
+      "category": "validation",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Composite post-edit validation: compile_check \u002B project_diagnostics (errors) \u002B test_related_files (\u002B optional test_run).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "validate_recent_git_changes",
+      "category": "validation",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "post-edit-validate-workspace-scoped-to-touched-files: auto-scoped validation companion that derives changedFilePaths from git status --porcelain, falls back to full-workspace scope with a warning when git is unavailable or the solution is outside a git repo.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "workspace_fork_apply",
+      "category": "validation",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Fork a loaded workspace, replay a preview token into the fork, validate it, and retain/drop the fork by policy.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "test_coverage",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Run coverage collection for test execution.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_consumers",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find all types that depend on a given type or interface, classified by dependency kind. Accepts an optional projectFilter (case-sensitive Project.Name; comma-separated).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_cohesion_metrics",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Measure type cohesion via LCOM4 metrics, identifying independent method clusters.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_coupling_metrics",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Measure per-type afferent/efferent coupling \u002B Martin\u0027s instability index.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "preview_record_field_addition",
+      "category": "analysis",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Pre-flight audit: every site impacted by adding a positional field to a record.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_shared_members",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Find private members used by multiple public methods to inform type extractions.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "suggest_refactorings",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Analyze the workspace and return ranked refactoring suggestions based on complexity, cohesion (LCOM4), and unused symbol detection. Each suggestion includes severity, target, and recommended tool sequence.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "analyze_data_flow",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Analyze variable flow through a code region: reads, writes, captures, always-assigned.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "analyze_control_flow",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Analyze control flow: entry/exit points, reachability, return statements.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "compile_check",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Fast in-memory compilation check without invoking dotnet build.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "list_analyzers",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List all loaded analyzers and their diagnostic rules.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_operations",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Get the IOperation tree for behavioral analysis at a source position.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "analyze_snippet",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Analyze a C# code snippet in an ephemeral workspace without loading a solution.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "verify_pragma_suppresses",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Verify an existing #pragma warning disable/restore pair covers a fire line.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "find_duplicated_code",
+      "category": "advanced-analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Alias for find_duplicated_methods (cross-MCP-server name compatibility).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_test_coverage_map",
+      "category": "validation",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Alias for test_coverage (cross-MCP-server name compatibility).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "semantic_grep",
+      "category": "analysis",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Token-aware regex search over C# code (identifier / string / comment scopes).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "rename_preview",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview a rename refactoring.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "rename_apply",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed rename refactoring.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "organize_usings_preview",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview using-directive cleanup.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "organize_usings_apply",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed organize-usings operation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "format_document_preview",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview document formatting.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "format_document_apply",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed document format operation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "format_check",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Report documents that would change under Roslyn\u0027s formatter without applying edits (workspace-wide format-verify).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "code_fix_preview",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview a curated diagnostic code fix.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "code_fix_apply",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed curated code fix.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "restructure_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview a syntax-tree pattern-based find-and-replace using __placeholder__ captures.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "replace_string_literals_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview replacing string literals in argument/initializer position with a constant expression.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "change_signature_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview adding/removing/renaming/reordering a method parameter with all callsites updated atomically.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "parameter_object_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview grouping N parameters of a method into a positional sealed record DTO with all callsites updated atomically.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "symbol_refactor_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Composite preview chaining rename \u002B edit \u002B restructure operations into a single token.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "split_service_with_di_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Composite preview splitting a service into partitions \u002B forwarding facade \u002B DI-registration deltas.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "record_field_add_with_satellites_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Composite preview synthesizing coordinated edits for satellite members when a type gains a new field.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_code_actions",
+      "category": "code-actions",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List Roslyn code fixes and refactorings at a location or selection range. Selection-range refactorings include introduce parameter and inline temporary variable. Pass endLine/endColumn for selection-range actions.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "preview_code_action",
+      "category": "code-actions",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview a Roslyn code action before applying it.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "apply_code_action",
+      "category": "code-actions",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed Roslyn code action.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "move_type_to_file_preview",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview moving a type declaration into its own file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "move_type_to_file_apply",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previewed move-type-to-file refactoring. Removes the type from the source file and creates its own dedicated file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "change_type_namespace_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview relocating a type between namespaces in the same project. Rewrites the type\u0027s namespace declaration, optionally moves the file, and adjusts consumer using directives respecting ambient-namespace resolution.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "extract_interface_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview extracting an interface from a concrete type within the same project. Optionally replaces concrete type references with the interface.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "extract_interface_apply",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previewed interface extraction. Creates the interface file, updates the type\u0027s base list, and applies usage replacements if requested.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "bulk_replace_type_preview",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview replacing all references to one type with another across the solution. Scope can be \u0027parameters\u0027, \u0027fields\u0027, or \u0027all\u0027. \u0027parameters\u0027 also covers generic arguments in implemented-interface / base-class declarations so the class\u0027s interface contract stays in sync. Useful after extracting an interface.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "bulk_replace_type_apply",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previewed bulk type replacement. Updates all matching type references and adds using directives where needed.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "replace_invocation_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview rewriting every call-site of a method to call a different method with a declared argument-reorder mapping derived from parameter-name equality. Takes two FQ signatures and disambiguates overloads by parameter-type list.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "extract_type_preview",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "extract_type_apply",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previewed type extraction. Moves members to the new type file and wires composition in the source type.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "extract_method_preview",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview extracting selected statements into a new method. Uses data-flow analysis to infer parameters and return values.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "extract_method_apply",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed extract method refactoring.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "extract_shared_expression_to_helper_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview extracting a shared sub-expression into a synthesized private static helper and rewriting every structurally-identical call site in the scope.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "revert_last_apply",
+      "category": "undo",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Revert the most recent Roslyn solution-level apply operation for a workspace.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "revert_apply_by_sequence",
+      "category": "undo",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Revert a specific earlier apply identified by its workspace_changes sequence number.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "apply_with_verify",
+      "category": "undo",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a preview AND immediately verify via compile_check; auto-revert on new errors.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "fix_all_preview",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview fixing ALL instances of a diagnostic across a scope.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "fix_all_apply",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed fix-all operation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "format_range_preview",
+      "category": "refactoring",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview formatting a specific range within a document.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "format_range_apply",
+      "category": "refactoring",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed range format operation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "apply_text_edit",
+      "category": "editing",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply direct text edits to a single file; optional verify \u002B auto-revert on new compile errors.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "apply_multi_file_edit",
+      "category": "editing",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply direct text edits to multiple files; optional verify \u002B auto-revert on new compile errors.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "preview_multi_file_edit",
+      "category": "editing",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview a multi-file edit batch; returns per-file diffs and a preview token.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "preview_multi_file_edit_apply",
+      "category": "editing",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed multi-file edit.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "create_file_preview",
+      "category": "file-operations",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview creating a new source file in a project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "create_file_apply",
+      "category": "file-operations",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed file creation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "delete_file_preview",
+      "category": "file-operations",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview deleting an existing source file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "delete_file_apply",
+      "category": "file-operations",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed file deletion.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "move_file_preview",
+      "category": "file-operations",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview moving a source file, optionally updating its namespace.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "move_file_apply",
+      "category": "file-operations",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed file move.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "remove_dead_code_preview",
+      "category": "dead-code",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview removing unused symbols by handle.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "remove_dead_code_apply",
+      "category": "dead-code",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed dead-code removal operation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "remove_interface_member_preview",
+      "category": "dead-code",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Composite preview removing a dead interface member and every implementation in one shot. Refuses if any external caller exists.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "add_pragma_suppression",
+      "category": "editing",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Insert a #pragma warning disable before a line.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "pragma_scope_widen",
+      "category": "editing",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Extend an existing #pragma warning restore past a target line.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_prompt_text",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Render any registered MCP prompt as plain text. Pass the prompt name plus a JSON object of the prompt\u0027s parameters; returns { messages: [{role, text}], promptName, parameterCount }.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "recommend_workflow",
+      "category": "orchestration",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Recommend first-hop Roslyn MCP tools for a natural-language task.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "add_package_reference_preview",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview adding a PackageReference to a project file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "remove_package_reference_preview",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview removing a PackageReference from a project file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "add_project_reference_preview",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview adding a ProjectReference to a project file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "remove_project_reference_preview",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview removing a ProjectReference from a project file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "set_project_property_preview",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview setting an allowlisted property in a project file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "add_target_framework_preview",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview adding a target framework to a project file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "remove_target_framework_preview",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview removing a target framework from a project file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "set_conditional_property_preview",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview setting an allowlisted conditional project property.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "add_central_package_version_preview",
+      "category": "project-mutation",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview adding a PackageVersion entry to Directory.Packages.props.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "remove_central_package_version_preview",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview removing a PackageVersion entry from Directory.Packages.props.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "apply_project_mutation",
+      "category": "project-mutation",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed project file mutation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "scaffold_type_preview",
+      "category": "scaffolding",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview scaffolding a new type file in a project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "scaffold_type_apply",
+      "category": "scaffolding",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed type scaffolding operation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "scaffold_test_preview",
+      "category": "scaffolding",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview scaffolding a new test file (MSTest, xUnit, or NUnit; auto-detect or specify testFramework).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "scaffold_test_batch_preview",
+      "category": "scaffolding",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview scaffolding multiple test files for related target types in one composite preview.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "scaffold_first_test_file_preview",
+      "category": "scaffolding",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview scaffolding the first \u003CService\u003ETests.cs fixture for a service that has no existing test file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "scaffold_test_apply",
+      "category": "scaffolding",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "Apply a previously previewed test scaffolding operation.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "move_type_to_project_preview",
+      "category": "cross-project-refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview moving a type declaration into another project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "extract_interface_cross_project_preview",
+      "category": "cross-project-refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview extracting an interface from a concrete type into a different project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "dependency_inversion_preview",
+      "category": "cross-project-refactoring",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview extracting an interface and updating constructor dependencies.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "migrate_package_preview",
+      "category": "orchestration",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview migrating a package across affected projects.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "split_class_preview",
+      "category": "orchestration",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview splitting a class into a new partial file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "extract_and_wire_interface_preview",
+      "category": "orchestration",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Preview extracting an interface and updating DI registrations.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "apply_composite_preview",
+      "category": "orchestration",
+      "supportTier": "experimental",
+      "readOnly": false,
+      "destructive": true,
+      "summary": "DESTRUCTIVE \u2014 applies a previously-previewed orchestration operation to disk. Pair with a *_preview call in the same session.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_syntax_tree",
+      "category": "syntax",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Return a structured syntax tree for a document or range.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "security_diagnostics",
+      "category": "security",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Return security-relevant diagnostics with OWASP categorization and fix hints.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "security_analyzer_status",
+      "category": "security",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Check which security analyzer packages are present and recommend missing ones.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "nuget_vulnerability_scan",
+      "category": "security",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Scan NuGet references for known CVEs using dotnet list package --vulnerable.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "evaluate_csharp",
+      "category": "scripting",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Evaluate a C# expression or script interactively via the Roslyn Scripting API. Emits MCP progress and heartbeat logs during long compile/run so clients are not stuck on a static label.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_editorconfig_options",
+      "category": "configuration",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Get effective .editorconfig options for a source file.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "set_editorconfig_option",
+      "category": "configuration",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Set or update a key in .editorconfig for C# files (creates file if needed).",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "evaluate_msbuild_property",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Evaluate a single MSBuild property for a project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "evaluate_msbuild_items",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List MSBuild items of a type with evaluated includes and metadata.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "get_msbuild_properties",
+      "category": "project-mutation",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Dump evaluated MSBuild properties for a project.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "tool",
+      "name": "set_diagnostic_severity",
+      "category": "configuration",
+      "supportTier": "stable",
+      "readOnly": false,
+      "destructive": false,
+      "summary": "Set dotnet_diagnostic severity in .editorconfig.",
+      "uriTemplate": null,
+      "parameters": null,
+      "outputSchema": null
+    }
+  ],
+  "resources": [
+    {
+      "kind": "resource",
+      "name": "server_catalog",
+      "category": "server",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Cap-safe summary of the server surface (tool/prompt counts \u002B resource list \u002B workflow hints). Full tools and prompts via paginated siblings.",
+      "uriTemplate": "roslyn://server/catalog",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_full",
+      "category": "server",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Unpaginated full catalog including every tool and prompt entry. Large payload (~80 KB).",
+      "uriTemplate": "roslyn://server/catalog/full",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_tools_page",
+      "category": "server",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Paginated slice of the server tool catalog. Slots: offset (0-based) \u002B limit (1-200).",
+      "uriTemplate": "roslyn://server/catalog/tools/{offset}/{limit}",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "server_catalog_prompts_page",
+      "category": "server",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Paginated slice of the server prompt catalog. Slots: offset (0-based) \u002B limit (1-200).",
+      "uriTemplate": "roslyn://server/catalog/prompts/{offset}/{limit}",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "resource_templates",
+      "category": "server",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Lists all resource URI templates, including workspace-scoped templates.",
+      "uriTemplate": "roslyn://server/resource-templates",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspaces",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List active workspace sessions (lean summary; counts and load state, no per-project tree).",
+      "uriTemplate": "roslyn://workspaces",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspaces_verbose",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "List active workspace sessions with full per-project tree and diagnostics.",
+      "uriTemplate": "roslyn://workspaces/verbose",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspace_status",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect workspace status (lean summary; counts and load state, no per-project tree).",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/status",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspace_status_verbose",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Inspect workspace status with full per-project tree and workspace diagnostics.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/status/verbose",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspace_projects",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Read project graph metadata for a workspace.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/projects",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "workspace_diagnostics",
+      "category": "analysis",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Read all compiler diagnostics for a workspace.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/diagnostics",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "source_file",
+      "category": "workspace",
+      "supportTier": "stable",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Read a source file from the loaded workspace.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/file/{filePath}",
+      "parameters": null,
+      "outputSchema": null
+    },
+    {
+      "kind": "resource",
+      "name": "source_file_lines",
+      "category": "workspace",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Read a 1-based inclusive line range from a source file in the loaded workspace.",
+      "uriTemplate": "roslyn://workspace/{workspaceId}/file/{filePath}/lines/{lineRange}",
+      "parameters": null,
+      "outputSchema": null
+    }
+  ],
+  "prompts": [
+    {
+      "kind": "prompt",
+      "name": "explain_error",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for explaining a compiler diagnostic.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "diagnosticId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Diagnostic identifier, e.g. CS8019"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file"
+        },
+        {
+          "name": "line",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based line number"
+        },
+        {
+          "name": "column",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based column number"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "suggest_refactoring",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for refactoring suggestions.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file"
+        },
+        {
+          "name": "startLine",
+          "type": "int?",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: start line to focus on"
+        },
+        {
+          "name": "endLine",
+          "type": "int?",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: end line to focus on"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "review_file",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for file review.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "analyze_dependencies",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for architecture and dependency analysis.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "debug_test_failure",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for debugging a failing test.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "projectName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: specific test project name"
+        },
+        {
+          "name": "filter",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: test filter expression to narrow which tests to run"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "refactor_and_validate",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for preview-first refactoring and validation.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file"
+        },
+        {
+          "name": "startLine",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based start line number"
+        },
+        {
+          "name": "startColumn",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based start column number"
+        },
+        {
+          "name": "endLine",
+          "type": "int?",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: 1-based end line number for a selection range"
+        },
+        {
+          "name": "endColumn",
+          "type": "int?",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: 1-based end column number for a selection range"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "fix_all_diagnostics",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for batched diagnostic cleanup.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "projectName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: specific project name"
+        },
+        {
+          "name": "severityFilter",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: severity filter such as error, warning, or info"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "guided_package_migration",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for package migration across affected projects.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "oldPackageId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Existing package id to replace"
+        },
+        {
+          "name": "newPackageId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Replacement package id"
+        },
+        {
+          "name": "newVersion",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Replacement package version"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "guided_extract_interface",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for interface extraction and consumer updates.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file containing the target type"
+        },
+        {
+          "name": "typeName",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Name of the concrete type to extract an interface from"
+        },
+        {
+          "name": "targetProjectName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: target project for the extracted interface"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "security_review",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for comprehensive security review using security diagnostic tools.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "projectName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: filter by project name"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "discover_capabilities",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt to discover relevant server tools and workflows for a task category.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "taskCategory",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Task category: refactoring, analysis, security, testing, editing, navigation, project-mutation, scaffolding, or all"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "dead_code_audit",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for dead code audit using unused symbol detection and removal.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "projectName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: filter by project name"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "review_test_coverage",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for test coverage review and gap identification.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "projectName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: specific test project name"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "review_complexity",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for complexity review and refactoring opportunities.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "projectName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: filter by project name"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "cohesion_analysis",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for SRP analysis using LCOM4 cohesion metrics with guided type extraction workflow.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "projectName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: filter by project name"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "consumer_impact",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt analyzing the consumer/dependency graph for a type to assess refactoring impact.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file"
+        },
+        {
+          "name": "line",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based line number"
+        },
+        {
+          "name": "column",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based column number"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "guided_extract_method",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for extract-method refactoring with data-flow and control-flow checks.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "filePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the source file"
+        },
+        {
+          "name": "startLine",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based start line of the selection"
+        },
+        {
+          "name": "startColumn",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based start column of the selection"
+        },
+        {
+          "name": "endLine",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based end line of the selection"
+        },
+        {
+          "name": "endColumn",
+          "type": "int",
+          "required": true,
+          "defaultValue": null,
+          "description": "1-based end column of the selection"
+        },
+        {
+          "name": "methodName",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Name for the new method"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "msbuild_inspection",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for evaluating MSBuild properties and items for a project file.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        },
+        {
+          "name": "projectFilePath",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Absolute path to the .csproj or project file"
+        },
+        {
+          "name": "propertyName",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: a single property name to evaluate (e.g. TargetFramework, OutputPath)"
+        },
+        {
+          "name": "itemType",
+          "type": "string",
+          "required": false,
+          "defaultValue": null,
+          "description": "Optional: MSBuild item type to list (e.g. Compile, PackageReference)"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "session_undo",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt for inspecting session mutations and undoing the last apply operation.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        }
+      ],
+      "outputSchema": null
+    },
+    {
+      "kind": "prompt",
+      "name": "refactor_loop",
+      "category": "prompts",
+      "supportTier": "experimental",
+      "readOnly": true,
+      "destructive": false,
+      "summary": "Generate a prompt that walks an agent through the standard refactor \u2192 preview \u2192 apply-with-verify \u2192 validate_workspace loop using v1.17/v1.18 primitives.",
+      "uriTemplate": null,
+      "parameters": [
+        {
+          "name": "intent",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "Natural-language refactor intent (e.g. \u0027rename GetUser to GetUserAsync and propagate to mappers\u0027)."
+        },
+        {
+          "name": "workspaceId",
+          "type": "string",
+          "required": true,
+          "defaultValue": null,
+          "description": "The workspace session identifier"
+        }
+      ],
+      "outputSchema": null
+    }
+  ],
+  "workflowHints": [
+    {
+      "name": "Preview/Apply",
+      "toolSequence": [
+        "rename_preview",
+        "rename_apply"
+      ],
+      "description": "Most write operations use a two-step pattern: call *_preview to inspect the diff, then *_apply with the preview token."
+    },
+    {
+      "name": "Diagnostic Fix",
+      "toolSequence": [
+        "compile_check",
+        "project_diagnostics",
+        "diagnostic_details",
+        "code_fix_preview",
+        "code_fix_apply"
+      ],
+      "description": "Start with fast compile_check, inspect diagnostics, preview a fix, then apply it."
+    },
+    {
+      "name": "Code Action",
+      "toolSequence": [
+        "get_code_actions",
+        "preview_code_action",
+        "apply_code_action"
+      ],
+      "description": "List available Roslyn refactorings/fixes at a location, preview, then apply."
+    },
+    {
+      "name": "Security Audit",
+      "toolSequence": [
+        "security_analyzer_status",
+        "security_diagnostics",
+        "diagnostic_details",
+        "code_fix_preview",
+        "code_fix_apply"
+      ],
+      "description": "Check analyzer coverage, get security findings, then fix them."
+    },
+    {
+      "name": "Compile Sanity",
+      "toolSequence": [
+        "compile_check"
+      ],
+      "description": "Use in-memory compilation for routine compile sanity; reserve build_workspace/build_project for CI-parity or project-system validation."
+    },
+    {
+      "name": "Change Validation",
+      "toolSequence": [
+        "validate_recent_git_changes",
+        "test_related_files",
+        "test_run"
+      ],
+      "description": "Use the auto-scoped validation bundle or find tests related to changed files, then run the filtered test slice."
+    },
+    {
+      "name": "Post-edit Verify (auto-scoped)",
+      "toolSequence": [
+        "validate_recent_git_changes"
+      ],
+      "description": "Preferred post-edit bundle: derives changedFilePaths from git status --porcelain and runs compile_check \u002B project_diagnostics \u002B test_related_files scoped to the touched-file set. Falls back to validate_workspace scope with a warning when git is unavailable."
+    },
+    {
+      "name": "Dead Code Cleanup",
+      "toolSequence": [
+        "find_unused_symbols",
+        "remove_dead_code_preview",
+        "remove_dead_code_apply",
+        "compile_check"
+      ],
+      "description": "Find unused symbols, preview removal, apply, then verify with compile_check."
+    },
+    {
+      "name": "Package Migration",
+      "toolSequence": [
+        "migrate_package_preview",
+        "apply_composite_preview",
+        "build_workspace"
+      ],
+      "description": "Preview migrating a package across projects, apply, then verify."
+    },
+    {
+      "name": "Coverage Analysis",
+      "toolSequence": [
+        "test_discover",
+        "test_coverage",
+        "scaffold_test_preview",
+        "scaffold_test_apply"
+      ],
+      "description": "Discover tests, run coverage, scaffold new tests for gaps."
+    },
+    {
+      "name": "SRP Analysis \u0026 Type Extraction",
+      "toolSequence": [
+        "get_cohesion_metrics",
+        "find_shared_members",
+        "extract_type_preview",
+        "extract_type_apply",
+        "build_workspace"
+      ],
+      "description": "Identify types with multiple responsibilities via LCOM4 metrics, find shared private members that complicate extraction, preview and apply the extraction, then verify the build."
+    },
+    {
+      "name": "Consumer Impact Analysis",
+      "toolSequence": [
+        "find_consumers",
+        "find_references_bulk",
+        "impact_analysis"
+      ],
+      "description": "Find all types that depend on a type or interface, understand dependency kinds (constructor, field, parameter, base type), then assess change impact."
+    },
+    {
+      "name": "Interface Extraction \u0026 Migration",
+      "toolSequence": [
+        "extract_interface_preview",
+        "extract_interface_apply",
+        "bulk_replace_type_preview",
+        "bulk_replace_type_apply",
+        "build_workspace"
+      ],
+      "description": "Extract an interface from a concrete type, then bulk-replace all parameter/field references to use the interface instead. Verify with build."
+    },
+    {
+      "name": "Type Organization",
+      "toolSequence": [
+        "move_type_to_file_preview",
+        "move_type_to_file_apply",
+        "build_workspace"
+      ],
+      "description": "Move types from multi-type files into their own dedicated files for better code organization."
+    },
+    {
+      "name": "Batch Diagnostic Fix",
+      "toolSequence": [
+        "list_analyzers",
+        "project_diagnostics",
+        "fix_all_preview",
+        "fix_all_apply",
+        "build_workspace"
+      ],
+      "description": "List available analyzers and rules, identify diagnostics, batch-fix all occurrences across the solution, then verify the build."
+    },
+    {
+      "name": "Flow Analysis for Refactoring",
+      "toolSequence": [
+        "analyze_data_flow",
+        "analyze_control_flow",
+        "extract_type_preview",
+        "extract_type_apply"
+      ],
+      "description": "Analyze data and control flow to understand variable dependencies and reachability before extracting code into new types or methods."
+    },
+    {
+      "name": "Quick Validation",
+      "toolSequence": [
+        "compile_check",
+        "validate_workspace",
+        "analyze_snippet",
+        "evaluate_csharp"
+      ],
+      "description": "Use in-memory compilation, scoped validation, snippet analysis, or script evaluation for rapid feedback without full builds."
+    },
+    {
+      "name": "Selection-Range Refactoring",
+      "toolSequence": [
+        "get_code_actions",
+        "preview_code_action",
+        "apply_code_action",
+        "compile_check"
+      ],
+      "description": "Pass startLine/startColumn/endLine/endColumn to get_code_actions for selection-based refactorings: introduce parameter (expression \u2192 method parameter with call-site updates) and inline temporary variable. Preview, apply, then verify compilation."
+    }
+  ],
+  "summary": {
+    "catalogVersion": "2026.04",
+    "stableTools": 111,
+    "experimentalTools": 60,
+    "stableResources": 9,
+    "experimentalResources": 4,
+    "stablePrompts": 0,
+    "experimentalPrompts": 20
+  }
+}

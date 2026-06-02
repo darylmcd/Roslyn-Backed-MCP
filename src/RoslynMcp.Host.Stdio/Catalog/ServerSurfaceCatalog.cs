@@ -1,3 +1,7 @@
+using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+
 namespace RoslynMcp.Host.Stdio.Catalog;
 
 /// <summary>
@@ -8,10 +12,26 @@ public static partial class ServerSurfaceCatalog
 {
     public const string CatalogVersion = "2026.04";
 
+    private const string V231ReleaseVersion = "2.3.1";
+    private const string V231SourceCommit = "e147875";
+    private const string PriorCatalogSnapshotResourceName = "RoslynMcp.Host.Stdio.Catalog.Snapshots.catalog-v2.3.1.json";
+
+    private static readonly Lazy<string> s_currentReleaseVersion = new(static () =>
+    {
+        var informationalVersion = typeof(ServerSurfaceCatalog).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+            .InformationalVersion;
+        return (informationalVersion?.Split('+', 2)[0]
+                ?? typeof(ServerSurfaceCatalog).Assembly.GetName().Version?.ToString()
+                ?? "unknown").Trim();
+    });
+
     private static readonly Lazy<IReadOnlyList<SurfaceEntry>> s_allTools = new(
         static () => [.. WorkspaceTools!, .. SymbolTools!, .. AnalysisTools!, .. RefactoringTools!, .. EditingTools!, .. OrchestrationTools!]);
 
     public static IReadOnlyList<SurfaceEntry> Tools => s_allTools.Value;
+
+    public static string CurrentReleaseVersion => s_currentReleaseVersion.Value;
 
     public static SurfaceSummary GetSummary()
     {
@@ -130,8 +150,144 @@ public static partial class ServerSurfaceCatalog
             Entries: page);
     }
 
+    public static ServerCatalogVersionDiffDto CreateVersionDiff(string fromVersion, string toVersion)
+    {
+        var normalizedFrom = NormalizeVersionAlias(fromVersion);
+        var normalizedTo = NormalizeVersionAlias(toVersion);
+
+        if (!string.Equals(normalizedFrom, V231ReleaseVersion, StringComparison.Ordinal) ||
+            !string.Equals(normalizedTo, CurrentReleaseVersion, StringComparison.Ordinal))
+        {
+            throw new ArgumentException(
+                $"Unsupported catalog diff '{fromVersion}' -> '{toVersion}'. Supported pairs: v{V231ReleaseVersion} -> v{CurrentReleaseVersion} (aliases: {V231ReleaseVersion}, v{V231ReleaseVersion}, {CurrentReleaseVersion}, v{CurrentReleaseVersion}, current, latest).");
+        }
+
+        var prior = LoadPriorCatalogSnapshot();
+        var current = CatalogSnapshotDocument.FromCatalog(CurrentReleaseVersion, "current", "current", "current", CreateDocument());
+
+        return BuildVersionDiff(prior, current);
+    }
+
+    internal static ServerCatalogVersionDiffDto BuildVersionDiff(CatalogSnapshotDocument prior, CatalogSnapshotDocument current)
+    {
+        var toolDiff = DiffEntries(prior.Tools, current.Tools);
+        var resourceDiff = DiffEntries(prior.Resources, current.Resources);
+        var promptDiff = DiffEntries(prior.Prompts, current.Prompts);
+
+        return new ServerCatalogVersionDiffDto(
+            FromVersion: prior.Version,
+            ToVersion: current.Version,
+            FromCatalogVersion: prior.CatalogVersion,
+            ToCatalogVersion: current.CatalogVersion,
+            SnapshotSources: new CatalogVersionDiffSourcesDto(
+                From: new CatalogSnapshotSourceDto(prior.SourceKind, prior.SourceRef, prior.SourceCommit),
+                To: new CatalogSnapshotSourceDto(current.SourceKind, current.SourceRef, current.SourceCommit)),
+            Tools: toolDiff,
+            Resources: resourceDiff,
+            Prompts: promptDiff,
+            Summary: new CatalogVersionDiffSummaryDto(
+                Added: toolDiff.Added.Count + resourceDiff.Added.Count + promptDiff.Added.Count,
+                Removed: toolDiff.Removed.Count + resourceDiff.Removed.Count + promptDiff.Removed.Count,
+                Promoted: toolDiff.Promoted.Count + resourceDiff.Promoted.Count + promptDiff.Promoted.Count,
+                Changed: toolDiff.Changed.Count + resourceDiff.Changed.Count + promptDiff.Changed.Count));
+    }
+
     private static int CountByTier(IReadOnlyList<SurfaceEntry> entries, string tier) =>
         entries.Count(entry => string.Equals(entry.SupportTier, tier, StringComparison.Ordinal));
+
+    private static string NormalizeVersionAlias(string version)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(version);
+        var trimmed = version.Trim();
+        if (string.Equals(trimmed, "current", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(trimmed, "latest", StringComparison.OrdinalIgnoreCase))
+        {
+            return CurrentReleaseVersion;
+        }
+
+        return trimmed.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+            ? trimmed[1..]
+            : trimmed;
+    }
+
+    private static CatalogSnapshotDocument LoadPriorCatalogSnapshot()
+    {
+        var assembly = typeof(ServerSurfaceCatalog).Assembly;
+        using var stream = assembly.GetManifestResourceStream(PriorCatalogSnapshotResourceName)
+            ?? throw new FileNotFoundException($"Embedded catalog snapshot not found: {PriorCatalogSnapshotResourceName}");
+        var catalog = JsonSerializer.Deserialize<ServerCatalogDto>(stream, JsonDefaults.Indented)
+            ?? throw new InvalidOperationException($"Embedded catalog snapshot is empty: {PriorCatalogSnapshotResourceName}");
+        return CatalogSnapshotDocument.FromCatalog(
+            V231ReleaseVersion,
+            "git-tag",
+            $"v{V231ReleaseVersion}",
+            V231SourceCommit,
+            catalog);
+    }
+
+    private static CatalogEntryDiffDto DiffEntries(IReadOnlyList<SurfaceEntry> priorEntries, IReadOnlyList<SurfaceEntry> currentEntries)
+    {
+        var priorByName = priorEntries.ToDictionary(entry => entry.Name, StringComparer.Ordinal);
+        var currentByName = currentEntries.ToDictionary(entry => entry.Name, StringComparer.Ordinal);
+
+        var added = currentEntries
+            .Where(entry => !priorByName.ContainsKey(entry.Name))
+            .OrderBy(entry => entry.Name, StringComparer.Ordinal)
+            .ToArray();
+
+        var removed = priorEntries
+            .Where(entry => !currentByName.ContainsKey(entry.Name))
+            .OrderBy(entry => entry.Name, StringComparer.Ordinal)
+            .ToArray();
+
+        var promoted = new List<CatalogPromotionDiffDto>();
+        var changed = new List<CatalogChangedEntryDiffDto>();
+
+        foreach (var (name, prior) in priorByName.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            if (!currentByName.TryGetValue(name, out var current)) continue;
+
+            var fieldChanges = GetFieldChanges(prior, current);
+            var tierChange = fieldChanges.FirstOrDefault(change => string.Equals(change.Field, "supportTier", StringComparison.Ordinal));
+            if (tierChange is not null &&
+                string.Equals(prior.SupportTier, "experimental", StringComparison.Ordinal) &&
+                string.Equals(current.SupportTier, "stable", StringComparison.Ordinal))
+            {
+                promoted.Add(new CatalogPromotionDiffDto(name, prior.SupportTier, current.SupportTier, current));
+                fieldChanges = fieldChanges.Where(change => !string.Equals(change.Field, "supportTier", StringComparison.Ordinal)).ToArray();
+            }
+
+            if (fieldChanges.Count > 0)
+            {
+                changed.Add(new CatalogChangedEntryDiffDto(name, prior.Kind, current, fieldChanges));
+            }
+        }
+
+        return new CatalogEntryDiffDto(added, removed, promoted, changed);
+    }
+
+    private static IReadOnlyList<CatalogFieldChangeDto> GetFieldChanges(SurfaceEntry prior, SurfaceEntry current)
+    {
+        var changes = new List<CatalogFieldChangeDto>();
+        AddIfChanged(changes, "kind", prior.Kind, current.Kind);
+        AddIfChanged(changes, "category", prior.Category, current.Category);
+        AddIfChanged(changes, "supportTier", prior.SupportTier, current.SupportTier);
+        AddIfChanged(changes, "readOnly", prior.ReadOnly, current.ReadOnly);
+        AddIfChanged(changes, "destructive", prior.Destructive, current.Destructive);
+        AddIfChanged(changes, "summary", prior.Summary, current.Summary);
+        AddIfChanged(changes, "uriTemplate", prior.UriTemplate, current.UriTemplate);
+        AddIfChanged(changes, "parameters", prior.Parameters, current.Parameters);
+        AddIfChanged(changes, "outputSchema", prior.OutputSchema, current.OutputSchema);
+        return changes;
+    }
+
+    private static void AddIfChanged(List<CatalogFieldChangeDto> changes, string field, object? before, object? after)
+    {
+        var beforeNode = JsonSerializer.SerializeToNode(before, JsonDefaults.Indented);
+        var afterNode = JsonSerializer.SerializeToNode(after, JsonDefaults.Indented);
+        if (JsonNode.DeepEquals(beforeNode, afterNode)) return;
+        changes.Add(new CatalogFieldChangeDto(field, beforeNode, afterNode));
+    }
 
     // tool-output-schema-infrastructure: tool factory consults ToolOutputSchemaIndex so that
     // any [McpToolMetadata(outputSchemaTypeRef: ...)]-annotated method publishes a JSON-Schema
@@ -270,6 +426,74 @@ public sealed record ServerCatalogPagedEntriesDto(
     int TotalCount,
     bool HasMore,
     IReadOnlyList<SurfaceEntry> Entries);
+
+public sealed record CatalogSnapshotDocument(
+    string Version,
+    string CatalogVersion,
+    string SourceKind,
+    string SourceRef,
+    string SourceCommit,
+    IReadOnlyList<SurfaceEntry> Tools,
+    IReadOnlyList<SurfaceEntry> Resources,
+    IReadOnlyList<SurfaceEntry> Prompts)
+{
+    public static CatalogSnapshotDocument FromCatalog(
+        string version,
+        string sourceKind,
+        string sourceRef,
+        string sourceCommit,
+        ServerCatalogDto catalog) =>
+        new(version, catalog.CatalogVersion, sourceKind, sourceRef, sourceCommit, catalog.Tools, catalog.Resources, catalog.Prompts);
+}
+
+public sealed record ServerCatalogVersionDiffDto(
+    string FromVersion,
+    string ToVersion,
+    string FromCatalogVersion,
+    string ToCatalogVersion,
+    CatalogVersionDiffSourcesDto SnapshotSources,
+    CatalogEntryDiffDto Tools,
+    CatalogEntryDiffDto Resources,
+    CatalogEntryDiffDto Prompts,
+    CatalogVersionDiffSummaryDto Summary);
+
+public sealed record CatalogVersionDiffSourcesDto(
+    CatalogSnapshotSourceDto From,
+    CatalogSnapshotSourceDto To);
+
+public sealed record CatalogSnapshotSourceDto(
+    string SourceKind,
+    string SourceRef,
+    string SourceCommit);
+
+public sealed record CatalogVersionDiffSummaryDto(
+    int Added,
+    int Removed,
+    int Promoted,
+    int Changed);
+
+public sealed record CatalogEntryDiffDto(
+    IReadOnlyList<SurfaceEntry> Added,
+    IReadOnlyList<SurfaceEntry> Removed,
+    IReadOnlyList<CatalogPromotionDiffDto> Promoted,
+    IReadOnlyList<CatalogChangedEntryDiffDto> Changed);
+
+public sealed record CatalogPromotionDiffDto(
+    string Name,
+    string FromSupportTier,
+    string ToSupportTier,
+    SurfaceEntry Current);
+
+public sealed record CatalogChangedEntryDiffDto(
+    string Name,
+    string Kind,
+    SurfaceEntry Current,
+    IReadOnlyList<CatalogFieldChangeDto> ChangedFields);
+
+public sealed record CatalogFieldChangeDto(
+    string Field,
+    JsonNode? Before,
+    JsonNode? After);
 
 /// <summary>
 /// Describes a common tool workflow — a sequence of tools that work together.
