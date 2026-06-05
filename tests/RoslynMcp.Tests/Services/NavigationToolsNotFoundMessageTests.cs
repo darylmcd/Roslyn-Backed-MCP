@@ -145,4 +145,35 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
             $"Error must NOT use the legacy \"the specified location\" wording. Got: {ex.Message}");
     }
 
+    /// <summary>
+    /// Regression coverage for `member-hierarchy-bare-null`. Pre-fix <c>member_hierarchy</c>
+    /// serialized an unresolvable locator to a bare JSON <c>null</c> (the service returns
+    /// <c>MemberHierarchyDto?</c>), which is ambiguous to callers — indistinguishable from a
+    /// genuine empty result. Post-fix the tool throws <see cref="KeyNotFoundException"/> so the
+    /// <c>StructuredCallToolFilter</c>/<c>ToolErrorHandler</c> layer emits the standard
+    /// <c>{error, category: "NotFound", message}</c> envelope, matching the sibling
+    /// <c>symbol_relationships</c>/<c>symbol_info</c> tools. The message must echo the offending
+    /// metadata name (via <see cref="SymbolLocatorFactory.FormatSymbolNotFoundMessage"/>), not the
+    /// bare string "null".
+    /// </summary>
+    [TestMethod]
+    public async Task MemberHierarchy_MetadataNameOnly_NotFound_ThrowsKeyNotFound_NotBareNull()
+    {
+        const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
+
+        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+            await SymbolTools.GetMemberHierarchy(
+                WorkspaceExecutionGate,
+                SymbolRelationshipService,
+                WorkspaceId,
+                metadataName: bogusName,
+                ct: CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "metadata name",
+            $"Error must name the locator field that was supplied. Got: {ex.Message}");
+        StringAssert.Contains(ex.Message, bogusName,
+            $"Error must echo the offending metadata name so the caller can correlate. Got: {ex.Message}");
+        Assert.AreNotEqual("null", ex.Message,
+            "member_hierarchy must surface a structured NotFound error, never the bare serialized \"null\".");
+    }
 }
