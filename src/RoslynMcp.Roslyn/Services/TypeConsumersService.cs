@@ -19,11 +19,13 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class TypeConsumersService : ITypeConsumersService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<TypeConsumersService> _logger;
 
-    public TypeConsumersService(IWorkspaceManager workspace, ILogger<TypeConsumersService> logger)
+    public TypeConsumersService(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<TypeConsumersService> logger)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -44,7 +46,7 @@ public sealed class TypeConsumersService : ITypeConsumersService
         }
 
         var solution = _workspace.GetCurrentSolution(workspaceId);
-        var symbol = await ResolveTypeAsync(solution, typeName, ct).ConfigureAwait(false)
+        var symbol = await ResolveTypeAsync(solution, workspaceId, _compilationCache, typeName, ct).ConfigureAwait(false)
             ?? throw new KeyNotFoundException(
                 $"No type found matching '{typeName}'. Pass a fully qualified metadata name "
                 + "(e.g. 'SampleLib.IAnimal') or a short type name; generic arity uses backtick "
@@ -100,12 +102,13 @@ public sealed class TypeConsumersService : ITypeConsumersService
     /// <see cref="Compilation.GetTypeByMetadataName"/>) or a short/partial name (fallback via
     /// <see cref="SymbolFinder.FindDeclarationsAsync"/>). Returns the first match.
     /// </summary>
-    private static async Task<INamedTypeSymbol?> ResolveTypeAsync(Solution solution, string typeName, CancellationToken ct)
+    private static async Task<INamedTypeSymbol?> ResolveTypeAsync(
+        Solution solution, string workspaceId, ICompilationCache compilationCache, string typeName, CancellationToken ct)
     {
         // Fast path: try metadata name resolution against every project.
         foreach (var project in solution.Projects)
         {
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
             var typeSymbol = compilation.GetTypeByMetadataName(typeName);
             if (typeSymbol is not null)
