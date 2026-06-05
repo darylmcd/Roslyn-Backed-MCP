@@ -12,11 +12,13 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class SymbolSearchService : ISymbolSearchService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<SymbolSearchService> _logger;
 
-    public SymbolSearchService(IWorkspaceManager workspace, ILogger<SymbolSearchService> logger)
+    public SymbolSearchService(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<SymbolSearchService> logger)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -55,7 +57,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
         if (results.Count < maxResults && !ct.IsCancellationRequested)
         {
             await RunFqnSubstringFallbackAsync(
-                solution, query, maxResults, kindFilter, namespaceFilter, allowedProjectPaths, results, seenKeys, ct).ConfigureAwait(false);
+                solution, workspaceId, _compilationCache, query, maxResults, kindFilter, namespaceFilter, allowedProjectPaths, results, seenKeys, ct).ConfigureAwait(false);
         }
 
         return results;
@@ -100,6 +102,8 @@ public sealed class SymbolSearchService : ISymbolSearchService
 
     private static async Task RunFqnSubstringFallbackAsync(
         Solution solution,
+        string workspaceId,
+        ICompilationCache compilationCache,
         string query,
         int limit,
         string? kindFilter,
@@ -114,7 +118,7 @@ public sealed class SymbolSearchService : ISymbolSearchService
             if (ct.IsCancellationRequested) break;
             if (results.Count >= limit) break;
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             if (!CollectFqnMatchesForCompilation(

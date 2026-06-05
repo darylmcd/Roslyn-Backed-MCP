@@ -12,11 +12,13 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<CodePatternAnalyzer> _logger;
 
-    public CodePatternAnalyzer(IWorkspaceManager workspace, ILogger<CodePatternAnalyzer> logger)
+    public CodePatternAnalyzer(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<CodePatternAnalyzer> logger)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -31,7 +33,7 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
         {
             if (ct.IsCancellationRequested) break;
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var tree in compilation.SyntaxTrees)
@@ -152,7 +154,7 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
         var parse = ParseSemanticQuery(decodedQuery);
         bool Combined(ISymbol s) => parse.Predicates.All(p => p(s));
         await CollectSemanticSearchMatchesAsync(
-            solution, projects, Combined, limit, results, seenHandles, "structured", ct)
+            solution, workspaceId, _compilationCache, projects, Combined, limit, results, seenHandles, "structured", ct)
             .ConfigureAwait(false);
 
         string? warning = null;
@@ -164,7 +166,7 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
             var term = decodedQuery.Trim();
             bool NameMatch(ISymbol s) => s.Name.Contains(term, StringComparison.OrdinalIgnoreCase);
             await CollectSemanticSearchMatchesAsync(
-                solution, projects, NameMatch, limit, results, seenHandles, "name-substring", ct)
+                solution, workspaceId, _compilationCache, projects, NameMatch, limit, results, seenHandles, "name-substring", ct)
                 .ConfigureAwait(false);
             if (results.Count > 0)
             {
@@ -190,7 +192,7 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
                 return false;
             }
             await CollectSemanticSearchMatchesAsync(
-                solution, projects, TokenOrMatch, limit, results, seenHandles, "token-or-match", ct)
+                solution, workspaceId, _compilationCache, projects, TokenOrMatch, limit, results, seenHandles, "token-or-match", ct)
                 .ConfigureAwait(false);
             if (results.Count > 0)
             {
@@ -214,6 +216,8 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
 
     private static async Task CollectSemanticSearchMatchesAsync(
         Solution solution,
+        string workspaceId,
+        ICompilationCache compilationCache,
         IEnumerable<Project> projects,
         Func<ISymbol, bool> symbolMatches,
         int limit,
@@ -226,7 +230,7 @@ public sealed partial class CodePatternAnalyzer : ICodePatternAnalyzer
         {
             if (ct.IsCancellationRequested || results.Count >= limit) break;
 
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var tree in compilation.SyntaxTrees)

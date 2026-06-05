@@ -9,10 +9,11 @@ namespace RoslynMcp.Tests;
 
 /// <summary>
 /// Regression coverage for <c>compilation-cache-adoption-read-side</c>: the read-side analysis
-/// services <see cref="CouplingAnalysisService"/>, <see cref="ExceptionFlowService"/>, and
-/// <see cref="AnalyzerInfoService"/> must obtain project compilations through the shared
-/// <see cref="ICompilationCache"/> rather than calling <c>project.GetCompilationAsync</c>
-/// directly.
+/// services must obtain project compilations through the shared <see cref="ICompilationCache"/>
+/// rather than calling <c>project.GetCompilationAsync</c> directly. Batch 1 covered
+/// <see cref="CouplingAnalysisService"/>, <see cref="ExceptionFlowService"/>, and
+/// <see cref="AnalyzerInfoService"/>; batch 2 adds <see cref="TypeConsumersService"/>,
+/// <see cref="CodePatternAnalyzer"/>, and <see cref="SymbolSearchService"/>.
 /// <para>
 /// A reference-equality check alone cannot prove adoption — Roslyn memoizes a
 /// <see cref="Compilation"/> on its owning <see cref="Project"/>, so two direct calls would also
@@ -77,6 +78,64 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
 
         var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
             service.ListAnalyzersAsync(workspace.WorkspaceId, projectFilter: null, CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task TypeConsumersService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new TypeConsumersService(WorkspaceManager, cache, NullLogger<TypeConsumersService>.Instance);
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.FindTypeConsumersAsync(
+                workspace.WorkspaceId,
+                "SampleLib.IAnimal",
+                limit: 100,
+                CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task CodePatternAnalyzer_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new CodePatternAnalyzer(WorkspaceManager, cache, NullLogger<CodePatternAnalyzer>.Instance);
+
+        // Exercises BOTH converted call paths in one method: FindReflectionUsagesAsync (the
+        // instance-method site) and SemanticSearchAsync -> CollectSemanticSearchMatchesAsync
+        // (the private static helper site).
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, async () =>
+        {
+            await service.FindReflectionUsagesAsync(workspace.WorkspaceId, projectFilter: null, CancellationToken.None);
+            await service.SemanticSearchAsync(workspace.WorkspaceId, "Dog", projectFilter: null, limit: 50, CancellationToken.None);
+        });
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task SymbolSearchService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new SymbolSearchService(WorkspaceManager, cache, NullLogger<SymbolSearchService>.Instance);
+
+        // maxResults is deliberately high so the primary pattern search leaves budget under the
+        // cap and the FQN-substring fallback (the converted GetCompilationAsync site) runs.
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.SearchSymbolsAsync(
+                workspace.WorkspaceId,
+                "IAnimal",
+                projectFilter: null,
+                kindFilter: null,
+                namespaceFilter: null,
+                maxResults: 100,
+                CancellationToken.None));
 
         AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
     }

@@ -140,11 +140,13 @@ internal sealed class TestServiceContainer
                 NullLogger<SymbolNavigationService>.Instance),
             SymbolSearchService = new SymbolSearchService(
                 workspaceManager,
+                compilationCache,
                 NullLogger<SymbolSearchService>.Instance),
             ReferenceService = referenceService,
             MutationAnalysisService = mutationAnalysisService,
             TypeConsumersService = new TypeConsumersService(
                 workspaceManager,
+                compilationCache,
                 NullLogger<TypeConsumersService>.Instance),
             SemanticGrepService = new SemanticGrepService(
                 workspaceManager,
@@ -192,6 +194,7 @@ internal sealed class TestServiceContainer
             NuGetDependencyService = nuGetDependencyService,
             CodePatternAnalyzer = new CodePatternAnalyzer(
                 workspaceManager,
+                compilationCache,
                 NullLogger<CodePatternAnalyzer>.Instance),
             EditService = new EditService(
                 workspaceManager,
