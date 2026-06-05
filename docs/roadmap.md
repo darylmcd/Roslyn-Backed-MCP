@@ -1,5 +1,9 @@
 # Strategic Roadmap Decisions
 
+<!-- scope: in-repo -->
+<!-- artifact: roadmap -->
+<!-- status: active -->
+
 This roadmap complements the operating contract in `docs/product-contract.md` and the day-to-day agent playbook in `AGENTS.md`.
 
 ## Release 1 Decision
