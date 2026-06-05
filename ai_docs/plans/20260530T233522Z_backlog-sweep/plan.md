@@ -1,4 +1,7 @@
 # Backlog sweep plan — 20260530T233522Z
+<!-- scope: in-repo -->
+<!-- artifact: plan -->
+<!-- status: active -->
 
 **Generated:** 2026-05-30T23:35:22Z
 **Backlog snapshot:** 2026-05-30T23:10:00Z
