@@ -298,6 +298,7 @@ public static class SymbolTools
         "Find implementations of an interface or abstract member.")]
     public static Task<string> FindImplementations(
         IWorkspaceExecutionGate gate,
+        IWorkspaceManager workspaceManager,
         IReferenceService referenceService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
@@ -311,6 +312,32 @@ public static class SymbolTools
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
+
+            // find-implementations-corlib-metadataname-zero: a metadataName that resolves to a
+            // corlib/BCL interface root (e.g. System.IDisposable) binds to ONE project's corlib
+            // reference, so SymbolFinder.FindImplementationsAsync drops cross-project implementers
+            // that bind a different corlib symbol identity — the query can read as "no implementers"
+            // (count 0) while a source-anchored query at a usage site returns the full set. Mirror
+            // the find_overrides corlib-virtual hint (gh #754): when the resolved symbol is a corlib
+            // implementation root, return an explanatory hint instead of a bare (possibly-empty) set.
+            // The normal (non-corlib) path is byte-for-byte unchanged.
+            var solution = workspaceManager.GetCurrentSolution(workspaceId);
+            var resolved = await SymbolResolver.ResolveAsync(solution, locator, c).ConfigureAwait(false);
+            if (resolved is not null && ReferenceService.IsCorlibImplementationRoot(resolved))
+            {
+                var hint =
+                    "Resolved to a corlib/BCL interface or abstract type root (e.g. System.IDisposable, " +
+                    "System.IComparable) whose solution-wide implementation enumeration via metadataName " +
+                    "is unreliable — the metadata symbol binds to a single project's corlib reference, so " +
+                    "cross-project implementers can silently drop out and read as count 0. Source-anchor the " +
+                    "query instead: pass filePath/line/column pointing at a usage site of the interface " +
+                    "(e.g. where a type declares `: IDisposable`) so the symbol binds to your own compilation " +
+                    "and every solution implementer is enumerated.";
+                return JsonSerializer.Serialize(
+                    new { count = 0, items = Array.Empty<SymbolDto>(), includeGeneratedPartials, hint },
+                    JsonDefaults.Indented);
+            }
+
             var results = await referenceService.FindImplementationsAsync(workspaceId, locator, c, includeGeneratedPartials);
             return JsonSerializer.Serialize(new { count = results.Count, items = results, includeGeneratedPartials }, JsonDefaults.Indented);
         }, ct);
