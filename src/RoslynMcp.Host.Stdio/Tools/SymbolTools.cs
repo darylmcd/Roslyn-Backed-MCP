@@ -515,6 +515,11 @@ public static class SymbolTools
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
             var result = await symbolRelationshipService.GetMemberHierarchyAsync(workspaceId, locator, c);
+            // member-hierarchy-bare-null: an unresolvable locator previously serialized to a bare
+            // JSON `null`, ambiguous to callers (no-result vs failure). Throw KeyNotFoundException so
+            // the tool layer returns the standard NotFound envelope, matching the sibling tools
+            // (symbol_relationships, symbol_info) and the SymbolNavigationService convention.
+            if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
     }
