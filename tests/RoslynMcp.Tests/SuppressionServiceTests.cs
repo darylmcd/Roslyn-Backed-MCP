@@ -130,6 +130,81 @@ public sealed class SuppressionServiceTests
         }
     }
 
+    [TestMethod]
+    public async Task AddPragmaWarningDisableAsync_IsIdempotent_OnDuplicateRetry()
+    {
+        // Repro for add-pragma-suppression-duplicate-on-retry: calling the service twice for
+        // the same (file, line, id) — as happens after an auto-reload-triggered retry passing
+        // the SAME args — must NOT accumulate a second identical pragma. The first insert pushes
+        // the target line down by one, so on retry `line` points at the freshly-inserted pragma
+        // line; the dangling disable above it already suppresses `line`, so the second call
+        // no-ops (EditsApplied == 0).
+        var filePath = Path.Combine(Path.GetTempPath(), "suppression-idem-" + Guid.NewGuid().ToString("N") + ".cs");
+        // Target the method line (line 3) which CA1822 would flag.
+        await File.WriteAllTextAsync(filePath, "class C\n{\n    public void M() { }\n}\n", CancellationToken.None).ConfigureAwait(false);
+
+        try
+        {
+            // The stub APPLIES the edit to disk so the next call's disk-read sees the inserted
+            // pragma — mirroring the real EditService's write-through behaviour.
+            var edits = new ApplyToDiskEditService();
+            var sut = new SuppressionService(new StubEditorConfig(), edits);
+
+            var first = await sut.AddPragmaWarningDisableAsync("ws", filePath, 3, "CA1822", CancellationToken.None).ConfigureAwait(false);
+            Assert.IsTrue(first.Success);
+            Assert.IsTrue(first.EditsApplied >= 1, "First call should insert the pragma.");
+            Assert.AreEqual(1, CountPragmas(await File.ReadAllTextAsync(filePath).ConfigureAwait(false)),
+                "Exactly one pragma after the first call.");
+
+            // Retry with the SAME args (simulating the auto-reload retry).
+            var second = await sut.AddPragmaWarningDisableAsync("ws", filePath, 3, "CA1822", CancellationToken.None).ConfigureAwait(false);
+            Assert.IsTrue(second.Success);
+            Assert.AreEqual(0, second.EditsApplied, "Retry must be a no-op (already suppressed).");
+            Assert.AreEqual(1, CountPragmas(await File.ReadAllTextAsync(filePath).ConfigureAwait(false)),
+                "Still exactly one pragma after the duplicate retry — no accumulation.");
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [TestMethod]
+    public async Task AddPragmaWarningDisableAsync_Inserts_WhenLineNotYetSuppressed()
+    {
+        // Happy path: a genuinely-uncovered line DOES get a pragma inserted.
+        var filePath = Path.Combine(Path.GetTempPath(), "suppression-insert-" + Guid.NewGuid().ToString("N") + ".cs");
+        await File.WriteAllTextAsync(filePath, "class C\n{\n    public void M() { }\n}\n", CancellationToken.None).ConfigureAwait(false);
+
+        try
+        {
+            var edits = new ApplyToDiskEditService();
+            var sut = new SuppressionService(new StubEditorConfig(), edits);
+
+            var result = await sut.AddPragmaWarningDisableAsync("ws", filePath, 3, "CA1822", CancellationToken.None).ConfigureAwait(false);
+
+            Assert.IsTrue(result.Success);
+            Assert.IsTrue(result.EditsApplied >= 1);
+            Assert.AreEqual(1, CountPragmas(await File.ReadAllTextAsync(filePath).ConfigureAwait(false)));
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    private static int CountPragmas(string text)
+    {
+        int count = 0, idx = 0;
+        const string needle = "#pragma warning disable CA1822";
+        while ((idx = text.IndexOf(needle, idx, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            idx += needle.Length;
+        }
+        return count;
+    }
+
     private sealed class StubEditorConfig : IEditorConfigService
     {
         public Func<string, string, string, string, string, CancellationToken, Task<EditorConfigWriteResultDto>>? OnSetOption { get; init; }
@@ -141,6 +216,51 @@ public sealed class SuppressionServiceTests
             string workspaceId, string sourceFilePath, string key, string value, string toolName, CancellationToken ct) =>
             OnSetOption?.Invoke(workspaceId, sourceFilePath, key, value, toolName, ct)
             ?? Task.FromResult(new EditorConfigWriteResultDto("", key, value, false));
+    }
+
+    /// <summary>
+    /// Edit service stub that actually writes the edits through to the file on disk, so a
+    /// subsequent disk-read (the idempotency guard's source of truth) observes the inserted
+    /// pragma. Uses Roslyn's SourceText to apply the 1-based (line, col) TextEditDto spans —
+    /// matching how the production EditService maps coordinates.
+    /// </summary>
+    private sealed class ApplyToDiskEditService : IEditService
+    {
+        public Task<TextEditResultDto> ApplyTextEditsAsync(
+            string workspaceId,
+            string filePath,
+            IReadOnlyList<TextEditDto> edits,
+            string toolName,
+            CancellationToken ct,
+            bool skipSyntaxCheck = false,
+            bool verify = false,
+            bool autoRevertOnError = false)
+        {
+            var original = File.ReadAllText(filePath);
+            var sourceText = Microsoft.CodeAnalysis.Text.SourceText.From(original);
+            var changes = new List<Microsoft.CodeAnalysis.Text.TextChange>();
+            foreach (var e in edits)
+            {
+                var startLine = sourceText.Lines[e.StartLine - 1];
+                var endLine = sourceText.Lines[e.EndLine - 1];
+                var startPos = startLine.Start + (e.StartColumn - 1);
+                var endPos = endLine.Start + (e.EndColumn - 1);
+                changes.Add(new Microsoft.CodeAnalysis.Text.TextChange(
+                    Microsoft.CodeAnalysis.Text.TextSpan.FromBounds(startPos, endPos), e.NewText));
+            }
+            var updated = sourceText.WithChanges(changes).ToString();
+            File.WriteAllText(filePath, updated);
+            return Task.FromResult(new TextEditResultDto(true, filePath, edits.Count, []));
+        }
+
+        public Task<MultiFileEditResultDto> ApplyMultiFileTextEditsAsync(
+            string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, string toolName, CancellationToken ct,
+            bool skipSyntaxCheck = false, bool verify = false, bool autoRevertOnError = false) =>
+            throw new NotSupportedException();
+
+        public Task<RefactoringPreviewDto> PreviewMultiFileTextEditsAsync(
+            string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false) =>
+            throw new NotSupportedException();
     }
 
     private sealed class StubEditService : IEditService
