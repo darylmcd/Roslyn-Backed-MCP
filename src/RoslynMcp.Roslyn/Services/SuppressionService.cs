@@ -71,13 +71,16 @@ public sealed class SuppressionService : ISuppressionService
         // already-covered case using the SAME coverage predicate VerifyPragmaSuppressesAsync
         // uses (LineIsSuppressedByPragma) so the two cannot drift, and no-op instead.
         //
-        // Off-by-one note for the double-call scenario: the first call inserts the disable at
-        // (line, col1) — i.e. immediately BEFORE the original target line, pushing it down by
-        // one. On retry the caller passes the SAME `line`, which now points AT the inserted
-        // pragma line. The new pragma sits one line above (DisableLine == line - 1, a dangling
-        // disable), so `line > DisableLine` holds and LineIsSuppressedByPragma returns true —
-        // the retry correctly no-ops. We read from disk (ReadSourceTextAsync), matching
-        // Verify/Widen's MSBuildWorkspace-over-disk model.
+        // Off-by-one note for the double-call scenario: the first call inserts the disable via
+        // TextEditDto(line, 1, line, 1, "#pragma...\n") — a column-1 insert that places the
+        // pragma ON `line` and pushes the original target content down to line+1. On retry the
+        // caller passes the SAME `line`, which now points AT the inserted pragma line, so
+        // FindEnclosingPragmaPair (selecting the disable at-or-before `line`) returns
+        // DisableLine == line. In that exact-adjacent case LineIsSuppressedByPragma returns
+        // FALSE (it requires line strictly > DisableLine), so the `landsOnExistingDisable`
+        // boundary check below is the load-bearing one that catches the retry — do not remove
+        // it on the assumption the predicate covers it. We read from disk (ReadSourceTextAsync),
+        // matching Verify/Widen's MSBuildWorkspace-over-disk model.
         try
         {
             var existingText = await ReadSourceTextAsync(filePath, ct).ConfigureAwait(false);
@@ -86,11 +89,12 @@ public sealed class SuppressionService : ISuppressionService
             var existingPair = FindEnclosingPragmaPair(existingRoot, normalizedId, line);
             // Covered when Verify's predicate says so (line strictly inside an active span), OR
             // when `line` lands EXACTLY on an existing disable for {id}. The latter is the
-            // double-call boundary: the first insert placed the disable at (originalLine, col1),
-            // pushing the original target down by one; the retry passes the same `line`, which
-            // now points at the inserted pragma line. Re-inserting at that position would push
-            // the existing pragma down and duplicate it. FindEnclosingPragmaPair already selects
-            // the disable at-or-before `line`, so DisableLine == line is the exact-adjacent case.
+            // double-call boundary: the first insert placed the pragma ON `line` (column-1
+            // insert), pushing the original target down to line+1; the retry passes the same
+            // `line`, which now points at the inserted pragma line. Re-inserting there would
+            // duplicate the pragma. FindEnclosingPragmaPair selects the disable at-or-before
+            // `line`, so DisableLine == line is the exact-adjacent case — and because the
+            // predicate requires line strictly > DisableLine, only this check catches it.
             var landsOnExistingDisable = existingPair.DisableLine == line;
             if (landsOnExistingDisable || LineIsSuppressedByPragma(existingPair, line))
             {
@@ -109,6 +113,8 @@ public sealed class SuppressionService : ISuppressionService
         }
         catch (UnauthorizedAccessException)
         {
+            // Same fall-through rationale as IOException: if the file can't be read for the
+            // idempotency pre-check, defer to the edit service to surface any apply failure.
         }
 
         var newline = await DetectLineEndingAsync(filePath, ct).ConfigureAwait(false);
