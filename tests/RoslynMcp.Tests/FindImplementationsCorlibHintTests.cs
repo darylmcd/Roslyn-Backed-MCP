@@ -22,15 +22,12 @@ namespace RoslynMcp.Tests;
 public sealed class FindImplementationsCorlibHintTests : SharedWorkspaceTestBase
 {
     private static string WorkspaceId { get; set; } = null!;
-    private static string BacklogSamplesPath { get; set; } = null!;
 
     [ClassInitialize]
     public static async Task ClassInit(TestContext _)
     {
         InitializeServices();
         WorkspaceId = await LoadSharedSampleWorkspaceAsync(CancellationToken.None);
-        var sampleRoot = Path.GetDirectoryName(SampleSolutionPath)!;
-        BacklogSamplesPath = Path.Combine(sampleRoot, "SampleLib", "BacklogSamples.cs");
     }
 
     [ClassCleanup]
