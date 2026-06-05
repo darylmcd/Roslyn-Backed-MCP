@@ -63,8 +63,62 @@ public sealed class SuppressionService : ISuppressionService
             throw new ArgumentException("Diagnostic id is required.", nameof(diagnosticId));
         }
 
+        var normalizedId = diagnosticId.Trim();
+
+        // Idempotency guard: if an active '#pragma warning disable {id}' already suppresses
+        // this line, appending another identical pragma would accumulate duplicates on retry
+        // (e.g. after an auto-reload-triggered retry passing the same args). Detect the
+        // already-covered case using the SAME coverage predicate VerifyPragmaSuppressesAsync
+        // uses (LineIsSuppressedByPragma) so the two cannot drift, and no-op instead.
+        //
+        // Off-by-one note for the double-call scenario: the first call inserts the disable via
+        // TextEditDto(line, 1, line, 1, "#pragma...\n") — a column-1 insert that places the
+        // pragma ON `line` and pushes the original target content down to line+1. On retry the
+        // caller passes the SAME `line`, which now points AT the inserted pragma line, so
+        // FindEnclosingPragmaPair (selecting the disable at-or-before `line`) returns
+        // DisableLine == line. In that exact-adjacent case LineIsSuppressedByPragma returns
+        // FALSE (it requires line strictly > DisableLine), so the `landsOnExistingDisable`
+        // boundary check below is the load-bearing one that catches the retry — do not remove
+        // it on the assumption the predicate covers it. We read from disk (ReadSourceTextAsync),
+        // matching Verify/Widen's MSBuildWorkspace-over-disk model.
+        try
+        {
+            var existingText = await ReadSourceTextAsync(filePath, ct).ConfigureAwait(false);
+            var existingTree = CSharpSyntaxTree.ParseText(existingText, path: filePath, cancellationToken: ct);
+            var existingRoot = await existingTree.GetRootAsync(ct).ConfigureAwait(false);
+            var existingPair = FindEnclosingPragmaPair(existingRoot, normalizedId, line);
+            // Covered when Verify's predicate says so (line strictly inside an active span), OR
+            // when `line` lands EXACTLY on an existing disable for {id}. The latter is the
+            // double-call boundary: the first insert placed the pragma ON `line` (column-1
+            // insert), pushing the original target down to line+1; the retry passes the same
+            // `line`, which now points at the inserted pragma line. Re-inserting there would
+            // duplicate the pragma. FindEnclosingPragmaPair selects the disable at-or-before
+            // `line`, so DisableLine == line is the exact-adjacent case — and because the
+            // predicate requires line strictly > DisableLine, only this check catches it.
+            var landsOnExistingDisable = existingPair.DisableLine == line;
+            if (landsOnExistingDisable || LineIsSuppressedByPragma(existingPair, line))
+            {
+                // Already suppressed — no-op. EditsApplied: 0 cleanly signals "no change".
+                return new TextEditResultDto(
+                    Success: true,
+                    FilePath: Path.GetFullPath(filePath),
+                    EditsApplied: 0,
+                    Changes: Array.Empty<FileChangeDto>());
+            }
+        }
+        catch (IOException)
+        {
+            // File unreadable from disk — fall through to the normal insert path; the edit
+            // service is the authority on whether the edit can be applied.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Same fall-through rationale as IOException: if the file can't be read for the
+            // idempotency pre-check, defer to the edit service to surface any apply failure.
+        }
+
         var newline = await DetectLineEndingAsync(filePath, ct).ConfigureAwait(false);
-        var pragma = $"#pragma warning disable {diagnosticId.Trim()}{newline}";
+        var pragma = $"#pragma warning disable {normalizedId}{newline}";
         var edit = new TextEditDto(line, 1, line, 1, pragma);
         return await _editService.ApplyTextEditsAsync(workspaceId, filePath, [edit], "add_pragma_suppression", ct)
             .ConfigureAwait(false);
@@ -82,38 +136,35 @@ public sealed class SuppressionService : ISuppressionService
         var pair = FindEnclosingPragmaPair(root, normalizedId, line);
 
         // Structural answer first — does a disable/restore pair cover this line?
-        bool suppresses;
-        string reason;
+        // Coverage decision is delegated to LineIsSuppressedByPragma (shared with the
+        // idempotency guard in AddPragmaWarningDisableAsync); the branches below only build
+        // the human-readable `reason` for each case.
         int? disableLine = pair.DisableLine;
         int? restoreLine = pair.RestoreLine;
+        bool suppresses = LineIsSuppressedByPragma(pair, line);
+        string reason;
 
         if (pair.DisableLine is null)
         {
-            suppresses = false;
             reason = $"No '#pragma warning disable {normalizedId}' found at or before line {line}.";
         }
         else if (pair.RestoreLine is null)
         {
-            // Dangling disable — Roslyn treats this as "disabled until end of file".
-            suppresses = line > pair.DisableLine.Value;
             reason = suppresses
                 ? $"Dangling '#pragma warning disable {normalizedId}' at line {pair.DisableLine} covers all subsequent lines including {line}."
                 : $"Line {line} precedes the disable at line {pair.DisableLine}.";
         }
-        else if (line > pair.DisableLine.Value && line < pair.RestoreLine.Value)
+        else if (suppresses)
         {
-            suppresses = true;
             reason = $"Line {line} lies inside the '#pragma warning disable {normalizedId}' span (disable {pair.DisableLine} → restore {pair.RestoreLine}).";
         }
         else if (line <= pair.DisableLine.Value)
         {
-            suppresses = false;
             reason = $"Line {line} precedes the disable at line {pair.DisableLine}.";
         }
         else
         {
             // line >= restoreLine
-            suppresses = false;
             reason = $"Line {line} is at or past the restore at line {pair.RestoreLine}; the pragma pair (disable {pair.DisableLine} → restore {pair.RestoreLine}) does not cover it.";
         }
 
@@ -272,6 +323,28 @@ public sealed class SuppressionService : ISuppressionService
 
     private static Task<string> ReadSourceTextAsync(string filePath, CancellationToken ct) =>
         File.ReadAllTextAsync(filePath, ct);
+
+    /// <summary>
+    /// The single source of truth for "is <paramref name="line"/> covered by an active
+    /// <c>#pragma warning disable</c> pair?" — shared by <see cref="VerifyPragmaSuppressesAsync"/>
+    /// (which reports the structural answer) and the idempotency guard in
+    /// <see cref="AddPragmaWarningDisableAsync"/> (which no-ops when the answer is already true).
+    /// A dangling disable (<see cref="PragmaPair.RestoreLine"/> <c>null</c>) covers every line
+    /// strictly after the disable; a closed pair covers <c>disable &lt; line &lt; restore</c>.
+    /// </summary>
+    private static bool LineIsSuppressedByPragma(PragmaPair pair, int line)
+    {
+        if (pair.DisableLine is null)
+        {
+            return false;
+        }
+        if (pair.RestoreLine is null)
+        {
+            // Dangling disable — Roslyn treats this as "disabled until end of file".
+            return line > pair.DisableLine.Value;
+        }
+        return line > pair.DisableLine.Value && line < pair.RestoreLine.Value;
+    }
 
     private static async Task<string> DetectLineEndingAsync(string filePath, CancellationToken ct)
     {
