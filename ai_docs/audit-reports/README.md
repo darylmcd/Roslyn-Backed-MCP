@@ -13,7 +13,7 @@ Use immutable raw file naming: `yyyyMMddTHHmmssZ_<repo-id>_mcp-server-audit.md`.
 
 Do **not** store synthesized cross-repo actioning summaries here. Those belong in [`../reports/README.md`](../reports/README.md).
 
-Do **not** store the machine-readable promotion scorecard here. The canonical `_latest-promotion-scorecard.json` lives at the repo root, [`audit-reports/_latest-promotion-scorecard.json`](../../audit-reports/_latest-promotion-scorecard.json) — written by the surface-test prompt (`skills/mcp-server-surface-test/prompts/phases/output-and-close.md`) and read by `eng/aggregate-promotion-scorecards.ps1`. An older copy under `ai_docs/audit-reports/` from the retired `/audit-deep` writer was removed to dedupe the source of truth.
+Do **not** store the machine-readable promotion scorecard here. The canonical `_latest-promotion-scorecard.json` lives at the repo root under `audit-reports/` (a gitignored, generated artifact — not version-controlled, so it is referenced by path rather than linked) — written by the surface-test prompt (`skills/mcp-server-surface-test/prompts/phases/output-and-close.md`) and read by `eng/aggregate-promotion-scorecards.ps1`. An older copy under `ai_docs/audit-reports/` from the retired `/audit-deep` writer was removed to dedupe the source of truth.
 
 ### Filenames
 
