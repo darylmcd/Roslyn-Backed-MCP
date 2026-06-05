@@ -13,8 +13,8 @@
 
 | # | id | status | PR | rows closed |
 |---|----|--------|----|-------------|
-| 1 | compilation-cache-adoption-read-side | pending | — | compilation-cache-adoption-read-side |
-| 2 | promotion-scorecard-execution-batch | pending | — | promotion-scorecard-execution-batch |
+| 1 | compilation-cache-adoption-read-side | merged | [#936](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/936) | compilation-cache-adoption-read-side |
+| 2 | promotion-scorecard-execution-batch | merged | [#937](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/937) | promotion-scorecard-execution-batch |
 <!-- BSWEEP:STATUS-TABLE END -->
 
 ## Initiatives (in order)
