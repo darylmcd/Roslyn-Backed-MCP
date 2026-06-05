@@ -363,6 +363,66 @@ public sealed class ReferenceService : IReferenceService
         return symbol.ContainingType is { SpecialType: not SpecialType.None };
     }
 
+    /// <summary>
+    /// Returns true when <paramref name="symbol"/> is a corlib/BCL interface or abstract-class
+    /// ROOT defined entirely in metadata — e.g. <c>System.IDisposable</c>, <c>System.IComparable</c>,
+    /// <c>System.Collections.Generic.IEnumerable&lt;T&gt;</c>. These are the implementation roots
+    /// whose solution-wide enumeration via <see cref="SymbolFinder.FindImplementationsAsync"/> is
+    /// unreliable when anchored by metadata name: <c>Compilation.GetTypeByMetadataName</c> binds
+    /// the symbol to one project's corlib reference, so cross-project implementers that bind a
+    /// different corlib symbol identity silently drop out — the metadataName query can read as
+    /// "no implementers" (count 0) while a source-anchored query at a usage site returns the full
+    /// set (find-implementations-corlib-metadataname-zero). The <c>find_implementations</c> tool
+    /// wrapper uses this to emit a source-anchor hint instead of a bare (possibly-empty) set.
+    /// </summary>
+    /// <remarks>
+    /// Same metadata-boundary family as the <c>find_overrides</c> corlib-virtual guard
+    /// (<see cref="IsCorlibVirtualMember"/>, gh #754) and goto_type_definition #607/#623. This
+    /// predicate is intentionally TYPE-scoped (interface/abstract root) rather than member-scoped.
+    /// </remarks>
+    public static bool IsCorlibImplementationRoot(ISymbol symbol)
+    {
+        if (symbol is not INamedTypeSymbol type)
+        {
+            return false;
+        }
+
+        // Only interfaces and abstract classes are "implementation roots" find_implementations
+        // walks down from. Concrete/sealed corlib types have no implementers to enumerate.
+        if (type.TypeKind != TypeKind.Interface && !type.IsAbstract)
+        {
+            return false;
+        }
+
+        // Must be a metadata (framework) type — a user-declared interface/abstract class has
+        // source declarations and enumerates reliably, so the hint must NOT fire on it.
+        if (!type.Locations.IsDefaultOrEmpty && type.Locations.Any(static l => l.IsInSource))
+        {
+            return false;
+        }
+
+        return IsCorlibAssembly(type.ContainingAssembly);
+    }
+
+    /// <summary>
+    /// Heuristic for "framework/corlib assembly" — the assemblies whose interface/type roots the
+    /// metadata-name <see cref="SymbolFinder.FindImplementationsAsync"/> path enumerates
+    /// unreliably. Matches the runtime corlib (<c>System.Private.CoreLib</c> / <c>mscorlib</c> /
+    /// <c>System.Runtime</c>) plus the broader <c>System.*</c> BCL surface.
+    /// </summary>
+    private static bool IsCorlibAssembly(IAssemblySymbol? assembly)
+    {
+        if (assembly is null)
+        {
+            return false;
+        }
+
+        var name = assembly.Identity.Name;
+        return name is "System.Private.CoreLib" or "mscorlib" or "netstandard"
+            || name == "System.Runtime"
+            || name.StartsWith("System.", StringComparison.Ordinal);
+    }
+
     private static IMethodSymbol? TryFindImplicitlyImplementedInterfaceMember(IMethodSymbol method)
     {
         var containing = method.ContainingType;
