@@ -35,4 +35,13 @@ public sealed record PragmaVerifyResultDto(
     int? DisableLine,
     int? RestoreLine,
     string Reason,
-    bool? DiagnosticFiresAtLine = null);
+    bool? DiagnosticFiresAtLine = null)
+{
+    /// <summary>
+    /// Stable non-secret reason code when <see cref="DiagnosticFiresAtLine"/> is <c>null</c>
+    /// because fire-site confirmation could not run or failed. <c>null</c> when confirmation ran.
+    /// Current values: <c>confirmation-service-unavailable</c>, <c>workspace-not-loaded</c>,
+    /// <c>confirmation-failed</c>.
+    /// </summary>
+    public string? DiagnosticFiresAtLineUnavailableReason { get; init; }
+}

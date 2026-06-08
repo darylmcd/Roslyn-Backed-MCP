@@ -1,6 +1,8 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
+using Microsoft.CodeAnalysis;
 
 namespace RoslynMcp.Tests;
 
@@ -193,6 +195,136 @@ public sealed class SuppressionServiceTests
         }
     }
 
+    [TestMethod]
+    public async Task VerifyPragmaSuppressesAsync_WhenWorkspaceMissing_ReturnsBoundedConfirmationReason()
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), "suppression-missing-workspace-" + Guid.NewGuid().ToString("N") + ".cs");
+        await File.WriteAllTextAsync(
+            filePath,
+            """
+            class C
+            {
+                void M()
+                {
+                    #pragma warning disable CS0219
+                    int x = 1;
+                    #pragma warning restore CS0219
+                }
+            }
+            """,
+            CancellationToken.None).ConfigureAwait(false);
+
+        try
+        {
+            var compileCheck = new StubCompileCheckService
+            {
+                OnCheck = (_, _, _) => throw new AssertFailedException("compile check should not run for a missing workspace")
+            };
+            var sut = new SuppressionService(
+                new StubEditorConfig(),
+                new StubEditService(),
+                new StubWorkspaceManager(containsWorkspace: false),
+                compileCheck);
+
+            var result = await sut.VerifyPragmaSuppressesAsync("missing", filePath, 6, "CS0219", CancellationToken.None)
+                .ConfigureAwait(false);
+
+            Assert.IsTrue(result.Suppresses);
+            Assert.IsNull(result.DiagnosticFiresAtLine);
+            Assert.AreEqual("workspace-not-loaded", result.DiagnosticFiresAtLineUnavailableReason);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [TestMethod]
+    public async Task VerifyPragmaSuppressesAsync_WhenConfirmationServicesUnavailable_ReturnsBoundedConfirmationReason()
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), "suppression-no-confirmation-services-" + Guid.NewGuid().ToString("N") + ".cs");
+        await File.WriteAllTextAsync(
+            filePath,
+            """
+            class C
+            {
+                void M()
+                {
+                    #pragma warning disable CS0219
+                    int x = 1;
+                    #pragma warning restore CS0219
+                }
+            }
+            """,
+            CancellationToken.None).ConfigureAwait(false);
+
+        try
+        {
+            var sut = new SuppressionService(new StubEditorConfig(), new StubEditService());
+
+            var result = await sut.VerifyPragmaSuppressesAsync("ws", filePath, 6, "CS0219", CancellationToken.None)
+                .ConfigureAwait(false);
+
+            Assert.IsTrue(result.Suppresses);
+            Assert.IsNull(result.DiagnosticFiresAtLine);
+            Assert.AreEqual("confirmation-service-unavailable", result.DiagnosticFiresAtLineUnavailableReason);
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
+    [TestMethod]
+    public async Task VerifyPragmaSuppressesAsync_WhenCompileCheckThrows_ReturnsBoundedConfirmationReason()
+    {
+        var filePath = Path.Combine(Path.GetTempPath(), "suppression-compile-failure-" + Guid.NewGuid().ToString("N") + ".cs");
+        await File.WriteAllTextAsync(
+            filePath,
+            """
+            class C
+            {
+                void M()
+                {
+                    #pragma warning disable CS0219
+                    int x = 1;
+                    #pragma warning restore CS0219
+                }
+            }
+            """,
+            CancellationToken.None).ConfigureAwait(false);
+
+        try
+        {
+            var compileCheck = new StubCompileCheckService
+            {
+                OnCheck = (_, _, _) => throw new InvalidOperationException(
+                    $"secret-ish details from {filePath} must not leave the process")
+            };
+            var sut = new SuppressionService(
+                new StubEditorConfig(),
+                new StubEditService(),
+                new StubWorkspaceManager(containsWorkspace: true),
+                compileCheck);
+
+            var result = await sut.VerifyPragmaSuppressesAsync("ws", filePath, 6, "CS0219", CancellationToken.None)
+                .ConfigureAwait(false);
+
+            Assert.IsTrue(result.Suppresses);
+            Assert.IsNull(result.DiagnosticFiresAtLine);
+            var reason = result.DiagnosticFiresAtLineUnavailableReason;
+            Assert.AreEqual("confirmation-failed", reason);
+            Assert.AreNotEqual(filePath, reason);
+            Assert.IsFalse(
+                reason!.Contains("secret-ish", StringComparison.Ordinal),
+                "The confirmation reason must be a stable code, not exception text.");
+        }
+        finally
+        {
+            File.Delete(filePath);
+        }
+    }
+
     private static int CountPragmas(string text)
     {
         int count = 0, idx = 0;
@@ -295,5 +427,70 @@ public sealed class SuppressionServiceTests
         public Task<RefactoringPreviewDto> PreviewMultiFileTextEditsAsync(
             string workspaceId, IReadOnlyList<FileEditsDto> fileEdits, CancellationToken ct, bool skipSyntaxCheck = false) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class StubCompileCheckService : ICompileCheckService
+    {
+        public Func<string, CompileCheckOptions, CancellationToken, Task<CompileCheckDto>>? OnCheck { get; init; }
+
+        public Task<CompileCheckDto> CheckAsync(
+            string workspaceId,
+            CompileCheckOptions options,
+            CancellationToken ct) =>
+            OnCheck?.Invoke(workspaceId, options, ct)
+            ?? Task.FromResult(new CompileCheckDto(true, 0, 0, 0, 0, 0, options.Limit, false, [], 0));
+    }
+
+    private sealed class StubWorkspaceManager(bool containsWorkspace) : IWorkspaceManager
+    {
+        public event Action<string>? WorkspaceClosed;
+
+        public event Action<string>? WorkspaceReloaded;
+
+        public bool ContainsWorkspace(string workspaceId) => containsWorkspace;
+
+        public Task<WorkspaceStatusDto> LoadAsync(string path, EvictPolicy evictPolicy, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<WorkspaceStatusDto> ReloadAsync(string workspaceId, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public bool IsStale(string workspaceId) => false;
+
+        public bool Close(string workspaceId)
+        {
+            WorkspaceClosed?.Invoke(workspaceId);
+            return false;
+        }
+
+        public IReadOnlyList<WorkspaceStatusDto> ListWorkspaces() => Array.Empty<WorkspaceStatusDto>();
+
+        public WorkspaceStatusDto GetStatus(string workspaceId) => throw new NotSupportedException();
+
+        public Task<WorkspaceStatusDto> GetStatusAsync(string workspaceId, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public ProjectGraphDto GetProjectGraph(string workspaceId) => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<GeneratedDocumentDto>> GetSourceGeneratedDocumentsAsync(
+            string workspaceId,
+            string? projectName,
+            CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<string?> GetSourceTextAsync(string workspaceId, string filePath, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public int GetCurrentVersion(string workspaceId) => throw new NotSupportedException();
+
+        public Solution GetCurrentSolution(string workspaceId) => throw new NotSupportedException();
+
+        public Project? GetProject(string workspaceId, string projectNameOrPath) => throw new NotSupportedException();
+
+        public bool TryApplyChanges(string workspaceId, Solution newSolution) => throw new NotSupportedException();
+
+        public void RestoreVersion(string workspaceId, int version) => throw new NotSupportedException();
+
+        public void RaiseReloadedForTest(string workspaceId) => WorkspaceReloaded?.Invoke(workspaceId);
     }
 }

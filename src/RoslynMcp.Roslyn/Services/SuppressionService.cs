@@ -13,6 +13,9 @@ public sealed class SuppressionService : ISuppressionService
     private readonly IEditService _editService;
     private readonly IWorkspaceManager? _workspace;
     private readonly ICompileCheckService? _compileCheck;
+    private const string ConfirmationServiceUnavailableReason = "confirmation-service-unavailable";
+    private const string WorkspaceNotLoadedReason = "workspace-not-loaded";
+    private const string ConfirmationFailedReason = "confirmation-failed";
 
     /// <summary>
     /// Constructs a <see cref="SuppressionService"/>. The <paramref name="workspace"/> and
@@ -22,7 +25,8 @@ public sealed class SuppressionService : ISuppressionService
     /// <c>VerifyPragmaSuppressesAsync</c>) continue to work, but the fire-site confirmation
     /// inside <c>VerifyPragmaSuppressesAsync</c> — which replays the live compilation to
     /// confirm the target diagnostic is actually reported at the target line — degrades to
-    /// <c>null</c> in the <see cref="PragmaVerifyResultDto.DiagnosticFiresAtLine"/> field.
+    /// <c>null</c> in the <see cref="PragmaVerifyResultDto.DiagnosticFiresAtLine"/> field
+    /// with a stable reason in <see cref="PragmaVerifyResultDto.DiagnosticFiresAtLineUnavailableReason"/>.
     /// Production DI supplies all four dependencies; stub-driven unit tests that exercise
     /// only the editorconfig and edit-service wiring can omit the workspace pair.
     /// </summary>
@@ -169,11 +173,7 @@ public sealed class SuppressionService : ISuppressionService
         }
 
         // Optional fire-site confirmation via the live compilation.
-        bool? firesAtLine = null;
-        if (_workspace is not null && _compileCheck is not null)
-        {
-            firesAtLine = await TryConfirmDiagnosticFiresAsync(workspaceId, filePath, line, normalizedId, ct).ConfigureAwait(false);
-        }
+        var confirmation = await TryConfirmDiagnosticFiresAsync(workspaceId, filePath, line, normalizedId, ct).ConfigureAwait(false);
 
         return new PragmaVerifyResultDto(
             Suppresses: suppresses,
@@ -183,7 +183,10 @@ public sealed class SuppressionService : ISuppressionService
             DisableLine: disableLine,
             RestoreLine: restoreLine,
             Reason: reason,
-            DiagnosticFiresAtLine: firesAtLine);
+            DiagnosticFiresAtLine: confirmation.FiresAtLine)
+        {
+            DiagnosticFiresAtLineUnavailableReason = confirmation.UnavailableReason
+        };
     }
 
     public async Task<PragmaWidenResultDto> WidenPragmaScopeAsync(
@@ -637,19 +640,19 @@ public sealed class SuppressionService : ISuppressionService
         return line.Substring(0, i);
     }
 
-    private async Task<bool?> TryConfirmDiagnosticFiresAsync(
+    private async Task<DiagnosticFireConfirmation> TryConfirmDiagnosticFiresAsync(
         string workspaceId, string filePath, int line, string diagnosticId, CancellationToken ct)
     {
         if (_workspace is null || _compileCheck is null)
         {
-            return null;
+            return new DiagnosticFireConfirmation(null, ConfirmationServiceUnavailableReason);
         }
 
-        // Guard against missing/closed workspace — return null rather than throwing so the
-        // structural answer still makes it back to the caller.
+        // Guard against missing/closed workspace so the structural answer still makes it back
+        // to the caller with a bounded reason code.
         if (!_workspace.ContainsWorkspace(workspaceId))
         {
-            return null;
+            return new DiagnosticFireConfirmation(null, WorkspaceNotLoadedReason);
         }
 
         try
@@ -659,11 +662,14 @@ public sealed class SuppressionService : ISuppressionService
             foreach (var diag in result.Diagnostics)
             {
                 if (!string.Equals(diag.Id, diagnosticId, StringComparison.OrdinalIgnoreCase)) continue;
-                if (diag.StartLine == line) return true;
+                if (diag.StartLine == line) return new DiagnosticFireConfirmation(true, null);
                 // Allow multi-line spans — treat "line in range" as a hit.
-                if (diag.StartLine is int s && diag.EndLine is int e && line >= s && line <= e) return true;
+                if (diag.StartLine is int s && diag.EndLine is int e && line >= s && line <= e)
+                {
+                    return new DiagnosticFireConfirmation(true, null);
+                }
             }
-            return false;
+            return new DiagnosticFireConfirmation(false, null);
         }
         catch (OperationCanceledException)
         {
@@ -671,10 +677,13 @@ public sealed class SuppressionService : ISuppressionService
         }
         catch
         {
-            // Best-effort confirmation — never let this probe mask the structural answer.
-            return null;
+            // Best-effort confirmation: keep the reason stable and non-secret rather than
+            // returning exception text, paths, command lines, or environment details.
+            return new DiagnosticFireConfirmation(null, ConfirmationFailedReason);
         }
     }
+
+    private readonly record struct DiagnosticFireConfirmation(bool? FiresAtLine, string? UnavailableReason);
 
     private enum PragmaKind { Disable, Restore }
 
