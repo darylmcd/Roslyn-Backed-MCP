@@ -8,8 +8,8 @@ using RoslynMcp.Host.Stdio.Middleware;
 namespace RoslynMcp.Tests;
 
 /// <summary>
-/// Coverage for the <c>elicit-workspace-path-on-missing-required-arg</c> initiative
-/// (closes the same-named backlog row): the <see cref="StructuredCallToolFilter"/>
+/// Coverage for the <c>elicit-workspace-path-on-missing-required-arg</c> and
+/// <c>elicitation-allowlist-workspaceid-recovery</c> initiatives: the <see cref="StructuredCallToolFilter"/>
 /// recovery path that calls MCP <c>elicitation/create</c> when a tool fails with
 /// <c>InvalidArgument: missing &lt;allowlisted-param&gt;</c> and the client supports
 /// elicitation. Pins:
@@ -64,10 +64,34 @@ public sealed class StructuredCallToolFilterElicitationTests
     [TestMethod]
     public void IsElicitationAllowedFor_WorkspaceLoadPath_ReturnsTrue()
     {
-        // The single allowlisted (tool, param) pair as of this initiative. Adding to the
-        // allowlist requires a policy review (non-sensitive AND idempotent retry shape).
+        // Direct patch recovery: workspace_load.path is the explicit allowlisted
+        // (tool, param) pair. Adding direct-patch entries requires a policy review
+        // (non-sensitive AND idempotent retry shape).
         Assert.IsTrue(StructuredCallToolFilter.IsElicitationAllowedFor("workspace_load", "path"),
-            "workspace_load.path is the only entry on the strict elicitation allowlist.");
+            "workspace_load.path must stay on the strict elicitation allowlist.");
+    }
+
+    [TestMethod]
+    public void IsElicitationAllowedFor_RequiredWorkspaceId_ReturnsTrue()
+    {
+        // workspaceId is a path-derived session identifier, not a credential. Recovery
+        // asks for workspace_load.path, then retries the original read-only tool with the
+        // returned id.
+        Assert.IsFalse(StructuredCallToolFilter.IsSensitiveFieldName("workspaceId"),
+            "Security review: workspaceId is a non-secret session token derived from the loaded path.");
+        Assert.IsTrue(StructuredCallToolFilter.IsElicitationAllowedFor("workspace_status", "workspaceId"));
+        Assert.IsTrue(StructuredCallToolFilter.IsElicitationAllowedFor("compile_check", "workspaceId"));
+    }
+
+    [TestMethod]
+    public void IsElicitationAllowedFor_WriteOrDestructiveWorkspaceId_ReturnsFalse()
+    {
+        Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("apply_text_edit", "workspaceId"),
+            "Missing workspaceId recovery must not auto-load-and-retry direct edit tools.");
+        Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("revert_last_apply", "workspaceId"),
+            "Missing workspaceId recovery must not auto-load-and-retry destructive undo tools.");
+        Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("workspace_close", "workspaceId"),
+            "Missing workspaceId recovery must not auto-load-and-retry destructive workspace lifecycle tools.");
     }
 
     [TestMethod]
@@ -78,7 +102,7 @@ public sealed class StructuredCallToolFilterElicitationTests
         // sensitive — the policy is "explicit allow, default deny".
         Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("workspace_load", "verbose"));
         Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("symbol_search", "query"));
-        Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("compile_check", "workspaceId"));
+        Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("unknown_tool", "workspaceId"));
     }
 
     // ── (b) fallback when client lacks elicitation capability ───────────────
@@ -207,5 +231,74 @@ public sealed class StructuredCallToolFilterElicitationTests
         Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("", "path"));
         Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("workspace_load", ""));
         Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor(null, null));
+    }
+
+    [TestMethod]
+    public async Task TryRecoverMissingWorkspaceIdAsync_ElicitsPathLoadsWorkspaceAndRetriesOriginalTool()
+    {
+        const string solutionPath = "C:/repo/SampleSolution.slnx";
+        const string recoveredWorkspaceId = "ws-recovered";
+        var elicitationCount = 0;
+        var dispatches = new List<(string ToolName, IReadOnlyDictionary<string, JsonElement> Arguments)>();
+
+        var result = await StructuredCallToolFilter.TryRecoverMissingWorkspaceIdAsync(
+            "workspace_status",
+            originalArguments: null,
+            elicitAsync: request =>
+            {
+                elicitationCount++;
+                Assert.IsTrue(request.RequestedSchema!.Properties.ContainsKey("path"),
+                    "Missing workspaceId recovery must elicit workspace_load.path, not ask the user to invent a session id.");
+                Assert.IsTrue(request.Message.Contains("workspaceId", StringComparison.Ordinal));
+
+                var pathElement = JsonSerializer.SerializeToElement(solutionPath, JsonDefaults.Indented);
+                var accepted = new ElicitResult
+                {
+                    Action = "accept",
+                    Content = new Dictionary<string, JsonElement>
+                    {
+                        ["path"] = pathElement,
+                    },
+                };
+                return ValueTask.FromResult(accepted);
+            },
+            dispatchAsync: (toolName, arguments) =>
+            {
+                dispatches.Add((toolName, new Dictionary<string, JsonElement>(arguments, StringComparer.Ordinal)));
+
+                if (toolName == "workspace_load")
+                {
+                    Assert.AreEqual(solutionPath, arguments["path"].GetString());
+                    return Task.FromResult(new CallToolResult
+                    {
+                        Content =
+                        [
+                            new TextContentBlock
+                            {
+                                Text = JsonSerializer.Serialize(
+                                    new { WorkspaceId = recoveredWorkspaceId },
+                                    JsonDefaults.Indented),
+                            },
+                        ],
+                    });
+                }
+
+                Assert.AreEqual("workspace_status", toolName);
+                Assert.AreEqual(recoveredWorkspaceId, arguments["workspaceId"].GetString());
+                return Task.FromResult(new CallToolResult
+                {
+                    Content = [new TextContentBlock { Text = """{"state":"ready"}""" }],
+                });
+            },
+            logger: null,
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsNotNull(result, "A supporting client path elicitation should recover and retry.");
+        Assert.AreEqual(1, elicitationCount, "The recovery path should ask the user exactly once.");
+        CollectionAssert.AreEqual(
+            new[] { "workspace_load", "workspace_status" },
+            dispatches.Select(dispatch => dispatch.ToolName).ToArray(),
+            "Recovery must load the workspace before retrying the original workspace-scoped tool.");
+        Assert.AreEqual("""{"state":"ready"}""", ((TextContentBlock)result.Content![0]).Text);
     }
 }

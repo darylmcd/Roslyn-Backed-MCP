@@ -18,6 +18,12 @@ You are a Roslyn MCP status reporter. Your job is to probe the running server, e
 
 This skill **is** the canonical entry point for server and workspace discovery — the other skills probe `server_info` / `workspace_list` internally; this skill surfaces that information directly to the user. If the tool list or workflow surface is unclear downstream, point users at **`server_info`**, the **`server_catalog`** resource (`roslyn://server/catalog`), or MCP prompt **`discover_capabilities`** with category `all`.
 
+## Automatic workspaceId recovery
+
+Clients that support MCP elicitation may auto-recover some missing `workspaceId` calls. When a registered read-only, non-destructive workspace-scoped tool is called without a required `workspaceId`, the server can ask for a `.sln` / `.slnx` / `.csproj` path, call `workspace_load`, then retry the original tool with the recovered `workspaceId`. `workspaceId` is a non-secret session identifier derived from the loaded workspace path; the server must not elicit credentials, tokens, passwords, API keys, authorization headers, or other sensitive values.
+
+If the client does not support elicitation, or if the user declines the prompt, follow the manual workflow below: run `workspace_list`, choose a current id, or call `workspace_load` again on the workspace path.
+
 ## Connectivity precheck
 
 Before running any `mcp__roslyn__*` tool call, probe the server once:
