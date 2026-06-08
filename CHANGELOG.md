@@ -16,6 +16,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [2.3.3] - 2026-06-08
+
+### Fixed
+
+- **Fixed:** `add_pragma_suppression` is now idempotent — when the target line is already covered by an active `#pragma warning disable <id>`, it no-ops (returns `EditsApplied: 0`) instead of appending a second identical pragma. Previously a retry (e.g. after an auto-reload) at the same site accumulated duplicate `#pragma warning disable` directives. Coverage detection reuses the same predicate `verify_pragma_suppresses` uses, so the two cannot drift. Closes `add-pragma-suppression-duplicate-on-retry`.
+- **Fixed:** Logged `dotnet` process-tree kill failures during command cancellation and early file-lock fast-fail cleanup without changing timeout/cancellation envelopes. Closes `dotnet-command-runner-kill-failure-observability`.
+- **Fixed:** Missing `workspaceId` calls on eligible read-only workspace tools can now elicit a workspace path, load it, and retry once with the recovered workspace id. Closes `elicitation-allowlist-workspaceid-recovery`.
+- **Fixed:** `find_implementations` now returns a structured `hint` (telling the caller to source-anchor the query) instead of a bare, possibly-empty result when a `metadataName` resolves to a corlib/BCL interface or abstract root (e.g. `System.IDisposable`). Such metadata-anchored roots bind to a single project's corlib reference, so cross-project implementers could silently drop out and read as `count: 0` — indistinguishable from "no implementers." Mirrors the `find_overrides` corlib-virtual guard (gh #754). The normal (non-corlib, source-anchored) path is unchanged. Closes `find-implementations-corlib-metadataname-zero`.
+- **Fixed:** `find_implementations` now reuses the symbol resolved for the corlib hint guard instead of resolving the same locator a second time on the normal path.
+- **Fixed:** `find_references` metadata-name disambiguation now dedupes indistinguishable candidates by `symbolHandle` before returning an ambiguity envelope. Closes `find-references-identical-ambiguous-candidates`.
+- **Fixed:** `member_hierarchy` now returns the standard `{error, category: "NotFound", message}` envelope when the locator resolves no symbol, instead of a bare JSON `null` that was ambiguous to callers (no-result vs failure). The message names the locator field supplied and echoes the unresolved value, matching the `symbol_relationships` / `symbol_info` convention. Closes `member-hierarchy-bare-null`.
+- **Fixed:** `get_code_actions` now flattens nested Roslyn code-action groups into previewable leaf actions so `preview_code_action` can preview the returned indices. Closes `preview-code-action-nested-notsupported`.
+- **Fixed:** `verify_pragma_suppresses` now reports a bounded confirmation-unavailable reason when live diagnostic confirmation cannot run, while preserving the structural pragma result.
+
+### Changed
+
+- **Changed:** `server_info.update` now carries latest-version check status (`checkStatus`) and completion time (`lastCheckedAt`) so operators can distinguish pending, failed, timed-out, and succeeded-with-no-update states even when `latest` is `null`. Closes `latest-version-status-surface`.
+
+### Added
+
+- **Added:** `server_catalog_version_diff` now exposes `roslyn://server/catalog-diff/{fromVersion}/{toVersion}` for the supported `v2.3.1` -> current `v2.3.2` release pair, backed by an embedded v2.3.1 catalog snapshot and structured added/removed/promoted/changed entries. Closes `surface-catalog-version-diff`.
+- **Added:** `workspace_readiness_report`, a stable read-only first-run readiness tool that reports `ready`, `restore-needed`, `build-needed`, or `analyzer-limited` with limitations and next workflows without running tests by default. Closes `workspace-readiness-report`.
+- **Added:** `workspace_support_bundle`, a stable read-only incident bundle for loaded workspaces that reports readiness, drift, capped change history, version metadata, diagnostic totals, and recovery hints without source snippets. Closes `workspace-support-bundle`.
+
+### Maintenance
+
+- **Maintenance:** Route `TypeConsumersService`, `CodePatternAnalyzer`, and `SymbolSearchService` read-side compilations through the shared `ICompilationCache` instead of calling `project.GetCompilationAsync` directly (batch 2 of the `compilation-cache-adoption-read-side` adoption sweep; batch 1 shipped in PR #913). Guarantees cross-call compilation sharing under GC pressure, analyzer-bound caching, and in-flight dedup for these read-side analysis paths.
+- **Maintenance:** De-flaked the `WorkspaceExecutionGate` auto-reload timeout-budget tests by injecting a `TimeProvider` into the gate (optional ctor parameter, defaults to `TimeProvider.System` — production behaviour and the DI registration are unchanged) so the per-request timeout CTS, and its post-auto-reload `CancelAfter` reset, arm on a controllable clock. The three `AutoReload_ResetsTimeoutBudget*` / `AutoReload_ParallelFanout_AllReadersSucceedAfterReload` tests now drive a `FakeTimeProvider` instead of racing real `Task.Delay` calls against a real 2-second timeout — the wall-clock race that intermittently threw `TaskCanceledException` under full-suite CI CPU contention (it failed the v2.3.2 release `validate` job and needed a re-run). A mutation check confirms the rewritten tests still fail when the budget reset is removed. Closes `flaky-gate-timeout-virtual-clock`.
+- **Maintenance:** `NuGetVersionChecker` now records an observable check status (`NeverChecked`/`Pending`/`Succeeded`/`Failed`/`TimedOut` via `LastCheckStatus`/`LastCheckedAt`) and logs fetch failures at Debug instead of silently swallowing them, distinguishing a timed-out check from other failures. The non-blocking, never-throws contract of `GetLatestVersion()` is unchanged; `latest-version-status-surface` subsequently exposes the status through `server_info.update`. Closes `nuget-version-check-observability`.
+- **Maintenance:** Removed the stale duplicate promotion scorecard at `ai_docs/audit-reports/_latest-promotion-scorecard.json` (serverVersion 1.34.2, from the retired `/audit-deep` writer). The canonical scorecard is the repo-root `audit-reports/_latest-promotion-scorecard.json` (serverVersion 1.38.1), written by the surface-test prompt and read by `eng/aggregate-promotion-scorecards.ps1`. Partial close of `promotion-scorecard-execution-batch` — source-of-truth dedup only; the tier-promotion re-run against the v2.3.x surface remains a tracked follow-on.
+- **Maintenance:** extracted script worker-thread, deadline, heartbeat, and abandonment accounting into `ScriptExecutionSupervisor` while keeping script DTO formatting in `ScriptingService`. Closes `scripting-service-execution-supervisor-extraction`.
+- **Maintenance:** Added a regression guard that keeps README, plugin, and backlog surface/skill count claims aligned with the live catalog and shipped skills. Closes `surface-count-doc-drift-guard`.
+- **Maintenance:** removed dead `SymbolRefactorService` DI fields and pinned concrete/interface singleton aliasing for its refactor collaborators. Closes `symbolrefactorservice-dead-di-fields`.
+- **Maintenance:** Added Debug-level observability for non-fatal `workspace_close(drainProcesses=true)` drain failures and workspace resource-list notification failures while preserving successful close/load/reload semantics. Closes `workspace-close-notification-drain-observability`.
+
 ## [2.3.2] - 2026-06-01
 
 ### Fixed
