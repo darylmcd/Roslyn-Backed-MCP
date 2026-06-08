@@ -1,5 +1,7 @@
 using System.Text.Json;
+using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
+using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Helpers;
 using RoslynMcp.Roslyn.Services;
@@ -120,5 +122,84 @@ public sealed class FindImplementationsCorlibHintTests : SharedWorkspaceTestBase
             "find_implementations on the user-declared ISnapshotFixtureStore must surface concrete implementers — the corlib guard must NOT short-circuit user interfaces.");
         Assert.IsFalse(root.TryGetProperty("hint", out _),
             $"Non-corlib envelope MUST NOT include a hint field — that would indicate the suppression code path leaked into the normal case. Got: {json}");
+    }
+
+    [TestMethod]
+    public async Task FindImplementations_Wrapper_UserInterface_UsesPreResolvedServicePath()
+    {
+        var referenceService = new RecordingPreResolvedReferenceService();
+
+        var json = await SymbolTools.FindImplementations(
+            WorkspaceExecutionGate,
+            WorkspaceManager,
+            referenceService,
+            WorkspaceId,
+            metadataName: "SampleLib.PartialImplFixture.ISnapshotFixtureStore",
+            ct: CancellationToken.None);
+
+        Assert.AreEqual(1, referenceService.PreResolvedCalls,
+            "The wrapper already resolved the symbol for the corlib guard and must pass it into the service path instead of resolving the locator again.");
+        Assert.AreEqual(0, referenceService.LocatorCalls,
+            "Normal wrapper calls should not fall back to the locator-based implementation when a pre-resolved service path is available.");
+        Assert.AreEqual("SampleLib.PartialImplFixture.ISnapshotFixtureStore", referenceService.LastSymbolMetadataName);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.IsTrue(root.TryGetProperty("count", out var count), $"Envelope must include count. Got: {json}");
+        Assert.AreEqual(0, count.GetInt32());
+        Assert.IsFalse(root.TryGetProperty("hint", out _),
+            $"The pre-resolved normal path must preserve the legacy non-corlib envelope without a hint. Got: {json}");
+    }
+
+    private sealed class RecordingPreResolvedReferenceService : IReferenceService, IPreResolvedReferenceService
+    {
+        public int LocatorCalls { get; private set; }
+        public int PreResolvedCalls { get; private set; }
+        public string? LastSymbolMetadataName { get; private set; }
+
+        public Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(
+            string workspaceId,
+            SymbolLocator locator,
+            CancellationToken ct,
+            bool includeGeneratedPartials = false)
+        {
+            LocatorCalls++;
+            return Task.FromResult<IReadOnlyList<LocationDto>>([]);
+        }
+
+        public Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(
+            string workspaceId,
+            ISymbol symbol,
+            CancellationToken ct,
+            bool includeGeneratedPartials = false)
+        {
+            PreResolvedCalls++;
+            LastSymbolMetadataName = symbol.ToDisplayString();
+            return Task.FromResult<IReadOnlyList<LocationDto>>([]);
+        }
+
+        public Task<IReadOnlyList<LocationDto>> FindReferencesAsync(
+            string workspaceId,
+            SymbolLocator locator,
+            CancellationToken ct,
+            bool summary = false,
+            IReadOnlyCollection<string>? projectFilter = null) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<SymbolDto>> FindOverridesAsync(string workspaceId, SymbolLocator locator, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<SymbolDto>> FindSiblingInterfaceImplementationsAsync(string workspaceId, SymbolLocator locator, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<SymbolDto>> FindBaseMembersAsync(string workspaceId, SymbolLocator locator, CancellationToken ct) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<BulkReferenceResultDto>> FindReferencesBulkAsync(
+            string workspaceId,
+            IReadOnlyList<BulkSymbolLocator> symbols,
+            bool includeDefinition,
+            CancellationToken ct) =>
+            throw new NotSupportedException();
     }
 }
