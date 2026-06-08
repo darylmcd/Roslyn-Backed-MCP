@@ -14,7 +14,7 @@ This skill does **not** query GitHub, reconcile plan state, edit `state.json` / 
 
 ## Why this exists
 
-Cold-subagent stalls (~1 in 10 spawn rate observed across 2026-04-17+18 passes) can emit a thought-fragment final message without the `<<<RESULT>>>` sentinel — see `ai_docs/prompts/backlog-sweep-execute.md` Appendix C's malformed-result detection. The orchestrator then cannot parse a PR URL, but the subagent may have already produced real edits in its worktree. 2026-04-18 pass-3 init-5 stranded 729 insertions across 4 prod files + 1 test file before a 3-turn manual recovery dance.
+Cold-subagent stalls (~1 in 10 spawn rate observed across 2026-04-17+18 passes) can emit a thought-fragment final message without the `<<<RESULT>>>` sentinel — see `~/.claude/prompts/_subagent-result-protocol.md` Appendix B's malformed-result detection (the subagent result protocol extracted from `backlog-sweep-execute.md`). The orchestrator then cannot parse a PR URL, but the subagent may have already produced real edits in its worktree. 2026-04-18 pass-3 init-5 stranded 729 insertions across 4 prod files + 1 test file before a 3-turn manual recovery dance.
 
 Manual recovery steps (each with its own foot-gun):
 
@@ -23,7 +23,7 @@ Manual recovery steps (each with its own foot-gun):
 3. Commit with a well-formed WIP message citing the original branch.
 4. Push to origin (so the WIP is durable before worktree removal).
 5. `cd` back to primary repo root — NOT from inside the worktree, or the next step fails.
-6. `dotnet build-server shutdown` **before** `git worktree remove --force`, or the Windows testhost/VBCSCompiler file lock on `tests/RoslynMcp.Tests/bin/{Debug,Release}/net10.0/` leaves a stale `.worktrees/<id>` directory that the orchestrator must `rm -rf` manually (`Device or resource busy` on `git worktree remove`). This is the fix shipped by initiative 5 in PR #288; see `ai_docs/prompts/backlog-sweep-execute.md` Appendix A step 8 for the canonical discipline.
+6. `dotnet build-server shutdown` **before** `git worktree remove --force`, or the Windows testhost/VBCSCompiler file lock on `tests/RoslynMcp.Tests/bin/{Debug,Release}/net10.0/` leaves a stale `.worktrees/<id>` directory that the orchestrator must `rm -rf` manually (`Device or resource busy` on `git worktree remove`). This is the fix shipped by initiative 5 in PR #288; see `~/.claude/prompts/backlog-sweep-execute.md` § Worktree cleanup for the canonical discipline.
 7. `git worktree remove --force .worktrees/<id>`.
 8. Emit a STATE_HANDOFF block the orchestrator can paste into `state.json.initiatives[n].notes`.
 
@@ -131,7 +131,7 @@ dotnet build-server shutdown
 
 The command prints one informational line even in the no-op case (e.g. `"Build server didn't shut down due to an error or it wasn't running."`) — ignore this; it is not an error.
 
-See `ai_docs/prompts/backlog-sweep-execute.md` Appendix A step 8 for the canonical shipped discipline (initiative 5 / PR #288).
+See `~/.claude/prompts/backlog-sweep-execute.md` § Worktree cleanup for the canonical shipped discipline (initiative 5 / PR #288).
 
 ### Step 6 — Remove the worktree
 
@@ -145,7 +145,7 @@ Do NOT delete the branch `remediation/<id>`. The orchestrator's retry or defer d
 
 ### Step 7 — Emit STATE_HANDOFF
 
-Print exactly 6 lines, prefixed `STATE_HANDOFF:`, for the orchestrator to paste into `state.json.initiatives[n].notes`. The 6-line shape is load-bearing — the orchestrator's Appendix C parse expects it.
+Print exactly 6 lines, prefixed `STATE_HANDOFF:`, for the orchestrator to paste into `state.json.initiatives[n].notes`. The 6-line shape is a stable visual contract: the orchestrator reads the block to update `notes` — there is **no automated parser** for it. (The orchestrator's malformed-result handling lives in `~/.claude/prompts/_subagent-result-protocol.md` Appendix B, cited above — NOT Appendix C, which is the cold-reviewer briefing and never parses this block.)
 
 ```
 STATE_HANDOFF:

@@ -29,7 +29,7 @@ Refuse and report cleanly — do NOT produce a partial fragment — if any of th
 | Condition | Message |
 |---|---|
 | Active `state.json` cannot be located OR `schemaVersion` ∉ {2, 3, 4} | `"Refusing: unsupported backlog-sweep state schema. This skill requires schemaVersion ∈ {2, 3, 4}. Found: <value> at <path>."` |
-| `gh` CLI is not on PATH (`command -v gh` fails) | `"Refusing: the 'gh' CLI is required to read commit metadata but was not found on PATH."` |
+| `git` CLI is not on PATH (`command -v git` fails) | `"Refusing: the 'git' CLI is required to read commit metadata but was not found on PATH. (gh is preferred for trailers/PR context but git show is a sufficient fallback — see Step 2.)"` |
 | A fragment file `changelog.d/<first-row-id>.md` already exists | `"Refusing: a fragment for row '<id>' already exists at changelog.d/<id>.md. This skill never clobbers existing fragments — edit the existing file by hand if it needs an update, or remove it first."` |
 | The initiative id is not found in `state.json` OR no CHANGELOG category resolves from EITHER `state.json` (`changelogCategory`) OR the plan.md stanza (`\| CHANGELOG category \|` row) | `"Refusing: initiative '<id>' not found, or no CHANGELOG category in state.json or its plan.md stanza. Add a 'CHANGELOG category' row to the initiative's plan.md stanza (or set changelogCategory in state.json)."` |
 | The commit cannot be resolved (`git show <ref>` returns non-zero) | `"Refusing: cannot resolve commit / branch '<ref>'."` |

@@ -18,13 +18,13 @@ This skill edits repository files and shells out to `gh` + `git`. Roslyn MCP **`
 
 ## Input
 
-`$ARGUMENTS` optionally names the plan directory (relative to repo root, e.g. `ai_docs/plans/20260417T120000Z_backlog-sweep`). If omitted, enumerate `ai_docs/plans/*_backlog-sweep/`, classify each as terminal vs non-terminal (terminal = `completed: true` AND every initiative status in `{merged, obsolete, deferred, cancelled, done, completed}`), and select the **oldest non-terminal** plan (FIFO drain). This mirrors `:execute` Step 0b / `:status` — do NOT default to newest-by-name, which strands older non-terminal plans whose in-review PRs never get reconciled.
+`$ARGUMENTS` optionally names the plan directory (relative to repo root, e.g. `ai_docs/plans/20260417T120000Z_backlog-sweep`). If omitted, enumerate `ai_docs/plans/*_backlog-sweep/`, classify each as terminal vs non-terminal (terminal = `completed: true` AND every initiative status in `{merged, obsolete, deferred}` — the canonical terminal set per `~/.claude/prompts/backlog-sweep-plan.md` § *State machine*), and select the **oldest non-terminal** plan (FIFO drain). This mirrors `:execute` Step 0b / `:status` — do NOT default to newest-by-name, which strands older non-terminal plans whose in-review PRs never get reconciled.
 
 ## Preconditions (HARD GATES — refuse if any fail)
 
 1. **`state.json` exists** at `{plan-dir}/state.json`. If missing, refuse: `"No state.json at {path}. Is this a backlog-sweep plan directory?"`.
 2. **`plan.md` exists** at `{plan-dir}/plan.md`. If missing, refuse.
-3. **`schemaVersion ∈ {2, 3}`** in `state.json` (2 = legacy `/backlog-sweep:plan`; 3 = `/backlog-sweep:prepare`-extended — both valid per the canonical field contract). If neither (or missing), refuse: `"Plan uses schemaVersion {n}; this skill supports 2 and 3. Re-run /backlog-sweep:plan or :prepare to regenerate."`.
+3. **`schemaVersion ∈ {2, 3, 4}`** in `state.json` (2 = legacy `/backlog-sweep:plan`; 3 = legacy `/backlog-sweep:prepare`-extended; 4 = `/backlog-sweep:prepare` status-SSOT, the **current default** — all three valid per the canonical field contract, which states every consumer including this skill MUST accept all three). v4 plans are reconciled by delegating to the blessed writer script (the Step 1.2 v4 fast path); 2/3 plans use the manual path below. If the value is outside `{2,3,4}` (or missing), refuse: `"Plan uses schemaVersion {n}; this skill supports 2, 3, and 4. Re-run /backlog-sweep:plan or :prepare to regenerate."`.
 4. **`gh` CLI is on PATH** (`gh --version` exits 0). If not, refuse: `"gh CLI not available — cannot query PR state. Install gh or run Step 1b manually."`.
 5. **`git` CLI is on PATH** (`git --version` exits 0). If not, refuse.
 6. **Working tree is clean** (`git status --porcelain` is empty) OR the only dirty paths are the two files this skill will edit (`state.json` + `plan.md`). If dirtier, refuse: `"Working tree has unrelated changes — commit or stash before reconciling."`.
@@ -36,7 +36,7 @@ This skill edits repository files and shells out to `gh` + `git`. Roslyn MCP **`
 
 1. Resolve the plan directory per Input above.
 2. Read `{plan-dir}/state.json` into memory. Validate `schemaVersion ∈ {2, 3, 4}`.
-   - **v4 fast path:** if `schemaVersion == 4` AND `~/.claude/scripts/bsweep-state.mjs` exists, delegate the whole reconcile to `node ~/.claude/scripts/bsweep-state.mjs reconcile --plan {plan-dir}` (one batched `gh pr list`, the same MERGED→merged / CLOSED→deferred transitions, plan.md status-table regen), then go straight to Step 5 (commit + PR). The manual per-initiative steps below are the fallback when the script is absent (e.g. an external plugin consumer) or the plan is pre-v4.
+   - **v4 fast path:** if `schemaVersion == 4` AND `~/.claude/scripts/bsweep-state.mjs` exists, delegate the whole reconcile to `node ~/.claude/scripts/bsweep-state.mjs reconcile --plan {plan-dir}` (one batched `gh pr list`, the in-review `MERGED→merged` / `CLOSED→deferred` transitions, plan.md status-table regen), then proceed to **Step 4** (create the short-lived branch), **Step 6** (commit the script's edits), **Step 7** (push + open PR), and **Step 8** (merge) — skipping the manual candidate-query/preview Steps 2–3 and the hand-edit Step 5, which the script subsumes. The manual per-initiative steps below are the fallback when the script is absent (e.g. an external plugin consumer) or the plan is pre-v4.
 3. Read `{plan-dir}/plan.md` into memory.
 4. Build the **reconciliation candidate list**: every initiative whose `status` is `in-review` or `in-progress` AND whose `prUrl` is non-null. Skip `pending`, `merged`, `obsolete`, `deferred`, and `paused-usage-limit` (the last is a mid-flight recovery state with no mergeable PR — resume it via `/backlog-sweep:execute initiative=<id>`, don't reconcile it here).
 5. If the candidate list is empty, report `"Nothing to reconcile — no in-review/in-progress initiatives with a PR URL."` and exit **without** creating a branch or PR.
@@ -102,16 +102,10 @@ For each in-flight transition:
    - For `deferred`: append the "PR #<n> closed without merge — manual triage required" note to `notes` (separator `" | "` if notes already non-empty).
    - Leave other fields (branch, worktreePath, rowsClosedCount, …) untouched — but NEVER null out `prUrl` on a `merged` record.
 
-2. **Update plan.md's Status row** for this initiative. The initiative's header block in `plan.md` looks like:
-   ```
-   ### {order}. `{initiative-id}` — {title}
-
-   **Status:** {status} · **Order:** {order} · **Correctness class:** {class} …
-   ```
-   Rewrite the `**Status:** …` value:
-   - `merged` → `merged (PR #{n}, {YYYY-MM-DD from mergedAt})`
-   - `deferred` → `deferred (PR #{n} closed; see notes)`
-   - Do not touch Order / Correctness class / Schedule hint / Estimated context / CHANGELOG category.
+2. **Update plan.md's Status row** for this initiative (legacy 2/3 plans only — v4 plans have NO per-stanza Status row; the Step 1.2 v4 fast path already regenerated the generated status table via the script). The initiative's stanza in `plan.md` is a markdown table under its `### {order}. \`{initiative-id}\` — {title}` heading (canonical shape: `~/.claude/prompts/backlog-sweep-plan.md` Step 8), with a `| Status | {value} |` row. Rewrite ONLY that row's value cell:
+   - `merged` → `| Status | merged (PR #{n}, {YYYY-MM-DD from mergedAt}) |`
+   - `deferred` → `| Status | deferred (PR #{n} closed; see notes) |`
+   - Do not touch any other table row (Order / Correctness class / Schedule hint / Estimated context / CHANGELOG category).
 
 Write both files back. Keep JSON formatting stable (2-space indent, trailing newline if the original had one).
 
@@ -155,7 +149,7 @@ gh pr create --title "chore(plan): reconcile {plan-timestamp} state" \
 {bulleted list of id: old → new (PR #n, timestamp)}
 
 ## Test plan
-- [x] `state.json` `schemaVersion` unchanged (2 or 3)
+- [x] `state.json` `schemaVersion` unchanged (2, 3, or 4)
 - [x] Only status / mergedAt / notes fields changed per initiative
 - [x] `plan.md` Status rows mirror state.json
 - [x] No unrelated files modified
@@ -203,7 +197,7 @@ If all initiatives are now terminal (`merged` / `obsolete` / `deferred`), additi
 ## Refusal cases (explicit)
 
 - **Plan directory missing / wrong shape** → refuse per Preconditions 1-2.
-- **`schemaVersion ∉ {2, 3}`** → refuse per Precondition 3 with re-plan instruction.
+- **`schemaVersion ∉ {2, 3, 4}`** → refuse per Precondition 3 with re-plan instruction. (v4 is supported via the Step 1.2 script delegation; only values outside `{2,3,4}` are refused.)
 - **`gh` / `git` missing** → refuse per Preconditions 4-5.
 - **Dirty working tree with unrelated paths** → refuse per Precondition 6.
 - **`main` diverged in a way that requires manual merge** during Step 8 rebase and the rebase surfaces conflicts outside `state.json` / `plan.md` → stop and hand off to the user; do not force-push away another contributor's edits.
