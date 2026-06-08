@@ -1,3 +1,4 @@
+using System.Net;
 using System.Reflection;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
@@ -17,9 +18,42 @@ namespace RoslynMcp.Tests;
 [TestClass]
 public sealed class ServerInfoUpdateLatestTests
 {
-    private sealed class FakeVersionProvider(string? latest) : ILatestVersionProvider
+    private sealed class FakeVersionProvider(
+        string? latest,
+        VersionCheckStatus status = VersionCheckStatus.Succeeded,
+        DateTime? lastCheckedAt = null) : ILatestVersionProvider
     {
         public string? GetLatestVersion() => latest;
+        public VersionCheckStatus LastCheckStatus { get; } = status;
+        public DateTime? LastCheckedAt { get; } = lastCheckedAt;
+    }
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+            => throw new HttpRequestException("simulated NuGet failure");
+    }
+
+    private sealed class SuccessThenThrowingHandler : HttpMessageHandler
+    {
+        private int _requestCount;
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _requestCount) == 1)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"versions":["1.0.0"]}"""),
+                });
+            }
+
+            throw new HttpRequestException("simulated NuGet refresh failure");
+        }
     }
 
     /// <summary>
@@ -79,6 +113,9 @@ public sealed class ServerInfoUpdateLatestTests
         Assert.IsTrue(update.TryGetProperty("latest", out var latest));
         Assert.AreEqual(JsonValueKind.Null, latest.ValueKind,
             "latest must be null when registry version is not strictly greater than current — pre-fix it surfaced the older value");
+
+        Assert.AreEqual("succeeded", update.GetProperty("checkStatus").GetString(),
+            "A successful check with no newer package must be distinguishable from pending/failed/timed-out checks.");
     }
 
     [TestMethod]
@@ -93,17 +130,125 @@ public sealed class ServerInfoUpdateLatestTests
         Assert.IsTrue(update.GetProperty("updateAvailable").GetBoolean());
         Assert.AreEqual(newer, update.GetProperty("latest").GetString(),
             "latest must surface when registry version is strictly greater than current");
+        Assert.AreEqual("succeeded", update.GetProperty("checkStatus").GetString());
     }
 
     [TestMethod]
-    public async Task ServerInfo_RegistryReturnedNull_UpdateBlockIsNull()
+    public async Task ServerInfo_CheckPending_UpdateBlockReportsPending()
     {
-        // When the version checker hasn't completed yet, the entire update block stays
-        // null — no false signal of a missing update.
-        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), new FakeVersionProvider(null));
+        // When the version checker hasn't completed yet, update.latest stays null but the
+        // operator-visible status now explains that the check is still in flight.
+        var json = await ServerTools.GetServerInfo(
+            new FakeWorkspaceManager(),
+            new FakeVersionProvider(null, VersionCheckStatus.Pending));
         using var doc = JsonDocument.Parse(json);
 
         var update = doc.RootElement.GetProperty("update");
-        Assert.AreEqual(JsonValueKind.Null, update.ValueKind);
+        Assert.AreEqual(JsonValueKind.Object, update.ValueKind);
+        Assert.AreEqual("pending", update.GetProperty("checkStatus").GetString());
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("latest").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("lastCheckedAt").ValueKind);
+    }
+
+    [TestMethod]
+    public async Task ServerInfo_CheckFailed_UpdateBlockReportsFailureAndCompletionTime()
+    {
+        var completedAt = new DateTime(2026, 6, 8, 14, 0, 0, DateTimeKind.Utc);
+        var json = await ServerTools.GetServerInfo(
+            new FakeWorkspaceManager(),
+            new FakeVersionProvider(null, VersionCheckStatus.Failed, completedAt));
+        using var doc = JsonDocument.Parse(json);
+
+        var update = doc.RootElement.GetProperty("update");
+        Assert.AreEqual("failed", update.GetProperty("checkStatus").GetString());
+        Assert.AreEqual(completedAt.ToString("O"), update.GetProperty("lastCheckedAt").GetString());
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("latest").ValueKind);
+        Assert.IsFalse(update.GetProperty("updateAvailable").GetBoolean());
+    }
+
+    [TestMethod]
+    public async Task ServerInfo_RealFailedChecker_DoesNotResetStatusToPending()
+    {
+        using var http = new HttpClient(new ThrowingHandler());
+        var checker = new NuGetVersionChecker(http);
+
+        Assert.IsNull(checker.GetLatestVersion(), "First call starts the background check.");
+        await WaitForTerminalStatusAsync(checker);
+        Assert.AreEqual(VersionCheckStatus.Failed, checker.LastCheckStatus);
+        Assert.IsNotNull(checker.LastCheckedAt);
+
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), checker);
+        using var doc = JsonDocument.Parse(json);
+
+        var update = doc.RootElement.GetProperty("update");
+        Assert.AreEqual("failed", update.GetProperty("checkStatus").GetString(),
+            "server_info must report the completed failure instead of starting a new pending check and hiding it.");
+        Assert.AreNotEqual(JsonValueKind.Null, update.GetProperty("lastCheckedAt").ValueKind);
+    }
+
+    [TestMethod]
+    public async Task ServerInfo_RealCheckerFailedRefreshAfterSuccess_DoesNotResetStatusToPending()
+    {
+        using var http = new HttpClient(new SuccessThenThrowingHandler());
+        var checker = new NuGetVersionChecker(http);
+
+        Assert.IsNull(checker.GetLatestVersion(), "First call starts the successful background check.");
+        await WaitForTerminalStatusAsync(checker);
+        Assert.AreEqual(VersionCheckStatus.Succeeded, checker.LastCheckStatus);
+        Assert.AreEqual("1.0.0", checker.GetLatestVersion());
+
+        ForceCacheExpired(checker);
+        Assert.AreEqual("1.0.0", checker.GetLatestVersion(),
+            "Expired cache refresh should return the stale value while the refresh runs.");
+        await WaitForTerminalStatusAsync(checker);
+        Assert.AreEqual(VersionCheckStatus.Failed, checker.LastCheckStatus);
+        Assert.IsNotNull(checker.LastCheckedAt);
+
+        var json = await ServerTools.GetServerInfo(new FakeWorkspaceManager(), checker);
+        using var doc = JsonDocument.Parse(json);
+
+        var update = doc.RootElement.GetProperty("update");
+        Assert.AreEqual("failed", update.GetProperty("checkStatus").GetString(),
+            "server_info must report a failed refresh instead of starting another pending check.");
+        Assert.AreNotEqual(JsonValueKind.Null, update.GetProperty("lastCheckedAt").ValueKind);
+    }
+
+    [TestMethod]
+    public async Task ServerInfo_CheckTimedOut_UpdateBlockReportsTimeoutAndCompletionTime()
+    {
+        var completedAt = new DateTime(2026, 6, 8, 14, 5, 0, DateTimeKind.Utc);
+        var json = await ServerTools.GetServerInfo(
+            new FakeWorkspaceManager(),
+            new FakeVersionProvider(null, VersionCheckStatus.TimedOut, completedAt));
+        using var doc = JsonDocument.Parse(json);
+
+        var update = doc.RootElement.GetProperty("update");
+        Assert.AreEqual("timedOut", update.GetProperty("checkStatus").GetString());
+        Assert.AreEqual(completedAt.ToString("O"), update.GetProperty("lastCheckedAt").GetString());
+        Assert.AreEqual(JsonValueKind.Null, update.GetProperty("latest").ValueKind);
+        Assert.IsFalse(update.GetProperty("updateAvailable").GetBoolean());
+    }
+
+    private static async Task WaitForTerminalStatusAsync(NuGetVersionChecker checker)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (checker.LastCheckStatus is VersionCheckStatus.Failed or VersionCheckStatus.TimedOut or VersionCheckStatus.Succeeded)
+                return;
+
+            await Task.Delay(25).ConfigureAwait(false);
+        }
+
+        Assert.Fail("Background version check did not reach a terminal status within the timeout.");
+    }
+
+    private static void ForceCacheExpired(NuGetVersionChecker checker)
+    {
+        var field = typeof(NuGetVersionChecker).GetField(
+            "_checkedAtUtc",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(field, "Test expects NuGetVersionChecker to keep the cache timestamp in _checkedAtUtc.");
+        field.SetValue(checker, DateTime.UtcNow - TimeSpan.FromHours(2));
     }
 }

@@ -111,6 +111,8 @@ public static class ServerTools
         // Sanity guard: never report "update available" when the reported latest is
         // older than the running version (can happen with stale NuGet CDN cache).
         var latestVersion = versionChecker.GetLatestVersion();
+        var checkStatus = versionChecker.LastCheckStatus;
+        var lastCheckedAt = versionChecker.LastCheckedAt;
         var currentSemver = version.Split('+')[0]; // strip git hash suffix
         var updateAvailable = latestVersion is not null
                               && Version.TryParse(currentSemver, out var currentParsed)
@@ -168,20 +170,29 @@ public static class ServerTools
                 "Remote HTTP/SSE hosting is not part of the current stable release contract."
             ],
             Capabilities: new ServerCapabilitiesDto(Tools: true, Resources: true, Prompts: true, Logging: true, Progress: true),
+            // latest-version-status-surface: always emit the update block so operators can
+            // distinguish "still checking" from "check failed/timed out" and "succeeded,
+            // no newer version" even though all three keep `latest=null`.
+            //
             // server-info-update-latest-inverted: only emit `latest` when the registry
             // reports a STRICTLY GREATER version than the running build. Pre-fix the
             // field surfaced any cached registry value (Jellyfin 2026-04-16: latest=1.16.0
             // while current=1.18.2 — the cached value was older). The new contract: if
             // `latest` is present, it is genuinely newer than `current`. updateAvailable
             // remains for callers that prefer the boolean.
-            Update: latestVersion is null ? null : new ServerUpdateInfoDto(
+            Update: new ServerUpdateInfoDto(
                 Current: currentSemver,
                 Latest: updateAvailable ? latestVersion : null,
                 UpdateAvailable: updateAvailable,
-                Command: updateAvailable ? "dotnet tool update -g Darylmcd.RoslynMcp" : null));
+                Command: updateAvailable ? "dotnet tool update -g Darylmcd.RoslynMcp" : null,
+                CheckStatus: FormatVersionCheckStatus(checkStatus),
+                LastCheckedAt: lastCheckedAt?.ToString("O")));
 
         return Task.FromResult(JsonSerializer.Serialize(info, JsonDefaults.Indented));
     }
+
+    private static string FormatVersionCheckStatus(VersionCheckStatus status)
+        => JsonSerializer.Serialize(status, JsonDefaults.Indented).Trim('"');
 
     /// <summary>
     /// mcp-connection-session-resilience: lightweight readiness probe. Returns only the
