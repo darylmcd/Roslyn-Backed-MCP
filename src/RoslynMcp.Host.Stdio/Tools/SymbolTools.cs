@@ -320,7 +320,9 @@ public static class SymbolTools
             // (count 0) while a source-anchored query at a usage site returns the full set. Mirror
             // the find_overrides corlib-virtual hint (gh #754): when the resolved symbol is a corlib
             // implementation root, return an explanatory hint instead of a bare (possibly-empty) set.
-            // The normal (non-corlib) path is byte-for-byte unchanged.
+            // The normal (non-corlib) output shape is unchanged; when the concrete service
+            // supports a pre-resolved symbol path, reuse this symbol instead of resolving the
+            // same locator again inside ReferenceService.
             var solution = workspaceManager.GetCurrentSolution(workspaceId);
             var resolved = await SymbolResolver.ResolveAsync(solution, locator, c).ConfigureAwait(false);
             if (resolved is not null && ReferenceService.IsCorlibImplementationRoot(resolved))
@@ -338,7 +340,9 @@ public static class SymbolTools
                     JsonDefaults.Indented);
             }
 
-            var results = await referenceService.FindImplementationsAsync(workspaceId, locator, c, includeGeneratedPartials);
+            var results = resolved is not null && referenceService is IPreResolvedReferenceService preResolvedReferenceService
+                ? await preResolvedReferenceService.FindImplementationsAsync(workspaceId, resolved, c, includeGeneratedPartials).ConfigureAwait(false)
+                : await referenceService.FindImplementationsAsync(workspaceId, locator, c, includeGeneratedPartials).ConfigureAwait(false);
             return JsonSerializer.Serialize(new { count = results.Count, items = results, includeGeneratedPartials }, JsonDefaults.Indented);
         }, ct);
     }

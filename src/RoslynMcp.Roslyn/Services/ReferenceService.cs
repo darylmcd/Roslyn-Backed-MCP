@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace RoslynMcp.Roslyn.Services;
 
-public sealed class ReferenceService : IReferenceService
+public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly ILogger<ReferenceService> _logger;
@@ -62,6 +62,17 @@ public sealed class ReferenceService : IReferenceService
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var symbol = await SymbolResolver.ResolveOrThrowAsync(solution, locator, ct).ConfigureAwait(false);
 
+        return await FindImplementationsAsync(workspaceId, symbol, ct, includeGeneratedPartials).ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<LocationDto>> FindImplementationsAsync(
+        string workspaceId,
+        ISymbol symbol,
+        CancellationToken ct,
+        bool includeGeneratedPartials = false)
+    {
+        _logger.LogDebug("ReferenceService.FindImplementationsAsync: workspaceId={WorkspaceId} symbol={Symbol} includeGeneratedPartials={IncludeGeneratedPartials}", workspaceId, symbol.ToDisplayString(), includeGeneratedPartials);
+        var solution = _workspace.GetCurrentSolution(workspaceId);
         var implementations = await SymbolFinder.FindImplementationsAsync(symbol, solution, cancellationToken: ct).ConfigureAwait(false);
         var results = new List<LocationDto>();
 
