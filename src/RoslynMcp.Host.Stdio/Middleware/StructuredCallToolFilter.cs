@@ -50,11 +50,15 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// <para><b>Elicitation fallback (MCP 2025-06-18 <c>elicitation/create</c>):</b></para>
 /// <para>
 /// When a tool call fails with <c>InvalidArgument: missing &lt;param&gt;</c> AND the
-/// missing parameter is on the strict elicitation allowlist (currently <c>workspace_load.path</c>
-/// only) AND the client declares the <c>elicitation</c> capability, the filter calls
+/// missing parameter is on the strict elicitation allowlist (currently
+/// <c>workspace_load.path</c>, plus required <c>workspaceId</c> parameters on registered
+/// read-only, non-destructive workspace-scoped tools) AND the client declares the
+/// <c>elicitation</c> capability, the filter calls
 /// <see cref="McpServer.ElicitAsync(ElicitRequestParams, CancellationToken)"/> to ask the
-/// user for the missing value, then re-invokes the tool with the elicited value patched
-/// into the arguments dictionary. Clients without elicitation capability (or users who
+/// user for the missing value. For <c>workspace_load.path</c> the value is patched into
+/// the original call. For missing <c>workspaceId</c>, the filter elicits a workspace path,
+/// calls <c>workspace_load</c>, extracts the returned <c>workspaceId</c>, then retries the
+/// original call with that id. Clients without elicitation capability (or users who
 /// decline / cancel) fall through to the existing <c>schemaHint</c>-augmented envelope
 /// (<see cref="ToolErrorHandler.ClassifyAndFormat"/>) so the existing recovery path is
 /// preserved exactly. Sensitive parameters (credentials, tokens, secrets, passwords,
@@ -70,6 +74,10 @@ namespace RoslynMcp.Host.Stdio.Middleware;
 /// </summary>
 internal static class StructuredCallToolFilter
 {
+    private const string WorkspaceLoadToolName = "workspace_load";
+    private const string WorkspaceIdParameterName = "workspaceId";
+    private const string PathParameterName = "path";
+
     /// <summary>
     /// Strict allowlist of <c>(toolName, paramName)</c> pairs that may be elicited from the
     /// user via <c>elicitation/create</c>. Anything not on this list is rejected at the
@@ -81,14 +89,17 @@ internal static class StructuredCallToolFilter
     /// Adding to this list requires explicit policy review: the parameter must be
     /// non-sensitive, naturally bounded (a path, an id, a select-from-N), and the recovery
     /// shape (one-shot retry with the elicited value patched in) must be safe for the tool's
-    /// idempotency semantics. As of this PR the only entry is <c>workspace_load.path</c>,
-    /// per the <c>elicit-workspace-path-on-missing-required-arg</c> initiative.
+    /// idempotency semantics. Required <c>workspaceId</c> parameters for read-only,
+    /// non-destructive tools are handled by
+    /// <see cref="IsWorkspaceIdRecoveryAllowedFor"/> because the concrete elicited field is
+    /// <c>workspace_load.path</c>; <c>workspaceId</c> itself is a path-derived session token,
+    /// not a credential, and is pinned non-sensitive by tests.
     /// </para>
     /// </summary>
     private static readonly HashSet<(string Tool, string Param)> AllowedElicitationParameters =
         new()
         {
-            ("workspace_load", "path"),
+            (WorkspaceLoadToolName, PathParameterName),
         };
 
     /// <summary>
@@ -218,7 +229,8 @@ internal static class StructuredCallToolFilter
     {
         if (string.IsNullOrEmpty(toolName) || string.IsNullOrEmpty(paramName)) return false;
         if (IsSensitiveFieldName(paramName)) return false;
-        return AllowedElicitationParameters.Contains((toolName, paramName));
+        return AllowedElicitationParameters.Contains((toolName, paramName))
+               || IsWorkspaceIdRecoveryAllowedFor(toolName, paramName);
     }
 
     /// <summary>
@@ -281,10 +293,22 @@ internal static class StructuredCallToolFilter
             return null;
         }
 
+        if (IsWorkspaceIdRecoveryAllowedFor(toolName, missingParam))
+        {
+            return await TryRecoverMissingWorkspaceIdAsync(
+                toolName,
+                CopyArguments(context.Params!.Arguments),
+                request => context.Server!.ElicitAsync(request, cancellationToken),
+                (dispatchToolName, arguments) =>
+                    DispatchWithTemporaryArgumentsAsync(context, next, dispatchToolName, arguments, cancellationToken),
+                logger,
+                cancellationToken).ConfigureAwait(false);
+        }
+
         // Build the strict elicit request. Single string field ('path'), required, with a
         // descriptive prompt — the user sees a one-field form (in form mode) or navigates
         // to the URL (in url mode); the client picks based on its declared sub-capability.
-        var elicitRequest = BuildPathElicitationRequest(toolName, missingParam);
+        var elicitRequest = BuildWorkspacePathElicitationRequest(toolName, missingParam);
 
         ElicitResult elicitResult;
         try
@@ -334,6 +358,88 @@ internal static class StructuredCallToolFilter
         return await next(context, cancellationToken).ConfigureAwait(false);
     }
 
+    internal static bool IsWorkspaceIdRecoveryAllowedFor(string toolName, string paramName)
+    {
+        if (!string.Equals(paramName, WorkspaceIdParameterName, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (IsSensitiveFieldName(paramName))
+        {
+            return false;
+        }
+
+        var schema = ToolParameterIndex.GetParameter(toolName, paramName);
+        var tool = ServerSurfaceCatalog.Tools.FirstOrDefault(entry =>
+            string.Equals(entry.Name, toolName, StringComparison.Ordinal));
+
+        return schema is { Type: "string", Required: true }
+               && tool is { ReadOnly: true, Destructive: false };
+    }
+
+    internal static async Task<CallToolResult?> TryRecoverMissingWorkspaceIdAsync(
+        string toolName,
+        IReadOnlyDictionary<string, JsonElement>? originalArguments,
+        Func<ElicitRequestParams, ValueTask<ElicitResult>> elicitAsync,
+        Func<string, IReadOnlyDictionary<string, JsonElement>, Task<CallToolResult>> dispatchAsync,
+        ILogger? logger,
+        CancellationToken cancellationToken)
+    {
+        var elicitRequest = BuildWorkspacePathElicitationRequest(toolName, WorkspaceIdParameterName);
+        ElicitResult elicitResult;
+        try
+        {
+            elicitResult = await elicitAsync(elicitRequest).ConfigureAwait(false);
+        }
+        catch (Exception elicitEx)
+        {
+            logger?.LogWarning(elicitEx,
+                "WorkspaceId recovery elicitation failed for {Tool}; falling back to schemaHint envelope.",
+                toolName);
+            return null;
+        }
+
+        if (!elicitResult.IsAccepted || elicitResult.Content is null
+            || !elicitResult.Content.TryGetValue(PathParameterName, out var pathValue))
+        {
+            logger?.LogInformation(
+                "User declined or cancelled workspaceId recovery elicitation for {Tool}", toolName);
+            return null;
+        }
+
+        if (pathValue.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(pathValue.GetString()))
+        {
+            return null;
+        }
+
+        var loadArgs = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+        {
+            [PathParameterName] = pathValue,
+        };
+        var loadResult = await dispatchAsync(WorkspaceLoadToolName, loadArgs).ConfigureAwait(false);
+        var workspaceId = TryExtractWorkspaceId(loadResult);
+        if (string.IsNullOrWhiteSpace(workspaceId))
+        {
+            logger?.LogWarning(
+                "workspace_load did not return a workspaceId during recovery for {Tool}; falling back to schemaHint envelope.",
+                toolName);
+            return null;
+        }
+
+        var retryArgs = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        if (originalArguments is not null)
+        {
+            foreach (var kvp in originalArguments)
+            {
+                retryArgs[kvp.Key] = kvp.Value;
+            }
+        }
+
+        retryArgs[WorkspaceIdParameterName] = JsonSerializer.SerializeToElement(workspaceId, JsonDefaults.Indented);
+        return await dispatchAsync(toolName, retryArgs).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Inspects <paramref name="ex"/> for the InvalidArgument-shaped binding-failure
     /// exceptions the SDK delivers when a required parameter is missing. Returns
@@ -367,27 +473,79 @@ internal static class StructuredCallToolFilter
     /// asked for. Form mode is the canonical shape; clients that only support url mode can
     /// still complete via out-of-band navigation.
     /// </summary>
-    private static ElicitRequestParams BuildPathElicitationRequest(string toolName, string paramName)
+    private static ElicitRequestParams BuildWorkspacePathElicitationRequest(string toolName, string missingParamName)
     {
+        var message = string.Equals(missingParamName, WorkspaceIdParameterName, StringComparison.Ordinal)
+            ? $"The {toolName} tool was called without a 'workspaceId' argument. " +
+              "Provide an absolute path to a .sln, .slnx, or .csproj file; the server will call workspace_load and retry with the recovered workspaceId."
+            : $"The {toolName} tool was called without a '{missingParamName}' argument. " +
+              "Provide an absolute path to a .sln, .slnx, or .csproj file to continue.";
+
         return new ElicitRequestParams
         {
-            Message =
-                $"The {toolName} tool was called without a '{paramName}' argument. " +
-                $"Provide an absolute path to a .sln, .slnx, or .csproj file to continue.",
+            Message = message,
             RequestedSchema = new ElicitRequestParams.RequestSchema
             {
                 Properties = new Dictionary<string, ElicitRequestParams.PrimitiveSchemaDefinition>
                 {
-                    [paramName] = new ElicitRequestParams.StringSchema
+                    [PathParameterName] = new ElicitRequestParams.StringSchema
                     {
                         Title = "Workspace path",
                         Description =
                             "Absolute path to a .sln, .slnx, or .csproj file on the local filesystem.",
                     },
                 },
-                Required = [paramName],
+                Required = [PathParameterName],
             },
         };
+    }
+
+    private static async Task<CallToolResult> DispatchWithTemporaryArgumentsAsync(
+        RequestContext<CallToolRequestParams> context,
+        McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+        string toolName,
+        IReadOnlyDictionary<string, JsonElement> arguments,
+        CancellationToken cancellationToken)
+    {
+        var originalToolName = context.Params!.Name;
+        var originalArgs = context.Params.Arguments;
+        try
+        {
+            context.Params.Name = toolName;
+            context.Params.Arguments = new Dictionary<string, JsonElement>(arguments, StringComparer.Ordinal);
+            return await next(context, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.Params.Name = originalToolName;
+            context.Params.Arguments = originalArgs;
+        }
+    }
+
+    private static IReadOnlyDictionary<string, JsonElement>? CopyArguments(
+        IDictionary<string, JsonElement>? arguments)
+    {
+        if (arguments is null) return null;
+        return new Dictionary<string, JsonElement>(arguments, StringComparer.Ordinal);
+    }
+
+    private static string? TryExtractWorkspaceId(CallToolResult result)
+    {
+        if (result.Content is null || result.Content.Count == 0) return null;
+        if (result.Content[0] is not TextContentBlock text || string.IsNullOrWhiteSpace(text.Text)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(text.Text);
+            return doc.RootElement.TryGetProperty(WorkspaceIdParameterName, out var id)
+                   && id.ValueKind == JsonValueKind.String
+                ? id.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
