@@ -75,17 +75,20 @@ public sealed record ResourceServerNameHintsDto(
 public sealed record ServerCapabilitiesDto(bool Tools, bool Resources, bool Prompts, bool Logging, bool Progress);
 
 /// <summary>
-/// Update-availability subtree. Only present when the registry probe succeeded; the
+/// Update-availability subtree. Present on <c>server_info</c> so callers can inspect the
+/// latest-version check status even when no newer version is available. The
 /// <see cref="Latest"/> field is non-null only when the registry version is STRICTLY GREATER
-/// than the running build (server-info-update-latest-inverted contract). Both nullable fields
-/// emit explicit <c>null</c> on the wire (matching the legacy anonymous-object shape) so the
-/// existing <c>ServerInfoUpdateLatestTests</c> contract holds.
+/// than the running build (server-info-update-latest-inverted contract).
+/// <see cref="CheckStatus"/> and <see cref="LastCheckedAt"/> distinguish pending, failed,
+/// timed-out, and completed checks even when <see cref="Latest"/> is null.
 /// </summary>
 public sealed record ServerUpdateInfoDto(
     string Current,
     string? Latest,
     bool UpdateAvailable,
-    string? Command);
+    string? Command,
+    string CheckStatus,
+    string? LastCheckedAt);
 
 /// <summary>
 /// tool-output-schema-batch-1-server-info-workspace: typed shape for the

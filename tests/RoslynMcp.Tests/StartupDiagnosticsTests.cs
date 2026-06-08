@@ -263,5 +263,7 @@ public sealed class StartupDiagnosticsTests
     private sealed class StubVersionProvider : ILatestVersionProvider
     {
         public string? GetLatestVersion() => null;
+        public VersionCheckStatus LastCheckStatus => VersionCheckStatus.NeverChecked;
+        public DateTime? LastCheckedAt => null;
     }
 }

@@ -412,5 +412,7 @@ public sealed class HostProcessMetadataTests
     private sealed class FakeVersionProvider : ILatestVersionProvider
     {
         public string? GetLatestVersion() => null;
+        public VersionCheckStatus LastCheckStatus => VersionCheckStatus.NeverChecked;
+        public DateTime? LastCheckedAt => null;
     }
 }

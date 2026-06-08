@@ -13,14 +13,20 @@ public interface ILatestVersionProvider
 {
     /// <inheritdoc cref="NuGetVersionChecker.GetLatestVersion"/>
     string? GetLatestVersion();
+
+    /// <inheritdoc cref="NuGetVersionChecker.LastCheckStatus"/>
+    VersionCheckStatus LastCheckStatus { get; }
+
+    /// <inheritdoc cref="NuGetVersionChecker.LastCheckedAt"/>
+    DateTime? LastCheckedAt { get; }
 }
 
 /// <summary>
 /// Outcome of the most recent NuGet latest-version check. Surfaced via
 /// <see cref="NuGetVersionChecker.LastCheckStatus"/> for observability — distinguishes the
 /// states a bare null return previously collapsed together (never started, in flight,
-/// succeeded, network/parse failure, timeout). INTERNAL signal only; not part of the
-/// server_info wire schema.
+/// succeeded, network/parse failure, timeout). Surfaced to operators via
+/// <c>server_info.update.checkStatus</c>.
 /// </summary>
 public enum VersionCheckStatus
 {
@@ -83,7 +89,7 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
 
     /// <summary>
     /// UTC timestamp of the last completed check (success or failure), or null if no check
-    /// has finished yet. A Pending status leaves this at its prior value.
+    /// has finished yet or a refresh is currently pending.
     /// </summary>
     public DateTime? LastCheckedAt
     {
@@ -99,16 +105,24 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
     {
         lock (_lock)
         {
+            var now = DateTime.UtcNow;
             var cacheValid = _latestVersion is not null
-                             && (DateTime.UtcNow - _checkedAtUtc) < CacheDuration;
+                             && (now - _checkedAtUtc) < CacheDuration;
 
             if (cacheValid)
                 return _latestVersion;
+
+            var recentTerminalFailure = _lastCheckedAtUtc is not null
+                                        && _lastCheckStatus is VersionCheckStatus.Failed or VersionCheckStatus.TimedOut
+                                        && (now - _lastCheckedAtUtc.Value) < CacheDuration;
+            if (recentTerminalFailure)
+                return null;
 
             // Kick off a background refresh if one isn't already running
             if (_pendingCheck is null || _pendingCheck.IsCompleted)
             {
                 _lastCheckStatus = VersionCheckStatus.Pending;
+                _lastCheckedAtUtc = null;
                 _pendingCheck = Task.Run(FetchLatestVersionAsync);
             }
 

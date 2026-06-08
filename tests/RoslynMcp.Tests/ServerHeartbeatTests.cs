@@ -202,5 +202,9 @@ public sealed class ServerHeartbeatTests
     private sealed class FakeVersionProvider(string? latest) : ILatestVersionProvider
     {
         public string? GetLatestVersion() => latest;
+        public VersionCheckStatus LastCheckStatus => latest is null
+            ? VersionCheckStatus.Pending
+            : VersionCheckStatus.Succeeded;
+        public DateTime? LastCheckedAt => latest is null ? null : DateTime.UtcNow;
     }
 }

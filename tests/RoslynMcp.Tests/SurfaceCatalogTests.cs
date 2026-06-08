@@ -161,10 +161,13 @@ public sealed class SurfaceCatalogTests
         var changedTool = diff.Tools.Changed.Single(entry => entry.Name == "get_completions");
         CollectionAssert.AreEqual(new[] { "summary" }, changedTool.ChangedFields.Select(field => field.Field).ToArray());
 
+        var changedServerInfo = diff.Tools.Changed.Single(entry => entry.Name == "server_info");
+        CollectionAssert.AreEqual(new[] { "outputSchema" }, changedServerInfo.ChangedFields.Select(field => field.Field).ToArray());
+
         Assert.AreEqual(3, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(1, diff.Summary.Changed);
+        Assert.AreEqual(2, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -179,7 +182,9 @@ public sealed class SurfaceCatalogTests
         Assert.AreEqual(3, summary.GetProperty("added").GetInt32());
         Assert.IsTrue(document.RootElement.TryGetProperty("tools", out var tools));
         Assert.IsTrue(tools.TryGetProperty("changed", out var changed));
-        Assert.AreEqual("get_completions", changed.EnumerateArray().Single().GetProperty("name").GetString());
+        CollectionAssert.AreEquivalent(
+            new[] { "get_completions", "server_info" },
+            changed.EnumerateArray().Select(entry => entry.GetProperty("name").GetString()).ToArray());
     }
 
     [TestMethod]
