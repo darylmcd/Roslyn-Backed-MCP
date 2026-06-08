@@ -36,7 +36,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
-- **Added:** `server_catalog_version_diff` now exposes `roslyn://server/catalog-diff/{fromVersion}/{toVersion}` for the supported `v2.3.1` -> current `v2.3.2` release pair, backed by an embedded v2.3.1 catalog snapshot and structured added/removed/promoted/changed entries. Closes `surface-catalog-version-diff`.
+- **Added:** `server_catalog_version_diff` now exposes `roslyn://server/catalog-diff/{fromVersion}/{toVersion}` for the supported `v2.3.1` -> `v2.3.2` release pair, backed by an embedded v2.3.1 catalog snapshot and structured added/removed/promoted/changed entries. Closes `surface-catalog-version-diff`.
 - **Added:** `workspace_readiness_report`, a stable read-only first-run readiness tool that reports `ready`, `restore-needed`, `build-needed`, or `analyzer-limited` with limitations and next workflows without running tests by default. Closes `workspace-readiness-report`.
 - **Added:** `workspace_support_bundle`, a stable read-only incident bundle for loaded workspaces that reports readiness, drift, capped change history, version metadata, diagnostic totals, and recovery hints without source snippets. Closes `workspace-support-bundle`.
 
