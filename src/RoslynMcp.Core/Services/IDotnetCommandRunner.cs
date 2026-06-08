@@ -22,7 +22,10 @@ public interface IDotnetCommandRunner
     /// <param name="workingDirectory">The working directory for the process.</param>
     /// <param name="targetPath">The solution or project path passed as the primary target argument.</param>
     /// <param name="arguments">Additional arguments to pass to <c>dotnet</c>.</param>
-    /// <param name="ct">Cancellation token. Cancellation will attempt to kill the child process.</param>
+    /// <param name="ct">
+    /// Cancellation token. Cancellation will attempt to kill the child process; implementations
+    /// should make cleanup failure observable without throwing from the cancellation callback.
+    /// </param>
     Task<CommandExecutionDto> RunAsync(
         string workingDirectory,
         string targetPath,

@@ -2,6 +2,7 @@ using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
 using Microsoft.CodeAnalysis;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RoslynMcp.Tests;
@@ -89,6 +90,32 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
             service.BuildWorkspaceAsync("workspace-1", CancellationToken.None));
     }
 
+    [TestMethod]
+    public async Task DotnetCommandRunner_CancellationKillFailure_LogsWarningWithoutChangingCancellation()
+    {
+        var logger = new ListLogger<DotnetCommandRunner>();
+        var runner = new DotnetCommandRunner(
+            outputLimit: 1024,
+            killProcessTree: _ => throw new InvalidOperationException("simulated kill failure"),
+            logger);
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+            runner.RunAsync(
+                Environment.CurrentDirectory,
+                targetPath: "dotnet-info",
+                arguments: ["--info"],
+                cts.Token));
+
+        var entry = logger.Entries.SingleOrDefault(candidate =>
+            candidate.Level == LogLevel.Warning &&
+            candidate.Message.Contains("Failed to kill dotnet process tree", StringComparison.Ordinal) &&
+            candidate.Exception is InvalidOperationException);
+
+        Assert.IsNotNull(entry, "Cancellation kill failures should be observable without changing cancellation semantics.");
+    }
+
     private sealed class HangingDotnetCommandRunner : IDotnetCommandRunner
     {
         public async Task<CommandExecutionDto> RunAsync(
@@ -99,6 +126,24 @@ public sealed class HardeningBehaviorTests : SharedWorkspaceTestBase
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             throw new InvalidOperationException("The delay should have been cancelled.");
+        }
+    }
+
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add((logLevel, formatter(state, exception), exception));
         }
     }
 

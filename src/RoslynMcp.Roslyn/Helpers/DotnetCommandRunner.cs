@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Diagnostics;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 
@@ -28,11 +29,42 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
     private const int DefaultOutputLimit = 12_000;
     private const int ReadBufferSize = 4096;
 
+    private static readonly Action<ILogger, int, string, string, Exception?> LogProcessTreeKillFailed =
+        LoggerMessage.Define<int, string, string>(
+            LogLevel.Warning,
+            new EventId(1, nameof(LogProcessTreeKillFailed)),
+            "Failed to kill dotnet process tree for process {ProcessId} after {KillReason} while running {TargetPath}.");
+
     private readonly int _outputLimit;
+    private readonly ILogger<DotnetCommandRunner>? _logger;
+    private readonly Action<Process> _killProcessTree;
 
     public DotnetCommandRunner(int outputLimit = DefaultOutputLimit)
+        : this(logger: null, outputLimit, KillProcessTree)
+    {
+    }
+
+    public DotnetCommandRunner(ILogger<DotnetCommandRunner> logger)
+        : this(logger, DefaultOutputLimit, KillProcessTree)
+    {
+    }
+
+    internal DotnetCommandRunner(
+        int outputLimit,
+        Action<Process> killProcessTree,
+        ILogger<DotnetCommandRunner>? logger = null)
+        : this(logger, outputLimit, killProcessTree)
+    {
+    }
+
+    private DotnetCommandRunner(
+        ILogger<DotnetCommandRunner>? logger,
+        int outputLimit,
+        Action<Process> killProcessTree)
     {
         _outputLimit = outputLimit > 0 ? outputLimit : DefaultOutputLimit;
+        _logger = logger;
+        _killProcessTree = killProcessTree;
     }
 
     public Task<CommandExecutionDto> RunAsync(
@@ -70,19 +102,14 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
 
         using var cancellationRegistration = ct.Register(static state =>
         {
-            try
-            {
-                ((Process)state!).Kill(entireProcessTree: true);
-            }
-            catch
-            {
-            }
-        }, process);
+            var kill = (ProcessKillState)state!;
+            kill.Runner.TryKillProcessTree(kill.Process, kill.TargetPath, "cancellation");
+        }, new ProcessKillState(this, process, targetPath));
 
         // Item 4: share a single early-kill coordinator across both stream readers so either
         // stdout or stderr can terminate the process on first match.
         var earlyKill = earlyKillPatterns is { Count: > 0 }
-            ? new EarlyKillCoordinator(process, earlyKillPatterns)
+            ? new EarlyKillCoordinator(this, process, targetPath, earlyKillPatterns)
             : null;
 
         var stdOutTask = ReadBoundedAsync(process.StandardOutput, _outputLimit, earlyKill, ct);
@@ -104,6 +131,23 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
             StdOut: stdOut,
             StdErr: stdErr,
             EarlyKillReason: earlyKill?.KillReason);
+    }
+
+    private static void KillProcessTree(Process process) => process.Kill(entireProcessTree: true);
+
+    private void TryKillProcessTree(Process process, string targetPath, string killReason)
+    {
+        try
+        {
+            _killProcessTree(process);
+        }
+        catch (Exception ex)
+        {
+            if (_logger is not null)
+            {
+                LogProcessTreeKillFailed(_logger, process.Id, killReason, targetPath, ex);
+            }
+        }
     }
 
     private static async Task<string> ReadBoundedAsync(
@@ -145,13 +189,21 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
     /// </summary>
     private sealed class EarlyKillCoordinator
     {
+        private readonly DotnetCommandRunner _runner;
         private readonly Process _process;
+        private readonly string _targetPath;
         private readonly IReadOnlyList<EarlyKillPattern> _patterns;
         private int _killed;
 
-        public EarlyKillCoordinator(Process process, IReadOnlyList<EarlyKillPattern> patterns)
+        public EarlyKillCoordinator(
+            DotnetCommandRunner runner,
+            Process process,
+            string targetPath,
+            IReadOnlyList<EarlyKillPattern> patterns)
         {
+            _runner = runner;
             _process = process;
+            _targetPath = targetPath;
             _patterns = patterns;
         }
 
@@ -170,19 +222,17 @@ public sealed class DotnetCommandRunner : IDotnetCommandRunner
                 {
                     if (Interlocked.Exchange(ref _killed, 1) != 0) return;
                     KillReason = pattern.Reason;
-                    try
-                    {
-                        _process.Kill(entireProcessTree: true);
-                    }
-                    catch
-                    {
-                        // Process may have already exited between the match and kill; ignore.
-                    }
+                    _runner.TryKillProcessTree(_process, _targetPath, "early-kill pattern");
                     return;
                 }
             }
         }
     }
+
+    private sealed record ProcessKillState(
+        DotnetCommandRunner Runner,
+        Process Process,
+        string TargetPath);
 
     private sealed class BoundedTextBuffer(int maxLength)
     {

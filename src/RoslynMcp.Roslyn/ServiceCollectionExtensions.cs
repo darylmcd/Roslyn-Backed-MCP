@@ -26,7 +26,8 @@ public static class ServiceCollectionExtensions
             var opts = sp.GetService<ExecutionGateOptions>() ?? new ExecutionGateOptions();
             return new WorkspaceExecutionGate(opts, sp.GetRequiredService<IWorkspaceManager>());
         });
-        services.AddSingleton<IDotnetCommandRunner, DotnetCommandRunner>();
+        services.AddSingleton<IDotnetCommandRunner>(sp =>
+            new DotnetCommandRunner(sp.GetRequiredService<ILogger<DotnetCommandRunner>>()));
         services.AddSingleton<IGatedCommandExecutor, GatedCommandExecutor>();
         services.AddSingleton<IPreviewStore>(sp =>
         {
