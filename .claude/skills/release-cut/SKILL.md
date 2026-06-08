@@ -41,7 +41,7 @@ Each step records its result (stdout + exit code + any derived values like the n
 - **Step 5 Tag** — `git tag -l vX.Y.Z`; if the tag exists locally AND on origin (`git ls-remote --tags origin refs/tags/vX.Y.Z`), skip.
 - **Step 6 Reinstall** — call `server_info`; if `version` matches the new version AND `~/.claude/plugins/cache/roslyn-mcp-marketplace/roslyn-mcp/` contains only the new-version directory, skip.
 
-The probes are best-effort; when uncertain, re-run the step. Re-running `/bump` on an already-bumped repo is a no-op when all 5 files agree (verify-version-drift.ps1 short-circuits).
+The probes are best-effort; when uncertain, re-run the step. Re-running `/bump` on an already-bumped repo is a no-op when all 6 files agree (verify-version-drift.ps1 short-circuits).
 
 ## Workflow
 
@@ -68,13 +68,13 @@ Display current -> new and the planned flow (Bump, Verify, Ship, Tag, Reinstall)
 ### Step 2: Bump (delegate to `/bump`)
 
 Invoke the `/bump` skill with the same `$ARGUMENTS` value. That skill:
-- Edits all 5 version files (`Directory.Build.props`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `manifest.json`, `CHANGELOG.md`).
+- Edits all 6 version files (`Directory.Build.props`, `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `manifest.json`, `.claude-plugin/server.json`, `CHANGELOG.md`).
 - Prepends a `## [X.Y.Z] - YYYY-MM-DD` header to `CHANGELOG.md`.
-- Runs `eng/verify-version-drift.ps1` to confirm all 5 files agree.
+- Runs `eng/verify-version-drift.ps1` to confirm all 6 files agree.
 
 After `/bump` returns, verify:
 - `eng/verify-version-drift.ps1` exit 0.
-- `git diff --name-only` shows exactly the 5 expected paths.
+- `git diff --name-only` shows the 6 version-file paths plus the consumed `changelog.d/*.md` fragment deletions.
 
 If the CHANGELOG.md `## [Unreleased]` section had content, `/bump` moved it under the new version header. If the section was empty, remind the user: "CHANGELOG.md section is empty — fill in before Ship, or abort with git reset --hard origin/main." Pause for the user to review/edit before Step 3.
 
@@ -94,7 +94,7 @@ Also run `pwsh -NoProfile -File eng/verify-ai-docs.ps1` (fast; covers shipped-sk
 
 **Contract assumed from `/ship` (user-global skill at `~/.claude/skills/ship/SKILL.md`, not version-pinned to this repo):**
 - Creates a release branch (convention: `release/vX.Y.Z`) if the working tree has uncommitted version-file edits.
-- Commits the 5 version-file edits with message `release: vX.Y.Z` (exact casing per precedent).
+- Commits the 6 version-file edits plus the consumed `changelog.d/*.md` fragment deletions with message `release: vX.Y.Z` (exact casing per precedent).
 - Pushes the branch with `-u origin`.
 - Opens a PR with title `release: vX.Y.Z`.
 - Waits for checks to go green.
@@ -107,12 +107,11 @@ If `/ship` is unavailable or its contract has drifted, fall back to the manual s
 
 ```
 git checkout -b release/vX.Y.Z
-git add -- \
-  Directory.Build.props \
-  .claude-plugin/plugin.json \
-  .claude-plugin/marketplace.json \
-  manifest.json \
-  CHANGELOG.md
+# /bump already produced exactly the change set to commit: the 6 version files
+# (incl. .claude-plugin/server.json) modified + the consumed changelog.d/*.md
+# fragment deletions. The tree was clean before the cut (refusal gate), so
+# `git add -A` stages precisely those paths — no hand-maintained list to drift.
+git add -A
 git commit -m "release: vX.Y.Z"
 git push -u origin release/vX.Y.Z
 gh pr create --title "release: vX.Y.Z" --body "Version bump to X.Y.Z. See CHANGELOG.md for details."
@@ -172,7 +171,7 @@ Display a summary:
 Release vX.Y.Z cut complete.
 
 Step 1 Preflight   ok (clean tree, on main, up-to-date)
-Step 2 Bump        ok (5 files -> X.Y.Z)
+Step 2 Bump        ok (6 files -> X.Y.Z)
 Step 3 Verify      ok (N tests, artifacts/verify-release.log)
 Step 4 Ship        ok (PR #<n>, merged at <time>)
 Step 5 Tag         ok (vX.Y.Z on origin)
@@ -196,7 +195,7 @@ New:     1.27.1 (patch)
 Plan:    Bump -> Verify -> Ship -> Tag -> Reinstall
 
 Step 1 Preflight... ok (clean tree, on main, up-to-date with origin/main)
-Step 2 Bump      ... ok (Directory.Build.props, plugin.json, marketplace.json, manifest.json, CHANGELOG.md -> 1.27.1)
+Step 2 Bump      ... ok (Directory.Build.props, plugin.json, marketplace.json, manifest.json, server.json, CHANGELOG.md -> 1.27.1)
                    [CHANGELOG.md ## [1.27.1] - 2026-04-22 header inserted. Review section content.]
 Step 3 Verify    ... ok (N tests pass, artifacts/verify-release.log written)
 Step 4 Ship      ... ok (PR #<n> opened, checks green, squash-merged)
