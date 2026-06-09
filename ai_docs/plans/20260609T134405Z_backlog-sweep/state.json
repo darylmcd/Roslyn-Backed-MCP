@@ -3,6 +3,8 @@
   "generatedAt": "2026-06-09T13:44:05Z",
   "backlogSnapshot": "2026-06-09T13:01:13Z",
   "addendaLoaded": true,
+  "completed": true,
+  "completedAt": "2026-06-09T15:50:23Z",
   "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
@@ -50,7 +52,7 @@
     {
       "id": "workspace-id-omitted-single-resolve",
       "order": 1,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-id-omitted-single-resolve"
       ],
@@ -74,10 +76,10 @@
         "anchorStale": false,
         "ruleOneBundleResolved": "n/a"
       },
-      "branch": null,
+      "branch": "remediation/workspace-id-omitted-single-resolve",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/957",
+      "mergedAt": "2026-06-09T14:55:26Z",
       "notes": "Hits Rule-3 ceiling exactly (4 prod files across Core+Host.Stdio). Promote ResolveOptionalWorkspaceId to internal; extend GateMetricsDto/AmbientGateMetrics with autoResolution.",
       "fileSetHash": "e51bc1830d9d9dd556ca6534a8be1cbae6fb14fb2b5ff24f69592970823be179",
       "stanzaHash": "b19dcfa79bc770c5f8b1010156af56187532e4ef9131e766f8f3be71f558391f",
@@ -86,7 +88,7 @@
     {
       "id": "workspace-auto-load-on-demand",
       "order": 2,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-auto-load-on-demand"
       ],
@@ -109,10 +111,10 @@
         "anchorStale": false,
         "ruleOneBundleResolved": "n/a"
       },
-      "branch": null,
+      "branch": "remediation/workspace-auto-load-on-demand",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/958",
+      "mergedAt": "2026-06-09T15:23:57Z",
       "notes": "Partly design-anchored (extends order-1 code absent at HEAD). Open spike resolved: query-anchored discovery uses declared client roots (RequestRootsAsync), not CWD. GateMetricsDto.cs may drop out if order-1 adds autoLoadElapsedMs.",
       "fileSetHash": "1a115b0495a1033cb14a9c75d7fdfa62b88630afce087dbbd2f63c5aa327f013",
       "stanzaHash": "ef4d7392a4b50bb48da8b8d87f672796d4a6638b2a25f92479dfcb10dece8aec",
@@ -121,7 +123,7 @@
     {
       "id": "workspace-id-optional-readonly-surface-flip",
       "order": 3,
-      "status": "pending",
+      "status": "merged",
       "backlogRowsClosed": [
         "workspace-id-optional-readonly-surface-flip"
       ],
@@ -142,10 +144,10 @@
         "anchorStale": false,
         "ruleOneBundleResolved": "n/a"
       },
-      "branch": null,
+      "branch": "remediation/workspace-id-optional-readonly-surface-flip",
       "worktreePath": null,
-      "prUrl": null,
-      "mergedAt": null,
+      "prUrl": "https://github.com/darylmcd/Roslyn-Backed-MCP/pull/959",
+      "mergedAt": "2026-06-09T15:50:23Z",
       "notes": "Pilot scope = 4 tools in SymbolTools.cs (all read-only). Catalog NOT touched (no per-param schema). Deferred ~45-method remainder needs a follow-on backlog row filed in the same PR. Elicitation gate stops firing for these 4 post-flip (intentional; order-1 gate handles null).",
       "fileSetHash": "e7cc95b602ce86bbe0cd9ee3d57fe0df4a985acb669a2558c95a014f8ead99f4",
       "stanzaHash": "46717abb47da2d9afe8aba3a80cbfb90c058122783ec98d1a50774d48e39d518",
