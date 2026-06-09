@@ -5,9 +5,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Catalog;
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Host.Stdio.Middleware;
 
@@ -125,6 +127,60 @@ internal static class StructuredCallToolFilter
 
             try
             {
+                // workspace-id-omitted-single-resolve: pre-dispatch workspaceId auto-resolution.
+                // For read-only, non-destructive tools that declare a workspaceId parameter, a
+                // call with workspaceId omitted/empty is resolved here — at the chokepoint —
+                // before the SDK binder runs: exactly one workspace loaded => patch it in;
+                // two-or-more => structured fast-fail listing the candidates; zero => left for
+                // on-demand discovery / the binder. This is intentionally NOT gated on the
+                // schema's Required flag (unlike IsWorkspaceIdRecoveryAllowedFor) so it keeps
+                // working after read-only tools flip workspaceId to optional.
+                var workspaceManager = context.Services?.GetService<IWorkspaceManager>();
+                if (workspaceManager is not null && IsWorkspaceIdAutoResolveAllowedFor(toolName))
+                {
+                    var loadedWorkspaces = workspaceManager.ListWorkspaces()
+                        .Select(WorkspaceStatusSummaryDto.From)
+                        .ToArray();
+                    var resolution = ClassifyWorkspaceIdResolution(
+                        context.Params?.Arguments,
+                        loadedWorkspaces,
+                        out var resolvedWorkspaceId,
+                        out var fastFailMessage);
+
+                    switch (resolution)
+                    {
+                        case WorkspaceIdAutoResolution.Explicit:
+                            RecordAutoResolution("explicit");
+                            break;
+
+                        case WorkspaceIdAutoResolution.SingleWorkspace:
+                            context.Params!.Arguments =
+                                WithWorkspaceId(context.Params.Arguments, resolvedWorkspaceId!);
+                            RecordAutoResolution("single-workspace");
+                            logger?.LogInformation(
+                                "Tool {ToolName} called without workspaceId; resolved to the single " +
+                                "loaded workspace {WorkspaceId}.", toolName, resolvedWorkspaceId);
+                            break;
+
+                        case WorkspaceIdAutoResolution.FastFail:
+                            RecordAutoResolution("fast-fail");
+                            stopwatch.Stop();
+                            RecordElapsed(stopwatch.ElapsedMilliseconds);
+                            logger?.LogWarning(
+                                "Tool {ToolName} called without workspaceId while {Count} workspaces " +
+                                "are loaded; returning a structured fast-fail.",
+                                toolName, loadedWorkspaces.Length);
+                            return BuildErrorResult(
+                                toolName,
+                                new ArgumentException(fastFailMessage, WorkspaceIdParameterName));
+
+                        case WorkspaceIdAutoResolution.NotApplicable:
+                            // workspaceId omitted with zero workspaces loaded — leave for
+                            // on-demand discovery / the binder. Do not patch.
+                            break;
+                    }
+                }
+
                 var result = await next(context, cancellationToken).ConfigureAwait(false);
                 stopwatch.Stop();
                 RecordElapsed(stopwatch.ElapsedMilliseconds);
@@ -376,6 +432,130 @@ internal static class StructuredCallToolFilter
 
         return schema is { Type: "string", Required: true }
                && tool is { ReadOnly: true, Destructive: false };
+    }
+
+    /// <summary>
+    /// workspace-id-omitted-single-resolve: returns <see langword="true"/> when
+    /// <paramref name="toolName"/> is a read-only, non-destructive tool that declares a string
+    /// <c>workspaceId</c> parameter, making it eligible for pre-dispatch auto-resolution.
+    /// Distinct from <see cref="IsWorkspaceIdRecoveryAllowedFor"/>: that predicate gates the
+    /// exception-path elicitation recovery and requires <c>Required:true</c> (it only fires when
+    /// the binder threw on a missing required arg); this one is <b>independent of the Required
+    /// flag</b> so auto-resolution keeps working after a read-only tool flips <c>workspaceId</c>
+    /// to optional. Public so tests can pin the policy.
+    /// </summary>
+    public static bool IsWorkspaceIdAutoResolveAllowedFor(string? toolName)
+    {
+        if (string.IsNullOrEmpty(toolName))
+        {
+            return false;
+        }
+
+        var schema = ToolParameterIndex.GetParameter(toolName, WorkspaceIdParameterName);
+        if (schema is not { Type: "string" })
+        {
+            return false;
+        }
+
+        var tool = ServerSurfaceCatalog.Tools.FirstOrDefault(entry =>
+            string.Equals(entry.Name, toolName, StringComparison.Ordinal));
+        return tool is { ReadOnly: true, Destructive: false };
+    }
+
+    /// <summary>
+    /// The outcome of pre-dispatch <c>workspaceId</c> resolution for an auto-resolve-eligible
+    /// read-only tool. Mirrors the <c>_meta.autoResolution</c> values minus the implicit
+    /// "no resolution path" case (<see cref="NotApplicable"/>).
+    /// </summary>
+    internal enum WorkspaceIdAutoResolution
+    {
+        /// <summary>workspaceId omitted and zero workspaces loaded — leave for discovery/binder.</summary>
+        NotApplicable,
+        /// <summary>Caller supplied a non-empty workspaceId — left untouched.</summary>
+        Explicit,
+        /// <summary>workspaceId omitted and exactly one workspace loaded — patch it in.</summary>
+        SingleWorkspace,
+        /// <summary>workspaceId omitted and ≥2 workspaces loaded — structured fast-fail.</summary>
+        FastFail,
+    }
+
+    /// <summary>
+    /// workspace-id-omitted-single-resolve: classifies how an auto-resolve-eligible tool's
+    /// <c>workspaceId</c> should be handled given the supplied <paramref name="arguments"/> and
+    /// the currently <paramref name="loadedWorkspaces"/>. Reuses
+    /// <see cref="WorkspaceTools.ResolveOptionalWorkspaceId"/> for the single-workspace decision
+    /// so the chokepoint applies the exact same semantics the workspace tools do. Public so the
+    /// pre-dispatch branch can be unit-tested without standing up a live MCP transport.
+    /// </summary>
+    /// <param name="resolvedWorkspaceId">
+    /// Set to the resolved id when the result is <see cref="WorkspaceIdAutoResolution.SingleWorkspace"/>;
+    /// otherwise <see langword="null"/>.
+    /// </param>
+    /// <param name="fastFailMessage">
+    /// Set to a candidate-listing message when the result is
+    /// <see cref="WorkspaceIdAutoResolution.FastFail"/>; otherwise <see langword="null"/>.
+    /// </param>
+    public static WorkspaceIdAutoResolution ClassifyWorkspaceIdResolution(
+        IDictionary<string, JsonElement>? arguments,
+        IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces,
+        out string? resolvedWorkspaceId,
+        out string? fastFailMessage)
+    {
+        resolvedWorkspaceId = null;
+        fastFailMessage = null;
+
+        if (HasNonEmptyWorkspaceId(arguments))
+        {
+            return WorkspaceIdAutoResolution.Explicit;
+        }
+
+        var resolved = WorkspaceTools.ResolveOptionalWorkspaceId(null, loadedWorkspaces);
+        if (resolved is not null)
+        {
+            resolvedWorkspaceId = resolved;
+            return WorkspaceIdAutoResolution.SingleWorkspace;
+        }
+
+        if (loadedWorkspaces.Count >= 2)
+        {
+            var ids = string.Join(", ", loadedWorkspaces.Select(workspace => workspace.WorkspaceId));
+            fastFailMessage =
+                $"workspaceId was omitted but {loadedWorkspaces.Count} workspaces are loaded ({ids}). " +
+                "Pass workspaceId explicitly to choose one.";
+            return WorkspaceIdAutoResolution.FastFail;
+        }
+
+        return WorkspaceIdAutoResolution.NotApplicable;
+    }
+
+    private static bool HasNonEmptyWorkspaceId(IDictionary<string, JsonElement>? arguments)
+    {
+        if (arguments is null || !arguments.TryGetValue(WorkspaceIdParameterName, out var value))
+        {
+            return false;
+        }
+
+        return value.ValueKind == JsonValueKind.String
+               && !string.IsNullOrWhiteSpace(value.GetString());
+    }
+
+    private static IDictionary<string, JsonElement> WithWorkspaceId(
+        IDictionary<string, JsonElement>? existing, string workspaceId)
+    {
+        var newArgs = existing is null
+            ? new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+            : new Dictionary<string, JsonElement>(existing, StringComparer.Ordinal);
+        newArgs[WorkspaceIdParameterName] =
+            JsonSerializer.SerializeToElement(workspaceId, JsonDefaults.Indented);
+        return newArgs;
+    }
+
+    private static void RecordAutoResolution(string value)
+    {
+        if (AmbientGateMetrics.Current is { } metrics)
+        {
+            metrics.AutoResolution = value;
+        }
     }
 
     internal static async Task<CallToolResult?> TryRecoverMissingWorkspaceIdAsync(

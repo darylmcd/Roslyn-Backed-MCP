@@ -107,5 +107,14 @@ public sealed class GateMetricsBuilder
     /// </summary>
     public bool? CacheHit { get; set; }
 
-    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit, ReloadConfirmedNotFound);
+    /// <summary>
+    /// workspace-id-omitted-single-resolve: set by <c>StructuredCallToolFilter</c> when a
+    /// read-only, non-destructive tool is dispatched with <c>workspaceId</c> omitted/empty.
+    /// <c>explicit</c> (caller supplied an id), <c>single-workspace</c> (resolved to the one
+    /// loaded workspace), or <c>fast-fail</c> (≥2 loaded — structured error returned).
+    /// <see langword="null"/> when the request did not pass through the auto-resolution path.
+    /// </summary>
+    public string? AutoResolution { get; set; }
+
+    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit, ReloadConfirmedNotFound, AutoResolution);
 }
