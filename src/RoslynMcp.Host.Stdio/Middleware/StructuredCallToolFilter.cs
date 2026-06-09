@@ -138,46 +138,53 @@ internal static class StructuredCallToolFilter
                 var workspaceManager = context.Services?.GetService<IWorkspaceManager>();
                 if (workspaceManager is not null && IsWorkspaceIdAutoResolveAllowedFor(toolName))
                 {
-                    var loadedWorkspaces = workspaceManager.ListWorkspaces()
-                        .Select(WorkspaceStatusSummaryDto.From)
-                        .ToArray();
-                    var resolution = ClassifyWorkspaceIdResolution(
-                        context.Params?.Arguments,
-                        loadedWorkspaces,
-                        out var resolvedWorkspaceId,
-                        out var fastFailMessage);
-
-                    switch (resolution)
+                    if (HasNonEmptyWorkspaceId(context.Params?.Arguments))
                     {
-                        case WorkspaceIdAutoResolution.Explicit:
-                            RecordAutoResolution("explicit");
-                            break;
+                        // Explicit id supplied — record it and skip the loaded-workspace
+                        // enumeration entirely (the common path; avoids per-call DTO projection).
+                        RecordAutoResolution("explicit");
+                    }
+                    else
+                    {
+                        var loadedWorkspaces = workspaceManager.ListWorkspaces()
+                            .Select(WorkspaceStatusSummaryDto.From)
+                            .ToArray();
+                        var resolution = ClassifyWorkspaceIdResolution(
+                            context.Params?.Arguments,
+                            loadedWorkspaces,
+                            out var resolvedWorkspaceId,
+                            out var fastFailMessage);
 
-                        case WorkspaceIdAutoResolution.SingleWorkspace:
-                            context.Params!.Arguments =
-                                WithWorkspaceId(context.Params.Arguments, resolvedWorkspaceId!);
-                            RecordAutoResolution("single-workspace");
-                            logger?.LogInformation(
-                                "Tool {ToolName} called without workspaceId; resolved to the single " +
-                                "loaded workspace {WorkspaceId}.", toolName, resolvedWorkspaceId);
-                            break;
+                        switch (resolution)
+                        {
+                            case WorkspaceIdAutoResolution.SingleWorkspace:
+                                context.Params!.Arguments =
+                                    WithWorkspaceId(context.Params.Arguments, resolvedWorkspaceId!);
+                                RecordAutoResolution("single-workspace");
+                                logger?.LogInformation(
+                                    "Tool {ToolName} called without workspaceId; resolved to the single " +
+                                    "loaded workspace {WorkspaceId}.", toolName, resolvedWorkspaceId);
+                                break;
 
-                        case WorkspaceIdAutoResolution.FastFail:
-                            RecordAutoResolution("fast-fail");
-                            stopwatch.Stop();
-                            RecordElapsed(stopwatch.ElapsedMilliseconds);
-                            logger?.LogWarning(
-                                "Tool {ToolName} called without workspaceId while {Count} workspaces " +
-                                "are loaded; returning a structured fast-fail.",
-                                toolName, loadedWorkspaces.Length);
-                            return BuildErrorResult(
-                                toolName,
-                                new ArgumentException(fastFailMessage, WorkspaceIdParameterName));
+                            case WorkspaceIdAutoResolution.FastFail:
+                                RecordAutoResolution("fast-fail");
+                                stopwatch.Stop();
+                                RecordElapsed(stopwatch.ElapsedMilliseconds);
+                                logger?.LogWarning(
+                                    "Tool {ToolName} called without workspaceId while {Count} workspaces " +
+                                    "are loaded; returning a structured fast-fail.",
+                                    toolName, loadedWorkspaces.Length);
+                                return BuildErrorResult(
+                                    toolName,
+                                    new ArgumentException(fastFailMessage, WorkspaceIdParameterName));
 
-                        case WorkspaceIdAutoResolution.NotApplicable:
-                            // workspaceId omitted with zero workspaces loaded — leave for
-                            // on-demand discovery / the binder. Do not patch.
-                            break;
+                            case WorkspaceIdAutoResolution.Explicit:
+                            case WorkspaceIdAutoResolution.NotApplicable:
+                                // Explicit cannot occur here (id already confirmed absent above);
+                                // zero workspaces loaded is left for on-demand discovery / the
+                                // binder. Either way, do not patch.
+                                break;
+                        }
                     }
                 }
 
@@ -545,8 +552,7 @@ internal static class StructuredCallToolFilter
         var newArgs = existing is null
             ? new Dictionary<string, JsonElement>(StringComparer.Ordinal)
             : new Dictionary<string, JsonElement>(existing, StringComparer.Ordinal);
-        newArgs[WorkspaceIdParameterName] =
-            JsonSerializer.SerializeToElement(workspaceId, JsonDefaults.Indented);
+        newArgs[WorkspaceIdParameterName] = JsonSerializer.SerializeToElement(workspaceId);
         return newArgs;
     }
 
