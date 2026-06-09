@@ -116,5 +116,12 @@ public sealed class GateMetricsBuilder
     /// </summary>
     public string? AutoResolution { get; set; }
 
-    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit, ReloadConfirmedNotFound, AutoResolution);
+    /// <summary>
+    /// workspace-auto-load-on-demand: milliseconds spent discovering + loading a workspace on
+    /// demand, set by <c>StructuredCallToolFilter</c> when <see cref="AutoResolution"/> is
+    /// <c>auto-loaded</c>. <see langword="null"/> otherwise.
+    /// </summary>
+    public long? AutoLoadElapsedMs { get; set; }
+
+    public GateMetricsDto ToDto() => new(GateMode, QueuedMs, HeldMs, HeartbeatCount, ElapsedMs, StaleAction, StaleReloadMs, RetriedAfterReload, CacheHit, ReloadConfirmedNotFound, AutoResolution, AutoLoadElapsedMs);
 }

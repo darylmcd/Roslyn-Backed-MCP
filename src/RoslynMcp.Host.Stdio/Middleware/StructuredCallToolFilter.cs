@@ -178,11 +178,28 @@ internal static class StructuredCallToolFilter
                                     toolName,
                                     new ArgumentException(fastFailMessage, WorkspaceIdParameterName));
 
-                            case WorkspaceIdAutoResolution.Explicit:
                             case WorkspaceIdAutoResolution.NotApplicable:
-                                // Explicit cannot occur here (id already confirmed absent above);
-                                // zero workspaces loaded is left for on-demand discovery / the
-                                // binder. Either way, do not patch.
+                            {
+                                // workspace-auto-load-on-demand: zero workspaces loaded — try to
+                                // discover the implied solution and load it on demand before
+                                // dispatch. A unique discovery patches the id and falls through to
+                                // next(); an ambiguous one returns a structured fast-fail; nothing
+                                // discovered falls through to the binder/elicitation path.
+                                var autoLoadFastFail = await TryAutoLoadWorkspaceAsync(
+                                    context, next, toolName, logger, cancellationToken).ConfigureAwait(false);
+                                if (autoLoadFastFail is not null)
+                                {
+                                    stopwatch.Stop();
+                                    RecordElapsed(stopwatch.ElapsedMilliseconds);
+                                    return autoLoadFastFail;
+                                }
+
+                                break;
+                            }
+
+                            case WorkspaceIdAutoResolution.Explicit:
+                                // Cannot occur here (explicit id is short-circuited before
+                                // enumeration above). Defensive no-op.
                                 break;
                         }
                     }
@@ -561,6 +578,94 @@ internal static class StructuredCallToolFilter
         if (AmbientGateMetrics.Current is { } metrics)
         {
             metrics.AutoResolution = value;
+        }
+    }
+
+    private static void RecordAutoLoadElapsed(long elapsedMs)
+    {
+        if (AmbientGateMetrics.Current is { } metrics)
+        {
+            metrics.AutoLoadElapsedMs = elapsedMs;
+        }
+    }
+
+    /// <summary>
+    /// workspace-auto-load-on-demand: invoked from the pre-dispatch path when an auto-resolve
+    /// eligible tool is called with <c>workspaceId</c> omitted and ZERO workspaces loaded.
+    /// Discovers the implied solution (<see cref="SolutionDiscoveryHelper"/>):
+    /// <list type="bullet">
+    ///   <item><b>Unique</b> → load it via the <c>workspace_load</c> tool (reusing its dedup /
+    ///   cap / eviction / progress), patch the returned id into the call, record
+    ///   <c>auto-loaded</c> + <c>autoLoadElapsedMs</c>, and return <see langword="null"/> so the
+    ///   caller falls through to dispatch the original tool. If the load yields no id, returns
+    ///   <see langword="null"/> to fall back to the existing recovery path.</item>
+    ///   <item><b>Ambiguous</b> → return a structured fast-fail listing the candidate solutions
+    ///   with a ready-to-run <c>workspace_load(path=…)</c> hint (records <c>fast-fail</c>).</item>
+    ///   <item><b>None</b> → return <see langword="null"/>; the binder/elicitation path handles it
+    ///   (the elicitation fallback when the client supports it).</item>
+    /// </list>
+    /// A non-null return is a terminal fast-fail; <see langword="null"/> means "fall through to
+    /// <c>next()</c>" (whether or not the arguments were patched).
+    /// </summary>
+    private static async Task<CallToolResult?> TryAutoLoadWorkspaceAsync(
+        RequestContext<CallToolRequestParams> context,
+        McpRequestHandler<CallToolRequestParams, CallToolResult> next,
+        string toolName,
+        ILogger? logger,
+        CancellationToken cancellationToken)
+    {
+        var discovery = await SolutionDiscoveryHelper.TryDiscoverAsync(
+            context.Params?.Arguments, context.Server, cancellationToken).ConfigureAwait(false);
+
+        switch (discovery.Status)
+        {
+            case SolutionDiscoveryHelper.DiscoveryStatus.Unique:
+            {
+                var stopwatch = Stopwatch.StartNew();
+                var loadArguments = new Dictionary<string, JsonElement>(StringComparer.Ordinal)
+                {
+                    [PathParameterName] = JsonSerializer.SerializeToElement(discovery.UniquePath!),
+                };
+                var loadResult = await DispatchWithTemporaryArgumentsAsync(
+                    context, next, WorkspaceLoadToolName, loadArguments, cancellationToken).ConfigureAwait(false);
+                var workspaceId = TryExtractWorkspaceId(loadResult);
+                stopwatch.Stop();
+
+                if (string.IsNullOrWhiteSpace(workspaceId))
+                {
+                    logger?.LogWarning(
+                        "Auto-load discovered {Path} for {Tool} but workspace_load returned no id; " +
+                        "falling back to the recovery path.", discovery.UniquePath, toolName);
+                    return null;
+                }
+
+                context.Params!.Arguments = WithWorkspaceId(context.Params.Arguments, workspaceId);
+                RecordAutoResolution("auto-loaded");
+                RecordAutoLoadElapsed(stopwatch.ElapsedMilliseconds);
+                logger?.LogInformation(
+                    "Tool {ToolName} called without workspaceId and none loaded; auto-loaded {Path} " +
+                    "as {WorkspaceId} in {ElapsedMs}ms.",
+                    toolName, discovery.UniquePath, workspaceId, stopwatch.ElapsedMilliseconds);
+                return null;
+            }
+
+            case SolutionDiscoveryHelper.DiscoveryStatus.Ambiguous:
+            {
+                RecordAutoResolution("fast-fail");
+                var candidates = string.Join(", ", discovery.Candidates);
+                logger?.LogWarning(
+                    "Tool {ToolName} called without workspaceId and none loaded; {Count} candidate " +
+                    "solutions discovered ({Candidates}).", toolName, discovery.Candidates.Count, candidates);
+                return BuildErrorResult(toolName, new ArgumentException(
+                    $"workspaceId was omitted and no workspace is loaded. {discovery.Candidates.Count} " +
+                    $"candidate solutions were discovered ({candidates}). Call workspace_load(path=…) with " +
+                    "one of them, then retry — or pass workspaceId explicitly.",
+                    WorkspaceIdParameterName));
+            }
+
+            case SolutionDiscoveryHelper.DiscoveryStatus.None:
+            default:
+                return null;
         }
     }
 
