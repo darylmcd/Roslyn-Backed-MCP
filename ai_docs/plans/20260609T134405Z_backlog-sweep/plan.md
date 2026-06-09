@@ -26,6 +26,19 @@
 
 _Deepener: judgmentHeavy — promote-vs-duplicate resolver choice (chose promote); GateMetricsDto positional-record extension may need test fixups; 4 files across two projects._
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Pattern coordinates (resolver + canonical caller):** promote `ResolveOptionalWorkspaceId` at `WorkspaceTools.cs:560-570` `private static`→`internal static` (signature unchanged; takes `IReadOnlyList<WorkspaceStatusSummaryDto>`, NOT the manager). Replicate the caller idiom from `WorkspaceTools.cs:274-277`: `workspace.ListWorkspaces().Select(WorkspaceStatusSummaryDto.From).ToArray()` → `ResolveOptionalWorkspaceId(workspaceId, summaries)`. `single`=Count==1, `null`=Count≥2 or 0.
+- **DI gap (highest drift risk):** the filter resolves ONLY `ILoggerFactory` from `context.Services` (`StructuredCallToolFilter.cs:119-121`); `IWorkspaceManager` is NOT injected. Add `context.Services?.GetService<IWorkspaceManager>()` and no-op-fallback to the existing binder/recovery path if null.
+- **Insertion seam:** pre-dispatch block inside the lambda `:116-128`, BEFORE `next(...)` at `:128`. Reuse the save/restore arg-patch idiom from `DispatchWithTemporaryArgumentsAsync` (`:503-523`).
+- **Allowlist + envelope:** gate on `IsWorkspaceIdRecoveryAllowedFor` (`:361-379`, `ReadOnly && !Destructive`). ≥2-loaded fast-fail MUST reuse `ToolErrorHandler.ClassifyAndFormat` + `IsError=true` (`:642-647`), not a new envelope.
+- **GateMetricsDto extension:** append `string? AutoResolution = null` as LAST positional param (`GateMetricsDto.cs:67`, after `ReloadConfirmedNotFound`); add the property to `GateMetricsBuilder` + thread into `ToDto()` (`AmbientGateMetrics.cs:110`, last positional arg). `compile_check` — may break test callsites.
+- **Edge cases:** (1) explicit id → `explicit`, untouched; (2) omit + 1 loaded → patch + `single-workspace`; (3) omit + ≥2 → `fast-fail` naming ids; (4) omit + 0 loaded → do NOT resolve (leave for order-2/binder); (5) mutating/preview/apply + omit → no pre-dispatch resolution.
+- **Negative space:** do NOT alter `workspace_readiness_report`'s null-id block (`WorkspaceTools.cs:274-285`); do NOT touch `TryRecoverMissingWorkspaceIdAsync` (`:381-441`) — this ADDS a pre-dispatch path, doesn't replace the post-throw one.
+
+</details>
+
 ### 2. workspace-auto-load-on-demand
 
 | Field | Content |
@@ -44,6 +57,18 @@ _Deepener: judgmentHeavy — promote-vs-duplicate resolver choice (chose promote
 
 _Deepener: partly design-anchored (extends order-1 code absent at HEAD); judgmentHeavy — query-anchored discovery depends on client-declared roots (spike resolved this way); GateMetricsDto file may be unnecessary if order-1 adds the field._
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **RequestRootsAsync reuse:** mirror `ClientRootPathValidator.cs:54-63` — capability guard (`server.ClientCapabilities?.Roots is null → return`), `server.RequestRootsAsync(new ListRootsRequestParams(), ct)`, `rootsResult.Roots.Count == 0 → return`; decode `file://` via `new Uri(r.Uri).LocalPath` (`:66-69`). Don't re-derive.
+- **Load-and-retry:** mirror `StructuredCallToolFilter.cs:416-440` (in `TryRecoverMissingWorkspaceIdAsync`): load args → `dispatchAsync(WorkspaceLoadToolName,…)` → extract id → copy args → patch `workspaceId` → re-dispatch. `LoadAsync`: `WorkspaceManager.cs:180-192` (in **RoslynMcp.Roslyn**, not Host.Stdio). `ListWorkspaces()`: `IWorkspaceManager.cs:81`.
+- **Service resolution:** filter has NO injected `IWorkspaceManager` — resolve via `context.Services?.GetService<IWorkspaceManager>()` (as logger at `:119-121`); null-guard with no-op fall-through.
+- **Elicitation-gate seam (CRITICAL):** the `:296` branch lives inside `TryElicitAndRetryAsync`, downstream of the `HasElicitation` guard at `:291` (exception/catch path only). Zero-workspaces discovery+auto-load must NOT be gated on elicitation capability — place the `ListWorkspaces() empty → discover` check so it does NOT inherit the `:291` short-circuit, or the feature is dead for non-eliciting clients.
+- **Edge cases:** (1) zero roots + no filePath → null → guided fast-fail, never hang (honor `CancellationToken`, bound the scan); (2) ≥2 `.sln` → null → fast-fail naming both, nothing loaded; (3) `RequestRootsAsync` throws (advertised-but-unsupported, `:87-93`) → treat as zero candidates; (4) file-anchored walk-up prefers `.sln`/`.slnx` over `.csproj`.
+- **Negative space:** (a) ORDER-1 dependency — `_meta.autoResolution` absent at HEAD; branch atop order-1 or stub+coordinate, don't invent a parallel field. (b) Mutating/preview/apply must NEVER reach this path (`ReadOnly:true,Destructive:false` at `:377-378`) — don't relax. (c) Do NOT edit `WorkspaceManager.cs` — consume existing `LoadAsync`. (d) Do NOT touch `TryRecoverMissingWorkspaceIdAsync`'s elicitation flow.
+
+</details>
+
 ### 3. workspace-id-optional-readonly-surface-flip
 
 | Field | Content |
@@ -61,6 +86,18 @@ _Deepener: partly design-anchored (extends order-1 code absent at HEAD); judgmen
 | Backlog sync | Close rows: [workspace-id-optional-readonly-surface-flip]. **File a follow-on row** for the deferred ~45-method sweep (sub-batched by Tools file), gated on the pilot adoption signal. |
 
 _Deepener: judgmentHeavy — elicitation-gate dependency on order-1 (non-obvious correctness); catalog-exclusion is a judgment call to re-verify; deferred remainder needs a follow-on row filed in the same PR._
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+- **Pattern coordinates (re-verified at HEAD):** flip `string workspaceId` → `string? workspaceId = null` at exactly 4 sites in `SymbolTools.cs` — `SearchSymbols`:27, `GoToDefinition`:179, `FindReferences`:245, `GetDocumentSymbols`:357. Update only those 4 `[Description]` strings to invite omission + note the order-1 dependency. No body change: `gate.RunReadAsync(workspaceId,…)` already accepts the value; the `= null` default is what makes `ToolParameterIndex.BuildSchema` (`ToolParameterIndex.cs:100`, `required = !HasDefaultValue`) report `Required:false`.
+- **Hard dependency — order-1 MUST merge first:** post-flip, `IsWorkspaceIdRecoveryAllowedFor` (`StructuredCallToolFilter.cs:377`, gates on `Required:true`) stops firing for these 4; order-1's null-aware pre-dispatch resolution is then the ONLY thing handling a null id. If order-1 isn't live, don't ship — null reaches the binder unresolved.
+- **go_to_definition / find_references caveat:** both also take `IWorkspaceManager` directly (`:176`, `:242`) and pass `workspaceId` into disambiguation/service calls — confirm the id is patched at the gate (order-1) before these bodies run.
+- **Test target:** new file `tests/RoslynMcp.Tests/WorkspaceIdOptionalSurfaceTests.cs` (do NOT fold into an existing class). Reflect over `ToolParameterIndex`: 4 pilot tools `Required:false`; sample of mutating tools `Required:true`.
+- **Negative space:** (1) do NOT touch `ServerSurfaceCatalog.Symbols.cs` — re-verified it carries only tool-level `SurfaceEntry` rows, no per-parameter schema → no catalog regen / RMCP001-002 impact. (2) Do NOT expand beyond the 4 pilot tools (`symbol_info`, `find_implementations`, `find_overrides`, etc. stay `Required:true`).
+- **Same-PR obligation:** file the deferred ~45-method follow-on backlog row (sub-batched by `*Tools.cs`, gated on the pilot's `_meta.autoResolution` adoption signal) in this same PR.
+
+</details>
 
 <!-- BSWEEP:STATUS-TABLE BEGIN — generated from state.json; do not edit by hand -->
 ## Status (generated)
