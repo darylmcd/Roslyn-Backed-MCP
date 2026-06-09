@@ -1,4 +1,5 @@
 using RoslynMcp.Host.Stdio.Catalog;
+using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
 
@@ -40,6 +41,22 @@ public sealed class WorkspaceIdOptionalSurfaceTests
             Assert.IsFalse(schema.Required,
                 $"{tool}.workspaceId must be Required=false after the flip so agents proactively omit it.");
         }
+    }
+
+    [TestMethod]
+    public void FlippedTool_WithNullWorkspaceId_ThrowsGuidedInvalidArgument()
+    {
+        // The residual case the middleware cannot resolve (omitted id + zero workspaces loaded +
+        // nothing discoverable) reaches the tool body with workspaceId == null. The body guard
+        // must throw a structured ArgumentException (the filter classifies it to InvalidArgument)
+        // pointing the caller at workspace_load — not NRE on the downstream gate call. The guard
+        // runs before any service is touched, so null DI args are safe here.
+        var ex = Assert.ThrowsException<ArgumentException>(() =>
+            SymbolTools.GetDocumentSymbols(server: null!, gate: null!, symbolSearchService: null!, workspaceId: null));
+
+        Assert.AreEqual("workspaceId", ex.ParamName);
+        StringAssert.Contains(ex.Message, "workspace_load",
+            "The guard must steer the caller to workspace_load rather than fail opaquely.");
     }
 
     [TestMethod]
