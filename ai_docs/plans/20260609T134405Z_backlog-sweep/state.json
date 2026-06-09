@@ -3,11 +3,48 @@
   "generatedAt": "2026-06-09T13:44:05Z",
   "backlogSnapshot": "2026-06-09T13:01:13Z",
   "addendaLoaded": true,
-  "phase": "conflict-graph-done",
+  "phase": "review-cycle-0-done",
   "cycleCount": 0,
   "maxCycles": 2,
-  "reviewStatus": "pending",
+  "reviewStatus": "passed-with-warnings",
   "readyForExecute": false,
+  "reviewFindings": {
+    "block": 0,
+    "warn": 3,
+    "info": 2
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "workspace-auto-load-on-demand",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Adjacent-order 1&2 share StructuredCallToolFilter.cs + GateMetricsDto.cs; mitigated by fully-serial scheduling."
+    },
+    {
+      "initiativeId": "workspace-id-optional-readonly-surface-flip",
+      "severity": "warn",
+      "rule": "5b",
+      "evidence": "fanoutEstimate null on refactor-shaped signature-flip; 4-method pilot, ~45-method remainder deferred to a follow-on."
+    },
+    {
+      "initiativeId": "workspace-id-optional-readonly-surface-flip",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Order 3 zero-degree but logically depends on order 1; hardened via heroic-last scheduleHint so execute schedules it after 1&2."
+    },
+    {
+      "initiativeId": "workspace-id-optional-readonly-surface-flip",
+      "severity": "info",
+      "rule": "plan-consistency",
+      "evidence": "Stale 'catalog hotspot' header corrected — pilot does not touch ServerSurfaceCatalog."
+    },
+    {
+      "initiativeId": "workspace-id-omitted-single-resolve",
+      "severity": "info",
+      "rule": "5b",
+      "evidence": "fanoutEstimate null on defaulted positional GateMetricsDto param; verified contained (builder indirection, no direct callers)."
+    }
+  ],
   "scopeNote": "Scoped to the 3 workspace-auto-load rows per operator request. Strict dependency chain (order 1 -> 2 -> 3); orders 1+2 share StructuredCallToolFilter.cs + GateMetricsDto.cs (conflict edge); order 3 (SymbolTools.cs) is file-disjoint but logically depends on order 1. Orders 2-3 are partly design-anchored (extend code order 1 introduces).",
   "initiatives": [
     {
@@ -94,7 +131,7 @@
       "rowsClosedCount": 1,
       "estimatedContextTokens": 30000,
       "toolPolicy": "edit-only",
-      "scheduleHint": "depends-on:workspace-id-omitted-single-resolve; pilot-subset; full-~45-method-sweep-deferred-to-followon",
+      "scheduleHint": "heroic-last",
       "fanoutEstimate": null,
       "fanoutOversize": false,
       "deepenerStatus": "ok",
@@ -135,6 +172,6 @@
     "note": "File-conflict graph only. Order 3 is file-disjoint (zero-degree) but logically depends on order 1 (scheduleHint) — execute must honor the dependency, not parallelize 3 ahead of 1. Orders 1+2 fully serial (shared chokepoint + DTO). Net: the whole batch is effectively serial 1->2->3."
   },
   "conflictGraphInputHash": "12b18ee74af4325c21ee3a6e26c49e31a4b8c06353e4e336d4784c01828b8be5",
-  "planHash": "bf5a6e6951fe8cbd7d9ad434ec8566a8ebb19bedbff322a7e7fca0f8d0f669dc",
+  "planHash": "ec795664f93cd422b4cb61b591045d0025f5d233642828a4b3bb90db20ea7c12",
   "backlogSnapshotHash": "af414b1ab0a3100eb3cd6fd005240eaa4377fae381571eba8e0f60d3d41f5e8e"
 }

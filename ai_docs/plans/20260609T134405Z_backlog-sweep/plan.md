@@ -2,7 +2,7 @@
 
 **Scope:** the 3 `workspace-auto-load-on-demand` feature rows (operator-scoped). Design spec: `ai_docs/items/workspace-auto-load-on-demand-design.md`.
 
-**Sequencing:** strict dependency chain `1 → 2 → 3`. All three touch `src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs`, so they are **fully serial** (no parallel wave). Initiative 3 is the catalog **hotspot** (`ServerSurfaceCatalog.*`). Orders 2–3 partly anchor on code order 1 introduces — see per-stanza notes.
+**Sequencing:** strict dependency chain `1 → 2 → 3`, effectively **fully serial**. Orders 1 & 2 share `src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs` + `GateMetricsDto.cs` (conflict edge → serial). Order 3 (`SymbolTools.cs`) is file-disjoint but **logically depends on order 1** (its tests need order-1's null-aware gate) — scheduled `heroic-last` so execute runs it after 1 & 2. This pilot does **not** touch the catalog (`ServerSurfaceCatalog.*`); the full ~49-method surface flip (the real catalog hotspot) is deferred to a follow-on. Orders 2–3 partly anchor on code order 1 introduces — see per-stanza notes.
 
 <!-- BSWEEP:STATUS-TABLE -->
 
