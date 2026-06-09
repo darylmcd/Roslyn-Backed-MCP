@@ -104,7 +104,7 @@ _Deepener: judgmentHeavy — elicitation-gate dependency on order-1 (non-obvious
 
 | # | id | status | PR | rows closed |
 |---|----|--------|----|-------------|
-| 1 | workspace-id-omitted-single-resolve | pending | — | workspace-id-omitted-single-resolve |
-| 2 | workspace-auto-load-on-demand | pending | — | workspace-auto-load-on-demand |
-| 3 | workspace-id-optional-readonly-surface-flip | pending | — | workspace-id-optional-readonly-surface-flip |
+| 1 | workspace-id-omitted-single-resolve | merged | [#957](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/957) | workspace-id-omitted-single-resolve |
+| 2 | workspace-auto-load-on-demand | merged | [#958](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/958) | workspace-auto-load-on-demand |
+| 3 | workspace-id-optional-readonly-surface-flip | merged | [#959](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/959) | workspace-id-optional-readonly-surface-flip |
 <!-- BSWEEP:STATUS-TABLE END -->
