@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-06-09T13:44:05Z",
+  "backlogSnapshot": "2026-06-09T13:01:13Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "scopeNote": "Scoped to the 3 workspace-auto-load rows per operator request. Strict dependency chain (order 1 -> 2 -> 3); all touch StructuredCallToolFilter.cs so fully serial (no parallel wave). Orders 2-3 are partly design-anchored (extend code order 1 introduces).",
+  "initiatives": [
+    {
+      "id": "workspace-id-omitted-single-resolve",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-id-omitted-single-resolve"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "47d539eb726d5df773f7cb38085e0dd41477c90e04230913234ba75c63a40042"
+    },
+    {
+      "id": "workspace-auto-load-on-demand",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-auto-load-on-demand"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": "depends-on:workspace-id-omitted-single-resolve",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "ab7741a9bf208982426f590f3fbd3870918fa0200b1f76e74c73de8ec9bd35c6"
+    },
+    {
+      "id": "workspace-id-optional-readonly-surface-flip",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-id-optional-readonly-surface-flip"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": "depends-on:workspace-auto-load-on-demand; catalog-hotspot",
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "e801bcf59e4112626463a0eda69b0fc064c9951169f2fb52a0c47f19516bc139"
+    }
+  ],
+  "anchorVerification": "pending",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {},
+    "zeroDegreeInitiatives": []
+  },
+  "conflictGraphInputHash": "d9ca1ee1b09ba2d413f7550b39ea5301f7d404b4e7a9766cacd4e92cc90bc277",
+  "planHash": "feaae3e34c720db10ceca98088fd2fdad32439b009f3d581492723b36c845d1a",
+  "backlogSnapshotHash": "af414b1ab0a3100eb3cd6fd005240eaa4377fae381571eba8e0f60d3d41f5e8e"
+}
