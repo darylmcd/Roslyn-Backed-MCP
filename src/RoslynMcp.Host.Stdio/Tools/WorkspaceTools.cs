@@ -557,7 +557,15 @@ public static class WorkspaceTools
     private static bool ShouldPrewarmAfterLoad(bool? prewarm, WorkspaceStatusDto status) =>
         prewarm ?? status.ProjectCount > AutoPrewarmProjectThreshold;
 
-    private static string? ResolveOptionalWorkspaceId(
+    /// <summary>
+    /// workspace-id-omitted-single-resolve: canonical single-workspace resolution shared by the
+    /// workspace tools and the read-path middleware (<c>StructuredCallToolFilter</c>). Returns
+    /// the requested id when supplied; otherwise the sole loaded workspace's id when exactly one
+    /// is loaded; otherwise <see langword="null"/> (zero or ≥2 loaded — the caller decides
+    /// between on-demand discovery and a structured fast-fail). <c>internal</c> so the middleware
+    /// applies the same logic at the chokepoint rather than re-deriving it.
+    /// </summary>
+    internal static string? ResolveOptionalWorkspaceId(
         string? requestedWorkspaceId,
         IReadOnlyList<WorkspaceStatusSummaryDto> loadedWorkspaces)
     {

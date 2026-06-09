@@ -54,6 +54,17 @@ namespace RoslynMcp.Core.Models;
 /// <c>WorkspaceReloadedDuringCall</c> so callers routing on category see the correct signal.
 /// <see langword="null"/> in all other cases (common path: no retry, or retry succeeded).
 /// </param>
+/// <param name="AutoResolution">
+/// workspace-id-omitted-single-resolve: records how the read-path middleware resolved an
+/// omitted/empty <c>workspaceId</c> on a read-only, non-destructive tool before dispatch:
+/// <c>explicit</c> (the caller supplied an id; left untouched), <c>single-workspace</c> (id
+/// omitted and exactly one workspace was loaded, so the middleware patched it in), or
+/// <c>fast-fail</c> (id omitted and two or more workspaces were loaded, so the middleware
+/// returned a structured error listing the candidates instead of guessing).
+/// <see langword="null"/> when the call did not go through the auto-resolution path (a
+/// write/destructive tool, a tool with no <c>workspaceId</c> parameter, or zero workspaces
+/// loaded — the last case is left for on-demand discovery / the binder).
+/// </param>
 public sealed record GateMetricsDto(
     string? GateMode,
     long QueuedMs,
@@ -64,4 +75,5 @@ public sealed record GateMetricsDto(
     long? StaleReloadMs = null,
     bool? RetriedAfterReload = null,
     bool? CacheHit = null,
-    bool? ReloadConfirmedNotFound = null);
+    bool? ReloadConfirmedNotFound = null,
+    string? AutoResolution = null);
