@@ -3,12 +3,12 @@
   "generatedAt": "2026-06-09T13:44:05Z",
   "backlogSnapshot": "2026-06-09T13:01:13Z",
   "addendaLoaded": true,
-  "phase": "skeleton",
+  "phase": "conflict-graph-done",
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "pending",
   "readyForExecute": false,
-  "scopeNote": "Scoped to the 3 workspace-auto-load rows per operator request. Strict dependency chain (order 1 -> 2 -> 3); all touch StructuredCallToolFilter.cs so fully serial (no parallel wave). Orders 2-3 are partly design-anchored (extend code order 1 introduces).",
+  "scopeNote": "Scoped to the 3 workspace-auto-load rows per operator request. Strict dependency chain (order 1 -> 2 -> 3); orders 1+2 share StructuredCallToolFilter.cs + GateMetricsDto.cs (conflict edge); order 3 (SymbolTools.cs) is file-disjoint but logically depends on order 1. Orders 2-3 are partly design-anchored (extend code order 1 introduces).",
   "initiatives": [
     {
       "id": "workspace-id-omitted-single-resolve",
@@ -17,28 +17,33 @@
       "backlogRowsClosed": [
         "workspace-id-omitted-single-resolve"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs",
+        "src/RoslynMcp.Core/Services/AmbientGateMetrics.cs",
+        "src/RoslynMcp.Core/Models/GateMetricsDto.cs"
+      ],
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "47d539eb726d5df773f7cb38085e0dd41477c90e04230913234ba75c63a40042"
+      "notes": "Hits Rule-3 ceiling exactly (4 prod files across Core+Host.Stdio). Promote ResolveOptionalWorkspaceId to internal; extend GateMetricsDto/AmbientGateMetrics with autoResolution.",
+      "fileSetHash": "e51bc1830d9d9dd556ca6534a8be1cbae6fb14fb2b5ff24f69592970823be179",
+      "stanzaHash": "859a76525944a20ed303142b44a084ee7545ee798ec4b15bfdc9a0d7b6881cf0"
     },
     {
       "id": "workspace-auto-load-on-demand",
@@ -47,28 +52,32 @@
       "backlogRowsClosed": [
         "workspace-auto-load-on-demand"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs",
+        "src/RoslynMcp.Host.Stdio/Middleware/SolutionDiscoveryHelper.cs",
+        "src/RoslynMcp.Core/Models/GateMetricsDto.cs"
+      ],
+      "testFilesAdded": 2,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 55000,
+      "toolPolicy": "edit-only",
       "scheduleHint": "depends-on:workspace-id-omitted-single-resolve",
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "ab7741a9bf208982426f590f3fbd3870918fa0200b1f76e74c73de8ec9bd35c6"
+      "notes": "Partly design-anchored (extends order-1 code absent at HEAD). Open spike resolved: query-anchored discovery uses declared client roots (RequestRootsAsync), not CWD. GateMetricsDto.cs may drop out if order-1 adds autoLoadElapsedMs.",
+      "fileSetHash": "1a115b0495a1033cb14a9c75d7fdfa62b88630afce087dbbd2f63c5aa327f013",
+      "stanzaHash": "534060022a785de0137ef66eb7b2aeb9db1c2c45338be29ae30291ca0126371d"
     },
     {
       "id": "workspace-id-optional-readonly-surface-flip",
@@ -77,37 +86,55 @@
       "backlogRowsClosed": [
         "workspace-id-optional-readonly-surface-flip"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/SymbolTools.cs"
+      ],
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
-      "scheduleHint": "depends-on:workspace-auto-load-on-demand; catalog-hotspot",
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
+      "scheduleHint": "depends-on:workspace-id-omitted-single-resolve; pilot-subset; full-~45-method-sweep-deferred-to-followon",
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "e801bcf59e4112626463a0eda69b0fc064c9951169f2fb52a0c47f19516bc139"
+      "notes": "Pilot scope = 4 tools in SymbolTools.cs (all read-only). Catalog NOT touched (no per-param schema). Deferred ~45-method remainder needs a follow-on backlog row filed in the same PR. Elicitation gate stops firing for these 4 post-flip (intentional; order-1 gate handles null).",
+      "fileSetHash": "e7cc95b602ce86bbe0cd9ee3d57fe0df4a985acb669a2558c95a014f8ead99f4",
+      "stanzaHash": "8d5c664dac53e9250311688cd4d4c5036f357c57bee3e3d0c109669ebe223efd"
     }
   ],
-  "anchorVerification": "pending",
+  "anchorVerification": "done",
   "conflictGraph": {
-    "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "edges": [
+      {
+        "a": 1,
+        "b": 2,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs",
+          "src/RoslynMcp.Core/Models/GateMetricsDto.cs"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 1,
+      "2": 1,
+      "3": 0
+    },
+    "zeroDegreeInitiatives": [
+      3
+    ],
+    "note": "File-conflict graph only. Order 3 is file-disjoint (zero-degree) but logically depends on order 1 (scheduleHint) — execute must honor the dependency, not parallelize 3 ahead of 1. Orders 1+2 fully serial (shared chokepoint + DTO). Net: the whole batch is effectively serial 1->2->3."
   },
-  "conflictGraphInputHash": "d9ca1ee1b09ba2d413f7550b39ea5301f7d404b4e7a9766cacd4e92cc90bc277",
-  "planHash": "feaae3e34c720db10ceca98088fd2fdad32439b009f3d581492723b36c845d1a",
+  "conflictGraphInputHash": "12b18ee74af4325c21ee3a6e26c49e31a4b8c06353e4e336d4784c01828b8be5",
+  "planHash": "bf5a6e6951fe8cbd7d9ad434ec8566a8ebb19bedbff322a7e7fca0f8d0f669dc",
   "backlogSnapshotHash": "af414b1ab0a3100eb3cd6fd005240eaa4377fae381571eba8e0f60d3d41f5e8e"
 }
