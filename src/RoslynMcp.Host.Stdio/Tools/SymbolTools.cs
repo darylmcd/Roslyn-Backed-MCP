@@ -168,6 +168,20 @@ public static class SymbolTools
         }, ct);
     }
 
+    // workspace-id-optional-readonly-surface-flip: the read-path middleware
+    // (StructuredCallToolFilter) resolves or auto-loads an omitted workspaceId before these
+    // now-optional tools dispatch. This guard covers the residual case the middleware cannot
+    // resolve — workspaceId omitted, zero workspaces loaded, and no solution discoverable — by
+    // returning a structured InvalidArgument (the filter classifies the throw) that points the
+    // caller at workspace_load. It also narrows workspaceId to non-null for the call below.
+    private static string RequireResolvedWorkspaceId(string? workspaceId) =>
+        string.IsNullOrEmpty(workspaceId)
+            ? throw new ArgumentException(
+                "workspaceId was omitted but no workspace is loaded and none could be discovered. " +
+                "Call workspace_load(path=…) first, or pass workspaceId explicitly.",
+                nameof(workspaceId))
+            : workspaceId;
+
     [McpServerTool(Name = "go_to_definition", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Find the definition location(s) of a symbol at the given position")]
     [McpToolMetadata("symbols", "stable", true, false,
         "Navigate to the symbol definition.")]
@@ -176,7 +190,7 @@ public static class SymbolTools
         IWorkspaceManager workspaceManager,
         IWorkspaceExecutionGate gate,
         ISymbolNavigationService symbolNavigationService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: the workspace session identifier returned by workspace_load. With one workspace loaded you may omit it — the read-path middleware resolves it automatically; pass it explicitly when two or more are loaded.")] string? workspaceId = null,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
@@ -184,6 +198,7 @@ public static class SymbolTools
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
+        workspaceId = RequireResolvedWorkspaceId(workspaceId);
         return gate.RunReadAsync(workspaceId, async c =>
         {
             var locator = SymbolLocatorFactory.Create(filePath, line, column, symbolHandle, metadataName);
@@ -242,7 +257,7 @@ public static class SymbolTools
         IWorkspaceManager workspaceManager,
         IWorkspaceExecutionGate gate,
         IReferenceService referenceService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: the workspace session identifier returned by workspace_load. With one workspace loaded you may omit it — the read-path middleware resolves it automatically; pass it explicitly when two or more are loaded.")] string? workspaceId = null,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
         [Description("Optional: 1-based line number")] int? line = null,
         [Description("Optional: 1-based column number")] int? column = null,
@@ -254,6 +269,7 @@ public static class SymbolTools
         [Description("Optional: case-sensitive Project.Name filter to scope the result; comma-separated for multiple projects (e.g. 'Foo.Core,Foo.Tests'). Null/empty preserves the unfiltered solution-wide walk.")] string? projectFilter = null,
         CancellationToken ct = default)
     {
+        workspaceId = RequireResolvedWorkspaceId(workspaceId);
         return gate.RunReadAsync(workspaceId, async c =>
         {
             ParameterValidation.ValidatePagination(offset, limit);
@@ -354,12 +370,13 @@ public static class SymbolTools
         McpServer server,
         IWorkspaceExecutionGate gate,
         ISymbolSearchService symbolSearchService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: the workspace session identifier returned by workspace_load. With one workspace loaded you may omit it — the read-path middleware resolves it automatically; pass it explicitly when two or more are loaded.")] string? workspaceId = null,
         [Description("Optional: absolute path to the source file")] string? filePath = null,
         [Description("Optional: stable symbol handle returned by other semantic tools")] string? symbolHandle = null,
         [Description("Optional: fully qualified metadata name, e.g. Namespace.TypeName")] string? metadataName = null,
         CancellationToken ct = default)
     {
+        workspaceId = RequireResolvedWorkspaceId(workspaceId);
         return GetDocumentSymbolsCore(server, gate, symbolSearchService, workspaceId, filePath, symbolHandle, metadataName, deprecation: null, ct);
     }
 
