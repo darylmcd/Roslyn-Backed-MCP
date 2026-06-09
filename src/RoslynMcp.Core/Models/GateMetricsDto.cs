@@ -59,11 +59,18 @@ namespace RoslynMcp.Core.Models;
 /// omitted/empty <c>workspaceId</c> on a read-only, non-destructive tool before dispatch:
 /// <c>explicit</c> (the caller supplied an id; left untouched), <c>single-workspace</c> (id
 /// omitted and exactly one workspace was loaded, so the middleware patched it in), or
-/// <c>fast-fail</c> (id omitted and two or more workspaces were loaded, so the middleware
-/// returned a structured error listing the candidates instead of guessing).
+/// <c>fast-fail</c> (id omitted and two-or-more workspaces — or two-or-more discoverable
+/// candidate solutions — so the middleware returned a structured error listing them instead
+/// of guessing), or <c>auto-loaded</c> (id omitted, zero workspaces loaded, and a single
+/// solution was discovered from the call context and loaded on demand before dispatch).
 /// <see langword="null"/> when the call did not go through the auto-resolution path (a
 /// write/destructive tool, a tool with no <c>workspaceId</c> parameter, or zero workspaces
-/// loaded — the last case is left for on-demand discovery / the binder).
+/// loaded with no discoverable solution — that last case is left for the binder/elicitation).
+/// </param>
+/// <param name="AutoLoadElapsedMs">
+/// workspace-auto-load-on-demand: milliseconds spent discovering and loading a workspace on
+/// demand when <paramref name="AutoResolution"/> is <c>auto-loaded</c>. <see langword="null"/>
+/// otherwise. Lets profiling isolate the cold on-demand-load cost from ordinary request timing.
 /// </param>
 public sealed record GateMetricsDto(
     string? GateMode,
@@ -76,4 +83,5 @@ public sealed record GateMetricsDto(
     bool? RetriedAfterReload = null,
     bool? CacheHit = null,
     bool? ReloadConfirmedNotFound = null,
-    string? AutoResolution = null);
+    string? AutoResolution = null,
+    long? AutoLoadElapsedMs = null);
