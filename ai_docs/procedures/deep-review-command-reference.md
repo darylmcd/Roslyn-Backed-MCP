@@ -33,7 +33,7 @@ This runs the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) s
 3. Deduplicates semantically across files.
 4. Verifies each candidate against `CHANGELOG.md` [Unreleased] + last 3 versions + the newest backlog-sweep plan.
 5. Fixes service / tool anchors so each row lands on real files.
-6. Splits heroic rows per `backlog-sweep-plan.md` Rule 1 / 3 / 4.
+6. Splits heroic rows per `~/.claude/prompts/backlog-sweep-plan.md` Rule 1 / 3 / 4.
 7. Ranks P2 / P3 / P4.
 8. Commits to a fresh branch off `main`.
 
