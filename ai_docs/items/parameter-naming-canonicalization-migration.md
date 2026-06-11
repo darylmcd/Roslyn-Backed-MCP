@@ -1,3 +1,30 @@
+# parameter-naming-canonicalization-migration — execute the approved experimental-surface parameter rename
+
+**row:** `parameter-naming-canonicalization-migration` · **pri:** `Low` · **size:** `M` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+
+## Anchors
+
+- `src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs`
+- `src/RoslynMcp.Host.Stdio/Tools/ExceptionFlowTools.cs`
+- `tests/RoslynMcp.Tests/ExperimentalSurfaceParameterNamingTests.cs` (new)
+
+## Acceptance
+
+- [ ] The 5 non-compliant project-scope parameters renamed from `projectFilter` / `scopeProjectFilter` to `projectName`; `[Description(...)]` text and catalog/descriptions updated
+- [ ] `ExperimentalSurfaceParameterNamingTests.cs` added with the design's 3 lockstep tests; reflection test asserts no experimental tool exposes `projectFilter`, `scopeProjectFilter`, or `character`
+- [ ] `CHANGELOG.md` `Changed — BREAKING` entry (experimental tier, direct rename, no aliases/deprecation window)
+
+## Evidence
+
+- Design verdict (migrated below) + 2026-06-01 discovery-sweep work-search.
+
+## Context
+
+deps: `parameter-naming-canonicalization-experimental-surface` (design row — shipped; absent from backlog = satisfied). Full design carried below.
+
+## Notes — migrated design note (was `ai_docs/items/parameter-naming-canonicalization-design.md`, v15 migration 2026-06-11)
+
 # Parameter-naming canonicalization — design note
 <!-- purpose: Bounded design for canonical MCP parameter naming across the experimental surface. Defines convention, enumerates affected tools/prompts, and specifies migration contract for the follow-on breaking-rename initiative. -->
 

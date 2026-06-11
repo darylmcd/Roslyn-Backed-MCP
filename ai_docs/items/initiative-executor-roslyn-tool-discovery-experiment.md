@@ -1,3 +1,29 @@
+# initiative-executor-roslyn-tool-discovery-experiment — measure executor Roslyn first-hop bypass post-router
+
+**row:** `initiative-executor-roslyn-tool-discovery-experiment` · **pri:** `Low` · **size:** `M` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+
+## Anchors
+
+- `.claude/agents/initiative-executor.md`
+- `src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.GuidedWorkflows.cs`
+- `skills/refactor/SKILL.md`
+- `skills/semantic-find/SKILL.md`
+
+## Acceptance
+
+- [ ] Measurement note created with sample source, semantic-first-hop counts, generic `Read`/`Grep`/`Edit` counts, `workspace_reload` counts, and a go/no-go decision
+- [ ] If go: one follow-on implementation row added to inject the Roslyn-first stanza and validate it with a controlled refactor rerun
+
+## Evidence
+
+- The design brief (migrated below) specifies this row; `ai_docs/reports/20260521T043918Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md`. **Corroboration (2026-06-08 retro):** a `/top-5-remediation` executor-style session (8fa58da6, 2026-05-30) did 10 `.cs` edits via `Edit`/`Grep` with Roslyn touched only for a `server_info` readiness probe; 6 of 9 Roslyn-touching sessions in the 14-day window reached Roslyn only for `server_info` — see `ai_docs/reports/20260608T203050Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md` §3#server_info-only. Source: 2026-06-04 discovery-sweep work-search + 2026-06-08 retro.
+
+## Context
+
+Measure whether refactoring initiative executors still bypass Roslyn semantic first-hop tools after `recommend_workflow`; only then edit the executor brief.
+
+## Notes — migrated design brief (was `ai_docs/items/initiative-executor-roslyn-tool-discovery-brief.md`, v15 migration 2026-06-11)
+
 # Initiative Executor Roslyn Tool Discovery Brief
 
 <!-- purpose: Design the Roslyn-first brief for refactoring initiative executors. -->
