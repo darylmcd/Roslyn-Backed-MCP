@@ -85,6 +85,6 @@ This is a **public repo** (per `.ai-doc-audit.md` `repo_class: public`), publish
 
 ## Planning Scope
 
-1. User named no specific repo / adapter / ecosystem / integration / cross-repo term -> scope = in-repo -> read `backlog.md`, then any named in-repo file under `ai_docs/plans/` -> STOP. Do not open `ai_docs/ecosystem/**`.
+1. User named no specific repo / adapter / ecosystem / integration / cross-repo term -> scope = in-repo -> read `ai_docs/backlog.md`, then any named in-repo file under `ai_docs/plans/` -> STOP. Do not open `ai_docs/ecosystem/**`.
 2. User named another repo / adapter / ecosystem / integration / cross-repo work -> scope = cross-project -> this repo has no local `ai_docs/ecosystem/**`; say so explicitly and use only the external context the user named.
 3. Both scopes named -> answer each as a separate question; do not merge into one recommendation.

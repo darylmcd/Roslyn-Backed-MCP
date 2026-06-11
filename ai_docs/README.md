@@ -14,7 +14,7 @@ This directory is the canonical AI-facing documentation tree. Use this file to f
 | `bootstrap-read-tool-primer.md` | Canonical pattern-to-tool cheat sheet for read-side MCP usage |
 | `planning_index.md` | Router for in-repo planning docs and scope boundaries |
 | `backlog.md` | Open work only; sync when closing rows |
-| `architecture.md` | System layers, data flow, and key abstractions |
+| `architecture.md` | Code Map, entry points, layers, data flow, and key abstractions |
 
 ## Domain Entry Points (read when touching that layer)
 

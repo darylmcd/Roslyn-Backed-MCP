@@ -2,6 +2,26 @@
 
 <!-- purpose: Current system layers, dependencies, data flow, and known gaps. -->
 
+## Overview
+
+- **Runtime:** C# / .NET 10, Roslyn 5.x, stdio MCP host (`PackAsTool` global tool + Claude Code plugin)
+- **Shape:** Layered — Host (transport + tools) → Roslyn (semantic services) → Core (DTOs/contracts)
+
+## Entry points
+
+| Process / host | Entry-point file | Starts |
+|----------------|------------------|--------|
+| stdio MCP server | `src/RoslynMcp.Host.Stdio/Program.cs` | DI composition root, MCP stdio transport, tool/resource/prompt registration |
+
+## Code Map
+
+| Domain / Feature | Source path(s) | Key types | Tests |
+|------------------|----------------|-----------|-------|
+| Host / Transport | `src/RoslynMcp.Host.Stdio/` | `Program`, `StructuredCallToolFilter`, `*Tools.cs` partials | `tests/RoslynMcp.Tests/` (host/filter tests) |
+| Core Contracts | `src/RoslynMcp.Core/` | DTOs, preview store, gate contracts | `tests/RoslynMcp.Tests/` |
+| Roslyn Services | `src/RoslynMcp.Roslyn/` | `WorkspaceManager`, analysis/refactor services | `tests/RoslynMcp.Tests/` |
+| Plugin Skills (shipped) | `skills/` | `skills/*/SKILL.md` workflows | `eng/verify-skills` (genericity guard) |
+
 ## Layer Map
 
 | Layer | Project | Responsibility |

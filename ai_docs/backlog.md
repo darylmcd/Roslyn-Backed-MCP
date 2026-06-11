@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-11T14:44:11Z
+**updated_at:** 2026-06-11T20:00:00Z
 
 ## Agent contract
 
@@ -14,7 +14,7 @@
 | **MUST** | End implementation plans with a final todo: `backlog: sync ai_docs/backlog.md`. |
 | **MUST** | Use stable, kebab-case `id` values per open row. |
 | **MUST** | Keep the `do` cell **slim** — a bold title + one concrete next deliverable + `[type: …]` + `[source: …]` tags (≤~250 chars). Enough to triage, not to implement. |
-| **MUST** | Spill implementation detail (`Anchors:`, acceptance criteria, long-form evidence) to `ai_docs/items/<id>.md` for any **code-touching row**, and point the `detail` cell at it. Use `templates/items.md`. Pure-prose rows (Defer rationale, decision notes) may stay inline with `detail: —`. |
+| **MUST** | Spill implementation detail (`Anchors:`, acceptance criteria, long-form evidence) to `ai_docs/items/<id>.md` for any **code-touching row**, and point the `detail` cell at it. Seed from `~/.claude/skills/doc-audit/templates/items.md`. Pure-prose rows (Defer rationale, decision notes) may stay inline with `detail: —`. |
 | **MUST** | Set `size` per row: `S` (≤1 prod file) / `M` (2–4 prod files) / `L` (>4 prod files or >1 regression shape). `L` is a **split-candidate** — split it into per-slice children before planning against it. >3 test files is also a split-candidate. |
 | **MUST** | Keep `deps` to backlog row ids or `—` (`none` ≡ `—`). A dep id matching a live open row = this row is blocked; an id absent from the backlog = satisfied (open-work-only). |
 | **MUST NOT** | Add `Completed`, `Shipped`, `Done`, `History`, or `Changelog` sections. Git is the archive. |
@@ -87,6 +87,8 @@
 | `initiative-executor-roslyn-tool-discovery-experiment` | Low | — | **Executor Roslyn first-hop experiment** — measure post-`recommend_workflow` bypass (semantic-first-hop vs `Read`/`Grep`/`Edit` counts), produce a go/no-go note before editing the executor brief. [source: 2026-06-04 discovery-sweep + 2026-06-08 retro] | M | items/initiative-executor-roslyn-tool-discovery-experiment.md |
 | `surface-snapshot-stale-surface-audit` | Low | — | **Refresh the live-surface snapshot** — run `/surface-audit` to update `.ai-doc-audit.md` counts (snapshot 2026-05-06 says 168 tools; surface ~173, server v2.3.2) before the next release cut. [type: docs] | M | items/surface-snapshot-stale-surface-audit.md |
 | `shipped-skills-hardcode-bare-roslyn-tool-prefix` | Low | — | **Prefix-agnostic shipped skills** — VERIFY FIRST whether the plugin-prefix surface-test entry gate misfires, then sweep shipped `skills/**` + retro prompt to suffix-based tool references via the genericity guard. [type: bug] [source: 2026-06-08 retro follow-up] | L | items/shipped-skills-hardcode-bare-roslyn-tool-prefix.md |
+| `script-execution-supervisor-cancel-catch-observability` | Low | — | **Script supervisor cancel catch** — document or log the ObjectDisposedException race on `timeoutCts.Cancel()` at hard deadline; no behavior change. [type: observability] [source: doc-audit 2026-06-11] | S | items/script-execution-supervisor-cancel-catch-observability.md |
+| `legacy-bug-id-tool-descriptions` | Low | — | **Remove BUG-007/BUG-008 from tool descriptions** — replace internal bug ids in `test_discover`/`get_msbuild_properties` Description with shipped pagination/filter field names. [type: docs] [source: doc-audit 2026-06-11] | S | items/legacy-bug-id-tool-descriptions.md |
 | `backlog-d-fragment-schema` | Low | — | **Relocate the backlog.d fragment-schema doc out of items/** — it is a canonical cross-repo schema (cited by shipped `skills/mcp-server-surface-test` prompt + `.claude/skills/backlog-intake`), not row detail; move it and update referrers in one PR. [type: docs] [source: v15-migration-20260611] | S | items/backlog-d-fragment-schema.md |
 | `workspace-auto-load-on-demand-design` | Low | — | **Retire the shipped auto-load design spec** — after `/reconcile-plans` GCs plan `20260609T134405Z`, fold residual unimplemented sections into the full-sweep row and delete the doc. [type: docs] [source: v15-migration-20260611] | S | items/workspace-auto-load-on-demand-design.md |
 | `move-to-git-issues` | Low | — | **Disposition the parked move-to-git-issues design** — rows 1-3 shipped v1.35.1; decide row 4 + the doc's 4 open questions (file rows or record won't-do), then retire the doc. [type: docs] [source: v15-migration-20260611] | S | items/move-to-git-issues.md |

@@ -80,4 +80,4 @@ measurement experiment:
 
 ## Follow-On Row
 
-`initiative-executor-roslyn-tool-discovery-experiment` | Low | none | Measure whether refactoring initiative executors still bypass Roslyn semantic first-hop tools after `recommend_workflow`; only then edit the executor brief. Anchors: `.claude/agents/initiative-executor.md`, `ai_docs/reports/20260521T043918Z_roslyn-backed-mcp_roslyn-mcp-multisession-retro.md`, `src/RoslynMcp.Host.Stdio/Prompts/RoslynPrompts.GuidedWorkflows.cs`, `skills/refactor/SKILL.md`, `skills/semantic-find/SKILL.md`. Regression/output shape: create a measurement note with sample source, semantic-first-hop counts, generic `Read`/`Grep`/`Edit` counts, workspace_reload counts, and a go/no-go decision; if go, add one follow-on implementation row to inject the Roslyn-first stanza and validate it with a controlled refactor rerun. Evidence: `ai_docs/items/initiative-executor-roslyn-tool-discovery-brief.md`.
+Legacy fat-row snapshot (pre-v15). Design brief content migrated to **Notes — migrated design brief** above; Evidence cites the 2026-06-08 retro corroboration.

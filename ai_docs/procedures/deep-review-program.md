@@ -120,7 +120,7 @@ Each batch rollup in `ai_docs/reports/` should include:
 
 ## Backlog intake rules
 
-Default intake is **driven by the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill** (`/backlog-intake`). It stages review artifacts, extracts actionable items via a context-protecting subagent, dedupes semantically, verifies each candidate against `CHANGELOG.md` + the newest backlog-sweep plan, fixes service / tool anchors, splits heroic rows per `backlog-sweep-plan.md` Rule 1 / 3 / 4, ranks P2 / P3 / P4, and commits to a fresh branch off `main`.
+Default intake is **driven by the [`backlog-intake`](../../.claude/skills/backlog-intake/SKILL.md) skill** (`/backlog-intake`). It stages review artifacts, extracts actionable items via a context-protecting subagent, dedupes semantically, verifies each candidate against `CHANGELOG.md` + the newest backlog-sweep plan, fixes service / tool anchors, splits heroic rows per `~/.claude/prompts/backlog-sweep-plan.md` Rule 1 / 3 / 4, ranks P2 / P3 / P4, and commits to a fresh branch off `main`.
 
 - Dedupe key (human triage): `tool + symptom + catalog-version + client-family`.
 - Narrative-only sources (test-suite audits, manual retros without a matching filename pattern) still need a by-hand row in `ai_docs/backlog.md`.
@@ -131,8 +131,8 @@ Default intake is **driven by the [`backlog-intake`](../../.claude/skills/backlo
 - `deep-review-backlog-intake.md` — automation switches and manual follow-up
 - `skills/mcp-server-surface-test/prompts/full.md` — canonical audit prompt run by `/mcp-server-stress`
 - `deep-review-command-reference.md` — concrete shell command examples for the workflow
-- `audit-reports/README.md` — raw audit output location
-- `reports/README.md` — synthesized rollup location
+- `../audit-reports/README.md` — raw audit output location
+- `../reports/README.md` — synthesized rollup location
 - `../eng/stage-review-inbox.ps1` — discover + copy audit/retro/promotion files from sibling repos into `review-inbox/` (default copy preserves the canonical source; `-Move` clears it)
 - `../.claude/skills/backlog-intake/SKILL.md` — `/backlog-intake` skill that consumes `review-inbox/` and produces backlog rows
 - `docs/release-policy.md` — release-gate requirements that consume audit evidence
