@@ -16,6 +16,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Maintenance
 
+## [2.3.4] - 2026-06-18
+
+### Fixed
+
+- **Fixed:** `symbol_signature_help` now returns a structured `{error, category: NotFound, message}` envelope for unresolvable locators instead of a bare JSON `null`, matching its sibling tools.
+- **Fixed:** exceptions thrown by `workspace_load` or the retried tool dispatch during elicitation-based `workspaceId` recovery now return the standard structured `CallToolResult` error envelope instead of escaping the filter as unhandled transport errors.
+- **Fixed:** residual-case elicitation recovery (`IsWorkspaceIdRecoveryAllowedFor`) now fires for tools with `workspaceId` flipped to `Required:false` (e.g. `go_to_definition`, `find_references`, `document_symbols`), matching the design intent documented on `IsWorkspaceIdAutoResolveAllowedFor`; stale comment in `TryAutoLoadWorkspaceAsync` corrected.
+- **Fixed:** `IsCorlibAssembly` heuristic in `find_implementations` now uses a `SpecialType`-based primary gate plus a name signal (BCL allowlist or `System.*`) corroborated by a well-known .NET/BCL strong-name public-key token, instead of a bare `StartsWith("System.")` match — a third-party `System.MyCompany.Foo` assembly (no `SpecialType`, not BCL-signed) is no longer misclassified as a corlib implementation root.
+- **Fixed:** Swallowed `Process.Kill` cleanup failures in `WorkspaceValidationService`: kill exceptions are now logged at Warning level (with process id) when a logger is present, matching `DotnetCommandRunner`. Validation envelopes unchanged.
+- **Fixed:** `test_discover` and `get_msbuild_properties` tool descriptions to remove internal bug tracker ids `BUG-007`/`BUG-008`; descriptions now reference only the shipped pagination and filter field names.
+
+### Changed
+
+- **Changed:** `workspaceId` is now optional (defaults to `null`) on the read-only tools `go_to_definition`, `find_references`, and `document_symbols`. With a single workspace loaded — or one discoverable from the call context — callers may omit it and the server resolves/auto-loads it (see the read-path middleware). Explicit-id callers are unaffected (additive, not a breaking change). This is a pilot subset; the full read-only surface (and `symbol_search`, whose required `query` parameter needs a signature reorder) is a tracked follow-on. Closes `workspace-id-optional-readonly-surface-flip`.
+
+### Added
+
+- **Added:** automatic workspace discovery + on-demand load for read-only tools. When a read-only, non-destructive tool is called with `workspaceId` omitted and no workspace is loaded, the server discovers the implied solution — file-anchored (walk up from a `filePath` argument to the nearest `.slnx`/`.sln`/`.csproj`) or query-anchored (a bounded scan of the client's declared roots) — and auto-loads it via `workspace_load` before retrying. A unique match loads and proceeds (`_meta.autoResolution=auto-loaded`, `_meta.autoLoadElapsedMs`); two or more candidates return a structured fast-fail listing them with a ready-to-run `workspace_load(path=…)` hint; none falls back to the existing guidance/elicitation path. Mutating, preview, and apply tools never auto-load. Closes `workspace-auto-load-on-demand`.
+- **Added:** workspace-id auto-resolution in the read-path middleware (`StructuredCallToolFilter`) — a read-only, non-destructive tool called with `workspaceId` omitted/empty now resolves to the single loaded workspace, or fast-fails with a structured error listing the loaded ids when two or more are loaded. New `_meta.autoResolution` field (`explicit` | `single-workspace` | `fast-fail`) makes adoption measurable. No schema change; explicit-id callers are unaffected. Closes `workspace-id-omitted-single-resolve`.
+
+### Maintenance
+
+- **Maintenance:** Replace wall-clock poll in NuGet version checker tests with a deterministic task-await seam, eliminating timing sensitivity under heavy CI parallel load.
+- **Maintenance:** Documented the approved `ObjectDisposedException` race in `ScriptExecutionSupervisor.MarkAbandonedIfWorkerStillRunning` — the empty catch on `timeoutCts.Cancel()` at hard deadline is now annotated explaining the expected dispose-before-cancel scenario.
+
 ## [2.3.3] - 2026-06-08
 
 ### Fixed
