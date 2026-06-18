@@ -14,9 +14,10 @@ namespace RoslynMcp.Tests;
 ///   <item><b>eligibility</b> — <see cref="StructuredCallToolFilter.IsWorkspaceIdAutoResolveAllowedFor"/>
 ///         fires for read-only workspace-scoped tools <i>regardless of the schema Required flag</i>,
 ///         which is the property that keeps the feature alive after a tool flips
-///         <c>workspaceId</c> to optional (the surface-flip initiative). Contrast with
-///         <see cref="StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor"/>, which is
-///         Required-gated because it only covers the binder-threw exception path.</item>
+///         <c>workspaceId</c> to optional (the surface-flip initiative). Its sibling
+///         <see cref="StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor"/> is now also
+///         Required-independent; it differs only in covering the exception-path elicitation
+///         recovery rather than the pre-dispatch auto-resolution path.</item>
 ///   <item><b>classification</b> — omit + 1 loaded resolves to that workspace; omit + ≥2 loaded
 ///         fast-fails listing the candidates; omit + 0 loaded is left for on-demand discovery;
 ///         an explicit id passes through untouched.</item>
@@ -51,12 +52,14 @@ public sealed class StructuredCallToolFilterResolutionTests
             "Auto-resolution must fire for read-only tools whose workspaceId is optional; " +
             "otherwise the feature dies the moment a tool flips workspaceId to a default.");
 
-        // Distinction witness: the Required-gated recovery predicate does NOT fire for the same
-        // optional tool — proving the two predicates are intentionally different.
-        Assert.IsFalse(
+        // Coherence witness: the exception-path recovery predicate is now ALSO Required-independent
+        // (decoupled to match auto-resolve), so it fires for the same optional read-only tool. The
+        // two predicates differ in WHICH path they gate (pre-dispatch auto-resolution vs the
+        // exception-path elicitation recovery), not in Required-gating.
+        Assert.IsTrue(
             StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor("workspace_readiness_report", "workspaceId"),
-            "The exception-path recovery predicate is Required-gated and must stay false for an " +
-            "optional-workspaceId tool — only the auto-resolve predicate covers that case.");
+            "The exception-path recovery predicate is Required-independent and must fire for an " +
+            "optional-workspaceId read-only tool, mirroring the auto-resolve predicate.");
     }
 
     [TestMethod]

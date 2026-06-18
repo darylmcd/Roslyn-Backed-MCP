@@ -84,6 +84,18 @@ public sealed class StructuredCallToolFilterElicitationTests
     }
 
     [TestMethod]
+    public void IsWorkspaceIdRecoveryAllowedFor_OptionalWorkspaceIdReadOnlyTool_ReturnsTrue()
+    {
+        // workspace-id-omitted-residual-recovery-coherence: the recovery gate is decoupled from
+        // the Required flag, so read-only tools that flipped workspaceId to Required:false keep a
+        // live exception-path elicitation recovery (matching IsWorkspaceIdAutoResolveAllowedFor).
+        Assert.IsTrue(StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor("go_to_definition", "workspaceId"),
+            "Recovery must stay eligible for go_to_definition after workspaceId flipped to optional.");
+        Assert.IsTrue(StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor("find_references", "workspaceId"));
+        Assert.IsTrue(StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor("document_symbols", "workspaceId"));
+    }
+
+    [TestMethod]
     public void IsElicitationAllowedFor_WriteOrDestructiveWorkspaceId_ReturnsFalse()
     {
         Assert.IsFalse(StructuredCallToolFilter.IsElicitationAllowedFor("apply_text_edit", "workspaceId"),

@@ -91,7 +91,7 @@ internal static class StructuredCallToolFilter
     /// Adding to this list requires explicit policy review: the parameter must be
     /// non-sensitive, naturally bounded (a path, an id, a select-from-N), and the recovery
     /// shape (one-shot retry with the elicited value patched in) must be safe for the tool's
-    /// idempotency semantics. Required <c>workspaceId</c> parameters for read-only,
+    /// idempotency semantics. <c>workspaceId</c> parameters (Required or optional) for read-only,
     /// non-destructive tools are handled by
     /// <see cref="IsWorkspaceIdRecoveryAllowedFor"/> because the concrete elicited field is
     /// <c>workspace_load.path</c>; <c>workspaceId</c> itself is a path-derived session token,
@@ -133,8 +133,9 @@ internal static class StructuredCallToolFilter
                 // before the SDK binder runs: exactly one workspace loaded => patch it in;
                 // two-or-more => structured fast-fail listing the candidates; zero => left for
                 // on-demand discovery / the binder. This is intentionally NOT gated on the
-                // schema's Required flag (unlike IsWorkspaceIdRecoveryAllowedFor) so it keeps
-                // working after read-only tools flip workspaceId to optional.
+                // schema's Required flag (like IsWorkspaceIdRecoveryAllowedFor, which is also
+                // Required-independent) so it keeps working after read-only tools flip
+                // workspaceId to optional.
                 var workspaceManager = context.Services?.GetService<IWorkspaceManager>();
                 if (workspaceManager is not null && IsWorkspaceIdAutoResolveAllowedFor(toolName))
                 {
@@ -438,6 +439,17 @@ internal static class StructuredCallToolFilter
         return await next(context, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// workspace-id-omitted-residual-recovery-coherence: returns <see langword="true"/> when
+    /// <paramref name="toolName"/> is a read-only, non-destructive tool and <paramref name="paramName"/>
+    /// is the non-sensitive string <c>workspaceId</c> parameter, making it eligible for the
+    /// exception-path elicitation recovery. <b>Independent of the Required flag</b> (mirrors
+    /// <see cref="IsWorkspaceIdAutoResolveAllowedFor"/>): the recovery only fires from the
+    /// exception-catch block, and the binder never throws for a missing <em>optional</em> arg, so a
+    /// relaxed gate cannot fire spuriously — but keeping it Required-independent ensures recovery
+    /// stays live for read-only tools that flip <c>workspaceId</c> to optional
+    /// (e.g. <c>go_to_definition</c>, <c>find_references</c>, <c>document_symbols</c>).
+    /// </summary>
     internal static bool IsWorkspaceIdRecoveryAllowedFor(string toolName, string paramName)
     {
         if (!string.Equals(paramName, WorkspaceIdParameterName, StringComparison.Ordinal))
@@ -454,7 +466,7 @@ internal static class StructuredCallToolFilter
         var tool = ServerSurfaceCatalog.Tools.FirstOrDefault(entry =>
             string.Equals(entry.Name, toolName, StringComparison.Ordinal));
 
-        return schema is { Type: "string", Required: true }
+        return schema is { Type: "string" }
                && tool is { ReadOnly: true, Destructive: false };
     }
 
@@ -463,10 +475,11 @@ internal static class StructuredCallToolFilter
     /// <paramref name="toolName"/> is a read-only, non-destructive tool that declares a string
     /// <c>workspaceId</c> parameter, making it eligible for pre-dispatch auto-resolution.
     /// Distinct from <see cref="IsWorkspaceIdRecoveryAllowedFor"/>: that predicate gates the
-    /// exception-path elicitation recovery and requires <c>Required:true</c> (it only fires when
-    /// the binder threw on a missing required arg); this one is <b>independent of the Required
-    /// flag</b> so auto-resolution keeps working after a read-only tool flips <c>workspaceId</c>
-    /// to optional. Public so tests can pin the policy.
+    /// exception-path elicitation recovery (it fires when a tool-call surfaces a missing
+    /// <c>workspaceId</c>); both predicates are now <b>independent of the Required flag</b> so
+    /// they keep working after a read-only tool flips <c>workspaceId</c> to optional. This one
+    /// gates pre-dispatch auto-resolution rather than the exception-path recovery. Public so
+    /// tests can pin the policy.
     /// </summary>
     public static bool IsWorkspaceIdAutoResolveAllowedFor(string? toolName)
     {
@@ -601,8 +614,11 @@ internal static class StructuredCallToolFilter
     ///   <see langword="null"/> to fall back to the existing recovery path.</item>
     ///   <item><b>Ambiguous</b> → return a structured fast-fail listing the candidate solutions
     ///   with a ready-to-run <c>workspace_load(path=…)</c> hint (records <c>fast-fail</c>).</item>
-    ///   <item><b>None</b> → return <see langword="null"/>; the binder/elicitation path handles it
-    ///   (the elicitation fallback when the client supports it).</item>
+    ///   <item><b>None</b> → return <see langword="null"/> to fall through to <c>next()</c>; the
+    ///   downstream tool then either binds the supplied <c>workspaceId</c> or, when it is omitted on
+    ///   an auto-resolve-eligible read-only tool, throws and triggers the exception-path elicitation
+    ///   recovery gated by <see cref="IsWorkspaceIdRecoveryAllowedFor"/> (which is Required-independent,
+    ///   so it stays live for tools that flipped <c>workspaceId</c> to optional).</item>
     /// </list>
     /// A non-null return is a terminal fast-fail; <see langword="null"/> means "fall through to
     /// <c>next()</c>" (whether or not the arguments were patched).
