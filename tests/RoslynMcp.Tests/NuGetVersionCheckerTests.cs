@@ -106,18 +106,15 @@ public sealed class NuGetVersionCheckerTests
 
     private static async Task WaitForCompletionAsync(NuGetVersionChecker checker)
     {
-        // The background fetch is a fire-and-forget Task.Run; poll the observable status
-        // with a bounded timeout rather than reaching into private state.
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            var status = checker.LastCheckStatus;
-            if (status is not VersionCheckStatus.NeverChecked and not VersionCheckStatus.Pending)
-                return;
-            await Task.Delay(25).ConfigureAwait(false);
-        }
+        // Await the in-flight background fetch directly via the internal test seam rather than
+        // spin-looping on the observable status — deterministic and free of timing sensitivity
+        // under heavy CI parallel load. The bounded WaitAsync guards against a hung handler.
+        var pending = checker.PendingCheckForTest;
+        Assert.IsNotNull(pending, "Expected a background version check to be in flight.");
+        await pending.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
 
-        Assert.Fail("Background version check did not complete within the timeout.");
+        Assert.AreNotEqual(VersionCheckStatus.Pending, checker.LastCheckStatus,
+            "Background version check should have reached a terminal status.");
     }
 
     [TestMethod]

@@ -231,16 +231,16 @@ public sealed class ServerInfoUpdateLatestTests
 
     private static async Task WaitForTerminalStatusAsync(NuGetVersionChecker checker)
     {
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < deadline)
-        {
-            if (checker.LastCheckStatus is VersionCheckStatus.Failed or VersionCheckStatus.TimedOut or VersionCheckStatus.Succeeded)
-                return;
+        // Await the in-flight background fetch directly via the internal test seam rather than
+        // spin-looping on the observable status — deterministic and free of timing sensitivity
+        // under heavy CI parallel load. The bounded WaitAsync guards against a hung handler.
+        var pending = checker.PendingCheckForTest;
+        Assert.IsNotNull(pending, "Expected a background version check to be in flight.");
+        await pending.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
 
-            await Task.Delay(25).ConfigureAwait(false);
-        }
-
-        Assert.Fail("Background version check did not reach a terminal status within the timeout.");
+        Assert.IsTrue(
+            checker.LastCheckStatus is VersionCheckStatus.Failed or VersionCheckStatus.TimedOut or VersionCheckStatus.Succeeded,
+            "Background version check should have reached a terminal status.");
     }
 
     private static void ForceCacheExpired(NuGetVersionChecker checker)
