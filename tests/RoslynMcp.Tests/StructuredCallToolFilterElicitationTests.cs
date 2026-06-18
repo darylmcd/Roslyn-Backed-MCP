@@ -301,4 +301,86 @@ public sealed class StructuredCallToolFilterElicitationTests
             "Recovery must load the workspace before retrying the original workspace-scoped tool.");
         Assert.AreEqual("""{"state":"ready"}""", ((TextContentBlock)result.Content![0]).Text);
     }
+
+    [TestMethod]
+    public async Task TryRecoverMissingWorkspaceIdAsync_WorkspaceLoadDispatchThrows_ReturnsNullWithoutEscaping()
+    {
+        const string solutionPath = "C:/repo/SampleSolution.slnx";
+
+        var result = await StructuredCallToolFilter.TryRecoverMissingWorkspaceIdAsync(
+            "workspace_status",
+            originalArguments: null,
+            elicitAsync: _ =>
+            {
+                var pathElement = JsonSerializer.SerializeToElement(solutionPath, JsonDefaults.Indented);
+                return ValueTask.FromResult(new ElicitResult
+                {
+                    Action = "accept",
+                    Content = new Dictionary<string, JsonElement>
+                    {
+                        ["path"] = pathElement,
+                    },
+                });
+            },
+            dispatchAsync: (toolName, _) =>
+            {
+                Assert.AreEqual("workspace_load", toolName,
+                    "A throw from the workspace_load dispatch must stop recovery before retrying the original tool.");
+                throw new InvalidOperationException("workspace_load blew up");
+            },
+            logger: null,
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsNull(result,
+            "A throwing workspace_load dispatch must be caught and surface as a null fall-through, not escape the filter.");
+    }
+
+    [TestMethod]
+    public async Task TryRecoverMissingWorkspaceIdAsync_RetriedToolDispatchThrows_ReturnsNullWithoutEscaping()
+    {
+        const string solutionPath = "C:/repo/SampleSolution.slnx";
+        const string recoveredWorkspaceId = "ws-recovered";
+
+        var result = await StructuredCallToolFilter.TryRecoverMissingWorkspaceIdAsync(
+            "workspace_status",
+            originalArguments: null,
+            elicitAsync: _ =>
+            {
+                var pathElement = JsonSerializer.SerializeToElement(solutionPath, JsonDefaults.Indented);
+                return ValueTask.FromResult(new ElicitResult
+                {
+                    Action = "accept",
+                    Content = new Dictionary<string, JsonElement>
+                    {
+                        ["path"] = pathElement,
+                    },
+                });
+            },
+            dispatchAsync: (toolName, _) =>
+            {
+                if (toolName == "workspace_load")
+                {
+                    return Task.FromResult(new CallToolResult
+                    {
+                        Content =
+                        [
+                            new TextContentBlock
+                            {
+                                Text = JsonSerializer.Serialize(
+                                    new { WorkspaceId = recoveredWorkspaceId },
+                                    JsonDefaults.Indented),
+                            },
+                        ],
+                    });
+                }
+
+                Assert.AreEqual("workspace_status", toolName);
+                throw new InvalidOperationException("retried tool blew up");
+            },
+            logger: null,
+            cancellationToken: CancellationToken.None);
+
+        Assert.IsNull(result,
+            "A throwing retried-tool dispatch must be caught and surface as a null fall-through, not escape the filter.");
+    }
 }

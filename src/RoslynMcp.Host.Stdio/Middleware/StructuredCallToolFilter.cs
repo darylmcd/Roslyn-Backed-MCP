@@ -708,7 +708,19 @@ internal static class StructuredCallToolFilter
         {
             [PathParameterName] = pathValue,
         };
-        var loadResult = await dispatchAsync(WorkspaceLoadToolName, loadArgs).ConfigureAwait(false);
+        CallToolResult loadResult;
+        try
+        {
+            loadResult = await dispatchAsync(WorkspaceLoadToolName, loadArgs).ConfigureAwait(false);
+        }
+        catch (Exception loadEx)
+        {
+            logger?.LogWarning(loadEx,
+                "workspace_load dispatch threw during workspaceId recovery for {Tool}; falling back to schemaHint envelope.",
+                toolName);
+            return null;
+        }
+
         var workspaceId = TryExtractWorkspaceId(loadResult);
         if (string.IsNullOrWhiteSpace(workspaceId))
         {
@@ -728,7 +740,17 @@ internal static class StructuredCallToolFilter
         }
 
         retryArgs[WorkspaceIdParameterName] = JsonSerializer.SerializeToElement(workspaceId, JsonDefaults.Indented);
-        return await dispatchAsync(toolName, retryArgs).ConfigureAwait(false);
+        try
+        {
+            return await dispatchAsync(toolName, retryArgs).ConfigureAwait(false);
+        }
+        catch (Exception retryEx)
+        {
+            logger?.LogWarning(retryEx,
+                "Retried tool dispatch threw during workspaceId recovery for {Tool}; falling back to schemaHint envelope.",
+                toolName);
+            return null;
+        }
     }
 
     /// <summary>
