@@ -438,6 +438,17 @@ internal static class StructuredCallToolFilter
         return await next(context, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// workspace-id-omitted-residual-recovery-coherence: returns <see langword="true"/> when
+    /// <paramref name="toolName"/> is a read-only, non-destructive tool and <paramref name="paramName"/>
+    /// is the non-sensitive string <c>workspaceId</c> parameter, making it eligible for the
+    /// exception-path elicitation recovery. <b>Independent of the Required flag</b> (mirrors
+    /// <see cref="IsWorkspaceIdAutoResolveAllowedFor"/>): the recovery only fires from the
+    /// exception-catch block, and the binder never throws for a missing <em>optional</em> arg, so a
+    /// relaxed gate cannot fire spuriously — but keeping it Required-independent ensures recovery
+    /// stays live for read-only tools that flip <c>workspaceId</c> to optional
+    /// (e.g. <c>go_to_definition</c>, <c>find_references</c>, <c>document_symbols</c>).
+    /// </summary>
     internal static bool IsWorkspaceIdRecoveryAllowedFor(string toolName, string paramName)
     {
         if (!string.Equals(paramName, WorkspaceIdParameterName, StringComparison.Ordinal))
@@ -454,7 +465,7 @@ internal static class StructuredCallToolFilter
         var tool = ServerSurfaceCatalog.Tools.FirstOrDefault(entry =>
             string.Equals(entry.Name, toolName, StringComparison.Ordinal));
 
-        return schema is { Type: "string", Required: true }
+        return schema is { Type: "string" }
                && tool is { ReadOnly: true, Destructive: false };
     }
 
@@ -601,8 +612,11 @@ internal static class StructuredCallToolFilter
     ///   <see langword="null"/> to fall back to the existing recovery path.</item>
     ///   <item><b>Ambiguous</b> → return a structured fast-fail listing the candidate solutions
     ///   with a ready-to-run <c>workspace_load(path=…)</c> hint (records <c>fast-fail</c>).</item>
-    ///   <item><b>None</b> → return <see langword="null"/>; the binder/elicitation path handles it
-    ///   (the elicitation fallback when the client supports it).</item>
+    ///   <item><b>None</b> → return <see langword="null"/> to fall through to <c>next()</c>; the
+    ///   downstream tool then either binds the supplied <c>workspaceId</c> or, when it is omitted on
+    ///   an auto-resolve-eligible read-only tool, throws and triggers the exception-path elicitation
+    ///   recovery gated by <see cref="IsWorkspaceIdRecoveryAllowedFor"/> (which is Required-independent,
+    ///   so it stays live for tools that flipped <c>workspaceId</c> to optional).</item>
     /// </list>
     /// A non-null return is a terminal fast-fail; <see langword="null"/> means "fall through to
     /// <c>next()</c>" (whether or not the arguments were patched).
