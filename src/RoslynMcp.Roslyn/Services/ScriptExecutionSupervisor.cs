@@ -268,6 +268,12 @@ internal sealed class ScriptExecutionSupervisor
         }
 
         Interlocked.Increment(ref _abandonedEvaluations);
+        // Approved race: the timeout CTS may already be disposed if the worker completed
+        // between the hard-deadline check and this cancel. Cancellation is then a no-op and
+        // the ObjectDisposedException is expected, so swallowing it here is intentional.
+        // (On the HardDeadline path the caller logs LogHardDeadlineCritical right after this
+        // returns true; the abandonment is already counted via _abandonedEvaluations above, so
+        // no observability is lost by swallowing the cancel race.)
         try { timeoutCts.Cancel(); } catch (ObjectDisposedException) { }
         return true;
     }
