@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using System.Globalization;
+using System.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -412,26 +415,100 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
             return false;
         }
 
-        return IsCorlibAssembly(type.ContainingAssembly);
+        return IsCorlibAssembly(type.ContainingAssembly, type.SpecialType);
     }
 
     /// <summary>
     /// Heuristic for "framework/corlib assembly" — the assemblies whose interface/type roots the
     /// metadata-name <see cref="SymbolFinder.FindImplementationsAsync"/> path enumerates
-    /// unreliably. Matches the runtime corlib (<c>System.Private.CoreLib</c> / <c>mscorlib</c> /
-    /// <c>System.Runtime</c>) plus the broader <c>System.*</c> BCL surface.
+    /// unreliably. The primary signal is a recognized <see cref="SpecialType"/> on the type
+    /// (mirrors the <see cref="IsCorlibVirtualMember"/> gate): the C# compiler only stamps a
+    /// non-<see cref="SpecialType.None"/> value on the canonical runtime corlib types
+    /// (<c>System.IDisposable</c>, <c>System.IComparable</c>, <c>System.Collections.IEnumerable</c>,
+    /// etc.), so this is precise and never over-matches a third-party assembly. The caller
+    /// (<see cref="IsCorlibImplementationRoot"/>) resolves <see cref="SpecialType"/> from the type.
     /// </summary>
-    private static bool IsCorlibAssembly(IAssemblySymbol? assembly)
+    /// <remarks>
+    /// The <c>StartsWith("System.")</c> name signal is kept ONLY as a DOCUMENTED secondary fallback
+    /// for BCL types that carry no <see cref="SpecialType"/> (e.g. <c>System.IComparable</c> on some
+    /// target frameworks). It is gated behind BOTH the name signal (exact allowlist OR
+    /// <c>System.*</c> prefix) AND a well-known .NET/BCL strong-name public-key token, so a
+    /// third-party <c>System.MyCompany.Foo</c> assembly — which is not signed with a BCL key — is NOT
+    /// misclassified as a corlib implementation root (the over-match this method previously had).
+    /// A real BCL assembly is always strong-named with one of the well-known runtime tokens.
+    /// </remarks>
+    private static bool IsCorlibAssembly(IAssemblySymbol? assembly) => IsCorlibAssembly(assembly, SpecialType.None);
+
+    /// <summary>
+    /// Well-known strong-name public-key tokens for the .NET runtime / BCL. A genuine corlib/BCL
+    /// assembly is signed with one of these; a third-party assembly that merely names itself
+    /// <c>System.*</c> is not. Lower-case hex, matching <see cref="ImmutableArray{T}"/> byte rendering.
+    /// </summary>
+    private static readonly string[] BclPublicKeyTokens =
+    [
+        "b03f5f7f11d50a3a", // Microsoft .NET Framework / shared framework
+        "b77a5c561934e089", // mscorlib / System (ECMA key)
+        "7cec85d7bea7798e", // .NET Core / .NET 5+ runtime
+        "cc7b13ffcd2ddd51", // netstandard
+    ];
+
+    private static bool IsCorlibAssembly(IAssemblySymbol? assembly, SpecialType specialType)
     {
         if (assembly is null)
         {
             return false;
         }
 
-        var name = assembly.Identity.Name;
-        return name is "System.Private.CoreLib" or "mscorlib" or "netstandard"
-            || name == "System.Runtime"
+        // Primary corlib signal: a recognized SpecialType is stamped only on canonical runtime
+        // corlib types, so it is unambiguous and cannot be forged by a third-party System.* name.
+        if (specialType != SpecialType.None)
+        {
+            return true;
+        }
+
+        var identity = assembly.Identity;
+        var name = identity.Name;
+
+        // Name signal: the exact corlib/BCL allowlist OR a System.*-prefixed assembly. This alone is
+        // NOT sufficient — a third-party assembly can claim either. It must be corroborated below.
+        var nameMatchesBcl =
+            name is "System.Private.CoreLib" or "mscorlib" or "netstandard" or "System.Runtime"
             || name.StartsWith("System.", StringComparison.Ordinal);
+
+        if (!nameMatchesBcl)
+        {
+            return false;
+        }
+
+        // Principled gate: a genuine BCL assembly is strong-named with a well-known .NET runtime
+        // public-key token. A third-party System.MyCompany.Foo is not, so it is excluded here even
+        // though its name matched above. This is what eliminates the prior over-match.
+        var token = BytesToHex(identity.PublicKeyToken);
+        foreach (var known in BclPublicKeyTokens)
+        {
+            if (string.Equals(token, known, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string BytesToHex(ImmutableArray<byte> bytes)
+    {
+        if (bytes.IsDefaultOrEmpty)
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(bytes.Length * 2);
+        foreach (var b in bytes)
+        {
+            sb.Append(b.ToString("x2", CultureInfo.InvariantCulture));
+        }
+
+        return sb.ToString();
     }
 
     private static IMethodSymbol? TryFindImplicitlyImplementedInterfaceMember(IMethodSymbol method)
