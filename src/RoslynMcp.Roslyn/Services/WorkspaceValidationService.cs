@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 
@@ -21,6 +22,12 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private static readonly TimeSpan DefaultGitStatusTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DefaultValidationPhaseTimeout = TimeSpan.FromSeconds(25);
 
+    private static readonly Action<ILogger, int, string, Exception?> LogProcessKillFailed =
+        LoggerMessage.Define<int, string>(
+            LogLevel.Warning,
+            new EventId(1, nameof(LogProcessKillFailed)),
+            "Failed to kill git process tree for process {ProcessId} after {KillReason} while collecting git-changed files.");
+
     private readonly ICompileCheckService _compile;
     private readonly IDiagnosticService _diagnostics;
     private readonly ITestDiscoveryService _testDiscovery;
@@ -29,6 +36,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     private readonly IChangeTracker? _changeTracker;
     private readonly TimeSpan _gitStatusTimeout;
     private readonly TimeSpan _validationPhaseTimeout;
+    private readonly ILogger<WorkspaceValidationService>? _logger;
+    private readonly Action<Process> _killProcessTree;
 
     public WorkspaceValidationService(
         ICompileCheckService compile,
@@ -36,7 +45,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         ITestDiscoveryService testDiscovery,
         ITestRunnerService testRunner,
         IWorkspaceManager workspace,
-        IChangeTracker? changeTracker = null)
+        IChangeTracker? changeTracker = null,
+        ILogger<WorkspaceValidationService>? logger = null)
         : this(
             compile,
             diagnostics,
@@ -45,7 +55,8 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
             workspace,
             changeTracker,
             DefaultGitStatusTimeout,
-            DefaultValidationPhaseTimeout)
+            DefaultValidationPhaseTimeout,
+            logger)
     {
     }
 
@@ -57,7 +68,9 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         IWorkspaceManager workspace,
         IChangeTracker? changeTracker,
         TimeSpan gitStatusTimeout,
-        TimeSpan validationPhaseTimeout)
+        TimeSpan validationPhaseTimeout,
+        ILogger<WorkspaceValidationService>? logger = null,
+        Action<Process>? killProcessTree = null)
     {
         _compile = compile;
         _diagnostics = diagnostics;
@@ -67,7 +80,11 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         _changeTracker = changeTracker;
         _gitStatusTimeout = gitStatusTimeout > TimeSpan.Zero ? gitStatusTimeout : DefaultGitStatusTimeout;
         _validationPhaseTimeout = validationPhaseTimeout > TimeSpan.Zero ? validationPhaseTimeout : DefaultValidationPhaseTimeout;
+        _logger = logger;
+        _killProcessTree = killProcessTree ?? KillProcessTree;
     }
+
+    private static void KillProcessTree(Process process) => process.Kill(entireProcessTree: true);
 
     public async Task<WorkspaceValidationDto> ValidateAsync(
         string workspaceId,
@@ -460,7 +477,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     ///   <item>warnings non-empty → git was unavailable / solution is outside a git repo / git exited with error. Caller should fall back to full-workspace scope.</item>
     /// </list>
     /// </summary>
-    private static async Task<(IReadOnlyList<string> Files, IReadOnlyList<string> Warnings)> CollectGitChangedFilesAsync(
+    private async Task<(IReadOnlyList<string> Files, IReadOnlyList<string> Warnings)> CollectGitChangedFilesAsync(
         string solutionDirectory,
         TimeSpan timeout,
         CancellationToken ct)
@@ -538,7 +555,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            try { process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            TryKillProcessTree(process, "timeout");
             return (Array.Empty<string>(), new[]
             {
                 $"git status exceeded the timeout of {timeout.TotalSeconds:F0} second(s); retryable=true; validated full workspace."
@@ -547,7 +564,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            try { process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            TryKillProcessTree(process, "failure");
             return (Array.Empty<string>(), new[]
             {
                 $"git status failed: {ex.Message}; validated full workspace."
@@ -564,6 +581,26 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
         }
 
         return (ParseGitPorcelainZ(stdout, solutionDirectory), Array.Empty<string>());
+    }
+
+    /// <summary>
+    /// Best-effort termination of the git process tree. A kill failure is logged at
+    /// <see cref="LogLevel.Warning"/> (with the process id and reason) when a logger is present,
+    /// mirroring <c>DotnetCommandRunner.TryKillProcessTree</c>; it is never surfaced to the caller.
+    /// </summary>
+    private void TryKillProcessTree(Process process, string killReason)
+    {
+        try
+        {
+            _killProcessTree(process);
+        }
+        catch (Exception ex)
+        {
+            if (_logger is not null)
+            {
+                LogProcessKillFailed(_logger, process.Id, killReason, ex);
+            }
+        }
     }
 
     /// <summary>
