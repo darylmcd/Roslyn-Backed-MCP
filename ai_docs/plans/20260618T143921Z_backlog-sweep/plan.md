@@ -10,14 +10,14 @@
 
 | # | id | status | PR | rows closed |
 |---|----|--------|----|-------------|
-| 1 | signature-help-bare-null | pending | — | signature-help-bare-null |
-| 2 | elicitation-retry-exception-envelope | pending | — | elicitation-retry-exception-envelope |
-| 3 | workspace-id-omitted-residual-recovery-coherence | pending | — | workspace-id-omitted-residual-recovery-coherence |
-| 4 | find-implementations-corlib-root-tighten-heuristic | pending | — | find-implementations-corlib-root-tighten-heuristic |
-| 5 | workspace-validation-process-kill-failure-observability | pending | — | workspace-validation-process-kill-failure-observability |
-| 6 | script-execution-supervisor-cancel-catch-observability | pending | — | script-execution-supervisor-cancel-catch-observability |
-| 7 | nuget-version-checker-test-wallclock-poll | pending | — | nuget-version-checker-test-wallclock-poll |
-| 8 | legacy-bug-id-tool-descriptions | pending | — | legacy-bug-id-tool-descriptions |
+| 1 | signature-help-bare-null | merged | [#967](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/967) | signature-help-bare-null |
+| 2 | elicitation-retry-exception-envelope | merged | [#969](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/969) | elicitation-retry-exception-envelope |
+| 3 | workspace-id-omitted-residual-recovery-coherence | merged | [#972](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/972) | workspace-id-omitted-residual-recovery-coherence |
+| 4 | find-implementations-corlib-root-tighten-heuristic | merged | [#970](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/970) | find-implementations-corlib-root-tighten-heuristic |
+| 5 | workspace-validation-process-kill-failure-observability | merged | [#968](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/968) | workspace-validation-process-kill-failure-observability |
+| 6 | script-execution-supervisor-cancel-catch-observability | merged | [#965](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/965) | script-execution-supervisor-cancel-catch-observability |
+| 7 | nuget-version-checker-test-wallclock-poll | merged | [#971](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/971) | nuget-version-checker-test-wallclock-poll |
+| 8 | legacy-bug-id-tool-descriptions | merged | [#966](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/966) | legacy-bug-id-tool-descriptions |
 <!-- BSWEEP:STATUS-TABLE END -->
 
 ## Initiatives (in order)
