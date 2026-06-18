@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Host.Stdio.Tools;
@@ -99,6 +100,57 @@ public sealed class FindImplementationsCorlibHintTests : SharedWorkspaceTestBase
             "System.IComparable is expected to have no SpecialType, so it exercises the secondary fallback path.");
         Assert.IsTrue(ReferenceService.IsCorlibImplementationRoot(iComparable),
             "System.IComparable must remain classified as a corlib implementation root via the documented secondary fallback.");
+    }
+
+    /// <summary>
+    /// Tightened-heuristic regression (find-implementations-corlib-root-tighten-heuristic): a
+    /// THIRD-PARTY assembly that merely names itself <c>System.*</c> — no <see cref="SpecialType"/>,
+    /// not signed with a well-known .NET/BCL public-key token — MUST NOT be classified as a corlib
+    /// implementation root. This pins the exact over-match the initiative exists to eliminate: the
+    /// prior bare <c>StartsWith("System.")</c> fallback returned true for any such assembly.
+    /// The metadata interface root is consumed from an emitted image so it reaches the assembly
+    /// heuristic (a source-declared type short-circuits earlier).
+    /// </summary>
+    [TestMethod]
+    public void IsCorlibImplementationRoot_Excludes_ThirdPartySystemNamedAssembly()
+    {
+        const string assemblyName = "System.MyCompany.Foo";
+
+        // A metadata interface root in a third-party assembly named System.* but NOT strong-named
+        // with a BCL key (Adhoc/CSharpCompilation defaults to no key → empty public key token).
+        var producer = CSharpCompilation.Create(
+            assemblyName,
+            [CSharpSyntaxTree.ParseText("namespace System.MyCompany.Foo { public interface IWidget { void Do(); } }")],
+            [MetadataReference.CreateFromFile(typeof(object).Assembly.Location)],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        using var image = new MemoryStream();
+        var emit = producer.Emit(image);
+        Assert.IsTrue(emit.Success,
+            $"Producer compilation must emit cleanly. Diagnostics: {string.Join("; ", emit.Diagnostics)}");
+        image.Position = 0;
+
+        var consumer = CSharpCompilation.Create(
+            "Consumer",
+            [CSharpSyntaxTree.ParseText("class C { }")],
+            [
+                MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                MetadataReference.CreateFromStream(image),
+            ],
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var widget = consumer.GetTypeByMetadataName("System.MyCompany.Foo.IWidget");
+        Assert.IsNotNull(widget, "The metadata IWidget interface should resolve from the referenced image.");
+        Assert.AreEqual(SpecialType.None, widget!.SpecialType, "Third-party IWidget must carry no SpecialType.");
+        Assert.IsTrue(widget.ContainingAssembly.Identity.Name.StartsWith("System.", StringComparison.Ordinal),
+            "Fixture must reproduce the System.*-named over-match condition.");
+        Assert.IsTrue(widget.ContainingAssembly.Identity.PublicKeyToken.IsDefaultOrEmpty,
+            "Third-party fixture assembly must not be strong-named with a BCL key.");
+        Assert.IsFalse(widget.Locations.Any(static l => l.IsInSource),
+            "The consumed IWidget must be a metadata symbol so the assembly heuristic is exercised.");
+
+        Assert.IsFalse(ReferenceService.IsCorlibImplementationRoot(widget),
+            "A third-party assembly named System.MyCompany.Foo with no SpecialType and no BCL public-key token must NOT classify as a corlib implementation root.");
     }
 
     // -------- Wrapper-layer hint emission --------

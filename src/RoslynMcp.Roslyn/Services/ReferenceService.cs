@@ -1,3 +1,6 @@
+using System.Collections.Immutable;
+using System.Globalization;
+using System.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Helpers;
@@ -426,15 +429,28 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
     /// (<see cref="IsCorlibImplementationRoot"/>) resolves <see cref="SpecialType"/> from the type.
     /// </summary>
     /// <remarks>
-    /// The <c>StartsWith("System.")</c> branch is kept ONLY as a DOCUMENTED secondary fallback for
-    /// BCL types that carry no <see cref="SpecialType"/> (e.g. generic-interface roots like
-    /// <c>System.Collections.Generic.IEnumerable&lt;T&gt;</c> on some target frameworks). It is
-    /// gated behind the explicit BCL-assembly allowlist plus the corlib name set so a third-party
-    /// <c>System.MyCompany.Foo</c> assembly with no <see cref="SpecialType"/> is NOT misclassified
-    /// as a corlib implementation root (the over-match this method previously had). Per the
-    /// acceptance criterion the <c>StartsWith</c> fallback is permitted as a secondary signal.
+    /// The <c>StartsWith("System.")</c> name signal is kept ONLY as a DOCUMENTED secondary fallback
+    /// for BCL types that carry no <see cref="SpecialType"/> (e.g. <c>System.IComparable</c> on some
+    /// target frameworks). It is gated behind BOTH the name signal (exact allowlist OR
+    /// <c>System.*</c> prefix) AND a well-known .NET/BCL strong-name public-key token, so a
+    /// third-party <c>System.MyCompany.Foo</c> assembly — which is not signed with a BCL key — is NOT
+    /// misclassified as a corlib implementation root (the over-match this method previously had).
+    /// A real BCL assembly is always strong-named with one of the well-known runtime tokens.
     /// </remarks>
     private static bool IsCorlibAssembly(IAssemblySymbol? assembly) => IsCorlibAssembly(assembly, SpecialType.None);
+
+    /// <summary>
+    /// Well-known strong-name public-key tokens for the .NET runtime / BCL. A genuine corlib/BCL
+    /// assembly is signed with one of these; a third-party assembly that merely names itself
+    /// <c>System.*</c> is not. Lower-case hex, matching <see cref="ImmutableArray{T}"/> byte rendering.
+    /// </summary>
+    private static readonly string[] BclPublicKeyTokens =
+    [
+        "b03f5f7f11d50a3a", // Microsoft .NET Framework / shared framework
+        "b77a5c561934e089", // mscorlib / System (ECMA key)
+        "7cec85d7bea7798e", // .NET Core / .NET 5+ runtime
+        "cc7b13ffcd2ddd51", // netstandard
+    ];
 
     private static bool IsCorlibAssembly(IAssemblySymbol? assembly, SpecialType specialType)
     {
@@ -450,21 +466,49 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
             return true;
         }
 
-        var name = assembly.Identity.Name;
+        var identity = assembly.Identity;
+        var name = identity.Name;
 
-        // Explicit corlib / BCL-assembly allowlist — the runtime corlib plus the BCL forwarding
-        // assemblies whose interface roots enumerate unreliably via metadata name.
-        if (name is "System.Private.CoreLib" or "mscorlib" or "netstandard" or "System.Runtime")
+        // Name signal: the exact corlib/BCL allowlist OR a System.*-prefixed assembly. This alone is
+        // NOT sufficient — a third-party assembly can claim either. It must be corroborated below.
+        var nameMatchesBcl =
+            name is "System.Private.CoreLib" or "mscorlib" or "netstandard" or "System.Runtime"
+            || name.StartsWith("System.", StringComparison.Ordinal);
+
+        if (!nameMatchesBcl)
         {
-            return true;
+            return false;
         }
 
-        // Documented secondary fallback (acceptance-criterion-permitted): a System.*-prefixed
-        // assembly with NO SpecialType. Retained for BCL generic-interface roots that some target
-        // frameworks leave without a SpecialType. This is the branch that previously over-matched
-        // third-party System.* assemblies; it now only runs after the SpecialType primary gate and
-        // the allowlist have both declined, which is acceptable per the row's acceptance criterion.
-        return name.StartsWith("System.", StringComparison.Ordinal);
+        // Principled gate: a genuine BCL assembly is strong-named with a well-known .NET runtime
+        // public-key token. A third-party System.MyCompany.Foo is not, so it is excluded here even
+        // though its name matched above. This is what eliminates the prior over-match.
+        var token = BytesToHex(identity.PublicKeyToken);
+        foreach (var known in BclPublicKeyTokens)
+        {
+            if (string.Equals(token, known, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string BytesToHex(ImmutableArray<byte> bytes)
+    {
+        if (bytes.IsDefaultOrEmpty)
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(bytes.Length * 2);
+        foreach (var b in bytes)
+        {
+            sb.Append(b.ToString("x2", CultureInfo.InvariantCulture));
+        }
+
+        return sb.ToString();
     }
 
     private static IMethodSymbol? TryFindImplicitlyImplementedInterfaceMember(IMethodSymbol method)
