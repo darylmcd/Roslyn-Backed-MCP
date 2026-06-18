@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 4,
+  "generatedAt": "2026-06-18T14:39:21Z",
+  "backlogSnapshot": "2026-06-11T20:00:00Z",
+  "addendaLoaded": true,
+  "phase": "skeleton",
+  "cycleCount": 0,
+  "maxCycles": 2,
+  "reviewStatus": "pending",
+  "readyForExecute": false,
+  "anchorVerification": "pending",
+  "conflictGraph": {
+    "edges": [],
+    "degrees": {},
+    "zeroDegreeInitiatives": []
+  },
+  "initiatives": [
+    {
+      "id": "signature-help-bare-null",
+      "order": 1,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "signature-help-bare-null"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "10527bf99be4fb971efe1a780b9cc55477567b2ad1230b5e1dd4f158b1d74cb4"
+    },
+    {
+      "id": "elicitation-retry-exception-envelope",
+      "order": 2,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "elicitation-retry-exception-envelope"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "cb87a4834333d8157eed80454d10180aea9d13324e5e7557e6a768904e89cdc2"
+    },
+    {
+      "id": "workspace-id-omitted-residual-recovery-coherence",
+      "order": 3,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-id-omitted-residual-recovery-coherence"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "86c51a0d6f7aaca10d33bc100645eac0f5584aeda19efc509df776235480b3dc"
+    },
+    {
+      "id": "find-implementations-corlib-root-tighten-heuristic",
+      "order": 4,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "find-implementations-corlib-root-tighten-heuristic"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "33cec941e94ca340b4511abaeb09fd5dcd40e9e9a6e67074228d3e5726c3ca89"
+    },
+    {
+      "id": "workspace-validation-process-kill-failure-observability",
+      "order": 5,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "workspace-validation-process-kill-failure-observability"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "f2d8fbe5f2f69629fba03a879b37498bca703b907073861e704026813b00cc2e"
+    },
+    {
+      "id": "script-execution-supervisor-cancel-catch-observability",
+      "order": 6,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "script-execution-supervisor-cancel-catch-observability"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "773fae5fa3b1d034b2334b0b18cdb7ffa58bf9480f2670abfcc3380a5b8a24af"
+    },
+    {
+      "id": "nuget-version-checker-test-wallclock-poll",
+      "order": 7,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "nuget-version-checker-test-wallclock-poll"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "6be29a7021b19b26cd6c4cc5827e17cdd17ade16f4025f5a24b67edf8ee4250f"
+    },
+    {
+      "id": "legacy-bug-id-tool-descriptions",
+      "order": 8,
+      "status": "pending",
+      "backlogRowsClosed": [
+        "legacy-bug-id-tool-descriptions"
+      ],
+      "productionFilesTouched": null,
+      "productionFiles": null,
+      "testFilesAdded": null,
+      "rowsClosedCount": 1,
+      "estimatedContextTokens": null,
+      "toolPolicy": null,
+      "scheduleHint": null,
+      "fanoutEstimate": null,
+      "fanoutOversize": false,
+      "deepenerStatus": "pending",
+      "deepenerFlags": {
+        "judgmentHeavy": false,
+        "anchorStale": false,
+        "ruleOneBundleResolved": null
+      },
+      "branch": null,
+      "worktreePath": null,
+      "prUrl": null,
+      "mergedAt": null,
+      "notes": null,
+      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stanzaHash": "fa89068fa445e0dc35089723cf374f6e274cba17091025ed40d057e1a0263191"
+    }
+  ],
+  "conflictGraphInputHash": "88b233c110b8d349ba59acb7279ce903bfceeaf0296ef5f41e78ebadce697e86",
+  "planHash": "cbe70144b7bb280c8666738b1d2570ef15811dda9203f8ed60c4f6584f7eda13",
+  "backlogSnapshotHash": "a3f27bad9d8fd524bc5eb64b067324fd8d3b5adb0d27df08fce3ae6d2eb62535"
+}
