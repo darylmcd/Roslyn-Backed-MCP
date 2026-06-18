@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Reflection;
+using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
 using RoslynMcp.Roslyn.Services;
@@ -290,6 +292,77 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         {
             await Task.Delay(Timeout.InfiniteTimeSpan, ct);
             throw new InvalidOperationException("unreachable");
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Observability: a git process-tree kill failure during the
+    // git-status timeout/failure cleanup must be logged at Warning (with the
+    // process id) when a logger is present, never swallowed silently — mirrors
+    // DotnetCommandRunner.TryKillProcessTree. The kill delegate is injected so
+    // the failure path is deterministic (no reliance on a real git timeout race).
+    // ------------------------------------------------------------------
+    [TestMethod]
+    public void TryKillProcessTree_KillThrows_LogsWarningWithProcessId()
+    {
+        var logger = new ListLogger<WorkspaceValidationService>();
+        var killException = new InvalidOperationException("simulated kill failure");
+
+        var service = new WorkspaceValidationService(
+            CompileCheckService,
+            DiagnosticService,
+            TestDiscoveryService,
+            TestRunnerService,
+            WorkspaceManager,
+            ChangeTracker,
+            gitStatusTimeout: TimeSpan.FromSeconds(5),
+            validationPhaseTimeout: TimeSpan.FromSeconds(5),
+            logger: logger,
+            killProcessTree: _ => throw killException);
+
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = OperatingSystem.IsWindows() ? "cmd.exe" : "/bin/sh",
+            Arguments = OperatingSystem.IsWindows() ? "/c exit" : "-c \"exit 0\"",
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        });
+        Assert.IsNotNull(process, "Could not start a host process for the test.");
+        process.WaitForExit(5_000);
+
+        var helper = typeof(WorkspaceValidationService).GetMethod(
+            "TryKillProcessTree", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(helper, "TryKillProcessTree should exist as a private instance method.");
+
+        // Must not throw — the kill failure is best-effort and swallowed for the caller.
+        helper.Invoke(service, new object[] { process, "timeout" });
+
+        var entry = logger.Entries.SingleOrDefault(candidate =>
+            candidate.Level == LogLevel.Warning &&
+            candidate.Message.Contains("Failed to kill git process tree", StringComparison.Ordinal) &&
+            candidate.Message.Contains(process.Id.ToString(), StringComparison.Ordinal) &&
+            ReferenceEquals(candidate.Exception, killException));
+
+        Assert.IsNotNull(entry,
+            "A git kill failure must be observable at Warning level with the process id; "
+            + $"got [{string.Join("; ", logger.Entries.Select(e => $"{e.Level}:{e.Message}"))}].");
+    }
+
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            Entries.Add((logLevel, formatter(state, exception), exception));
         }
     }
 }
