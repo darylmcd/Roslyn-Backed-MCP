@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.darylmcd/roslyn-mcp",
-  "description": "Local-first MCP server for semantic C# analysis, navigation, validation, and refactoring on real .sln / .slnx / .csproj workspaces. Powered by Roslyn and MSBuildWorkspace; runs over stdio; ships as a .NET global tool.",
+  "description": "Local-first MCP server for semantic C# analysis & refactoring via Roslyn & MSBuildWorkspace.",
   "repository": {
     "url": "https://github.com/darylmcd/Roslyn-Backed-MCP",
     "source": "github"

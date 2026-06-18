@@ -553,3 +553,6 @@ audit-reports/
 # repos and get archived into review-inbox/archive/<batch-id>/ after intake. The flat
 # files are transient; the archive (with citation paths from backlog rows) is tracked.
 review-inbox/*.md
+
+# Playwright MCP session artifacts (ephemeral page snapshots).
+.playwright-mcp/
