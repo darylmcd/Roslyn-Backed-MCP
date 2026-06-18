@@ -50,7 +50,7 @@ public static class MSBuildTools
     [McpServerTool(Name = "get_msbuild_properties", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("project-mutation", "stable", true, false,
         "Dump evaluated MSBuild properties for a project."),
-     Description("Dump evaluated MSBuild properties for a project. The full set is large (frequently 60KB+ of mostly internal MSBuild state); always pass a propertyNameFilter substring or an explicit includedNames allowlist unless you really need everything (BUG-008). The response includes totalCount/returnedCount/appliedFilter for visibility.")]
+     Description("Dump evaluated MSBuild properties for a project. The full set is large (frequently 60KB+ of mostly internal MSBuild state); always pass a propertyNameFilter substring or an explicit includedNames allowlist unless you really need everything. The response includes totalCount/returnedCount/appliedFilter for visibility.")]
     public static Task<string> GetMsbuildProperties(
         IWorkspaceExecutionGate gate,
         IMsBuildEvaluationService msbuildEvaluation,

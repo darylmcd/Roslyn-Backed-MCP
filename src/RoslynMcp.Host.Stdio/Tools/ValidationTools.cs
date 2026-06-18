@@ -51,7 +51,7 @@ public static class ValidationTools
             c => buildService.BuildProjectAsync(workspaceId, projectName, c),
             ct);
 
-    [McpServerTool(Name = "test_discover", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Discover tests from test projects in the loaded workspace. Results are paginated to keep responses within MCP context budgets — large suites should be filtered with projectName and/or nameFilter (BUG-007). The response includes returnedCount/totalCount/hasMore so you can tell when more pages exist.")]
+    [McpServerTool(Name = "test_discover", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("Discover tests from test projects in the loaded workspace. Results are paginated to keep responses within MCP context budgets — large suites should be filtered with projectName and/or nameFilter. The response includes returnedCount/totalCount/hasMore so you can tell when more pages exist.")]
     [McpToolMetadata("validation", "stable", true, false,
         "Discover tests in the loaded workspace.")]
     public static Task<string> DiscoverTests(
