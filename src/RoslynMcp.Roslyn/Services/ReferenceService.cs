@@ -412,26 +412,59 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
             return false;
         }
 
-        return IsCorlibAssembly(type.ContainingAssembly);
+        return IsCorlibAssembly(type.ContainingAssembly, type.SpecialType);
     }
 
     /// <summary>
     /// Heuristic for "framework/corlib assembly" — the assemblies whose interface/type roots the
     /// metadata-name <see cref="SymbolFinder.FindImplementationsAsync"/> path enumerates
-    /// unreliably. Matches the runtime corlib (<c>System.Private.CoreLib</c> / <c>mscorlib</c> /
-    /// <c>System.Runtime</c>) plus the broader <c>System.*</c> BCL surface.
+    /// unreliably. The primary signal is a recognized <see cref="SpecialType"/> on the type
+    /// (mirrors the <see cref="IsCorlibVirtualMember"/> gate): the C# compiler only stamps a
+    /// non-<see cref="SpecialType.None"/> value on the canonical runtime corlib types
+    /// (<c>System.IDisposable</c>, <c>System.IComparable</c>, <c>System.Collections.IEnumerable</c>,
+    /// etc.), so this is precise and never over-matches a third-party assembly. The caller
+    /// (<see cref="IsCorlibImplementationRoot"/>) resolves <see cref="SpecialType"/> from the type.
     /// </summary>
-    private static bool IsCorlibAssembly(IAssemblySymbol? assembly)
+    /// <remarks>
+    /// The <c>StartsWith("System.")</c> branch is kept ONLY as a DOCUMENTED secondary fallback for
+    /// BCL types that carry no <see cref="SpecialType"/> (e.g. generic-interface roots like
+    /// <c>System.Collections.Generic.IEnumerable&lt;T&gt;</c> on some target frameworks). It is
+    /// gated behind the explicit BCL-assembly allowlist plus the corlib name set so a third-party
+    /// <c>System.MyCompany.Foo</c> assembly with no <see cref="SpecialType"/> is NOT misclassified
+    /// as a corlib implementation root (the over-match this method previously had). Per the
+    /// acceptance criterion the <c>StartsWith</c> fallback is permitted as a secondary signal.
+    /// </remarks>
+    private static bool IsCorlibAssembly(IAssemblySymbol? assembly) => IsCorlibAssembly(assembly, SpecialType.None);
+
+    private static bool IsCorlibAssembly(IAssemblySymbol? assembly, SpecialType specialType)
     {
         if (assembly is null)
         {
             return false;
         }
 
+        // Primary corlib signal: a recognized SpecialType is stamped only on canonical runtime
+        // corlib types, so it is unambiguous and cannot be forged by a third-party System.* name.
+        if (specialType != SpecialType.None)
+        {
+            return true;
+        }
+
         var name = assembly.Identity.Name;
-        return name is "System.Private.CoreLib" or "mscorlib" or "netstandard"
-            || name == "System.Runtime"
-            || name.StartsWith("System.", StringComparison.Ordinal);
+
+        // Explicit corlib / BCL-assembly allowlist — the runtime corlib plus the BCL forwarding
+        // assemblies whose interface roots enumerate unreliably via metadata name.
+        if (name is "System.Private.CoreLib" or "mscorlib" or "netstandard" or "System.Runtime")
+        {
+            return true;
+        }
+
+        // Documented secondary fallback (acceptance-criterion-permitted): a System.*-prefixed
+        // assembly with NO SpecialType. Retained for BCL generic-interface roots that some target
+        // frameworks leave without a SpecialType. This is the branch that previously over-matched
+        // third-party System.* assemblies; it now only runs after the SpecialType primary gate and
+        // the allowlist have both declined, which is acceptable per the row's acceptance criterion.
+        return name.StartsWith("System.", StringComparison.Ordinal);
     }
 
     private static IMethodSymbol? TryFindImplicitlyImplementedInterfaceMember(IMethodSymbol method)

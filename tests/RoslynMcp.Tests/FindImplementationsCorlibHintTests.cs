@@ -60,6 +60,47 @@ public sealed class FindImplementationsCorlibHintTests : SharedWorkspaceTestBase
             "A user-declared concrete type must NOT be classified as a corlib implementation root.");
     }
 
+    /// <summary>
+    /// Tightened-heuristic regression (find-implementations-corlib-root-tighten-heuristic): the
+    /// canonical BCL interface roots MUST still classify as corlib implementation roots after the
+    /// broad <c>StartsWith("System.")</c> catch-all was demoted to a documented secondary fallback.
+    /// Verifies both classification paths survive the change:
+    /// <list type="bullet">
+    /// <item><c>System.IDisposable</c> / <c>IEnumerable&lt;T&gt;</c> carry a <see cref="SpecialType"/> —
+    /// the new PRIMARY gate.</item>
+    /// <item><c>System.IComparable</c> carries NO <see cref="SpecialType"/>, so it classifies only via
+    /// the documented secondary fallback — exactly the case the fallback is retained for.</item>
+    /// </list>
+    /// Both must remain classified as corlib implementation roots after the catch-all is narrowed.
+    /// </summary>
+    [TestMethod]
+    public async Task IsCorlibImplementationRoot_StillClassifies_CanonicalBclInterfaceRoots()
+    {
+        var solution = WorkspaceManager.GetCurrentSolution(WorkspaceId);
+
+        // Primary corlib signal: these BCL roots are stamped with a SpecialType, exercising the new gate.
+        foreach (var metadataName in new[] { "System.IDisposable", "System.Collections.Generic.IEnumerable`1" })
+        {
+            var symbol = (INamedTypeSymbol)(await SymbolResolver.ResolveAsync(
+                solution, SymbolLocator.ByMetadataName(metadataName), CancellationToken.None))!;
+            Assert.IsNotNull(symbol, $"{metadataName} should resolve from the corlib reference.");
+            Assert.AreNotEqual(SpecialType.None, symbol.SpecialType,
+                $"{metadataName} is expected to carry a SpecialType — the primary corlib gate.");
+            Assert.IsTrue(ReferenceService.IsCorlibImplementationRoot(symbol),
+                $"{metadataName} must remain classified as a corlib implementation root via the SpecialType primary gate.");
+        }
+
+        // Secondary fallback: IComparable carries NO SpecialType, so it classifies only through the
+        // documented System.* fallback. It must NOT regress when the catch-all is narrowed.
+        var iComparable = (INamedTypeSymbol)(await SymbolResolver.ResolveAsync(
+            solution, SymbolLocator.ByMetadataName("System.IComparable"), CancellationToken.None))!;
+        Assert.IsNotNull(iComparable, "System.IComparable should resolve from the corlib reference.");
+        Assert.AreEqual(SpecialType.None, iComparable.SpecialType,
+            "System.IComparable is expected to have no SpecialType, so it exercises the secondary fallback path.");
+        Assert.IsTrue(ReferenceService.IsCorlibImplementationRoot(iComparable),
+            "System.IComparable must remain classified as a corlib implementation root via the documented secondary fallback.");
+    }
+
     // -------- Wrapper-layer hint emission --------
 
     /// <summary>
