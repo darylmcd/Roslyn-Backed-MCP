@@ -97,6 +97,17 @@ public sealed class NuGetVersionChecker : ILatestVersionProvider
     }
 
     /// <summary>
+    /// Test-only seam exposing the in-flight background fetch task so tests can await its
+    /// completion deterministically instead of polling <see cref="LastCheckStatus"/> on a
+    /// wall-clock loop. Captured under <c>_lock</c> to avoid a torn read; null when no fetch
+    /// has been started. No production behavior depends on this.
+    /// </summary>
+    internal Task? PendingCheckForTest
+    {
+        get { lock (_lock) { return _pendingCheck; } }
+    }
+
+    /// <summary>
     /// Returns the latest stable version string from NuGet, or null if the check
     /// hasn't completed yet / failed / is stale and a refresh is in progress.
     /// Calling this kicks off a background fetch on first access and after cache expiry.
