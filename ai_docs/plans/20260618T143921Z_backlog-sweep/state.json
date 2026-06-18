@@ -6,9 +6,9 @@
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "passed-with-warnings",
-  "readyForExecute": false,
+  "readyForExecute": true,
   "anchorVerification": "performed",
-  "phase": "review-cycle-0-done",
+  "phase": "complete",
   "conflictGraph": {
     "edges": [
       {
@@ -69,7 +69,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "e7cc95b602ce86bbe0cd9ee3d57fe0df4a985acb669a2558c95a014f8ead99f4",
-      "stanzaHash": "7046312ec7e77d5f6ff2f38c84c2f06414874521b26d19e37b5e581b0ec69e3a"
+      "stanzaHash": "7046312ec7e77d5f6ff2f38c84c2f06414874521b26d19e37b5e581b0ec69e3a",
+      "reviewedStanzaHash": "7046312ec7e77d5f6ff2f38c84c2f06414874521b26d19e37b5e581b0ec69e3a"
     },
     {
       "id": "elicitation-retry-exception-envelope",
@@ -101,7 +102,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "70dcee639271962e5b7f8fa9a27a915471a055b032fda88d9b480e5435bd278e",
-      "stanzaHash": "2e74671624a3cca0ead7cd76f259fec36d8a8da19c714418d10711b3715f8980"
+      "stanzaHash": "0daa6fdbd2e0f5ab3f82ae5c1a799b81d1c94eec43630c25e1ecf3dbf95b20f0",
+      "reviewedStanzaHash": "0daa6fdbd2e0f5ab3f82ae5c1a799b81d1c94eec43630c25e1ecf3dbf95b20f0"
     },
     {
       "id": "workspace-id-omitted-residual-recovery-coherence",
@@ -133,7 +135,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "70dcee639271962e5b7f8fa9a27a915471a055b032fda88d9b480e5435bd278e",
-      "stanzaHash": "89daec1722220703752c089f9a5a8e1b1fe8da7b9754e5f56b5f1f69082778b4"
+      "stanzaHash": "7b940bc97118999345a687250375c87719b1aa58af53723957024006eeb9afe3",
+      "reviewedStanzaHash": "7b940bc97118999345a687250375c87719b1aa58af53723957024006eeb9afe3"
     },
     {
       "id": "find-implementations-corlib-root-tighten-heuristic",
@@ -165,7 +168,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "5784cd9b803adee5fc692bd7cbe759d32532a5c3c036837d542e54e04eae59c2",
-      "stanzaHash": "f06e3c56e0e7d7d5673fccb27357972713a736d1a61cb92e6bd8d1367074e3bc"
+      "stanzaHash": "87d893e28d48c91007e9d9aba4434064241ac51705990558c84988dcac97e126",
+      "reviewedStanzaHash": "87d893e28d48c91007e9d9aba4434064241ac51705990558c84988dcac97e126"
     },
     {
       "id": "workspace-validation-process-kill-failure-observability",
@@ -197,7 +201,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "a31531a21a7c2f4042e7b84a9e89697576bb5f306047377acebf1b39883aaf4e",
-      "stanzaHash": "9fbff77f4b2b4831ab1df87980e0d527256e03ce6ca0519776105e4b17c50a02"
+      "stanzaHash": "9fbff77f4b2b4831ab1df87980e0d527256e03ce6ca0519776105e4b17c50a02",
+      "reviewedStanzaHash": "9fbff77f4b2b4831ab1df87980e0d527256e03ce6ca0519776105e4b17c50a02"
     },
     {
       "id": "script-execution-supervisor-cancel-catch-observability",
@@ -229,7 +234,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "0b5131359d35035322d9e425288b403f91ee794081d545cca2b91ab4dc5c401f",
-      "stanzaHash": "bd4732b3a950870a448f87723ffd99bdea0c3b2a6e277bcac67285468d1d79fc"
+      "stanzaHash": "bd4732b3a950870a448f87723ffd99bdea0c3b2a6e277bcac67285468d1d79fc",
+      "reviewedStanzaHash": "bd4732b3a950870a448f87723ffd99bdea0c3b2a6e277bcac67285468d1d79fc"
     },
     {
       "id": "nuget-version-checker-test-wallclock-poll",
@@ -261,7 +267,8 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "55b6b88cd237c6ca2007bca52ca292bf2fdbd6996c2d33313585b60ff0e5a38c",
-      "stanzaHash": "04c9c02f59b692d0bb0abe391b014da02d7008a38d95e9f19a7fcfeaa0ee68d2"
+      "stanzaHash": "04c9c02f59b692d0bb0abe391b014da02d7008a38d95e9f19a7fcfeaa0ee68d2",
+      "reviewedStanzaHash": "04c9c02f59b692d0bb0abe391b014da02d7008a38d95e9f19a7fcfeaa0ee68d2"
     },
     {
       "id": "legacy-bug-id-tool-descriptions",
@@ -294,11 +301,12 @@
       "mergedAt": null,
       "notes": null,
       "fileSetHash": "2fc2f5f91552603c2c00c33c83e7476d25b93f7bfd7726fc1050779bfbca1217",
-      "stanzaHash": "b6d872cd83339326438380cc5ce6008ff3bc7780c8de56bf2167cec7d81a8ff7"
+      "stanzaHash": "b6d872cd83339326438380cc5ce6008ff3bc7780c8de56bf2167cec7d81a8ff7",
+      "reviewedStanzaHash": "b6d872cd83339326438380cc5ce6008ff3bc7780c8de56bf2167cec7d81a8ff7"
     }
   ],
   "conflictGraphInputHash": "bb6aac1105df45456fa72ee788f278650fb5f9f16ad0274e434026e3fbede332",
-  "planHash": "4716bb6a9bc59d5f5aed433d2889da657c648db7a9c149c1669466ffdf8957a2",
+  "planHash": "0d6a8e692ffad07f71ab80a4ae9bf82620cf2a764d9dd2e56a6b0be4d839bc9a",
   "backlogSnapshotHash": "a3f27bad9d8fd524bc5eb64b067324fd8d3b5adb0d27df08fce3ae6d2eb62535",
   "lastReviewFindings": [
     {
@@ -319,5 +327,8 @@
       "rule": "5b",
       "evidence": "Planner skipped fanout probe on refactor-shaped initiative; Risks justifies (private, single-caller)."
     }
-  ]
+  ],
+  "handoffAnnotated": 3,
+  "reviewedPlanHash": "0d6a8e692ffad07f71ab80a4ae9bf82620cf2a764d9dd2e56a6b0be4d839bc9a",
+  "reviewedBacklogSnapshotHash": "a3f27bad9d8fd524bc5eb64b067324fd8d3b5adb0d27df08fce3ae6d2eb62535"
 }

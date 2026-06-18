@@ -54,6 +54,17 @@
 | CHANGELOG entry (draft) | Fixed: exceptions thrown by `workspace_load` or the retried tool dispatch during elicitation-based `workspaceId` recovery now return the standard structured `CallToolResult` error envelope instead of escaping the filter as unhandled transport errors. |
 | Backlog sync | Close rows: [elicitation-retry-exception-envelope]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** mirror the existing failure-recovery shape at `StructuredCallToolFilter.cs:686-692` (the `catch (Exception elicitEx)` around `elicitAsync` — logs `LogWarning` + returns `null`). Apply the identical try/catch+log+`return null` around the two unguarded awaits: `workspace_load` dispatch at `StructuredCallToolFilter.cs:711` and the retried-tool dispatch at `StructuredCallToolFilter.cs:731`. Both live inside `TryRecoverMissingWorkspaceIdAsync` (`672-732`). Use the same `logger?.LogWarning(ex, "...falling back to schemaHint envelope.", toolName)` wording already used at lines 688 and 715.
+- **Test target:** add two methods to `tests/RoslynMcp.Tests/StructuredCallToolFilterElicitationTests.cs` (existing class `StructuredCallToolFilterElicitationTests`, line 42); mirror `TryRecoverMissingWorkspaceIdAsync_ElicitsPathLoadsWorkspaceAndRetriesOriginalTool` at line 237 — copy its `dispatchAsync` stub that branches on `toolName`. Test 1: `workspace_load` branch throws `InvalidOperationException` → assert `null` (no throw). Test 2: `workspace_load` succeeds but the retried-tool branch throws → assert `null`. MSTest (`[TestMethod]`/`Assert`), not xUnit. Do NOT create a new file.
+- **Negative space:** do NOT touch the `elicitAsync` catch (686-692) — already correct. Do NOT add guards to the outer `catch` callers at `StructuredCallToolFilter.cs:226-238`; the fix belongs at the `TryRecoverMissingWorkspaceIdAsync` level before propagation. Do NOT modify `IsWorkspaceIdRecoveryAllowedFor` / `TryAutoLoadWorkspaceAsync` — that is initiative 3's surface in this same file (separate wave).
+
+</details>
+
 ### 3. workspace-id-omitted-residual-recovery-coherence
 
 | Field | Content |
@@ -70,6 +81,17 @@
 | CHANGELOG entry (draft) | Fixed: residual-case elicitation recovery (`IsWorkspaceIdRecoveryAllowedFor`) now fires for tools with `workspaceId` flipped to `Required:false` (e.g. `go_to_definition`, `find_references`, `document_symbols`), matching the design intent documented on `IsWorkspaceIdAutoResolveAllowedFor`; stale comment in `TryAutoLoadWorkspaceAsync` corrected. |
 | Backlog sync | Close rows: [workspace-id-omitted-residual-recovery-coherence]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates (verified):** edit only the `Required: true` clause of the predicate at `StructuredCallToolFilter.cs:457`. The full statement spans 457-458 (`return schema is { Type: "string", Required: true } && tool is { ReadOnly: true, Destructive: false };`) — drop only `, Required: true`, keep the `tool is { ReadOnly: true, Destructive: false }` half intact. The decoupling template (XML doc to mirror) is on `IsWorkspaceIdAutoResolveAllowedFor` at `:461-469` (esp. the "independent of the Required flag" sentence); its body at `:471-487` is the shape your relaxed predicate should match. Stale comment to fix is the `None`-branch parenthetical at `:604-605`.
+- **Test target:** add to `tests/RoslynMcp.Tests/StructuredCallToolFilterElicitationTests.cs` (existing class); do NOT create a new file. Framework is **MSTest** — `[TestMethod]` + `Assert.IsTrue`, NOT xUnit `[Fact]`. Mirror `IsElicitationAllowedFor_RequiredWorkspaceId_ReturnsTrue` at line 75. Assert the plan's named method directly: `StructuredCallToolFilter.IsWorkspaceIdRecoveryAllowedFor("go_to_definition", "workspaceId")` returns `true` (it is `internal`, reachable via `InternalsVisibleTo`).
+- **Negative space:** do NOT modify `IsWorkspaceIdAutoResolveAllowedFor` (`:471`) — it is the reference pattern, already correct; touching it is scope creep. Do NOT add a logging/null-gated dual path — judgment call already settled on option A (predicate relaxation), not the comment-only option B. `IsElicitationAllowedFor` (`:308-314`) calls this predicate; no edit needed there — the relaxation flows through automatically.
+
+</details>
+
 ### 4. find-implementations-corlib-root-tighten-heuristic
 
 | Field | Content |
@@ -85,6 +107,19 @@
 | CHANGELOG category | Fixed |
 | CHANGELOG entry (draft) | Fixed `IsCorlibAssembly` heuristic in `find_implementations` to replace the broad `StartsWith("System.")` assembly-name match with a `SpecialType`-based primary gate and explicit BCL allowlist, preventing third-party `System.*`-named assemblies from being incorrectly classified as corlib implementation roots. |
 | Backlog sync | Close rows: [find-implementations-corlib-root-tighten-heuristic]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates:** edit `ReferenceService.cs:431-434` — the terminal `name.StartsWith("System.", …)` branch inside `IsCorlibAssembly`. Mirror the SpecialType gate at `ReferenceService.cs:374` (`ContainingType is { SpecialType: not SpecialType.None }`). Note the entry path: `IsCorlibImplementationRoot` (line 394) already gates TypeKind/IsAbstract/IsInSource before reaching `IsCorlibAssembly`, so the assembly check is the only seam — keep the `INamedTypeSymbol`-scoped contract.
+- **Test target:** add the regression test to `tests/RoslynMcp.Tests/FindImplementationsCorlibHintTests.cs` (existing class, line 24); mirror the predicate-level fixture `IsCorlibImplementationRoot_Classifies_OnlyMetadataInterfaceRoots` at line 46. Do NOT create a new test file or touch `ReferenceServiceFindImplementationsTests.cs`.
+- **Fixture caveat (resolve before writing the assertion):** the shared sample workspace has no `System.*`-NAMED assembly — you cannot mint one by adding a source type (assembly name is fixed by the .csproj). Either (a) construct/mock an `IAssemblySymbol` with `Identity.Name = "System.MyCompany.Foo"` and no SpecialType, or (b) anchor on the SpecialType primary gate using a real symbol. Confirm whether `IsCorlibAssembly` is `private static` — testing it directly requires going through `IsCorlibImplementationRoot` or `InternalsVisibleTo`.
+- **Edge cases to verify still resolve as corlib roots:** `System.IDisposable`, `System.Collections.Generic.IEnumerable<T>`, `System.IComparable` (SpecialType-covered). `System.IAsyncDisposable` / `System.Buffers.IBufferWriter<T>` may have `SpecialType.None` — verify allowlist/fallback coverage before removing the name net entirely; a documented secondary `StartsWith` fallback is permitted.
+- **Negative space:** do NOT modify `IsCorlibVirtualMember` (`ReferenceService.cs:367`) — that is the member-scoped find_overrides guard; this initiative tightens only the type-scoped assembly heuristic. Validation criterion (4) explicitly checks it is unchanged.
+
+</details>
 
 ### 5. workspace-validation-process-kill-failure-observability
 
