@@ -176,4 +176,31 @@ public sealed class NavigationToolsNotFoundMessageTests : SharedWorkspaceTestBas
         Assert.AreNotEqual("null", ex.Message,
             "member_hierarchy must surface a structured NotFound error, never the bare serialized \"null\".");
     }
+
+    /// <summary>
+    /// signature-help-bare-null regression: an unresolvable metadata-name locator must throw
+    /// <see cref="KeyNotFoundException"/> so the tool layer returns the standard NotFound envelope,
+    /// matching the sibling <c>member_hierarchy</c>/<c>symbol_relationships</c> tools — not the bare
+    /// serialized "null" that the unguarded site previously emitted.
+    /// </summary>
+    [TestMethod]
+    public async Task SignatureHelp_MetadataNameOnly_NotFound_ThrowsKeyNotFound_NotBareNull()
+    {
+        const string bogusName = "SampleLib.DefinitelyDoesNotExist__Bogus";
+
+        var ex = await Assert.ThrowsExceptionAsync<KeyNotFoundException>(async () =>
+            await SymbolTools.GetSignatureHelp(
+                WorkspaceExecutionGate,
+                SymbolRelationshipService,
+                WorkspaceId,
+                metadataName: bogusName,
+                ct: CancellationToken.None));
+
+        StringAssert.Contains(ex.Message, "metadata name",
+            $"Error must name the locator field that was supplied. Got: {ex.Message}");
+        StringAssert.Contains(ex.Message, bogusName,
+            $"Error must echo the offending metadata name so the caller can correlate. Got: {ex.Message}");
+        Assert.AreNotEqual("null", ex.Message,
+            "symbol_signature_help must surface a structured NotFound error, never the bare serialized \"null\".");
+    }
 }
