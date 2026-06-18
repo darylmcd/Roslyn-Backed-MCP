@@ -91,7 +91,7 @@ internal static class StructuredCallToolFilter
     /// Adding to this list requires explicit policy review: the parameter must be
     /// non-sensitive, naturally bounded (a path, an id, a select-from-N), and the recovery
     /// shape (one-shot retry with the elicited value patched in) must be safe for the tool's
-    /// idempotency semantics. Required <c>workspaceId</c> parameters for read-only,
+    /// idempotency semantics. <c>workspaceId</c> parameters (Required or optional) for read-only,
     /// non-destructive tools are handled by
     /// <see cref="IsWorkspaceIdRecoveryAllowedFor"/> because the concrete elicited field is
     /// <c>workspace_load.path</c>; <c>workspaceId</c> itself is a path-derived session token,
@@ -133,8 +133,9 @@ internal static class StructuredCallToolFilter
                 // before the SDK binder runs: exactly one workspace loaded => patch it in;
                 // two-or-more => structured fast-fail listing the candidates; zero => left for
                 // on-demand discovery / the binder. This is intentionally NOT gated on the
-                // schema's Required flag (unlike IsWorkspaceIdRecoveryAllowedFor) so it keeps
-                // working after read-only tools flip workspaceId to optional.
+                // schema's Required flag (like IsWorkspaceIdRecoveryAllowedFor, which is also
+                // Required-independent) so it keeps working after read-only tools flip
+                // workspaceId to optional.
                 var workspaceManager = context.Services?.GetService<IWorkspaceManager>();
                 if (workspaceManager is not null && IsWorkspaceIdAutoResolveAllowedFor(toolName))
                 {
@@ -474,10 +475,11 @@ internal static class StructuredCallToolFilter
     /// <paramref name="toolName"/> is a read-only, non-destructive tool that declares a string
     /// <c>workspaceId</c> parameter, making it eligible for pre-dispatch auto-resolution.
     /// Distinct from <see cref="IsWorkspaceIdRecoveryAllowedFor"/>: that predicate gates the
-    /// exception-path elicitation recovery and requires <c>Required:true</c> (it only fires when
-    /// the binder threw on a missing required arg); this one is <b>independent of the Required
-    /// flag</b> so auto-resolution keeps working after a read-only tool flips <c>workspaceId</c>
-    /// to optional. Public so tests can pin the policy.
+    /// exception-path elicitation recovery (it fires when a tool-call surfaces a missing
+    /// <c>workspaceId</c>); both predicates are now <b>independent of the Required flag</b> so
+    /// they keep working after a read-only tool flips <c>workspaceId</c> to optional. This one
+    /// gates pre-dispatch auto-resolution rather than the exception-path recovery. Public so
+    /// tests can pin the policy.
     /// </summary>
     public static bool IsWorkspaceIdAutoResolveAllowedFor(string? toolName)
     {
