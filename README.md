@@ -1,7 +1,7 @@
 # Roslyn-Backed MCP Server
 
 [![CI](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/darylmcd/Roslyn-Backed-MCP/actions/workflows/ci.yml)
-[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-submission%20pending-lightgrey)](https://registry.modelcontextprotocol.io/)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-listed-blue)](https://registry.modelcontextprotocol.io/)
 
 Local-first MCP (Model Context Protocol) server for semantic C# analysis, navigation, validation, and refactoring on real `.sln` / `.slnx` / `.csproj` workspaces. It uses Roslyn and `MSBuildWorkspace`, runs over stdio, and does not require Visual Studio.
 
@@ -136,13 +136,13 @@ After installing and wiring up `.mcp.json`, paste this single prompt into your M
 
 If both calls succeed and the version matches what you installed, the install is healthy.
 
-### MCP Registry (submission pending)
+### MCP Registry
 
-The server is also being published to the public [MCP Registry](https://registry.modelcontextprotocol.io/). Once the submission is approved, MCP-Registry-aware clients will be able to discover and install the server by name.
+The server is published to the official [MCP Registry](https://registry.modelcontextprotocol.io/) under the name **`io.github.darylmcd/roslyn-mcp`**. MCP-Registry-aware clients — and the downstream catalogs that mirror the registry (the GitHub MCP Registry, the VS Code and Visual Studio MCP galleries, and aggregators) — can discover and install the server by name.
 
-Draft manifest: [`.claude-plugin/server.json`](.claude-plugin/server.json) — published name `io.github.darylmcd/roslyn-mcp`, NuGet package `Darylmcd.RoslynMcp`, runtime `dnx`.
+Manifest: [`.claude-plugin/server.json`](.claude-plugin/server.json) — name `io.github.darylmcd/roslyn-mcp`, NuGet package `Darylmcd.RoslynMcp`, runtime `dnx`. Every release tag republishes it automatically via the `publish-nuget` workflow using GitHub OIDC.
 
-Until the submission is approved, prefer the [Global Tool](#install-as-a-global-tool) or [Claude Code Plugin](#claude-code-plugin) install paths above. After approval, this section will be updated with the registry URL and the registry-aware client install snippet.
+You can also install directly without a registry-aware client via the [Global Tool](#install-as-a-global-tool) or [Claude Code Plugin](#claude-code-plugin) paths above.
 
 ## Configuration
 

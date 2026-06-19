@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-18T20:06:51Z
+**updated_at:** 2026-06-19T17:05:00Z
 
 ## Agent contract
 
@@ -47,6 +47,7 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
+| `ci-flaky-fswatcher-staleness-test` | High | — | **Stabilize the flaky FileSystemWatcher staleness test** — replace the 2000 ms wall-clock assert in `ExternalEditStalenessTests.EnsureFreshForWritePreview_RefusesWithReloadHint_WhenExternalEdit` with an event-based / bounded-poll wait (or quarantine+retry). Now gates releases: it runs via `verify-release.ps1` in `publish-nuget.yml` on ubuntu, where it can fail the NuGet+registry publish. [type: test] [source: 2026-06-19 release-cut CI flake] | S | items/ci-flaky-fswatcher-staleness-test.md |
 
 ## Medium
 
@@ -55,17 +56,20 @@
 | `promotion-tier-execution-batch` | Medium | — | **Promotion-tier execution batch** — re-run the promotion scorecard against the current v2.3.x surface (canonical snapshot is v1.38.1), then ship experimental→stable promotions in bounded batches via `/promote-tier`. Catalog hotspot; sweep-shaped → `/backlog-sweep:prepare`. [type: ops] | L | items/promotion-tier-execution-batch.md |
 | `audit-21-analyzer-load-decision` | Medium | — | **AUDIT-21 analyzer-load decision** — execute the dormant IDE/CA analyzer-parity Draft plan via `/backlog-sweep:prepare`, OR re-status it superseded/parked with the product trigger; fix the plan's stale §13 row citation. Blocked-on product decision (full analyzer parity required?). | M | items/audit-21-analyzer-load-decision.md |
 | `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
+| `ci-vuln-audit-gating` | Medium | — | **Make the CI vulnerability audit blocking** — `dotnet package list --vulnerable` in `ci.yml` exits 0 even when CVEs are present, so a vulnerable transitive dep does not fail the build; parse its output (or add a gate) to fail on findings. [type: ci] [source: 2026-06-19 CI review] | S | items/ci-vuln-audit-gating.md |
+| `repo-dependabot-config` | Medium | — | **Add Dependabot (actions + nuget)** — no `.github/dependabot.yml`/Renovate exists; add `github-actions` + `nuget` ecosystems and bump the stale `actions/*@v4` (checkout/cache/upload-artifact) to clear the Node 20 deprecation warning. [type: ci] [source: 2026-06-19 CI review] | S | items/repo-dependabot-config.md |
+| `nuget-mcpserver-gallery-packaging` | Medium | — | **Publish to the NuGet MCP gallery** — add `<PackageType>McpServer</PackageType>` (coexists with `PackAsTool`) + embed `.mcp/server.json` so `Darylmcd.RoslynMcp` lists under nuget.org `?packagetype=mcpserver` with an MCP-Server tab. Deferred from #976 — needs a pack-tested PR. [type: packaging] [source: 2026-06-19 registry-publish] | M | items/nuget-mcpserver-gallery-packaging.md |
 
 ## Low
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
+| `registry-readiness-linter-warn-relax` | Low | — | **Relax the registry-readiness `repository-url-matches-name` warn** — it derives the expected repo URL from the server NAME and warns when they differ, but GitHub auth grants the whole `io.github.<owner>/*` namespace, so the name segment intentionally differs from the repo (`roslyn-mcp` vs `Roslyn-Backed-MCP`). Accept any name under the owner namespace. [type: tooling] [source: 2026-06-19 registry-publish] | S | items/registry-readiness-linter-warn-relax.md |
 | `workspace-id-optional-readonly-surface-full-sweep` | Low | — | **workspaceId optional full sweep** — flip the remaining ~45 read-only tools REQUIRED→OPTIONAL; gate on the pilot's `_meta.autoResolution` adoption signal; sub-batch per `*Tools.cs` file. [type: feature] [source: 2026-06-09 backlog-sweep execute] | L | items/workspace-id-optional-readonly-surface-full-sweep.md |
 | `aggregate-scorecard-stale-search-path` | Low | — | **Aggregator stale scorecard probe** — drop/demote the removed `ai_docs/audit-reports/` first-probe in `$ScorecardSearchPaths`; reconcile the contradicting SKILL docs. [type: refactor] | M | items/aggregate-scorecard-stale-search-path.md |
 | `tool-surface-pagination-or-tool-sets` | Low | — | **Tool-set catalog resources** — wait for post-`recommend_workflow` evidence, then add bounded tool-set catalog resources without hiding tools. Weaker evidence — N until small-model discovery friction is reported after the router lands externally. | M | items/tool-surface-pagination-or-tool-sets.md |
 | `parameter-naming-canonicalization-migration` | Low | `parameter-naming-canonicalization-experimental-surface` | **Parameter-naming canonicalization migration** — rename the 5 `projectFilter`/`scopeProjectFilter` params to `projectName` per the approved design + lockstep tests + `Changed — BREAKING` changelog entry. [type: refactor] | M | items/parameter-naming-canonicalization-migration.md |
 | `test-run-unfiltered-bare-error-rootcause` | Low | — | **test_run bare-error root cause** — determine TRX-overflow vs escaped-exception cause of the bare "An error occurred invoking test_run", then fix per cause. [source: 2026-05-31 surface-test + 2026-06-08 retro] | M | items/test-run-unfiltered-bare-error-rootcause.md |
-| `mcp-registry-submission` | Low | — | **MCP Registry submission** — submit `.claude-plugin/server.json` to the public MCP Registry; on approval flip the README badge + add the registry-aware install snippet. Blocked-on external registry approval (maintainer action, not code). | M | items/mcp-registry-submission.md |
 | `apply-composite-preview-destructive-misnomer` | Low | — | **apply_composite_preview misnomer** — rename to `apply_composite` or loudly document that this `_preview`-suffixed tool applies (published surface — Directive #4 ADR + migration note). [source: 2026-05-31 surface-test] | M | items/apply-composite-preview-destructive-misnomer.md |
 | `find-duplicated-methods-no-byte-budget` | Low | — | **find_duplicated_methods byte budget** — add an output-byte budget / summary mode to shared `FindDuplicatedMethodsCore` so large result sets degrade gracefully (premise corrected 2026-06-05; canonical + alias affected equally). [type: perf] | M | items/find-duplicated-methods-no-byte-budget.md |
 | `hoststdio-middleware-tools-namespace-cycle` | Low | — | **Middleware↔Tools namespace cycle** — break one direction (extract shared contract to a third namespace, or invert via interface) + architecture test. [type: refactor] [source: 2026-05-31 surface-test] | M | items/hoststdio-middleware-tools-namespace-cycle.md |
