@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-19T17:05:00Z
+**updated_at:** 2026-06-19T18:17:27Z
 
 ## Agent contract
 
@@ -47,7 +47,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `ci-flaky-fswatcher-staleness-test` | High | — | **Stabilize the flaky FileSystemWatcher staleness test** — replace the 2000 ms wall-clock assert in `ExternalEditStalenessTests.EnsureFreshForWritePreview_RefusesWithReloadHint_WhenExternalEdit` with an event-based / bounded-poll wait (or quarantine+retry). Now gates releases: it runs via `verify-release.ps1` in `publish-nuget.yml` on ubuntu, where it can fail the NuGet+registry publish. [type: test] [source: 2026-06-19 release-cut CI flake] | S | items/ci-flaky-fswatcher-staleness-test.md |
 
 ## Medium
 
@@ -59,12 +58,14 @@
 | `ci-vuln-audit-gating` | Medium | — | **Make the CI vulnerability audit blocking** — `dotnet package list --vulnerable` in `ci.yml` exits 0 even when CVEs are present, so a vulnerable transitive dep does not fail the build; parse its output (or add a gate) to fail on findings. [type: ci] [source: 2026-06-19 CI review] | S | items/ci-vuln-audit-gating.md |
 | `repo-dependabot-config` | Medium | — | **Add Dependabot (actions + nuget)** — no `.github/dependabot.yml`/Renovate exists; add `github-actions` + `nuget` ecosystems and bump the stale `actions/*@v4` (checkout/cache/upload-artifact) to clear the Node 20 deprecation warning. [type: ci] [source: 2026-06-19 CI review] | S | items/repo-dependabot-config.md |
 | `nuget-mcpserver-gallery-packaging` | Medium | — | **Publish to the NuGet MCP gallery** — add `<PackageType>McpServer</PackageType>` (coexists with `PackAsTool`) + embed `.mcp/server.json` so `Darylmcd.RoslynMcp` lists under nuget.org `?packagetype=mcpserver` with an MCP-Server tab. Deferred from #976 — needs a pack-tested PR. [type: packaging] [source: 2026-06-19 registry-publish] | M | items/nuget-mcpserver-gallery-packaging.md |
+| `filewatcher-waitforstale-clearstale-stranded-awaiter` | Medium | — | **WaitForStaleAsync awaiter stranded by concurrent ClearStale** — `FileWatcherService.ClearStale` swaps `_staleSignal` for a fresh TCS without completing the outgoing one, so an awaiter parked on the prior signal hangs until its `CancellationToken` deadline. Benign for the sole current caller (the staleness test, bounded by a 5s CTS) but a latent trap for the next production caller. [type: bug] [source: 2026-06-19 top-n code-quality review] | S | items/filewatcher-waitforstale-clearstale-stranded-awaiter.md |
 
 ## Low
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
 | `registry-readiness-linter-warn-relax` | Low | — | **Relax the registry-readiness `repository-url-matches-name` warn** — it derives the expected repo URL from the server NAME and warns when they differ, but GitHub auth grants the whole `io.github.<owner>/*` namespace, so the name segment intentionally differs from the repo (`roslyn-mcp` vs `Roslyn-Backed-MCP`). Accept any name under the owner namespace. [type: tooling] [source: 2026-06-19 registry-publish] | S | items/registry-readiness-linter-warn-relax.md |
+| `externaledit-test-rearm-marker-file-type-neutral` | Low | — | **Watcher staleness test re-arm marker assumes C# comment syntax** — the dropped-event re-touch in `ExternalEditStalenessTests` appends `// watcher re-arm {guid}`, invalid markup if the helper is ever invoked with a `.csproj`/`.props`/`.targets`/`.sln` tracked file; append a file-type-neutral marker instead. [type: test] [source: 2026-06-19 top-n code-quality review] | S | items/externaledit-test-rearm-marker-file-type-neutral.md |
 | `workspace-id-optional-readonly-surface-full-sweep` | Low | — | **workspaceId optional full sweep** — flip the remaining ~45 read-only tools REQUIRED→OPTIONAL; gate on the pilot's `_meta.autoResolution` adoption signal; sub-batch per `*Tools.cs` file. [type: feature] [source: 2026-06-09 backlog-sweep execute] | L | items/workspace-id-optional-readonly-surface-full-sweep.md |
 | `aggregate-scorecard-stale-search-path` | Low | — | **Aggregator stale scorecard probe** — drop/demote the removed `ai_docs/audit-reports/` first-probe in `$ScorecardSearchPaths`; reconcile the contradicting SKILL docs. [type: refactor] | M | items/aggregate-scorecard-stale-search-path.md |
 | `tool-surface-pagination-or-tool-sets` | Low | — | **Tool-set catalog resources** — wait for post-`recommend_workflow` evidence, then add bounded tool-set catalog resources without hiding tools. Weaker evidence — N until small-model discovery friction is reported after the router lands externally. | M | items/tool-surface-pagination-or-tool-sets.md |

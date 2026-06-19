@@ -16,6 +16,20 @@ public interface IFileWatcherService : IDisposable
     bool IsStale(string workspaceId);
 
     /// <summary>
+    /// Returns a task that completes as soon as the workspace is (or becomes) stale. If the
+    /// workspace is already stale the returned task is already completed; otherwise it completes
+    /// the next time the staleness flag flips (watcher event or an explicit
+    /// <see cref="MarkStale"/>). Lets callers await the actual staleness signal instead of
+    /// polling, removing the wall-clock race against the OS-level file-system event dispatcher.
+    /// </summary>
+    /// <remarks>
+    /// The task is canceled (faulted with <see cref="OperationCanceledException"/>) if
+    /// <paramref name="ct"/> fires. An unknown workspace returns an already-completed task — a
+    /// caller that has not yet started watching cannot wait for a signal that will never arrive.
+    /// </remarks>
+    Task WaitForStaleAsync(string workspaceId, CancellationToken ct);
+
+    /// <summary>
     /// Returns the reason the workspace is stale, or <see langword="null"/> when it is not
     /// stale (or the workspace is unknown). Possible values:
     /// <list type="bullet">
