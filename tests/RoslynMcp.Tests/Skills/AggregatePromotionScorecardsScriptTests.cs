@@ -132,6 +132,42 @@ public sealed class AggregatePromotionScorecardsScriptTests
     }
 
     [TestMethod]
+    public void Aggregate_PrefersCanonicalRepoRootScorecard_OverStaleAiDocsCopy()
+    {
+        // Regression guard for the $ScorecardSearchPaths ordering (PR #937): the canonical
+        // repo-root `audit-reports/_latest-promotion-scorecard.json` MUST be probed BEFORE the
+        // deprecated `ai_docs/audit-reports/...` fallback, so a stale ai_docs copy never shadows
+        // the live scorecard. One sibling repo carries BOTH files with distinguishable tool names:
+        //   * canonical (audit-reports/)        -> tool `canonical_tool`, recommendation `promote`
+        //   * stale fallback (ai_docs/audit-reports/) -> tool `stale_ai_docs_tool`, recommendation `promote`
+        // "First match wins per repo" means the aggregator must consume ONLY the canonical entry.
+        SeedCanonicalScorecard("repo-a", new[] { ("tool", "canonical_tool", "analysis", "experimental", "promote") });
+        SeedScorecard("repo-a", new[] { ("tool", "stale_ai_docs_tool", "analysis", "experimental", "promote") });
+
+        var result = RunAggregator();
+        Assert.AreEqual(0, result.ExitCode, $"Aggregator failed: stdout={result.StdOut} stderr={result.StdErr}");
+
+        using var doc = JsonDocument.Parse(result.StdOut);
+        var entries = doc.RootElement.GetProperty("entries").EnumerateArray().ToArray();
+
+        // Exactly one entry — the canonical one. If the order regressed and the stale ai_docs copy
+        // were probed first, this entry would be `stale_ai_docs_tool` instead, failing the asserts.
+        Assert.AreEqual(1, entries.Length,
+            $"Expected exactly 1 aggregated entry from the single sibling's winning scorecard, got {entries.Length}. JSON: {result.StdOut}");
+        var names = entries.Select(e => e.GetProperty("name").GetString()).ToArray();
+        CollectionAssert.Contains(names, "canonical_tool",
+            $"Aggregator must consume the canonical repo-root scorecard (tool `canonical_tool`). Names: [{string.Join(", ", names)}]. JSON: {result.StdOut}");
+        CollectionAssert.DoesNotContain(names, "stale_ai_docs_tool",
+            $"Aggregator must NOT consume the stale ai_docs/audit-reports fallback (tool `stale_ai_docs_tool`) when the canonical copy exists — the $ScorecardSearchPaths order regressed. Names: [{string.Join(", ", names)}]. JSON: {result.StdOut}");
+
+        // The sibling counts as having a scorecard (the canonical one), not missing.
+        var withScorecard = doc.RootElement.GetProperty("siblingReposWithScorecard").EnumerateArray()
+            .Select(e => e.GetString() ?? string.Empty)
+            .ToArray();
+        CollectionAssert.Contains(withScorecard, "repo-a");
+    }
+
+    [TestMethod]
     public void Aggregator_EmptySiblingSet_EmitsNoScorecardsAvailable()
     {
         // Empty parent — no sibling repos at all. Aggregator should emit a clean
@@ -260,14 +296,25 @@ public sealed class AggregatePromotionScorecardsScriptTests
     }
 
     /// <summary>
-    /// Seeds a synthetic sibling repo at <c>_siblingParent/&lt;repoName&gt;</c> with a
-    /// scorecard JSON containing the supplied entries. Tuple shape:
-    /// <c>(kind, name, category, currentTier, recommendation)</c>.
+    /// Seeds a synthetic sibling repo at <c>_siblingParent/&lt;repoName&gt;</c> with a scorecard
+    /// JSON at the DEPRECATED <c>ai_docs/audit-reports/</c> fallback path (the location #937
+    /// demoted from canonical). Tuple shape: <c>(kind, name, category, currentTier, recommendation)</c>.
     /// </summary>
     private void SeedScorecard(string repoName, IEnumerable<(string kind, string name, string category, string currentTier, string recommendation)> entries)
+        => WriteScorecard(repoName, Path.Combine("ai_docs", "audit-reports"), entries);
+
+    /// <summary>
+    /// Seeds a synthetic sibling repo with a scorecard at the CANONICAL repo-root
+    /// <c>audit-reports/</c> path (#937 — written by /mcp-server-surface-test). Used to prove the
+    /// aggregator prefers this over a stale <c>ai_docs/audit-reports/</c> copy.
+    /// </summary>
+    private void SeedCanonicalScorecard(string repoName, IEnumerable<(string kind, string name, string category, string currentTier, string recommendation)> entries)
+        => WriteScorecard(repoName, "audit-reports", entries);
+
+    private void WriteScorecard(string repoName, string relativeAuditDir, IEnumerable<(string kind, string name, string category, string currentTier, string recommendation)> entries)
     {
         var repoDir = Path.Combine(_siblingParent, repoName);
-        var auditDir = Path.Combine(repoDir, "ai_docs", "audit-reports");
+        var auditDir = Path.Combine(repoDir, relativeAuditDir);
         Directory.CreateDirectory(auditDir);
 
         var scorecardEntries = entries.Select(e => new
