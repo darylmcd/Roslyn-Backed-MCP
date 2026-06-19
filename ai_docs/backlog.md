@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-19T21:25:32Z
+**updated_at:** 2026-06-19T21:41:23Z
 
 ## Agent contract
 
@@ -89,7 +89,6 @@
 | `backlog-d-fragment-schema` | Low | — | **Relocate the backlog.d fragment-schema doc out of items/** — it is a canonical cross-repo schema (cited by shipped `skills/mcp-server-surface-test` prompt + `.claude/skills/backlog-intake`), not row detail; move it and update referrers in one PR. [type: docs] [source: v15-migration-20260611] | S | items/backlog-d-fragment-schema.md |
 | `workspace-auto-load-on-demand-design` | Low | — | **Retire the shipped auto-load design spec** — after `/reconcile-plans` GCs plan `20260609T134405Z`, fold residual unimplemented sections into the full-sweep row and delete the doc. [type: docs] [source: v15-migration-20260611] | S | items/workspace-auto-load-on-demand-design.md |
 | `move-to-git-issues` | Low | — | **Disposition the parked move-to-git-issues design** — rows 1-3 shipped v1.35.1; decide row 4 + the doc's 4 open questions (file rows or record won't-do), then retire the doc. [type: docs] [source: v15-migration-20260611] | S | items/move-to-git-issues.md |
-| `symboltools-twin-null-guard-comment-exemplars` | Low | — | **Align SymbolTools twin null-guard comment citations** — the two NotFound-envelope guard comments cite different siblings (`member_hierarchy` vs `symbol_info`); unify them. [type: docs] [source: 2026-06-18 backlog-sweep execute] | S | items/symboltools-twin-null-guard-comment-exemplars.md |
 | `workspace-validation-kill-test-reflection-seam` | Low | — | **Drop reflection in kill-failure test** — drive the `WorkspaceValidationService` kill-failure log path via the injected `killProcessTree` seam, not reflection into private `TryKillProcessTree`. [type: test] [source: 2026-06-18 backlog-sweep execute] | S | items/workspace-validation-kill-test-reflection-seam.md |
 
 ## Defer
