@@ -37,4 +37,29 @@ public sealed class CatalogDestructiveWarningTests
             description.Description.StartsWith(DestructiveMarker, StringComparison.Ordinal),
             $"Tool [Description] must lead with '{DestructiveMarker}' to mirror the catalog summary. Actual: '{description.Description}'");
     }
+
+    // revert-last-apply-single-slot-doc-warning (2026-05-31 surface-test): revert_last_apply is
+    // single-slot LIFO — it reverts only the most recent apply, then reports "No operation to
+    // revert" even when earlier applies remain in workspace_changes. The [Description] must state
+    // that loudly and cross-point to revert_apply_by_sequence as the multi-step path so callers
+    // don't assume repeated reverts walk the whole history.
+    [TestMethod]
+    public void RevertLastApply_Description_StatesSingleSlotLifoAndCrossPointer()
+    {
+        var method = typeof(UndoTools).GetMethod(
+            nameof(UndoTools.RevertLastApply),
+            BindingFlags.Public | BindingFlags.Static);
+        Assert.IsNotNull(method, "UndoTools.RevertLastApply must exist.");
+
+        var description = method.GetCustomAttribute<System.ComponentModel.DescriptionAttribute>();
+        Assert.IsNotNull(description, "RevertLastApply must carry a [Description] attribute for tool-schema rendering.");
+
+        var text = description.Description;
+        StringAssert.Contains(text, "SINGLE-SLOT LIFO",
+            $"Description must state the single-slot LIFO behaviour loudly. Actual: '{text}'");
+        StringAssert.Contains(text, "No operation to revert",
+            $"Description must warn that a second revert reports 'No operation to revert'. Actual: '{text}'");
+        StringAssert.Contains(text, "revert_apply_by_sequence",
+            $"Description must cross-point to revert_apply_by_sequence as the multi-step path. Actual: '{text}'");
+    }
 }
