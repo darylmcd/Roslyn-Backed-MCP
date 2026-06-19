@@ -27,7 +27,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.0" />
     <PackageVersion Include="MSTest.TestAdapter" Version="3.8.3" />
     <PackageVersion Include="MSTest.TestFramework" Version="3.8.3" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <!-- Analyzer-testing infrastructure for ServerSurfaceCatalogAnalyzer (RMCP001/RMCP002).
          Version-pinned to the Microsoft.CodeAnalysis.* 5.3.0 family so the test harness
          and analyzer share the same Roslyn workspace ABI. -->
