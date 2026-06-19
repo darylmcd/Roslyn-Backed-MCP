@@ -81,7 +81,7 @@ public sealed class MsBuildEvaluationService : IMsBuildEvaluationService
         {
             var msbuildProj = collection.LoadProject(roslynProj.FilePath!);
 
-            // BUG-008: Filter at evaluation time so we never serialize 60KB+ of internal MSBuild
+            // Filter at evaluation time so we never serialize 60KB+ of internal MSBuild
             // properties when the caller only needs a handful. The explicit allowlist takes
             // precedence; falling back to a substring filter mirrors get_diagnostics behavior.
             HashSet<string>? allowlist = null;
