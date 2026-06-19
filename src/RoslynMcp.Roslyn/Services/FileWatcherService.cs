@@ -76,6 +76,18 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         return _watchers.TryGetValue(workspaceId, out var entry) && entry.IsStale;
     }
 
+    public Task WaitForStaleAsync(string workspaceId, CancellationToken ct)
+    {
+        // Unknown workspace: nothing will ever signal, so don't hand back a task that hangs
+        // until cancellation. Mirror IsStale's "unknown == not stale" with an immediate return.
+        if (!_watchers.TryGetValue(workspaceId, out var entry))
+        {
+            return Task.CompletedTask;
+        }
+
+        return entry.WaitForStaleAsync(ct);
+    }
+
     public string? GetStaleReason(string workspaceId)
     {
         return _watchers.TryGetValue(workspaceId, out var entry) ? entry.StaleReason : null;
@@ -168,6 +180,12 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         private readonly object _reasonLock = new();
         private readonly List<FileSystemWatcher> _watchers = [];
 
+        // Completed when the entry flips stale; reset on ClearStale so a reloaded workspace can be
+        // awaited again. RunContinuationsAsynchronously keeps the watcher callback that sets the
+        // flag from running awaiter continuations inline on the FileSystemWatcher dispatch thread.
+        private TaskCompletionSource _staleSignal =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public string RootDirectory { get; } = rootDirectory;
 
         public bool IsStale => _isStale;
@@ -190,6 +208,26 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         public void AddWatcher(FileSystemWatcher watcher) => _watchers.Add(watcher);
 
         /// <summary>
+        /// Returns a task that completes once the entry is (or becomes) stale, honoring
+        /// <paramref name="ct"/>. Lets callers await the real staleness signal instead of polling.
+        /// </summary>
+        public Task WaitForStaleAsync(CancellationToken ct)
+        {
+            Task signal;
+            lock (_reasonLock)
+            {
+                if (_isStale)
+                {
+                    return Task.CompletedTask;
+                }
+
+                signal = _staleSignal.Task;
+            }
+
+            return ct.CanBeCanceled ? signal.WaitAsync(ct) : signal;
+        }
+
+        /// <summary>
         /// Marks the entry stale and records <paramref name="reason"/>. Last-writer-wins
         /// inside a single stale window: each call overwrites the prior reason until
         /// <see cref="ClearStale"/> resets the slate.
@@ -200,6 +238,9 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             {
                 _staleReason = reason;
                 _isStale = true;
+                // Release any awaiters parked on WaitForStaleAsync. TrySetResult is a no-op when
+                // the signal already fired earlier in this (not-yet-cleared) stale window.
+                _staleSignal.TrySetResult();
             }
         }
 
@@ -209,6 +250,9 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             {
                 _isStale = false;
                 _staleReason = null;
+                // Arm a fresh signal so a post-reload write can be awaited again. The old TCS is
+                // already completed (or never awaited); replacing it is the standard reset.
+                _staleSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             }
         }
 

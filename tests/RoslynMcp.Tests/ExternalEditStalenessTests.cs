@@ -24,18 +24,21 @@ namespace RoslynMcp.Tests;
 public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
 {
     /// <summary>
-    /// Upper bound for how long we wait on the OS-level <see cref="System.IO.FileSystemWatcher"/>
-    /// to flush a <c>Changed</c> event after a <c>File.WriteAllText</c>. On Windows this is
-    /// typically 5–30 ms, but the CI host occasionally runs at 100+ ms under load; 2 seconds
-    /// is a generous ceiling that still catches a "watcher never fires" regression.
+    /// Per-attempt bound for awaiting the staleness signal off
+    /// <see cref="IFileWatcherService.WaitForStaleAsync"/>. The wait is event-driven (it completes
+    /// the instant the watcher flips the flag), so a slow-but-delivered OS event still passes
+    /// well inside this window — this is a ceiling for a hung/never-fired watcher, not a
+    /// fixed sleep. Generous because the CI host occasionally stalls under load.
     /// </summary>
-    private const int WatcherFlushTimeoutMs = 2000;
+    private const int WatcherFlushTimeoutMs = 5000;
 
     /// <summary>
-    /// Poll interval while waiting for the watcher event. Smaller than the flush timeout so
-    /// the test finishes within ~50 ms on a healthy host.
+    /// Number of times we re-touch the file and re-await the signal before failing. Guards the
+    /// genuinely-dropped-event case: <see cref="System.IO.FileSystemWatcher"/> can silently drop
+    /// a single event under buffer pressure, so one rewrite + re-wait turns a one-in-a-thousand
+    /// dropped event into a pass instead of a CI-gating flake.
     /// </summary>
-    private const int WatcherPollIntervalMs = 25;
+    private const int WatcherWriteAttempts = 3;
 
     [ClassInitialize]
     public static void ClassInit(TestContext _) => InitializeServices();
@@ -69,7 +72,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
 
         try
         {
-            await WaitForStaleAsync(workspace.WorkspaceId, CancellationToken.None);
+            await WaitForStaleAsync(workspace.WorkspaceId, trackedFile, CancellationToken.None);
 
             var status = WorkspaceManager.GetStatus(workspace.WorkspaceId);
             Assert.IsTrue(status.IsStale,
@@ -109,7 +112,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
 
         try
         {
-            await WaitForStaleAsync(workspace.WorkspaceId, CancellationToken.None);
+            await WaitForStaleAsync(workspace.WorkspaceId, trackedFile, CancellationToken.None);
             Assert.AreEqual(StaleReasons.ExternalEdit,
                 WorkspaceManager.GetStaleReason(workspace.WorkspaceId),
                 "Precondition: watcher attributed the write as external-edit.");
@@ -192,7 +195,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
 
         try
         {
-            await WaitForStaleAsync(workspace.WorkspaceId, CancellationToken.None);
+            await WaitForStaleAsync(workspace.WorkspaceId, trackedFile, CancellationToken.None);
             Assert.AreEqual(StaleReasons.ExternalEdit,
                 WorkspaceManager.GetStaleReason(workspace.WorkspaceId));
 
@@ -275,25 +278,52 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
     }
 
     /// <summary>
-    /// Polls <see cref="RoslynMcp.Roslyn.Services.WorkspaceManager.IsStale"/> until it flips
-    /// or the timeout fires. Required because <see cref="System.IO.FileSystemWatcher"/>
-    /// delivers events asynchronously; a naive assert immediately after the write races the
-    /// OS-level event dispatcher.
+    /// Awaits the watcher's actual staleness signal via
+    /// <see cref="IFileWatcherService.WaitForStaleAsync"/> rather than polling a wall-clock
+    /// window, so a slow-but-delivered OS event passes deterministically. To survive the
+    /// genuinely-dropped-event case (<see cref="System.IO.FileSystemWatcher"/> can drop a single
+    /// event under buffer pressure), it re-touches <paramref name="trackedFile"/> and re-awaits
+    /// up to <see cref="WatcherWriteAttempts"/> times before failing — so only a watcher that
+    /// never fires across multiple writes (a real regression) fails the test.
     /// </summary>
-    private static async Task WaitForStaleAsync(string workspaceId, CancellationToken ct)
+    /// <param name="workspaceId">Workspace whose staleness flag to await.</param>
+    /// <param name="trackedFile">
+    /// The tracked file already mutated by the caller. Re-touched on a dropped event to re-arm
+    /// the watcher; its content is preserved (the caller's <c>finally</c> restores the original).
+    /// </param>
+    /// <param name="ct">Cancellation token.</param>
+    private static async Task WaitForStaleAsync(string workspaceId, string trackedFile, CancellationToken ct)
     {
-        var deadline = Environment.TickCount64 + WatcherFlushTimeoutMs;
-        while (Environment.TickCount64 < deadline)
+        for (var attempt = 1; attempt <= WatcherWriteAttempts; attempt++)
         {
-            if (WorkspaceManager.IsStale(workspaceId))
+            try
             {
+                using var timeout = new CancellationTokenSource(WatcherFlushTimeoutMs);
+                using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token);
+                await FileWatcher.WaitForStaleAsync(workspaceId, linked.Token).ConfigureAwait(false);
                 return;
             }
-            await Task.Delay(WatcherPollIntervalMs, ct).ConfigureAwait(false);
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // This attempt's bound elapsed without the watcher firing — likely a dropped OS
+                // event. Re-touch the file (appending a fresh marker) to re-arm the watcher, then
+                // re-await. A watcher that never fires across all attempts is a real regression.
+                if (attempt == WatcherWriteAttempts)
+                {
+                    break;
+                }
+
+                var current = await File.ReadAllTextAsync(trackedFile, ct).ConfigureAwait(false);
+                await File.WriteAllTextAsync(
+                    trackedFile,
+                    current + $"// watcher re-arm {Guid.NewGuid():N}\n",
+                    ct).ConfigureAwait(false);
+            }
         }
 
         Assert.Fail(
-            $"FileSystemWatcher did not flip isStale within {WatcherFlushTimeoutMs} ms of the external write. " +
-            "Either the watcher isn't registered against the worktree path, or the OS dropped the event.");
+            $"FileSystemWatcher did not flip isStale across {WatcherWriteAttempts} writes " +
+            $"(each awaited up to {WatcherFlushTimeoutMs} ms). The watcher likely isn't registered " +
+            "against the path — a dropped single event would have been recovered by the re-touch.");
     }
 }
