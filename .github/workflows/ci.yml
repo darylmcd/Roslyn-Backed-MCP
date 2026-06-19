@@ -39,7 +39,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Doc-only PRs (any **/*.md + ai_docs/**/*.json plan-state) don't change
       # compiled code, so skipping verify-release.ps1 and artifact uploads saves
@@ -93,7 +93,7 @@ jobs:
       # of producing a fresh ~33 MB entry on every csproj tweak.
       - name: Cache NuGet packages
         if: steps.detect.outputs.docs_only != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/global.json') }}
@@ -160,7 +160,7 @@ jobs:
 
       - name: Upload published host artifact
         if: steps.detect.outputs.docs_only != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: host-stdio-publish
           path: artifacts/publish/host-stdio
@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload release manifest
         if: steps.detect.outputs.docs_only != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-manifests
           path: artifacts/manifests
@@ -176,7 +176,7 @@ jobs:
 
       - name: Upload code coverage
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: code-coverage
           path: artifacts/coverage
