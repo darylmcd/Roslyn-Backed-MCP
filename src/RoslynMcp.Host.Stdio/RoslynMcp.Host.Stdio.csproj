@@ -12,6 +12,12 @@
          `roslynmcp` on PATH) continues to work — only the package id changed. -->
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>roslynmcp</ToolCommandName>
+    <!-- List on the NuGet MCP gallery (nuget.org ?packagetype=mcpserver, "MCP Server" tab).
+         PackAsTool already stamps the DotnetTool package type; adding McpServer here makes pack
+         emit BOTH <packageType name="McpServer" /> and <packageType name="DotnetTool" />, which
+         is exactly what `dotnet new mcpserver` produces. The DotnetTool type is preserved so
+         `dotnet tool install -g` / `dnx` continue to work. -->
+    <PackageType>McpServer</PackageType>
     <PackageId>Darylmcd.RoslynMcp</PackageId>
     <PackageDescription>Roslyn-backed MCP server providing semantic C# analysis for AI coding agents</PackageDescription>
     <Authors>darylmcd</Authors>
@@ -34,6 +40,10 @@
     <None Include="README.md" Pack="true" PackagePath="\" />
     <!-- Pack the repo root icon into the nupkg so NuGet gallery shows it. -->
     <None Include="../../icon.png" Pack="true" PackagePath="\" />
+    <!-- Embed the canonical MCP server manifest at .mcp/server.json so the NuGet MCP gallery
+         renders the "MCP Server" tab. Single source of truth is .claude-plugin/server.json
+         (kept version-synced by the registry-publish flow); do NOT duplicate it. -->
+    <None Include="../../.claude-plugin/server.json" Pack="true" PackagePath=".mcp/server.json" />
     <InternalsVisibleTo Include="RoslynMcp.Tests" />
   </ItemGroup>
 
