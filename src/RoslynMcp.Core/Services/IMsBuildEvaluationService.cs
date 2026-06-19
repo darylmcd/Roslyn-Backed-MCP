@@ -20,7 +20,7 @@ public interface IMsBuildEvaluationService
     /// <param name="projectName">Project name within the workspace.</param>
     /// <param name="propertyNameFilter">
     /// Optional case-insensitive substring filter applied to property names. When <see langword="null"/>
-    /// or whitespace, every evaluated property is returned (BUG-008: large payloads — prefer filtering).
+    /// or whitespace, every evaluated property is returned (large payloads — prefer filtering).
     /// </param>
     /// <param name="includedNames">
     /// Optional explicit allowlist of property names to return. Takes precedence over
