@@ -13,6 +13,9 @@
   Checks performed:
     - server.json structural fields (name, description, repository, version,
       packages[], _meta)
+    - description within the registry schema's 100-char maxLength
+    - packed NuGet README (src/RoslynMcp.Host.Stdio/README.md) carries the
+      `<!-- mcp-name: <server.name> -->` ownership marker the registry requires
     - name format `io.github.<owner>/<repo>` matches repository.url
     - packages[0] shape: registryType, registryBaseUrl, identifier, version,
       runtimeHint, transport.type
@@ -132,6 +135,12 @@ if ($serverJson) {
 
     if ($serverJson.description) {
         Add-Check -Id 'description-present' -Status 'pass' -Message "description present ($($serverJson.description.Length) chars)"
+        # The registry schema caps description at 100 chars; mcp-publisher rejects longer.
+        if ($serverJson.description.Length -le 100) {
+            Add-Check -Id 'description-length' -Status 'pass' -Message "description within 100-char schema limit ($($serverJson.description.Length) chars)"
+        } else {
+            Add-Check -Id 'description-length' -Status 'fail' -Message "description is $($serverJson.description.Length) chars; MCP registry schema maxLength is 100 - trim it"
+        }
     } else {
         Add-Check -Id 'description-present' -Status 'fail' -Message 'description missing'
     }
@@ -206,6 +215,22 @@ if ($serverJson) {
         Add-Check -Id 'meta-present' -Status 'pass' -Message '_meta block present'
     } else {
         Add-Check -Id 'meta-present' -Status 'warn' -Message '_meta block missing (optional but conventional)'
+    }
+
+    # The registry verifies NuGet ownership by fetching the PACKED README from
+    # NuGet.org and requiring an `<!-- mcp-name: <server.name> -->` marker. The
+    # packed README is the project-local one (PackageReadmeFile), not the repo root.
+    $packedReadmePath = Join-Path $repoRoot 'src' 'RoslynMcp.Host.Stdio' 'README.md'
+    if (-not (Test-Path $packedReadmePath)) {
+        Add-Check -Id 'nuget-readme-mcp-name-marker' -Status 'fail' -Message "packed README not found at src/RoslynMcp.Host.Stdio/README.md"
+    } else {
+        $expectedMarker = "<!-- mcp-name: $($serverJson.name) -->"
+        $readmeText = Get-Content $packedReadmePath -Raw
+        if ($readmeText -match [regex]::Escape($expectedMarker)) {
+            Add-Check -Id 'nuget-readme-mcp-name-marker' -Status 'pass' -Message "packed README carries ownership marker '$expectedMarker'"
+        } else {
+            Add-Check -Id 'nuget-readme-mcp-name-marker' -Status 'fail' -Message "packed README (src/RoslynMcp.Host.Stdio/README.md) is missing the registry ownership marker '$expectedMarker'"
+        }
     }
 }
 

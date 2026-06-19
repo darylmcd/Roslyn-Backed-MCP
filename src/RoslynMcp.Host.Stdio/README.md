@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.darylmcd/roslyn-mcp -->
+
 # Darylmcd.RoslynMcp
 
 A production-usable **Model Context Protocol (MCP) server** providing semantic C# analysis powered by Roslyn — designed for AI coding agents to navigate, analyze, and refactor real C# solutions without requiring Visual Studio.

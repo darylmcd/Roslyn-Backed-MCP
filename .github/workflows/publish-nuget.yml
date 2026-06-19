@@ -77,3 +77,69 @@ jobs:
         with:
           name: nuget-packages
           path: nupkg/
+
+  # Publishes .claude-plugin/server.json to the official MCP Registry
+  # (registry.modelcontextprotocol.io) after the NuGet package is live. Uses
+  # GitHub OIDC to prove ownership of the io.github.darylmcd/* namespace — no PAT
+  # or secret required. Runs only on a real tag/release publish, never on a
+  # workflow_dispatch dry run. See https://modelcontextprotocol.io/registry/github-actions
+  publish-registry:
+    needs: publish
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'push' || github.event_name == 'release' }}
+    permissions:
+      id-token: write   # required for `mcp-publisher login github-oidc`
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve package version
+        id: ver
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            v="${{ github.event.release.tag_name }}"
+          else
+            v="${GITHUB_REF_NAME}"
+          fi
+          v="${v#v}"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Resolved package version: $v"
+
+      - name: Wait for package README to be live on NuGet
+        # The registry verifies ownership by fetching the packed README from NuGet
+        # and checking for the `mcp-name` marker. The flat-container README endpoint
+        # returns 200 only once NuGet has finished validating + indexing the package.
+        shell: bash
+        run: |
+          id="darylmcd.roslynmcp"   # flat-container ids are lowercased
+          ver="${{ steps.ver.outputs.version }}"
+          url="https://api.nuget.org/v3-flatcontainer/${id}/${ver}/readme"
+          echo "Polling $url"
+          for i in $(seq 1 80); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$url")
+            if [ "$code" = "200" ]; then
+              echo "README live after ~$((i*15))s"; exit 0
+            fi
+            echo "attempt $i: HTTP $code; sleeping 15s"; sleep 15
+          done
+          echo "Timed out waiting for the NuGet package README to become available"; exit 1
+
+      - name: Install mcp-publisher
+        shell: bash
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+
+      - name: Authenticate to MCP Registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish server to MCP Registry
+        # `mcp-publisher publish` defaults to ./server.json; our canonical manifest
+        # lives at .claude-plugin/server.json, so copy it to the expected location
+        # (version-agnostic vs. relying on a positional path argument).
+        shell: bash
+        run: |
+          cp .claude-plugin/server.json server.json
+          ./mcp-publisher publish
