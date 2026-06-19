@@ -143,6 +143,15 @@ jobs:
         run: |
           $audit = dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive 2>&1 | Out-String
           Write-Host $audit
+          # PowerShell does not honor $ErrorActionPreference for native commands, so a
+          # genuine dotnet failure (unrestored project, missing .slnx, NuGet outage, SDK
+          # fault) would otherwise fall through to the all-clear and fail the gate open.
+          # Mirror eng/verify-release.ps1's Invoke-DotnetStep: fail the job on a non-zero
+          # exit before the vuln-marker check (a vuln finding itself still exits 0).
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "::error title=Vulnerability audit failed::dotnet package list exited $LASTEXITCODE (audit could not complete). See output above."
+            exit 1
+          }
           if ($audit -match 'has the following vulnerable packages') {
             Write-Host "::error title=Vulnerable packages detected::dotnet package list reported one or more known vulnerabilities. See the audit output above."
             exit 1
