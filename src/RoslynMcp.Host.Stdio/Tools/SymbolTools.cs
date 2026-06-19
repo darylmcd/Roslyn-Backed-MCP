@@ -539,7 +539,7 @@ public static class SymbolTools
             // member-hierarchy-bare-null: an unresolvable locator previously serialized to a bare
             // JSON `null`, ambiguous to callers (no-result vs failure). Throw KeyNotFoundException so
             // the tool layer returns the standard NotFound envelope, matching the sibling tools
-            // (symbol_relationships, symbol_info) and the SymbolNavigationService convention.
+            // (symbol_info, member_hierarchy, symbol_relationships) and the SymbolNavigationService convention.
             if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
@@ -567,7 +567,7 @@ public static class SymbolTools
             // signature-help-bare-null: an unresolvable locator previously serialized to a bare
             // JSON `null`, ambiguous to callers (no-result vs failure). Throw KeyNotFoundException so
             // the tool layer returns the standard NotFound envelope, matching the sibling tools
-            // (symbol_relationships, member_hierarchy).
+            // (symbol_info, member_hierarchy, symbol_relationships) and the SymbolNavigationService convention.
             if (result is null) throw new KeyNotFoundException(SymbolLocatorFactory.FormatSymbolNotFoundMessage(locator));
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
         }, ct);
