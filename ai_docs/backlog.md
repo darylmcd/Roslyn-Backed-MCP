@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-19T18:17:27Z
+**updated_at:** 2026-06-19T18:40:46Z
 
 ## Agent contract
 
@@ -55,10 +55,10 @@
 | `promotion-tier-execution-batch` | Medium | — | **Promotion-tier execution batch** — re-run the promotion scorecard against the current v2.3.x surface (canonical snapshot is v1.38.1), then ship experimental→stable promotions in bounded batches via `/promote-tier`. Catalog hotspot; sweep-shaped → `/backlog-sweep:prepare`. [type: ops] | L | items/promotion-tier-execution-batch.md |
 | `audit-21-analyzer-load-decision` | Medium | — | **AUDIT-21 analyzer-load decision** — execute the dormant IDE/CA analyzer-parity Draft plan via `/backlog-sweep:prepare`, OR re-status it superseded/parked with the product trigger; fix the plan's stale §13 row citation. Blocked-on product decision (full analyzer parity required?). | M | items/audit-21-analyzer-load-decision.md |
 | `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
-| `ci-vuln-audit-gating` | Medium | — | **Make the CI vulnerability audit blocking** — `dotnet package list --vulnerable` in `ci.yml` exits 0 even when CVEs are present, so a vulnerable transitive dep does not fail the build; parse its output (or add a gate) to fail on findings. [type: ci] [source: 2026-06-19 CI review] | S | items/ci-vuln-audit-gating.md |
 | `repo-dependabot-config` | Medium | — | **Add Dependabot (actions + nuget)** — no `.github/dependabot.yml`/Renovate exists; add `github-actions` + `nuget` ecosystems and bump the stale `actions/*@v4` (checkout/cache/upload-artifact) to clear the Node 20 deprecation warning. [type: ci] [source: 2026-06-19 CI review] | S | items/repo-dependabot-config.md |
 | `nuget-mcpserver-gallery-packaging` | Medium | — | **Publish to the NuGet MCP gallery** — add `<PackageType>McpServer</PackageType>` (coexists with `PackAsTool`) + embed `.mcp/server.json` so `Darylmcd.RoslynMcp` lists under nuget.org `?packagetype=mcpserver` with an MCP-Server tab. Deferred from #976 — needs a pack-tested PR. [type: packaging] [source: 2026-06-19 registry-publish] | M | items/nuget-mcpserver-gallery-packaging.md |
 | `filewatcher-waitforstale-clearstale-stranded-awaiter` | Medium | — | **WaitForStaleAsync awaiter stranded by concurrent ClearStale** — `FileWatcherService.ClearStale` swaps `_staleSignal` for a fresh TCS without completing the outgoing one, so an awaiter parked on the prior signal hangs until its `CancellationToken` deadline. Benign for the sole current caller (the staleness test, bounded by a 5s CTS) but a latent trap for the next production caller. [type: bug] [source: 2026-06-19 top-n code-quality review] | S | items/filewatcher-waitforstale-clearstale-stranded-awaiter.md |
+| `ci-vuln-gate-format-json-hardening` | Medium | — | **Harden CI vuln gate against output drift** — the now-blocking vuln-audit gate in `ci.yml` keys on the English substring `has the following vulnerable packages`; a dotnet SDK wording change or non-English locale silently reverts it to fail-open. Switch to `dotnet package list --vulnerable --include-transitive --format json` and fail on a non-empty `vulnerabilities` array. [type: ci] [source: 2026-06-19 top-n code-quality review] | S | items/ci-vuln-gate-format-json-hardening.md |
 
 ## Low
 
