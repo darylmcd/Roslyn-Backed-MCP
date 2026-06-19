@@ -15,9 +15,11 @@
          siblings -> MOVE (defaults). Reports land in `review-inbox/`.
 
       2. eng/aggregate-promotion-scorecards.ps1
-         Probes both `ai_docs/audit-reports/` and top-level `audit-reports/`
-         for `_latest-promotion-scorecard.json` per repo, applies the quorum
-         rule, writes the consolidated JSON to `audit-reports/_aggregated-promotion-scorecard.json`.
+         Probes the canonical repo-root `audit-reports/` first, then the
+         deprecated `ai_docs/audit-reports/` as a backward-compat fallback
+         (#937), for `_latest-promotion-scorecard.json` per repo, applies the
+         quorum rule, writes the consolidated JSON to
+         `audit-reports/_aggregated-promotion-scorecard.json`.
 
       3. eng/propose-promotion-scorecard-backlog-rows.ps1
          Reads the consolidated scorecard and proposes stable backlog row ids for

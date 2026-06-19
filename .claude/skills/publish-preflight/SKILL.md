@@ -101,7 +101,7 @@ Check that both `.nupkg` and `.snupkg` are produced. Verify the `.nupkg` contain
 
 This step consumes per-repo promotion scorecards emitted by `/mcp-server-stress` and aggregates them across all configured sibling repos. It surfaces — but does not auto-apply — recommendations to promote experimental tools to stable in the upcoming release.
 
-**Aggregation contract.** Each audited repo writes its own `<audited-repo>/ai_docs/audit-reports/_latest-promotion-scorecard.json` (per-repo, alongside the prose audit report — the legacy `<Roslyn-MCP-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json` last-write-wins file is deprecated). The aggregator script gathers every sibling's scorecard, merges them keyed by `<kind>|<name>`, and emits a quorum-aware verdict per entry:
+**Aggregation contract.** Each audited repo writes its own canonical `<audited-repo>/audit-reports/_latest-promotion-scorecard.json` (repo root, per-repo, alongside the prose audit report). The legacy `<audited-repo>/ai_docs/audit-reports/_latest-promotion-scorecard.json` path was removed as a stale duplicate (#937) and is no longer canonical; the aggregator still probes it as a backward-compat fallback but never prefers it over the repo-root path. The aggregator script gathers every sibling's scorecard, merges them keyed by `<kind>|<name>`, and emits a quorum-aware verdict per entry:
 
 - `promote: ready` — at least 2 sibling repos voted `promote` AND zero `keep-experimental` AND zero `deprecate` votes.
 - `promote: blocked` — at least one `keep-experimental` or `deprecate` vote (a single workspace's hard-stop blocks the quorum).
@@ -123,7 +123,7 @@ The script emits a single JSON object on stdout. Parse it and branch on the resu
 | Per-repo scorecard older than 30 days | WARN per repo | "Promotion scorecard from \<repo\> is N days stale. Consider re-running `/mcp-server-stress` in that repo before release." |
 | Per-repo scorecard older than 90 days | TREAT AS MISSING for that repo | "Promotion scorecard from \<repo\> is older than 90 days; excluding from the quorum. Re-run `/mcp-server-stress` there if its evidence matters." |
 | Aggregator JSON malformed / wrong `schemaVersion` | WARN | "Aggregator output is unparseable (schemaVersion=N expected 1, or JSON parse error). Treating as absent." |
-| Legacy single-file scorecard found at `<Roslyn-MCP-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json` | WARN (one-line) | "scorecard at deprecated path: `<Roslyn-MCP-root>/...`; expected per-repo path under `<audited-repo>/ai_docs/audit-reports/`. The aggregator ignores this file. Migrate or delete it manually." |
+| Legacy single-file scorecard found at `<audited-repo>/ai_docs/audit-reports/_latest-promotion-scorecard.json` | WARN (one-line) | "scorecard at deprecated path: `<audited-repo>/ai_docs/audit-reports/...`; canonical per-repo path is `<audited-repo>/audit-reports/` (repo root). The aggregator prefers the canonical path and only reads this one as a fallback. Migrate or delete it manually." |
 
 **When the aggregator returns entries:** filter `entries[]` by `verdict`:
 
