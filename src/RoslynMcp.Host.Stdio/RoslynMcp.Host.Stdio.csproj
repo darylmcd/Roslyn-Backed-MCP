@@ -43,7 +43,7 @@
     <!-- Embed the canonical MCP server manifest at .mcp/server.json so the NuGet MCP gallery
          renders the "MCP Server" tab. Single source of truth is .claude-plugin/server.json
          (kept version-synced by the registry-publish flow); do NOT duplicate it. -->
-    <None Include="..\..\.claude-plugin\server.json" Pack="true" PackagePath=".mcp\server.json" />
+    <None Include="../../.claude-plugin/server.json" Pack="true" PackagePath=".mcp/server.json" />
     <InternalsVisibleTo Include="RoslynMcp.Tests" />
   </ItemGroup>
 
