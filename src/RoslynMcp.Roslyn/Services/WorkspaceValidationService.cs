@@ -588,7 +588,7 @@ public sealed class WorkspaceValidationService : IWorkspaceValidationService
     /// <see cref="LogLevel.Warning"/> (with the process id and reason) when a logger is present,
     /// mirroring <c>DotnetCommandRunner.TryKillProcessTree</c>; it is never surfaced to the caller.
     /// </summary>
-    private void TryKillProcessTree(Process process, string killReason)
+    internal void TryKillProcessTree(Process process, string killReason)
     {
         try
         {

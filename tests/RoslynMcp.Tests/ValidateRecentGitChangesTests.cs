@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using Microsoft.Extensions.Logging;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
@@ -330,12 +329,8 @@ public sealed class ValidateRecentGitChangesTests : IsolatedWorkspaceTestBase
         Assert.IsNotNull(process, "Could not start a host process for the test.");
         process.WaitForExit(5_000);
 
-        var helper = typeof(WorkspaceValidationService).GetMethod(
-            "TryKillProcessTree", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.IsNotNull(helper, "TryKillProcessTree should exist as a private instance method.");
-
         // Must not throw — the kill failure is best-effort and swallowed for the caller.
-        helper.Invoke(service, new object[] { process, "timeout" });
+        service.TryKillProcessTree(process, "timeout");
 
         var entry = logger.Entries.SingleOrDefault(candidate =>
             candidate.Level == LogLevel.Warning &&
