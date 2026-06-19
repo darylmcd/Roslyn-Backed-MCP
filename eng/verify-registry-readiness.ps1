@@ -149,11 +149,20 @@ if ($serverJson) {
         Add-Check -Id 'repository-block' -Status 'pass' -Message "repository.url=$($serverJson.repository.url), source=$($serverJson.repository.source)"
 
         if ($serverJson.name -match '^io\.github\.([a-zA-Z0-9-]+)/([a-zA-Z0-9._-]+)$') {
-            $expectedUrl = "https://github.com/$($Matches[1])/$($Matches[2])"
-            if ($serverJson.repository.url -eq $expectedUrl) {
-                Add-Check -Id 'repository-url-matches-name' -Status 'pass' -Message "repository.url derived from name matches"
+            $nameOwner = $Matches[1]
+            # Only the OWNER segment must match repository.url's owner; the repo segment of the name
+            # is intentionally allowed to differ. GitHub auth grants the whole io.github.<owner>/*
+            # namespace, so io.github.darylmcd/roslyn-mcp against repo Roslyn-Backed-MCP is valid,
+            # not suspect. Only a wrong OWNER is suspicious.
+            if ($serverJson.repository.url -match '^https://github\.com/([a-zA-Z0-9-]+)/') {
+                $urlOwner = $Matches[1]
+                if ($nameOwner -eq $urlOwner) {
+                    Add-Check -Id 'repository-url-matches-name' -Status 'pass' -Message "name owner '$nameOwner' matches repository.url owner '$urlOwner' (repo segment may differ within the io.github.$nameOwner/* namespace)"
+                } else {
+                    Add-Check -Id 'repository-url-matches-name' -Status 'warn' -Message "name owner '$nameOwner' does not match repository.url owner '$urlOwner'"
+                }
             } else {
-                Add-Check -Id 'repository-url-matches-name' -Status 'warn' -Message "repository.url '$($serverJson.repository.url)' does not derive cleanly from name (expected '$expectedUrl')"
+                Add-Check -Id 'repository-url-matches-name' -Status 'warn' -Message "repository.url '$($serverJson.repository.url)' is not a parseable github.com URL"
             }
         }
     } else {
