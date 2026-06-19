@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-19T20:50:17Z
+**updated_at:** 2026-06-19T21:09:12Z
 
 ## Agent contract
 
@@ -77,7 +77,6 @@
 | `hoststdio-middleware-tools-namespace-cycle` | Low | — | **Middleware↔Tools namespace cycle** — break one direction (extract shared contract to a third namespace, or invert via interface) + architecture test. [type: refactor] [source: 2026-05-31 surface-test] | M | items/hoststdio-middleware-tools-namespace-cycle.md |
 | `nuget-vuln-scan-exceeds-budget` | Low | — | **nuget_vulnerability_scan budget** — cache the per-restore result on the lock-file hash and/or add a heartbeat + documented longer budget for the network-bound scan. [type: perf] [source: 2026-05-31 surface-test] | M | items/nuget-vuln-scan-exceeds-budget.md |
 | `restore-required-vs-build-conflation` | Low | — | **restoreRequired vs buildRequired** — distinguish a `buildRequired`/build-hint state when the unmet dependency is an analyzer/project build output, not a NuGet restore input. [source: 2026-05-31 surface-test] | M | items/restore-required-vs-build-conflation.md |
-| `revert-last-apply-single-slot-doc-warning` | Low | — | **revert_last_apply single-slot warning** — state the single-slot LIFO behaviour loudly in the description; cross-point to `revert_apply_by_sequence`. [type: docs] [source: 2026-05-31 surface-test] | S | items/revert-last-apply-single-slot-doc-warning.md |
 | `change-signature-callsite-summary-stale-row-comments` | Low | — | **Stale row id in prompt/test comments** — restore a bounded row for the callsite-summary limitation or rewrite the comments without the dead `change-signature-preview-callsite-summary` pointer. [type: docs] | S | items/change-signature-callsite-summary-stale-row-comments.md |
 | `surface-test-shipped-prompt-local-skill-reference` | Low | — | **Shipped prompt cites maintainer-local .claude path** — replace with portable wording; consider genericity-guard rejection of `.claude/skills/` refs in shipped prompts. [type: docs] | M | items/surface-test-shipped-prompt-local-skill-reference.md |
 | `test-discover-no-autopagination` | Low | — | **test_discover pagination** — add offset/limit (or summary mode) so the unfiltered call degrades gracefully instead of breaching the MCP token cap. [source: 2026-05-31 surface-test] | M | items/test-discover-no-autopagination.md |
