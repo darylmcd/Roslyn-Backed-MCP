@@ -46,7 +46,7 @@ The aggregator emits JSON of shape:
 
 Step 8 filters `entries[]` by `verdict == "promote: ready"` and surfaces each as a `/promote-tier <name> stable` invocation. This skill accepts the same `<name> <tier>` argument shape regardless of whether the source was an aggregated quorum or a single-repo override.
 
-The legacy single-file scorecard format (`scorecard[]` with per-entry `recommendation`) is no longer read by `/publish-preflight`; if a sibling repo still emits it at the deprecated `<Roslyn-MCP-root>/ai_docs/audit-reports/_latest-promotion-scorecard.json` path, the aggregator ignores it and Step 8 surfaces a one-line WARN.
+The legacy single-file scorecard format (`scorecard[]` with per-entry `recommendation`) is no longer read by `/publish-preflight`; if a sibling repo still emits it at the deprecated `<audited-repo>/ai_docs/audit-reports/_latest-promotion-scorecard.json` path (the canonical per-repo path is `<audited-repo>/audit-reports/` at the repo root, per #937), the aggregator prefers the canonical path and only falls back to the deprecated one, and Step 8 surfaces a one-line WARN.
 
 ## Why this exists
 

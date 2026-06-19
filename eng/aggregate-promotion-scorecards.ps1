@@ -6,11 +6,14 @@
 
 .DESCRIPTION
     Per the per-repo-promotion-scorecard initiative: each audited repo writes
-    `<audited-repo>/ai_docs/audit-reports/_latest-promotion-scorecard.json`
-    when /mcp-server-stress runs. This script gathers them across configured
-    sibling repos under a parent folder and merges them into one in-memory map
-    keyed by `<kind>|<name>`. Each entry is then assigned an aggregated verdict
-    using a quorum rule:
+    its canonical `<audited-repo>/audit-reports/_latest-promotion-scorecard.json`
+    (repo root) when /mcp-server-stress runs. The legacy
+    `<audited-repo>/ai_docs/audit-reports/...` location was removed as a stale
+    duplicate (#937); it is retained only as a backward-compat fallback probe,
+    NOT as the canonical path. This script gathers the scorecards across
+    configured sibling repos under a parent folder and merges them into one
+    in-memory map keyed by `<kind>|<name>`. Each entry is then assigned an
+    aggregated verdict using a quorum rule:
 
       * `promote: ready`            — at least 2 sibling repos voted `promote`
                                       AND zero `keep-experimental` votes
@@ -27,10 +30,11 @@
     subdirectory under `$SiblingRepoParent` (defaults to the parent of this
     repo), skip the running repo itself unless `-IncludeSelf`, and probe
     each candidate for `_latest-promotion-scorecard.json` under any of the
-    paths in `$ScorecardSearchPaths`. Defaults cover both the canonical
-    `ai_docs/audit-reports/` location (deep-review pipeline convention) and
-    the top-level `audit-reports/` location used by the consumer-facing
-    `/mcp-server-surface-test` skill. First match wins per repo.
+    paths in `$ScorecardSearchPaths`. The default probes the canonical
+    repo-root `audit-reports/` location (written by `/mcp-server-surface-test`)
+    FIRST, then the deprecated `ai_docs/audit-reports/` location as a
+    backward-compat fallback (#937 removed it as canonical). First match wins
+    per repo.
 
     Missing scorecards are NOT errors. The aggregator simply notes
     `missingFromRepos`. Empty configured sibling sets emit a clean
@@ -82,9 +86,11 @@
 
 .PARAMETER ScorecardSearchPaths
     Per-repo relative paths to probe for `_latest-promotion-scorecard.json`.
-    First match wins per repo. Defaults cover both the canonical
-    `ai_docs/audit-reports/` (deep-review pipeline) and top-level
-    `audit-reports/` (consumer-facing /mcp-server-surface-test skill).
+    First match wins per repo. The default probes the canonical repo-root
+    `audit-reports/` (written by /mcp-server-surface-test) FIRST, then the
+    deprecated `ai_docs/audit-reports/` as a backward-compat fallback (#937
+    removed the latter as canonical). Order matters: canonical must come first
+    so a stale `ai_docs/audit-reports/` copy never shadows the live scorecard.
 
 .PARAMETER OutputFile
     Optional file path. When set, the JSON is written to this path in addition
@@ -107,9 +113,18 @@ param(
     [string]$SiblingRepoParent = '',
     [string[]]$ExcludeRepoFolders = @(),
     [switch]$IncludeSelf,
+    # ORDER IS LOAD-BEARING — canonical repo-root path MUST be probed first.
+    # #937 made `<repo>/audit-reports/_latest-promotion-scorecard.json` (repo
+    # root) the canonical per-repo scorecard and removed the duplicate under
+    # `ai_docs/audit-reports/`. The `ai_docs/audit-reports/` entry below is a
+    # backward-compat fallback ONLY; demoting it (was first) ensures a stale
+    # copy left in a sibling's `ai_docs/audit-reports/` never shadows the live
+    # canonical scorecard ("first match wins per repo" in the probe loop).
+    # Do NOT reorder these so `ai_docs/audit-reports/` is probed first again.
+    # See ai_docs/audit-reports/README.md ("Do not store the ... scorecard here").
     [string[]]$ScorecardSearchPaths = @(
-        'ai_docs/audit-reports/_latest-promotion-scorecard.json',
-        'audit-reports/_latest-promotion-scorecard.json'
+        'audit-reports/_latest-promotion-scorecard.json',
+        'ai_docs/audit-reports/_latest-promotion-scorecard.json'
     ),
     [string]$OutputFile = ''
 )
@@ -151,10 +166,11 @@ $entries = @{}
 foreach ($root in $roots) {
     $siblingReposScanned.Add($root.Name) | Out-Null
 
-    # Probe each candidate path; first existing scorecard wins. Mirrors
-    # stage-review-inbox's defensive multi-path discovery so consumer-facing
-    # repos that write to top-level `audit-reports/` are included alongside
-    # deep-review repos using `ai_docs/audit-reports/`.
+    # Probe each candidate path; first existing scorecard wins. The canonical
+    # repo-root `audit-reports/` path (written by /mcp-server-surface-test) is
+    # probed first; the deprecated `ai_docs/audit-reports/` path is a
+    # backward-compat fallback only (#937 removed it as canonical). See the
+    # $ScorecardSearchPaths default above for the ordering rationale.
     $scorecardPath = $null
     foreach ($candidate in $ScorecardSearchPaths) {
         $probe = Join-Path $root.Path $candidate
