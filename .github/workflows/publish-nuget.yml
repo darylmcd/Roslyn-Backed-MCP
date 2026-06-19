@@ -31,9 +31,12 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
+      # -NoCoverage: the release path only validates + packs; the coverage HTML/artifact
+      # is never consumed here, so collecting it (~60-90s of coverlet IL-rewrite) is pure
+      # waste on the publish run.
       - name: Verify release build (version drift + build + test + publish)
         shell: pwsh
-        run: ./eng/verify-release.ps1 -Configuration Release
+        run: ./eng/verify-release.ps1 -Configuration Release -NoCoverage
 
       - name: Pack NuGet package
         shell: pwsh

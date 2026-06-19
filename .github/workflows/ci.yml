@@ -132,10 +132,22 @@ jobs:
           $target = Join-Path $PWD "artifacts/coverage/report"
           reportgenerator "-reports:$reports" "-targetdir:$target" -reporttypes:HtmlSummary
 
+      # `dotnet package list --vulnerable` exits 0 even when CVEs are present, so the
+      # raw command can never fail the build. Capture its output, print it for the log,
+      # then fail the job if the report contains a vulnerable-package marker. The
+      # `--include-transitive` path is parsed too, so a vulnerable transitive dep also
+      # trips the gate.
       - name: Audit packages for known vulnerabilities
         if: steps.detect.outputs.docs_only != 'true'
         shell: pwsh
-        run: dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive
+        run: |
+          $audit = dotnet package list --project RoslynMcp.slnx --vulnerable --include-transitive 2>&1 | Out-String
+          Write-Host $audit
+          if ($audit -match 'has the following vulnerable packages') {
+            Write-Host "::error title=Vulnerable packages detected::dotnet package list reported one or more known vulnerabilities. See the audit output above."
+            exit 1
+          }
+          Write-Host "No known package vulnerabilities found."
 
       - name: Upload published host artifact
         if: steps.detect.outputs.docs_only != 'true'
