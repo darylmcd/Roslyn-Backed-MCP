@@ -212,7 +212,7 @@
       "mergedAt": null,
       "notes": "judgmentHeavy: two viable impls (direct Process.GetProcessesByName vs IDotnetCommandRunner overload); stanza picks delegate-seam pattern mirroring DotnetCommandRunner._killProcessTree.",
       "fileSetHash": "bb858f5fa5e5ea01407fb12ccd67cfc0c44938a2b76bd76f130a5dcf69c3f5f9",
-      "stanzaHash": "56ea00ac99f94235d1fcb400d2014092f18fc7ac0e9b05cb56a5f3537076c1ee"
+      "stanzaHash": "569e3dd80a9fb29054fd70958397a3f538cda780d4382dc0196027c1a9a99716"
     },
     {
       "id": "parameter-naming-canonicalization-migration",
@@ -246,7 +246,7 @@
       "mergedAt": null,
       "notes": "Design overcounted 5 files->3 (3 renamed params share AdvancedAnalysisTools.cs). Executor must NOT rename stable-tier tools (find_duplicated_methods/find_type_consumers) sharing those files.",
       "fileSetHash": "03bb2977046236094850fbefcc6719d7618f9e9ee45a089092fd45c24544102f",
-      "stanzaHash": "e891c2dd9dcd5fb31adeb5e51d4ed7b7578bc80c7edfb7d5deff4cad1a0aef1c"
+      "stanzaHash": "a9bb1d1cfdf0455b5ca3148d535fde5cd91255c16c047cd37d20722f29165bf1"
     },
     {
       "id": "trace-exception-flow-no-throwsite",
@@ -281,7 +281,7 @@
       "mergedAt": null,
       "notes": "At Rule 3 cap (4 prod; IExceptionFlowService.cs is doc-comment-only). Extends existing ExceptionFlowServiceTests.cs.",
       "fileSetHash": "6076e9999adb923de28de418666b8a19beccf7657c4e1ed93c64d3f4a8a744f1",
-      "stanzaHash": "746db38ae893ca84f3c160864b78e55dd35ae3a289d5a52ad39a97a91f6dab82"
+      "stanzaHash": "25e985caecc2355a0adf9163a30bc9feeabf4b971efaff5e28097b074f851e0f"
     },
     {
       "id": "compilation-cache-adoption-read-side",
@@ -313,7 +313,7 @@
       "mergedAt": null,
       "notes": "Group-a TAIL partial batch; all 4 sites confirmed live-solution. Does NOT close parent row. Test budget at Rule 4 cap (3 files: CompilationCacheAdoptionTests + TestServiceContainer + SymbolImpactSweepBudgetTests).",
       "fileSetHash": "f7c8e10b4ca04f6d817e9c9ffc43409c84e5185a7d6bd985336d091ae9cdd0eb",
-      "stanzaHash": "7f6d2365e503bf4470ae1224dc378ef405139839749c7b9ad6c2d06579498563"
+      "stanzaHash": "6f7f04cffefba1a334910cd9b9d45a190893d5b3b7e950b0010c3f1d4081d0d5"
     },
     {
       "id": "workspace-id-optional-readonly-surface-full-sweep",
@@ -381,7 +381,7 @@
     }
   ],
   "conflictGraphInputHash": "3c238cd596aec7becda24df1bfb25fc69b604b77c918a8ad9c814700bb4062a9",
-  "planHash": "d2d874be0760336252da9f650a25592a12223bf7320afd4752e50a68c5a73368",
+  "planHash": "dc89bc7d975e845d0e83e1244c9051daa3d3116be06b6000253eb9fcec5c0751",
   "backlogSnapshotHash": "65d5bb0620d2faf051fb56ad1f7a172df51e1b0c843648c1fc44b5dfb9b17323",
   "reviewFindings": {
     "block": 0,
@@ -413,5 +413,6 @@
       "rule": "4",
       "evidence": "#6 lockstep test under-specified vs design note (f) (3 methods); within Rule-4 budget."
     }
-  ]
+  ],
+  "handoffAnnotated": 4
 }

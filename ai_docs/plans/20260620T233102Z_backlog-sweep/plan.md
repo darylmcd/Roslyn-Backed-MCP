@@ -104,6 +104,19 @@
 | CHANGELOG entry (draft) | Fixed `workspace_close(drainProcesses=true)` to also terminate detached `testhost.exe`/`vstest.console` processes after `dotnet build-server shutdown`, resolving `git worktree remove` failures (`Device or resource busy`) that persisted after a `test_run` in a sweep worktree on Windows. |
 | Backlog sync | Close rows: [worktree-teardown-windows-lock-multi-drain]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates (injection seam):** mirror `src/RoslynMcp.Roslyn/Helpers/DotnetCommandRunner.cs:40` (`private readonly Action<Process> _killProcessTree` field) + internal test ctor at `:52-58` + production default `KillProcessTree` static at `:136`. `CloseWorkspace` is `static`, so it has NO instance field to inject into — thread the seam as an optional method param on `CloseWorkspace` (e.g. `Func<string, Process[]>? getProcessesByName = null` defaulting to `Process.GetProcessesByName`), the same shape the existing `RecordingDotnetCommandRunner` uses to fake the runner.
+- **Drain seam:** the new `TryKillDetachedTestHostsAsync` call goes INSIDE the `if (drainProcesses && !string.IsNullOrWhiteSpace(loadedPath))` block at `WorkspaceTools.cs:164-196`, AFTER the `build-server shutdown` await completes (`:171-175`), scoped to `workingDirectory` (`:166`). Description to update is the `[McpServerTool(...Description(...))]` at line 114 (currently names only the build-server).
+- **Test target:** add `CloseWorkspace_DrainProcessesTrue_DoesNotLeakTesthostInWorkingDir` to `tests/RoslynMcp.Tests/WorkspaceCloseDrainTests.cs` (class at line 19); mirror `CloseWorkspace_DrainProcessesTrue_InvokesBuildServerShutdown` at line 26 for the wiring (PassthroughGate + FakeWorkspaceManagerForDrain + RecordingLogger). Inject the fake `getProcessesByName` via the new method param.
+- **Edge cases to cover:** (1) `MainModule` inaccessible (Win32Exception / access-denied) → SKIP that process, do NOT kill-all; (2) process whose `MainModule.FileName` does NOT prefix-match `workingDirectory` (OrdinalIgnoreCase) → not killed; (3) cross-platform name `testhost` (no `.exe`) still matched; (4) kill/enumeration throwing is swallowed at Debug, close still returns success (same non-fatal policy as the build-server catch at `:185-194`).
+- **Negative space:** do NOT alter the existing `build-server shutdown` path (`:171-194`) — 5 sibling tests (lines 26-254) cover it and must stay green. `DotnetCommandRunner.cs` is the PATTERN SOURCE, not an edit target. `WorkspaceTools.cs` is also touched by initiative #10 (namespace-cycle) — conflict-graph edge; do not parallel-wave.
+
+</details>
+
 ### 6. parameter-naming-canonicalization-migration
 
 | Field | Content |
@@ -119,6 +132,19 @@
 | CHANGELOG category | Changed — BREAKING |
 | CHANGELOG entry (draft) | **Changed (BREAKING):** Renamed 5 non-canonical parameters on experimental MCP tools to the server's `projectName` convention. `trace_exception_flow`: `scopeProjectFilter` → `projectName`. `find_duplicate_helpers`, `find_dead_locals`, `find_dead_fields`, `semantic_grep`: `projectFilter` → `projectName`. Callers passing these keys by name must update to `projectName`. No deprecation aliases (experimental tier). |
 | Backlog sync | Close rows: [parameter-naming-canonicalization-migration]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates (rename targets, re-verified):** `AdvancedAnalysisTools.cs:331` (`FindDeadLocals`), `:357` (`FindDeadFields`), `:387` (`FindDuplicateHelpers`) — each `string? projectFilter = null` param + its in-method `ProjectFilter = projectFilter` option-object reference (lines 341, 369, 398) + `[Description]`. `AnalysisTools.cs:449` (`SemanticGrep` param) + `:438` (tool-level `[Description]` mentions "Optional `projectFilter`"). `ExceptionFlowTools.cs:28` (param) + `:35` (positional pass to service). Rename wire identifier to `projectName` at all references.
+- **Service-layer is out of scope:** at `ExceptionFlowTools.cs:35` the renamed `projectName` is passed positionally to `TraceExceptionFlowAsync` — the service param keeps its name. No service signature change; the positional call still compiles.
+- **Test target:** create `tests/RoslynMcp.Tests/ExperimentalSurfaceParameterNamingTests.cs` (new file, per design §f). Mirror `tests/RoslynMcp.Tests/Skills/IssueTemplateAndLabelSeedTests.cs` — sealed `[TestClass]`, static expected-set arrays, reflection over the tool method's `ParameterInfo[]`. Assert NO experimental tool exposes `projectFilter`/`scopeProjectFilter`; a failing reflection assertion = a missed rename.
+- **Negative space (CRITICAL):** do NOT rename the stable-tier `projectFilter`. In the SAME file `AdvancedAnalysisTools.cs`: `FindDuplicatedMethods` (`:417`) and the `find_duplicated_code` alias (`:462`) share `projectFilter` via `FindDuplicatedMethodsCore` (`:433`) — leave untouched. Also out of scope: `ConsumerAnalysisTools.cs` `find_type_consumers` `projectFilter` (`:26`/`:32`). Rename ONLY the 3 experimental methods + `semantic_grep` + `trace_exception_flow`.
+- **Conflict note:** `ExceptionFlowTools.cs` is also touched by initiative #7 (trace_exception_flow throw-sites) — both edit the tool's `[Description]`. Conflict-graph edge #6↔#7; do NOT parallel-wave.
+
+</details>
 
 ### 7. trace-exception-flow-no-throwsite
 
@@ -136,6 +162,19 @@
 | CHANGELOG entry (draft) | Fixed `trace_exception_flow` to return throw sites alongside catch sites, rank type-specific catches above base-`Exception` catches, and expose `CountOmitted` when truncation clips results. |
 | Backlog sync | Close rows: [trace-exception-flow-no-throwsite]. |
 
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Unified-walk seam (the load-bearing one):** the existing catch walk is `root.DescendantNodes().OfType<CatchClauseSyntax>()` at `ExceptionFlowService.cs:94`, inside the per-tree loop `:84-115`. Broaden THIS loop to also collect throw nodes in the same `DescendantNodes()` pass — do NOT add a second `foreach (var tree in compilation.SyntaxTrees)`. The risk-noted "single-pass mitigation" means one descendant enumeration per tree, not two. Reuse `_compilationCache.GetCompilationAsync` (already injected, `:30/:65`); no DI change (`IExceptionFlowService` fanout = 4 refs, verified, all in the 4 scoped files).
+- **CountOmitted semantics:** the cap short-circuit (`sites.Count >= cap`) fires at `:63/:86/:96`; `Truncated` is set at `:98` and `:118-121`. `CountOmitted` must increment AFTER the cap is reached (count matches found-but-dropped) — track a running total separate from the capped list. Apply catch-site specificity sort (`CatchesBaseException==false` first) AFTER collection but BEFORE the cap clip, or the truncation drops the wrong sites.
+- **Test target:** add both new methods to `ExceptionFlowServiceTests.cs` (existing class, `:18`); do NOT create a new file. Mirror `TraceExceptionFlow_FindsTypedCatch_WithRethrowAsAndBodyExcerpt` (`:27`) — it has the working `JsonException` + `System.Text.Json` isolated-workspace reference setup the throw-site test needs.
+- **Edge cases to cover:** (1) throw inside a lambda inside a catch — syntactic `IsUnhandledAtBoundary` will misclassify; note as a doc-comment limitation, do not attempt escape analysis; (2) `ThrowExpressionSyntax` (expression-bodied / switch-arm throws) as well as `ThrowStatementSyntax`; (3) rethrow `throw;` (no expression) — no thrown-type to resolve, skip; (4) thrown type assignable-to-traced-type check must mirror the existing `IsAssignableTo` base-walk (`:192`).
+- **Negative space:** do NOT modify or "unify" `TryResolveRethrowAsType` (`:286-319`) — it already walks `ThrowStatementSyntax`/`ThrowExpressionSyntax` but scoped to CATCH BODIES (rethrow detection), a different concern from the new top-level throw-origin walk. Leave it intact. Also: `ExceptionFlowTools.cs` `[Description]`/`scopeProjectFilter` param (`:22/:28`) is concurrently renamed by initiative #6 — touch only the description text for throw-sites/ranking; if #6 lands first the param is `projectName`. Conflict-graph edge: do NOT parallel-wave with #6.
+
+</details>
+
 ### 8. compilation-cache-adoption-read-side
 
 | Field | Content |
@@ -151,6 +190,18 @@
 | CHANGELOG category | Maintenance |
 | CHANGELOG entry (draft) | Route `ImpactSweepService`, `MutationAnalysisService`, and `SymbolRelationshipService` live-solution compilation fetches through `ICompilationCache` (group-a tail batch, mirrors #1005). |
 | Backlog sync | Close rows: []. Update related: [compilation-cache-adoption-read-side — group-a tail batch shipped; group-b/c remainder + re-scope still open]. |
+
+<details>
+<summary>Sonnet handoff notes</summary>
+
+**Sonnet handoff:**
+
+- **Pattern coordinates (mirror PR #1005):** ctor-param + static-drop pattern is verbatim in `ReferenceService.cs:21` (ctor adds `ICompilationCache compilationCache`) and `:249` (`_compilationCache.GetCompilationAsync(workspaceId, project, ct)`). Cache API: `CompilationCache.cs:56` → `GetCompilationAsync(string workspaceId, Project project, CancellationToken ct)`. All 4 prod sites re-verified live: `ImpactSweepService.cs:135` (instance method, `workspaceId` in scope at `:118`), `:227` (`FindMapperTypesAsync`, **`private static`**, sole caller `:158`), `MutationAnalysisService.cs:350` (`ResolveContainingCompilationAsync`, instance — thread `workspaceId` from `FindTypeMutationsAsync:323/325`), `SymbolRelationshipService.cs:427` (`TryResolveByQualifiedSignatureAsync`, **`internal static` at :402**, two callers `:239` + `:280`, both bind `solution` from `GetCurrentSolution(workspaceId)`).
+- **Static-vs-instance choice:** `ImpactSweepService.FindMapperTypesAsync` (private static, 1 caller) and `SymbolRelationshipService.TryResolveByQualifiedSignatureAsync` (internal static, 2 callers) — THREAD `string workspaceId, ICompilationCache compilationCache` params; do NOT instance-promote. `MutationAnalysisService.ResolveContainingCompilationAsync` is already instance — only add the `workspaceId` param.
+- **Test target (commit, do not create):** add 3 `[TestMethod]`s to `CompilationCacheAdoptionTests.cs` (existing class), one per service; mirror `TestReferenceMapService_ObtainsCompilations_ThroughSharedCache` at `:146` and reuse the shared `AssertRoutedThroughCacheAndShared` helper at `:206`. Constructor updates required: `TestServiceContainer.cs:93` `new MutationAnalysisService(workspaceManager)` → add `compilationCache` (already in scope at `:83`); `:155` `new SymbolRelationshipService(workspaceManager, referenceService, logger)` → insert `compilationCache`; `SymbolImpactSweepBudgetTests.cs:25` `new ImpactSweepService(WorkspaceManager, ReferenceService, DiagnosticService)` → add `new CompilationCache(WorkspaceManager)` (TestBase.WorkspaceManager).
+- **Negative space:** do NOT touch the forked-solution sites — `InterfaceExtractionService:515`, `RefactoringService`, `TypeMoveService` are group-b/c (forked solutions, version-keyed sharing unsound there). All 4 sites in this batch are confirmed live `GetCurrentSolution(workspaceId)` reads only. No `ServiceCollectionExtensions.cs` change — `ICompilationCache` is a registered singleton, type-based DI auto-resolves the new ctor params.
+
+</details>
 
 ### 9. workspace-id-optional-readonly-surface-full-sweep
 
