@@ -3,16 +3,55 @@
   "generatedAt": "2026-06-20T23:31:02Z",
   "backlogSnapshot": "2026-06-20T22:35:39Z",
   "addendaLoaded": true,
-  "phase": "skeleton",
+  "phase": "conflict-graph-done",
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "pending",
   "readyForExecute": false,
-  "anchorVerification": "pending",
+  "anchorVerification": "performed",
   "conflictGraph": {
-    "edges": [],
-    "degrees": {},
-    "zeroDegreeInitiatives": []
+    "edges": [
+      {
+        "a": 1,
+        "b": 6,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs"
+        ]
+      },
+      {
+        "a": 5,
+        "b": 10,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
+        ]
+      },
+      {
+        "a": 6,
+        "b": 7,
+        "sharedFiles": [
+          "src/RoslynMcp.Host.Stdio/Tools/ExceptionFlowTools.cs"
+        ]
+      }
+    ],
+    "degrees": {
+      "1": 1,
+      "2": 0,
+      "3": 0,
+      "4": 0,
+      "5": 1,
+      "6": 2,
+      "7": 1,
+      "8": 0,
+      "9": 0,
+      "10": 1
+    },
+    "zeroDegreeInitiatives": [
+      2,
+      3,
+      4,
+      8,
+      9
+    ]
   },
   "initiatives": [
     {
@@ -22,28 +61,30 @@
       "backlogRowsClosed": [
         "find-duplicated-methods-no-byte-budget"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs"
+      ],
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "268ae7409c871135fea39b4794bbbc3107a17c81e04e7e2abbe8394ea8528049"
+      "fileSetHash": "93b63f53d0406f0e182ae4e6e4c3043a8bd61b82e019cf50ff6d4334c4bb6e56",
+      "stanzaHash": "3ca59e7119fe3c6c6b8c8ab5106b3ddb5ac957f7ed055fa8e79d5173380115ac"
     },
     {
       "id": "test-discover-no-autopagination",
@@ -52,28 +93,28 @@
       "backlogRowsClosed": [
         "test-discover-no-autopagination"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 0,
+      "productionFiles": [],
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 0,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
+      "notes": "Deepener found row obsolete (orchestrator-verified): pagination shipped v2.3.4 at ValidationTools.cs:54-143. Expect execute Step 5a -> obsolete; close row, no PR.",
       "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "23c7cd421459ce073781be90d7fb54ca78765517237cfb99cf6df52a8efd7751"
+      "stanzaHash": "7b7f4f671f5f18bc2a5f3980eb0840d07119cb5b093dba99c6df65366ca5d65d"
     },
     {
       "id": "nuget-vuln-scan-exceeds-budget",
@@ -82,28 +123,30 @@
       "backlogRowsClosed": [
         "nuget-vuln-scan-exceeds-budget"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/SecurityTools.cs"
+      ],
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 25000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "2a9b3a33e1326396601f80e9f41f19e8cca1ffcd5a058bfd7982ed24553d23bf"
+      "notes": "Cache + timeout config already shipped (CHANGELOG remediation pass 2); only progress stage label + cache-hit regression test remain.",
+      "fileSetHash": "9b31f85d48b78a94ce51af7b32617d66e3ea6d5920607d76c68b96b6d37733e0",
+      "stanzaHash": "ab286eb6001d9c4069eedde05a7640b3c5a36f20746644729f866df62442e31c"
     },
     {
       "id": "restore-required-vs-build-conflation",
@@ -112,28 +155,32 @@
       "backlogRowsClosed": [
         "restore-required-vs-build-conflation"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/WorkspaceManager.cs",
+        "src/RoslynMcp.Core/Models/WorkspaceStatusDto.cs",
+        "src/RoslynMcp.Core/Models/WorkspaceStatusSummaryDto.cs"
+      ],
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
       "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "233b12b294ebb0851466fe91cad0db32b52e78e04d6f2633963fbeb46667813f"
+      "fileSetHash": "c486b1a19668ca99668d2cdbec6ccd5d76758220d62fc1424d7b0e096960f3cd",
+      "stanzaHash": "d6017153b6d741eb0acf64b54b022341f14442a88ec21442d5aec8592ab0cec4"
     },
     {
       "id": "worktree-teardown-windows-lock-multi-drain",
@@ -142,28 +189,30 @@
       "backlogRowsClosed": [
         "worktree-teardown-windows-lock-multi-drain"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs"
+      ],
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 28000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "a564351e0be829a8e7640a0f2813e04ae3ce6dbabb8f734baffef4c7e5266d4e"
+      "notes": "judgmentHeavy: two viable impls (direct Process.GetProcessesByName vs IDotnetCommandRunner overload); stanza picks delegate-seam pattern mirroring DotnetCommandRunner._killProcessTree.",
+      "fileSetHash": "bb858f5fa5e5ea01407fb12ccd67cfc0c44938a2b76bd76f130a5dcf69c3f5f9",
+      "stanzaHash": "56ea00ac99f94235d1fcb400d2014092f18fc7ac0e9b05cb56a5f3537076c1ee"
     },
     {
       "id": "parameter-naming-canonicalization-migration",
@@ -172,28 +221,32 @@
       "backlogRowsClosed": [
         "parameter-naming-canonicalization-migration"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/AdvancedAnalysisTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/AnalysisTools.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ExceptionFlowTools.cs"
+      ],
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 35000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 3,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
-        "judgmentHeavy": false,
+        "judgmentHeavy": true,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "481902e95fec5e1d256c507a0dc89534e2882beb743cf06c170f52d9f84eca7c"
+      "notes": "Design overcounted 5 files->3 (3 renamed params share AdvancedAnalysisTools.cs). Executor must NOT rename stable-tier tools (find_duplicated_methods/find_type_consumers) sharing those files.",
+      "fileSetHash": "03bb2977046236094850fbefcc6719d7618f9e9ee45a089092fd45c24544102f",
+      "stanzaHash": "e891c2dd9dcd5fb31adeb5e51d4ed7b7578bc80c7edfb7d5deff4cad1a0aef1c"
     },
     {
       "id": "trace-exception-flow-no-throwsite",
@@ -202,84 +255,95 @@
       "backlogRowsClosed": [
         "trace-exception-flow-no-throwsite"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 4,
+      "productionFiles": [
+        "src/RoslynMcp.Core/Models/ExceptionFlowResult.cs",
+        "src/RoslynMcp.Core/Services/IExceptionFlowService.cs",
+        "src/RoslynMcp.Roslyn/Services/ExceptionFlowService.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/ExceptionFlowTools.cs"
+      ],
+      "testFilesAdded": 0,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 45000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "acc0a2b4b70612eb13b95e72b267aa9e041efa60ec7e7fdf5560a8ad48a19403"
+      "notes": "At Rule 3 cap (4 prod; IExceptionFlowService.cs is doc-comment-only). Extends existing ExceptionFlowServiceTests.cs.",
+      "fileSetHash": "6076e9999adb923de28de418666b8a19beccf7657c4e1ed93c64d3f4a8a744f1",
+      "stanzaHash": "746db38ae893ca84f3c160864b78e55dd35ae3a289d5a52ad39a97a91f6dab82"
     },
     {
       "id": "compilation-cache-adoption-read-side",
       "order": 8,
       "status": "pending",
       "backlogRowsClosed": [],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Roslyn/Services/ImpactSweepService.cs",
+        "src/RoslynMcp.Roslyn/Services/MutationAnalysisService.cs",
+        "src/RoslynMcp.Roslyn/Services/SymbolRelationshipService.cs"
+      ],
+      "testFilesAdded": 3,
       "rowsClosedCount": 0,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 40000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 3,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
-        "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "anchorStale": true,
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Partial-adoption batch of open row compilation-cache-adoption-read-side (group-a TAIL: ImpactSweepService + MutationAnalysisService + SymbolRelationshipService, live-solution reads only). Does NOT close the row — group-b/c remainder + re-scope remains.",
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "4434fffff1a5dadfafc03206aba03183ebd924bb654eb7a920781889a8eff1bb"
+      "notes": "Group-a TAIL partial batch; all 4 sites confirmed live-solution. Does NOT close parent row. Test budget at Rule 4 cap (3 files: CompilationCacheAdoptionTests + TestServiceContainer + SymbolImpactSweepBudgetTests).",
+      "fileSetHash": "f7c8e10b4ca04f6d817e9c9ffc43409c84e5185a7d6bd985336d091ae9cdd0eb",
+      "stanzaHash": "7f6d2365e503bf4470ae1224dc378ef405139839749c7b9ad6c2d06579498563"
     },
     {
       "id": "workspace-id-optional-readonly-surface-full-sweep",
       "order": 9,
       "status": "pending",
       "backlogRowsClosed": [],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 1,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Tools/CompileCheckTools.cs"
+      ],
+      "testFilesAdded": 0,
       "rowsClosedCount": 0,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 25000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
       "fanoutEstimate": null,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Bounded sub-batch of open row workspace-id-optional-readonly-surface-full-sweep (ONE *Tools.cs file's read-only tools, deepener to pick a clean file without REQUIRED-param-after-workspaceId reorder hazard). Does NOT close the row.",
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "6370d96820c10a199d12556cf1336033587f3cfc963c3716b1f0633bc1c870fc"
+      "notes": "Bounded sub-batch: CompileCheckTools.cs only (1 of ~45). No CS1737 hazard. Modifies (not adds) WorkspaceIdOptionalSurfaceTests.cs. Does NOT close parent row.",
+      "fileSetHash": "21a1cc9e08eca363e3fe7f383d032569055d046f892f67dc82f3321bd0e7aef9",
+      "stanzaHash": "579fa33fc17b6e55d5360c19543fb00cd84fa751abd293ba4b1e0325a0193003"
     },
     {
       "id": "hoststdio-middleware-tools-namespace-cycle",
@@ -288,31 +352,35 @@
       "backlogRowsClosed": [
         "hoststdio-middleware-tools-namespace-cycle"
       ],
-      "productionFilesTouched": null,
-      "productionFiles": null,
-      "testFilesAdded": null,
+      "productionFilesTouched": 3,
+      "productionFiles": [
+        "src/RoslynMcp.Host.Stdio/Catalog/WorkspaceResolutionHelper.cs",
+        "src/RoslynMcp.Host.Stdio/Tools/WorkspaceTools.cs",
+        "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs"
+      ],
+      "testFilesAdded": 1,
       "rowsClosedCount": 1,
-      "estimatedContextTokens": null,
-      "toolPolicy": null,
+      "estimatedContextTokens": 30000,
+      "toolPolicy": "edit-only",
       "scheduleHint": null,
-      "fanoutEstimate": null,
+      "fanoutEstimate": 4,
       "fanoutOversize": false,
-      "deepenerStatus": "pending",
+      "deepenerStatus": "ok",
       "deepenerFlags": {
         "judgmentHeavy": false,
         "anchorStale": false,
-        "ruleOneBundleResolved": null
+        "ruleOneBundleResolved": "n/a"
       },
       "branch": null,
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": null,
-      "fileSetHash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-      "stanzaHash": "f79b5c2c147bf590a2853b14905497b0fe5b2ced5be98d5146bffc355afaf9f8"
+      "notes": "Touches WorkspaceTools.cs (also touched by #5 worktree-teardown) -> conflict-graph edge; must not parallel-wave with #5.",
+      "fileSetHash": "5404b1fd4487eeb2e65c7a7229472ce143a54838ea9c9f7b0b8ba138286dabbe",
+      "stanzaHash": "4bb9d6692fece561b693c0496d2cc20a90ee6aed146e24b0e749b82b68214c32"
     }
   ],
-  "conflictGraphInputHash": "ab95f30829badc8b3dee8217c5b18267b114b5bfdf760d193c08d1742ea0472a",
-  "planHash": "124a0e51aa413c6555e3914e097281326ad1a26ddd350113ce050950c65dd91a",
+  "conflictGraphInputHash": "3c238cd596aec7becda24df1bfb25fc69b604b77c918a8ad9c814700bb4062a9",
+  "planHash": "d2d874be0760336252da9f650a25592a12223bf7320afd4752e50a68c5a73368",
   "backlogSnapshotHash": "65d5bb0620d2faf051fb56ad1f7a172df51e1b0c843648c1fc44b5dfb9b17323"
 }
