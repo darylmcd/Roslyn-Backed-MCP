@@ -250,8 +250,17 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
             {
                 _isStale = false;
                 _staleReason = null;
-                // Arm a fresh signal so a post-reload write can be awaited again. The old TCS is
-                // already completed (or never awaited); replacing it is the standard reset.
+                // Cancel the outgoing signal BEFORE replacing it. An awaiter parked on
+                // WaitForStaleAsync holds a reference to this exact TCS's Task; swapping in a fresh
+                // one without resolving the old leaves that awaiter stranded until ITS OWN
+                // CancellationToken deadline. A clear/re-arm is the abandonment of the pending
+                // stale-wait (the entry just went clean, the opposite of stale), so cancellation —
+                // not completion — is the correct signal: completing would falsely wake the awaiter
+                // as "stale" when IsStale is now false. TrySetCanceled is a no-op when the TCS
+                // already fired earlier in this stale window, and races safely with a concurrent
+                // MarkStaleWithReason completer (both use the Try* form under _reasonLock).
+                _staleSignal.TrySetCanceled();
+                // Arm a fresh signal so a post-reload write can be awaited again.
                 _staleSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             }
         }
