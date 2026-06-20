@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-20T04:18:39Z
+**updated_at:** 2026-06-20T22:35:39Z
 
 ## Agent contract
 
@@ -88,6 +88,7 @@
 | `filewatcher-class-xmldoc-truncated` | Low | — | **FileWatcherService class XML doc clause is truncated** — the class-level `<para>` (`FileWatcherService.cs:~25`) ends "…server apply paths that want to preserve their attribution mark after the on-disk commit settles." with no main verb — a dropped clause. Complete or trim it. [type: docs] [source: 2026-06-20 top-n row-1 implementer finding] | S | items/filewatcher-class-xmldoc-truncated.md |
 | `ci-policy-cache-version-stale-cite` | Low | — | **CI_POLICY.md cites a stale actions/cache version** — `CI_POLICY.md:12` says `actions/cache@v4` but `ci.yml:96` uses `actions/cache@v5`; sync the cite. [type: docs] [source: 2026-06-20 top-n row-2 implementer finding] | S | items/ci-policy-cache-version-stale-cite.md |
 | `nuget-checker-timeout-test-bound-couple-to-httptimeout` | Low | — | **Couple the NuGet timeout-test wait bound to HttpTimeout** — the 30s hang-guard literal's `>> HttpTimeout(3s)` coupling is prose-only; derive it from a multiple of HttpTimeout, or close won't-fix. [type: test] [source: 2026-06-20 top-n row-4 cq] | S | items/nuget-checker-timeout-test-bound-couple-to-httptimeout.md |
+| `reference-service-dead-iscorlib-single-arg-overload` | Low | — | **Remove dead IsCorlibAssembly single-arg overload** — `ReferenceService.cs:444` `IsCorlibAssembly(IAssemblySymbol?)` has no callers (the sole site at `:422` uses the two-arg form). Delete it. [type: refactor] [source: 2026-06-20 compcache batch-a cq] | S | items/reference-service-dead-iscorlib-single-arg-overload.md |
 
 ## Defer
 

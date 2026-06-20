@@ -12,7 +12,7 @@
 
 | # | id | status | PR | rows closed |
 |---|----|--------|----|-------------|
-| 1 | compcache-batch-a-core-reference-reads | pending | — | — |
+| 1 | compcache-batch-a-core-reference-reads | merged | [#1005](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1005) | — |
 <!-- BSWEEP:STATUS-TABLE END -->
 
 ## Initiatives (in order)
