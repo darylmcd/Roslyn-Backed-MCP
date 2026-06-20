@@ -32,7 +32,7 @@ public sealed class TestReferenceMapServiceTests : SharedWorkspaceTestBase
     {
         InitializeServices();
         WorkspaceId = await GetOrLoadWorkspaceIdAsync(SampleSolutionPath, CancellationToken.None);
-        Service = new TestReferenceMapService(WorkspaceManager);
+        Service = new TestReferenceMapService(WorkspaceManager, new CompilationCache(WorkspaceManager));
     }
 
     [TestMethod]

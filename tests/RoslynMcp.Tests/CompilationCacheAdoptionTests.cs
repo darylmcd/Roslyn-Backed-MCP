@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
+using RoslynMcp.Core.Models;
 using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Services;
 
@@ -13,7 +14,8 @@ namespace RoslynMcp.Tests;
 /// rather than calling <c>project.GetCompilationAsync</c> directly. Batch 1 covered
 /// <see cref="CouplingAnalysisService"/>, <see cref="ExceptionFlowService"/>, and
 /// <see cref="AnalyzerInfoService"/>; batch 2 adds <see cref="TypeConsumersService"/>,
-/// <see cref="CodePatternAnalyzer"/>, and <see cref="SymbolSearchService"/>.
+/// <see cref="CodePatternAnalyzer"/>, and <see cref="SymbolSearchService"/>; group-a core adds
+/// <see cref="TestReferenceMapService"/> and <see cref="ReferenceService"/>.
 /// <para>
 /// A reference-equality check alone cannot prove adoption — Roslyn memoizes a
 /// <see cref="Compilation"/> on its owning <see cref="Project"/>, so two direct calls would also
@@ -135,6 +137,50 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
                 kindFilter: null,
                 namespaceFilter: null,
                 maxResults: 100,
+                CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task TestReferenceMapService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new TestReferenceMapService(WorkspaceManager, cache);
+
+        // BuildAsync routes BOTH converted sites: CollectProductiveSymbolsAsync (productive-scope
+        // projects) and RecordTestProjectReferencesAsync (the test projects). Either path alone
+        // is enough to drive the call count above zero.
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.BuildAsync(
+                workspace.WorkspaceId,
+                projectName: null,
+                offset: 0,
+                limit: 500,
+                maxMockDriftWarnings: 50,
+                CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task ReferenceService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new ReferenceService(WorkspaceManager, cache, NullLogger<ReferenceService>.Instance);
+
+        // FindSiblingInterfaceImplementationsAsync -> FindInterfaceMemberImplementationsAsync is the
+        // converted site. Anchor on the IAnimal.Speak interface member so the walk runs the
+        // per-project compilation fetch through the cache (SampleLib.Dog implements IAnimal.Speak).
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var animalFile = solution.Projects.SelectMany(p => p.Documents).First(d => d.Name == "IAnimal.cs");
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.FindSiblingInterfaceImplementationsAsync(
+                workspace.WorkspaceId,
+                SymbolLocator.BySource(animalFile.FilePath!, 6, 13),
                 CancellationToken.None));
 
         AssertRoutedThroughCacheAndShared(cache, afterFirstRun);

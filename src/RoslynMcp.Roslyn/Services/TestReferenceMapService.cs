@@ -3,6 +3,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.FindSymbols;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 
 namespace RoslynMcp.Roslyn.Services;
 
@@ -14,10 +15,12 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class TestReferenceMapService : ITestReferenceMapService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
 
-    public TestReferenceMapService(IWorkspaceManager workspace)
+    public TestReferenceMapService(IWorkspaceManager workspace, ICompilationCache compilationCache)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
     }
 
     public async Task<TestReferenceMapDto> BuildAsync(
@@ -38,13 +41,13 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
         // Phase 2: collect every public/internal productive-symbol declaration from the
         // productive-scope projects (all non-test projects by default, or the named project
         // when projectName identifies a productive project).
-        var allProductive = await CollectProductiveSymbolsAsync(productiveScopeProjects, ct)
+        var allProductive = await CollectProductiveSymbolsAsync(workspaceId, productiveScopeProjects, ct)
             .ConfigureAwait(false);
 
         // Phase 3: walk each test project's test methods and record references to
         // productive symbols.
         var (productiveSymbols, scannedTestProjects) = await RecordTestProjectReferencesAsync(
-            solution, testScanProjects, testProjectIds, allProductive, ct).ConfigureAwait(false);
+            workspaceId, solution, testScanProjects, testProjectIds, allProductive, ct).ConfigureAwait(false);
 
         var notes = new List<string>();
         if (scannedTestProjects.Count == 0)
@@ -140,14 +143,15 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
     /// source. Projects that cannot produce a compilation are skipped (matches the pre-refactor
     /// behavior).
     /// </summary>
-    private static async Task<HashSet<string>> CollectProductiveSymbolsAsync(
+    private async Task<HashSet<string>> CollectProductiveSymbolsAsync(
+        string workspaceId,
         IReadOnlyList<Project> productiveScopeProjects,
         CancellationToken ct)
     {
         var allProductive = new HashSet<string>(StringComparer.Ordinal);
         foreach (var project in productiveScopeProjects)
         {
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
             CollectProductiveSymbols(compilation.GlobalNamespace, allProductive);
         }
@@ -161,7 +165,8 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
     /// public/internal/protected accessibility and appears in <paramref name="allProductive"/>.
     /// Returns the symbol→testMethodNames map plus the list of test projects actually scanned.
     /// </summary>
-    private static async Task<(Dictionary<string, HashSet<string>> ProductiveSymbols, List<string> ScannedTestProjects)> RecordTestProjectReferencesAsync(
+    private async Task<(Dictionary<string, HashSet<string>> ProductiveSymbols, List<string> ScannedTestProjects)> RecordTestProjectReferencesAsync(
+        string workspaceId,
         Solution solution,
         IReadOnlyList<Project> scopedProjects,
         HashSet<ProjectId> testProjectIds,
@@ -175,7 +180,7 @@ public sealed class TestReferenceMapService : ITestReferenceMapService
         {
             ct.ThrowIfCancellationRequested();
             scannedTestProjects.Add(testProject.Name);
-            var compilation = await testProject.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, testProject, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             foreach (var document in testProject.Documents)
