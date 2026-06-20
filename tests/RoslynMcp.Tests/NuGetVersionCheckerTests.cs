@@ -108,10 +108,18 @@ public sealed class NuGetVersionCheckerTests
     {
         // Await the in-flight background fetch directly via the internal test seam rather than
         // spin-looping on the observable status — deterministic and free of timing sensitivity
-        // under heavy CI parallel load. The bounded WaitAsync guards against a hung handler.
+        // under heavy CI parallel load. The bounded WaitAsync is ONLY a true-hang guard, never a
+        // normal-path timer: it MUST sit comfortably above NuGetVersionChecker.HttpTimeout (3 s,
+        // the checker's internal CancellationTokenSource), because the timeout-path test
+        // (GetLatestVersion_OnTimeout_...) relies on that 3 s timer firing AND its continuation
+        // recording TimedOut before this wait expires. A tight bound (e.g. 5 s, ~2 s margin) loses
+        // that race under self-hosted-runner CPU contention and throws TimeoutException spuriously
+        // — the flake this guard's previous values caused twice (nuget-version-checker-test-wallclock-poll,
+        // then nuget-version-checker-timeout-test-wallclock-race). 30 s gives ~10x headroom over the
+        // 3 s timer; do NOT lower it toward HttpTimeout. If HttpTimeout ever grows, keep this >> it.
         var pending = checker.PendingCheckForTest;
         Assert.IsNotNull(pending, "Expected a background version check to be in flight.");
-        await pending.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+        await pending.WaitAsync(TimeSpan.FromSeconds(30)).ConfigureAwait(false);
 
         Assert.AreNotEqual(VersionCheckStatus.Pending, checker.LastCheckStatus,
             "Background version check should have reached a terminal status.");
