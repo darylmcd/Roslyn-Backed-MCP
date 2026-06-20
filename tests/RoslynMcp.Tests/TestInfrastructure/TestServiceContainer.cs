@@ -88,6 +88,7 @@ internal sealed class TestServiceContainer
             NullLogger<GatedCommandExecutor>.Instance);
         var referenceService = new ReferenceService(
             workspaceManager,
+            compilationCache,
             NullLogger<ReferenceService>.Instance);
         var mutationAnalysisService = new MutationAnalysisService(workspaceManager);
         var codeFixRegistry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);

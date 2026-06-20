@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -14,11 +15,13 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<ReferenceService> _logger;
 
-    public ReferenceService(IWorkspaceManager workspace, ILogger<ReferenceService> logger)
+    public ReferenceService(IWorkspaceManager workspace, ICompilationCache compilationCache, ILogger<ReferenceService> logger)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -216,7 +219,7 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
         // interface declaration (`IAnimal.Speak`) and produces the same sibling set.
         var promoted = PromoteToVirtualRoot(symbol);
 
-        var siblings = await FindInterfaceMemberImplementationsAsync(promoted, solution, ct).ConfigureAwait(false);
+        var siblings = await FindInterfaceMemberImplementationsAsync(workspaceId, promoted, solution, ct).ConfigureAwait(false);
 
         return siblings
             .Distinct(SymbolEqualityComparer.Default)
@@ -228,7 +231,8 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
             .ToList();
     }
 
-    private static async Task<IReadOnlyList<ISymbol>> FindInterfaceMemberImplementationsAsync(
+    private async Task<IReadOnlyList<ISymbol>> FindInterfaceMemberImplementationsAsync(
+        string workspaceId,
         ISymbol symbol,
         Solution solution,
         CancellationToken ct)
@@ -242,7 +246,7 @@ public sealed class ReferenceService : IReferenceService, IPreResolvedReferenceS
         foreach (var project in solution.Projects)
         {
             ct.ThrowIfCancellationRequested();
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null)
             {
                 continue;
