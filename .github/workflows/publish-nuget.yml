@@ -66,8 +66,7 @@ jobs:
             $nuspecEntry = $zip.Entries | Where-Object { $_.FullName -like "*.nuspec" } | Select-Object -First 1
             if (-not $nuspecEntry) { throw "No .nuspec found inside $($nupkg.Name)" }
             $reader = New-Object System.IO.StreamReader($nuspecEntry.Open())
-            $nuspec = $reader.ReadToEnd()
-            $reader.Dispose()
+            try { $nuspec = $reader.ReadToEnd() } finally { $reader.Dispose() }
             if ($nuspec -notmatch '<packageType\s+name="McpServer"') {
               throw "nuspec is missing <packageType name=`"McpServer`" /> — csproj regression dropped <PackageType>McpServer</PackageType>; package would NOT list on the NuGet MCP gallery."
             }
