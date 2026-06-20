@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Logging.Abstractions;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -325,5 +327,109 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
             $"FileSystemWatcher did not flip isStale across {WatcherWriteAttempts} writes " +
             $"(each awaited up to {WatcherFlushTimeoutMs} ms). The watcher likely isn't registered " +
             "against the path — a dropped single event would have been recovered by the re-touch.");
+    }
+}
+
+/// <summary>
+/// Direct (no real OS file events) unit coverage of the
+/// <see cref="IFileWatcherService.WaitForStaleAsync"/> ↔ <see cref="IFileWatcherService.ClearStale"/>
+/// concurrency seam in <see cref="FileWatcherService"/>. A caller parks on
+/// <c>WaitForStaleAsync</c> waiting for a not-yet-stale workspace to flip; a concurrent
+/// <c>ClearStale</c> (e.g. a reload settling) re-arms the internal signal. The parked awaiter
+/// MUST be released deterministically — the re-arm cancels the pending stale-wait — rather than
+/// being stranded on the now-orphaned <see cref="System.Threading.Tasks.TaskCompletionSource"/>
+/// until the caller's own <see cref="System.Threading.CancellationToken"/> deadline elapses.
+/// </summary>
+[TestClass]
+public sealed class FileWatcherClearStaleAwaiterTests
+{
+    /// <summary>
+    /// Upper bound on how long the re-armed awaiter may take to unblock. The release is in-process
+    /// and synchronous-on-<c>ClearStale</c>, so a correct implementation completes in microseconds;
+    /// this generous ceiling only guards against a hang. Deliberately far below the (absent) caller
+    /// cancellation deadline so a stranded awaiter fails the test by timing out here, not by the
+    /// caller's token firing.
+    /// </summary>
+    private const int UnblockBoundMs = 2000;
+
+    /// <summary>
+    /// Regression for <c>filewatcher-waitforstale-clearstale-stranded-awaiter</c>: an awaiter parked
+    /// on <see cref="FileWatcherService.WaitForStaleAsync"/> for a non-stale entry must unblock
+    /// promptly when <see cref="FileWatcherService.ClearStale"/> re-arms the signal, instead of
+    /// hanging on the replaced <see cref="System.Threading.Tasks.TaskCompletionSource"/> until its
+    /// own cancellation deadline.
+    ///
+    /// Pre-fix this fails: <c>ClearStale</c> swapped in a fresh TCS without completing the outgoing
+    /// one, so the parked task never finished and the <see cref="UnblockBoundMs"/> bound elapsed.
+    /// Post-fix the re-arm cancels the outgoing TCS, so the await throws
+    /// <see cref="OperationCanceledException"/> well inside the bound — the contractually-documented
+    /// outcome for an abandoned stale-wait.
+    /// </summary>
+    [TestMethod]
+    public async Task ClearStale_ReleasesAwaiterParkedOnPriorSignal_RatherThanStrandingIt()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"rmcp-fw-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        // FileWatcherService.Watch derives the watched directory from the parent of the supplied
+        // path, so point it at a sentinel file inside the temp dir. The file need not exist — only
+        // its parent directory must, which Watch verifies before registering the entry.
+        var workspacePath = Path.Combine(tempDir, "Sentinel.slnx");
+
+        using var watcher = new FileWatcherService(NullLogger<FileWatcherService>.Instance);
+        try
+        {
+            const string workspaceId = "ws-clearstale-awaiter";
+            watcher.Watch(workspaceId, workspacePath);
+
+            Assert.IsFalse(
+                watcher.IsStale(workspaceId),
+                "Precondition: a freshly-watched entry is not stale, so WaitForStaleAsync parks.");
+
+            // Park on the current signal. A long token deadline ensures that if the awaiter is
+            // stranded it is the UnblockBoundMs assertion below — not the token — that catches it.
+            using var awaiterCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var parked = watcher.WaitForStaleAsync(workspaceId, awaiterCts.Token);
+            Assert.IsFalse(
+                parked.IsCompleted,
+                "Precondition: the awaiter is genuinely parked (entry is not stale yet).");
+
+            // Concurrent ClearStale re-arms the signal. The outgoing TCS the awaiter holds must be
+            // completed/canceled by this call so the parked task resolves promptly.
+            watcher.ClearStale(workspaceId);
+
+            // The parked task must resolve within the bound. WaitAsync throws TimeoutException if
+            // it does not — that is the stranded-awaiter failure this regression guards against.
+            try
+            {
+                await parked.WaitAsync(TimeSpan.FromMilliseconds(UnblockBoundMs));
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected post-fix path: the re-arm canceled the abandoned stale-wait.
+            }
+
+            Assert.IsTrue(
+                parked.IsCompleted,
+                $"ClearStale must release the awaiter parked on the prior signal within " +
+                $"{UnblockBoundMs} ms; it remained pending, so the outgoing TaskCompletionSource " +
+                "was replaced without being completed/canceled (the stranded-awaiter regression).");
+            Assert.IsTrue(
+                parked.IsCanceled,
+                "A re-arm (ClearStale) abandons the pending stale-wait, so the awaiter should be " +
+                "canceled — not completed-as-stale, which would be a spurious wakeup since the " +
+                "entry is now clean (IsStale=false, StaleReason=null).");
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Best-effort temp cleanup; a lingering FileSystemWatcher handle can briefly hold
+                // the directory. Not material to the assertion under test.
+            }
+        }
     }
 }
