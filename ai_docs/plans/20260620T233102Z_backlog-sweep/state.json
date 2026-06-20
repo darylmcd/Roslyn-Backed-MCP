@@ -3,10 +3,10 @@
   "generatedAt": "2026-06-20T23:31:02Z",
   "backlogSnapshot": "2026-06-20T22:35:39Z",
   "addendaLoaded": true,
-  "phase": "conflict-graph-done",
+  "phase": "review-cycle-0-done",
   "cycleCount": 0,
   "maxCycles": 2,
-  "reviewStatus": "pending",
+  "reviewStatus": "passed-with-warnings",
   "readyForExecute": false,
   "anchorVerification": "performed",
   "conflictGraph": {
@@ -382,5 +382,36 @@
   ],
   "conflictGraphInputHash": "3c238cd596aec7becda24df1bfb25fc69b604b77c918a8ad9c814700bb4062a9",
   "planHash": "d2d874be0760336252da9f650a25592a12223bf7320afd4752e50a68c5a73368",
-  "backlogSnapshotHash": "65d5bb0620d2faf051fb56ad1f7a172df51e1b0c843648c1fc44b5dfb9b17323"
+  "backlogSnapshotHash": "65d5bb0620d2faf051fb56ad1f7a172df51e1b0c843648c1fc44b5dfb9b17323",
+  "reviewFindings": {
+    "block": 0,
+    "warn": 1,
+    "info": 3
+  },
+  "lastReviewFindings": [
+    {
+      "initiativeId": "trace-exception-flow-no-throwsite",
+      "severity": "warn",
+      "rule": "C2-wave-conflict",
+      "evidence": "Adjacent-order initiatives #6 (order 6) and #7 (order 7) share src/RoslynMcp.Host.Stdio/Tools/ExceptionFlowTools.cs; execute must not co-wave."
+    },
+    {
+      "initiativeId": "parameter-naming-canonicalization-migration",
+      "severity": "info",
+      "rule": "C2-wave-conflict",
+      "evidence": "Initiative #6 conflicts with 2 peers (#1 AdvancedAnalysisTools.cs, #7 ExceptionFlowTools.cs); expect serial scheduling."
+    },
+    {
+      "initiativeId": "test-discover-no-autopagination",
+      "severity": "info",
+      "rule": "anchor-stale",
+      "evidence": "#2 confirmed obsolete: pagination shipped at ValidationTools.cs:54-143. Expected obsolete at execute Step 5a; not a Rule violation."
+    },
+    {
+      "initiativeId": "parameter-naming-canonicalization-migration",
+      "severity": "info",
+      "rule": "4",
+      "evidence": "#6 lockstep test under-specified vs design note (f) (3 methods); within Rule-4 budget."
+    }
+  ]
 }
