@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-20T04:02:45Z
+**updated_at:** 2026-06-20T04:18:39Z
 
 ## Agent contract
 
@@ -84,6 +84,10 @@
 | `backlog-d-fragment-schema` | Low | — | **Relocate the backlog.d fragment-schema doc out of items/** — it is a canonical cross-repo schema (cited by shipped `skills/mcp-server-surface-test` prompt + `.claude/skills/backlog-intake`), not row detail; move it and update referrers in one PR. [type: docs] [source: v15-migration-20260611] | S | items/backlog-d-fragment-schema.md |
 | `workspace-auto-load-on-demand-design` | Low | — | **Retire the shipped auto-load design spec** — after `/reconcile-plans` GCs plan `20260609T134405Z`, fold residual unimplemented sections into the full-sweep row and delete the doc. [type: docs] [source: v15-migration-20260611] | S | items/workspace-auto-load-on-demand-design.md |
 | `move-to-git-issues` | Low | — | **Disposition the parked move-to-git-issues design** — rows 1-3 shipped v1.35.1; decide row 4 + the doc's 4 open questions (file rows or record won't-do), then retire the doc. [type: docs] [source: v15-migration-20260611] | S | items/move-to-git-issues.md |
+| `filewatcher-watcherentry-watchers-unguarded-mutation` | Low | — | **WatcherEntry._watchers mutated without synchronization** — `AddWatcher` does `_watchers.Add` on an unguarded `List<FileSystemWatcher>` while the rest of the type is `_reasonLock`-guarded. Benign today (single-threaded `Watch()`); document the invariant or guard. [type: bug] [source: 2026-06-20 top-n row-1 finding] | S | items/filewatcher-watcherentry-watchers-unguarded-mutation.md |
+| `filewatcher-class-xmldoc-truncated` | Low | — | **FileWatcherService class XML doc clause is truncated** — the class-level `<para>` (`FileWatcherService.cs:~25`) ends "…server apply paths that want to preserve their attribution mark after the on-disk commit settles." with no main verb — a dropped clause. Complete or trim it. [type: docs] [source: 2026-06-20 top-n row-1 implementer finding] | S | items/filewatcher-class-xmldoc-truncated.md |
+| `ci-policy-cache-version-stale-cite` | Low | — | **CI_POLICY.md cites a stale actions/cache version** — `CI_POLICY.md:12` says `actions/cache@v4` but `ci.yml:96` uses `actions/cache@v5`; sync the cite. [type: docs] [source: 2026-06-20 top-n row-2 implementer finding] | S | items/ci-policy-cache-version-stale-cite.md |
+| `nuget-checker-timeout-test-bound-couple-to-httptimeout` | Low | — | **Couple the NuGet timeout-test wait bound to HttpTimeout** — the 30s hang-guard literal's `>> HttpTimeout(3s)` coupling is prose-only; derive it from a multiple of HttpTimeout, or close won't-fix. [type: test] [source: 2026-06-20 top-n row-4 cq] | S | items/nuget-checker-timeout-test-bound-couple-to-httptimeout.md |
 
 ## Defer
 
