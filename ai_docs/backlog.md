@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-20T02:56:16Z
+**updated_at:** 2026-06-20T03:21:19Z
 
 ## Agent contract
 
@@ -55,7 +55,6 @@
 | `promotion-tier-execution-batch` | Medium | — | **Promotion-tier execution batch** — re-run the promotion scorecard against the current v2.3.x surface (canonical snapshot is v1.38.1), then ship experimental→stable promotions in bounded batches via `/promote-tier`. Catalog hotspot; sweep-shaped → `/backlog-sweep:prepare`. [type: ops] | L | items/promotion-tier-execution-batch.md |
 | `audit-21-analyzer-load-decision` | Medium | — | **AUDIT-21 analyzer-load decision** — execute the dormant IDE/CA analyzer-parity Draft plan via `/backlog-sweep:prepare`, OR re-status it superseded/parked with the product trigger; fix the plan's stale §13 row citation. Blocked-on product decision (full analyzer parity required?). | M | items/audit-21-analyzer-load-decision.md |
 | `compilation-cache-adoption-read-side` | Medium | — | **Compilation-cache read-side adoption** — batches 1–2 shipped (#913/#936; ~10/24 sites); split the remaining site groups (incl. forked-solution hazard) into bounded child batches at `/backlog-sweep:prepare`. [type: refactor] | L | items/compilation-cache-adoption-read-side.md |
-| `publish-nuget-verify-package-types` | Medium | — | **Assert McpServer type + embedded manifest in the packed nupkg** — `publish-nuget.yml`'s "Verify package contents" step only size-checks the `.nupkg`, so a csproj regression dropping `<PackageType>McpServer</PackageType>` or the `.mcp/server.json` embed would ship a tool-only package on green CI (silent gallery delisting). Unzip + assert both. [type: ci] [source: 2026-06-19 top-n code-quality review] | S | items/publish-nuget-verify-package-types.md |
 | `nuget-version-checker-timeout-test-wallclock-race` | Medium | — | **Flaky NuGetVersionChecker timeout test** — `GetLatestVersion_OnTimeout_...` throws `TimeoutException` under runner load: `WaitForCompletionAsync`'s 5 s wall-clock `WaitAsync` races the checker's internal bounded timeout and expires first. Recurrence after `nuget-version-checker-test-wallclock-poll`; runs in `verify-release.ps1` (gates ubuntu publish). Make the wait event-driven / bound > internal timeout. [type: test] [source: 2026-06-19 top-n PR #986 CI flake] | S | items/nuget-version-checker-timeout-test-wallclock-race.md |
 
 ## Low

@@ -56,6 +56,28 @@ jobs:
           Write-Host "Package: $($nupkg.Name) ($([math]::Round($nupkg.Length / 1MB, 2)) MB)"
           Write-Host "Symbols: $($snupkg.Name) ($([math]::Round($snupkg.Length / 1MB, 2)) MB)"
 
+          # A .nupkg is a ZIP. Unzip it and assert the two MCP-gallery-critical bits the size
+          # check can't see: a csproj regression dropping <PackageType>McpServer</PackageType> or
+          # the .mcp/server.json embed would still pass size + push a tool-only package on green
+          # CI, silently delisting us from the NuGet MCP gallery. Fail closed on either miss.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($nupkg.FullName)
+          try {
+            $nuspecEntry = $zip.Entries | Where-Object { $_.FullName -like "*.nuspec" } | Select-Object -First 1
+            if (-not $nuspecEntry) { throw "No .nuspec found inside $($nupkg.Name)" }
+            $reader = New-Object System.IO.StreamReader($nuspecEntry.Open())
+            try { $nuspec = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            if ($nuspec -notmatch '<packageType\s+name="McpServer"') {
+              throw "nuspec is missing <packageType name=`"McpServer`" /> — csproj regression dropped <PackageType>McpServer</PackageType>; package would NOT list on the NuGet MCP gallery."
+            }
+            if (-not ($zip.Entries | Where-Object { $_.FullName -eq '.mcp/server.json' })) {
+              throw "Package is missing the .mcp/server.json embed — csproj regression dropped the <None Include> pack item; the NuGet MCP gallery 'MCP Server' tab would not render."
+            }
+            Write-Host "Verified: McpServer packageType + .mcp/server.json embed present."
+          } finally {
+            $zip.Dispose()
+          }
+
       - name: Push to NuGet
         if: ${{ github.event_name == 'release' || github.event_name == 'push' || inputs.dry_run != 'true' }}
         shell: pwsh
