@@ -3,11 +3,11 @@
   "generatedAt": "2026-06-20T21:54:09Z",
   "backlogSnapshot": "2026-06-20T04:18:39Z",
   "addendaLoaded": true,
-  "phase": "review-cycle-0-done",
+  "phase": "complete",
   "cycleCount": 0,
   "maxCycles": 2,
   "reviewStatus": "passed",
-  "readyForExecute": false,
+  "readyForExecute": true,
   "anchorVerification": "pending",
   "conflictGraph": {
     "edges": [],
@@ -48,11 +48,14 @@
       "mergedAt": null,
       "notes": "Partial-adoption batch of the open row compilation-cache-adoption-read-side (group-a core: TestReferenceMapService + ReferenceService). Does NOT close the row — a-tail/b/c adoption remains. Operator scoped to this low-risk subset (no forked-solution hazard).",
       "fileSetHash": "e4aa3d5b960bbf3c3b0aa3a72cc582603d3e4eb3f7712bc8ecf43e2554a0896c",
-      "stanzaHash": "15f5fe1ba86f6958ee38a49adce83b320ca4ba15d5f91b26c6b28ecc16f88ef0"
+      "stanzaHash": "15f5fe1ba86f6958ee38a49adce83b320ca4ba15d5f91b26c6b28ecc16f88ef0",
+      "reviewedStanzaHash": "15f5fe1ba86f6958ee38a49adce83b320ca4ba15d5f91b26c6b28ecc16f88ef0"
     }
   ],
   "conflictGraphInputHash": "fe9c0f1c8630d2053628e65778eef7e18d97ef3921cd0849142d97c92b7ac062",
   "planHash": "888da91684b165c3f6a817ce0200898532a2b4f9660218b8d04d8279719b3b94",
   "backlogSnapshotHash": "3f386a207d9ab566be1a8ad85fd2a775815dcbb86702f13fac7ea49512e03f45",
-  "lastReviewFindings": []
+  "lastReviewFindings": [],
+  "reviewedPlanHash": "888da91684b165c3f6a817ce0200898532a2b4f9660218b8d04d8279719b3b94",
+  "reviewedBacklogSnapshotHash": "3f386a207d9ab566be1a8ad85fd2a775815dcbb86702f13fac7ea49512e03f45"
 }
