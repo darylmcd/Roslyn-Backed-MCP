@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-20T03:43:14Z
+**updated_at:** 2026-06-20T04:02:45Z
 
 ## Agent contract
 
@@ -60,7 +60,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `dependabot-groups-batching` | Low | — | **Batch minor/patch Dependabot bumps** — `.github/dependabot.yml` ships without a `groups:` block, so every routine minor/patch action+nuget bump opens its own PR. Add a `groups:` entry per ecosystem batching `update-types: [minor, patch]`; keep majors individual. [type: ci] [source: 2026-06-19 top-n code-quality review] | S | items/dependabot-groups-batching.md |
 | `registry-readiness-url-regex-canonical-only` | Low | — | **Registry-readiness URL regex accepts only canonical github.com URLs** — the `repository-url-matches-name` owner regex rejects `http://`/`www.`/`git@github.com:` forms with a warn. Harmless today (registry mandates canonical URLs); likely resolution is a one-line comment stating the assumption, or close won't-fix. [type: tooling] [source: 2026-06-19 top-n code-quality review] | S | items/registry-readiness-url-regex-canonical-only.md |
 | `aggregate-scorecard-includeself-double-count` | Low | — | **`-IncludeSelf` double-counts the hub repo** — `aggregate-promotion-scorecards.ps1` adds Roslyn-Backed-MCP via `-IncludeSelf` AND re-discovers it as a sibling (no self-exclusion), double-counting it in the scan counters; a double-counted hub vote could spuriously satisfy the 2-vote promote quorum. Latent (only with `-IncludeSelf`). [type: bug] [source: 2026-06-19 top-n implementer finding] | S | items/aggregate-scorecard-includeself-double-count.md |
 | `externaledit-test-rearm-marker-file-type-neutral` | Low | — | **Watcher staleness test re-arm marker assumes C# comment syntax** — the dropped-event re-touch in `ExternalEditStalenessTests` appends `// watcher re-arm {guid}`, invalid markup if the helper is ever invoked with a `.csproj`/`.props`/`.targets`/`.sln` tracked file; append a file-type-neutral marker instead. [type: test] [source: 2026-06-19 top-n code-quality review] | S | items/externaledit-test-rearm-marker-file-type-neutral.md |
