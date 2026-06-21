@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-21T02:45:32Z
+**updated_at:** 2026-06-21T14:00:23Z
 
 ## Agent contract
 
@@ -60,7 +60,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `registry-readiness-url-regex-canonical-only` | Low | — | **Registry-readiness URL regex accepts only canonical github.com URLs** — the `repository-url-matches-name` owner regex rejects `http://`/`www.`/`git@github.com:` forms with a warn. Harmless today (registry mandates canonical URLs); likely resolution is a one-line comment stating the assumption, or close won't-fix. [type: tooling] [source: 2026-06-19 top-n code-quality review] | S | items/registry-readiness-url-regex-canonical-only.md |
 | `aggregate-scorecard-includeself-double-count` | Low | — | **`-IncludeSelf` double-counts the hub repo** — `aggregate-promotion-scorecards.ps1` adds Roslyn-Backed-MCP via `-IncludeSelf` AND re-discovers it as a sibling (no self-exclusion), double-counting it in the scan counters; a double-counted hub vote could spuriously satisfy the 2-vote promote quorum. Latent (only with `-IncludeSelf`). [type: bug] [source: 2026-06-19 top-n implementer finding] | S | items/aggregate-scorecard-includeself-double-count.md |
 | `externaledit-test-rearm-marker-file-type-neutral` | Low | — | **Watcher staleness test re-arm marker assumes C# comment syntax** — the dropped-event re-touch in `ExternalEditStalenessTests` appends `// watcher re-arm {guid}`, invalid markup if the helper is ever invoked with a `.csproj`/`.props`/`.targets`/`.sln` tracked file; append a file-type-neutral marker instead. [type: test] [source: 2026-06-19 top-n code-quality review] | S | items/externaledit-test-rearm-marker-file-type-neutral.md |
 | `workspace-id-optional-readonly-surface-full-sweep` | Low | — | **workspaceId optional full sweep** — flip the remaining ~45 read-only tools REQUIRED→OPTIONAL; gate on the pilot's `_meta.autoResolution` adoption signal; sub-batch per `*Tools.cs` file. [type: feature] [source: 2026-06-09 backlog-sweep execute] | L | items/workspace-id-optional-readonly-surface-full-sweep.md |
