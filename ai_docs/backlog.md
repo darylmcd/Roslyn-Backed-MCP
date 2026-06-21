@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-21T21:31:07Z
+**updated_at:** 2026-06-21T21:49:58Z
 
 ## Agent contract
 
@@ -74,7 +74,6 @@
 | `backlog-d-fragment-schema` | Low | — | **Relocate the backlog.d fragment-schema doc out of items/** — it is a canonical cross-repo schema (cited by shipped `skills/mcp-server-surface-test` prompt + `.claude/skills/backlog-intake`), not row detail; move it and update referrers in one PR. [type: docs] [source: v15-migration-20260611] | S | items/backlog-d-fragment-schema.md |
 | `workspace-auto-load-on-demand-design` | Low | — | **Retire the shipped auto-load design spec** — after `/reconcile-plans` GCs plan `20260609T134405Z`, fold residual unimplemented sections into the full-sweep row and delete the doc. [type: docs] [source: v15-migration-20260611] | S | items/workspace-auto-load-on-demand-design.md |
 | `move-to-git-issues` | Low | — | **Disposition the parked move-to-git-issues design** — rows 1-3 shipped v1.35.1; decide row 4 + the doc's 4 open questions (file rows or record won't-do), then retire the doc. [type: docs] [source: v15-migration-20260611] | S | items/move-to-git-issues.md |
-| `filewatcher-class-xmldoc-truncated` | Low | — | **FileWatcherService class XML doc clause is truncated** — the class-level `<para>` (`FileWatcherService.cs:~25`) ends "…server apply paths that want to preserve their attribution mark after the on-disk commit settles." with no main verb — a dropped clause. Complete or trim it. [type: docs] [source: 2026-06-20 top-n row-1 implementer finding] | S | items/filewatcher-class-xmldoc-truncated.md |
 | `ci-policy-cache-version-stale-cite` | Low | — | **CI_POLICY.md cites a stale actions/cache version** — `CI_POLICY.md:12` says `actions/cache@v4` but `ci.yml:96` uses `actions/cache@v5`; sync the cite. [type: docs] [source: 2026-06-20 top-n row-2 implementer finding] | S | items/ci-policy-cache-version-stale-cite.md |
 | `nuget-checker-timeout-test-bound-couple-to-httptimeout` | Low | — | **Couple the NuGet timeout-test wait bound to HttpTimeout** — the 30s hang-guard literal's `>> HttpTimeout(3s)` coupling is prose-only; derive it from a multiple of HttpTimeout, or close won't-fix. [type: test] [source: 2026-06-20 top-n row-4 cq] | S | items/nuget-checker-timeout-test-bound-couple-to-httptimeout.md |
 | `reference-service-dead-iscorlib-single-arg-overload` | Low | — | **Remove dead IsCorlibAssembly overload** — `ReferenceService.cs:444` `IsCorlibAssembly(IAssemblySymbol?)` is unreferenced (sole site `:422` uses the two-arg form); delete it. [type: refactor] [source: 2026-06-20 compcache batch-a cq] | S | items/reference-service-dead-iscorlib-single-arg-overload.md |
@@ -83,6 +82,7 @@
 | nuget-vuln-scan-redundant-start-progress | Low | — | **Drop redundant nuget-scan start progress** — `SecurityTools.ScanNuGetVulnerabilities` emits a bare `Report(0,1)` right before `ReportStage(0,1,"scanning-nuget")`; open directly with ReportStage like ValidationTools/WorkspaceWarmTools. [type: refactor] [source: 2026-06-21 sweep #1008 cq] | S | items/nuget-vuln-scan-redundant-start-progress.md |
 | dup-method-detector-test-setup-dedup | Low | — | **De-dup DuplicateMethodDetectorTests workspace setup** — `BuildServiceAndGate` copy-pastes ~22 lines from `BuildServiceWithSourcesCore` (delta: the added gate); reuse the existing builder. [type: test] [source: 2026-06-21 sweep #1011 cq] | S | items/dup-method-detector-test-setup-dedup.md |
 | exception-flow-throwsite-test-and-arm-dedup | Low | — | **trace_exception_flow throw-site exclusion test + arm dedup** — add a test that an unrelated thrown type is excluded from ThrowSites; dedupe the bounded-add across the throw-node switch arms. [type: test] [source: 2026-06-21 sweep #1015 cq] | S | items/exception-flow-throwsite-test-and-arm-dedup.md |
+| aggregate-scorecard-test-runner-dedup | Low | — | **Dedup AggregatePromotionScorecards test runner helpers** — collapse `RunAggregatorWithIncludeSelf` (a ~30-line near-copy of `RunAggregator`) into one parameterized helper backing all call sites. [type: refactor] [source: 2026-06-21 top-n cq] | S | items/aggregate-scorecard-test-runner-dedup.md |
 
 ## Defer
 
