@@ -1,6 +1,6 @@
 # hoststdio-middleware-tools-namespace-cycle — break the Middleware ↔ Tools namespace cycle
 
-**row:** `hoststdio-middleware-tools-namespace-cycle` · **pri:** `Low` · **size:** `M` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
+**row:** `hoststdio-middleware-tools-namespace-cycle` · **pri:** `Low` · **size:** `L` <!-- cache — the backlog row is canonical for pri/size; refresh on open if they disagree -->
 
 ## Anchors
 
