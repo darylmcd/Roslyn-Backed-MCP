@@ -233,6 +233,31 @@ public static class WorkspaceTools
         ILogger? logger,
         string workspaceId)
     {
+        // Boundary guard: only kill processes that are TRUE DESCENDANTS of workingDirectory.
+        // A bare StartsWith(workingDirectory) false-positives on a sibling worktree whose path
+        // is a string-prefix (e.g. workingDirectory ".../wt-foo" vs sibling ".../wt-foo-bar"),
+        // which would Kill an unrelated worktree's testhost tree mid-test-run. Normalize to a
+        // full path and append exactly one separator so the prefix can only match a child path.
+        // .worktrees/ holds multiple concurrent sibling worktrees during parallel sweeps.
+        string workingDirectoryPrefix;
+        try
+        {
+            workingDirectoryPrefix =
+                Path.GetFullPath(workingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+        }
+        catch (Exception ex)
+        {
+            // A malformed working directory cannot be normalized — skip the drain entirely
+            // rather than fall back to an unguarded match.
+            logger?.LogDebug(
+                ex,
+                "workspace_close testhost drain could not normalize working directory {WorkingDirectory} for workspace {WorkspaceId}; skipping.",
+                workingDirectory,
+                workspaceId);
+            return;
+        }
+
         // Match both the .NET-Core test host ("testhost") and the legacy console runner
         // ("vstest.console"). Names are extensionless on Process; .exe on Windows, bare on Unix.
         foreach (var processName in new[] { "testhost", "vstest.console" })
@@ -259,8 +284,16 @@ public static class WorkspaceTools
                     // MainModule access throws Win32Exception for protected/exited processes —
                     // skip those rather than risk terminating an unrelated process.
                     var executablePath = process.MainModule?.FileName;
-                    if (string.IsNullOrEmpty(executablePath) ||
-                        !executablePath.StartsWith(workingDirectory, StringComparison.OrdinalIgnoreCase))
+                    if (string.IsNullOrEmpty(executablePath))
+                    {
+                        continue;
+                    }
+
+                    // Compare full paths against the separator-terminated working-directory
+                    // prefix so only true descendants match — never a bare string prefix that
+                    // would catch a sibling worktree (".../wt-foo" vs ".../wt-foo-bar").
+                    var fullExecutablePath = Path.GetFullPath(executablePath);
+                    if (!fullExecutablePath.StartsWith(workingDirectoryPrefix, StringComparison.OrdinalIgnoreCase))
                     {
                         continue;
                     }

@@ -145,6 +145,89 @@ public sealed class WorkspaceCloseDrainTests
     }
 
     // ---------------------------------------------------------------------------
+    // Boundary: a SIBLING worktree whose path is a string-prefix of workingDirectory
+    // (e.g. workingDirectory ".../wt-foo", sibling ".../wt-foo-sibling") must NOT be
+    // killed. This is the multi-drain hazard: .worktrees/ holds concurrent siblings
+    // during parallel sweeps, and an un-guarded StartsWith(workingDirectory) would
+    // false-positive on the sibling and kill its testhost tree mid-test-run.
+    //
+    // This test FAILS against the un-guarded `StartsWith(workingDirectory)` (the sibling's
+    // executable path string-prefix-matches and gets killed) and PASSES once the filter
+    // requires a true descendant (workingDirectory + separator).
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_DoesNotKillSiblingPrefixWorktree()
+    {
+        const string expectedWorkspaceId = "test-ws-sibling-prefix-drain";
+
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-sibling-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+
+        // The sibling directory shares workingDirectory's string prefix but is NOT a descendant:
+        // its path is workingDirectory + "-sibling" (the char after the prefix is '-', not a
+        // path separator). A correct boundary filter must leave its process running.
+        var siblingDirectory = workingDirectory + "-sibling";
+        Directory.CreateDirectory(siblingDirectory);
+
+        Process? inDirProcess = null;
+        Process? siblingProcess = null;
+        try
+        {
+            // True descendant of workingDirectory: must be killed.
+            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            // Sibling sharing the string prefix but NOT a descendant: must be left running.
+            siblingProcess = StartLongLivedProcessUnder(Path.Combine(siblingDirectory, "host"));
+
+            var inDirPid = inDirProcess.Id;
+            var siblingPid = siblingProcess.Id;
+
+            var status = CreateStatus(expectedWorkspaceId, loadedPath);
+            var fakeWorkspace = new FakeWorkspaceManagerForDrain(status);
+            var gate = new PassthroughGate();
+            var commandRunner = new RecordingDotnetCommandRunner();
+
+            Func<string, Process[]> getProcessesByName = name => name == "testhost"
+                ? new[] { GetByIdOrEmpty(inDirPid), GetByIdOrEmpty(siblingPid) }
+                    .Where(p => p is not null).Select(p => p!).ToArray()
+                : [];
+
+            var json = await WorkspaceTools.CloseWorkspace(
+                server: null!,
+                gate: gate,
+                workspace: fakeWorkspace,
+                commandRunner: commandRunner,
+                workspaceId: expectedWorkspaceId,
+                drainProcesses: true,
+                ct: CancellationToken.None,
+                getProcessesByName: getProcessesByName);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
+                "CloseWorkspace must still return success=true when the testhost drain runs.");
+
+            // The true-descendant testhost must have been terminated.
+            Assert.IsTrue(
+                inDirProcess.WaitForExit(10_000),
+                "A testhost process whose executable lives under the working directory must be killed by the drain.");
+
+            // The sibling-prefix testhost must NOT have been touched.
+            Assert.IsFalse(
+                siblingProcess.HasExited,
+                "A testhost in a SIBLING directory sharing the working-directory string prefix " +
+                "(workingDirectory + \"-sibling\") must be left running — it is not a true descendant.");
+        }
+        finally
+        {
+            KillQuietly(inDirProcess);
+            KillQuietly(siblingProcess);
+            TryDeleteDirectory(workingDirectory);
+            TryDeleteDirectory(siblingDirectory);
+        }
+    }
+
+    // ---------------------------------------------------------------------------
     // Negative: drainProcesses=false (default) must NOT invoke commandRunner
     // ---------------------------------------------------------------------------
 
@@ -437,13 +520,14 @@ public sealed class WorkspaceCloseDrainTests
 
     private static Process StartLongLived(string executablePath)
     {
+        // No stdout/stderr redirection: the test never reads the helper's output, and an
+        // undrained redirected pipe is a latent deadlock shape if the child ever fills it.
+        // CreateNoWindow already suppresses the console window.
         var startInfo = new ProcessStartInfo
         {
             FileName = executablePath,
             UseShellExecute = false,
             CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
         };
         foreach (var argument in LauncherArguments)
         {
