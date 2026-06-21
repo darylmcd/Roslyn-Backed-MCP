@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -111,7 +112,7 @@ public static class WorkspaceTools
             }, outerCt), ct);
     }
 
-    [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources. Set drainProcesses=true to run `dotnet build-server shutdown` after session removal — this releases MSBuild build-server file-system locks on Windows, which is required before `git worktree remove` in sweep teardown sequences.")]
+    [McpServerTool(Name = "workspace_close", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Close and dispose a loaded workspace session, freeing all resources. Set drainProcesses=true to run `dotnet build-server shutdown` AND terminate any detached test-runner processes (testhost / vstest.console) whose executable lives under the loaded path's directory, after session removal — this releases MSBuild build-server and test-host file-system locks on Windows, which is required before `git worktree remove` in sweep teardown sequences.")]
     [McpToolMetadata("workspace", "stable", false, true,
         "Close a loaded workspace session and release resources.")]
     public static Task<string> CloseWorkspace(
@@ -120,11 +121,15 @@ public static class WorkspaceTools
         IWorkspaceManager workspace,
         IDotnetCommandRunner commandRunner,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("When true, run `dotnet build-server shutdown` after session removal to release MSBuild out-of-process build-server locks. Default false. Set true before `git worktree remove` in sweep teardown.")] bool drainProcesses = false,
+        [Description("When true, run `dotnet build-server shutdown` AND kill detached testhost/vstest.console processes rooted under the loaded path's directory after session removal, to release MSBuild build-server and test-host out-of-process file locks. Default false. Set true before `git worktree remove` in sweep teardown.")] bool drainProcesses = false,
         ILoggerFactory? loggerFactory = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        // Seam: lets tests inject a fake process enumerator. Production default enumerates live
+        // processes by name. Not surfaced to MCP callers — no [Description], so the schema omits it.
+        Func<string, Process[]>? getProcessesByName = null)
     {
         var logger = CreateLogger(loggerFactory);
+        getProcessesByName ??= Process.GetProcessesByName;
         // Close acquires both the global load gate AND the per-workspace write lock so that
         // no reader is in flight when the workspace's lock entry is dropped from the registry.
         // RemoveGate must run after RunWriteAsync completes so the per-workspace lock entry is
@@ -192,11 +197,129 @@ public static class WorkspaceTools
                             workspaceId,
                             workingDirectory);
                     }
+
+                    // Second drain sub-step: `dotnet test` spawns detached testhost.exe /
+                    // vstest.console.exe child processes that survive build-server shutdown and
+                    // keep tests/.../bin file handles open, blocking `git worktree remove` on
+                    // Windows. Terminate any whose executable lives under this working directory.
+                    TryKillDetachedTestHosts(
+                        workingDirectory,
+                        getProcessesByName,
+                        logger,
+                        workspaceId);
                 }
             }
 
             return json;
         }, ct);
+    }
+
+    /// <summary>
+    /// Best-effort termination of detached <c>testhost</c> / <c>vstest.console</c> processes whose
+    /// executable resides under <paramref name="workingDirectory"/>. These are spawned by
+    /// <c>dotnet test</c> and survive <c>dotnet build-server shutdown</c>, holding
+    /// <c>tests/.../bin</c> file locks that block <c>git worktree remove</c> on Windows.
+    /// </summary>
+    /// <remarks>
+    /// Entirely non-fatal: the workspace close has already succeeded by the time this runs, so any
+    /// enumeration / inspection / kill failure is swallowed at Debug. <see cref="Process.MainModule"/>
+    /// throws <see cref="System.ComponentModel.Win32Exception"/> for protected or already-exited
+    /// processes — those are SKIPPED (never kill-all on an inaccessible path). The
+    /// <paramref name="getProcessesByName"/> seam lets tests inject a fake enumerator.
+    /// </remarks>
+    private static void TryKillDetachedTestHosts(
+        string workingDirectory,
+        Func<string, Process[]> getProcessesByName,
+        ILogger? logger,
+        string workspaceId)
+    {
+        // Boundary guard: only kill processes that are TRUE DESCENDANTS of workingDirectory.
+        // A bare StartsWith(workingDirectory) false-positives on a sibling worktree whose path
+        // is a string-prefix (e.g. workingDirectory ".../wt-foo" vs sibling ".../wt-foo-bar"),
+        // which would Kill an unrelated worktree's testhost tree mid-test-run. Normalize to a
+        // full path and append exactly one separator so the prefix can only match a child path.
+        // .worktrees/ holds multiple concurrent sibling worktrees during parallel sweeps.
+        string workingDirectoryPrefix;
+        try
+        {
+            workingDirectoryPrefix =
+                Path.GetFullPath(workingDirectory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+        }
+        catch (Exception ex)
+        {
+            // A malformed working directory cannot be normalized — skip the drain entirely
+            // rather than fall back to an unguarded match.
+            logger?.LogDebug(
+                ex,
+                "workspace_close testhost drain could not normalize working directory {WorkingDirectory} for workspace {WorkspaceId}; skipping.",
+                workingDirectory,
+                workspaceId);
+            return;
+        }
+
+        // Match both the .NET-Core test host ("testhost") and the legacy console runner
+        // ("vstest.console"). Names are extensionless on Process; .exe on Windows, bare on Unix.
+        foreach (var processName in new[] { "testhost", "vstest.console" })
+        {
+            Process[] candidates;
+            try
+            {
+                candidates = getProcessesByName(processName);
+            }
+            catch (Exception ex)
+            {
+                logger?.LogDebug(
+                    ex,
+                    "workspace_close testhost drain could not enumerate {ProcessName} processes for workspace {WorkspaceId}.",
+                    processName,
+                    workspaceId);
+                continue;
+            }
+
+            foreach (var process in candidates)
+            {
+                try
+                {
+                    // MainModule access throws Win32Exception for protected/exited processes —
+                    // skip those rather than risk terminating an unrelated process.
+                    var executablePath = process.MainModule?.FileName;
+                    if (string.IsNullOrEmpty(executablePath))
+                    {
+                        continue;
+                    }
+
+                    // Compare full paths against the separator-terminated working-directory
+                    // prefix so only true descendants match — never a bare string prefix that
+                    // would catch a sibling worktree (".../wt-foo" vs ".../wt-foo-bar").
+                    var fullExecutablePath = Path.GetFullPath(executablePath);
+                    if (!fullExecutablePath.StartsWith(workingDirectoryPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    process.Kill(entireProcessTree: true);
+                    logger?.LogDebug(
+                        "workspace_close terminated detached {ProcessName} (pid {ProcessId}) under {WorkingDirectory} for workspace {WorkspaceId}.",
+                        processName,
+                        process.Id,
+                        workingDirectory,
+                        workspaceId);
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogDebug(
+                        ex,
+                        "workspace_close could not terminate a {ProcessName} process for workspace {WorkspaceId}.",
+                        processName,
+                        workspaceId);
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            }
+        }
     }
 
     [McpServerTool(Name = "workspace_list", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false), Description("List all currently loaded workspace sessions. Returns a lean summary per workspace by default — pass verbose=true for the full per-project tree of every workspace.")]
