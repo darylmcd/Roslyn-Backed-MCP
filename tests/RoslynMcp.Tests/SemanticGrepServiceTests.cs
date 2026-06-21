@@ -148,7 +148,7 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
             workspaceId: WorkspaceId,
             pattern: ".",
             scope: "identifiers",
-            projectFilter: null,
+            projectName: null,
             limit: Limit,
             offset: 0,
             ct: CancellationToken.None);
@@ -192,7 +192,7 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
             workspaceId: WorkspaceId,
             pattern: ".",
             scope: "identifiers",
-            projectFilter: null,
+            projectName: null,
             limit: Limit,
             offset: 0,
             ct: CancellationToken.None);
@@ -203,7 +203,7 @@ public sealed class SemanticGrepServiceTests : SharedWorkspaceTestBase
             workspaceId: WorkspaceId,
             pattern: ".",
             scope: "identifiers",
-            projectFilter: null,
+            projectName: null,
             limit: Limit,
             offset: Limit,
             ct: CancellationToken.None);

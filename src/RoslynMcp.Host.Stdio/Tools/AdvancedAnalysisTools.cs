@@ -328,7 +328,7 @@ public static class AdvancedAnalysisTools
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
+        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectName = null,
         [Description("Maximum number of hits to return (default: 50).")] int limit = 50,
         CancellationToken ct = default)
     {
@@ -338,7 +338,7 @@ public static class AdvancedAnalysisTools
                 workspaceId,
                 new DeadLocalsAnalysisOptions
                 {
-                    ProjectFilter = projectFilter,
+                    ProjectFilter = projectName,
                     Limit = limit
                 },
                 c);
@@ -354,7 +354,7 @@ public static class AdvancedAnalysisTools
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
+        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectName = null,
         [Description("Include public/protected fields in the scan (default: false).")] bool includePublic = false,
         [Description("Optional: restrict results to one usage kind: `never-read`, `never-written`, or `never-either`. Default: all kinds.")] string? usageKind = null,
         [Description("Maximum number of hits to return (default: 50).")] int limit = 50,
@@ -366,7 +366,7 @@ public static class AdvancedAnalysisTools
                 workspaceId,
                 new DeadFieldsAnalysisOptions
                 {
-                    ProjectFilter = projectFilter,
+                    ProjectFilter = projectName,
                     IncludePublic = includePublic,
                     UsageKindFilter = usageKind,
                     Limit = limit
@@ -384,7 +384,7 @@ public static class AdvancedAnalysisTools
         IWorkspaceExecutionGate gate,
         IUnusedCodeAnalyzer unusedCodeAnalyzer,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
-        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectFilter = null,
+        [Description("Optional: filter by project name to scope the scan on large solutions.")] string? projectName = null,
         [Description("Maximum number of hits to return (default: 50).")] int limit = 50,
         [Description("When true (default), omit delegations into common hosting, service-registration, and HTTP extension APIs as framework glue (minimal APIs, DI/CORS setup, logging host hooks, HTTP client helpers, and resilience handlers).")] bool excludeFrameworkWrappers = true,
         CancellationToken ct = default)
@@ -395,7 +395,7 @@ public static class AdvancedAnalysisTools
                 workspaceId,
                 new DuplicateHelperAnalysisOptions
                 {
-                    ProjectFilter = projectFilter,
+                    ProjectFilter = projectName,
                     Limit = limit,
                     ExcludeFrameworkWrappers = excludeFrameworkWrappers
                 },
