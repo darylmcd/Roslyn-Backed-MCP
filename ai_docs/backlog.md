@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-21T14:23:19Z
+**updated_at:** 2026-06-21T21:14:39Z
 
 ## Agent contract
 
@@ -60,7 +60,6 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `externaledit-test-rearm-marker-file-type-neutral` | Low | — | **Watcher staleness test re-arm marker assumes C# comment syntax** — the dropped-event re-touch in `ExternalEditStalenessTests` appends `// watcher re-arm {guid}`, invalid markup if the helper is ever invoked with a `.csproj`/`.props`/`.targets`/`.sln` tracked file; append a file-type-neutral marker instead. [type: test] [source: 2026-06-19 top-n code-quality review] | S | items/externaledit-test-rearm-marker-file-type-neutral.md |
 | `workspace-id-optional-readonly-surface-full-sweep` | Low | — | **workspaceId optional full sweep** — flip the remaining ~45 read-only tools REQUIRED→OPTIONAL; gate on the pilot's `_meta.autoResolution` adoption signal; sub-batch per `*Tools.cs` file. [type: feature] [source: 2026-06-09 backlog-sweep execute] | L | items/workspace-id-optional-readonly-surface-full-sweep.md |
 | `tool-surface-pagination-or-tool-sets` | Low | — | **Tool-set catalog resources** — wait for post-`recommend_workflow` evidence, then add bounded tool-set catalog resources without hiding tools. Weaker evidence — N until small-model discovery friction is reported after the router lands externally. | M | items/tool-surface-pagination-or-tool-sets.md |
 | `test-run-unfiltered-bare-error-rootcause` | Low | — | **test_run bare-error root cause** — determine TRX-overflow vs escaped-exception cause of the bare "An error occurred invoking test_run", then fix per cause. [source: 2026-05-31 surface-test + 2026-06-08 retro] | M | items/test-run-unfiltered-bare-error-rootcause.md |
