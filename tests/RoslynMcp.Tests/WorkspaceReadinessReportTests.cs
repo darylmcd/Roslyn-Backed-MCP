@@ -63,12 +63,38 @@ public sealed class WorkspaceReadinessReportTests
                 null, null, null, null, null)
         ];
 
-        var json = await CreateReportAsync(CreateStatus(diagnostics, restoreRequired: true));
+        // restore-required-vs-build-conflation: a missing analyzer build output sets buildRequired,
+        // NOT restoreRequired — the remedy is `dotnet build`, not a no-op `dotnet restore`. The
+        // verdict must be build-needed with restoreRequired surfaced as false.
+        var json = await CreateReportAsync(CreateStatus(diagnostics, buildRequired: true));
 
         using var doc = JsonDocument.Parse(json);
         Assert.AreEqual("build-needed", GetVerdict(doc));
         StringAssert.Contains(ReadSignals(doc), "buildRequired=true");
+        StringAssert.Contains(ReadSignals(doc), "restoreRequired=false");
         StringAssert.Contains(ReadWorkflows(doc), "dotnet build");
+    }
+
+    [TestMethod]
+    public async Task ReadinessReport_NuGetRestoreWithoutAnalyzerWarning_ReturnsRestoreNeededAndNotBuildRequired()
+    {
+        // restore-required-vs-build-conflation regression: a genuine missing-NuGet-package case
+        // (no WORKSPACE_UNRESOLVED_ANALYZER warning) must still route to restore-needed and must
+        // NOT be misclassified as build-required. Proves the restore path is unaffected by the
+        // build/restore split.
+        DiagnosticDto[] diagnostics =
+        [
+            new("CS0234", "The type or namespace name 'Json' does not exist in the namespace 'System.Text'", "Error", "Workspace", null, null, null, null, null)
+        ];
+
+        var json = await CreateReportAsync(CreateStatus(diagnostics, restoreRequired: true));
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.AreEqual("restore-needed", GetVerdict(doc));
+        StringAssert.Contains(ReadSignals(doc), "restoreRequired=true");
+        Assert.IsFalse(ReadSignals(doc).Contains("buildRequired=true", StringComparison.Ordinal),
+            "a NuGet-restore case without an analyzer warning must not be flagged buildRequired");
+        StringAssert.Contains(ReadWorkflows(doc), "dotnet restore");
     }
 
     [TestMethod]
@@ -115,6 +141,7 @@ public sealed class WorkspaceReadinessReportTests
     private static WorkspaceStatusDto CreateStatus(
         IReadOnlyList<DiagnosticDto>? diagnostics = null,
         bool restoreRequired = false,
+        bool buildRequired = false,
         string workspaceId = "ws-1")
     {
         var workspaceDiagnostics = diagnostics ?? [];
@@ -135,7 +162,8 @@ public sealed class WorkspaceReadinessReportTests
             IsLoaded: true,
             IsStale: false,
             WorkspaceDiagnostics: workspaceDiagnostics,
-            RestoreRequired: restoreRequired);
+            RestoreRequired: restoreRequired,
+            BuildRequired: buildRequired);
     }
 
     private static string GetVerdict(JsonDocument doc) =>

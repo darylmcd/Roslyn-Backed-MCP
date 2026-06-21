@@ -884,6 +884,11 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             var projectStatuses = BuildProjectStatuses(newWorkspace.CurrentSolution);
             var restoreRequired = DetectRestoreRequired(projectStatuses) ||
                                   HasRestoreRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
+            // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
+            // BUILD output, distinct from a missing NuGet package. Track it separately so the
+            // summary hint, readiness verdict, and autoRestore gate route to `dotnet build`
+            // rather than a no-op `dotnet restore`.
+            var buildRequired = HasBuildRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
 
             if (_cacheCoordinator is not null && cachedProbe is not null)
             {
@@ -906,6 +911,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             session.ProjectStatuses = projectStatuses;
             session.LoadedPath = path;
             session.RestoreRequired = restoreRequired;
+            session.BuildRequired = buildRequired;
             session.LoadedAtUtc = DateTimeOffset.UtcNow;
             session.IncrementVersion();
             // format-range-apply-preview-token-lifetime: drop only the tokens whose pinned
@@ -1406,16 +1412,16 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             string.Equals(child.Name.LocalName, localName, StringComparison.OrdinalIgnoreCase))?.Value?.Trim();
     }
 
+    // restore-required-vs-build-conflation: a WORKSPACE_UNRESOLVED_ANALYZER warning indicates a
+    // missing BUILD output (e.g. an analyzer dll not yet produced by `dotnet build`), NOT a
+    // missing NuGet package. It must NOT set restoreRequired (which routes callers to a no-op
+    // `dotnet restore` loop and arms autoRestore for a pointless restore). It is detected
+    // separately by HasBuildRequiredWorkspaceDiagnostics and surfaced via the BuildRequired flag.
     private static bool HasRestoreRequiredWorkspaceDiagnostics(IEnumerable<DiagnosticDto> diagnostics)
     {
         var suspiciousDiagnostics = 0;
         foreach (var diagnostic in diagnostics)
         {
-            if (string.Equals(diagnostic.Id, "WORKSPACE_UNRESOLVED_ANALYZER", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
             if (string.Equals(diagnostic.Id, "CS0234", StringComparison.OrdinalIgnoreCase))
             {
                 suspiciousDiagnostics++;
@@ -1437,6 +1443,23 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         }
 
         return suspiciousDiagnostics >= 3;
+    }
+
+    // restore-required-vs-build-conflation: a WORKSPACE_UNRESOLVED_ANALYZER warning means a build
+    // output (analyzer dll) is missing — the remedy is `dotnet build`, not `dotnet restore`. Kept
+    // distinct from HasRestoreRequiredWorkspaceDiagnostics so callers can route to the correct hint
+    // and verdict (build-needed vs restore-needed).
+    private static bool HasBuildRequiredWorkspaceDiagnostics(IEnumerable<DiagnosticDto> diagnostics)
+    {
+        foreach (var diagnostic in diagnostics)
+        {
+            if (string.Equals(diagnostic.Id, "WORKSPACE_UNRESOLVED_ANALYZER", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -1572,7 +1595,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 IsStale: isStale,
                 WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray(),
                 StaleReason: staleReason,
-                RestoreRequired: session.RestoreRequired);
+                RestoreRequired: session.RestoreRequired,
+                BuildRequired: session.BuildRequired);
         }
 
         var projects = session.ProjectStatuses;
@@ -1590,7 +1614,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             IsStale: isStale,
             WorkspaceDiagnostics: session.WorkspaceDiagnostics.ToArray(),
             StaleReason: staleReason,
-            RestoreRequired: session.RestoreRequired);
+            RestoreRequired: session.RestoreRequired,
+            BuildRequired: session.BuildRequired);
     }
 
     private WorkspaceSession GetRequiredSession(string workspaceId)
@@ -1732,6 +1757,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         public MSBuildWorkspace? Workspace { get; set; }
         public string? LoadedPath { get; set; }
         public bool RestoreRequired { get; set; }
+        public bool BuildRequired { get; set; }
         public DateTimeOffset LoadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
         public DateTimeOffset LastAccessedUtc { get; set; } = DateTimeOffset.UtcNow;
         public int Version => Volatile.Read(ref _version);

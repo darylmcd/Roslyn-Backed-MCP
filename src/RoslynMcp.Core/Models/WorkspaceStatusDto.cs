@@ -39,7 +39,12 @@ public sealed record WorkspaceStatusDto(
     [property: JsonPropertyName("staleReason")]
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     string? StaleReason = null,
-    bool RestoreRequired = false);
+    bool RestoreRequired = false,
+    // restore-required-vs-build-conflation: a missing analyzer BUILD output (e.g. an analyzer dll
+    // not yet produced by `dotnet build`) is distinct from a missing NuGet package. Tracked
+    // separately from RestoreRequired so the readiness verdict and summary hint route callers to
+    // `dotnet build` rather than a no-op `dotnet restore`.
+    bool BuildRequired = false);
 
 /// <summary>
 /// Represents the status of a project within a loaded workspace.
