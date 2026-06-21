@@ -23,7 +23,7 @@ public static class CompileCheckTools
     public static Task<string> CompileCheck(
         IWorkspaceExecutionGate gate,
         ICompileCheckService compileCheckService,
-        [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
+        [Description("Optional: the workspace session identifier returned by workspace_load. With one workspace loaded you may omit it — the read-path middleware resolves it automatically; pass it explicitly when two or more are loaded.")] string? workspaceId = null,
         [Description("Optional: filter by project name")] string? projectName = null,
         [Description("When true, performs full PE-emit validation (catches more issues like missing references at emit time). Default: false (faster, uses GetDiagnostics only). Requires restored NuGet packages for the perf delta to materialize — see the tool description.")] bool emitValidation = false,
         [Description("Optional: minimum severity filter (Error, Warning, Info, Hidden)")] string? severity = null,
@@ -35,6 +35,7 @@ public static class CompileCheckTools
     {
         ParameterValidation.ValidateSeverity(severity);
         ParameterValidation.ValidatePagination(offset, limit);
+        workspaceId = RequireResolvedWorkspaceId(workspaceId);
         return ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
@@ -56,4 +57,18 @@ public static class CompileCheckTools
             },
             ct);
     }
+
+    // workspace-id-optional-readonly-surface-flip: the read-path middleware
+    // (StructuredCallToolFilter) resolves or auto-loads an omitted workspaceId before this
+    // now-optional tool dispatches. This guard covers the residual case the middleware cannot
+    // resolve — workspaceId omitted, zero workspaces loaded, and no solution discoverable — by
+    // returning a structured InvalidArgument (the filter classifies the throw) that points the
+    // caller at workspace_load. It also narrows workspaceId to non-null for the dispatch below.
+    private static string RequireResolvedWorkspaceId(string? workspaceId) =>
+        string.IsNullOrEmpty(workspaceId)
+            ? throw new ArgumentException(
+                "workspaceId was omitted but no workspace is loaded and none could be discovered. " +
+                "Call workspace_load(path=…) first, or pass workspaceId explicitly.",
+                nameof(workspaceId))
+            : workspaceId;
 }
