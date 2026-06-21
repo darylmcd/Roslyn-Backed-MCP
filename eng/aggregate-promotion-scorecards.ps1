@@ -147,7 +147,14 @@ if ($IncludeSelf) {
 
 if (Test-Path $SiblingRepoParent) {
     $excludeSet = @{}
-    if (-not $IncludeSelf) { $excludeSet[$repoName] = $true }
+    # Always exclude self from sibling-discovery regardless of -IncludeSelf.
+    # When -IncludeSelf is set, self is already added explicitly above (line ~145)
+    # and must not be re-discovered here — that would double-count it in
+    # siblingReposScanned/siblingReposWithScorecard and double its votes in
+    # quorum math, potentially spuriously satisfying the 2-vote promote threshold.
+    # When -IncludeSelf is absent, self must not be counted at all.
+    # The explicit add at line ~145 is the ONE and ONLY self-inclusion path.
+    $excludeSet[$repoName] = $true
     foreach ($x in $ExcludeRepoFolders) { $excludeSet[$x] = $true }
     Get-ChildItem -Path $SiblingRepoParent -Directory -ErrorAction SilentlyContinue |
         Where-Object { -not $excludeSet.ContainsKey($_.Name) } |
