@@ -158,16 +158,33 @@ public sealed class SurfaceCatalogTests
             diff.Tools.Added.Select(entry => entry.Name).ToArray());
         CollectionAssert.Contains(diff.Resources.Added.Select(entry => entry.Name).ToArray(), "server_catalog_version_diff");
 
+        // The full changed-tool set: get_completions (summary) and server_info (outputSchema)
+        // pre-date this catalog version; the three workspace-status-family tools below changed
+        // their outputSchema because restore-required-vs-build-conflation added `buildRequired`
+        // to WorkspaceStatusSummaryDto, which every workspace-status tool serializes.
+        CollectionAssert.AreEquivalent(
+            new[] { "get_completions", "server_info", "workspace_status", "workspace_health", "workspace_list" },
+            diff.Tools.Changed.Select(entry => entry.Name).ToArray());
+
         var changedTool = diff.Tools.Changed.Single(entry => entry.Name == "get_completions");
         CollectionAssert.AreEqual(new[] { "summary" }, changedTool.ChangedFields.Select(field => field.Field).ToArray());
 
         var changedServerInfo = diff.Tools.Changed.Single(entry => entry.Name == "server_info");
         CollectionAssert.AreEqual(new[] { "outputSchema" }, changedServerInfo.ChangedFields.Select(field => field.Field).ToArray());
 
+        foreach (var workspaceToolName in new[] { "workspace_status", "workspace_health", "workspace_list" })
+        {
+            var changedWorkspaceTool = diff.Tools.Changed.Single(entry => entry.Name == workspaceToolName);
+            CollectionAssert.AreEqual(
+                new[] { "outputSchema" },
+                changedWorkspaceTool.ChangedFields.Select(field => field.Field).ToArray(),
+                $"{workspaceToolName} changed only its outputSchema (buildRequired added to WorkspaceStatusSummaryDto).");
+        }
+
         Assert.AreEqual(3, diff.Summary.Added);
         Assert.AreEqual(0, diff.Summary.Removed);
         Assert.AreEqual(0, diff.Summary.Promoted);
-        Assert.AreEqual(2, diff.Summary.Changed);
+        Assert.AreEqual(5, diff.Summary.Changed);
     }
 
     [TestMethod]
@@ -183,7 +200,7 @@ public sealed class SurfaceCatalogTests
         Assert.IsTrue(document.RootElement.TryGetProperty("tools", out var tools));
         Assert.IsTrue(tools.TryGetProperty("changed", out var changed));
         CollectionAssert.AreEquivalent(
-            new[] { "get_completions", "server_info" },
+            new[] { "get_completions", "server_info", "workspace_status", "workspace_health", "workspace_list" },
             changed.EnumerateArray().Select(entry => entry.GetProperty("name").GetString()).ToArray());
     }
 
