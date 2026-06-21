@@ -19,7 +19,7 @@
 | 7 | trace-exception-flow-no-throwsite | merged | [#1015](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1015) | trace-exception-flow-no-throwsite |
 | 8 | compilation-cache-adoption-read-side | merged | [#1010](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1010) | — |
 | 9 | workspace-id-optional-readonly-surface-full-sweep | merged | [#1012](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1012) | — |
-| 10 | hoststdio-middleware-tools-namespace-cycle | deferred | — | hoststdio-middleware-tools-namespace-cycle |
+| 10 | hoststdio-middleware-tools-namespace-cycle | deferred | — | — |
 <!-- BSWEEP:STATUS-TABLE END -->
 
 ## Initiatives (in order)

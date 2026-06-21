@@ -358,9 +358,7 @@
       "id": "hoststdio-middleware-tools-namespace-cycle",
       "order": 10,
       "status": "deferred",
-      "backlogRowsClosed": [
-        "hoststdio-middleware-tools-namespace-cycle"
-      ],
+      "backlogRowsClosed": [],
       "productionFilesTouched": 3,
       "productionFiles": [
         "src/RoslynMcp.Host.Stdio/Catalog/WorkspaceResolutionHelper.cs",
@@ -368,7 +366,7 @@
         "src/RoslynMcp.Host.Stdio/Middleware/StructuredCallToolFilter.cs"
       ],
       "testFilesAdded": 1,
-      "rowsClosedCount": 1,
+      "rowsClosedCount": 0,
       "estimatedContextTokens": 30000,
       "toolPolicy": "edit-only",
       "scheduleHint": null,
@@ -384,7 +382,7 @@
       "worktreePath": null,
       "prUrl": null,
       "mergedAt": null,
-      "notes": "Touches WorkspaceTools.cs (also touched by #5 worktree-teardown) -> conflict-graph edge; must not parallel-wave with #5.",
+      "notes": "Touches WorkspaceTools.cs (also touched by #5 worktree-teardown) -> conflict-graph edge; must not parallel-wave with #5. Deferred — closes no row (premise false; see items re-plan note).",
       "fileSetHash": "5404b1fd4487eeb2e65c7a7229472ce143a54838ea9c9f7b0b8ba138286dabbe",
       "stanzaHash": "4bb9d6692fece561b693c0496d2cc20a90ee6aed146e24b0e749b82b68214c32",
       "reviewedStanzaHash": "4bb9d6692fece561b693c0496d2cc20a90ee6aed146e24b0e749b82b68214c32"
