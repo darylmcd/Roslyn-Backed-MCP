@@ -1,7 +1,9 @@
+using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Host.Stdio.Tools;
 using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
@@ -709,6 +711,214 @@ public sealed class DuplicateMethodDetectorTests
 
         Assert.AreEqual(1, unfiltered.Count,
             "Without a filter, the cross-project duplicate should still cluster.");
+    }
+
+    /// <summary>
+    /// Source with three independent duplicate clusters (six methods, two per cluster). Each
+    /// cluster has a distinct body shape so they bucket separately; the two members within a
+    /// cluster are structurally identical (different names, different locals) so they cluster.
+    /// Used by the summary-mode tests below.
+    /// </summary>
+    private const string ThreeClusterSource = """
+        namespace Sample;
+        public class ThreeClusters
+        {
+            // Cluster 1: arithmetic chain.
+            public int ArithA(int value)
+            {
+                var a1 = value + 1;
+                var a2 = a1 * 2;
+                var a3 = a2 + a2;
+                var a4 = a3 / 2;
+                var a5 = a4 - 1;
+                return a5;
+            }
+            public int ArithB(int input)
+            {
+                var b1 = input + 1;
+                var b2 = b1 * 2;
+                var b3 = b2 + b2;
+                var b4 = b3 / 2;
+                var b5 = b4 - 1;
+                return b5;
+            }
+
+            // Cluster 2: loop-accumulate.
+            public int LoopA(int count)
+            {
+                var total = 0;
+                for (var i = 0; i < count; i++)
+                {
+                    total += i;
+                    total -= 1;
+                }
+                return total;
+            }
+            public int LoopB(int n)
+            {
+                var acc = 0;
+                for (var j = 0; j < n; j++)
+                {
+                    acc += j;
+                    acc -= 1;
+                }
+                return acc;
+            }
+
+            // Cluster 3: string transform.
+            public string StrA(string text)
+            {
+                var s1 = text.Trim();
+                var s2 = s1.ToUpperInvariant();
+                var s3 = s2 + "!";
+                var s4 = s3.Replace("!", "?");
+                var s5 = s4.PadLeft(10);
+                return s5;
+            }
+            public string StrB(string raw)
+            {
+                var t1 = raw.Trim();
+                var t2 = t1.ToUpperInvariant();
+                var t3 = t2 + "!";
+                var t4 = t3.Replace("!", "?");
+                var t5 = t4.PadLeft(10);
+                return t5;
+            }
+        }
+        """;
+
+    [TestMethod]
+    public async Task FindDuplicatedMethods_SummaryMode_OmitsMethodsArrayButKeepsClusterMetadata()
+    {
+        // Drive the tool wrapper (not the service) so the summary-mode serialization branch in
+        // FindDuplicatedMethodsCore is exercised. The tool runs through the real
+        // WorkspaceExecutionGate against the AdhocWorkspace-backed TestWorkspaceManager.
+        var (service, gate) = BuildServiceAndGate(ThreeClusterSource);
+        using var gateScope = gate;
+
+        var summaryJson = await AdvancedAnalysisTools.FindDuplicatedMethods(
+            gate,
+            service,
+            workspaceId: WorkspaceId,
+            minLines: 6,
+            similarityThreshold: 0.85,
+            projectFilter: null,
+            limit: 50,
+            excludeMcpToolWrappers: true,
+            summary: true,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(summaryJson);
+        var root = doc.RootElement;
+
+        Assert.AreEqual(3, root.GetProperty("count").GetInt32(),
+            "All three clusters must be counted in summary mode.");
+        Assert.IsTrue(root.GetProperty("summary").GetBoolean(),
+            "Summary mode must stamp summary=true.");
+        Assert.IsTrue(root.TryGetProperty("deprecation", out var deprecation));
+        Assert.AreEqual(JsonValueKind.Null, deprecation.ValueKind,
+            "Canonical tool must publish deprecation=null even in summary mode.");
+
+        var groups = root.GetProperty("groups");
+        Assert.AreEqual(3, groups.GetArrayLength(), "Each cluster must still appear as a group.");
+
+        foreach (var group in groups.EnumerateArray())
+        {
+            // (a) The per-member Methods array is omitted — that's the byte budget the summary buys.
+            Assert.IsFalse(group.TryGetProperty("methods", out _),
+                "Summary group must omit the per-member `methods` array.");
+            Assert.IsFalse(group.TryGetProperty("Methods", out _),
+                "Summary group must omit the per-member `Methods` array (any casing).");
+
+            // (b) The cluster metadata is preserved.
+            Assert.IsTrue(group.TryGetProperty("normalizedHash", out var hash));
+            Assert.IsFalse(string.IsNullOrEmpty(hash.GetString()),
+                "normalizedHash must survive into the summary shape.");
+            Assert.IsTrue(group.TryGetProperty("memberCount", out var memberCount));
+            Assert.IsTrue(memberCount.GetInt32() >= 2,
+                "Every emitted cluster has at least two members.");
+            Assert.IsTrue(group.TryGetProperty("lineCount", out var lineCount));
+            Assert.IsTrue(lineCount.GetInt32() > 0, "lineCount must survive into the summary shape.");
+            Assert.IsTrue(group.TryGetProperty("similarity", out _),
+                "similarity must survive into the summary shape.");
+            Assert.IsTrue(group.TryGetProperty("clusterKind", out _),
+                "clusterKind must survive into the summary shape.");
+        }
+    }
+
+    [TestMethod]
+    public async Task FindDuplicatedMethods_FullMode_RetainsMethodsArray()
+    {
+        // The inverse contract: default (summary=false) preserves the per-member Methods array
+        // and does NOT stamp a `summary` field. Pins that summary mode is strictly opt-in.
+        var (service, gate) = BuildServiceAndGate(ThreeClusterSource);
+        using var gateScope = gate;
+
+        var fullJson = await AdvancedAnalysisTools.FindDuplicatedMethods(
+            gate,
+            service,
+            workspaceId: WorkspaceId,
+            minLines: 6,
+            similarityThreshold: 0.85,
+            projectFilter: null,
+            limit: 50,
+            excludeMcpToolWrappers: true,
+            summary: false,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(fullJson);
+        var root = doc.RootElement;
+
+        Assert.AreEqual(3, root.GetProperty("count").GetInt32());
+        Assert.IsFalse(root.TryGetProperty("summary", out _),
+            "Full mode must NOT emit a `summary` field.");
+
+        var groups = root.GetProperty("groups");
+        Assert.AreEqual(3, groups.GetArrayLength());
+        foreach (var group in groups.EnumerateArray())
+        {
+            Assert.IsTrue(group.TryGetProperty("methods", out var methods),
+                "Full mode must retain the per-member `methods` array.");
+            Assert.IsTrue(methods.GetArrayLength() >= 2,
+                "Each full-mode cluster lists all its member locations.");
+        }
+    }
+
+    /// <summary>
+    /// Builds the detector service AND a <see cref="WorkspaceExecutionGate"/> sharing one
+    /// <see cref="TestWorkspaceManager"/> so the tool wrapper (which routes through the gate)
+    /// can be exercised end-to-end. Default <see cref="ExecutionGateOptions"/> are fine: the
+    /// test manager reports <c>IsStale=false</c> and <c>ContainsWorkspace=true</c>, so the
+    /// staleness/reload path never runs and the gate resolves to a plain read.
+    /// </summary>
+    private static (DuplicateMethodDetectorService service, WorkspaceExecutionGate gate) BuildServiceAndGate(string source)
+    {
+        var workspace = new AdhocWorkspace();
+        var projectId = ProjectId.CreateNewId();
+        workspace.AddProject(ProjectInfo.Create(
+            projectId,
+            VersionStamp.Create(),
+            name: "TestProject",
+            assemblyName: "TestProject",
+            language: LanguageNames.CSharp,
+            filePath: Path.Combine(Path.GetTempPath(), "TestProject.csproj")));
+
+        var docId = DocumentId.CreateNewId(projectId);
+        var fullPath = Path.Combine(Path.GetTempPath(), "Sample.cs");
+        workspace.AddDocument(DocumentInfo.Create(
+            docId,
+            "Sample.cs",
+            filePath: fullPath,
+            loader: TextLoader.From(
+                TextAndVersion.Create(
+                    SourceText.From(source),
+                    VersionStamp.Create(),
+                    fullPath))));
+
+        var wsManager = new TestWorkspaceManager(WorkspaceId, workspace);
+        var service = new DuplicateMethodDetectorService(wsManager);
+        var gate = new WorkspaceExecutionGate(new ExecutionGateOptions(), wsManager);
+        return (service, gate);
     }
 
     /// <summary>
