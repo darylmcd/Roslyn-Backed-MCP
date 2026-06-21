@@ -23,7 +23,8 @@ namespace RoslynMcp.Roslyn.Services;
 /// compose. Callers that need to refuse on genuine external drift
 /// (<c>change_signature_preview</c> and friends) query <see cref="GetStaleReason"/>; server
 /// apply paths that want to preserve their attribution mark after the on-disk commit
-/// settles.
+/// settles call <see cref="MarkStale"/> once the write lands, overwriting any
+/// <c>external-edit</c> stamp the watcher may have set.
 /// </para>
 /// <para>
 /// <strong>CPU cost</strong>: purely event-driven; no periodic scans. <c>FileSystemWatcher</c>
