@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-06-21T21:49:58Z
+**updated_at:** 2026-06-21T22:09:05Z
 
 ## Agent contract
 
@@ -83,6 +83,7 @@
 | dup-method-detector-test-setup-dedup | Low | — | **De-dup DuplicateMethodDetectorTests workspace setup** — `BuildServiceAndGate` copy-pastes ~22 lines from `BuildServiceWithSourcesCore` (delta: the added gate); reuse the existing builder. [type: test] [source: 2026-06-21 sweep #1011 cq] | S | items/dup-method-detector-test-setup-dedup.md |
 | exception-flow-throwsite-test-and-arm-dedup | Low | — | **trace_exception_flow throw-site exclusion test + arm dedup** — add a test that an unrelated thrown type is excluded from ThrowSites; dedupe the bounded-add across the throw-node switch arms. [type: test] [source: 2026-06-21 sweep #1015 cq] | S | items/exception-flow-throwsite-test-and-arm-dedup.md |
 | aggregate-scorecard-test-runner-dedup | Low | — | **Dedup AggregatePromotionScorecards test runner helpers** — collapse `RunAggregatorWithIncludeSelf` (a ~30-line near-copy of `RunAggregator`) into one parameterized helper backing all call sites. [type: refactor] [source: 2026-06-21 top-n cq] | S | items/aggregate-scorecard-test-runner-dedup.md |
+| filewatcher-markstaleifrelevant-stale-precedence-comment | Low | — | **MarkStaleIfRelevant comment claims external-edit precedence the code lacks** — `FileWatcherService.cs:154-155` says external edits take precedence / no-downgrade, but `MarkStaleWithReason` (:247) is unconditional last-writer-wins; fix or delete the stale comment. [type: docs] [source: 2026-06-21 top-n cold-review] | S | items/filewatcher-markstaleifrelevant-stale-precedence-comment.md |
 
 ## Defer
 
