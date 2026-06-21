@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.CodeAnalysis;
 using Microsoft.Extensions.Logging;
@@ -64,6 +66,82 @@ public sealed class WorkspaceCloseDrainTests
             Path.GetDirectoryName(loadedPath),
             commandRunner.LastWorkingDirectory,
             "The drain working directory must be the directory of the loaded path.");
+    }
+
+    // ---------------------------------------------------------------------------
+    // Positive: drainProcesses=true terminates detached testhost processes whose
+    // executable lives under the working directory, and leaves out-of-dir ones alone.
+    //
+    // Uses real, long-lived child processes (the only way to exercise the
+    // Process.MainModule path-prefix filter + Kill end-to-end — Process has no
+    // mockable surface). The getProcessesByName seam injects them into the drain.
+    // ---------------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task CloseWorkspace_DrainProcessesTrue_DoesNotLeakTesthostInWorkingDir()
+    {
+        const string expectedWorkspaceId = "test-ws-testhost-drain";
+
+        // workingDirectory = directory of the loaded path. Place the in-dir process's
+        // executable in a child folder so its MainModule.FileName prefix-matches.
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "rmcp-testhost-drain-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workingDirectory);
+        var loadedPath = Path.Combine(workingDirectory, "Sample.slnx");
+
+        Process? inDirProcess = null;
+        Process? outOfDirProcess = null;
+        try
+        {
+            // A process whose executable lives UNDER workingDirectory: must be killed.
+            inDirProcess = StartLongLivedProcessUnder(Path.Combine(workingDirectory, "host"));
+            // A process whose executable lives OUTSIDE workingDirectory (the original system
+            // launcher path): must be left running.
+            outOfDirProcess = StartLongLivedProcessFromSystemPath();
+
+            var inDirPid = inDirProcess.Id;
+            var outOfDirPid = outOfDirProcess.Id;
+
+            var status = CreateStatus(expectedWorkspaceId, loadedPath);
+            var fakeWorkspace = new FakeWorkspaceManagerForDrain(status);
+            var gate = new PassthroughGate();
+            var commandRunner = new RecordingDotnetCommandRunner();
+
+            // Inject both as "testhost" candidates; vstest.console returns none.
+            Func<string, Process[]> getProcessesByName = name => name == "testhost"
+                ? new[] { GetByIdOrEmpty(inDirPid), GetByIdOrEmpty(outOfDirPid) }
+                    .Where(p => p is not null).Select(p => p!).ToArray()
+                : [];
+
+            var json = await WorkspaceTools.CloseWorkspace(
+                server: null!,
+                gate: gate,
+                workspace: fakeWorkspace,
+                commandRunner: commandRunner,
+                workspaceId: expectedWorkspaceId,
+                drainProcesses: true,
+                ct: CancellationToken.None,
+                getProcessesByName: getProcessesByName);
+
+            using var doc = JsonDocument.Parse(json);
+            Assert.IsTrue(doc.RootElement.GetProperty("success").GetBoolean(),
+                "CloseWorkspace must still return success=true when the testhost drain runs.");
+
+            // The in-dir testhost must have been terminated.
+            Assert.IsTrue(
+                inDirProcess.WaitForExit(10_000),
+                "A testhost process whose executable lives under the working directory must be killed by the drain.");
+
+            // The out-of-dir process must NOT have been touched.
+            Assert.IsFalse(
+                outOfDirProcess.HasExited,
+                "A testhost process whose executable lives outside the working directory must be left running.");
+        }
+        finally
+        {
+            KillQuietly(inDirProcess);
+            KillQuietly(outOfDirProcess);
+            TryDeleteDirectory(workingDirectory);
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -317,6 +395,117 @@ public sealed class WorkspaceCloseDrainTests
             IsLoaded: true,
             IsStale: false,
             WorkspaceDiagnostics: []);
+
+    // ---------------------------------------------------------------------------
+    // Real-process helpers for the testhost-drain test
+    // ---------------------------------------------------------------------------
+
+    // Cross-platform idle-for-a-while launcher: ping on Windows (no admin needed,
+    // present on the self-hosted runner), sleep elsewhere. Both block ~60s until killed.
+    private static readonly bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+    private static string SystemLauncherPath =>
+        IsWindows
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "PING.EXE")
+            : "/bin/sleep";
+
+    private static string[] LauncherArguments =>
+        IsWindows
+            ? ["-n", "60", "127.0.0.1"]
+            : ["60"];
+
+    /// <summary>
+    /// Copies the system launcher executable into <paramref name="targetDirectory"/> (so its
+    /// MainModule.FileName prefix-matches the working directory) and starts it long-lived.
+    /// </summary>
+    private static Process StartLongLivedProcessUnder(string targetDirectory)
+    {
+        Directory.CreateDirectory(targetDirectory);
+        var copyName = Path.GetFileName(SystemLauncherPath);
+        var copiedPath = Path.Combine(targetDirectory, copyName);
+        File.Copy(SystemLauncherPath, copiedPath, overwrite: true);
+        if (!OperatingSystem.IsWindows())
+        {
+            // Preserve the executable bit on the copy.
+            File.SetUnixFileMode(copiedPath, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        return StartLongLived(copiedPath);
+    }
+
+    private static Process StartLongLivedProcessFromSystemPath() => StartLongLived(SystemLauncherPath);
+
+    private static Process StartLongLived(string executablePath)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = executablePath,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (var argument in LauncherArguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        return Process.Start(startInfo)
+            ?? throw new InvalidOperationException($"Failed to start long-lived helper process: {executablePath}.");
+    }
+
+    private static Process? GetByIdOrEmpty(int pid)
+    {
+        try
+        {
+            return Process.GetProcessById(pid);
+        }
+        catch (ArgumentException)
+        {
+            // Process already exited — no longer in the table.
+            return null;
+        }
+    }
+
+    private static void KillQuietly(Process? process)
+    {
+        if (process is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5_000);
+            }
+        }
+        catch
+        {
+            // Best effort cleanup.
+        }
+        finally
+        {
+            process.Dispose();
+        }
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch
+        {
+            // Best effort; temp dir, OS reaps it eventually.
+        }
+    }
 
     // ---------------------------------------------------------------------------
     // Fakes
