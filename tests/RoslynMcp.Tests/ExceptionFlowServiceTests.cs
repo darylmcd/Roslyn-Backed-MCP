@@ -5,14 +5,17 @@ namespace RoslynMcp.Tests;
 /// <summary>
 /// Regression tests for <see cref="RoslynMcp.Roslyn.Services.ExceptionFlowService"/> — the
 /// <c>trace_exception_flow</c> tool (initiative: <c>exception-handler-classification-tracer</c>).
-/// The service walks every syntax tree's <c>CatchClauseSyntax</c> and returns each catch
-/// whose declared type is assignable from the input exception type. Covers:
+/// The service walks every syntax tree's <c>CatchClauseSyntax</c> and <c>throw new T(...)</c>
+/// nodes in one pass, returning each catch whose declared type is assignable from the input and
+/// each throw whose thrown type is assignable to it. Covers:
 ///   * a typed-exception catch (translated to JSON form, including the body excerpt + rethrow-as annotation)
 ///   * the untyped <c>catch { }</c> fallback (treated as catching <see cref="Exception"/>)
 ///   * an exact-match exception declared in the body
 ///   * the empty-result path for an unknown metadata name
 ///   * the <c>when</c>-filter case (filter source prepended to the body excerpt)
-///   * the <c>maxResults</c> cap (truncated flag set)
+///   * the <c>maxResults</c> cap (truncated flag set + CountOmitted)
+///   * throw-site collection with the syntactic unhandled-at-boundary classification
+///   * type-specific catches ranked above base-Exception catches
 /// </summary>
 [TestClass]
 public sealed class ExceptionFlowServiceTests : IsolatedWorkspaceTestBase
@@ -203,6 +206,129 @@ public sealed class ExceptionFlowServiceTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task TraceExceptionFlow_ReturnsThrowSites_ForTracedType()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var sourceCode = """
+            using System;
+
+            namespace SampleLib.ErrorHandling;
+
+            public static class Originator
+            {
+                public static void Validate(int value)
+                {
+                    if (value < 0)
+                    {
+                        // Throw OUTSIDE any catch — should be reported as unhandled at boundary.
+                        throw new InvalidOperationException("value must be non-negative");
+                    }
+                }
+
+                public static void Wrap()
+                {
+                    try
+                    {
+                        Validate(-1);
+                    }
+                    catch (Exception)
+                    {
+                        // Throw INSIDE a catch — should be reported as handled (not at boundary).
+                        throw new InvalidOperationException("wrapped");
+                    }
+                }
+            }
+            """;
+        await WriteFileAsync(workspace, "SampleLib/Originator.cs", sourceCode);
+
+        var result = await ExceptionFlowService.TraceExceptionFlowAsync(
+            workspace.WorkspaceId,
+            "System.InvalidOperationException",
+            scopeProjectFilter: "SampleLib",
+            maxResults: null,
+            CancellationToken.None);
+
+        Assert.IsTrue(result.ThrowSites.Count >= 1,
+            "A `throw new InvalidOperationException(...)` of the traced type must be reported as a throw site.");
+        Assert.AreEqual(result.ThrowSites.Count, result.ThrowSiteCount,
+            "ThrowSiteCount must mirror ThrowSites.Count.");
+        Assert.AreEqual(0, result.CountOmitted, "Nothing was truncated, so CountOmitted must be 0.");
+
+        var boundaryThrow = result.ThrowSites.FirstOrDefault(s =>
+            s.ContainingMethod?.Contains("Originator.Validate", StringComparison.Ordinal) == true);
+        Assert.IsNotNull(boundaryThrow, "The Validate throw site should be reported.");
+        Assert.IsTrue(boundaryThrow!.IsUnhandledAtBoundary,
+            "A throw not lexically inside a catch must be flagged unhandled at boundary.");
+        StringAssert.Contains(boundaryThrow.ExpressionExcerpt, "InvalidOperationException");
+
+        var wrappedThrow = result.ThrowSites.FirstOrDefault(s =>
+            s.ContainingMethod?.Contains("Originator.Wrap", StringComparison.Ordinal) == true);
+        Assert.IsNotNull(wrappedThrow, "The throw inside Wrap's catch should be reported.");
+        Assert.IsFalse(wrappedThrow!.IsUnhandledAtBoundary,
+            "A throw lexically inside a catch must NOT be flagged unhandled at boundary.");
+    }
+
+    [TestMethod]
+    public async Task TraceExceptionFlow_TypeSpecificCatchRanksAboveBaseException()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        // The base-Exception catch is lexically FIRST so a stable, unranked walk would emit it
+        // before the type-specific catch. Ranking must reorder the exact-match catch ahead of it.
+        var sourceCode = """
+            using System;
+
+            namespace SampleLib.ErrorHandling;
+
+            public static class RankingSample
+            {
+                public static void BroadFirst()
+                {
+                    try { } catch (Exception) { }
+                }
+
+                public static void SpecificSecond()
+                {
+                    try { } catch (InvalidOperationException) { }
+                }
+            }
+            """;
+        await WriteFileAsync(workspace, "SampleLib/RankingSample.cs", sourceCode);
+
+        var result = await ExceptionFlowService.TraceExceptionFlowAsync(
+            workspace.WorkspaceId,
+            "System.InvalidOperationException",
+            scopeProjectFilter: "SampleLib",
+            maxResults: null,
+            CancellationToken.None);
+
+        var specificIndex = IndexOfSite(result.CatchSites, "SpecificSecond");
+        var broadIndex = IndexOfSite(result.CatchSites, "BroadFirst");
+
+        Assert.IsTrue(specificIndex >= 0, "The InvalidOperationException catch must be reported.");
+        Assert.IsTrue(broadIndex >= 0, "The base-Exception catch must be reported (it is wider).");
+        Assert.IsTrue(specificIndex < broadIndex,
+            "The type-specific (exact-match) catch must rank ahead of the broad base-Exception catch, "
+            + "even though the broad catch appears first in source order.");
+
+        var specific = result.CatchSites[specificIndex];
+        Assert.IsFalse(specific.CatchesBaseException, "Exact type match must not set CatchesBaseException.");
+        Assert.IsTrue(result.CatchSites[broadIndex].CatchesBaseException,
+            "The base-Exception catch is wider than InvalidOperationException.");
+    }
+
+    private static int IndexOfSite(IReadOnlyList<ExceptionCatchSiteDto> sites, string methodFragment)
+    {
+        for (var i = 0; i < sites.Count; i++)
+        {
+            if (sites[i].ContainingMethod?.Contains(methodFragment, StringComparison.Ordinal) == true)
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    [TestMethod]
     public async Task TraceExceptionFlow_MaxResults_TruncatesAndSetsFlag()
     {
         await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
@@ -231,6 +357,8 @@ public sealed class ExceptionFlowServiceTests : IsolatedWorkspaceTestBase
 
         Assert.AreEqual(2, result.CatchSites.Count);
         Assert.IsTrue(result.Truncated, "When the cap is hit the Truncated flag must be set.");
+        Assert.AreEqual(3, result.CountOmitted,
+            "5 catch sites discovered, cap of 2 retained, so 3 must be reported omitted.");
     }
 
     private static async Task WriteFileAsync(
