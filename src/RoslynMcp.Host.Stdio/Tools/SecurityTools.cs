@@ -65,6 +65,10 @@ public static class SecurityTools
         return gate.RunReadAsync(workspaceId, async c =>
         {
             ProgressHelper.Report(progress, 0, 1);
+            // nuget_vulnerability_scan shells out to `dotnet list package --vulnerable`, which is
+            // network-bound (api.nuget.org). Emit a stage label between the start and the await so
+            // MCP clients can distinguish an active scan from a hang while the CLI runs.
+            ProgressHelper.ReportStage(progress, 0, 1, "scanning-nuget");
             var result = await nuGetDependencyService.ScanNuGetVulnerabilitiesAsync(workspaceId, projectName, includeTransitive, c);
             ProgressHelper.Report(progress, 1, 1);
             return JsonSerializer.Serialize(result, JsonDefaults.Indented);
