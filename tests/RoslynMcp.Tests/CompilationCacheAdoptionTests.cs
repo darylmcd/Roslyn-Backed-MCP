@@ -186,6 +186,76 @@ public sealed class CompilationCacheAdoptionTests : IsolatedWorkspaceTestBase
         AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
     }
 
+    [TestMethod]
+    public async Task ImpactSweepService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new ImpactSweepService(
+            WorkspaceManager,
+            new ReferenceService(WorkspaceManager, cache, NullLogger<ReferenceService>.Instance),
+            new DiagnosticService(WorkspaceManager, cache, new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance)),
+            cache);
+
+        // CollectPersistenceLayerFindingsAsync (and its FindMapperTypesAsync helper) are the two
+        // converted sites. They only fetch compilations when the swept symbol is a property — anchor
+        // on SampleLib.Dog.Name (a property) so the per-project compilation loop runs through the cache.
+        var solution = WorkspaceManager.GetCurrentSolution(workspace.WorkspaceId);
+        var dogFile = solution.Projects.SelectMany(p => p.Documents).First(d => d.Name == "Dog.cs");
+
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.SweepAsync(
+                workspace.WorkspaceId,
+                SymbolLocator.BySource(dogFile.FilePath!, 5, 19),
+                CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task MutationAnalysisService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new MutationAnalysisService(WorkspaceManager, cache);
+
+        // FindTypeMutationsAsync -> ResolveContainingCompilationAsync is the converted site. It runs
+        // only for a named-type target — anchor on SampleLib.Dog so the project loop that locates the
+        // defining compilation fetches through the cache.
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.FindTypeMutationsAsync(
+                workspace.WorkspaceId,
+                SymbolLocator.ByMetadataName("SampleLib.Dog"),
+                CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
+    [TestMethod]
+    public async Task SymbolRelationshipService_ObtainsCompilations_ThroughSharedCache()
+    {
+        await using var workspace = await CreateIsolatedWorkspaceAsync(CancellationToken.None);
+        var cache = new RecordingCompilationCache(new CompilationCache(WorkspaceManager));
+        var service = new SymbolRelationshipService(
+            WorkspaceManager,
+            new ReferenceService(WorkspaceManager, cache, NullLogger<ReferenceService>.Instance),
+            cache,
+            NullLogger<SymbolRelationshipService>.Instance);
+
+        // TryResolveByQualifiedSignatureAsync is the converted site. It only runs when the standard
+        // metadata-name resolve returns null — a fully-qualified signature whose last dot lands inside
+        // the parenthesized parameter list (`SampleLib.Dog.Fetch(System.String)`) defeats the last-dot
+        // split, so the fallback's per-project compilation loop runs through the cache.
+        var afterFirstRun = await RunTwiceAndCaptureAsync(cache, () =>
+            service.GetSignatureHelpAsync(
+                workspace.WorkspaceId,
+                SymbolLocator.ByMetadataName("SampleLib.Dog.Fetch(System.String)"),
+                preferDeclaringMember: false,
+                CancellationToken.None));
+
+        AssertRoutedThroughCacheAndShared(cache, afterFirstRun);
+    }
+
     /// <summary>
     /// Runs the service once (proving it touched the cache), snapshots the compilations the cache
     /// handed out, then runs it a second time at the unchanged workspace version so the caller can

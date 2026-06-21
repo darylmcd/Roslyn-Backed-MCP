@@ -90,7 +90,7 @@ internal sealed class TestServiceContainer
             workspaceManager,
             compilationCache,
             NullLogger<ReferenceService>.Instance);
-        var mutationAnalysisService = new MutationAnalysisService(workspaceManager);
+        var mutationAnalysisService = new MutationAnalysisService(workspaceManager, compilationCache);
         var codeFixRegistry = new CodeFixProviderRegistry(NullLogger<CodeFixProviderRegistry>.Instance);
         var diagnosticService = new DiagnosticService(
             workspaceManager,
@@ -155,6 +155,7 @@ internal sealed class TestServiceContainer
             SymbolRelationshipService = new SymbolRelationshipService(
                 workspaceManager,
                 referenceService,
+                compilationCache,
                 NullLogger<SymbolRelationshipService>.Instance),
             DiagnosticService = diagnosticService,
             UndoService = undoService,

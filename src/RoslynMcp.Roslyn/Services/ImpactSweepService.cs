@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 
 namespace RoslynMcp.Roslyn.Services;
@@ -23,12 +24,14 @@ public sealed class ImpactSweepService : IImpactSweepService
     private readonly IWorkspaceManager _workspace;
     private readonly IReferenceService _references;
     private readonly IDiagnosticService _diagnostics;
+    private readonly ICompilationCache _compilationCache;
 
-    public ImpactSweepService(IWorkspaceManager workspace, IReferenceService references, IDiagnosticService diagnostics)
+    public ImpactSweepService(IWorkspaceManager workspace, IReferenceService references, IDiagnosticService diagnostics, ICompilationCache compilationCache)
     {
         _workspace = workspace;
         _references = references;
         _diagnostics = diagnostics;
+        _compilationCache = compilationCache;
     }
 
     public async Task<SymbolImpactSweepDto> SweepAsync(
@@ -132,7 +135,7 @@ public sealed class ImpactSweepService : IImpactSweepService
         var dtoSiblings = new List<(INamedTypeSymbol DtoType, IPropertySymbol DtoProperty)>();
         foreach (var project in solution.Projects)
         {
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
             foreach (var dto in compilation.GlobalNamespace.GetAllTypes(allowedKinds: TypeKind.Class))
             {
@@ -155,7 +158,7 @@ public sealed class ImpactSweepService : IImpactSweepService
         // the property in serialize (To*) and/or deserialize (From*) directions.
         foreach (var (dtoType, dtoProperty) in dtoSiblings)
         {
-            var mappers = await FindMapperTypesAsync(solution, property.ContainingType, dtoType, ct).ConfigureAwait(false);
+            var mappers = await FindMapperTypesAsync(workspaceId, _compilationCache, solution, property.ContainingType, dtoType, ct).ConfigureAwait(false);
             if (mappers.Count == 0) continue;
 
             var directionsPresent = new List<string>();
@@ -219,12 +222,12 @@ public sealed class ImpactSweepService : IImpactSweepService
     }
 
     private static async Task<IReadOnlyList<INamedTypeSymbol>> FindMapperTypesAsync(
-        Solution solution, INamedTypeSymbol domainType, INamedTypeSymbol dtoType, CancellationToken ct)
+        string workspaceId, ICompilationCache compilationCache, Solution solution, INamedTypeSymbol domainType, INamedTypeSymbol dtoType, CancellationToken ct)
     {
         var matches = new List<INamedTypeSymbol>();
         foreach (var project in solution.Projects)
         {
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
             foreach (var type in compilation.GlobalNamespace.GetAllTypes(allowedKinds: TypeKind.Class))
             {

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -12,10 +13,12 @@ namespace RoslynMcp.Roslyn.Services;
 public sealed class MutationAnalysisService : IMutationAnalysisService
 {
     private readonly IWorkspaceManager _workspace;
+    private readonly ICompilationCache _compilationCache;
 
-    public MutationAnalysisService(IWorkspaceManager workspace)
+    public MutationAnalysisService(IWorkspaceManager workspace, ICompilationCache compilationCache)
     {
         _workspace = workspace;
+        _compilationCache = compilationCache;
     }
 
     public async Task<ImpactAnalysisDto?> AnalyzeImpactAsync(
@@ -326,7 +329,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         var symbol = await SymbolResolver.ResolveAsync(solution, locator, ct).ConfigureAwait(false);
         if (symbol is not INamedTypeSymbol namedType) return null;
 
-        var compilation = await ResolveContainingCompilationAsync(solution, namedType, ct).ConfigureAwait(false);
+        var compilation = await ResolveContainingCompilationAsync(workspaceId, solution, namedType, ct).ConfigureAwait(false);
         var candidates = GetMutationCandidates(namedType, compilation);
 
         if (candidates.Length == 0)
@@ -339,6 +342,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
     }
 
     private async Task<Compilation?> ResolveContainingCompilationAsync(
+        string workspaceId,
         Solution solution,
         INamedTypeSymbol namedType,
         CancellationToken ct)
@@ -347,7 +351,7 @@ public sealed class MutationAnalysisService : IMutationAnalysisService
         // semantic models against the same compilation as the symbol.
         foreach (var project in solution.Projects)
         {
-            var projectCompilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var projectCompilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (projectCompilation is null)
             {
                 continue;

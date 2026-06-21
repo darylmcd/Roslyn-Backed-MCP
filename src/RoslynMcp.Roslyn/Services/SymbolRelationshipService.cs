@@ -1,5 +1,6 @@
 using RoslynMcp.Core.Models;
 using RoslynMcp.Core.Services;
+using RoslynMcp.Roslyn.Contracts;
 using RoslynMcp.Roslyn.Helpers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -13,12 +14,14 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
 {
     private readonly IWorkspaceManager _workspace;
     private readonly IReferenceService _referenceService;
+    private readonly ICompilationCache _compilationCache;
     private readonly ILogger<SymbolRelationshipService> _logger;
 
-    public SymbolRelationshipService(IWorkspaceManager workspace, IReferenceService referenceService, ILogger<SymbolRelationshipService> logger)
+    public SymbolRelationshipService(IWorkspaceManager workspace, IReferenceService referenceService, ICompilationCache compilationCache, ILogger<SymbolRelationshipService> logger)
     {
         _workspace = workspace;
         _referenceService = referenceService;
+        _compilationCache = compilationCache;
         _logger = logger;
     }
 
@@ -236,7 +239,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         // list, retries the resolve, and picks the matching overload.
         if (symbol is null && locator.HasMetadataName)
         {
-            symbol = await TryResolveByQualifiedSignatureAsync(solution, locator.MetadataName!, ct).ConfigureAwait(false);
+            symbol = await TryResolveByQualifiedSignatureAsync(workspaceId, _compilationCache, solution, locator.MetadataName!, ct).ConfigureAwait(false);
         }
 
         if (symbol is null)
@@ -277,7 +280,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         // unbalanced/inside-parens dots that defeat that path entirely.
         if (symbol is null && locator.HasMetadataName)
         {
-            symbol = await TryResolveByQualifiedSignatureAsync(solution, locator.MetadataName!, ct).ConfigureAwait(false);
+            symbol = await TryResolveByQualifiedSignatureAsync(workspaceId, _compilationCache, solution, locator.MetadataName!, ct).ConfigureAwait(false);
         }
 
         if (symbol is null) return null;
@@ -400,7 +403,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
     /// locator (symbolHandle or source position) if that picks the wrong overload.
     /// </remarks>
     internal static async Task<ISymbol?> TryResolveByQualifiedSignatureAsync(
-        Solution solution, string metadataName, CancellationToken ct)
+        string workspaceId, ICompilationCache compilationCache, Solution solution, string metadataName, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(metadataName)) return null;
 
@@ -424,7 +427,7 @@ public sealed class SymbolRelationshipService : ISymbolRelationshipService
         foreach (var project in solution.Projects)
         {
             ct.ThrowIfCancellationRequested();
-            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            var compilation = await compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
 
             var containingType = compilation.GetTypeByMetadataName(containingTypeName);

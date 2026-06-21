@@ -25,7 +25,8 @@ public sealed class SymbolImpactSweepBudgetTests : SharedWorkspaceTestBase
         _impactSweepService = new RoslynMcp.Roslyn.Services.ImpactSweepService(
             WorkspaceManager,
             ReferenceService,
-            DiagnosticService);
+            DiagnosticService,
+            new RoslynMcp.Roslyn.Services.CompilationCache(WorkspaceManager));
     }
 
     [ClassCleanup]
