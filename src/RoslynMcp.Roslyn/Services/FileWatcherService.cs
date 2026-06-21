@@ -178,6 +178,13 @@ public sealed class FileWatcherService(ILogger<FileWatcherService> logger) : IFi
         private volatile bool _isStale;
         private string? _staleReason;
         private readonly object _reasonLock = new();
+        // Intentionally unguarded: AddWatcher is called only from FileWatcherService.Watch() on a
+        // single thread during entry construction, and the FileSystemWatcher event callbacks
+        // (Changed/Created/Deleted/Renamed -> MarkStaleIfRelevant) only ever touch the
+        // _reasonLock-guarded reason state below — never this list — so _watchers has no concurrent
+        // mutation today even though watchers may fire mid-construction. If a concurrent AddWatcher
+        // path is ever introduced, guard this list consistently — e.g. under _reasonLock or a
+        // dedicated lock — to match the synchronization model used for the rest of the mutable state.
         private readonly List<FileSystemWatcher> _watchers = [];
 
         // Completed when the entry flips stale; reset on ClearStale so a reloaded workspace can be
