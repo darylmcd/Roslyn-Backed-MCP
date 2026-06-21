@@ -10,16 +10,16 @@
 
 | # | id | status | PR | rows closed |
 |---|----|--------|----|-------------|
-| 1 | find-duplicated-methods-no-byte-budget | pending | — | find-duplicated-methods-no-byte-budget |
-| 2 | test-discover-no-autopagination | pending | — | test-discover-no-autopagination |
-| 3 | nuget-vuln-scan-exceeds-budget | pending | — | nuget-vuln-scan-exceeds-budget |
-| 4 | restore-required-vs-build-conflation | pending | — | restore-required-vs-build-conflation |
-| 5 | worktree-teardown-windows-lock-multi-drain | pending | — | worktree-teardown-windows-lock-multi-drain |
-| 6 | parameter-naming-canonicalization-migration | pending | — | parameter-naming-canonicalization-migration |
-| 7 | trace-exception-flow-no-throwsite | pending | — | trace-exception-flow-no-throwsite |
-| 8 | compilation-cache-adoption-read-side | pending | — | — |
-| 9 | workspace-id-optional-readonly-surface-full-sweep | pending | — | — |
-| 10 | hoststdio-middleware-tools-namespace-cycle | pending | — | hoststdio-middleware-tools-namespace-cycle |
+| 1 | find-duplicated-methods-no-byte-budget | merged | [#1011](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1011) | find-duplicated-methods-no-byte-budget |
+| 2 | test-discover-no-autopagination | obsolete | — | test-discover-no-autopagination |
+| 3 | nuget-vuln-scan-exceeds-budget | merged | [#1008](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1008) | nuget-vuln-scan-exceeds-budget |
+| 4 | restore-required-vs-build-conflation | merged | [#1009](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1009) | restore-required-vs-build-conflation |
+| 5 | worktree-teardown-windows-lock-multi-drain | merged | [#1013](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1013) | worktree-teardown-windows-lock-multi-drain |
+| 6 | parameter-naming-canonicalization-migration | merged | [#1014](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1014) | parameter-naming-canonicalization-migration |
+| 7 | trace-exception-flow-no-throwsite | merged | [#1015](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1015) | trace-exception-flow-no-throwsite |
+| 8 | compilation-cache-adoption-read-side | merged | [#1010](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1010) | — |
+| 9 | workspace-id-optional-readonly-surface-full-sweep | merged | [#1012](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1012) | — |
+| 10 | hoststdio-middleware-tools-namespace-cycle | deferred | — | hoststdio-middleware-tools-namespace-cycle |
 <!-- BSWEEP:STATUS-TABLE END -->
 
 ## Initiatives (in order)
