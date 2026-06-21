@@ -54,13 +54,20 @@ public sealed class ExceptionFlowService : IExceptionFlowService
         var solution = _workspace.GetCurrentSolution(workspaceId);
         var projects = ProjectFilterHelper.FilterProjects(solution, scopeProjectFilter).ToList();
 
-        var sites = new List<ExceptionCatchSiteDto>();
+        // Collect catch sites and throw sites in a single per-tree DescendantNodes() pass. We
+        // collect WITHOUT applying the cap so the specificity sort below can reorder before any
+        // truncation — otherwise a type-specific catch discovered after the cap is hit would be
+        // dropped in favour of an earlier-but-broader catch. Collection is still bounded by
+        // AbsoluteMaxResults per list (overflow is counted into CountOmitted, not retained) so a
+        // pathological solution cannot exhaust memory.
+        var catchSites = new List<ExceptionCatchSiteDto>();
+        var throwSites = new List<ExceptionThrowSiteDto>();
+        var overflowBeyondCeiling = 0;
         string? resolvedDisplayName = null;
-        var truncated = false;
 
         foreach (var project in projects)
         {
-            if (ct.IsCancellationRequested || sites.Count >= cap) break;
+            if (ct.IsCancellationRequested) break;
 
             var compilation = await _compilationCache.GetCompilationAsync(workspaceId, project, ct).ConfigureAwait(false);
             if (compilation is null) continue;
@@ -75,15 +82,16 @@ public sealed class ExceptionFlowService : IExceptionFlowService
             // back to the caller for sanity-checking.
             resolvedDisplayName ??= targetType.ToDisplayString();
 
-            // The catch-matching algorithm uses Roslyn's conversion API: a catch of type T
-            // handles any thrown exception of type S where S is assignable to T. So we want
-            // every catch whose declared type is a BASE of (or equal to) the traced type —
-            // because such a catch would handle a thrown instance of the traced type.
+            // A catch of type T handles a thrown instance of S when S is assignable to T. We want
+            // every catch whose declared type is a BASE of (or equal to) the traced type, because
+            // such a catch would handle a thrown instance of the traced type. The dual holds for
+            // throw sites: a throw of type S is "related" to the traced type T when S is
+            // assignable to T (S is T or a subtype) — those throws produce instances T would name.
             var systemException = compilation.GetTypeByMetadataName("System.Exception");
 
             foreach (var tree in compilation.SyntaxTrees)
             {
-                if (ct.IsCancellationRequested || sites.Count >= cap) break;
+                if (ct.IsCancellationRequested) break;
                 if (PathFilter.IsGeneratedOrContentFile(tree.FilePath)) continue;
 
                 try
@@ -91,41 +99,76 @@ public sealed class ExceptionFlowService : IExceptionFlowService
                     var semanticModel = compilation.GetSemanticModel(tree);
                     var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
 
-                    foreach (var catchClause in root.DescendantNodes().OfType<CatchClauseSyntax>())
+                    // ONE enumeration per tree. CatchClauseSyntax and the two throw-node kinds are
+                    // disjoint node types, so a single DescendantNodes() walk classifies each.
+                    foreach (var node in root.DescendantNodes())
                     {
-                        if (ct.IsCancellationRequested || sites.Count >= cap)
-                        {
-                            truncated = sites.Count >= cap;
-                            break;
-                        }
+                        if (ct.IsCancellationRequested) break;
 
-                        var site = TryBuildCatchSite(catchClause, semanticModel, targetType, systemException, ct);
-                        if (site is not null)
+                        switch (node)
                         {
-                            sites.Add(site);
+                            case CatchClauseSyntax catchClause:
+                                var catchSite = TryBuildCatchSite(catchClause, semanticModel, targetType, systemException, ct);
+                                if (catchSite is not null)
+                                {
+                                    if (catchSites.Count < AbsoluteMaxResults) catchSites.Add(catchSite);
+                                    else overflowBeyondCeiling++;
+                                }
+                                break;
+
+                            case ThrowStatementSyntax throwStatement:
+                                var fromStatement = TryBuildThrowSite(throwStatement, throwStatement.Expression, semanticModel, targetType, ct);
+                                if (fromStatement is not null)
+                                {
+                                    if (throwSites.Count < AbsoluteMaxResults) throwSites.Add(fromStatement);
+                                    else overflowBeyondCeiling++;
+                                }
+                                break;
+
+                            case ThrowExpressionSyntax throwExpression:
+                                var fromExpression = TryBuildThrowSite(throwExpression, throwExpression.Expression, semanticModel, targetType, ct);
+                                if (fromExpression is not null)
+                                {
+                                    if (throwSites.Count < AbsoluteMaxResults) throwSites.Add(fromExpression);
+                                    else overflowBeyondCeiling++;
+                                }
+                                break;
                         }
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogWarning(ex,
-                        "Failed to walk catch clauses in {Path}; skipping",
+                        "Failed to walk catch/throw nodes in {Path}; skipping",
                         tree.FilePath);
                 }
             }
         }
 
-        if (!truncated && sites.Count >= cap)
-        {
-            truncated = true;
-        }
+        // Rank type-specific catches above base-Exception catches BEFORE the cap clip so a broad
+        // catch (Exception) never displaces a precise handler in a truncated response. Stable sort
+        // (OrderBy) preserves discovery order within each specificity tier.
+        var rankedCatchSites = catchSites
+            .OrderBy(static s => s.CatchesBaseException ? 1 : 0)
+            .ToList();
+
+        var catchOmitted = Math.Max(0, rankedCatchSites.Count - cap);
+        var throwOmitted = Math.Max(0, throwSites.Count - cap);
+        var clippedCatchSites = catchOmitted > 0 ? rankedCatchSites.Take(cap).ToList() : rankedCatchSites;
+        var clippedThrowSites = throwOmitted > 0 ? throwSites.Take(cap).ToList() : throwSites;
+
+        var countOmitted = catchOmitted + throwOmitted + overflowBeyondCeiling;
+        var truncated = countOmitted > 0;
 
         return new ExceptionFlowResult(
             exceptionTypeMetadataName,
             resolvedDisplayName,
-            sites.Count,
+            clippedCatchSites.Count,
             truncated,
-            sites);
+            clippedCatchSites,
+            clippedThrowSites,
+            clippedThrowSites.Count,
+            countOmitted);
     }
 
     private static int NormalizeMaxResults(int? requested)
@@ -181,6 +224,60 @@ public sealed class ExceptionFlowService : IExceptionFlowService
             HasFilter: hasFilter,
             BodyExcerpt: bodyExcerpt,
             RethrowAsTypeMetadataName: rethrowAs);
+    }
+
+    /// <summary>
+    /// Build a throw-site DTO for a <c>throw new T(...)</c> node whose thrown type <c>T</c> is
+    /// assignable to the traced type (i.e. <c>T</c> is the traced type or a subtype, so the throw
+    /// produces an instance the traced type would name). <paramref name="throwNode"/> is the
+    /// <see cref="ThrowStatementSyntax"/> or <see cref="ThrowExpressionSyntax"/> (used for location,
+    /// enclosure classification, and the excerpt); <paramref name="thrownExpression"/> is its
+    /// <c>throw</c> operand. Bare <c>throw;</c> rethrows have a null operand and no resolvable
+    /// thrown type, so they return <see langword="null"/> (rethrow detection is a separate
+    /// concern, handled per-catch by <see cref="TryResolveRethrowAsType"/>).
+    /// </summary>
+    private static ExceptionThrowSiteDto? TryBuildThrowSite(
+        SyntaxNode throwNode,
+        ExpressionSyntax? thrownExpression,
+        SemanticModel semanticModel,
+        INamedTypeSymbol targetType,
+        CancellationToken ct)
+    {
+        // Only object-creation throws carry a statically-resolvable thrown type. Bare `throw;`
+        // (null expression) and `throw ex;` of a variable are out of scope for origin tracing.
+        if (thrownExpression is not ObjectCreationExpressionSyntax objectCreation) return null;
+
+        var thrownType = semanticModel.GetTypeInfo(objectCreation, ct).Type;
+        if (thrownType is null) return null;
+
+        // A throw of S is related to the traced type T when S is assignable to T (S is T or a
+        // subtype) — those throws produce instances T would name. Mirrors the catch-side base-walk.
+        if (!IsAssignableTo(thrownType, targetType)) return null;
+
+        var lineSpan = throwNode.GetLocation().GetLineSpan();
+        var containingMethod = GetContainingMethodDisplay(throwNode, semanticModel, ct);
+
+        // "Unhandled at boundary" is purely SYNTACTIC: true when the throw is not lexically
+        // enclosed in any catch clause. No escape/data-flow analysis — a throw inside a lambda or
+        // local function nested in a catch is reported as enclosed even if it executes elsewhere.
+        var enclosedInCatch = throwNode.Ancestors().OfType<CatchClauseSyntax>().Any();
+
+        return new ExceptionThrowSiteDto(
+            FilePath: lineSpan.Path,
+            Line: lineSpan.StartLinePosition.Line + 1,
+            ContainingMethod: containingMethod,
+            IsUnhandledAtBoundary: !enclosedInCatch,
+            ExpressionExcerpt: BuildThrowExcerpt(throwNode));
+    }
+
+    /// <summary>
+    /// First ~<see cref="BodyExcerptLength"/> characters of the throw source, whitespace-normalized,
+    /// so agents can see the thrown construction without opening the file.
+    /// </summary>
+    private static string BuildThrowExcerpt(SyntaxNode throwNode)
+    {
+        var text = NormalizeWhitespace(throwNode.ToString());
+        return text.Length > BodyExcerptLength ? text.Substring(0, BodyExcerptLength) : text;
     }
 
     /// <summary>

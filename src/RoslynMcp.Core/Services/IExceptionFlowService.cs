@@ -3,18 +3,24 @@ using RoslynMcp.Core.Models;
 namespace RoslynMcp.Core.Services;
 
 /// <summary>
-/// Traces every <c>catch</c> clause across a workspace whose declared exception type is
-/// assignable from (or equal to) a caller-supplied exception type. Surfaces body excerpts
-/// plus rethrow-as-different-type annotations so exception-classification refactors can
-/// enumerate handling sites quickly.
+/// Traces every <c>catch</c> clause AND every <c>throw new T(...)</c> site across a workspace
+/// related to a caller-supplied exception type: catch clauses whose declared type is assignable
+/// from (or equal to) the input, and throw sites whose thrown type is assignable to it. Surfaces
+/// body excerpts, rethrow-as-different-type annotations, and a syntactic "unhandled at boundary"
+/// flag so exception-classification refactors can enumerate both handling and origination sites.
 /// </summary>
 public interface IExceptionFlowService
 {
     /// <summary>
-    /// Walks each compilation's syntax trees, finds every <c>CatchClauseSyntax</c>, resolves
-    /// the declared exception type via the semantic model, and returns each catch site whose
-    /// declared type is assignable from the input (or equal to it). Untyped <c>catch { }</c>
-    /// clauses are treated as catching <see cref="System.Exception"/>.
+    /// Walks each compilation's syntax trees once, finding both every <c>CatchClauseSyntax</c>
+    /// and every <c>throw</c> of an object-creation expression, resolving types via the semantic
+    /// model. Returns each catch site whose declared type is assignable from the input (or equal
+    /// to it) — untyped <c>catch { }</c> clauses are treated as catching <see cref="System.Exception"/>
+    /// — and each throw site whose thrown type is assignable to the input. Catch sites are ranked
+    /// type-specific (exact-match) first, so a broad <c>catch (Exception)</c> never displaces a
+    /// precise handler when the result is clipped by <paramref name="maxResults"/>. The
+    /// "unhandled at boundary" classification on throw sites is purely syntactic (lexical
+    /// enclosure in a <c>catch</c> clause); no escape or data-flow analysis is performed.
     /// </summary>
     /// <param name="workspaceId">The workspace session identifier.</param>
     /// <param name="exceptionTypeMetadataName">Fully qualified metadata name of the exception type to trace (e.g. <c>System.Text.Json.JsonException</c>).</param>
