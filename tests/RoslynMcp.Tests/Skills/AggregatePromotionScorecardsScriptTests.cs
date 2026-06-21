@@ -283,6 +283,69 @@ public sealed class AggregatePromotionScorecardsScriptTests
         Assert.AreEqual("promote-ready", skipped[0].GetProperty("reason").GetString());
     }
 
+    [TestMethod]
+    public void Aggregator_IncludeSelf_SelfFolderInSiblingParent_CountedExactlyOnce()
+    {
+        // Regression guard for the -IncludeSelf double-count bug:
+        // When -IncludeSelf is passed the script explicitly adds the real repo root at line ~145.
+        // The sibling-discovery loop also enumerates $SiblingRepoParent (which defaults to the
+        // parent of the real repo folder). If the test creates a folder under the temp
+        // _siblingParent whose name matches the real repo's leaf name — simulating the scenario
+        // where $SiblingRepoParent IS the real parent — the bug would add the repo twice to
+        // $roots, doubling its entry in siblingReposScanned and potentially its vote count.
+        //
+        // HARD INVARIANT: this test never touches the real Code-Repo tree; the script resolves
+        // the real repo root itself (via $PSScriptRoot), but we only seed a decoy folder under
+        // the isolated temp _siblingParent. Whether the real repo root has a scorecard on disk
+        // or not, the invariant is: repoLeafName appears EXACTLY ONCE in siblingReposScanned.
+
+        var realRepoRoot = TestFixtureFileSystem.FindRepositoryRoot();
+        var repoLeafName = Path.GetFileName(realRepoRoot);
+
+        // Create a folder under the temp parent with the SAME name as the real repo leaf.
+        // This is the "self re-discovered as a sibling" trap.
+        var selfDecoyDir = Path.Combine(_siblingParent, repoLeafName);
+        Directory.CreateDirectory(selfDecoyDir);
+
+        // Optionally seed a scorecard in the decoy — makes the assertion more robust if the
+        // real repo has no scorecard, and exercises both the scanned and withScorecard lists.
+        var decoyAuditDir = Path.Combine(selfDecoyDir, "audit-reports");
+        Directory.CreateDirectory(decoyAuditDir);
+        var decoyScorecard = new
+        {
+            schemaVersion = 1,
+            generatedAt = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+            auditedRepo = repoLeafName,
+            scorecard = new[]
+            {
+                new { kind = "tool", name = "decoy_tool", category = "test", currentTier = "experimental",
+                      recommendation = "promote", evidenceCount = 1,
+                      evidence = new[] { "synthetic decoy" }, blockers = Array.Empty<string>() }
+            },
+            summary = new { promote = 1, deprecate = 0 }
+        };
+        File.WriteAllText(
+            Path.Combine(decoyAuditDir, "_latest-promotion-scorecard.json"),
+            System.Text.Json.JsonSerializer.Serialize(decoyScorecard, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+
+        var result = RunAggregatorWithIncludeSelf();
+        Assert.AreEqual(0, result.ExitCode,
+            $"Aggregator failed with -IncludeSelf: stdout={result.StdOut} stderr={result.StdErr}");
+
+        using var doc = System.Text.Json.JsonDocument.Parse(result.StdOut);
+
+        var scanned = doc.RootElement.GetProperty("siblingReposScanned")
+            .EnumerateArray()
+            .Select(e => e.GetString() ?? string.Empty)
+            .ToArray();
+
+        var occurrences = scanned.Count(n => string.Equals(n, repoLeafName, StringComparison.OrdinalIgnoreCase));
+        Assert.AreEqual(1, occurrences,
+            $"'{repoLeafName}' must appear EXACTLY ONCE in siblingReposScanned. " +
+            $"Got {occurrences} occurrence(s) — bug: -IncludeSelf + sibling-discovery both adding self. " +
+            $"siblingReposScanned=[{string.Join(", ", scanned)}]. JSON: {result.StdOut}");
+    }
+
     private static string ResolveScriptPath()
     {
         var repoRoot = TestFixtureFileSystem.FindRepositoryRoot();
@@ -376,6 +439,45 @@ public sealed class AggregatePromotionScorecardsScriptTests
         {
             proc.Kill(entireProcessTree: true);
             throw new TimeoutException("pwsh aggregate-promotion-scorecards.ps1 invocation timed out after 60s.");
+        }
+
+        return new PwshResult(proc.ExitCode, stdout, stderr);
+    }
+
+    /// <summary>
+    /// Variant of <see cref="RunAggregator"/> that passes <c>-IncludeSelf</c> to the script.
+    /// Used by <see cref="Aggregator_IncludeSelf_SelfFolderInSiblingParent_CountedExactlyOnce"/>
+    /// to exercise the self-exclusion-from-sibling-discovery invariant.
+    /// </summary>
+    private PwshResult RunAggregatorWithIncludeSelf()
+    {
+        var scriptPath = ResolveScriptPath();
+        var pwshExecutable = OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = pwshExecutable,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-NonInteractive");
+        psi.ArgumentList.Add("-File");
+        psi.ArgumentList.Add(scriptPath);
+        psi.ArgumentList.Add("-SiblingRepoParent");
+        psi.ArgumentList.Add(_siblingParent);
+        psi.ArgumentList.Add("-IncludeSelf");
+
+        using var proc = Process.Start(psi)
+            ?? throw new InvalidOperationException($"Failed to start '{pwshExecutable}'.");
+        var stdout = proc.StandardOutput.ReadToEnd();
+        var stderr = proc.StandardError.ReadToEnd();
+        if (!proc.WaitForExit(milliseconds: 60_000))
+        {
+            proc.Kill(entireProcessTree: true);
+            throw new TimeoutException("pwsh aggregate-promotion-scorecards.ps1 -IncludeSelf invocation timed out after 60s.");
         }
 
         return new PwshResult(proc.ExitCode, stdout, stderr);
