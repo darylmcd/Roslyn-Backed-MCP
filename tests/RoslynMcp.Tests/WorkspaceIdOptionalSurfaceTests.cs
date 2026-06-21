@@ -11,19 +11,20 @@ namespace RoslynMcp.Tests;
 /// <c>symbol_search</c> — keep it REQUIRED.
 ///
 /// <para>
-/// Pilot scope is 3 tools (<c>go_to_definition</c>, <c>find_references</c>, <c>document_symbols</c>)
-/// whose <c>workspaceId</c> is followed only by optional parameters, so the flip is a pure in-place
-/// default with no parameter reordering and no caller churn. <c>symbol_search</c> is intentionally
-/// EXCLUDED from this pilot: a required <c>query</c> parameter follows its <c>workspaceId</c>, so
-/// making it optional would force a reorder that breaks ~16 positional call sites — it is folded
-/// into the deferred full read-only sweep follow-on alongside the remaining ~45 methods.
+/// The pilot flipped 3 tools (<c>go_to_definition</c>, <c>find_references</c>, <c>document_symbols</c>);
+/// the bounded full-sweep sub-batch adds <c>compile_check</c> — each has a <c>workspaceId</c> followed
+/// only by optional parameters, so the flip is a pure in-place default with no parameter reordering
+/// and no caller churn. <c>symbol_search</c> is intentionally EXCLUDED: a required <c>query</c>
+/// parameter follows its <c>workspaceId</c>, so making it optional would force a reorder that breaks
+/// ~16 positional call sites — it is folded into the deferred full read-only sweep follow-on
+/// alongside the remaining unflipped read-only methods.
 /// </para>
 /// </summary>
 [TestClass]
 public sealed class WorkspaceIdOptionalSurfaceTests
 {
     private static readonly string[] FlippedPilotTools =
-        ["go_to_definition", "find_references", "document_symbols"];
+        ["go_to_definition", "find_references", "document_symbols", "compile_check"];
 
     // Deferred to the follow-on (required query param forces a reorder) + a sample of tools that
     // must KEEP workspaceId required: writers, destructive, and not-yet-swept read-only tools.
@@ -53,6 +54,21 @@ public sealed class WorkspaceIdOptionalSurfaceTests
         // runs before any service is touched, so null DI args are safe here.
         var ex = Assert.ThrowsException<ArgumentException>(() =>
             SymbolTools.GetDocumentSymbols(server: null!, gate: null!, symbolSearchService: null!, workspaceId: null));
+
+        Assert.AreEqual("workspaceId", ex.ParamName);
+        StringAssert.Contains(ex.Message, "workspace_load",
+            "The guard must steer the caller to workspace_load rather than fail opaquely.");
+    }
+
+    [TestMethod]
+    public void CompileCheck_WithNullWorkspaceId_ThrowsGuidedInvalidArgument()
+    {
+        // compile_check's body guard mirrors the symbol-tool guard above. The pre-gate severity +
+        // pagination validations pass for the defaults (severity=null, offset=0, limit=50), so the
+        // null-workspaceId case reaches RequireResolvedWorkspaceId before any service or gate is
+        // touched — null DI args are safe here.
+        var ex = Assert.ThrowsException<ArgumentException>(() =>
+            CompileCheckTools.CompileCheck(gate: null!, compileCheckService: null!, workspaceId: null));
 
         Assert.AreEqual("workspaceId", ex.ParamName);
         StringAssert.Contains(ex.Message, "workspace_load",
