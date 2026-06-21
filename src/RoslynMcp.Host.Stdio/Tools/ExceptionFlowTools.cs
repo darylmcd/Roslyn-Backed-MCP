@@ -25,13 +25,13 @@ public static class ExceptionFlowTools
         IExceptionFlowService exceptionFlowService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description("Fully qualified metadata name of the exception type to trace, e.g. 'System.Text.Json.JsonException' or 'System.ArgumentException'")] string exceptionTypeMetadataName,
-        [Description("Optional: restrict the walk to a specific project name")] string? scopeProjectFilter = null,
+        [Description("Optional: restrict the walk to a specific project name")] string? projectName = null,
         [Description("Optional: cap the returned catch-site list. Defaults to 200; absolute upper bound is 2000 to keep the payload bounded.")] int? maxResults = null,
         CancellationToken ct = default)
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
             c => exceptionFlowService.TraceExceptionFlowAsync(
-                workspaceId, exceptionTypeMetadataName, scopeProjectFilter, maxResults, c),
+                workspaceId, exceptionTypeMetadataName, projectName, maxResults, c),
             ct);
 }

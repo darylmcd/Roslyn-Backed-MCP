@@ -99,7 +99,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
             WorkspaceExecutionGate,
             UnusedCodeAnalyzer,
             WorkspaceId,
-            projectFilter: "SampleLib",
+            projectName: "SampleLib",
             includePublic: false,
             usageKind: "never-read",
             limit: 20,

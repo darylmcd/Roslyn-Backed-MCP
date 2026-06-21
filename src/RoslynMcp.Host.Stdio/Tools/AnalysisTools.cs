@@ -435,7 +435,7 @@ public static class AnalysisTools
         "Tokenization rule for `identifiers` scope: the regex is applied to one C#-lexer identifier token at a time. Dotted member-access expressions are MULTIPLE tokens (e.g. `Task.Run` is `Task` / `.` / `Run`), so a pattern like `Task\\.Run` will match 0 results under `scope=\"identifiers\"`. " +
         "Recoverable patterns: (a) issue two separate calls — `pattern=\"^Task$\"` and `pattern=\"^Run$\"`, both `scope=\"identifiers\"` — and intersect the hits client-side by (filePath, line); (b) use `scope=\"all\"` with a prose-fragment pattern when the dotted text also appears in a comment or string literal (trade-off: `all` also matches inside comments/strings, so it may surface non-code references). " +
         "Per-document regex evaluation is hard-capped at 2 seconds; tokens that trigger a timeout are silently skipped rather than failing the call — use simpler patterns if results seem incomplete on large files. " +
-        "Optional `projectFilter` restricts the walk by Project.Name. Hard-capped at 500 hits per call to bound response size — narrow `pattern` or `projectFilter` if hits are truncated. " +
+        "Optional `projectName` restricts the walk by Project.Name. Hard-capped at 500 hits per call to bound response size — narrow `pattern` or `projectName` if hits are truncated. " +
         "Paginated via offset/limit — callers should iterate until hasMore=false. totalCount counts all hits up to the 500-hit hard cap (collection ceiling, decoupled from the user-facing page limit); the paged items slice contains only the [offset, offset+limit) window. " +
         "Response shape: { count, totalCount, hasMore, offset, limit, items: [{ filePath, line, column, tokenKind, snippet }] } sorted by ascending file/line/column.")]
     [McpToolMetadata("analysis", "experimental", true, false,
@@ -446,8 +446,8 @@ public static class AnalysisTools
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
         [Description(".NET regex pattern to match against token text.")] string pattern,
         [Description("Token-kind scope: 'identifiers' | 'strings' | 'comments' | 'all'.")] string scope = "identifiers",
-        [Description("Optional: case-sensitive Project.Name filter to scope the walk.")] string? projectFilter = null,
-        [Description("Page size — maximum hits to return per call (default 500). Hits beyond the 500-hit collection ceiling are dropped; narrow pattern or projectFilter if hasMore stays true at offset=500.")] int limit = 500,
+        [Description("Optional: case-sensitive Project.Name filter to scope the walk.")] string? projectName = null,
+        [Description("Page size — maximum hits to return per call (default 500). Hits beyond the 500-hit collection ceiling are dropped; narrow pattern or projectName if hasMore stays true at offset=500.")] int limit = 500,
         [Description("Number of hits to skip before returning results (default: 0).")] int offset = 0,
         CancellationToken ct = default)
     {
@@ -458,7 +458,7 @@ public static class AnalysisTools
             // The user-facing `limit` is the page size, not the collection ceiling — see
             // SemanticGrepHardCap comment. Mirrors find_type_usages / find_reflection_usages
             // which collect-all then Skip/Take client-side.
-            var results = await semanticGrepService.SearchAsync(workspaceId, pattern, scope, projectFilter, SemanticGrepHardCap, c);
+            var results = await semanticGrepService.SearchAsync(workspaceId, pattern, scope, projectName, SemanticGrepHardCap, c);
             var paged = results.Skip(offset).Take(limit).ToList();
             var hasMore = offset + paged.Count < results.Count;
             return JsonSerializer.Serialize(new
