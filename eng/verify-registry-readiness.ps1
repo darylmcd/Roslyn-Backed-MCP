@@ -154,6 +154,8 @@ if ($serverJson) {
             # is intentionally allowed to differ. GitHub auth grants the whole io.github.<owner>/*
             # namespace, so io.github.darylmcd/roslyn-mcp against repo Roslyn-Backed-MCP is valid,
             # not suspect. Only a wrong OWNER is suspicious.
+            # Canonical-URL-only assumption: mcp-publisher registry mandates https://github.com/ URLs;
+            # http://, www., and git@github.com: forms are intentionally rejected.
             if ($serverJson.repository.url -match '^https://github\.com/([a-zA-Z0-9-]+)/') {
                 $urlOwner = $Matches[1]
                 if ($nameOwner -eq $urlOwner) {
