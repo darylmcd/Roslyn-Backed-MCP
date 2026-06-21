@@ -18,6 +18,7 @@ namespace RoslynMcp.Core.Models;
 ///   <item><description><see cref="AnalyzersReady"/> — every required analyzer reference resolved.</description></item>
 ///   <item><description><see cref="WorkspaceErrorCount"/> is zero.</description></item>
 ///   <item><description><see cref="RestoreRequired"/> is false — package-restore inputs still match the loaded assets snapshot.</description></item>
+///   <item><description><see cref="BuildRequired"/> is false — no analyzer build output is missing (remedied by <c>dotnet build</c>, not <c>dotnet restore</c>).</description></item>
 /// </list>
 /// <para>
 /// Pre-bundle the formula was just <c>IsLoaded &amp;&amp; !IsStale &amp;&amp; errors == 0</c>; analyzer-resolution
@@ -43,6 +44,7 @@ public sealed record WorkspaceStatusSummaryDto(
     bool IsReady,
     bool AnalyzersReady,
     bool RestoreRequired,
+    bool BuildRequired,
     string? RestoreHint,
     string? SolutionFileName)
 {
@@ -89,13 +91,15 @@ public sealed record WorkspaceStatusSummaryDto(
         var analyzersReady = unresolvedAnalyzerWarnings == 0 && !vsMsbuildRequired;
         var solutionFileName = GetSolutionOrProjectFileName(status.LoadedPath);
         var restoreRequired = status.RestoreRequired;
-        var isReady = status.IsLoaded && !status.IsStale && analyzersReady && errors == 0 && !restoreRequired;
+        var buildRequired = status.BuildRequired;
+        var isReady = status.IsLoaded && !status.IsStale && analyzersReady && errors == 0 && !restoreRequired && !buildRequired;
         var restoreHint = BuildRestoreHint(
             status.WorkspaceDiagnostics,
             isStale: status.IsStale,
             errors: errors,
             unresolvedAnalyzerWarnings: unresolvedAnalyzerWarnings,
             restoreRequired: restoreRequired,
+            buildRequired: buildRequired,
             vsMsbuildRequired: vsMsbuildRequired);
 
         return new WorkspaceStatusSummaryDto(
@@ -114,15 +118,18 @@ public sealed record WorkspaceStatusSummaryDto(
             IsReady: isReady,
             AnalyzersReady: analyzersReady,
             RestoreRequired: restoreRequired,
+            BuildRequired: buildRequired,
             RestoreHint: restoreHint,
             SolutionFileName: solutionFileName);
     }
 
     /// <summary>
     /// Builds an actionable hint string explaining why the workspace is not ready.
-    /// Four cases, in priority order:
+    /// Five cases, in priority order:
     /// <list type="number">
     ///   <item><description>VS-MSBuild required (COM references, .NET Core MSBuild limitation) → tell caller this project needs Visual Studio MSBuild on PATH.</description></item>
+    ///   <item><description>Build required (missing analyzer build output) → suggest <c>dotnet build</c>, NOT <c>dotnet restore</c>.</description></item>
+    ///   <item><description>Restore required (missing NuGet package inputs) → suggest <c>dotnet restore</c>.</description></item>
     ///   <item><description>Unresolved analyzer warnings → tell caller analyzer-driven tools will under-report.</description></item>
     ///   <item><description>Many "could not be found" / CS0234 style errors → suggest <c>dotnet restore</c>.</description></item>
     ///   <item><description>Workspace is stale with no errors → likely transient post-apply; suggest a brief retry before reload.</description></item>
@@ -135,6 +142,7 @@ public sealed record WorkspaceStatusSummaryDto(
         int errors,
         int unresolvedAnalyzerWarnings,
         bool restoreRequired,
+        bool buildRequired,
         bool vsMsbuildRequired)
     {
         // Highest priority: COM references / .NET Core MSBuild limitations cannot be fixed by
@@ -143,6 +151,14 @@ public sealed record WorkspaceStatusSummaryDto(
         if (vsMsbuildRequired)
         {
             return "This project requires Visual Studio MSBuild (e.g. COM references or .NET Framework-only tasks). The .NET Core MSBuild bundled with this server cannot resolve these. Remediation: (a) remove or interop-wrap COM references, or (b) load this project from an environment where msbuild.exe (Visual Studio) is on PATH.";
+        }
+
+        // restore-required-vs-build-conflation: a missing analyzer build output is fixed by
+        // `dotnet build`, not `dotnet restore`. Check it BEFORE restoreRequired so callers do not
+        // get sent into a no-op restore loop.
+        if (buildRequired)
+        {
+            return "Missing analyzer build output (e.g. an analyzer project's dll has not been produced). Run `dotnet build` on the analyzer project, then `workspace_reload`.";
         }
 
         if (restoreRequired)

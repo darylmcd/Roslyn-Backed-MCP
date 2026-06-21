@@ -198,6 +198,7 @@ public sealed class StructuredCallToolFilterResolutionTests
         IsReady: true,
         AnalyzersReady: true,
         RestoreRequired: false,
+        BuildRequired: false,
         RestoreHint: null,
         SolutionFileName: null);
 }
