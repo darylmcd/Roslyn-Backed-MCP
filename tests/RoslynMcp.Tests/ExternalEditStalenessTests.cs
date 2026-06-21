@@ -308,8 +308,9 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
                 // This attempt's bound elapsed without the watcher firing — likely a dropped OS
-                // event. Re-touch the file (appending a fresh marker) to re-arm the watcher, then
-                // re-await. A watcher that never fires across all attempts is a real regression.
+                // event. Re-touch the file (appending file-type-neutral trailing whitespace) to
+                // re-arm the watcher, then re-await. A watcher that never fires across all attempts
+                // is a real regression.
                 if (attempt == WatcherWriteAttempts)
                 {
                     break;
@@ -318,7 +319,7 @@ public sealed class ExternalEditStalenessTests : IsolatedWorkspaceTestBase
                 var current = await File.ReadAllTextAsync(trackedFile, ct).ConfigureAwait(false);
                 await File.WriteAllTextAsync(
                     trackedFile,
-                    current + $"// watcher re-arm {Guid.NewGuid():N}\n",
+                    current + new string(' ', attempt) + "\n",
                     ct).ConfigureAwait(false);
             }
         }
