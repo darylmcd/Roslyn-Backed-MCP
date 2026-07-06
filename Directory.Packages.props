@@ -38,7 +38,7 @@
     <PackageVersion Include="NuGet.Frameworks" Version="6.3.4" />
     <PackageVersion Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.3.0" />
     <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="10.0.301" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="4.14.0" />
+    <PackageVersion Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0" />
     <PackageVersion Include="Nito.AsyncEx" Version="5.1.2" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.102" />
     <!-- Transitive pin: System.Security.Cryptography.Xml 8.0.0 (dragged in via
