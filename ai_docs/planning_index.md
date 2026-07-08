@@ -10,7 +10,7 @@
 - **Cross-project scope:** if the user names another repo, adapter, or ecosystem, say that this repo has no local cross-project planning router and work only from the external context they provided.
 - **MUST:** every planning file carries a scope tag.
 - **MUST (v10):** every plan-bearing file (roadmaps, initiative plans, `plans/<initiative>/` entry points, phase/slice plans) also carries `<!-- artifact: -->` + `<!-- status: -->` markers immediately after the scope tag. `backlog.md` and this index are exempt.
-- **MUST (reachability, v10):** every `artifact: plan|roadmap` + `status: active` file is reachable from the routing table below; every directory under `ai_docs/plans/` is either a timestamped `*_backlog-sweep/` / `*_top5-remediation/` tree or registered in the routing table.
+- **MUST (reachability, v10):** every `artifact: plan|roadmap` + `status: active` file is reachable from the routing table below; every directory under `ai_docs/plans/` is either a timestamped `*_backlog-sweep/` tree or a `*remediation/`-family tree (`*_top-n-remediation/`, and other reconcile-plans-owned variants) or registered in the routing table.
 - **MUST:** reference-scoped planning/support files carry the reference banner.
 - **MUST NOT:** duplicate roadmap or backlog content here.
 - **MUST NOT:** merge in-repo and cross-project recommendations into one answer.
