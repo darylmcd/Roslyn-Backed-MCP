@@ -21,6 +21,7 @@
 | Core Contracts | `src/RoslynMcp.Core/` | DTOs, preview store, gate contracts | `tests/RoslynMcp.Tests/` |
 | Roslyn Services | `src/RoslynMcp.Roslyn/` | `WorkspaceManager`, analysis/refactor services | `tests/RoslynMcp.Tests/` |
 | Plugin Skills (shipped) | `skills/` | `skills/*/SKILL.md` workflows | `eng/verify-skills` (genericity guard) |
+| Release/CI Automation | `eng/` | `verify-registry-readiness.ps1`, `aggregate-promotion-scorecards.ps1`, `process-audit-reports.ps1`, `verify-*.ps1` | `tests/RoslynMcp.Tests/Skills/` |
 
 ## Layer Map
 
