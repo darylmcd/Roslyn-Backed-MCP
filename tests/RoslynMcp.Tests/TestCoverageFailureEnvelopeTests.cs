@@ -140,6 +140,36 @@ public sealed class TestCoverageFailureEnvelopeTests
             "TestFailure is retryable once the test is fixed.");
     }
 
+    /// <summary>
+    /// workspace-fork-apply-robustness-cancellation: genuine caller cancellation (the
+    /// passed-in <c>ct</c> is already cancelled) must propagate as
+    /// <see cref="OperationCanceledException"/> rather than being misreported as the
+    /// <c>Timeout</c> envelope built for the gate's internal timeout. This is the
+    /// inverse of the test above — same simulated exception from the runner, but with
+    /// the caller's own token cancelled beforehand.
+    /// </summary>
+    [TestMethod]
+    public async Task RunTestCoverageCore_CallerCancelled_PropagatesWithoutWrapping()
+    {
+        var gate = new PassthroughGate();
+        var workspace = new FakeWorkspaceManager();
+        var runner = new ThrowingDotnetCommandRunner(new OperationCanceledException("simulated caller cancel"));
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(() =>
+            TestCoverageTools.RunTestCoverageCore(
+                gate,
+                workspace,
+                runner,
+                workspaceId: "ws-coverage-caller-cancelled",
+                projectName: null,
+                deprecation: null,
+                progress: null,
+                ct: cts.Token));
+    }
+
     [TestMethod]
     public async Task RunTestCoverageCore_StatusThrows_EmitsUnknownEnvelope()
     {
