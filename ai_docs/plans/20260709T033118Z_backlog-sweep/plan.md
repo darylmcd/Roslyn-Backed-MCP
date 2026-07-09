@@ -11,16 +11,16 @@
 
 | # | id | status | PR | rows closed |
 |---|----|--------|----|-------------|
-| 1 | security-options-fail-open-default | pending | — | security-options-fail-open-default |
-| 2 | host-analysis-tools-missing-clientroot-path-validation | pending | — | host-analysis-tools-missing-clientroot-path-validation |
-| 3 | host-refactor-tools-root-boundary-validation | pending | — | host-refactor-tools-root-boundary-validation |
-| 4 | workspace-fork-apply-security-hardening | pending | — | workspace-fork-apply-security-hardening |
-| 5 | workspace-fork-apply-robustness-cancellation | pending | — | workspace-fork-apply-robustness-cancellation |
-| 6 | apply-with-verify-cancellation-and-compile-scope | pending | — | apply-with-verify-cancellation-and-compile-scope |
-| 7 | refactoringservice-god-class-decomposition | pending | — | refactoringservice-god-class-decomposition |
-| 8 | refactor-services-duplicate-code-sweep | pending | — | refactor-services-duplicate-code-sweep |
-| 9 | workspace-manager-decompose-restore-and-analyzer-subsystems | pending | — | workspace-manager-decompose-restore-and-analyzer-subsystems |
-| 10 | workspace-validation-service-validateinternal-decompose | pending | — | workspace-validation-service-validateinternal-decompose |
+| 1 | security-options-fail-open-default | merged | [#1033](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1033) | security-options-fail-open-default |
+| 2 | host-analysis-tools-missing-clientroot-path-validation | merged | [#1034](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1034) | host-analysis-tools-missing-clientroot-path-validation |
+| 3 | host-refactor-tools-root-boundary-validation | merged | [#1035](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1035) | host-refactor-tools-root-boundary-validation |
+| 4 | workspace-fork-apply-security-hardening | merged | [#1036](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1036) | workspace-fork-apply-security-hardening |
+| 5 | workspace-fork-apply-robustness-cancellation | merged | [#1037](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1037) | workspace-fork-apply-robustness-cancellation |
+| 6 | apply-with-verify-cancellation-and-compile-scope | merged | [#1038](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1038) | apply-with-verify-cancellation-and-compile-scope |
+| 7 | refactoringservice-god-class-decomposition | merged | [#1039](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1039) | refactoringservice-god-class-decomposition |
+| 8 | refactor-services-duplicate-code-sweep | merged | [#1040](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1040) | refactor-services-duplicate-code-sweep |
+| 9 | workspace-manager-decompose-restore-and-analyzer-subsystems | merged | [#1042](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1042) | workspace-manager-decompose-restore-and-analyzer-subsystems |
+| 10 | workspace-validation-service-validateinternal-decompose | merged | [#1041](https://github.com/darylmcd/Roslyn-Backed-MCP/pull/1041) | workspace-validation-service-validateinternal-decompose |
 <!-- BSWEEP:STATUS-TABLE END -->
 
 ## Initiatives
