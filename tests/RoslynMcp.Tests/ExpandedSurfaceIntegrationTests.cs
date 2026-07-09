@@ -1,4 +1,9 @@
+using System.IO.Pipelines;
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RoslynMcp.Core.Models;
 using RoslynMcp.Host.Stdio.Tools;
 
@@ -415,10 +420,15 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     // for server exercises the same no-capability fail-open branch pinned by
     // ClientRootPathValidatorTests.ValidatePath_NullServer_AllowsAccess — the validator's actual
     // root-matching logic (accept/reject/traversal/case-insensitivity) is exhaustively unit-tested
-    // there via IsPathUnderAnyRoot; a live root-rejection round trip through these tools would
-    // require standing up the SDK's full transport pipeline, which the codebase's existing
-    // precedent (see StructuredCallToolFilterElicitationTests remarks) treats as impractical for a
-    // unit test.
+    // there via IsPathUnderAnyRoot. A live root-rejection round trip through these tools additionally
+    // needs a real McpServer whose ClientCapabilities.Roots is populated — see
+    // CreateServerWithSanctionedRootAsync below, which wires a real McpServer/McpClient pair over an
+    // in-memory duplex pipe (ModelContextProtocol.Server.StreamServerTransport +
+    // ModelContextProtocol.Client.StreamClientTransport) and answers "roots/list" from the client
+    // side, exactly like a real MCP client would. This closes the round-trip gap the
+    // StructuredCallToolFilterElicitationTests remarks call out as impractical for ElicitAsync (which
+    // needs full duplex request/response mid-call); RequestRootsAsync only needs one round trip at
+    // handshake time, which this harness provides cheaply.
     [TestMethod]
     public async Task AnalyzeDataFlow_Returns_Structured_Results()
     {
@@ -472,6 +482,193 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
 
         using var doc = JsonDocument.Parse(json);
         Assert.IsTrue(doc.RootElement.ValueKind == JsonValueKind.Object);
+    }
+
+    // ── Root-rejection regression coverage ───────────────────────────────────
+    // The tests above only exercise the null-server (fail-open, no-capability) branch.
+    // These pin the other half of the contract: when the client DOES advertise roots and
+    // the requested filePath falls outside every sanctioned root, ValidatePathAgainstRootsAsync
+    // must reject it — for all 5 endpoints this initiative touched.
+
+    [TestMethod]
+    public async Task GetCodeActions_Rejects_FilePath_Outside_SanctionedRoot()
+    {
+        var filePath = FindDocumentPath("AnimalService.cs");
+        var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
+        await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
+
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => CodeActionTools.GetCodeActions(
+            harness.Server,
+            WorkspaceExecutionGate,
+            CodeActionService,
+            WorkspaceId,
+            filePath,
+            startLine: 1,
+            startColumn: 1,
+            endLine: null,
+            endColumn: null,
+            CancellationToken.None));
+        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+    }
+
+    [TestMethod]
+    public async Task PreviewCodeAction_Rejects_FilePath_Outside_SanctionedRoot()
+    {
+        var filePath = FindDocumentPath("AnimalService.cs");
+        var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
+        await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
+
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => CodeActionTools.PreviewCodeAction(
+            harness.Server,
+            WorkspaceExecutionGate,
+            CodeActionService,
+            WorkspaceId,
+            filePath,
+            startLine: 1,
+            startColumn: 1,
+            actionIndex: 0,
+            endLine: null,
+            endColumn: null,
+            CancellationToken.None));
+        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+    }
+
+    [TestMethod]
+    public async Task AnalyzeDataFlow_Rejects_FilePath_Outside_SanctionedRoot()
+    {
+        var filePath = FindDocumentPath("AnimalService.cs");
+        var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
+        await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
+
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => FlowAnalysisTools.AnalyzeDataFlow(
+            harness.Server,
+            WorkspaceExecutionGate,
+            FlowAnalysisService,
+            WorkspaceId,
+            filePath,
+            startLine: 32,
+            endLine: 37,
+            CancellationToken.None));
+        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+    }
+
+    [TestMethod]
+    public async Task AnalyzeControlFlow_Rejects_FilePath_Outside_SanctionedRoot()
+    {
+        var filePath = FindDocumentPath("AnimalService.cs");
+        var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
+        await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
+
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => FlowAnalysisTools.AnalyzeControlFlow(
+            harness.Server,
+            WorkspaceExecutionGate,
+            FlowAnalysisService,
+            WorkspaceId,
+            filePath,
+            startLine: 32,
+            endLine: 37,
+            CancellationToken.None));
+        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+    }
+
+    [TestMethod]
+    public async Task GetOperations_Rejects_FilePath_Outside_SanctionedRoot()
+    {
+        var filePath = FindDocumentPath("AnimalService.cs");
+        var sanctionedRoot = CreateUnrelatedSanctionedRootDirectory();
+        await using var harness = await CreateServerWithSanctionedRootAsync(sanctionedRoot, CancellationToken.None);
+
+        var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() => OperationTools.GetOperations(
+            harness.Server,
+            WorkspaceExecutionGate,
+            OperationService,
+            WorkspaceId,
+            filePath,
+            line: 27,
+            column: 16,
+            maxDepth: 3,
+            CancellationToken.None));
+        StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+    }
+
+    /// <summary>
+    /// Returns a fresh temp directory guaranteed to NOT be an ancestor of the shared sample
+    /// workspace's files (which live under the repository's fixture tree), so any document
+    /// path resolved via <see cref="FindDocumentPath(string)"/> falls outside it.
+    /// </summary>
+    private static string CreateUnrelatedSanctionedRootDirectory()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "rmcp-sanctioned-root-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    /// <summary>
+    /// Wires a real <see cref="McpServer"/> to a real <see cref="McpClient"/> over an in-memory
+    /// duplex pipe so <c>server.ClientCapabilities.Roots</c> is genuinely populated (via the MCP
+    /// initialize handshake) and <c>server.RequestRootsAsync</c> genuinely round-trips to a client
+    /// that advertises <paramref name="sanctionedRoot"/> as its only root — a live analogue of what
+    /// <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/> talks to in production,
+    /// rather than a hand-rolled fake. Dispose the returned harness to tear down the client and stop
+    /// the server's receive loop.
+    /// </summary>
+    private static async Task<ServerWithSanctionedRootHarness> CreateServerWithSanctionedRootAsync(
+        string sanctionedRoot, CancellationToken ct)
+    {
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+
+        var serverTransport = new StreamServerTransport(
+            clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream(), "test-server", NullLoggerFactory.Instance);
+        var server = McpServer.Create(serverTransport, new McpServerOptions(), NullLoggerFactory.Instance, null);
+        var cts = new CancellationTokenSource();
+        var serverRunTask = server.RunAsync(cts.Token);
+
+        var clientTransport = new StreamClientTransport(
+            clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream(), NullLoggerFactory.Instance);
+        var rootUri = new Uri(sanctionedRoot).AbsoluteUri;
+
+        var client = await McpClient.CreateAsync(
+            clientTransport,
+            new McpClientOptions
+            {
+                Capabilities = new ClientCapabilities { Roots = new RootsCapability() },
+                Handlers = new McpClientHandlers
+                {
+                    RootsHandler = (_, _) => ValueTask.FromResult(new ListRootsResult
+                    {
+                        Roots = [new Root { Uri = rootUri }],
+                    }),
+                },
+            },
+            NullLoggerFactory.Instance,
+            ct).ConfigureAwait(false);
+
+        return new ServerWithSanctionedRootHarness(server, client, cts, serverRunTask);
+    }
+
+    private sealed class ServerWithSanctionedRootHarness(
+        McpServer server, McpClient client, CancellationTokenSource cts, Task serverRunTask) : IAsyncDisposable
+    {
+        public McpServer Server { get; } = server;
+
+        public async ValueTask DisposeAsync()
+        {
+            await client.DisposeAsync().ConfigureAwait(false);
+            cts.Cancel();
+            try
+            {
+                await serverRunTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected — cancelling the server's receive loop surfaces as this.
+            }
+            finally
+            {
+                cts.Dispose();
+            }
+        }
     }
 
     [TestMethod]
