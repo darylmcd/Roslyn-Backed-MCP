@@ -153,7 +153,7 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
 
         var json = await ApplyWithVerifyTool.ApplyWithVerify(
             WorkspaceExecutionGate, RefactoringService, CompileCheckService, UndoService, PreviewStore,
-            preview.PreviewToken, rollbackOnError: true, CancellationToken.None);
+            preview.PreviewToken, rollbackOnError: true, ct: CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         var status = doc.RootElement.GetProperty("status").GetString();
@@ -209,7 +209,7 @@ public sealed class Top10V2RegressionTests : IsolatedWorkspaceTestBase
         // returns status="applied".
         var json = await ApplyWithVerifyTool.ApplyWithVerify(
             WorkspaceExecutionGate, RefactoringService, CompileCheckService, UndoService, PreviewStore,
-            preview.PreviewToken, rollbackOnError: true, CancellationToken.None);
+            preview.PreviewToken, rollbackOnError: true, ct: CancellationToken.None);
 
         using var doc = JsonDocument.Parse(json);
         var status = doc.RootElement.GetProperty("status").GetString();
