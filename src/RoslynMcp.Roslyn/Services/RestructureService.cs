@@ -77,9 +77,9 @@ public sealed class RestructureService : IRestructureService
         var changes = new List<FileChangeDto>();
         var totalMatches = 0;
 
-        foreach (var project in EnumerateProjects(solution, scope))
+        foreach (var project in SolutionScopeHelper.EnumerateProjects(solution, scope))
         {
-            foreach (var document in EnumerateDocuments(project, scope))
+            foreach (var document in SolutionScopeHelper.EnumerateDocuments(project, scope))
             {
                 ct.ThrowIfCancellationRequested();
                 var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
@@ -157,9 +157,9 @@ public sealed class RestructureService : IRestructureService
         var changes = new List<FileChangeDto>();
         var totalMatches = 0;
 
-        foreach (var project in EnumerateProjects(inputSolution, scope))
+        foreach (var project in SolutionScopeHelper.EnumerateProjects(inputSolution, scope))
         {
-            foreach (var document in EnumerateDocuments(project, scope))
+            foreach (var document in SolutionScopeHelper.EnumerateDocuments(project, scope))
             {
                 ct.ThrowIfCancellationRequested();
                 var root = await document.GetSyntaxRootAsync(ct).ConfigureAwait(false);
@@ -240,34 +240,6 @@ public sealed class RestructureService : IRestructureService
 
         name = string.Empty;
         return false;
-    }
-
-    private static IEnumerable<Project> EnumerateProjects(Solution solution, RestructureScope scope)
-    {
-        if (!string.IsNullOrWhiteSpace(scope.ProjectName))
-        {
-            var match = solution.Projects.FirstOrDefault(p =>
-                string.Equals(p.Name, scope.ProjectName, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(p.FilePath, scope.ProjectName, StringComparison.OrdinalIgnoreCase));
-            if (match is null)
-                throw new InvalidOperationException($"Project '{scope.ProjectName}' not found in workspace.");
-            return [match];
-        }
-        return solution.Projects;
-    }
-
-    private static IEnumerable<Document> EnumerateDocuments(Project project, RestructureScope scope)
-    {
-        if (!string.IsNullOrWhiteSpace(scope.FilePath))
-        {
-            var fullPath = Path.GetFullPath(scope.FilePath);
-            var doc = project.Documents.FirstOrDefault(d =>
-                string.Equals(d.FilePath, fullPath, StringComparison.OrdinalIgnoreCase));
-            return doc is null ? [] : [doc];
-        }
-        return project.Documents.Where(d =>
-            !string.IsNullOrEmpty(d.FilePath) &&
-            string.Equals(Path.GetExtension(d.FilePath), ".cs", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -442,5 +414,43 @@ public sealed class RestructureService : IRestructureService
                 return base.VisitIdentifierName(node);
             }
         }
+    }
+}
+
+/// <summary>
+/// Resolves the project/document set a <see cref="RestructureScope"/> selects. Shared by
+/// <see cref="RestructureService"/> and <see cref="StringLiteralReplaceService"/>, which both
+/// scope solution-wide sweeps the same way. Kept in this file (rather than a dedicated one) to
+/// stay within the sweep's production-file budget; promote to its own file if a third consumer
+/// appears.
+/// </summary>
+internal static class SolutionScopeHelper
+{
+    public static IEnumerable<Project> EnumerateProjects(Solution solution, RestructureScope scope)
+    {
+        if (!string.IsNullOrWhiteSpace(scope.ProjectName))
+        {
+            var match = solution.Projects.FirstOrDefault(p =>
+                string.Equals(p.Name, scope.ProjectName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(p.FilePath, scope.ProjectName, StringComparison.OrdinalIgnoreCase));
+            if (match is null)
+                throw new InvalidOperationException($"Project '{scope.ProjectName}' not found in workspace.");
+            return [match];
+        }
+        return solution.Projects;
+    }
+
+    public static IEnumerable<Document> EnumerateDocuments(Project project, RestructureScope scope)
+    {
+        if (!string.IsNullOrWhiteSpace(scope.FilePath))
+        {
+            var fullPath = Path.GetFullPath(scope.FilePath);
+            var doc = project.Documents.FirstOrDefault(d =>
+                string.Equals(d.FilePath, fullPath, StringComparison.OrdinalIgnoreCase));
+            return doc is null ? [] : [doc];
+        }
+        return project.Documents.Where(d =>
+            !string.IsNullOrEmpty(d.FilePath) &&
+            string.Equals(Path.GetExtension(d.FilePath), ".cs", StringComparison.OrdinalIgnoreCase));
     }
 }
