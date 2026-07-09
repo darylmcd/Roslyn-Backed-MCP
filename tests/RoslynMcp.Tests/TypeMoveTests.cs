@@ -1,3 +1,5 @@
+using RoslynMcp.Host.Stdio.Tools;
+
 namespace RoslynMcp.Tests;
 
 [TestClass]
@@ -8,6 +10,41 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    // host-refactor-tools-root-boundary-validation: move_type_to_file_preview now calls
+    // ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, sourceFilePath, ct) before
+    // dispatching to the service, mirroring GetSyntaxTree/GetCodeActions. Passing server: null!
+    // exercises the no-MCP-server-context fail-open branch pinned by
+    // ClientRootPathValidatorTests.ValidatePath_NullServer_AllowsAccess — see the parallel
+    // comment on TypeExtractionTests.PreviewExtractType_Tool_NullServer_AllowsAccess_And_ProducesPreview
+    // for why a live root-rejection round trip is out of scope for a unit test here.
+    [TestMethod]
+    public async Task PreviewMoveTypeToFile_Tool_NullServer_AllowsAccess_And_ProducesPreview()
+    {
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var catFile = workspace.GetPath("SampleLib", "Cat.cs");
+        File.AppendAllText(catFile, "\npublic class ToolPreviewKitten : IAnimal\n{\n    public string Name => \"ToolKitten\";\n    public string Speak() => \"Mew\";\n}\n");
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var doc = WorkspaceManager.GetCurrentSolution(wsId)
+            .Projects.SelectMany(p => p.Documents)
+            .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
+
+        var json = await TypeMoveTools.PreviewMoveTypeToFile(
+            null!,
+            WorkspaceExecutionGate,
+            TypeMoveService,
+            wsId,
+            doc.FilePath!,
+            "ToolPreviewKitten",
+            null,
+            CancellationToken.None);
+
+        Assert.IsFalse(string.IsNullOrWhiteSpace(json));
+        StringAssert.Contains(json, "previewToken");
+    }
 
     [TestMethod]
     public async Task MoveType_FromMultiTypeFile_CreatesPreview()

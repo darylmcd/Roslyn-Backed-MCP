@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -23,6 +24,7 @@ public static class TypeMoveTools
         "Preview moving a type declaration into its own file."),
      Description("Preview moving a type declaration from a multi-type file into its own dedicated file within the same project. Requires the source file to contain at least two top-level types; for single-type rename/move operations use move_file_preview instead.")]
     public static Task<string> PreviewMoveTypeToFile(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         ITypeMoveService typeMoveService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -30,11 +32,14 @@ public static class TypeMoveTools
         [Description("Name of the type to move")] string typeName,
         [Description("Optional: target file path. If omitted, defaults to {TypeName}.cs in the same directory")] string? targetFilePath = null,
         CancellationToken ct = default)
-        => ToolDispatch.ReadByWorkspaceIdAsync(
-            gate,
-            workspaceId,
-            c => typeMoveService.PreviewMoveTypeToFileAsync(workspaceId, sourceFilePath, typeName, targetFilePath, c),
-            ct);
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, sourceFilePath, c).ConfigureAwait(false);
+            var dto = await typeMoveService.PreviewMoveTypeToFileAsync(workspaceId, sourceFilePath, typeName, targetFilePath, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
+    }
 
     [McpServerTool(Name = "move_type_to_file_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", false, true,

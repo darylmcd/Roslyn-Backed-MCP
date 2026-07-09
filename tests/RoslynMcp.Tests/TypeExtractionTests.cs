@@ -1,3 +1,5 @@
+using RoslynMcp.Host.Stdio.Tools;
+
 namespace RoslynMcp.Tests;
 
 [TestClass]
@@ -8,6 +10,63 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 
     [ClassCleanup]
     public static void ClassCleanup() => DisposeServices();
+
+    // host-refactor-tools-root-boundary-validation: extract_type_preview now calls
+    // ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, ct) before
+    // dispatching to the service, mirroring GetSyntaxTree/GetCodeActions. Passing server: null!
+    // exercises the no-MCP-server-context fail-open branch pinned by
+    // ClientRootPathValidatorTests.ValidatePath_NullServer_AllowsAccess — the validator's actual
+    // root-matching logic (accept/reject/traversal/case-insensitivity) is exhaustively unit-tested
+    // there via IsPathUnderAnyRoot. A live root-rejection round trip through the tool would require
+    // standing up the SDK's full transport pipeline to populate McpServer.ClientCapabilities.Roots,
+    // which the existing precedent (ExpandedSurfaceIntegrationTests' AnalyzeDataFlow/
+    // AnalyzeControlFlow/GetOperations coverage) treats as impractical for a unit test.
+    [TestMethod]
+    public async Task PreviewExtractType_Tool_NullServer_AllowsAccess_And_ProducesPreview()
+    {
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "ExtractTypeToolFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class ExtractTypeToolFixture",
+                "{",
+                "    public int InternalUser() => Compute(42);",
+                "    private int Compute(int x) => x * 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        try
+        {
+            var json = await TypeExtractionTools.PreviewExtractType(
+                null!,
+                WorkspaceExecutionGate,
+                TypeExtractionService,
+                wsId,
+                fixturePath,
+                "ExtractTypeToolFixture",
+                ["Compute"],
+                "ComputeHelper",
+                null,
+                CancellationToken.None);
+
+            Assert.IsFalse(string.IsNullOrWhiteSpace(json));
+            StringAssert.Contains(json, "previewToken");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+        }
+    }
 
     [TestMethod]
     public async Task ExtractType_FromAnimalService_RefusesWhenExternalConsumersExist()
