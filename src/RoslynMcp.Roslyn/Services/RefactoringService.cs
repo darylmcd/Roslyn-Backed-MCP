@@ -744,6 +744,25 @@ public sealed class RefactoringService : IRefactoringService
         var previewChanges = modifiedSolution.GetChanges(originalSolution);
         var rebased = currentSolution;
 
+        // Precompute a FilePath -> DocumentId index over the current solution once, so the
+        // cross-lineage changed-document fallback below is an O(1) dictionary lookup instead of
+        // an O(total-docs) SelectMany scan per changed document (previously O(changed-docs ×
+        // total-docs) on this apply-path hot function). Keyed OrdinalIgnoreCase to match the
+        // prior scan's comparison; first occurrence wins to mirror FirstOrDefault when the same
+        // FilePath is linked into multiple projects.
+        var currentDocumentsByPath = new Dictionary<string, DocumentId>(StringComparer.OrdinalIgnoreCase);
+        foreach (var project in currentSolution.Projects)
+        {
+            foreach (var currentDocument in project.Documents)
+            {
+                if (!string.IsNullOrWhiteSpace(currentDocument.FilePath)
+                    && !currentDocumentsByPath.ContainsKey(currentDocument.FilePath))
+                {
+                    currentDocumentsByPath[currentDocument.FilePath] = currentDocument.Id;
+                }
+            }
+        }
+
         foreach (var projectChange in previewChanges.GetProjectChanges())
         {
             foreach (var docId in projectChange.GetChangedDocuments())
@@ -758,11 +777,10 @@ public sealed class RefactoringService : IRefactoringService
                 // current workspace still has the same DocumentId, apply the text directly;
                 // otherwise match on FilePath (the canonical cross-lineage key).
                 var currentDoc = rebased.GetDocument(docId);
-                if (currentDoc is null && !string.IsNullOrWhiteSpace(doc.FilePath))
+                if (currentDoc is null && !string.IsNullOrWhiteSpace(doc.FilePath)
+                    && currentDocumentsByPath.TryGetValue(doc.FilePath, out var matchedDocId))
                 {
-                    currentDoc = rebased.Projects
-                        .SelectMany(project => project.Documents)
-                        .FirstOrDefault(candidate => string.Equals(candidate.FilePath, doc.FilePath, StringComparison.OrdinalIgnoreCase));
+                    currentDoc = rebased.GetDocument(matchedDocId);
                 }
 
                 if (currentDoc is null)
@@ -1287,7 +1305,7 @@ public sealed class RefactoringService : IRefactoringService
                 continue;
             }
 
-            GetOrCreateItemGroup(document, "ProjectReference")
+            OrchestrationMsBuildXml.GetOrCreateItemGroup(document, "ProjectReference")
                 .Add(new XElement("ProjectReference", new XAttribute("Include", relativePath)));
             changed = true;
         }
@@ -1324,20 +1342,6 @@ public sealed class RefactoringService : IRefactoringService
 
         await File.WriteAllTextAsync(modifiedProject.FilePath, document.ToString(SaveOptions.DisableFormatting), ct).ConfigureAwait(false);
         appliedFiles.Add(modifiedProject.FilePath);
-    }
-
-    private static XElement GetOrCreateItemGroup(XDocument document, string itemName)
-    {
-        var existingGroup = document.Root?.Elements("ItemGroup")
-            .FirstOrDefault(group => group.Elements(itemName).Any());
-        if (existingGroup is not null)
-        {
-            return existingGroup;
-        }
-
-        var itemGroup = new XElement("ItemGroup");
-        document.Root?.Add(itemGroup);
-        return itemGroup;
     }
 
     private static string NormalizeInclude(string? include)
