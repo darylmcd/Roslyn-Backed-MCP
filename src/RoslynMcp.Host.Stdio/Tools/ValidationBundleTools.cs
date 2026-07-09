@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -47,6 +48,14 @@ public static class ValidationBundleTools
     // The exact wire format CreateForkDirectory stamps as the fork-directory-name prefix.
     // Quoted 'T'/'Z' so the literals are matched (not interpreted) on the parse side.
     private const string ForkTimestampFormat = "yyyyMMdd'T'HHmmssfff'Z'";
+
+    // workspace-fork-apply-robustness-cancellation: serialize concurrent fork-apply
+    // invocations against the same source root. Without this, two concurrent
+    // workspace_fork_apply calls for the same workspace race on CopyDirectory /
+    // DeleteDirectoryIfExists against the same <sourceRoot>/.roslynmcp/forks tree.
+    // Keyed by the normalized (full-path, case-insensitive-on-Windows) source root.
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> ForkApplyLocks =
+        new(StringComparer.OrdinalIgnoreCase);
 
     [McpServerTool(Name = "validate_workspace", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
      McpToolMetadata("validation", "experimental", true, false,
@@ -164,9 +173,13 @@ public static class ValidationBundleTools
             var retained = false;
             var success = false;
 
+            var sourceRootLock = ForkApplyLocks.GetOrAdd(
+                Path.GetFullPath(sourceRoot),
+                _ => new SemaphoreSlim(1, 1));
+            await sourceRootLock.WaitAsync(c).ConfigureAwait(false);
             try
             {
-                CopyDirectory(sourceRoot, forkPath);
+                CopyDirectory(sourceRoot, forkPath, c);
                 var appliedFiles = await ReplayPreviewIntoForkAsync(
                     entry.Value.OriginalSolution,
                     entry.Value.ModifiedSolution,
@@ -198,7 +211,7 @@ public static class ValidationBundleTools
 
                 if (!retained)
                 {
-                    CleanupFork(workspaceManager, forkWorkspaceId, forkPath, cleanupWarnings);
+                    CleanupFork(workspaceManager, forkWorkspaceId, forkPath, cleanupWarnings, c);
                     forkWorkspaceId = null;
                 }
 
@@ -223,9 +236,16 @@ public static class ValidationBundleTools
             {
                 if (!retained)
                 {
-                    CleanupFork(workspaceManager, forkWorkspaceId, forkPath, cleanupWarnings);
+                    // Best-effort cleanup on the exception path: use CancellationToken.None so
+                    // an already-cancelled `c` does not abort cleanup and mask the original
+                    // exception with an OperationCanceledException from mid-delete.
+                    CleanupFork(workspaceManager, forkWorkspaceId, forkPath, cleanupWarnings, CancellationToken.None);
                 }
                 throw;
+            }
+            finally
+            {
+                sourceRootLock.Release();
             }
         }, ct, applyStalenessPolicy: false);
     }
@@ -339,7 +359,7 @@ public static class ValidationBundleTools
             {
                 try
                 {
-                    DeleteDirectoryIfExists(dir);
+                    DeleteDirectoryIfExists(dir, CancellationToken.None);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
@@ -397,12 +417,14 @@ public static class ValidationBundleTools
         return slug.Length <= 40 ? slug : slug[..40];
     }
 
-    internal static void CopyDirectory(string sourceDir, string destinationDir)
+    internal static void CopyDirectory(string sourceDir, string destinationDir, CancellationToken ct)
     {
         Directory.CreateDirectory(destinationDir);
 
         foreach (var file in Directory.EnumerateFiles(sourceDir))
         {
+            ct.ThrowIfCancellationRequested();
+
             // workspace-fork-apply-security-hardening: never copy secret-bearing files into a
             // server-writable fork dir. This is a denylist (known secret filename shapes), not an
             // allowlist — see IsSecretBearingFile for the documented limitation.
@@ -417,12 +439,13 @@ public static class ValidationBundleTools
 
         foreach (var directory in Directory.EnumerateDirectories(sourceDir))
         {
+            ct.ThrowIfCancellationRequested();
             if (DirectoryCopyExclusions.Contains(Path.GetFileName(directory)))
             {
                 continue;
             }
 
-            CopyDirectory(directory, Path.Combine(destinationDir, Path.GetFileName(directory)));
+            CopyDirectory(directory, Path.Combine(destinationDir, Path.GetFileName(directory)), ct);
         }
     }
 
@@ -613,7 +636,8 @@ public static class ValidationBundleTools
         IWorkspaceManager workspaceManager,
         string? forkWorkspaceId,
         string forkPath,
-        List<string> cleanupWarnings)
+        List<string> cleanupWarnings,
+        CancellationToken ct)
     {
         try
         {
@@ -629,7 +653,7 @@ public static class ValidationBundleTools
 
         try
         {
-            DeleteDirectoryIfExists(forkPath);
+            DeleteDirectoryIfExists(forkPath, ct);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -637,7 +661,7 @@ public static class ValidationBundleTools
         }
     }
 
-    private static void DeleteDirectoryIfExists(string path)
+    private static void DeleteDirectoryIfExists(string path, CancellationToken ct)
     {
         if (!Directory.Exists(path))
         {
@@ -646,6 +670,7 @@ public static class ValidationBundleTools
 
         foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
         {
+            ct.ThrowIfCancellationRequested();
             var attributes = File.GetAttributes(file);
             if ((attributes & FileAttributes.ReadOnly) != 0)
             {

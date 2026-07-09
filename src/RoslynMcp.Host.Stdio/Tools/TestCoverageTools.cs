@@ -96,6 +96,14 @@ public static class TestCoverageTools
                     TryDeleteCoverageDir(coverageDir);
                 }
             }
+            catch (OperationCanceledException) when (c.IsCancellationRequested)
+            {
+                // Genuine caller cancellation (not the gate's internal timeout) must propagate
+                // as OperationCanceledException rather than being misreported as a timeout
+                // envelope — mirrors the split pattern in
+                // ValidationBundleTools.RestoreForkAsync.
+                throw;
+            }
             catch (OperationCanceledException)
             {
                 // OCE-first ordering: if the generic Exception catch is ordered first the
