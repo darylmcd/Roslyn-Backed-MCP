@@ -63,6 +63,17 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
     /// for failure-path testing via <see cref="WorkspaceSessionLoader"/>'s virtual surface.
     /// </summary>
     private readonly WorkspaceSessionLoader _sessionLoader;
+    /// <summary>
+    /// workspace-manager-decompose-restore-and-analyzer-subsystems: restore-staleness detection
+    /// (restore-race wait + package-version drift check), extracted alongside
+    /// <see cref="_analyzerReferenceStripper"/> so the concern is independently testable.
+    /// </summary>
+    private readonly RestoreStalenessDetector _restoreStalenessDetector;
+    /// <summary>
+    /// workspace-manager-decompose-restore-and-analyzer-subsystems: unresolved-analyzer-
+    /// reference stripping, extracted from <see cref="LoadIntoSessionAsync"/>.
+    /// </summary>
+    private readonly UnresolvedAnalyzerReferenceStripper _analyzerReferenceStripper;
     private readonly ConcurrentDictionary<string, WorkspaceSession> _sessions = new(StringComparer.Ordinal);
     /// <summary>
     /// mcp-error-category-workspace-evicted-on-host-recycle + workspace-id-recovery-hints:
@@ -116,6 +127,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _options = options ?? new WorkspaceManagerOptions();
         _cacheCoordinator = cacheStore is null ? null : new WorkspaceCacheCoordinator(cacheStore, logger);
         _sessionLoader = sessionLoader ?? new WorkspaceSessionLoader();
+        _restoreStalenessDetector = new RestoreStalenessDetector();
+        _analyzerReferenceStripper = new UnresolvedAnalyzerReferenceStripper();
         var max = _options.MaxConcurrentWorkspaces > 0 ? _options.MaxConcurrentWorkspaces : 8;
         _workspaceSlots = new SemaphoreSlim(max, max);
     }
@@ -850,7 +863,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             var skipRestoreRaceWait = cachedProbe is not null && cachedProbe.MetadataReferencesStillStable;
             if (!skipRestoreRaceWait)
             {
-                await WaitForStableRestoreArtifactsAsync(path, ct).ConfigureAwait(false);
+                await _restoreStalenessDetector.WaitForStableRestoreArtifactsAsync(path, _options.RestoreRaceWaitMs, _logger, ct).ConfigureAwait(false);
             }
 
             // workspace-manager-loadintosession-split: delegate MSBuild creation + global-
@@ -871,7 +884,7 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // Compilation.GetDiagnostics, and Roslyn-internal switches over AnalyzerReference
             // subtypes throw "Unexpected value 'UnresolvedAnalyzerReference'" otherwise. The
             // earlier per-service guards in CompilationCache/FixAllService are now unnecessary.
-            await StripUnresolvedAnalyzerReferencesAsync(session.WorkspaceId, newWorkspace, diagnosticsSink.Queue, ct).ConfigureAwait(false);
+            await _analyzerReferenceStripper.StripAsync(session.WorkspaceId, newWorkspace, diagnosticsSink.Queue, MaxDiagnosticsPerWorkspace, _logger, ct).ConfigureAwait(false);
 
             // workspace-load-uses-cache-fast-path: capture the post-load project graph + per-
             // project metadata-reference list for cache write-back. Building the graph first
@@ -882,13 +895,13 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             // and (b) metadata-reference timestamps still match disk. Either mismatch downgrades
             // the result to a cache miss and writes a fresh entry.
             var projectStatuses = BuildProjectStatuses(newWorkspace.CurrentSolution);
-            var restoreRequired = DetectRestoreRequired(projectStatuses) ||
-                                  HasRestoreRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
+            var restoreRequired = _restoreStalenessDetector.DetectRestoreRequired(projectStatuses, _logger) ||
+                                  RestoreStalenessDetector.HasRestoreRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
             // restore-required-vs-build-conflation: an unresolved-analyzer warning is a missing
             // BUILD output, distinct from a missing NuGet package. Track it separately so the
             // summary hint, readiness verdict, and autoRestore gate route to `dotnet build`
             // rather than a no-op `dotnet restore`.
-            var buildRequired = HasBuildRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
+            var buildRequired = RestoreStalenessDetector.HasBuildRequiredWorkspaceDiagnostics(diagnosticsSink.Queue);
 
             if (_cacheCoordinator is not null && cachedProbe is not null)
             {
@@ -947,629 +960,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
             }
             session.LoadLock.Release();
         }
-    }
-
-    /// <summary>
-    /// Interval between mtime samples inside the restore-race stability probe. Chosen so the
-    /// stable window is roughly 250 ms (two samples separated by this interval) — long enough
-    /// that a `dotnet restore` in its final write phase cannot squeeze an asset rewrite inside
-    /// it, short enough that a no-op pre-check returns within ~1.5 × <c>StableWindowMs</c>.
-    /// </summary>
-    private const int RestoreRaceSampleIntervalMs = 125;
-
-    /// <summary>
-    /// Required stable window (in milliseconds) that every detected restore artefact must
-    /// hold its mtime for before <see cref="LoadIntoSessionAsync"/> hands the solution to
-    /// MSBuild. Two consecutive samples separated by <see cref="RestoreRaceSampleIntervalMs"/>
-    /// produce a ~250 ms window.
-    /// </summary>
-    private const int RestoreRaceStableWindowMs = 250;
-
-    /// <summary>
-    /// dr-9-10-initial-does-not-wait-for-concurrent-to-finaliz — best-effort wait for a
-    /// concurrent out-of-process <c>dotnet restore</c> to finish before MSBuild opens the
-    /// solution.
-    /// </summary>
-    /// <remarks>
-    /// Enumerates <c>obj/project.assets.json</c> and <c>obj/*.dgspec.json</c> under the
-    /// workspace root, polls their <see cref="File.GetLastWriteTimeUtc"/>, and returns once
-    /// every file's mtime has been stable for
-    /// <see cref="RestoreRaceStableWindowMs"/> ms — or the
-    /// <see cref="WorkspaceManagerOptions.RestoreRaceWaitMs"/> cap fires. No-op when the cap
-    /// is zero, when no artefacts exist (typical on a pristine checkout before first build),
-    /// or when all artefacts are already stable on the first sample (typical on a healthy
-    /// load after a completed restore).
-    /// </remarks>
-    private async Task WaitForStableRestoreArtifactsAsync(string fullPath, CancellationToken ct)
-    {
-        var capMs = _options.RestoreRaceWaitMs;
-        if (capMs <= 0)
-        {
-            return;
-        }
-
-        var rootDirectory = Path.GetDirectoryName(fullPath);
-        if (string.IsNullOrWhiteSpace(rootDirectory) || !Directory.Exists(rootDirectory))
-        {
-            return;
-        }
-
-        // Enumerate each project's obj/ directory artefacts once up-front and track their
-        // timestamps in a small dictionary. EnumerateFiles is recursive but bounded by the
-        // solution's own directory tree, so on real solutions this is a few dozen tiny stats.
-        var artefacts = EnumerateRestoreArtefacts(rootDirectory);
-        if (artefacts.Count == 0)
-        {
-            return;
-        }
-
-        var deadline = DateTime.UtcNow.AddMilliseconds(capMs);
-        var lastSnapshot = new Dictionary<string, DateTime>(artefacts.Count, StringComparer.OrdinalIgnoreCase);
-        var stableSince = new Dictionary<string, DateTime>(artefacts.Count, StringComparer.OrdinalIgnoreCase);
-
-        // Seed the snapshot. A file that does not exist yet is tracked as DateTime.MinValue
-        // so the stability check catches the "appears mid-poll" case (restore creating the
-        // first project.assets.json while we race it).
-        var seedNow = DateTime.UtcNow;
-        foreach (var path in artefacts)
-        {
-            lastSnapshot[path] = SafeGetLastWriteTimeUtc(path);
-            stableSince[path] = seedNow;
-        }
-
-        while (true)
-        {
-            ct.ThrowIfCancellationRequested();
-
-            var now = DateTime.UtcNow;
-            var allStable = true;
-
-            foreach (var path in artefacts)
-            {
-                var currentMtime = SafeGetLastWriteTimeUtc(path);
-                if (currentMtime != lastSnapshot[path])
-                {
-                    // Mtime moved — reset the stability window for this file.
-                    lastSnapshot[path] = currentMtime;
-                    stableSince[path] = now;
-                    allStable = false;
-                    continue;
-                }
-
-                if ((now - stableSince[path]).TotalMilliseconds < RestoreRaceStableWindowMs)
-                {
-                    allStable = false;
-                }
-            }
-
-            if (allStable)
-            {
-                return;
-            }
-
-            if (now >= deadline)
-            {
-                _logger.LogWarning(
-                    "workspace_load: restore-race wait hit {CapMs} ms cap for '{Path}' without reaching a stable mtime window. Proceeding with load — callers may observe CS1705 drift; re-run workspace_reload after the concurrent restore finishes if so.",
-                    capMs,
-                    fullPath);
-                return;
-            }
-
-            // Bound the delay so we never overshoot the deadline by more than one interval.
-            var remainingMs = (int)Math.Max(0, (deadline - now).TotalMilliseconds);
-            var delayMs = Math.Min(RestoreRaceSampleIntervalMs, remainingMs);
-            if (delayMs == 0)
-            {
-                // Last-iteration guard: if we've arrived at the deadline, take one final
-                // reading on the next loop and exit via the deadline branch.
-                continue;
-            }
-
-            await Task.Delay(delayMs, ct).ConfigureAwait(false);
-        }
-    }
-
-    private static List<string> EnumerateRestoreArtefacts(string rootDirectory)
-    {
-        // Enumerate every obj/ directory under the solution root. EnumerateDirectories with
-        // SearchOption.AllDirectories is bounded by the solution tree; a typical solution
-        // has one obj/ directory per project. We then look only for the two files Roslyn /
-        // MSBuild actually consume during OpenSolutionAsync — project.assets.json and the
-        // project's <Project>.dgspec.json — so deep nested Debug/Release/TFM subdirectories
-        // do not inflate the probe set.
-        var results = new List<string>();
-        try
-        {
-            foreach (var objDir in Directory.EnumerateDirectories(rootDirectory, "obj", SearchOption.AllDirectories))
-            {
-                try
-                {
-                    var assetsPath = Path.Combine(objDir, "project.assets.json");
-                    if (File.Exists(assetsPath))
-                    {
-                        results.Add(assetsPath);
-                    }
-
-                    foreach (var dgspec in Directory.EnumerateFiles(objDir, "*.dgspec.json", SearchOption.TopDirectoryOnly))
-                    {
-                        results.Add(dgspec);
-                    }
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // Tolerate transient IO errors (a concurrent restore may delete/recreate
-                    // subdirectories). The probe is best-effort; skip and continue.
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // Best-effort: if we cannot enumerate at all, skip the wait entirely.
-        }
-
-        return results;
-    }
-
-    private static DateTime SafeGetLastWriteTimeUtc(string path)
-    {
-        try
-        {
-            // File.Exists check collapses the "file deleted mid-probe" case into MinValue,
-            // which the caller treats as a change in the next sample (restore rewrote it).
-            return File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return DateTime.MinValue;
-        }
-    }
-
-    private bool DetectRestoreRequired(ImmutableArray<ProjectStatusDto> projects)
-    {
-        foreach (var project in projects)
-        {
-            if (IsRestoreRequired(project.FilePath))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private bool IsRestoreRequired(string projectFilePath)
-    {
-        if (string.IsNullOrWhiteSpace(projectFilePath) || !File.Exists(projectFilePath))
-        {
-            return false;
-        }
-
-        try
-        {
-            var expectedPackages = CollectExpectedPackages(projectFilePath);
-            if (expectedPackages.Count == 0)
-            {
-                return false;
-            }
-
-            var assets = LoadAssetsPackageVersions(projectFilePath);
-            if (assets is null)
-            {
-                return true;
-            }
-
-            foreach (var (packageId, expectation) in expectedPackages)
-            {
-                if (!assets.Value.PackageVersions.TryGetValue(packageId, out var assetVersions))
-                {
-                    return true;
-                }
-
-                if (!string.IsNullOrWhiteSpace(expectation.RequestedVersion) &&
-                    !PackageVersionMatches(expectation.RequestedVersion!, assetVersions))
-                {
-                    return true;
-                }
-
-                if (expectation.UsesCentralVersion)
-                {
-                    if (string.IsNullOrWhiteSpace(expectation.RequestedVersion) ||
-                        !assets.Value.CentralPackageVersions.TryGetValue(packageId, out var centralVersions) ||
-                        !PackageVersionMatches(expectation.RequestedVersion!, centralVersions))
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
-        {
-            _logger.LogDebug(ex, "restore-drift detection skipped for '{ProjectFilePath}'", projectFilePath);
-        }
-
-        return false;
-    }
-
-    private static Dictionary<string, PackageExpectation> CollectExpectedPackages(string projectFilePath)
-    {
-        var expected = new Dictionary<string, PackageExpectation>(StringComparer.OrdinalIgnoreCase);
-        var centralPackages = LoadCentralPackageVersions(MsBuildMetadataHelper.FindDirectoryPackagesProps(projectFilePath));
-
-        foreach (var documentPath in EnumeratePackageReferenceDocuments(projectFilePath))
-        {
-            XDocument document;
-            try
-            {
-                document = XDocument.Load(documentPath, LoadOptions.PreserveWhitespace);
-            }
-            catch (System.Xml.XmlException)
-            {
-                continue;
-            }
-
-            foreach (var element in document
-                         .Descendants()
-                         .Where(candidate => string.Equals(candidate.Name.LocalName, "PackageReference", StringComparison.OrdinalIgnoreCase)))
-            {
-                var packageId = GetXmlValue(element, "Include") ?? GetXmlValue(element, "Update");
-                if (string.IsNullOrWhiteSpace(packageId))
-                {
-                    continue;
-                }
-
-                var explicitVersion =
-                    GetXmlValue(element, "VersionOverride") ??
-                    GetChildValue(element, "VersionOverride") ??
-                    GetXmlValue(element, "Version") ??
-                    GetChildValue(element, "Version");
-
-                centralPackages.TryGetValue(packageId, out var centralVersion);
-                var usesCentralVersion = string.IsNullOrWhiteSpace(explicitVersion) &&
-                                         !string.IsNullOrWhiteSpace(centralVersion);
-                expected[packageId] = new PackageExpectation(
-                    usesCentralVersion ? centralVersion : explicitVersion,
-                    usesCentralVersion);
-            }
-        }
-
-        return expected;
-    }
-
-    private static IEnumerable<string> EnumeratePackageReferenceDocuments(string projectFilePath)
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var buildPropsPath = FindNearestFile(projectFilePath, "Directory.Build.props");
-        if (!string.IsNullOrWhiteSpace(buildPropsPath) && seen.Add(buildPropsPath))
-        {
-            yield return buildPropsPath;
-        }
-
-        if (seen.Add(projectFilePath))
-        {
-            yield return projectFilePath;
-        }
-
-        var buildTargetsPath = FindNearestFile(projectFilePath, "Directory.Build.targets");
-        if (!string.IsNullOrWhiteSpace(buildTargetsPath) && seen.Add(buildTargetsPath))
-        {
-            yield return buildTargetsPath;
-        }
-    }
-
-    private static string? FindNearestFile(string path, string fileName)
-    {
-        var directory = Path.GetDirectoryName(path);
-        while (!string.IsNullOrWhiteSpace(directory))
-        {
-            var candidate = Path.Combine(directory, fileName);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-
-            directory = Directory.GetParent(directory)?.FullName;
-        }
-
-        return null;
-    }
-
-    private static Dictionary<string, string> LoadCentralPackageVersions(string? packagesPropsPath)
-    {
-        var centralPackages = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (string.IsNullOrWhiteSpace(packagesPropsPath) || !File.Exists(packagesPropsPath))
-        {
-            return centralPackages;
-        }
-
-        XDocument document;
-        try
-        {
-            document = XDocument.Load(packagesPropsPath, LoadOptions.PreserveWhitespace);
-        }
-        catch (System.Xml.XmlException)
-        {
-            return centralPackages;
-        }
-
-        foreach (var element in document
-                     .Descendants()
-                     .Where(candidate => string.Equals(candidate.Name.LocalName, "PackageVersion", StringComparison.OrdinalIgnoreCase)))
-        {
-            var packageId = GetXmlValue(element, "Include");
-            var version = GetXmlValue(element, "Version") ?? GetChildValue(element, "Version");
-            if (!string.IsNullOrWhiteSpace(packageId) && !string.IsNullOrWhiteSpace(version))
-            {
-                centralPackages[packageId] = version;
-            }
-        }
-
-        return centralPackages;
-    }
-
-    private static (Dictionary<string, HashSet<string>> PackageVersions, Dictionary<string, HashSet<string>> CentralPackageVersions)? LoadAssetsPackageVersions(string projectFilePath)
-    {
-        var projectDirectory = Path.GetDirectoryName(projectFilePath);
-        if (string.IsNullOrWhiteSpace(projectDirectory))
-        {
-            return null;
-        }
-
-        var assetsPath = Path.Combine(projectDirectory, "obj", "project.assets.json");
-        if (!File.Exists(assetsPath))
-        {
-            return null;
-        }
-
-        using var stream = File.OpenRead(assetsPath);
-        using var document = JsonDocument.Parse(stream);
-        if (!document.RootElement.TryGetProperty("project", out var project) ||
-            !project.TryGetProperty("frameworks", out var frameworks) ||
-            frameworks.ValueKind != JsonValueKind.Object)
-        {
-            return null;
-        }
-
-        var packageVersions = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-        var centralPackageVersions = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var framework in frameworks.EnumerateObject())
-        {
-            if (framework.Value.TryGetProperty("dependencies", out var dependencies) &&
-                dependencies.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var dependency in dependencies.EnumerateObject())
-                {
-                    if (!dependency.Value.TryGetProperty("version", out var versionElement) ||
-                        versionElement.ValueKind != JsonValueKind.String)
-                    {
-                        continue;
-                    }
-
-                    AddVersion(packageVersions, dependency.Name, versionElement.GetString());
-                }
-            }
-
-            if (framework.Value.TryGetProperty("centralPackageVersions", out var centralVersions) &&
-                centralVersions.ValueKind == JsonValueKind.Object)
-            {
-                foreach (var centralVersion in centralVersions.EnumerateObject())
-                {
-                    AddVersion(centralPackageVersions, centralVersion.Name, centralVersion.Value.GetString());
-                }
-            }
-        }
-
-        return (packageVersions, centralPackageVersions);
-    }
-
-    private static void AddVersion(Dictionary<string, HashSet<string>> versions, string packageId, string? version)
-    {
-        if (string.IsNullOrWhiteSpace(packageId) || string.IsNullOrWhiteSpace(version))
-        {
-            return;
-        }
-
-        if (!versions.TryGetValue(packageId, out var values))
-        {
-            values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            versions[packageId] = values;
-        }
-
-        values.Add(version.Trim());
-    }
-
-    private static bool PackageVersionMatches(string expectedVersion, IReadOnlySet<string> actualVersions)
-    {
-        var expected = expectedVersion.Trim();
-        if (string.IsNullOrWhiteSpace(expected))
-        {
-            return false;
-        }
-
-        if (actualVersions.Contains(expected))
-        {
-            return true;
-        }
-
-        if (expected.StartsWith("[", StringComparison.Ordinal) || expected.StartsWith("(", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return actualVersions.Contains($"[{expected}, )");
-    }
-
-    private static string? GetXmlValue(XElement element, string localName)
-    {
-        return element.Attributes().FirstOrDefault(attribute =>
-            string.Equals(attribute.Name.LocalName, localName, StringComparison.OrdinalIgnoreCase))?.Value?.Trim();
-    }
-
-    private static string? GetChildValue(XElement element, string localName)
-    {
-        return element.Elements().FirstOrDefault(child =>
-            string.Equals(child.Name.LocalName, localName, StringComparison.OrdinalIgnoreCase))?.Value?.Trim();
-    }
-
-    // restore-required-vs-build-conflation: a WORKSPACE_UNRESOLVED_ANALYZER warning indicates a
-    // missing BUILD output (e.g. an analyzer dll not yet produced by `dotnet build`), NOT a
-    // missing NuGet package. It must NOT set restoreRequired (which routes callers to a no-op
-    // `dotnet restore` loop and arms autoRestore for a pointless restore). It is detected
-    // separately by HasBuildRequiredWorkspaceDiagnostics and surfaced via the BuildRequired flag.
-    private static bool HasRestoreRequiredWorkspaceDiagnostics(IEnumerable<DiagnosticDto> diagnostics)
-    {
-        var suspiciousDiagnostics = 0;
-        foreach (var diagnostic in diagnostics)
-        {
-            if (string.Equals(diagnostic.Id, "CS0234", StringComparison.OrdinalIgnoreCase))
-            {
-                suspiciousDiagnostics++;
-                continue;
-            }
-
-            var message = diagnostic.Message;
-            if (message is null)
-            {
-                continue;
-            }
-
-            if (message.Contains("could not be found", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("does not exist in the namespace", StringComparison.OrdinalIgnoreCase) ||
-                message.Contains("could not load file or assembly", StringComparison.OrdinalIgnoreCase))
-            {
-                suspiciousDiagnostics++;
-            }
-        }
-
-        return suspiciousDiagnostics >= 3;
-    }
-
-    // restore-required-vs-build-conflation: a WORKSPACE_UNRESOLVED_ANALYZER warning means a build
-    // output (analyzer dll) is missing — the remedy is `dotnet build`, not `dotnet restore`. Kept
-    // distinct from HasRestoreRequiredWorkspaceDiagnostics so callers can route to the correct hint
-    // and verdict (build-needed vs restore-needed).
-    private static bool HasBuildRequiredWorkspaceDiagnostics(IEnumerable<DiagnosticDto> diagnostics)
-    {
-        foreach (var diagnostic in diagnostics)
-        {
-            if (string.Equals(diagnostic.Id, "WORKSPACE_UNRESOLVED_ANALYZER", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Removes <see cref="UnresolvedAnalyzerReference"/> entries from every project in the
-    /// loaded workspace. These entries are produced when an analyzer file referenced by the
-    /// project cannot be located (typical for analyzer projects targeting netstandard2.0 whose
-    /// build output is not yet on disk). Leaving them in place causes Roslyn-internal switches
-    /// over AnalyzerReference subtypes to throw
-    /// <c>InvalidOperationException("Unexpected value 'UnresolvedAnalyzerReference'")</c>
-    /// from SymbolFinder, Compilation.GetDiagnostics, and similar APIs. Each strip emits a
-    /// <c>WORKSPACE_UNRESOLVED_ANALYZER</c> warning (severity Warning, not Error) so callers
-    /// can still discover that something was filtered.
-    /// </summary>
-    private async Task StripUnresolvedAnalyzerReferencesAsync(
-        string workspaceId,
-        MSBuildWorkspace workspace,
-        ConcurrentQueue<DiagnosticDto> diagnosticsQueue,
-        CancellationToken ct)
-    {
-        var originalSolution = workspace.CurrentSolution;
-        var solution = originalSolution;
-        var strippedCount = 0;
-        var newDiagnostics = new List<DiagnosticDto>();
-
-        foreach (var project in originalSolution.Projects)
-        {
-            var unresolved = project.AnalyzerReferences
-                .OfType<UnresolvedAnalyzerReference>()
-                .ToList();
-
-            if (unresolved.Count == 0) continue;
-
-            foreach (var reference in unresolved)
-            {
-                solution = solution.RemoveAnalyzerReference(project.Id, reference);
-                strippedCount++;
-
-                var displayName = reference.Display ?? reference.FullPath ?? "<unknown>";
-                newDiagnostics.Add(new DiagnosticDto(
-                    Id: "WORKSPACE_UNRESOLVED_ANALYZER",
-                    Message: $"Unresolved analyzer reference removed from project '{project.Name}': {displayName}. " +
-                             "This typically indicates a missing analyzer build output (netstandard2.0 analyzer project) " +
-                             "or an unresolved package path. Run `dotnet build` on the analyzer project, then `workspace_reload`.",
-                    Severity: WorkspaceDiagnosticSeverityClassifier.Classify(WorkspaceDiagnosticKind.Warning, ""),
-                    Category: "Workspace",
-                    FilePath: project.FilePath,
-                    StartLine: null,
-                    StartColumn: null,
-                    EndLine: null,
-                    EndColumn: null));
-            }
-        }
-
-        if (strippedCount == 0) return;
-
-        // csproj-reserialization-msbuildworkspace (P2) — create-file-apply-csproj-side-effect-all-projects.
-        //
-        // MSBuildWorkspace.TryApplyChanges reserializes csprojs that had an analyzer-reference
-        // removed: MSBuild reprojects the project file to emit the updated AnalyzerReference
-        // itemgroup, and in doing so adds a UTF-8 BOM, flips LF→CRLF, collapses blank lines, and
-        // strips the trailing newline. The semantics are identical but the on-disk bytes drift,
-        // which shows up as noise in git diff — exactly the pattern every recent subagent on the
-        // 2026-04-16 backlog-sweep observed on samples/GeneratedDocumentSolution/ConsumerLib/
-        // ConsumerLib.csproj during verify-release.ps1 runs (that csproj has an
-        // `OutputItemType="Analyzer"` project reference to ConsumerLib.Generators, which registers
-        // as UnresolvedAnalyzerReference on first load before the generator output is built).
-        //
-        // Snapshot ALL csproj bytes before TryApplyChanges; restore any whose post-apply XML is
-        // semantically equivalent to the snapshot (trivia-only diff). Csprojs with a legitimate
-        // semantic change (should not occur here since we only strip analyzer refs, but defensive)
-        // keep their new bytes.
-        var csprojSnapshots = await CsprojSemanticEquality.SnapshotProjectsAsync(
-            originalSolution.Projects
-                .Select(project => project.FilePath)
-                .Where(path => !string.IsNullOrWhiteSpace(path))!,
-            _logger,
-            ct).ConfigureAwait(false);
-
-        if (!workspace.TryApplyChanges(solution))
-        {
-            // Should be impossible — analyzer reference removal is supported by every workspace
-            // implementation. Log and leave the unresolved entries in place; the per-service
-            // guards in CompilationCache/FixAllService were removed as part of this change so
-            // surface the failure loudly.
-            _logger.LogWarning(
-                "Workspace {WorkspaceId}: TryApplyChanges failed when stripping {Count} UnresolvedAnalyzerReference entries; downstream tools may still crash on them.",
-                workspaceId, strippedCount);
-            return;
-        }
-
-        // Restore trivia-only drift introduced by TryApplyChanges's csproj reserialization.
-        await CsprojSemanticEquality.RestoreTriviaOnlyDriftAsync(
-            csprojSnapshots,
-            skipPaths: new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-            _logger,
-            operationTag: "csproj-reserialization-msbuildworkspace/strip-unresolved-analyzer",
-            ct).ConfigureAwait(false);
-
-        foreach (var dto in newDiagnostics)
-        {
-            diagnosticsQueue.Enqueue(dto);
-            while (diagnosticsQueue.Count > MaxDiagnosticsPerWorkspace)
-            {
-                diagnosticsQueue.TryDequeue(out _);
-            }
-        }
-
-        _logger.LogInformation(
-            "Workspace {WorkspaceId}: stripped {Count} UnresolvedAnalyzerReference entries to prevent downstream crashes.",
-            workspaceId, strippedCount);
     }
 
     private WorkspaceStatusDto BuildStatus(WorkspaceSession session)
@@ -1743,8 +1133,6 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
                 OutputType: Helpers.ProjectMetadataParser.GetOutputType(project, projectDoc, _logger));
         }).ToImmutableArray();
     }
-
-    private readonly record struct PackageExpectation(string? RequestedVersion, bool UsesCentralVersion);
 
     private sealed class WorkspaceSession(string workspaceId) : IDisposable
     {
