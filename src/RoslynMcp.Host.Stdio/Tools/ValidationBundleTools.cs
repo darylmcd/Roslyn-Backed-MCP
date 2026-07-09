@@ -359,7 +359,7 @@ public static class ValidationBundleTools
             {
                 try
                 {
-                    DeleteDirectoryIfExists(dir);
+                    DeleteDirectoryIfExists(dir, CancellationToken.None);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {

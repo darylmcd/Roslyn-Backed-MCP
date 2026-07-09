@@ -172,7 +172,7 @@ public sealed class ValidationBundleToolsTests
             File.WriteAllText(Path.Combine(source, "appsettings.Development.json"), "{}");
             File.WriteAllText(Path.Combine(source, "Program.cs"), "class C {}");
 
-            ValidationBundleTools.CopyDirectory(source, dest);
+            ValidationBundleTools.CopyDirectory(source, dest, CancellationToken.None);
 
             Assert.IsFalse(File.Exists(Path.Combine(dest, ".env")), ".env must be excluded.");
             Assert.IsFalse(File.Exists(Path.Combine(dest, "appsettings.Production.json")),
