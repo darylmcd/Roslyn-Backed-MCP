@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using McpServer = ModelContextProtocol.Server.McpServer;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -27,6 +28,7 @@ public static class CodeActionTools
     [McpToolMetadata("code-actions", "stable", true, false,
         "List Roslyn code fixes and refactorings at a location or selection range. Selection-range refactorings include introduce parameter and inline temporary variable. Pass endLine/endColumn for selection-range actions.")]
     public static Task<string> GetCodeActions(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         ICodeActionService codeActionService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -39,13 +41,18 @@ public static class CodeActionTools
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
-            c => codeActionService.GetCodeActionsAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c),
+            async c =>
+            {
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+                return await codeActionService.GetCodeActionsAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, c).ConfigureAwait(false);
+            },
             ct);
 
     [McpServerTool(Name = "preview_code_action", ReadOnly = true, Destructive = false, Idempotent = false, OpenWorld = false), Description("Preview the changes that a specific code action would make. Use get_code_actions first to get the available actions and their indices.")]
     [McpToolMetadata("code-actions", "stable", true, false,
         "Preview a Roslyn code action before applying it.")]
     public static Task<string> PreviewCodeAction(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         ICodeActionService codeActionService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -59,7 +66,11 @@ public static class CodeActionTools
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
-            c => codeActionService.PreviewCodeActionAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, actionIndex, c),
+            async c =>
+            {
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+                return await codeActionService.PreviewCodeActionAsync(workspaceId, filePath, startLine, startColumn, endLine, endColumn, actionIndex, c).ConfigureAwait(false);
+            },
             ct);
 
     [McpServerTool(Name = "apply_code_action", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false), Description("Apply a previously previewed code action using its preview token")]

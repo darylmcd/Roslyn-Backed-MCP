@@ -79,6 +79,7 @@ public sealed class ExpandedSurfaceIntegrationTests_ToolContract : SharedWorkspa
     public async Task PreviewCodeAction_Serializes_Service_Response()
     {
         var previewJson = await CodeActionTools.PreviewCodeAction(
+            null!,
             WorkspaceExecutionGate,
             new FakeCodeActionService(),
             WorkspaceId,

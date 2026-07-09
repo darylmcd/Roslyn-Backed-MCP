@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using McpServer = ModelContextProtocol.Server.McpServer;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -19,6 +20,7 @@ public static class FlowAnalysisTools
         "Analyze variable flow through a code region: reads, writes, captures, always-assigned."),
      Description("Analyze how variables flow through a code region: which are read, written, captured by lambdas, always assigned, etc. Use to understand data dependencies before refactoring.")]
     public static Task<string> AnalyzeDataFlow(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         IFlowAnalysisService flowAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -29,7 +31,11 @@ public static class FlowAnalysisTools
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
-            c => flowAnalysisService.AnalyzeDataFlowAsync(workspaceId, filePath, startLine, endLine, c),
+            async c =>
+            {
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+                return await flowAnalysisService.AnalyzeDataFlowAsync(workspaceId, filePath, startLine, endLine, c).ConfigureAwait(false);
+            },
             ct);
 
     [McpServerTool(Name = "analyze_control_flow", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false),
@@ -37,6 +43,7 @@ public static class FlowAnalysisTools
         "Analyze control flow: entry/exit points, reachability, return statements."),
      Description("Analyze control flow through a code region: entry/exit points, reachability, and return statements. EndPointIsReachable follows Roslyn semantics (whether execution can fall through the end of the region without return/throw), not whether the method can complete; see Warning when returns exist but EndPointIsReachable is false.")]
     public static Task<string> AnalyzeControlFlow(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         IFlowAnalysisService flowAnalysisService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -47,6 +54,10 @@ public static class FlowAnalysisTools
         => ToolDispatch.ReadByWorkspaceIdAsync(
             gate,
             workspaceId,
-            c => flowAnalysisService.AnalyzeControlFlowAsync(workspaceId, filePath, startLine, endLine, c),
+            async c =>
+            {
+                await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+                return await flowAnalysisService.AnalyzeControlFlowAsync(workspaceId, filePath, startLine, endLine, c).ConfigureAwait(false);
+            },
             ct);
 }
