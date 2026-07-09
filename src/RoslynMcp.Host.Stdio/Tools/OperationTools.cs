@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
+using McpServer = ModelContextProtocol.Server.McpServer;
 using RoslynMcp.Host.Stdio.Catalog;
 
 namespace RoslynMcp.Host.Stdio.Tools;
@@ -14,6 +15,7 @@ public static class OperationTools
         "Get the IOperation tree for behavioral analysis at a source position."),
      Description("Get the IOperation tree (language-agnostic behavioral representation) for a syntax node. Returns operation kinds like Invocation, Assignment, Loop, etc. Use for behavioral pattern matching at a higher abstraction than syntax trees. IMPORTANT (UX-003): the column must point at the syntax token whose operation you want — calling on a token returns that token's operation, NOT the enclosing expression. To inspect a method call, place the column on the method-name identifier, not on '(' or whitespace; to inspect a binary expression, place it on the operator. If you only have an approximate cursor, walk outward by re-querying with adjacent columns until the desired operation kind appears.")]
     public static Task<string> GetOperations(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         IOperationService operationService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -25,6 +27,7 @@ public static class OperationTools
     {
         return gate.RunReadAsync(workspaceId, async c =>
         {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
             var result = await operationService.GetOperationsAsync(workspaceId, filePath, line, column, maxDepth, c);
             if (result is null)
                 return JsonSerializer.Serialize(new { message = "No IOperation found at the specified position." }, JsonDefaults.Indented);

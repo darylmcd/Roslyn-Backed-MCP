@@ -392,6 +392,7 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
     {
         var filePath = FindDocumentPath("AnimalService.cs");
         var actionsJson = await CodeActionTools.GetCodeActions(
+            null!,
             WorkspaceExecutionGate,
             CodeActionService,
             WorkspaceId,
@@ -405,6 +406,72 @@ public sealed class ExpandedSurfaceIntegrationTests : SharedWorkspaceTestBase
         using var actionsDoc = JsonDocument.Parse(actionsJson);
         Assert.IsTrue(actionsDoc.RootElement.TryGetProperty("count", out _));
         Assert.IsTrue(actionsDoc.RootElement.TryGetProperty("actions", out _));
+    }
+
+    // host-analysis-tools-missing-clientroot-path-validation: AnalyzeDataFlow, AnalyzeControlFlow,
+    // and GetOperations gained a leading McpServer parameter so they can call
+    // ClientRootPathValidator.ValidatePathAgainstRootsAsync before dispatching to their service,
+    // mirroring the pattern already covered for GetSyntaxTree/GetCodeActions above. Passing null!
+    // for server exercises the same no-capability fail-open branch pinned by
+    // ClientRootPathValidatorTests.ValidatePath_NullServer_AllowsAccess — the validator's actual
+    // root-matching logic (accept/reject/traversal/case-insensitivity) is exhaustively unit-tested
+    // there via IsPathUnderAnyRoot; a live root-rejection round trip through these tools would
+    // require standing up the SDK's full transport pipeline, which the codebase's existing
+    // precedent (see StructuredCallToolFilterElicitationTests remarks) treats as impractical for a
+    // unit test.
+    [TestMethod]
+    public async Task AnalyzeDataFlow_Returns_Structured_Results()
+    {
+        var filePath = FindDocumentPath("AnimalService.cs");
+        var json = await FlowAnalysisTools.AnalyzeDataFlow(
+            null!,
+            WorkspaceExecutionGate,
+            FlowAnalysisService,
+            WorkspaceId,
+            filePath,
+            startLine: 32,
+            endLine: 37,
+            CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.ValueKind == JsonValueKind.Object);
+    }
+
+    [TestMethod]
+    public async Task AnalyzeControlFlow_Returns_Structured_Results()
+    {
+        var filePath = FindDocumentPath("AnimalService.cs");
+        var json = await FlowAnalysisTools.AnalyzeControlFlow(
+            null!,
+            WorkspaceExecutionGate,
+            FlowAnalysisService,
+            WorkspaceId,
+            filePath,
+            startLine: 32,
+            endLine: 37,
+            CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.ValueKind == JsonValueKind.Object);
+    }
+
+    [TestMethod]
+    public async Task GetOperations_Returns_Structured_Results()
+    {
+        var filePath = FindDocumentPath("AnimalService.cs");
+        var json = await OperationTools.GetOperations(
+            null!,
+            WorkspaceExecutionGate,
+            OperationService,
+            WorkspaceId,
+            filePath,
+            line: 27,
+            column: 16,
+            maxDepth: 3,
+            CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsTrue(doc.RootElement.ValueKind == JsonValueKind.Object);
     }
 
     [TestMethod]
