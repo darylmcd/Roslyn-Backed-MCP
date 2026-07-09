@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json;
 using RoslynMcp.Core.Services;
 using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Catalog;
@@ -21,6 +22,7 @@ public static class TypeExtractionTools
         "Preview extracting selected members from a type into a new type. Adds a private field and constructor parameter for composition. Use get_cohesion_metrics and find_shared_members to plan the extraction."),
      Description("Preview extracting selected members from a type into a new type. The source type gets a private field for the new type and the extracted members are moved. Use this for SRP refactoring.")]
     public static Task<string> PreviewExtractType(
+        McpServer server,
         IWorkspaceExecutionGate gate,
         ITypeExtractionService typeExtractionService,
         [Description("The workspace session identifier returned by workspace_load")] string workspaceId,
@@ -30,12 +32,15 @@ public static class TypeExtractionTools
         [Description("Name for the new type")] string newTypeName,
         [Description("Optional: target file path for the new type. If omitted, defaults to {NewTypeName}.cs in the same directory")] string? newFilePath = null,
         CancellationToken ct = default)
-        => ToolDispatch.ReadByWorkspaceIdAsync(
-            gate,
-            workspaceId,
-            c => typeExtractionService.PreviewExtractTypeAsync(
-                workspaceId, filePath, typeName, memberNames, newTypeName, newFilePath, c),
-            ct);
+    {
+        return gate.RunReadAsync(workspaceId, async c =>
+        {
+            await ClientRootPathValidator.ValidatePathAgainstRootsAsync(server, filePath, c).ConfigureAwait(false);
+            var dto = await typeExtractionService.PreviewExtractTypeAsync(
+                workspaceId, filePath, typeName, memberNames, newTypeName, newFilePath, c).ConfigureAwait(false);
+            return JsonSerializer.Serialize(dto, JsonDefaults.Indented);
+        }, ct);
+    }
 
     [McpServerTool(Name = "extract_type_apply", ReadOnly = false, Destructive = true, Idempotent = false, OpenWorld = false),
      McpToolMetadata("refactoring", "experimental", false, true,
