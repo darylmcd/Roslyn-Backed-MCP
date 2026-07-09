@@ -119,7 +119,9 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         IFileWatcherService fileWatcher,
         WorkspaceManagerOptions? options,
         IWorkspaceCacheStore? cacheStore,
-        WorkspaceSessionLoader? sessionLoader)
+        WorkspaceSessionLoader? sessionLoader,
+        RestoreStalenessDetector? restoreStalenessDetector = null,
+        UnresolvedAnalyzerReferenceStripper? analyzerReferenceStripper = null)
     {
         _logger = logger;
         _previewStore = previewStore;
@@ -127,8 +129,8 @@ public sealed class WorkspaceManager : IWorkspaceManager, IDisposable
         _options = options ?? new WorkspaceManagerOptions();
         _cacheCoordinator = cacheStore is null ? null : new WorkspaceCacheCoordinator(cacheStore, logger);
         _sessionLoader = sessionLoader ?? new WorkspaceSessionLoader();
-        _restoreStalenessDetector = new RestoreStalenessDetector();
-        _analyzerReferenceStripper = new UnresolvedAnalyzerReferenceStripper();
+        _restoreStalenessDetector = restoreStalenessDetector ?? new RestoreStalenessDetector();
+        _analyzerReferenceStripper = analyzerReferenceStripper ?? new UnresolvedAnalyzerReferenceStripper();
         var max = _options.MaxConcurrentWorkspaces > 0 ? _options.MaxConcurrentWorkspaces : 8;
         _workspaceSlots = new SemaphoreSlim(max, max);
     }
