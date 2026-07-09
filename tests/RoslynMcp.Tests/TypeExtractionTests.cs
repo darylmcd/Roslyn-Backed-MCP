@@ -1,6 +1,80 @@
+using System.IO.Pipelines;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using RoslynMcp.Host.Stdio.Tools;
 
 namespace RoslynMcp.Tests;
+
+/// <summary>
+/// Stands up a real in-process MCP client/server pair over an in-memory duplex pipe so tests
+/// can exercise <see cref="ClientRootPathValidator.ValidatePathAgainstRootsAsync"/>'s
+/// root-rejection branch through the actual <see cref="McpServer.RequestRootsAsync"/> round
+/// trip. <see cref="McpServer"/> cannot be constructed as a bare test double — its
+/// <c>ClientCapabilities</c> getter and <c>RequestRootsAsync</c> are populated by the real
+/// handshake/session machinery, not settable fields — and the SDK's concrete server
+/// implementation type is internal, so the only public construction path is the same
+/// <c>AddMcpServer().With...Transport()</c> DI composition <c>Program.cs</c> uses, pointed at
+/// an in-memory duplex pipe (<see cref="Pipe"/>) instead of stdio.
+/// </summary>
+internal static class McpRootsTestServerFactory
+{
+    public sealed record Session(McpServer Server, McpClient Client, IHost Host) : IAsyncDisposable
+    {
+        public async ValueTask DisposeAsync()
+        {
+            await Client.DisposeAsync().ConfigureAwait(false);
+            await Host.StopAsync().ConfigureAwait(false);
+            Host.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Creates a connected client/server pair where the client advertises exactly one
+    /// sanctioned root at <paramref name="sanctionedRootPath"/>.
+    /// </summary>
+    public static async Task<Session> CreateWithSanctionedRootAsync(string sanctionedRootPath, CancellationToken ct)
+    {
+        var clientToServer = new Pipe();
+        var serverToClient = new Pipe();
+
+        var hostBuilder = Microsoft.Extensions.Hosting.Host.CreateApplicationBuilder();
+        hostBuilder.Logging.ClearProviders();
+        hostBuilder.Services
+            .AddMcpServer()
+            .WithStreamServerTransport(clientToServer.Reader.AsStream(), serverToClient.Writer.AsStream());
+        var host = hostBuilder.Build();
+        await host.StartAsync(ct).ConfigureAwait(false);
+        var server = host.Services.GetRequiredService<McpServer>();
+
+        var clientTransport = new StreamClientTransport(
+            clientToServer.Writer.AsStream(), serverToClient.Reader.AsStream(), NullLoggerFactory.Instance);
+        var rootUri = new Uri(sanctionedRootPath).AbsoluteUri;
+        var clientOptions = new McpClientOptions
+        {
+            Capabilities = new ClientCapabilities
+            {
+                Roots = new RootsCapability(),
+            },
+            Handlers = new McpClientHandlers
+            {
+                RootsHandler = (_, _) => ValueTask.FromResult(new ListRootsResult
+                {
+                    Roots = [new Root { Uri = rootUri }],
+                }),
+            },
+        };
+
+        var client = await McpClient.CreateAsync(clientTransport, clientOptions, NullLoggerFactory.Instance, ct)
+            .ConfigureAwait(false);
+
+        return new Session(server, client, host);
+    }
+}
 
 [TestClass]
 public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
@@ -65,6 +139,66 @@ public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
         {
             WorkspaceManager.Close(wsId);
             TryDeleteDirectory(solutionDir);
+        }
+    }
+
+    [TestMethod]
+    public async Task PreviewExtractType_Tool_OutOfRootPath_RejectsWithArgumentException()
+    {
+        // Root-boundary regression: when a real MCP client session sanctions a root that
+        // does NOT cover the requested file, extract_type_preview must reject before
+        // dispatching to the service. Uses a real client/server pair (McpRootsTestServerFactory)
+        // rather than server: null! so the actual ValidatePathAgainstRootsAsync root-matching
+        // path (not just the fail-open no-server branch) is exercised end-to-end.
+        var copiedSolutionPath = CreateSampleSolutionCopy();
+        var solutionDir = Path.GetDirectoryName(copiedSolutionPath)!;
+        var sampleLibDir = Path.Combine(solutionDir, "SampleLib");
+        var fixturePath = Path.Combine(sampleLibDir, "ExtractTypeOutOfRootFixture.cs");
+        await File.WriteAllTextAsync(fixturePath,
+            string.Join("\r\n", new[]
+            {
+                "namespace SampleLib;",
+                "",
+                "public class ExtractTypeOutOfRootFixture",
+                "{",
+                "    public int InternalUser() => Compute(42);",
+                "    private int Compute(int x) => x * 2;",
+                "}",
+                "",
+            }));
+
+        var loadResult = await WorkspaceManager.LoadAsync(copiedSolutionPath, CancellationToken.None);
+        var wsId = loadResult.WorkspaceId;
+
+        // Sanction a root that is a SIBLING of solutionDir, not an ancestor of fixturePath.
+        var sanctionedRoot = Path.Combine(Path.GetTempPath(), "roots-boundary-sanctioned-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(sanctionedRoot);
+
+        await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
+            sanctionedRoot, CancellationToken.None);
+
+        try
+        {
+            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+                TypeExtractionTools.PreviewExtractType(
+                    session.Server,
+                    WorkspaceExecutionGate,
+                    TypeExtractionService,
+                    wsId,
+                    fixturePath,
+                    "ExtractTypeOutOfRootFixture",
+                    ["Compute"],
+                    "ComputeHelper",
+                    null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+        }
+        finally
+        {
+            WorkspaceManager.Close(wsId);
+            TryDeleteDirectory(solutionDir);
+            TryDeleteDirectory(sanctionedRoot);
         }
     }
 

@@ -47,6 +47,52 @@ public sealed class TypeMoveTests : IsolatedWorkspaceTestBase
     }
 
     [TestMethod]
+    public async Task PreviewMoveTypeToFile_Tool_OutOfRootPath_RejectsWithArgumentException()
+    {
+        // Root-boundary regression: mirrors
+        // TypeExtractionTests.PreviewExtractType_Tool_OutOfRootPath_RejectsWithArgumentException.
+        // A real MCP client/server pair (McpRootsTestServerFactory) sanctions a root that does
+        // NOT cover the workspace's source file, so move_type_to_file_preview must reject before
+        // dispatching to the service.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+
+        var catFile = workspace.GetPath("SampleLib", "Cat.cs");
+        File.AppendAllText(catFile, "\npublic class RootRejectKitten : IAnimal\n{\n    public string Name => \"RootRejectKitten\";\n    public string Speak() => \"Mew\";\n}\n");
+
+        var wsId = await workspace.LoadAsync(CancellationToken.None);
+
+        var doc = WorkspaceManager.GetCurrentSolution(wsId)
+            .Projects.SelectMany(p => p.Documents)
+            .First(d => d.FilePath?.EndsWith("Cat.cs") == true);
+
+        var sanctionedRoot = Path.Combine(Path.GetTempPath(), "roots-boundary-sanctioned-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(sanctionedRoot);
+
+        await using var session = await McpRootsTestServerFactory.CreateWithSanctionedRootAsync(
+            sanctionedRoot, CancellationToken.None);
+
+        try
+        {
+            var ex = await Assert.ThrowsExceptionAsync<ArgumentException>(() =>
+                TypeMoveTools.PreviewMoveTypeToFile(
+                    session.Server,
+                    WorkspaceExecutionGate,
+                    TypeMoveService,
+                    wsId,
+                    doc.FilePath!,
+                    "RootRejectKitten",
+                    null,
+                    CancellationToken.None));
+
+            StringAssert.Contains(ex.Message, "not under any client-sanctioned root");
+        }
+        finally
+        {
+            Directory.Delete(sanctionedRoot, recursive: true);
+        }
+    }
+
+    [TestMethod]
     public async Task MoveType_FromMultiTypeFile_CreatesPreview()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
