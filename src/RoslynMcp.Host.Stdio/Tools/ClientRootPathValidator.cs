@@ -14,8 +14,9 @@ namespace RoslynMcp.Host.Stdio.Tools;
 /// If the client does not advertise roots capability, or if the roots list is empty,
 /// the path is allowed unconditionally. If the roots request itself fails (e.g. the
 /// client advertises the capability but doesn't fully support it), behavior depends on
-/// <see cref="SecurityOptions.PathValidationFailOpen"/>: when true (default) the path is
-/// allowed; when false the request is rejected.
+/// <see cref="SecurityOptions.PathValidationFailOpen"/>: when false (default) the request
+/// is rejected (fail-closed); when true the path is allowed (fail-open). When no
+/// <see cref="SecurityOptions"/> is supplied, the fail-closed default applies.
 /// Symlinks and junctions are resolved before comparison to prevent traversal attacks.
 /// </remarks>
 internal static class ClientRootPathValidator
@@ -47,7 +48,7 @@ internal static class ClientRootPathValidator
         SecurityOptions? securityOptions = null,
         bool expandSanctionedRoots = false)
     {
-        var failOpen = securityOptions?.PathValidationFailOpen ?? true;
+        var failOpen = securityOptions?.PathValidationFailOpen ?? false;
 
         try
         {

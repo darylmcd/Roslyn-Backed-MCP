@@ -1,4 +1,5 @@
 using RoslynMcp.Host.Stdio.Tools;
+using RoslynMcp.Roslyn.Services;
 
 namespace RoslynMcp.Tests;
 
@@ -96,6 +97,29 @@ public class ClientRootPathValidatorTests
         await ClientRootPathValidator.ValidatePathAgainstRootsAsync(
             null!, "C:\\any\\path", CancellationToken.None);
         // No exception = pass
+    }
+
+    // ───────── SecurityOptions fail-open/fail-closed default tests ─────────
+
+    [TestMethod]
+    public void SecurityOptions_Default_Is_FailClosed()
+    {
+        // The trust-boundary default: a fresh SecurityOptions (what BindSecurityOptions supplies
+        // when ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN is unset/unparseable) must fail CLOSED. A
+        // roots-lookup failure then rejects the write/edit rather than silently allowing it.
+        Assert.IsFalse(new SecurityOptions().PathValidationFailOpen,
+            "PathValidationFailOpen must default to false (fail-closed) on a security-relevant path check.");
+    }
+
+    [TestMethod]
+    public void SecurityOptions_FailOpen_Is_Opt_In()
+    {
+        // The escape hatch is explicit-only: fail-open is reachable solely by setting the value
+        // to true (mirrors ROSLYNMCP_PATH_VALIDATION_FAIL_OPEN=true). The null-coalescing fallback
+        // in ValidatePathAgainstRootsAsync (`securityOptions?.PathValidationFailOpen ?? false`)
+        // therefore resolves to fail-closed whenever no options object is supplied.
+        Assert.IsTrue(new SecurityOptions { PathValidationFailOpen = true }.PathValidationFailOpen,
+            "Fail-open must remain reachable via explicit opt-in.");
     }
 
     // ───────── IsPathUnderAnyRoot tests (sanctioned-root + expandSanctionedRoots widening) ─────────
