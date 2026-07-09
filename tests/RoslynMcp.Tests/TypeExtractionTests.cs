@@ -76,6 +76,7 @@ internal static class McpRootsTestServerFactory
     }
 }
 
+[DoNotParallelize]
 [TestClass]
 public sealed class TypeExtractionTests : IsolatedWorkspaceTestBase
 {
