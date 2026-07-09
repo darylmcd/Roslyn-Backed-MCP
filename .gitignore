@@ -556,3 +556,6 @@ review-inbox/*.md
 
 # Playwright MCP session artifacts (ephemeral page snapshots).
 .playwright-mcp/
+
+# Per-run scratch output from /refactorv2 (matrix + slice-map JSON, working scratch).
+.refactor/
