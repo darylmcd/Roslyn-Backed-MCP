@@ -48,6 +48,56 @@ public sealed class CrossProjectRefactoringIntegrationTests : IsolatedWorkspaceT
     }
 
     [TestMethod]
+    public async Task Extract_Interface_Apply_Writes_Properly_Indented_ItemGroup_For_New_Project_Reference()
+    {
+        // Regression for refactoringservice-god-class-decomposition (item 1): RefactoringService
+        // previously carried a private GetOrCreateItemGroup that appended a fresh <ItemGroup> via
+        // `document.Root?.Add(itemGroup)` with NO trivia, producing collapsed on-disk XML —
+        // `...</PropertyGroup>\n<ItemGroup>...</ItemGroup></Project>` with the ItemGroup at column 0
+        // and `</Project>` glued onto `</ItemGroup>`. The consolidated
+        // OrchestrationMsBuildXml.GetOrCreateItemGroup splices the new element with matching
+        // indent + line-ending trivia (AppendRootChildWithFormatting). SampleLib.csproj ships with
+        // NO existing ProjectReference ItemGroup, so this apply exercises the new-ItemGroup path.
+        await using var workspace = CreateIsolatedWorkspaceCopy();
+        AddProjectToCopiedSolution(workspace.RootPath, "Contracts", "net10.0");
+        var sourceFilePath = workspace.GetPath("SampleLib", "AnimalService.cs");
+        var sourceProjectFilePath = workspace.GetPath("SampleLib", "SampleLib.csproj");
+        await workspace.LoadAsync(CancellationToken.None);
+
+        var preview = await CrossProjectRefactoringService.PreviewExtractInterfaceAsync(
+            workspace.WorkspaceId,
+            sourceFilePath,
+            "AnimalService",
+            "IAnimalService",
+            "Contracts",
+            CancellationToken.None);
+
+        var applyResult = await RefactoringService.ApplyRefactoringAsync(preview.PreviewToken, "test_apply", CancellationToken.None);
+        Assert.IsTrue(applyResult.Success, applyResult.Error);
+
+        var rawProjectXml = await File.ReadAllTextAsync(sourceProjectFilePath, CancellationToken.None);
+        var normalized = rawProjectXml.Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        // (1) The freshly-created ItemGroup must be on its own indented line, not appended at
+        //     column 0 as the private-dup helper did.
+        StringAssert.Contains(
+            normalized,
+            "\n  <ItemGroup>",
+            $"New ProjectReference ItemGroup must be spliced on its own indented line.\nFile contents:\n{rawProjectXml}");
+
+        // (2) The closing </ItemGroup> must not be glued directly onto </Project> — the latent
+        //     formatting bug the private dup lacked a fix for.
+        Assert.IsFalse(
+            normalized.Contains("</ItemGroup></Project>", StringComparison.Ordinal),
+            $"Closing </ItemGroup> must not be glued onto </Project>.\nFile contents:\n{rawProjectXml}");
+
+        // (3) The reference itself must be present and target the new project.
+        var projectXml = XDocument.Parse(rawProjectXml);
+        Assert.IsTrue(projectXml.Descendants("ProjectReference").Any(element =>
+            string.Equals(Path.GetFileName((string?)element.Attribute("Include")), "Contracts.csproj", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
     public async Task Move_Type_To_Project_Preview_And_Apply_Moves_File_And_Adds_Project_Reference()
     {
         await using var workspace = CreateIsolatedWorkspaceCopy();
