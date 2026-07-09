@@ -3,7 +3,7 @@
 <!-- purpose: Open work only. Slim-index format — triage in the table, implementation detail in items/<id>.md. Sync rows on ship. -->
 <!-- scope: in-repo -->
 
-**updated_at:** 2026-07-08T23:50:00Z
+**updated_at:** 2026-07-09T07:09:56Z
 
 ## Agent contract
 
@@ -47,17 +47,7 @@
 
 | id | pri | deps | do | size | detail |
 |----|-----|------|----|------|--------|
-| `refactoringservice-god-class-decomposition` | High | — | **Decompose the 1555-line RefactoringService god-class** — extract its raw MSBuild XML manipulation (reuse OrchestrationMsBuildXml.GetOrCreateItemGroup instead of the private duplicate at :1329. [type: refactor] [source: refactor-matrix-pass1] | S | items/refactoringservice-god-class-decomposition.md |
-| `refactor-services-duplicate-code-sweep` | High | — | **Dedupe copy-pasted helper methods across refactor services** — extract shared helpers for RecordFieldAdditionService's AddUniqueDeconstructionFromDesignation/FromTuple (:478-514. [type: refactor] [source: refactor-matrix-pass1] | M | items/refactor-services-duplicate-code-sweep.md |
-| `workspace-manager-decompose-restore-and-analyzer-subsystems` | High | — | **Split WorkspaceManager god class** — extract the ~500-line NuGet restore-staleness detection block and the StripUnresolvedAnalyzerReferencesAsync analyzer-reference isolation logic into two. [type: refactor] [source: refactor-matrix-pass1] | S | items/workspace-manager-decompose-restore-and-analyzer-subsystems.md |
-| `workspace-validation-service-validateinternal-decompose` | High | — | **Decompose WorkspaceValidationService.ValidateInternalAsync** — split the CC18/180-LOC/6-parameter method (maintainability index 28.19, the highest-complexity method in the slice. [type: refactor] [source: refactor-matrix-pass1] | S | items/workspace-validation-service-validateinternal-decompose.md |
 | `structuredcalltoolfilter-god-class-decompose` | High | — | **Split StructuredCallToolFilter god-class** — extract elicitation-allowlist policy (IsElicitationAllowedFor/IsWorkspaceIdRecoveryAllowedFor/IsWorkspaceIdAutoResolveAllowedFor. [type: refactor] [source: refactor-matrix-pass1] | S | items/structuredcalltoolfilter-god-class-decompose.md |
-| `security-options-fail-open-default` | High | — | **Default PathValidationFailOpen to fail-closed** — flip SecurityOptions.PathValidationFailOpen's default to false so an MCP client roots-lookup failure blocks file writes/edits instead of allowing. [type: refactor] [source: refactor-matrix-pass1] | S | items/security-options-fail-open-default.md |
-| `host-refactor-tools-root-boundary-validation` | High | — | **Add ClientRootPathValidator checks to extract_type and move_type_to_file** — gate TypeExtractionTools/TypeMoveTools entry points on sanctioned client roots before touching filePath/sourceFilePath. [type: refactor] [source: refactor-matrix-pass1] | M | items/host-refactor-tools-root-boundary-validation.md |
-| `apply-with-verify-cancellation-and-compile-scope` | High | — | **Harden ApplyWithVerifyTool's apply→verify→revert flow** — wrap the linked-token region so cancellation after mutation still runs a bounded RevertAsync. [type: refactor] [source: refactor-matrix-pass1] | M | items/apply-with-verify-cancellation-and-compile-scope.md |
-| `host-analysis-tools-missing-clientroot-path-validation` | High | — | **Add ClientRootPathValidator.ValidatePathAgainstRootsAsync to filePath-accepting endpoints missing it** — get_code_actions, preview_code_action (feeds destructive apply_code_action). [type: refactor] [source: refactor-matrix-pass1] | M | items/host-analysis-tools-missing-clientroot-path-validation.md |
-| `workspace-fork-apply-robustness-cancellation` | High | — | **Make WorkspaceForkApply copy/cleanup cancellable and stop TestCoverageTools misreporting cancellation as a timeout** — thread CancellationToken through CopyDirectory/DeleteDirectoryIfExists. [type: refactor] [source: refactor-matrix-pass1] | M | items/workspace-fork-apply-robustness-cancellation.md |
-| `workspace-fork-apply-security-hardening` | High | — | **Exclude secret-bearing files from workspace_fork_apply copies, expire kept forks, and clean up coverage temp dirs** — extend DirectoryCopyExclusions to skip. [type: refactor] [source: refactor-matrix-pass1] | M | items/workspace-fork-apply-security-hardening.md |
 
 ## Medium
 
@@ -87,6 +77,7 @@
 | `host-tools-complexity-hotspot-cleanup` | Medium | — | **Reduce cyclomatic complexity in four host tool-shim hotspots** — simplify ServerTools.GetServerInfo (CC 11, 99 LOC), ClientRootPathValidator.IsPathUnderAnyRoot (CC 11, 3 nesting levels). [type: refactor] [source: refactor-matrix-pass1] | M | items/host-tools-complexity-hotspot-cleanup.md |
 | `analyzer-catalog-untested-drift-suppression-branches` | Medium | — | **Add tests for catalog-drift suppression branches** — cover the non-literal catalog-name path that triggers AddUnresolvedCatalogEntry and the ReportDrift HasUnresolvedCatalogEntries short-circuit so. [type: refactor] [source: refactor-matrix-pass1] | S | items/analyzer-catalog-untested-drift-suppression-branches.md |
 | `dedupe-csharp-features-assembly-load-helper` | Medium | — | **Extract shared CSharp.Features assembly-load helper** — factor the byte-for-byte-identical Assembly.Load(\"Microsoft.CodeAnalysis.CSharp.Features\". [type: refactor] [source: refactor-matrix-pass1] | M | items/dedupe-csharp-features-assembly-load-helper.md |
+| refactoringservice-persistence-extraction | Medium | — | **Extract RefactoringService's document-set persistence logic** — move the ~210-line PersistDocumentSetChangesAsync block into a standalone type; wire for reuse by EditService/ProjectMutationService if needed. [type: refactor] [source: 2026-07-09 sweep #1039 follow-on] | M | items/refactoringservice-persistence-extraction.md |
 
 ## Low
 
@@ -132,6 +123,12 @@
 | `static-singleton-di-bypass-core-services` | Low | — | **Replace static singleton DI-bypass state with scoped services** — convert WorkspaceEvictionRegistry and AmbientGateMetrics from static/AsyncLocal globals into DI-registered scoped services (or. [type: refactor] [source: refactor-matrix-pass1] | M | items/static-singleton-di-bypass-core-services.md |
 | `consolidate-consumer-analysis-services` | Low | — | **Consolidate overlapping consumer-analysis service interfaces** — unify IConsumerAnalysisService.FindConsumersAsync and ITypeConsumersService.FindTypeConsumersAsync behind one contract (or document. [type: refactor] [source: refactor-matrix-pass1] | M | items/consolidate-consumer-analysis-services.md |
 | `iedit-service-param-object` | Low | — | **Introduce shared options object for IEditService's repeated bool parameters** — replace the duplicated skipSyntaxCheck/verify/autoRevertOnError trio across ApplyTextEditsAsync and. [type: refactor] [source: refactor-matrix-pass1] | S | items/iedit-service-param-object.md |
+| fork-ttl-nonfinite-guard | Low | — | **Guard env-configured fork TTL/timeout against non-finite values** — `ReadPositiveEnvDouble` accepts `Infinity`, which overflows `TimeSpan.FromHours` in `SweepExpiredForks`. [type: bug] [source: 2026-07-09 sweep #1036 cq] | S | items/fork-ttl-nonfinite-guard.md |
+| fork-secret-exclusion-extend | Low | — | **Extend fork secret-file exclusion beyond filename-shape denylist** — evaluate common non-matching secret conventions (config.local.yaml, credentials.txt, *.p12, id_rsa) for exclusion or an allowlist model. [type: refactor] [source: 2026-07-09 sweep #1036 cq] | S | items/fork-secret-exclusion-extend.md |
+| forkapplylocks-semaphore-bound | Low | — | **Bound/evict ForkApplyLocks semaphore map** — static ConcurrentDictionary<string,SemaphoreSlim> accumulates one undisposed semaphore per source root for process lifetime. [type: refactor] [source: 2026-07-09 sweep #1037 cq] | S | items/forkapplylocks-semaphore-bound.md |
+| apply-with-verify-revertbudget-configurable | Low | — | **Make apply_with_verify's RevertBudget configurable** — the 30s best-effort revert timeout is a hardcoded literal; source from config/options instead. [type: refactor] [source: 2026-07-09 sweep #1038 cq] | S | items/apply-with-verify-revertbudget-configurable.md |
+| mcproots-test-harness-disposal | Low | — | **Dispose McpServer and transport streams in test harness teardown** — ServerWithSanctionedRootHarness leaves an IAsyncDisposable McpServer and duplex Pipe streams undisposed. [type: test] [source: 2026-07-09 sweep #1034 cq] | S | items/mcproots-test-harness-disposal.md |
+| filewatcher-clearstale-timeout-flake-triage | Low | — | **Triage FileWatcherClearStaleAwaiterTests timeout flake** — failed once under self-hosted CI load on an unrelated diff, passed unmodified on rerun; root-cause and register in known-flakes.md if confirmed pre-existing. [type: test] [source: 2026-07-09 sweep PR #1034 CI] | S | items/filewatcher-clearstale-timeout-flake-triage.md |
 
 ## Defer
 
