@@ -178,6 +178,41 @@ public sealed class TestCoveragePartialCoverletTests
             "All-projects-have-coverlet must NOT populate coverageGaps — that field is partial-only.");
     }
 
+    /// <summary>
+    /// (4) test-coverage-temp-dir-leak (workspace-fork-apply-security-hardening): the per-run temp
+    /// coverage results dir must be deleted after aggregation. Pre-fix it leaked into %TEMP% on
+    /// every invocation. The runner captures the <c>--results-directory</c> it was handed; after a
+    /// successful run that directory must no longer exist on disk.
+    /// </summary>
+    [TestMethod]
+    public async Task RunTestCoverageCore_SuccessPath_DeletesTempCoverageDir()
+    {
+        using var fixture = new CoverletProjectFixture();
+        var pathA = fixture.WriteCsproj("WithCoverletA", includesCoverletCollector: true);
+
+        var gate = new PassthroughGate();
+        var workspace = new MixedCoverletWorkspaceManager(
+            withCoverletProjectPath: null,
+            withoutCoverletProjectPath: null,
+            extraProjects: [("WithCoverletA", pathA, true)]);
+        var runner = new CoberturaWritingDotnetCommandRunner();
+
+        await TestCoverageTools.RunTestCoverageCore(
+            gate,
+            workspace,
+            runner,
+            workspaceId: "ws-coverage-cleanup",
+            projectName: null,
+            deprecation: null,
+            progress: null,
+            ct: CancellationToken.None);
+
+        Assert.IsNotNull(runner.LastResultsDirectory,
+            "Runner should have received a --results-directory argument.");
+        Assert.IsFalse(Directory.Exists(runner.LastResultsDirectory!),
+            "The temp coverage dir must be deleted after a successful coverage run — it previously leaked.");
+    }
+
     // ── Test doubles ────────────────────────────────────────────────────────
 
     /// <summary>
@@ -291,6 +326,13 @@ public sealed class TestCoveragePartialCoverletTests
     {
         private int _invocationCount;
 
+        /// <summary>
+        /// The <c>--results-directory</c> (per-run temp coverage dir) captured on the last
+        /// invocation. Used to assert the tool deletes the dir after aggregation
+        /// (test-coverage-temp-dir-leak).
+        /// </summary>
+        public string? LastResultsDirectory { get; private set; }
+
         public Task<CommandExecutionDto> RunAsync(
             string workingDirectory,
             string targetPath,
@@ -308,6 +350,8 @@ public sealed class TestCoveragePartialCoverletTests
                     break;
                 }
             }
+
+            LastResultsDirectory = resultsDir;
 
             if (resultsDir is not null)
             {

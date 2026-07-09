@@ -177,7 +177,72 @@ public sealed class TestCoverageFailureEnvelopeTests
         StringAssert.Contains(envelope.GetProperty("summary").GetString() ?? string.Empty, "workspace status unavailable");
     }
 
+    /// <summary>
+    /// (5) test-coverage-temp-dir-leak (workspace-fork-apply-security-hardening): even when the
+    /// runner throws mid-run, the per-run temp coverage dir must be deleted by the finally block.
+    /// The runner creates the <c>--results-directory</c> on disk (as <c>dotnet test</c> would) then
+    /// throws; after the classified failure envelope is returned, the dir must be gone.
+    /// </summary>
+    [TestMethod]
+    public async Task RunTestCoverageCore_RunnerThrowsAfterCreatingDir_StillDeletesTempCoverageDir()
+    {
+        var gate = new PassthroughGate();
+        var workspace = new FakeWorkspaceManager();
+        var runner = new DirCreatingThrowingDotnetCommandRunner(new InvalidOperationException("boom"));
+
+        var json = await TestCoverageTools.RunTestCoverageCore(
+            gate,
+            workspace,
+            runner,
+            workspaceId: "ws-coverage-cleanup-throw",
+            projectName: null,
+            deprecation: null,
+            progress: null,
+            ct: CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        Assert.IsFalse(doc.RootElement.GetProperty("success").GetBoolean(),
+            "The thrown runner must surface a failure envelope.");
+
+        Assert.IsNotNull(runner.CreatedResultsDirectory,
+            "Runner should have created and captured the --results-directory.");
+        Assert.IsFalse(Directory.Exists(runner.CreatedResultsDirectory!),
+            "The temp coverage dir must be deleted by the finally block even on the exception path.");
+    }
+
     // ── Test doubles ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Runner that creates the <c>--results-directory</c> on disk (mirroring <c>dotnet test</c>)
+    /// and then throws, exercising the finally-block cleanup on the exception path.
+    /// </summary>
+    private sealed class DirCreatingThrowingDotnetCommandRunner : IDotnetCommandRunner
+    {
+        private readonly Exception _toThrow;
+
+        public DirCreatingThrowingDotnetCommandRunner(Exception toThrow) => _toThrow = toThrow;
+
+        public string? CreatedResultsDirectory { get; private set; }
+
+        public Task<CommandExecutionDto> RunAsync(
+            string workingDirectory,
+            string targetPath,
+            IReadOnlyList<string> arguments,
+            CancellationToken ct)
+        {
+            for (var i = 0; i < arguments.Count - 1; i++)
+            {
+                if (string.Equals(arguments[i], "--results-directory", StringComparison.Ordinal))
+                {
+                    CreatedResultsDirectory = arguments[i + 1];
+                    Directory.CreateDirectory(CreatedResultsDirectory);
+                    break;
+                }
+            }
+
+            throw _toThrow;
+        }
+    }
 
     /// <summary>
     /// Minimal stand-in for <see cref="IWorkspaceExecutionGate"/> that invokes the lambda

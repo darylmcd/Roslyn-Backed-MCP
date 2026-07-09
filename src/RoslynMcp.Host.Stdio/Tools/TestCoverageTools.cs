@@ -59,29 +59,42 @@ public static class TestCoverageTools
 
                 var coverageDir = Path.Combine(Path.GetTempPath(), "roslyn-mcp-coverage", Guid.NewGuid().ToString("N"));
 
-                var partition = TestCoverageCoordinator.PartitionTestProjectsByCoverlet(status, projectName);
-                if (partition.WithCoverlet.Count == 0 && partition.WithoutCoverlet.Count > 0)
+                // test-coverage-temp-dir-leak (workspace-fork-apply-security-hardening): the temp
+                // coverage results dir is allocated per run and was previously never deleted, leaking a
+                // directory into %TEMP% on every invocation. Wrap the whole coverage lifecycle so the
+                // dir is removed after aggregation regardless of which return path (coverlet-missing,
+                // no-coverage-file, aggregated) fires. Best-effort delete — a lock on a coverage file
+                // must not turn a successful coverage run into an error.
+                try
                 {
+                    var partition = TestCoverageCoordinator.PartitionTestProjectsByCoverlet(status, projectName);
+                    if (partition.WithCoverlet.Count == 0 && partition.WithoutCoverlet.Count > 0)
+                    {
+                        ProgressHelper.Report(progress, 1, 1);
+                        return SerializeWithDeprecation(
+                            TestCoverageCoordinator.BuildCoverletMissingResult(partition.WithoutCoverlet),
+                            deprecation);
+                    }
+
+                    var (execution, coverageFiles, coverageGaps) = await RunCoveragePassAsync(
+                        commandRunner, status, partition, loadedPath, projectName, coverageDir, progress, c).ConfigureAwait(false);
+
+                    if (coverageFiles.Length == 0)
+                    {
+                        ProgressHelper.Report(progress, 1, 1);
+                        return SerializeWithDeprecation(
+                            TestCoverageCoordinator.BuildNoCoverageFileResult(execution.Succeeded, execution.ExitCode, coverageGaps),
+                            deprecation);
+                    }
+
+                    var result = TestCoverageCoordinator.ParseAndAggregateCoberturaXml(coverageFiles, coverageGaps);
                     ProgressHelper.Report(progress, 1, 1);
-                    return SerializeWithDeprecation(
-                        TestCoverageCoordinator.BuildCoverletMissingResult(partition.WithoutCoverlet),
-                        deprecation);
+                    return SerializeWithDeprecation(result, deprecation);
                 }
-
-                var (execution, coverageFiles, coverageGaps) = await RunCoveragePassAsync(
-                    commandRunner, status, partition, loadedPath, projectName, coverageDir, progress, c).ConfigureAwait(false);
-
-                if (coverageFiles.Length == 0)
+                finally
                 {
-                    ProgressHelper.Report(progress, 1, 1);
-                    return SerializeWithDeprecation(
-                        TestCoverageCoordinator.BuildNoCoverageFileResult(execution.Succeeded, execution.ExitCode, coverageGaps),
-                        deprecation);
+                    TryDeleteCoverageDir(coverageDir);
                 }
-
-                var result = TestCoverageCoordinator.ParseAndAggregateCoberturaXml(coverageFiles, coverageGaps);
-                ProgressHelper.Report(progress, 1, 1);
-                return SerializeWithDeprecation(result, deprecation);
             }
             catch (OperationCanceledException)
             {
@@ -233,5 +246,23 @@ public static class TestCoverageTools
             coverageGaps = result.CoverageGaps,
             deprecation,
         }, JsonDefaults.Indented);
+    }
+
+    // test-coverage-temp-dir-leak (workspace-fork-apply-security-hardening): best-effort deletion
+    // of the per-run temp coverage results dir. Internal for direct assertion in tests. Swallows
+    // IO/access failures — the dir is under %TEMP% and a leftover on a locked file is non-fatal.
+    internal static void TryDeleteCoverageDir(string coverageDir)
+    {
+        try
+        {
+            if (Directory.Exists(coverageDir))
+            {
+                Directory.Delete(coverageDir, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort — a locked coverage file must not fail an otherwise-successful run.
+        }
     }
 }
